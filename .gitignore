@@ -1,0 +1,32 @@
+# Go
+server/lumemor
+server/lumemor-*
+*.test
+*.out
+/vendor/
+
+# Node / SvelteKit
+node_modules/
+.svelte-kit/
+build/
+dist/
+.env
+.env.*
+!.env.example
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/.flutter-plugins*
+mobile/build/
+mobile/coverage/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local data & tool output
+data/
+*.log
