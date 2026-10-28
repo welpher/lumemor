@@ -110,11 +110,11 @@ func connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 // example on a machine without a local container runtime.
 func skipIfNoDocker(t *testing.T) {
 	t.Helper()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		t.Skipf("docker client unavailable: %v", err)
 	}
-	defer cli.Close()
+	defer func() { _ = cli.Close() }()
 
 	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

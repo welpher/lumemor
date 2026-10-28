@@ -18,7 +18,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	// Closing the database/sql wrapper returns its connections to the pool
 	// without closing the pool itself.
 	sqlDB := stdlib.OpenDBFromPool(pool)
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	goose.SetBaseFS(migrations.FS)
 	goose.SetLogger(goose.NopLogger())
