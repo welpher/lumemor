@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/welpher/lumemor/server/internal/api"
+	"github.com/welpher/lumemor/server/internal/buildinfo"
 	"github.com/welpher/lumemor/server/internal/config"
 	"github.com/welpher/lumemor/server/internal/db"
 )
@@ -61,8 +62,12 @@ func run(logger *slog.Logger) error {
 	logger.Info("schema migrations applied")
 
 	srv := &http.Server{
-		Addr:              cfg.Listen,
-		Handler:           api.NewRouter(),
+		Addr: cfg.Listen,
+		Handler: api.NewRouter(&api.Deps{
+			Pool:    pool,
+			Logger:  logger,
+			Version: buildinfo.Version,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

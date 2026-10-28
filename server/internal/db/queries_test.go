@@ -1,16 +1,14 @@
 package db
 
 import (
-	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/welpher/lumemor/server/internal/db/dbtest"
 	"github.com/welpher/lumemor/server/internal/db/gen"
 )
 
@@ -19,38 +17,8 @@ import (
 // admin, GetUserByEmail reads it back (and misses unknown emails), and
 // CountAdmins reports exactly one admin.
 func TestUserQueries(t *testing.T) {
-	skipIfNoDocker(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	ctr, err := tcpostgres.Run(ctx, pgImage,
-		tcpostgres.WithDatabase("lumemor"),
-		tcpostgres.WithUsername("lumemor"),
-		tcpostgres.WithPassword("lumemor"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
-	}
-	t.Cleanup(func() {
-		termCtx, termCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer termCancel()
-		if err := ctr.Terminate(termCtx); err != nil {
-			t.Logf("terminate postgres container: %v", err)
-		}
-	})
-
-	dsn, err := ctr.ConnectionString(ctx)
-	if err != nil {
-		t.Fatalf("container connection string: %v", err)
-	}
-
-	pool, err := Connect(ctx, dsn, 30*time.Second)
-	if err != nil {
-		t.Fatalf("Connect() error = %v, want nil", err)
-	}
-	t.Cleanup(pool.Close)
+	pool := dbtest.New(t)
+	ctx := t.Context()
 
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatalf("Migrate() error = %v, want nil", err)

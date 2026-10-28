@@ -8,10 +8,12 @@ import (
 )
 
 func TestHealthz(t *testing.T) {
+	// The pool stays nil: /healthz never touches the database.
+	router := NewRouter(&Deps{Version: "test"})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 
-	NewRouter().ServeHTTP(rec, req)
+	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /healthz status = %d, want %d", rec.Code, http.StatusOK)
@@ -22,10 +24,12 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestMetrics(t *testing.T) {
+	// The pool stays nil: /metrics never touches the database.
+	router := NewRouter(&Deps{Version: "test"})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 
-	NewRouter().ServeHTTP(rec, req)
+	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /metrics status = %d, want %d", rec.Code, http.StatusOK)
