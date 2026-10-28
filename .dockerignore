@@ -1,0 +1,7 @@
+# The image build consumes only the Go module under server/; every other
+# repository path (git history, docs, generated clients, web sources,
+# tooling state) stays out of the build context so that context
+# transfers stay small and layer cache invalidation tracks the server
+# sources alone.
+**
+!server/**
