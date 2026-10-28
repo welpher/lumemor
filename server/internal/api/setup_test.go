@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -135,6 +136,13 @@ func TestCreateAdmin(t *testing.T) {
 				body:   `not json at all`,
 				fields: nil,
 			},
+			{
+				name: "BodyTooLarge",
+				// Over 1 MiB of password characters: the decode must trip
+				// the request body limit and report the body itself.
+				body:   `{"email":"ada@example.com","password":"` + strings.Repeat("a", 1<<20) + `"}`,
+				fields: []string{"body"},
+			},
 		}
 		for _, testCase := range cases {
 			t.Run(testCase.name, func(t *testing.T) {
@@ -263,6 +271,68 @@ func TestCreateAdmin(t *testing.T) {
 			t.Error("initialized = false after restart, want true (derived from the database)")
 		}
 	})
+}
+
+// TestCreateAdminConcurrent verifies the one-time guarantee under
+// concurrency: two wizard requests with distinct emails race on a fresh
+// instance (both in flight before either completes) and exactly one
+// wins. A bare count-then-insert sequence would let both observe an
+// admin-less instance and both insert; the transaction-scoped advisory
+// lock must serialize them.
+func TestCreateAdminConcurrent(t *testing.T) {
+	pool := newSetupEnv(t)
+	router := NewRouter(&Deps{Pool: pool, Version: testVersion})
+
+	// Marshal in the main goroutine: the request builders use
+	// t.Fatalf, which must not run on a spawned goroutine.
+	bodies := []string{
+		createAdminBody(t, "ada@example.com", "correct horse battery staple", nil),
+		createAdminBody(t, "grace@example.com", "correct horse battery staple", nil),
+	}
+
+	// The barrier releases both goroutines only after they exist, so the
+	// two requests are genuinely in flight at the same time; the Argon2id
+	// derivation guarantees a wide overlap window.
+	start := make(chan struct{})
+	codes := make([]int, len(bodies))
+	var wg sync.WaitGroup
+	for i := range bodies {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/server/setup/admin", strings.NewReader(bodies[i]))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			codes[i] = rec.Code
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	created, conflicts := 0, 0
+	for _, code := range codes {
+		switch code {
+		case http.StatusCreated:
+			created++
+		case http.StatusConflict:
+			conflicts++
+		default:
+			t.Errorf("concurrent wizard status = %d, want %d or %d", code, http.StatusCreated, http.StatusConflict)
+		}
+	}
+	if created != 1 || conflicts != 1 {
+		t.Errorf("concurrent wizard outcomes = %d created / %d conflicts, want exactly 1/1 (codes %v)", created, conflicts, codes)
+	}
+
+	admins, err := dbgen.New(pool).CountAdmins(t.Context())
+	if err != nil {
+		t.Fatalf("CountAdmins() error = %v, want nil", err)
+	}
+	if admins != 1 {
+		t.Errorf("CountAdmins() = %d after concurrent wizards, want 1", admins)
+	}
 }
 
 // TestCreateAdminNameDefaultsToEmail verifies the optional display name

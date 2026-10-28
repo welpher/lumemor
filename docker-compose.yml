@@ -33,6 +33,7 @@ services:
         VERSION: ${LUMEMOR_VERSION:-dev}
         GOPROXY: ${LUMEMOR_BUILD_GOPROXY:-}
     ports:
+      # 8244 binds all interfaces so family devices can run the wizard from the LAN; this unauthenticated pre-setup window closes once the first admin exists.
       - "8244:8244"
     environment:
       LUMEMOR_DATABASE_URL: "postgres://lumemor:lumemor@db:5432/lumemor?sslmode=disable"

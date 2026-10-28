@@ -26,37 +26,47 @@ const (
 	// maxNameRunes bounds the optional display name after trimming.
 	maxNameRunes = 100
 
+	// maxAdminBodyBytes caps the wizard request body: the endpoint is
+	// unauthenticated, so unbounded bodies must never be buffered.
+	maxAdminBodyBytes = 1 << 20
+
 	// uniqueViolation is the PostgreSQL error code for a unique
 	// constraint violation (23505).
 	uniqueViolation = "23505"
+
+	// firstRunSetupLockKey is the advisory lock key serializing first-run
+	// setup across every connection and process, making the admin check
+	// and the insert atomic. 0x6C756D65 spells "lume" in ASCII; the value
+	// is arbitrary but fixed, and any other advisory-lock user in this
+	// codebase must pick a different key.
+	firstRunSetupLockKey = 0x6C756D65
 )
 
 // CreateAdmin implements POST /api/v1/server/setup/admin: the one-time
 // first-run wizard that seeds the initial administrator account.
 func (s *server) CreateAdmin(w http.ResponseWriter, r *http.Request) {
-	// Refuse completed instances before touching the payload so the
-	// endpoint never leaks validation feedback once setup is done.
-	admins, err := s.queries.CountAdmins(r.Context())
-	if err != nil {
-		s.internalError(w, r, "count admins", err)
-		return
-	}
-	if admins > 0 {
-		s.writeError(w, http.StatusConflict, apigen.SETUPALREADYCOMPLETED,
-			"an administrator account already exists", nil)
-		return
-	}
+	// Cap the request body before decoding anything: unbounded payloads
+	// on this unauthenticated endpoint would otherwise be fully buffered.
+	r.Body = http.MaxBytesReader(w, r.Body, maxAdminBodyBytes)
 
 	var req apigen.CreateAdminRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// The generated Email type validates during unmarshalling, so a
-		// syntactically invalid address fails here; name the field so the
-		// 400 still points at the right input.
+		// The generated Email type validates during unmarshalling, and
+		// the capped reader reports its own limit violation; both are
+		// named so the 400 still points at the offending input.
 		message := "request body must be valid JSON"
-		var details *map[string]interface{}
-		if errors.Is(err, oapitypes.ErrValidationEmail) {
+		var fields []interface{}
+		var maxBytesErr *http.MaxBytesError
+		switch {
+		case errors.As(err, &maxBytesErr):
+			message = "request body exceeds the size limit"
+			fields = []interface{}{"body"}
+		case errors.Is(err, oapitypes.ErrValidationEmail):
 			message = "email must be a valid address"
-			fields := []interface{}{"email"}
+			fields = []interface{}{"email"}
+		}
+		var details *map[string]interface{}
+		if fields != nil {
 			details = &map[string]interface{}{"fields": fields}
 		}
 		s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, details)
@@ -75,6 +85,38 @@ func (s *server) CreateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The one-time guarantee needs the admin check and the insert to be
+	// one atomic step: count-then-insert alone lets two concurrent
+	// wizards with distinct emails both observe an admin-less instance
+	// and both insert. A transaction-scoped advisory lock serializes
+	// first-run setup, and the Argon2id derivation runs inside the lock
+	// so the serialization cannot be outrun by slow hashing.
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		s.internalError(w, r, "begin setup transaction", err)
+		return
+	}
+	// The rollback is a no-op after a successful commit; arguments are
+	// captured while the request context is still live.
+	defer tx.Rollback(r.Context())
+
+	if _, err := tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock($1)", firstRunSetupLockKey); err != nil {
+		s.internalError(w, r, "acquire setup lock", err)
+		return
+	}
+
+	queries := dbgen.New(tx)
+	admins, err := queries.CountAdmins(r.Context())
+	if err != nil {
+		s.internalError(w, r, "count admins", err)
+		return
+	}
+	if admins > 0 {
+		s.writeError(w, http.StatusConflict, apigen.SETUPALREADYCOMPLETED,
+			"an administrator account already exists", nil)
+		return
+	}
+
 	hash, err := auth.Hash(in.password)
 	if err != nil {
 		s.internalError(w, r, "hash password", err)
@@ -86,23 +128,30 @@ func (s *server) CreateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.queries.CreateUser(r.Context(), dbgen.CreateUserParams{
+	user, err := queries.CreateUser(r.Context(), dbgen.CreateUserParams{
 		ID:           pgtype.UUID{Bytes: id, Valid: true},
 		Name:         in.name,
 		Email:        in.email,
 		PasswordHash: hash,
 	})
 	if err != nil {
-		// Two concurrent wizards can both pass the admin-less check; the
-		// loser loses the race on the users email unique constraint and
-		// reports the same conflict as any request after setup completed.
+		// Belt and suspenders for writers that bypass the setup lock
+		// (future admin management paths): only a violation of the
+		// account's own unique keys means setup already completed, any
+		// other constraint stays an internal error.
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation &&
+			(pgErr.ConstraintName == "users_email_key" || pgErr.ConstraintName == "users_pkey") {
 			s.writeError(w, http.StatusConflict, apigen.SETUPALREADYCOMPLETED,
 				"an administrator account already exists", nil)
 			return
 		}
 		s.internalError(w, r, "create admin user", err)
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		s.internalError(w, r, "commit setup transaction", err)
 		return
 	}
 

@@ -40,6 +40,7 @@ type Deps struct {
 // and the generated /api/v1 API surface.
 func NewRouter(deps *Deps) *chi.Mux {
 	s := &server{
+		pool:    deps.Pool,
 		queries: dbgen.New(deps.Pool),
 		version: deps.Version,
 		logger:  deps.Logger,
@@ -76,6 +77,8 @@ func NewRouter(deps *Deps) *chi.Mux {
 
 // server implements apigen.ServerInterface on top of the injected Deps.
 type server struct {
+	// pool begins the setup transaction; queries serves read paths.
+	pool    *pgxpool.Pool
 	queries *dbgen.Queries
 	version string
 	logger  *slog.Logger
