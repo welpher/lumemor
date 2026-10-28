@@ -13,11 +13,19 @@ import (
 
 	"github.com/welpher/lumemor/server/internal/api"
 	"github.com/welpher/lumemor/server/internal/config"
+	"github.com/welpher/lumemor/server/internal/db"
 )
 
-// shutdownTimeout bounds how long in-flight requests may finish after a
-// termination signal before the server exits anyway.
-const shutdownTimeout = 10 * time.Second
+const (
+	// shutdownTimeout bounds how long in-flight requests may finish after a
+	// termination signal before the server exits anyway.
+	shutdownTimeout = 10 * time.Second
+
+	// dbConnectWait bounds how long startup waits for the database to
+	// become reachable, tolerating the race against a freshly launched
+	// database container.
+	dbConnectWait = 60 * time.Second
+)
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -29,14 +37,28 @@ func main() {
 	}
 }
 
-// run executes the server lifecycle: load config, start the HTTP server,
-// then shut down gracefully on SIGINT/SIGTERM. The database connection and
-// migrations will be wired between the config load and ListenAndServe.
+// run executes the server lifecycle: load config, connect to the database
+// and apply migrations, start the HTTP server, then shut down gracefully on
+// SIGINT/SIGTERM.
 func run(logger *slog.Logger) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
+
+	pool, err := db.Connect(ctx, cfg.DatabaseURL, dbConnectWait)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	if err := db.Migrate(ctx, pool); err != nil {
+		return err
+	}
+	logger.Info("schema migrations applied")
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
@@ -51,9 +73,6 @@ func run(logger *slog.Logger) error {
 			serveErr <- err
 		}
 	}()
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	select {
 	case err := <-serveErr:
