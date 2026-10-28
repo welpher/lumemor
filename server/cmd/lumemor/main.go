@@ -15,6 +15,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/buildinfo"
 	"github.com/welpher/lumemor/server/internal/config"
 	"github.com/welpher/lumemor/server/internal/db"
+	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 )
 
 const (
@@ -61,12 +62,27 @@ func run(logger *slog.Logger) error {
 	}
 	logger.Info("schema migrations applied")
 
+	// The first-run predicate mirrors how NewRouter builds its internal
+	// server struct: the sqlc queries over the pool. It derives from the
+	// users table, so a restarted server routes the same way; an
+	// unreachable database falls back to the wizard, whose own endpoints
+	// surface the real errors.
+	queries := dbgen.New(pool)
+
 	srv := &http.Server{
 		Addr: cfg.Listen,
 		Handler: api.NewRouter(&api.Deps{
 			Pool:    pool,
 			Logger:  logger,
 			Version: buildinfo.Version,
+			Initialized: func(ctx context.Context) bool {
+				admins, err := queries.CountAdmins(ctx)
+				if err != nil {
+					logger.Error("count admins for root routing", "error", err)
+					return false
+				}
+				return admins > 0
+			},
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

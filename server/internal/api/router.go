@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
+	"github.com/welpher/lumemor/server/internal/api/static"
 	"github.com/welpher/lumemor/server/internal/buildinfo"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 )
@@ -26,10 +28,16 @@ type Deps struct {
 	// Version is the server build version reported by GET /server/info;
 	// the empty string falls back to buildinfo.Version.
 	Version string
+	// Initialized reports whether first-run setup has completed (an
+	// administrator account exists); GET / routes on it. Production
+	// wires it to the CountAdmins query, tests inject a stub; nil means
+	// "not initialized", keeping the root on the wizard.
+	Initialized func(ctx context.Context) bool
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
-// endpoints (/healthz, /metrics) and the generated /api/v1 API surface.
+// endpoints (/healthz, /metrics), the embedded HTML pages (/setup, /)
+// and the generated /api/v1 API surface.
 func NewRouter(deps *Deps) *chi.Mux {
 	s := &server{
 		queries: dbgen.New(deps.Pool),
@@ -42,10 +50,24 @@ func NewRouter(deps *Deps) *chi.Mux {
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}
+	// A nil Initialized keeps the root on the wizard: only production
+	// wiring and tests that exercise / need the real predicate.
+	initialized := deps.Initialized
+	if initialized == nil {
+		initialized = func(context.Context) bool { return false }
+	}
 
 	r := chi.NewRouter()
 	r.Get("/healthz", handleHealthz)
 	r.Handle("/metrics", promhttp.Handler())
+	r.Get("/setup", handleSetupPage)
+	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+		if !initialized(req.Context()) {
+			http.Redirect(w, req, "/setup", http.StatusFound)
+			return
+		}
+		handleIndexPage(w, req)
+	})
 	r.Route("/api/v1", func(r chi.Router) {
 		apigen.HandlerFromMux(s, r)
 	})
@@ -85,6 +107,35 @@ func (s *server) writeError(w http.ResponseWriter, status int, code apigen.Error
 func (s *server) internalError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	s.logger.Error("internal error", "op", op, "error", err, "method", r.Method, "path", r.URL.Path)
 	w.WriteHeader(http.StatusInternalServerError)
+}
+
+// handleSetupPage serves GET /setup: the embedded first-run wizard. It
+// stays reachable after setup completes; the setup API itself refuses
+// completed instances.
+func handleSetupPage(w http.ResponseWriter, _ *http.Request) {
+	servePage(w, "setup.html")
+}
+
+// handleIndexPage serves GET /: the embedded landing page an initialized
+// instance shows.
+func handleIndexPage(w http.ResponseWriter, _ *http.Request) {
+	servePage(w, "index.html")
+}
+
+// servePage writes one of the embedded HTML pages. A missing page is a
+// packaging bug (the files ship in the binary), so it degrades to a
+// plain 500 rather than an undocumented error envelope.
+func servePage(w http.ResponseWriter, name string) {
+	body, err := static.FS.ReadFile(name)
+	if err != nil {
+		http.Error(w, "page not found", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	// The status is already written, so a write failure (client gone)
+	// cannot be reported; the write is best-effort.
+	_, _ = w.Write(body)
 }
 
 // healthzResponse is the body served on GET /healthz.
