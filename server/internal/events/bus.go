@@ -1,7 +1,8 @@
 // Package events provides the in-process event bus of the lumemor
 // server: producers publish domain events (M2a: session.started,
-// session.revoked on login and logout), consumers replay and follow
-// them through the SSE activity stream (GET /api/v1/events).
+// session.revoked, auth.login_failed, pairing.token_created),
+// consumers replay and follow them through the SSE activity stream
+// (GET /api/v1/events).
 //
 // The bus is the plugin seam of the design spec: v1 deliberately keeps
 // the surface to publish/subscribe with a retention ring -- no

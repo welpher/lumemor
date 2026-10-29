@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
@@ -169,6 +170,31 @@ func TestCreatePairingToken(t *testing.T) {
 		}
 		if got := env.countPairingTokens(t); got != 1 {
 			t.Errorf("pairing token count after a refused generation = %d, want 1 (only the issued one)", got)
+		}
+	})
+
+	t.Run("PublishesTokenCreated", func(t *testing.T) {
+		user, err := env.queries.GetUserByEmail(t.Context(), "ada@example.com")
+		if err != nil {
+			t.Fatalf("GetUserByEmail(ada): %v", err)
+		}
+
+		// Subscribe before the generation so the assertion observes
+		// the live publish, not only a ring replay.
+		cursor, sub := subscribeAfterCursor(t, env.bus)
+
+		generatePairingToken(t, env.router, cookie)
+
+		event := awaitEventNamed(t, sub, "pairing.token_created")
+		payload := eventPayload(t, event)
+		if payload["userId"] != uuid.UUID(user.ID.Bytes).String() {
+			t.Errorf("pairing.token_created payload userId = %q, want the minting user %s", payload["userId"], uuid.UUID(user.ID.Bytes))
+		}
+		if len(payload) != 1 {
+			t.Errorf("pairing.token_created payload = %v, want exactly the userId field (no token material ever)", payload)
+		}
+		if event.ID <= cursor {
+			t.Errorf("pairing.token_created id = %d, want one published after the cursor %d", event.ID, cursor)
 		}
 	})
 }
