@@ -132,6 +132,8 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"GET /api/v1/events",
 		"GET /api/v1/server/info",
 		"POST /api/v1/server/setup/admin",
+		"POST /api/v1/assets",
+		"GET /api/v1/assets/by-device-id/{deviceAssetId}",
 	}
 	for _, route := range want {
 		if !got[route] {

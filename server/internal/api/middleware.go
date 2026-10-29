@@ -1,13 +1,14 @@
-// Middleware of the /api/v1 tree: the shared request pipeline (body
-// limit, security headers, origin check), the per-request handler
-// timeout wrapping the non-streaming route groups, and the session
-// middleware that turns a cookie or bearer credential into
-// request-scoped user identity. Order matters and is pinned in
-// NewRouter: body limit first (nothing downstream reads an unbounded
-// body), then headers on every response, then the origin check
-// guarding every state change, then the route groups -- each
-// non-streaming one inside timeoutMiddleware, the SSE stream group
-// outside it -- with the authed groups behind requireSession.
+// Middleware of the /api/v1 tree: the shared request pipeline (security
+// headers, origin check, JSON body limit for the JSON surface), the
+// per-request handler timeout wrapping the non-streaming route groups,
+// and the session middleware that turns a cookie or bearer credential
+// into request-scoped user identity. Order matters and is pinned in
+// NewRouter: security headers and the origin check run on every API
+// request; limitJSONBody wraps the JSON route groups only (uploads
+// stream their own multipart bodies and are capped by the receiver's
+// size limit instead); every non-streaming group sits inside
+// timeoutMiddleware; the SSE stream group and the upload group run
+// outside it; the authed groups sit behind requireSession.
 package api
 
 import (
@@ -34,9 +35,10 @@ const (
 
 	// maxJSONBodyBytes caps every JSON request body of the API: the
 	// endpoints are small structured payloads, and unbounded buffering
-	// on unauthenticated routes is an attack surface. Upload routes
-	// (M2b) receive their own route group mounted WITHOUT this
-	// middleware -- do not add them below this pipeline.
+	// on unauthenticated routes is an attack surface. The multipart
+	// upload route (POST /assets, M2b) is mounted in its own group
+	// outside this middleware -- the streaming receiver's per-file
+	// size limit governs its bodies.
 	maxJSONBodyBytes = 1 << 20
 
 	// sessionTouchThreshold throttles the sliding-expiry write: a

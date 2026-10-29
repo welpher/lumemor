@@ -263,6 +263,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload one photo, optionally with its Live Photo video.
+         * @description The backup upload endpoint: one photo per request, streamed into
+         *     content-addressed storage while it is read, with the Live Photo
+         *     pairing video riding the same request as a second file part.
+         *
+         *     The request body is `multipart/form-data` with these parts:
+         *
+         *     - `deviceAssetId` (text, required) -- the stable identity the
+         *       uploading device assigned to the file; together with the
+         *       account it scopes the device idempotency of backups.
+         *     - `fileName` (text, required) -- the original client-side file
+         *       name of the photo, recorded as the asset's
+         *       `originalFilename`.
+         *     - `deviceCreatedAt` (text, optional) -- the capture time the
+         *       device reports, RFC 3339 with offset. It seeds the asset's
+         *       `takenAt` until the metadata pipeline refines it from EXIF.
+         *     - `deviceTimeZone` (text, optional) -- the IANA time zone name
+         *       of the capture location; it feeds the metadata pipeline's
+         *       timezone fallback chain and is not validated at upload.
+         *     - `photo` (file, required) -- the photo bytes.
+         *     - `liveVideo` (file, optional) -- the pairing video of a Live
+         *       Photo; present only together with `photo`.
+         *
+         *     Part order is part of the contract: all text fields precede
+         *     every file part, and the `liveVideo` part follows the `photo`
+         *     part. The server streams file parts to disk without buffering
+         *     them, so every field must be known and validated before the
+         *     first file byte is accepted -- a file part arriving before the
+         *     required fields, a text field after a file part, or a
+         *     `liveVideo` without a preceding `photo` answers 400
+         *     `VALIDATION_FAILED`. Each text field value is capped at 1024
+         *     bytes; `deviceAssetId`, `fileName` and `deviceTimeZone` carry
+         *     the length bounds below. The storage extension and the media
+         *     kind derive from the *file part's own* file name, and the
+         *     payload must be consistent with it: a renamed file of another
+         *     type answers 400 `VALIDATION_FAILED`.
+         *
+         *     Uploads are idempotent through the owner-scoped checksum:
+         *     re-uploading identical bytes never creates a second asset.
+         *     The outcome is one of three states, discriminated by the
+         *     `state` field of the response body:
+         *
+         *     - 201 `created`: no asset with this checksum existed; a new
+         *       asset was created (a Live Photo created two rows, the
+         *       response describes the photo).
+         *     - 200 `duplicate`: an identical asset of the same owner is
+         *       live; that asset is returned.
+         *     - 200 `trashed`: an identical asset of the same owner sits in
+         *       the trash; that asset is returned (with `isTrashed: true`)
+         *       so the client can offer the user restore or save-as-new.
+         *
+         *     Each file is capped at the instance's per-file upload limit
+         *     (2 GiB by default); a file over the limit aborts mid-stream
+         *     with 413 `ASSET_TOO_LARGE`. This endpoint takes multipart
+         *     bodies, not JSON, and is deliberately exempt from the API-wide
+         *     JSON body cap; the per-file upload limit governs instead.
+         */
+        post: operations["uploadAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/by-device-id/{deviceAssetId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look up an uploaded asset by its device identifier.
+         * @description The backup idempotency probe: the app asks, before uploading a
+         *     local file, whether its `deviceAssetId` already exists for this
+         *     account, and skips the upload when it does.
+         *
+         *     The lookup is owner-scoped -- a `deviceAssetId` of another
+         *     user's asset is invisible and answers 404. The `state` field
+         *     mirrors what a re-upload of the same content would produce:
+         *     `duplicate` when the asset is live, `trashed` when it sits in
+         *     the trash (the client can then offer restore or save-as-new
+         *     before spending bandwidth). 404 means the device has not
+         *     uploaded this identifier (or only under another account).
+         */
+        get: operations["getAssetByDeviceId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -436,6 +540,82 @@ export interface components {
             createdAt: string;
         };
         /**
+         * @description One stored asset as the upload and idempotency endpoints return
+         *     it. `state` discriminates the upload outcome: `created` (201, a
+         *     new asset), `duplicate` (200, an identical live asset already
+         *     existed), `trashed` (200, an identical asset sits in the trash;
+         *     the body carries that asset so the client can offer restore or
+         *     save-as-new). The idempotency lookup mirrors the same states:
+         *     it reports what a re-upload of the content would yield, so
+         *     `created` never appears there.
+         */
+        AssetResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the asset.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the owning account.
+             */
+            ownerId: string;
+            /**
+             * @description Media family of the asset. A Live Photo is an `image` whose
+             *     video component is stored as a linked `video` row that
+             *     never appears in the timeline.
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /**
+             * @description The file name the asset was uploaded with: the client-side
+             *     `fileName` of the photo (the component video keeps its own
+             *     file part name).
+             */
+            originalFilename: string;
+            /**
+             * Format: int64
+             * @description Size of the stored file in bytes.
+             */
+            fileSize: number;
+            /**
+             * @description Canonical content type of the stored format, for example
+             *     `image/jpeg` or `video/quicktime`.
+             */
+            mimeType: string;
+            /**
+             * @description SHA-256 digest of the file bytes, lowercase hex. The
+             *     owner-scoped idempotency key of the upload.
+             */
+            checksum: string;
+            /**
+             * @description The upload outcome: `created` (201), `duplicate` (200, an
+             *     identical live asset) or `trashed` (200, an identical asset
+             *     in the trash).
+             * @enum {string}
+             */
+            state: "created" | "duplicate" | "trashed";
+            /**
+             * Format: date-time
+             * @description When the asset record was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
+             *     the upload time when absent) and refined from EXIF by the
+             *     metadata pipeline; responses render the best value the
+             *     server has at answer time.
+             */
+            takenAt: string;
+            /**
+             * @description True when the asset sits in the trash; `state: trashed`
+             *     responses carry it as true so clients can offer the
+             *     restore or save-as-new decision.
+             */
+            isTrashed: boolean;
+        };
+        /**
          * @description Error envelope shared by all endpoints. `code` is the authoritative
          *     registry of stable error codes; clients must not parse `message`.
          */
@@ -445,7 +625,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -928,6 +1108,193 @@ export interface operations {
             };
             /** @description An administrator already exists; setup is complete. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    uploadAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * @description Stable device-side identity of the uploaded file.
+                     * @example IMG_1234
+                     */
+                    deviceAssetId: string;
+                    /**
+                     * @description Original client-side file name of the photo.
+                     * @example IMG_1234.jpg
+                     */
+                    fileName: string;
+                    /**
+                     * Format: date-time
+                     * @description Capture time reported by the device (RFC 3339 with
+                     *     offset). Optional; when absent the server records
+                     *     the upload time until the metadata pipeline
+                     *     refines it.
+                     * @example 2026-10-13T20:30:00+08:00
+                     */
+                    deviceCreatedAt?: string;
+                    /**
+                     * @description IANA time zone name of the capture location, for
+                     *     the metadata pipeline's timezone fallback chain.
+                     *     Not validated at upload time.
+                     * @example Asia/Shanghai
+                     */
+                    deviceTimeZone?: string;
+                    /**
+                     * Format: binary
+                     * @description The photo bytes; their file part name carries the extension.
+                     */
+                    photo: string;
+                    /**
+                     * Format: binary
+                     * @description The Live Photo pairing video; present only together
+                     *     with `photo`. The server stores it as a linked
+                     *     component row that never appears in the timeline.
+                     */
+                    liveVideo?: string;
+                };
+            };
+        };
+        responses: {
+            /**
+             * @description The upload hit the owner-scoped checksum idempotency:
+             *     `state` is `duplicate` (an identical live asset) or
+             *     `trashed` (an identical asset in the trash, returned with
+             *     `isTrashed: true` so the client can offer restore or
+             *     save-as-new). The response body is the existing asset.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /**
+             * @description The photo asset was created; `state` is `created`. A Live
+             *     Photo also created its linked video component row; the
+             *     response describes the photo asset.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /**
+             * @description The upload body is structurally or semantically invalid:
+             *     a missing required field, a misordered part, an unknown
+             *     part, a text field over its bound, an unparseable
+             *     `deviceCreatedAt`, or file bytes inconsistent with their
+             *     claimed extension (a renamed file of another type).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description One of the uploaded files exceeds the instance's per-file
+             *     upload limit (2 GiB by default); the transfer is aborted
+             *     mid-stream.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAssetByDeviceId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The device-side identity the asset was uploaded with. */
+                deviceAssetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The asset recorded under this device identifier. `state` is
+             *     `duplicate` (live) or `trashed` (in the trash).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No asset of this account carries the device identifier. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

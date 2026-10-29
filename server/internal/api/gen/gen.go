@@ -13,8 +13,49 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AssetResponseKind.
+const (
+	Image AssetResponseKind = "image"
+	Video AssetResponseKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the AssetResponseKind enum.
+func (e AssetResponseKind) Valid() bool {
+	switch e {
+	case Image:
+		return true
+	case Video:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssetResponseState.
+const (
+	Created   AssetResponseState = "created"
+	Duplicate AssetResponseState = "duplicate"
+	Trashed   AssetResponseState = "trashed"
+)
+
+// Valid indicates whether the value is a known member of the AssetResponseState enum.
+func (e AssetResponseState) Valid() bool {
+	switch e {
+	case Created:
+		return true
+	case Duplicate:
+		return true
+	case Trashed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
+	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
+	ASSETTOOLARGE          ErrorCode = "ASSET_TOO_LARGE"
 	AUTHINVALIDCREDENTIALS ErrorCode = "AUTH_INVALID_CREDENTIALS"
 	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
 	INTERNAL               ErrorCode = "INTERNAL"
@@ -26,6 +67,10 @@ const (
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
+	case ASSETNOTFOUND:
+		return true
+	case ASSETTOOLARGE:
+		return true
 	case AUTHINVALIDCREDENTIALS:
 		return true
 	case AUTHRATELIMITED:
@@ -78,6 +123,72 @@ func (e UserRole) Valid() bool {
 		return false
 	}
 }
+
+// AssetResponse One stored asset as the upload and idempotency endpoints return
+// it. `state` discriminates the upload outcome: `created` (201, a
+// new asset), `duplicate` (200, an identical live asset already
+// existed), `trashed` (200, an identical asset sits in the trash;
+// the body carries that asset so the client can offer restore or
+// save-as-new). The idempotency lookup mirrors the same states:
+// it reports what a re-upload of the content would yield, so
+// `created` never appears there.
+type AssetResponse struct {
+	// Checksum SHA-256 digest of the file bytes, lowercase hex. The
+	// owner-scoped idempotency key of the upload.
+	Checksum string `json:"checksum"`
+
+	// CreatedAt When the asset record was created (RFC 3339 UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// FileSize Size of the stored file in bytes.
+	FileSize int64 `json:"fileSize"`
+
+	// Id UUIDv7 identifier of the asset.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsTrashed True when the asset sits in the trash; `state: trashed`
+	// responses carry it as true so clients can offer the
+	// restore or save-as-new decision.
+	IsTrashed bool `json:"isTrashed"`
+
+	// Kind Media family of the asset. A Live Photo is an `image` whose
+	// video component is stored as a linked `video` row that
+	// never appears in the timeline.
+	Kind AssetResponseKind `json:"kind"`
+
+	// MimeType Canonical content type of the stored format, for example
+	// `image/jpeg` or `video/quicktime`.
+	MimeType string `json:"mimeType"`
+
+	// OriginalFilename The file name the asset was uploaded with: the client-side
+	// `fileName` of the photo (the component video keeps its own
+	// file part name).
+	OriginalFilename string `json:"originalFilename"`
+
+	// OwnerId UUIDv7 identifier of the owning account.
+	OwnerId openapi_types.UUID `json:"ownerId"`
+
+	// State The upload outcome: `created` (201), `duplicate` (200, an
+	// identical live asset) or `trashed` (200, an identical asset
+	// in the trash).
+	State AssetResponseState `json:"state"`
+
+	// TakenAt Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
+	// the upload time when absent) and refined from EXIF by the
+	// metadata pipeline; responses render the best value the
+	// server has at answer time.
+	TakenAt time.Time `json:"takenAt"`
+}
+
+// AssetResponseKind Media family of the asset. A Live Photo is an `image` whose
+// video component is stored as a linked `video` row that
+// never appears in the timeline.
+type AssetResponseKind string
+
+// AssetResponseState The upload outcome: `created` (201), `duplicate` (200, an
+// identical live asset) or `trashed` (200, an identical asset
+// in the trash).
+type AssetResponseState string
 
 // BearerSession The mobile session minted by consuming a pairing token: the
 // bearer credential plus the session it authenticates.
@@ -247,6 +358,44 @@ type User struct {
 // UserRole Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin.
 type UserRole string
 
+// UploadAssetMultipartBody defines parameters for UploadAsset.
+type UploadAssetMultipartBody struct {
+	// DeviceAssetId Stable device-side identity of the uploaded file.
+	//
+	// Examples: IMG_1234
+	DeviceAssetId string `json:"deviceAssetId"`
+
+	// DeviceCreatedAt Capture time reported by the device (RFC 3339 with
+	// offset). Optional; when absent the server records
+	// the upload time until the metadata pipeline
+	// refines it.
+	//
+	//
+	// Examples: 2026-10-13T20:30:00+08:00
+	DeviceCreatedAt *time.Time `json:"deviceCreatedAt,omitempty"`
+
+	// DeviceTimeZone IANA time zone name of the capture location, for
+	// the metadata pipeline's timezone fallback chain.
+	// Not validated at upload time.
+	//
+	//
+	// Examples: Asia/Shanghai
+	DeviceTimeZone *string `json:"deviceTimeZone,omitempty"`
+
+	// FileName Original client-side file name of the photo.
+	//
+	// Examples: IMG_1234.jpg
+	FileName string `json:"fileName"`
+
+	// LiveVideo The Live Photo pairing video; present only together
+	// with `photo`. The server stores it as a linked
+	// component row that never appears in the timeline.
+	LiveVideo *openapi_types.File `json:"liveVideo,omitempty"`
+
+	// Photo The photo bytes; their file part name carries the extension.
+	Photo openapi_types.File `json:"photo"`
+}
+
 // GetEventsParams defines parameters for GetEvents.
 type GetEventsParams struct {
 	// LastEventID The id of the last received event, resent automatically by
@@ -256,6 +405,9 @@ type GetEventsParams struct {
 	// the ring are skipped.
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
+
+// UploadAssetMultipartRequestBody defines body for UploadAsset for multipart/form-data ContentType.
+type UploadAssetMultipartRequestBody UploadAssetMultipartBody
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
@@ -268,6 +420,12 @@ type CreateAdminJSONRequestBody = CreateAdminRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// UploadAsset Upload one photo, optionally with its Live Photo video.
+	// (POST /assets)
+	UploadAsset(w http.ResponseWriter, r *http.Request)
+	// GetAssetByDeviceId Look up an uploaded asset by its device identifier.
+	// (GET /assets/by-device-id/{deviceAssetId})
+	GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string)
 	// Login Exchange credentials for a web session.
 	// (POST /auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -300,6 +458,18 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// UploadAsset Upload one photo, optionally with its Live Photo video.
+// (POST /assets)
+func (_ Unimplemented) UploadAsset(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetAssetByDeviceId Look up an uploaded asset by its device identifier.
+// (GET /assets/by-device-id/{deviceAssetId})
+func (_ Unimplemented) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Login Exchange credentials for a web session.
 // (POST /auth/login)
@@ -363,6 +533,46 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// UploadAsset operation middleware
+func (siw *ServerInterfaceWrapper) UploadAsset(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadAsset(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssetByDeviceId operation middleware
+func (siw *ServerInterfaceWrapper) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "deviceAssetId" -------------
+	var deviceAssetId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deviceAssetId", chi.URLParam(r, "deviceAssetId"), &deviceAssetId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deviceAssetId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssetByDeviceId(w, r, deviceAssetId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Login operation middleware
 func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
@@ -668,6 +878,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/server/setup/admin", wrapper.CreateAdmin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/assets", wrapper.UploadAsset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)
 	})
 
 	return r

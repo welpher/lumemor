@@ -68,14 +68,14 @@ Please follow the [installation procedure](#installation--usage) and then run th
 import 'package:lumemor_api/lumemor_api.dart';
 
 
-final api = LumemorApi().getAuthApi();
-final PairingConsumeRequest pairingConsumeRequest = ; // PairingConsumeRequest | 
+final api = LumemorApi().getAssetsApi();
+final String deviceAssetId = deviceAssetId_example; // String | The device-side identity the asset was uploaded with.
 
 try {
-    final response = await api.consumePairingToken(pairingConsumeRequest);
+    final response = await api.getAssetByDeviceId(deviceAssetId);
     print(response);
 } on DioException catch (e) {
-    print("Exception when calling AuthApi->consumePairingToken: $e\n");
+    print("Exception when calling AssetsApi->getAssetByDeviceId: $e\n");
 }
 
 ```
@@ -86,6 +86,8 @@ All URIs are relative to */api/v1*
 
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
+[*AssetsApi*](doc/AssetsApi.md) | [**getAssetByDeviceId**](doc/AssetsApi.md#getassetbydeviceid) | **GET** /assets/by-device-id/{deviceAssetId} | Look up an uploaded asset by its device identifier.
+[*AssetsApi*](doc/AssetsApi.md) | [**uploadAsset**](doc/AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 [*AuthApi*](doc/AuthApi.md) | [**consumePairingToken**](doc/AuthApi.md#consumepairingtoken) | **POST** /auth/pairing/consume | Exchange a pairing token for a mobile session.
 [*AuthApi*](doc/AuthApi.md) | [**createPairingToken**](doc/AuthApi.md#createpairingtoken) | **POST** /auth/pairing/token | Create a one-time device pairing token.
 [*AuthApi*](doc/AuthApi.md) | [**listSessions**](doc/AuthApi.md#listsessions) | **GET** /auth/sessions | List the caller&#39;s active sessions.
@@ -99,6 +101,7 @@ Class | Method | HTTP request | Description
 
 ## Documentation For Models
 
+ - [AssetResponse](doc/AssetResponse.md)
  - [BearerSession](doc/BearerSession.md)
  - [CreateAdminRequest](doc/CreateAdminRequest.md)
  - [Error](doc/Error.md)
