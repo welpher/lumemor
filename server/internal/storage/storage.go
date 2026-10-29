@@ -11,8 +11,18 @@ import (
 
 // dataRoot is the photo data root recorded by the last successful
 // EnsureLayout call; the path helpers below derive their results from
-// it.
+// it and panic while it is unset.
 var dataRoot string
+
+// requireDataRoot panics when no successful EnsureLayout call has
+// recorded the data root: the path helpers would otherwise build
+// paths relative to the process working directory, where file
+// operations can silently succeed.
+func requireDataRoot(caller string) {
+	if dataRoot == "" {
+		panic(fmt.Sprintf("storage: EnsureLayout must succeed before %s is called", caller))
+	}
+}
 
 // EnsureLayout creates the full directory tree under the configured
 // data and config roots:
@@ -57,6 +67,9 @@ func renameProbe(tmp, originals string) error {
 	}
 	name := probe.Name()
 	if err := probe.Close(); err != nil {
+		// Same hygiene as the rename failure below: do not strand the
+		// probe file in upload staging.
+		_ = os.Remove(name)
 		return fmt.Errorf("storage layout: close probe file %s: %w", name, err)
 	}
 
@@ -76,10 +89,13 @@ func renameProbe(tmp, originals string) error {
 // OriginalPath returns the content-addressed path of an original file
 // under the data root: originals/aa/bb/<checksum>.<ext>, where aa and
 // bb are the first two and the following two hex characters of the
-// checksum. Checksums arrive as lowercase hex digests computed server
-// side and extensions come from the upload format whitelist, so
-// malformed arguments are programming errors and panic.
+// checksum. It panics when EnsureLayout has not succeeded yet, or when
+// arguments are malformed: checksums arrive as lowercase hex digests
+// computed server side, extensions come from the upload format
+// whitelist, and the data root comes from startup, so all of these are
+// programming errors.
 func OriginalPath(checksum, ext string) string {
+	requireDataRoot("OriginalPath")
 	if !isHex(checksum) {
 		panic(fmt.Sprintf("storage: OriginalPath: checksum %q must be at least four lowercase hex characters", checksum))
 	}
@@ -91,8 +107,10 @@ func OriginalPath(checksum, ext string) string {
 
 // ThumbPath returns the path of the AVIF thumbnail of the given size
 // for an asset under the data root:
-// storage/thumbs/<assetID>/<size>.avif.
+// storage/thumbs/<assetID>/<size>.avif. It panics when EnsureLayout
+// has not succeeded yet.
 func ThumbPath(assetID, size string) string {
+	requireDataRoot("ThumbPath")
 	return filepath.Join(dataRoot, "storage", "thumbs", assetID, size+".avif")
 }
 
