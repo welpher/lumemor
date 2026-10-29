@@ -4,6 +4,7 @@
 package gen
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -13,18 +14,57 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AssetDetailKind.
+const (
+	AssetDetailKindImage AssetDetailKind = "image"
+	AssetDetailKindVideo AssetDetailKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the AssetDetailKind enum.
+func (e AssetDetailKind) Valid() bool {
+	switch e {
+	case AssetDetailKindImage:
+		return true
+	case AssetDetailKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssetDetailTakenAtSource.
+const (
+	Exif   AssetDetailTakenAtSource = "exif"
+	File   AssetDetailTakenAtSource = "file"
+	Import AssetDetailTakenAtSource = "import"
+)
+
+// Valid indicates whether the value is a known member of the AssetDetailTakenAtSource enum.
+func (e AssetDetailTakenAtSource) Valid() bool {
+	switch e {
+	case Exif:
+		return true
+	case File:
+		return true
+	case Import:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssetResponseKind.
 const (
-	Image AssetResponseKind = "image"
-	Video AssetResponseKind = "video"
+	AssetResponseKindImage AssetResponseKind = "image"
+	AssetResponseKindVideo AssetResponseKind = "video"
 )
 
 // Valid indicates whether the value is a known member of the AssetResponseKind enum.
 func (e AssetResponseKind) Valid() bool {
 	switch e {
-	case Image:
+	case AssetResponseKindImage:
 		return true
-	case Video:
+	case AssetResponseKindVideo:
 		return true
 	default:
 		return false
@@ -55,6 +95,7 @@ func (e AssetResponseState) Valid() bool {
 // Defines values for ErrorCode.
 const (
 	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
+	ASSETNOTREADY          ErrorCode = "ASSET_NOT_READY"
 	ASSETTOOLARGE          ErrorCode = "ASSET_TOO_LARGE"
 	AUTHINVALIDCREDENTIALS ErrorCode = "AUTH_INVALID_CREDENTIALS"
 	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
@@ -68,6 +109,8 @@ const (
 func (e ErrorCode) Valid() bool {
 	switch e {
 	case ASSETNOTFOUND:
+		return true
+	case ASSETNOTREADY:
 		return true
 	case ASSETTOOLARGE:
 		return true
@@ -123,6 +166,129 @@ func (e UserRole) Valid() bool {
 		return false
 	}
 }
+
+// Defines values for GetAssetThumbnailParamsSize.
+const (
+	Original GetAssetThumbnailParamsSize = "original"
+	Tile     GetAssetThumbnailParamsSize = "tile"
+	View     GetAssetThumbnailParamsSize = "view"
+)
+
+// Valid indicates whether the value is a known member of the GetAssetThumbnailParamsSize enum.
+func (e GetAssetThumbnailParamsSize) Valid() bool {
+	switch e {
+	case Original:
+		return true
+	case Tile:
+		return true
+	case View:
+		return true
+	default:
+		return false
+	}
+}
+
+// AssetDetail One asset as the detail endpoint returns it: the upload
+// response's identity and storage fields plus the pipeline's
+// refinements. The shape is fixed -- every property is always
+// present -- and the pipeline-dependent values (`width`,
+// `height`, `durationMs`, `blurhash` and the fields inside
+// `exif`) are null until the jobs produced them, turning
+// non-null when `asset.ready` fired. A value that stays null on
+// a ready asset means the file carries no such metadata.
+type AssetDetail struct {
+	// Blurhash The blurhash of the tile (image assets) or poster frame
+	// (video assets) for placeholder rendering; null until the
+	// thumbnail job stored it.
+	Blurhash *string `json:"blurhash"`
+
+	// Checksum SHA-256 digest of the file bytes, lowercase hex. The
+	// prefix of the entity tags the media endpoints serve.
+	Checksum string `json:"checksum"`
+
+	// CreatedAt When the asset record was created (RFC 3339 UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DurationMs Playback duration of a video in milliseconds; null for
+	// images and until the metadata job refined it.
+	DurationMs *int `json:"durationMs"`
+
+	// Exif The EXIF hot fields. Always present as an object; every
+	// field inside it is null until the metadata job wrote the
+	// extraction.
+	Exif ExifSummary `json:"exif"`
+
+	// FileSize Size of the stored file in bytes.
+	FileSize int64 `json:"fileSize"`
+
+	// Height Pixel height in sensor order (not orientation-corrected);
+	// null until the metadata job refined the dimensions.
+	Height *int `json:"height"`
+
+	// Id UUIDv7 identifier of the asset.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsReady True once the whole pipeline of the asset (metadata and
+	// serving copies) completed; the `asset.ready` event fires
+	// at that moment. Until then the client shows placeholders
+	// and the media endpoints answer `ASSET_NOT_READY` for
+	// missing derived files.
+	IsReady bool `json:"isReady"`
+
+	// IsTrashed True when the asset sits in the trash.
+	IsTrashed bool `json:"isTrashed"`
+
+	// Kind Media family of the asset. A Live Photo is an `image` whose
+	// video component is stored as a linked `video` row that
+	// never appears in the timeline.
+	Kind AssetDetailKind `json:"kind"`
+
+	// LivePhotoVideoId For a Live Photo image, the id of its linked component
+	// video row (never in the timeline, but resolvable for
+	// playback); null otherwise.
+	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
+
+	// MimeType Canonical content type of the stored format, for example
+	// `image/jpeg` or `video/quicktime`.
+	MimeType string `json:"mimeType"`
+
+	// OriginalFilename The file name the asset was uploaded with; the original
+	// download re-uses it (RFC 5987 escaped) for
+	// `Content-Disposition`.
+	OriginalFilename string `json:"originalFilename"`
+
+	// OwnerId UUIDv7 identifier of the owning account.
+	OwnerId openapi_types.UUID `json:"ownerId"`
+
+	// TakenAt Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
+	// the upload time when absent) and refined from EXIF by the
+	// metadata pipeline; the response renders the best value the
+	// server has at answer time.
+	TakenAt time.Time `json:"takenAt"`
+
+	// TakenAtSource Where `takenAt` comes from: `import` is the
+	// device-reported capture time of the upload, `exif` an
+	// EXIF capture time the metadata job resolved with an
+	// offset, `file` a file timestamp (reserved for the future
+	// directory-album importer).
+	TakenAtSource AssetDetailTakenAtSource `json:"takenAtSource"`
+
+	// Width Pixel width in sensor order (not orientation-corrected);
+	// null until the metadata job refined the dimensions.
+	Width *int `json:"width"`
+}
+
+// AssetDetailKind Media family of the asset. A Live Photo is an `image` whose
+// video component is stored as a linked `video` row that
+// never appears in the timeline.
+type AssetDetailKind string
+
+// AssetDetailTakenAtSource Where `takenAt` comes from: `import` is the
+// device-reported capture time of the upload, `exif` an
+// EXIF capture time the metadata job resolved with an
+// offset, `file` a file timestamp (reserved for the future
+// directory-album importer).
+type AssetDetailTakenAtSource string
 
 // AssetResponse One stored asset as the upload and idempotency endpoints return
 // it. `state` discriminates the upload outcome: `created` (201, a
@@ -242,6 +408,48 @@ type Error struct {
 // ErrorCode Stable error code. The i18n translation key is the lowercase
 // form of this value.
 type ErrorCode string
+
+// ExifSummary The EXIF hot fields of an asset, flattened from the raw
+// exiftool output by the metadata job. Every property is always
+// present and null until the job wrote it -- or forever, for
+// files that carry no such tag.
+type ExifSummary struct {
+	// Alt GPS altitude in meters.
+	Alt *float32 `json:"alt"`
+
+	// Aperture Aperture as the f-number.
+	Aperture *float32 `json:"aperture"`
+
+	// CameraMake Camera manufacturer (EXIF Make).
+	CameraMake *string `json:"cameraMake"`
+
+	// CameraModel Camera model (EXIF Model).
+	CameraModel *string `json:"cameraModel"`
+
+	// Focal Focal length in millimeters.
+	Focal *float32 `json:"focal"`
+
+	// Iso ISO sensitivity.
+	Iso *int `json:"iso"`
+
+	// Lat GPS latitude in degrees.
+	Lat *float64 `json:"lat"`
+
+	// Lens Lens identifier (LensModel, LensID or Lens).
+	Lens *string `json:"lens"`
+
+	// Lon GPS longitude in degrees.
+	Lon *float64 `json:"lon"`
+
+	// Shutter Exposure time in photo notation, for example `1/250` or
+	// `2.5s`.
+	Shutter *string `json:"shutter"`
+
+	// TzOffset The offset that resolved the capture time, in EXIF
+	// notation (`+05:30`); null when the capture time did not
+	// resolve through EXIF.
+	TzOffset *string `json:"tzOffset"`
+}
 
 // LoginRequest Credentials of `POST /auth/login`.
 type LoginRequest struct {
@@ -396,6 +604,18 @@ type UploadAssetMultipartBody struct {
 	Photo openapi_types.File `json:"photo"`
 }
 
+// GetAssetThumbnailParams defines parameters for GetAssetThumbnail.
+type GetAssetThumbnailParams struct {
+	// Size The serving size: `tile` for the timeline, `view` for the
+	// inline display, `original` for the full-resolution serving
+	// copy. Video assets answer the poster frame for every
+	// value.
+	Size GetAssetThumbnailParamsSize `form:"size" json:"size"`
+}
+
+// GetAssetThumbnailParamsSize defines parameters for GetAssetThumbnail.
+type GetAssetThumbnailParamsSize string
+
 // GetEventsParams defines parameters for GetEvents.
 type GetEventsParams struct {
 	// LastEventID The id of the last received event, resent automatically by
@@ -426,6 +646,15 @@ type ServerInterface interface {
 	// GetAssetByDeviceId Look up an uploaded asset by its device identifier.
 	// (GET /assets/by-device-id/{deviceAssetId})
 	GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string)
+	// GetAsset Fetch the detail of one owned asset.
+	// (GET /assets/{id})
+	GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// GetAssetOriginal Download the original file of one owned asset.
+	// (GET /assets/{id}/original)
+	GetAssetOriginal(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// GetAssetThumbnail Serve a derived thumbnail, or a video's poster frame.
+	// (GET /assets/{id}/thumbnail)
+	GetAssetThumbnail(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAssetThumbnailParams)
 	// Login Exchange credentials for a web session.
 	// (POST /auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -468,6 +697,24 @@ func (_ Unimplemented) UploadAsset(w http.ResponseWriter, r *http.Request) {
 // GetAssetByDeviceId Look up an uploaded asset by its device identifier.
 // (GET /assets/by-device-id/{deviceAssetId})
 func (_ Unimplemented) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetAsset Fetch the detail of one owned asset.
+// (GET /assets/{id})
+func (_ Unimplemented) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetAssetOriginal Download the original file of one owned asset.
+// (GET /assets/{id}/original)
+func (_ Unimplemented) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetAssetThumbnail Serve a derived thumbnail, or a video's poster frame.
+// (GET /assets/{id}/thumbnail)
+func (_ Unimplemented) GetAssetThumbnail(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAssetThumbnailParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -565,6 +812,100 @@ func (siw *ServerInterfaceWrapper) GetAssetByDeviceId(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssetByDeviceId(w, r, deviceAssetId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAsset operation middleware
+func (siw *ServerInterfaceWrapper) GetAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAsset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssetOriginal operation middleware
+func (siw *ServerInterfaceWrapper) GetAssetOriginal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssetOriginal(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssetThumbnail operation middleware
+func (siw *ServerInterfaceWrapper) GetAssetThumbnail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAssetThumbnailParams
+
+	// ------------- Required query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssetThumbnail(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -881,6 +1222,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/assets", wrapper.UploadAsset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/{id}", wrapper.GetAsset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/{id}/original", wrapper.GetAssetOriginal)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)

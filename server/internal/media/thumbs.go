@@ -151,7 +151,10 @@ func GenerateThumbnails(originalPath, assetID string) (string, error) {
 }
 
 // writeAvif encodes ref as AVIF (Q50, metadata stripped) and writes it
-// to path, overwriting whatever a previous run left there.
+// to path atomically: the bytes land in a temporary file beside the
+// destination and are renamed into place, so a concurrent reader (the
+// serving endpoint mid re-run) never observes a partial file. A
+// re-run converges to the same path set.
 func writeAvif(ref *vips.ImageRef, path string) error {
 	buf, _, err := ref.ExportAvif(&vips.AvifExportParams{
 		Quality:       avifQuality,
@@ -160,7 +163,7 @@ func writeAvif(ref *vips.ImageRef, path string) error {
 	if err != nil {
 		return fmt.Errorf("encode AVIF %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, buf, 0o644); err != nil {
+	if err := writeFileAtomic(path, buf); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil

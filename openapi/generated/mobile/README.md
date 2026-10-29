@@ -69,13 +69,13 @@ import 'package:lumemor_api/lumemor_api.dart';
 
 
 final api = LumemorApi().getAssetsApi();
-final String deviceAssetId = deviceAssetId_example; // String | The device-side identity the asset was uploaded with.
+final String id = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the asset.
 
 try {
-    final response = await api.getAssetByDeviceId(deviceAssetId);
+    final response = await api.getAsset(id);
     print(response);
 } on DioException catch (e) {
-    print("Exception when calling AssetsApi->getAssetByDeviceId: $e\n");
+    print("Exception when calling AssetsApi->getAsset: $e\n");
 }
 
 ```
@@ -86,7 +86,10 @@ All URIs are relative to */api/v1*
 
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
+[*AssetsApi*](doc/AssetsApi.md) | [**getAsset**](doc/AssetsApi.md#getasset) | **GET** /assets/{id} | Fetch the detail of one owned asset.
 [*AssetsApi*](doc/AssetsApi.md) | [**getAssetByDeviceId**](doc/AssetsApi.md#getassetbydeviceid) | **GET** /assets/by-device-id/{deviceAssetId} | Look up an uploaded asset by its device identifier.
+[*AssetsApi*](doc/AssetsApi.md) | [**getAssetOriginal**](doc/AssetsApi.md#getassetoriginal) | **GET** /assets/{id}/original | Download the original file of one owned asset.
+[*AssetsApi*](doc/AssetsApi.md) | [**getAssetThumbnail**](doc/AssetsApi.md#getassetthumbnail) | **GET** /assets/{id}/thumbnail | Serve a derived thumbnail, or a video&#39;s poster frame.
 [*AssetsApi*](doc/AssetsApi.md) | [**uploadAsset**](doc/AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 [*AuthApi*](doc/AuthApi.md) | [**consumePairingToken**](doc/AuthApi.md#consumepairingtoken) | **POST** /auth/pairing/consume | Exchange a pairing token for a mobile session.
 [*AuthApi*](doc/AuthApi.md) | [**createPairingToken**](doc/AuthApi.md#createpairingtoken) | **POST** /auth/pairing/token | Create a one-time device pairing token.
@@ -101,10 +104,12 @@ Class | Method | HTTP request | Description
 
 ## Documentation For Models
 
+ - [AssetDetail](doc/AssetDetail.md)
  - [AssetResponse](doc/AssetResponse.md)
  - [BearerSession](doc/BearerSession.md)
  - [CreateAdminRequest](doc/CreateAdminRequest.md)
  - [Error](doc/Error.md)
+ - [ExifSummary](doc/ExifSummary.md)
  - [LoginRequest](doc/LoginRequest.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
  - [PairingTokenResponse](doc/PairingTokenResponse.md)

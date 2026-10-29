@@ -157,6 +157,59 @@ func (q *Queries) CreateExifPlaceholder(ctx context.Context, arg CreateExifPlace
 	return err
 }
 
+const getAsset = `-- name: GetAsset :one
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at FROM assets
+WHERE id = $1 AND owner_id = $2
+`
+
+type GetAssetParams struct {
+	ID      pgtype.UUID `json:"id"`
+	OwnerID pgtype.UUID `json:"owner_id"`
+}
+
+// The owner-scoped read of the media serving endpoints: the full row
+// behind a thumbnail or original request. The owner filter IS the
+// permission check (M2b is owner-only): a foreign id resolves to no
+// row, which the handlers answer exactly like an unknown id -- 404,
+// byte-identical -- so asset ids cannot be enumerated. Album sharing
+// widens this in M2c with the album domain.
+func (q *Queries) GetAsset(ctx context.Context, arg GetAssetParams) (Asset, error) {
+	row := q.db.QueryRow(ctx, getAsset, arg.ID, arg.OwnerID)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.StorageKind,
+		&i.FilePath,
+		&i.Checksum,
+		&i.OriginalFilename,
+		&i.FileSize,
+		&i.MimeType,
+		&i.MediaKind,
+		&i.LivePhotoVideoID,
+		&i.IsComponent,
+		&i.Width,
+		&i.Height,
+		&i.DurationMs,
+		&i.TakenAt,
+		&i.TakenAtSource,
+		&i.PlaceID,
+		&i.Blurhash,
+		&i.Phash,
+		&i.IsHidden,
+		&i.Description,
+		&i.DeletedAt,
+		&i.OriginalPath,
+		&i.TrashPath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeviceAssetID,
+		&i.PendingJobs,
+		&i.ReadyAt,
+	)
+	return i, err
+}
+
 const getAssetByDeviceId = `-- name: GetAssetByDeviceId :one
 SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at FROM assets
 WHERE owner_id = $1 AND device_asset_id = $2
@@ -258,6 +311,117 @@ func (q *Queries) GetAssetByOwnerChecksum(ctx context.Context, arg GetAssetByOwn
 		&i.DeviceAssetID,
 		&i.PendingJobs,
 		&i.ReadyAt,
+	)
+	return i, err
+}
+
+const getAssetDetail = `-- name: GetAssetDetail :one
+SELECT a.id,
+       a.owner_id,
+       a.media_kind,
+       a.original_filename,
+       a.file_size,
+       a.mime_type,
+       a.checksum,
+       a.created_at,
+       a.taken_at,
+       a.taken_at_source,
+       a.width,
+       a.height,
+       a.duration_ms,
+       a.blurhash,
+       a.live_photo_video_id,
+       a.deleted_at,
+       a.ready_at,
+       e.camera_make,
+       e.camera_model,
+       e.lens,
+       e.iso,
+       e.aperture,
+       e.shutter,
+       e.focal,
+       e.lat,
+       e.lon,
+       e.alt,
+       e.tz_offset
+FROM assets a
+LEFT JOIN exif e ON e.asset_id = a.id
+WHERE a.id = $1 AND a.owner_id = $2
+`
+
+type GetAssetDetailParams struct {
+	ID      pgtype.UUID `json:"id"`
+	OwnerID pgtype.UUID `json:"owner_id"`
+}
+
+type GetAssetDetailRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	OwnerID          pgtype.UUID        `json:"owner_id"`
+	MediaKind        MediaKind          `json:"media_kind"`
+	OriginalFilename string             `json:"original_filename"`
+	FileSize         int64              `json:"file_size"`
+	MimeType         string             `json:"mime_type"`
+	Checksum         string             `json:"checksum"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	TakenAt          pgtype.Timestamptz `json:"taken_at"`
+	TakenAtSource    TakenAtSource      `json:"taken_at_source"`
+	Width            int32              `json:"width"`
+	Height           int32              `json:"height"`
+	DurationMs       pgtype.Int4        `json:"duration_ms"`
+	Blurhash         pgtype.Text        `json:"blurhash"`
+	LivePhotoVideoID pgtype.UUID        `json:"live_photo_video_id"`
+	DeletedAt        pgtype.Timestamptz `json:"deleted_at"`
+	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
+	CameraMake       pgtype.Text        `json:"camera_make"`
+	CameraModel      pgtype.Text        `json:"camera_model"`
+	Lens             pgtype.Text        `json:"lens"`
+	Iso              pgtype.Int4        `json:"iso"`
+	Aperture         pgtype.Float4      `json:"aperture"`
+	Shutter          pgtype.Text        `json:"shutter"`
+	Focal            pgtype.Float4      `json:"focal"`
+	Lat              pgtype.Float8      `json:"lat"`
+	Lon              pgtype.Float8      `json:"lon"`
+	Alt              pgtype.Float4      `json:"alt"`
+	TzOffset         pgtype.Text        `json:"tz_offset"`
+}
+
+// The detail read of GET /assets/{id}: the asset row joined with the
+// exif hot fields the response flattens. Owner-scoped like GetAsset
+// (the join only attaches the sidecar of the row that matched).
+// The LEFT JOIN keeps the detail answering before and after the
+// metadata job refined the sidecar: hot fields are NULL until then.
+func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) (GetAssetDetailRow, error) {
+	row := q.db.QueryRow(ctx, getAssetDetail, arg.ID, arg.OwnerID)
+	var i GetAssetDetailRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.MediaKind,
+		&i.OriginalFilename,
+		&i.FileSize,
+		&i.MimeType,
+		&i.Checksum,
+		&i.CreatedAt,
+		&i.TakenAt,
+		&i.TakenAtSource,
+		&i.Width,
+		&i.Height,
+		&i.DurationMs,
+		&i.Blurhash,
+		&i.LivePhotoVideoID,
+		&i.DeletedAt,
+		&i.ReadyAt,
+		&i.CameraMake,
+		&i.CameraModel,
+		&i.Lens,
+		&i.Iso,
+		&i.Aperture,
+		&i.Shutter,
+		&i.Focal,
+		&i.Lat,
+		&i.Lon,
+		&i.Alt,
+		&i.TzOffset,
 	)
 	return i, err
 }

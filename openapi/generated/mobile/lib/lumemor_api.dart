@@ -15,10 +15,12 @@ export 'package:lumemor_api/src/api/auth_api.dart';
 export 'package:lumemor_api/src/api/events_api.dart';
 export 'package:lumemor_api/src/api/server_api.dart';
 
+export 'package:lumemor_api/src/model/asset_detail.dart';
 export 'package:lumemor_api/src/model/asset_response.dart';
 export 'package:lumemor_api/src/model/bearer_session.dart';
 export 'package:lumemor_api/src/model/create_admin_request.dart';
 export 'package:lumemor_api/src/model/error.dart';
+export 'package:lumemor_api/src/model/exif_summary.dart';
 export 'package:lumemor_api/src/model/login_request.dart';
 export 'package:lumemor_api/src/model/pairing_consume_request.dart';
 export 'package:lumemor_api/src/model/pairing_token_response.dart';

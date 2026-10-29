@@ -9,9 +9,59 @@ All URIs are relative to */api/v1*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**getAsset**](AssetsApi.md#getasset) | **GET** /assets/{id} | Fetch the detail of one owned asset.
 [**getAssetByDeviceId**](AssetsApi.md#getassetbydeviceid) | **GET** /assets/by-device-id/{deviceAssetId} | Look up an uploaded asset by its device identifier.
+[**getAssetOriginal**](AssetsApi.md#getassetoriginal) | **GET** /assets/{id}/original | Download the original file of one owned asset.
+[**getAssetThumbnail**](AssetsApi.md#getassetthumbnail) | **GET** /assets/{id}/thumbnail | Serve a derived thumbnail, or a video&#39;s poster frame.
 [**uploadAsset**](AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 
+
+# **getAsset**
+> AssetDetail getAsset(id)
+
+Fetch the detail of one owned asset.
+
+The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- which the asset detail view renders.  Access is owner-only: an id that belongs to another account answers the same 404 `ASSET_NOT_FOUND` as an id that does not exist, byte for byte, so asset ids cannot be enumerated. Album sharing and ACLs widen access for shared content in a later milestone (M2c, with the album domain); until then only the owner's own assets answer.  A trashed asset answers 200 with `isTrashed: true` -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the future playback endpoint resolves it through `livePhotoVideoId`) but never appears in the timeline. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String id = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the asset.
+
+try {
+    final response = api.getAsset(id);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->getAsset: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **String**| Identifier of the asset. | 
+
+### Return type
+
+[**AssetDetail**](AssetDetail.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **getAssetByDeviceId**
 > AssetResponse getAssetByDeviceId(deviceAssetId)
@@ -57,6 +107,102 @@ Name | Type | Description  | Notes
 
  - **Content-Type**: Not defined
  - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getAssetOriginal**
+> Uint8List getAssetOriginal(id)
+
+Download the original file of one owned asset.
+
+Streams the stored original bytes as a download. It is available immediately after the upload: the original is the uploaded content-addressed file itself, not a pipeline product.  The download is always an attachment: `Content-Disposition: attachment; filename*=UTF-8''...` with the original file name escaped per RFC 5987 -- every byte outside the attribute character set is percent-encoded, which rules out header injection and in-browser rendering alike (SVG is not in the upload whitelist, so the download-only rule covers every stored format). `Content-Type` is the asset's stored MIME type. The response carries the same `ETag` and `Cache-Control` validators as the thumbnail (the original bytes are content-addressed, hence immutable).  Byte ranges follow the Go standard library's `ServeContent` semantics: a satisfiable single range answers 206 with `Content-Range`; multiple ranges answer a `multipart/byteranges` body; an unsatisfiable range answers 416 with the total size in `Content-Range`; a malformed Range header is ignored and the full body answers 200.  The same owner-only download gate as every asset endpoint: foreign and unknown ids answer byte-identical 404 `ASSET_NOT_FOUND`. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String id = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the asset.
+
+try {
+    final response = api.getAssetOriginal(id);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->getAssetOriginal: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **String**| Identifier of the asset. | 
+
+### Return type
+
+[**Uint8List**](Uint8List.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/octet-stream, application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getAssetThumbnail**
+> Uint8List getAssetThumbnail(id, size)
+
+Serve a derived thumbnail, or a video's poster frame.
+
+The static serving copy of the asset:  - image assets: the AVIF thumbnail of the requested size --   `tile` (fits the 250px timeline box), `view` (long edge   capped at 1080px), `original` (the full-resolution   re-encode) -- served as `image/avif`; - video assets: the poster frame, whatever `size` says -- the   poster (the first frame, scaled into the tile box) is the   video's only serving copy until transcodes exist -- served   as `image/jpeg`.  The response is a private immutable static asset: `Cache-Control: private, max-age=31536000, immutable`, and a strong `ETag` built from the first 16 hex characters of the asset's checksum (quoted). A matching `If-None-Match` answers 304 with the same validators and no body. Conditional requests and byte ranges otherwise follow the Go standard library's `ServeContent` semantics.  The asset exists but its derived file is absent -- the thumbnail job has not run yet, or failed and is retrying -- answers 404 `ASSET_NOT_READY`: the client renders the blurhash or a placeholder and waits for the `asset.ready` event instead of treating the asset as gone. `ASSET_NOT_FOUND`, by contrast, means the id is unknown or not the caller's; the owner-only anti-enumeration of the detail endpoint applies here too, with byte-identical 404 bodies for foreign and unknown ids.  `size` must be one of the three values below; anything else (including a missing `size`) answers 400 `VALIDATION_FAILED`. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String id = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the asset.
+final String size = tile; // String | The serving size: `tile` for the timeline, `view` for the inline display, `original` for the full-resolution serving copy. Video assets answer the poster frame for every value. 
+
+try {
+    final response = api.getAssetThumbnail(id, size);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->getAssetThumbnail: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **String**| Identifier of the asset. | 
+ **size** | **String**| The serving size: `tile` for the timeline, `view` for the inline display, `original` for the full-resolution serving copy. Video assets answer the poster frame for every value.  | 
+
+### Return type
+
+[**Uint8List**](Uint8List.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: image/avif, image/jpeg, application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

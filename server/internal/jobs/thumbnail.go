@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +16,7 @@ import (
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/media"
+	"github.com/welpher/lumemor/server/internal/storage"
 )
 
 // ThumbnailArgs identifies the asset whose serving copies the
@@ -72,7 +71,7 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 		return fmt.Errorf("load asset: %w", err)
 	}
 
-	path, err := resolveAssetPath(w.dataDir, row.FilePath)
+	path, err := storage.ResolveStoredPath(w.dataDir, row.FilePath)
 	if err != nil {
 		return fmt.Errorf("resolve file of asset %s: %w", assetID, err)
 	}
@@ -128,19 +127,4 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 		})
 	}
 	return nil
-}
-
-// resolveAssetPath resolves an asset's stored relative file path
-// against the data root and refuses anything that would leave the
-// originals tree. file_path values are server-generated
-// (content-addressed by the upload receiver), so this guard is
-// defense in depth against a corrupted row, not an input validation
-// layer. Both pipeline jobs resolve their input through it.
-func resolveAssetPath(dataDir, rel string) (string, error) {
-	originals := filepath.Join(dataDir, "originals") + string(filepath.Separator)
-	abs := filepath.Join(dataDir, filepath.FromSlash(rel))
-	if !strings.HasPrefix(abs, originals) {
-		return "", fmt.Errorf("file path %q escapes the originals tree", rel)
-	}
-	return abs, nil
 }
