@@ -4,6 +4,215 @@
  */
 
 export interface paths {
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange credentials for a web session.
+         * @description The login endpoint of web clients: a valid email and password
+         *     create a new web session. The session credential is the
+         *     `lumemor_session` cookie set by this response (HttpOnly,
+         *     SameSite=Strict, Secure over HTTPS); the body describes the
+         *     session for the account view and the device list. Mobile
+         *     devices never log in here -- they pair through
+         *     `POST /auth/pairing/consume` and hold a bearer token instead.
+         *
+         *     Web sessions slide their expiry by 30 days on use. Failed
+         *     attempts are rate limited per address and account: after a
+         *     burst of failures the endpoint answers 429 and the lockout
+         *     grows with each further attempt.
+         */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke the current session.
+         * @description Signs the caller out by revoking the session that
+         *     authenticates the request -- the web cookie session and the
+         *     mobile bearer session are the same session records. On web
+         *     clients the response also clears the session cookie. A request
+         *     made with an already-revoked session fails authentication with
+         *     401 before reaching this handler.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's active sessions.
+         * @description Returns every active session of the authenticated user across
+         *     devices -- web cookie sessions and mobile bearer sessions --
+         *     most recently used first. The device management view (signing
+         *     out other devices) is this list plus
+         *     `DELETE /auth/sessions/{id}`.
+         */
+        get: operations["listSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one of the caller's sessions.
+         * @description Signs out one device by revoking the session with the given
+         *     id, for example from the device management list. Sessions are
+         *     scoped to their owner and the delete follows set semantics:
+         *     an id that is unknown, belongs to another user, or is already
+         *     revoked still answers 204, without revealing whether such a
+         *     session exists. Revoking the session of the current request
+         *     behaves like logout.
+         */
+        delete: operations["revokeSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/pairing/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a one-time device pairing token.
+         * @description Issues the secret behind the add-a-family-device QR code: a
+         *     signed-in user opens the pairing page, and the new device scans
+         *     the rendered code and redeems it at
+         *     `POST /auth/pairing/consume` to gain a session of that user.
+         *
+         *     The token encodes 128 random bits as a URL-safe string, can be
+         *     consumed once within five minutes, and is stored only as a
+         *     hash, so a leaked database cannot redeem it. Creation is rate
+         *     limited per user to stop farming QR codes.
+         */
+        post: operations["createPairingToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/pairing/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a pairing token for a mobile session.
+         * @description Completes device pairing: the mobile app scans the QR code and
+         *     posts the token together with its device metadata. The server
+         *     burns the one-time token and returns the bearer credential of
+         *     a new mobile session of the user who created the token.
+         *
+         *     Bearer sessions never expire; the app holds the token until
+         *     the session is revoked -- from the device list, by logging the
+         *     device out, or by a password change, which revokes every
+         *     session of the user. The server stores only the hash of the
+         *     token, so it appears exactly once, in this response; a device
+         *     that loses it must pair again.
+         *
+         *     Failed attempts are rate limited to stop guessing tokens.
+         */
+        post: operations["consumePairingToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream instance activity over server-sent events.
+         * @description The activity stream of the instance, authenticated like the
+         *     REST API: the web session cookie and the mobile bearer token
+         *     both open the stream.
+         *
+         *     Every event is one `text/event-stream` block: `event:` carries
+         *     the event name, `id:` a monotonically increasing number, and
+         *     `data:` the JSON payload -- the resource id plus a summary of
+         *     the changed fields. Event names follow
+         *     `<resource>.<past-tense verb>`:
+         *
+         *     - `asset.uploaded`, `asset.ready`, `asset.updated`,
+         *       `asset.trashed`, `asset.restored`, `asset.deleted`
+         *     - `album.created`, `album.updated`, `album.deleted`,
+         *       `album.items-changed`, `album.shared`, `album.unshared`
+         *     - `face.cluster-updated`
+         *     - `job.progress`, `job.finished`
+         *     - `model.changed`
+         *     - `session.started`, `session.revoked`
+         *     - `server.settings-changed`
+         *
+         *     The server keeps the last five minutes of events in a ring
+         *     buffer. Browser EventSource clients reconnect automatically and
+         *     resend `Last-Event-ID`; the server replays everything newer
+         *     than that id, and events that fell out of the ring are skipped.
+         */
+        get: operations["getEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/server/info": {
         parameters: {
             query?: never;
@@ -58,6 +267,109 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Credentials of `POST /auth/login`. */
+        LoginRequest: {
+            /**
+             * Format: email
+             * @description Login address of the account.
+             */
+            email: string;
+            /**
+             * Format: password
+             * @description Account password; never echoed in any response.
+             * @example correct horse battery staple
+             */
+            password: string;
+        };
+        /**
+         * @description One authenticated session of a user. Web sessions authenticate
+         *     through the `lumemor_session` cookie and mobile sessions
+         *     through their bearer token; both are the same session records
+         *     and appear together in `GET /auth/sessions`.
+         */
+        SessionInfo: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the session.
+             */
+            id: string;
+            /**
+             * @description Where the session credential lives: `web` sessions ride
+             *     the `lumemor_session` cookie and slide their expiry by 30
+             *     days on use; `mobile` sessions ride a bearer token and are
+             *     revoked explicitly.
+             * @enum {string}
+             */
+            kind: "web" | "mobile";
+            /**
+             * @description Human-readable device label of the session. For web
+             *     sessions it is the browser user agent captured at login;
+             *     mobile sessions carry the name supplied during pairing.
+             */
+            deviceName?: string;
+            /**
+             * Format: date-time
+             * @description When the session was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the session was last used (RFC 3339 UTC).
+             */
+            lastSeenAt: string;
+            /**
+             * Format: date-time
+             * @description When the session expires (RFC 3339 UTC). Null for bearer
+             *     sessions, which are revoked explicitly instead of
+             *     expiring.
+             */
+            expiresAt: string | null;
+        };
+        /** @description The one-time pairing token issued by `POST /auth/pairing/token`. */
+        PairingTokenResponse: {
+            /**
+             * @description One-time pairing secret, 128 random bits as a URL-safe
+             *     string. Render it as a QR code and never store or log it;
+             *     the server keeps only its hash.
+             */
+            token: string;
+            /**
+             * Format: date-time
+             * @description When the token expires (RFC 3339 UTC); five minutes after
+             *     issuance.
+             */
+            expiresAt: string;
+        };
+        /** @description Payload of `POST /auth/pairing/consume`. */
+        PairingConsumeRequest: {
+            /** @description The pairing token read from the QR code. */
+            token: string;
+            /**
+             * @description Human-readable device label shown in the session list,
+             *     for example `Pixel 9`.
+             */
+            deviceName: string;
+            /**
+             * @description Stable client-generated identifier of the physical device,
+             *     for example a UUID the app persists; it lets the server
+             *     recognize the same device across pairings.
+             */
+            deviceId: string;
+        };
+        /**
+         * @description The mobile session minted by consuming a pairing token: the
+         *     bearer credential plus the session it authenticates.
+         */
+        BearerSession: {
+            /**
+             * @description Bearer credential of the new mobile session; send it as
+             *     `Authorization: Bearer <token>`. It appears only in this
+             *     response, and the server stores only its hash: a device
+             *     that loses it must pair again.
+             */
+            token: string;
+            session: components["schemas"]["SessionInfo"];
+        };
         /** @description Instance capability report served by `GET /server/info`. */
         ServerInfo: {
             /**
@@ -133,7 +445,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -146,7 +458,9 @@ export interface components {
              *       ]
              *     }
              */
-            details?: Record<string, never>;
+            details?: {
+                [key: string]: unknown;
+            };
         };
     };
     responses: never;
@@ -157,6 +471,382 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description A web session was created. The credential travels in the
+             *     Set-Cookie header and is not repeated in the body.
+             */
+            200: {
+                headers: {
+                    /**
+                     * @description Session cookie of the new web session: HttpOnly,
+                     *     SameSite=Strict, Secure when the instance is reached
+                     *     over HTTPS, sliding 30-day expiry.
+                     * @example lumemor_session=<opaque>; Path=/; HttpOnly; SameSite=Strict
+                     */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionInfo"];
+                };
+            };
+            /**
+             * @description The request body is not a valid login payload, for example
+             *     a malformed email or a missing password.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The credentials do not match an account. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Too many failed attempts for this address and account; the
+             *     lockout grows with each further attempt.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session was revoked; the response has no body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active sessions of the caller, most recently used first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionInfo"][];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the session to revoke. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The session is revoked (or never was); the response has no
+             *     body.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createPairingToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The pairing token; render it as a QR code immediately, it
+             *     expires within five minutes.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingTokenResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The user exhausted the pairing token budget; retry after
+             *     it resets.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    consumePairingToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairingConsumeRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The mobile session was created; `session.kind` is always
+             *     `mobile` here.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BearerSession"];
+                };
+            };
+            /**
+             * @description The request body is not a valid pairing payload, for
+             *     example a missing device name.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The token is unknown, expired or already consumed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many failed attempts from this address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEvents: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The id of the last received event, resent automatically by
+                 *     browser EventSource implementations on reconnect. When
+                 *     present, the server replays the events newer than this id
+                 *     from its five-minute ring buffer; events that fell out of
+                 *     the ring are skipped.
+                 */
+                "Last-Event-ID"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The stream is open. Each block carries `event: <name>`,
+             *     `id: <n>` and `data: <json payload>`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The event stream could not be started. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getServerInfo: {
         parameters: {
             query?: never;

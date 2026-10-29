@@ -9,21 +9,52 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for ErrorCode.
 const (
-	SETUPALREADYCOMPLETED ErrorCode = "SETUP_ALREADY_COMPLETED"
-	VALIDATIONFAILED      ErrorCode = "VALIDATION_FAILED"
+	AUTHINVALIDCREDENTIALS ErrorCode = "AUTH_INVALID_CREDENTIALS"
+	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
+	INTERNAL               ErrorCode = "INTERNAL"
+	PAIRINGTOKENINVALID    ErrorCode = "PAIRING_TOKEN_INVALID"
+	SETUPALREADYCOMPLETED  ErrorCode = "SETUP_ALREADY_COMPLETED"
+	VALIDATIONFAILED       ErrorCode = "VALIDATION_FAILED"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
+	case AUTHINVALIDCREDENTIALS:
+		return true
+	case AUTHRATELIMITED:
+		return true
+	case INTERNAL:
+		return true
+	case PAIRINGTOKENINVALID:
+		return true
 	case SETUPALREADYCOMPLETED:
 		return true
 	case VALIDATIONFAILED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SessionInfoKind.
+const (
+	Mobile SessionInfoKind = "mobile"
+	Web    SessionInfoKind = "web"
+)
+
+// Valid indicates whether the value is a known member of the SessionInfoKind enum.
+func (e SessionInfoKind) Valid() bool {
+	switch e {
+	case Mobile:
+		return true
+	case Web:
 		return true
 	default:
 		return false
@@ -46,6 +77,22 @@ func (e UserRole) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// BearerSession The mobile session minted by consuming a pairing token: the
+// bearer credential plus the session it authenticates.
+type BearerSession struct {
+	// Session One authenticated session of a user. Web sessions authenticate
+	// through the `lumemor_session` cookie and mobile sessions
+	// through their bearer token; both are the same session records
+	// and appear together in `GET /auth/sessions`.
+	Session SessionInfo `json:"session"`
+
+	// Token Bearer credential of the new mobile session; send it as
+	// `Authorization: Bearer <token>`. It appears only in this
+	// response, and the server stores only its hash: a device
+	// that loses it must pair again.
+	Token string `json:"token"`
 }
 
 // CreateAdminRequest Payload of the first-run wizard (`POST /server/setup/admin`).
@@ -85,6 +132,44 @@ type Error struct {
 // form of this value.
 type ErrorCode string
 
+// LoginRequest Credentials of `POST /auth/login`.
+type LoginRequest struct {
+	// Email Login address of the account.
+	Email openapi_types.Email `json:"email"`
+
+	// Password Account password; never echoed in any response.
+	//
+	// Examples: correct horse battery staple
+	Password string `json:"password"`
+}
+
+// PairingConsumeRequest Payload of `POST /auth/pairing/consume`.
+type PairingConsumeRequest struct {
+	// DeviceId Stable client-generated identifier of the physical device,
+	// for example a UUID the app persists; it lets the server
+	// recognize the same device across pairings.
+	DeviceId string `json:"deviceId"`
+
+	// DeviceName Human-readable device label shown in the session list,
+	// for example `Pixel 9`.
+	DeviceName string `json:"deviceName"`
+
+	// Token The pairing token read from the QR code.
+	Token string `json:"token"`
+}
+
+// PairingTokenResponse The one-time pairing token issued by `POST /auth/pairing/token`.
+type PairingTokenResponse struct {
+	// ExpiresAt When the token expires (RFC 3339 UTC); five minutes after
+	// issuance.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Token One-time pairing secret, 128 random bits as a URL-safe
+	// string. Render it as a QR code and never store or log it;
+	// the server keeps only its hash.
+	Token string `json:"token"`
+}
+
 // ServerInfo Instance capability report served by `GET /server/info`.
 type ServerInfo struct {
 	// Features Instance feature switches (model slots, search modes, pairing).
@@ -103,6 +188,43 @@ type ServerInfo struct {
 	// Examples: 0.1.0
 	Version string `json:"version"`
 }
+
+// SessionInfo One authenticated session of a user. Web sessions authenticate
+// through the `lumemor_session` cookie and mobile sessions
+// through their bearer token; both are the same session records
+// and appear together in `GET /auth/sessions`.
+type SessionInfo struct {
+	// CreatedAt When the session was created (RFC 3339 UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DeviceName Human-readable device label of the session. For web
+	// sessions it is the browser user agent captured at login;
+	// mobile sessions carry the name supplied during pairing.
+	DeviceName *string `json:"deviceName,omitempty"`
+
+	// ExpiresAt When the session expires (RFC 3339 UTC). Null for bearer
+	// sessions, which are revoked explicitly instead of
+	// expiring.
+	ExpiresAt *time.Time `json:"expiresAt"`
+
+	// Id UUIDv7 identifier of the session.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Where the session credential lives: `web` sessions ride
+	// the `lumemor_session` cookie and slide their expiry by 30
+	// days on use; `mobile` sessions ride a bearer token and are
+	// revoked explicitly.
+	Kind SessionInfoKind `json:"kind"`
+
+	// LastSeenAt When the session was last used (RFC 3339 UTC).
+	LastSeenAt time.Time `json:"lastSeenAt"`
+}
+
+// SessionInfoKind Where the session credential lives: `web` sessions ride
+// the `lumemor_session` cookie and slide their expiry by 30
+// days on use; `mobile` sessions ride a bearer token and are
+// revoked explicitly.
+type SessionInfoKind string
 
 // User A lumemor account.
 type User struct {
@@ -125,11 +247,48 @@ type User struct {
 // UserRole Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin.
 type UserRole string
 
+// GetEventsParams defines parameters for GetEvents.
+type GetEventsParams struct {
+	// LastEventID The id of the last received event, resent automatically by
+	// browser EventSource implementations on reconnect. When
+	// present, the server replays the events newer than this id
+	// from its five-minute ring buffer; events that fell out of
+	// the ring are skipped.
+	LastEventID *string `json:"Last-Event-ID,omitempty"`
+}
+
+// LoginJSONRequestBody defines body for Login for application/json ContentType.
+type LoginJSONRequestBody = LoginRequest
+
+// ConsumePairingTokenJSONRequestBody defines body for ConsumePairingToken for application/json ContentType.
+type ConsumePairingTokenJSONRequestBody = PairingConsumeRequest
+
 // CreateAdminJSONRequestBody defines body for CreateAdmin for application/json ContentType.
 type CreateAdminJSONRequestBody = CreateAdminRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Login Exchange credentials for a web session.
+	// (POST /auth/login)
+	Login(w http.ResponseWriter, r *http.Request)
+	// Logout Revoke the current session.
+	// (POST /auth/logout)
+	Logout(w http.ResponseWriter, r *http.Request)
+	// ConsumePairingToken Exchange a pairing token for a mobile session.
+	// (POST /auth/pairing/consume)
+	ConsumePairingToken(w http.ResponseWriter, r *http.Request)
+	// CreatePairingToken Create a one-time device pairing token.
+	// (POST /auth/pairing/token)
+	CreatePairingToken(w http.ResponseWriter, r *http.Request)
+	// ListSessions List the caller's active sessions.
+	// (GET /auth/sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request)
+	// RevokeSession Revoke one of the caller's sessions.
+	// (DELETE /auth/sessions/{id})
+	RevokeSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// GetEvents Stream instance activity over server-sent events.
+	// (GET /events)
+	GetEvents(w http.ResponseWriter, r *http.Request, params GetEventsParams)
 	// GetServerInfo Report instance version and feature switches.
 	// (GET /server/info)
 	GetServerInfo(w http.ResponseWriter, r *http.Request)
@@ -141,6 +300,48 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Login Exchange credentials for a web session.
+// (POST /auth/login)
+func (_ Unimplemented) Login(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Logout Revoke the current session.
+// (POST /auth/logout)
+func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ConsumePairingToken Exchange a pairing token for a mobile session.
+// (POST /auth/pairing/consume)
+func (_ Unimplemented) ConsumePairingToken(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreatePairingToken Create a one-time device pairing token.
+// (POST /auth/pairing/token)
+func (_ Unimplemented) CreatePairingToken(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListSessions List the caller's active sessions.
+// (GET /auth/sessions)
+func (_ Unimplemented) ListSessions(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeSession Revoke one of the caller's sessions.
+// (DELETE /auth/sessions/{id})
+func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetEvents Stream instance activity over server-sent events.
+// (GET /events)
+func (_ Unimplemented) GetEvents(w http.ResponseWriter, r *http.Request, params GetEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // GetServerInfo Report instance version and feature switches.
 // (GET /server/info)
@@ -162,6 +363,143 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// Login operation middleware
+func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Login(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Logout operation middleware
+func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConsumePairingToken operation middleware
+func (siw *ServerInterfaceWrapper) ConsumePairingToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConsumePairingToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePairingToken operation middleware
+func (siw *ServerInterfaceWrapper) CreatePairingToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePairingToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeSession operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeSession(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEvents operation middleware
+func (siw *ServerInterfaceWrapper) GetEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEventsParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Last-Event-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Last-Event-ID")]; found {
+		var LastEventID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Last-Event-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Last-Event-ID", Err: err})
+			return
+		}
+
+		params.LastEventID = &LastEventID
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetServerInfo operation middleware
 func (siw *ServerInterfaceWrapper) GetServerInfo(w http.ResponseWriter, r *http.Request) {
@@ -304,6 +642,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/login", wrapper.Login)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/logout", wrapper.Logout)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/auth/sessions", wrapper.ListSessions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/auth/sessions/{id}", wrapper.RevokeSession)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/pairing/token", wrapper.CreatePairingToken)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/pairing/consume", wrapper.ConsumePairingToken)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/events", wrapper.GetEvents)
+	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/server/info", wrapper.GetServerInfo)
 	})
