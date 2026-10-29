@@ -122,6 +122,43 @@ func TestOriginalPathContentAddressing(t *testing.T) {
 	}
 }
 
+// resetDataRoot simulates a fresh process that has not run a
+// successful EnsureLayout: the recorded data root is cleared for the
+// duration of the test and restored afterwards.
+func resetDataRoot(t *testing.T) {
+	t.Helper()
+	saved := dataRoot
+	dataRoot = ""
+	t.Cleanup(func() { dataRoot = saved })
+}
+
+func TestPathHelpersPanicBeforeEnsureLayout(t *testing.T) {
+	resetDataRoot(t)
+
+	calls := []struct {
+		name string
+		call func()
+	}{
+		{"OriginalPath", func() { OriginalPath("c0ffee01a1b2c3d4", "jpg") }},
+		{"ThumbPath", func() { ThumbPath("0197a1b2-c3d4-4e5f-8a9b-0c1d2e3f4a5b", "tile") }},
+	}
+	for _, c := range calls {
+		t.Run(c.name, func(t *testing.T) {
+			defer func() {
+				panicValue := recover()
+				if panicValue == nil {
+					t.Fatalf("%s did not panic, want panic before EnsureLayout has succeeded", c.name)
+				}
+				msg, ok := panicValue.(string)
+				if !ok || !strings.Contains(msg, "EnsureLayout") {
+					t.Errorf("panic message = %v, want it to mention EnsureLayout", panicValue)
+				}
+			}()
+			c.call()
+		})
+	}
+}
+
 func TestOriginalPathRejectsMalformedArguments(t *testing.T) {
 	if err := EnsureLayout(t.TempDir(), t.TempDir()); err != nil {
 		t.Fatalf("EnsureLayout() error = %v, want nil", err)
