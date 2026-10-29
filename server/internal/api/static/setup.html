@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>lumemor setup</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f4f4f2;
+  --card: #ffffff;
+  --fg: #23282f;
+  --muted: #667085;
+  --line: #d9dee7;
+  --accent: #2f6fed;
+  --accent-ink: #ffffff;
+  --danger: #b42318;
+  --ok: #157347;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161b;
+    --card: #1d2027;
+    --fg: #e7eaf0;
+    --muted: #98a1b0;
+    --line: #323845;
+    --accent: #7fa5f5;
+    --accent-ink: #101525;
+    --danger: #f19a90;
+    --ok: #7cd3a5;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+main {
+  width: 100%;
+  max-width: 380px;
+  padding: 32px 28px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.brand {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+h1 { margin: 0 0 6px; font-size: 22px; line-height: 1.35; }
+.intro { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+label { display: block; margin: 18px 0 4px; font-size: 14px; font-weight: 600; }
+input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hint { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+button {
+  width: 100%;
+  margin-top: 24px;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: 0.6; cursor: default; }
+.status {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 14px;
+  white-space: pre-line;
+}
+.status-error { color: var(--danger); border-color: var(--danger); }
+.status-ok { color: var(--ok); border-color: var(--ok); }
+</style>
+</head>
+<body>
+<main>
+  <p class="brand">lumemor</p>
+  <h1 id="heading">Create the administrator account</h1>
+  <p id="intro" class="intro">Create the first administrator account to finish setting up your photo library.</p>
+
+  <form id="form">
+    <label for="name" id="label-name">Display name (optional)</label>
+    <input id="name" name="name" type="text" autocomplete="nickname" maxlength="100">
+
+    <label for="email" id="label-email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="email" required>
+
+    <label for="password" id="label-password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
+    <p class="hint" id="hint">At least 8 characters.</p>
+
+    <p class="status status-error" id="error" role="alert" hidden></p>
+
+    <button type="submit" id="submit">Create administrator</button>
+  </form>
+
+  <p class="status status-ok" id="done" role="status" tabindex="-1" hidden></p>
+</main>
+
+<script>
+"use strict";
+(function () {
+  // This page is a stopgap until the SvelteKit web app ships, so it
+  // keeps a tiny inline dictionary instead of the i18n JSON files; the
+  // markup above carries the English strings as a no-script fallback
+  // and this script re-renders them for the chosen locale.
+  var STRINGS = {
+    en: {
+      lang: "en",
+      title: "lumemor first-run setup",
+      heading: "Create the administrator account",
+      intro: "Create the first administrator account to finish setting up your photo library.",
+      labelName: "Display name (optional)",
+      labelEmail: "Email",
+      labelPassword: "Password",
+      hint: "At least 8 characters.",
+      submit: "Create administrator",
+      submitting: "Creating administrator…",
+      done: "Administrator created. First-run setup is complete.",
+      fieldsPrefix: "Check the following: ",
+      fieldsJoin: ", ",
+      fields: { name: "display name", email: "email", password: "password" },
+      errors: {
+        setup_already_completed: "Setup is already complete: an administrator account exists.",
+        validation_failed: "Please check the highlighted fields and try again.",
+        fallback: "The request failed. Please try again."
+      }
+    },
+    zh: {
+      lang: "zh",
+      title: "lumemor 初始设置",
+      heading: "创建管理员账户",
+      intro: "创建第一个管理员账户，完成照片库的初始设置。",
+      labelName: "显示名称（可选）",
+      labelEmail: "邮箱",
+      labelPassword: "密码",
+      hint: "至少 8 个字符。",
+      submit: "创建管理员",
+      submitting: "正在创建管理员…",
+      done: "管理员已创建。初始设置已完成。",
+      fieldsPrefix: "请检查以下字段：",
+      fieldsJoin: "、",
+      fields: { name: "显示名称", email: "邮箱", password: "密码" },
+      errors: {
+        setup_already_completed: "初始设置已完成：管理员账户已存在。",
+        validation_failed: "请检查标记的字段后重试。",
+        fallback: "请求失败，请重试。"
+      }
+    }
+  };
+
+  // The locale picks the zh dictionary for any Chinese navigator
+  // language ("zh", "zh-CN", "zh-Hans", ...); everything else is en.
+  var locale = (navigator.language || "en").toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
+  var t = STRINGS[locale];
+
+  var els = {
+    heading: document.getElementById("heading"),
+    intro: document.getElementById("intro"),
+    labelName: document.getElementById("label-name"),
+    labelEmail: document.getElementById("label-email"),
+    labelPassword: document.getElementById("label-password"),
+    hint: document.getElementById("hint"),
+    form: document.getElementById("form"),
+    name: document.getElementById("name"),
+    email: document.getElementById("email"),
+    password: document.getElementById("password"),
+    error: document.getElementById("error"),
+    submit: document.getElementById("submit"),
+    done: document.getElementById("done")
+  };
+
+  function applyStrings() {
+    document.documentElement.lang = t.lang;
+    document.title = t.title;
+    els.heading.textContent = t.heading;
+    els.intro.textContent = t.intro;
+    els.labelName.textContent = t.labelName;
+    els.labelEmail.textContent = t.labelEmail;
+    els.labelPassword.textContent = t.labelPassword;
+    els.hint.textContent = t.hint;
+    els.submit.textContent = t.submit;
+  }
+
+  function setBusy(busy) {
+    // The button stays disabled for the whole request so a second
+    // submit cannot race the first one.
+    els.submit.disabled = busy;
+    els.submit.textContent = busy ? t.submitting : t.submit;
+  }
+
+  function showError(code, fields) {
+    var text = t.errors[code] || t.errors.fallback;
+    if (code === "validation_failed" && fields && fields.length > 0) {
+      var names = fields.map(function (field) {
+        return t.fields[field] || field;
+      });
+      text += "\n" + t.fieldsPrefix + names.join(t.fieldsJoin);
+    }
+    els.error.textContent = text;
+    els.error.hidden = false;
+  }
+
+  function showDone() {
+    els.form.hidden = true;
+    els.error.hidden = true;
+    els.done.textContent = t.done;
+    els.done.hidden = false;
+    els.done.focus();
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setBusy(true);
+    els.error.hidden = true;
+
+    var payload = {
+      email: els.email.value.trim(),
+      password: els.password.value
+    };
+    var name = els.name.value.trim();
+    if (name !== "") {
+      payload.name = name;
+    }
+
+    try {
+      var res = await fetch("/api/v1/server/setup/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      // The contract answers 201 Created; any other 2xx (a proxy in
+      // front of the API) still carries the created account, so the
+      // success path keys on res.ok rather than the exact status.
+      if (res.ok) {
+        showDone();
+        return;
+      }
+      // Failed requests answer with the shared error envelope; a body
+      // that is not JSON (proxy, crash) falls through to the generic
+      // message via the null code.
+      var data = null;
+      try {
+        data = await res.json();
+      } catch (err) {
+        data = null;
+      }
+      var fields = null;
+      if (data && data.details && Array.isArray(data.details.fields)) {
+        fields = data.details.fields;
+      }
+      showError(data && typeof data.code === "string" ? data.code.toLowerCase() : "", fields);
+      setBusy(false);
+    } catch (err) {
+      // fetch rejects on network errors; the envelope never applies.
+      showError("", null);
+      setBusy(false);
+    }
+  }
+
+  els.form.addEventListener("submit", submit);
+  applyStrings();
+})();
+</script>
+</body>
+</html>

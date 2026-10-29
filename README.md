@@ -5,12 +5,12 @@
 **Lume (light) + Memor (memory)** — a self-hosted photo & video library designed for families.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-design%20complete%20%E2%80%A2%20development%20not%20started-orange)](#status)
+[![Status](https://img.shields.io/badge/status-development%20in%20progress-yellow)](#status)
 
 </div>
 
 > [!WARNING]
-> **Status: design complete, development not started.** This repository is a skeleton — do not use lumemor for irreplaceable photos until a stable release exists. And even then, keep a [3-2-1 backup](https://www.backblaze.com/blog/the-3-2-1-backup-strategy/) of everything you love.
+> **Status: development in progress.** The M1 skeleton is in place — Go server with first-run setup, OpenAPI contract with generated clients, docker compose deployment — and backend development is under way. Do not store irreplaceable photos in lumemor until a stable release exists. And even then, keep a [3-2-1 backup](https://www.backblaze.com/blog/the-3-2-1-backup-strategy/) of everything you love.
 
 > [!NOTE]
 > lumemor is built around one privacy rule: **your photos never touch lumemor-operated infrastructure — not even ciphertext.** All AI (faces, semantic search, OCR) runs locally on your own hardware.

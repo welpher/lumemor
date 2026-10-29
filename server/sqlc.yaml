@@ -1,0 +1,28 @@
+# sqlc configuration for the lumemor server.
+#
+# The schema input is the goose migration directory: sqlc parses the
+# +goose Up sections in lexicographic (zero-padded) file order and ignores
+# the Down sections, so the generated models track the real database schema.
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/db/queries"
+    gen:
+      go:
+        package: "gen"
+        out: "internal/db/gen"
+        # pgx/v5 so the generated Queries wire directly onto *pgxpool.Pool.
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        overrides:
+          # pgvector columns (faces.embedding, clip_embeddings.embedding)
+          # must map to pgvector-go's Vector, not a raw byte slice.
+          - db_type: "vector"
+            go_type:
+              import: "github.com/pgvector/pgvector-go"
+              type: "Vector"
+          - db_type: "pgvector.vector"
+            go_type:
+              import: "github.com/pgvector/pgvector-go"
+              type: "Vector"

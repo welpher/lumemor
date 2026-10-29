@@ -1,0 +1,5 @@
+# Spectral ruleset for the OpenAPI contract (openapi/lumemor.yaml).
+# Lint with `make api-lint` (or npx @stoplight/spectral-cli lint openapi/lumemor.yaml
+# from the repository root).
+extends:
+  - spectral:oas

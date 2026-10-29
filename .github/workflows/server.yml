@@ -1,0 +1,61 @@
+# Continuous integration for the Go server: lint, test, sqlc codegen
+# drift check, and build. The path filters keep this workflow from
+# running on changes that cannot affect it; each workflow also runs
+# when its own definition changes.
+
+name: server
+
+on:
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'Makefile'
+      - '.github/workflows/server.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'Makefile'
+      - '.github/workflows/server.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: lint, test, codegen drift, build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: server/go.sum
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.15.0
+          working-directory: server
+
+      - name: Test
+        working-directory: server
+        run: go test ./...
+        # The database tests use testcontainers, which talks to the
+        # Docker daemon available on ubuntu-latest runners.
+
+      - name: Check that sqlc output is up to date
+        run: |
+          make sqlc-gen
+          git diff --exit-code -- server/internal/db/gen
+          if git status --porcelain -- server/internal/db/gen | grep -q .; then
+            echo "sqlc output drifted: regenerated files differ from the committed ones"
+            exit 1
+          fi
+
+      - name: Build
+        working-directory: server
+        run: go build ./...
