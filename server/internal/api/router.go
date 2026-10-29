@@ -15,6 +15,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/api/static"
 	"github.com/welpher/lumemor/server/internal/buildinfo"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/events"
 )
 
 // Deps carries the runtime dependencies of the HTTP handlers. It must be
@@ -33,6 +34,10 @@ type Deps struct {
 	// wires it to the CountAdmins query, tests inject a stub; nil means
 	// "not initialized", keeping the root on the wizard.
 	Initialized func(ctx context.Context) bool
+	// Events is the in-process bus backing the SSE activity stream
+	// (GET /api/v1/events); nil keeps that endpoint answering 500
+	// until the caller wires a bus.
+	Events *events.Bus
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
@@ -44,6 +49,7 @@ func NewRouter(deps *Deps) *chi.Mux {
 		queries: dbgen.New(deps.Pool),
 		version: deps.Version,
 		logger:  deps.Logger,
+		events:  deps.Events,
 	}
 	if s.version == "" {
 		s.version = buildinfo.Version
@@ -89,6 +95,8 @@ type server struct {
 	queries *dbgen.Queries
 	version string
 	logger  *slog.Logger
+	// events feeds the SSE activity stream.
+	events *events.Bus
 }
 
 // writeJSON emits v as the JSON response body with the given status.
