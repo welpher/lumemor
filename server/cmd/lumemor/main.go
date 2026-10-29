@@ -16,6 +16,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/config"
 	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/events"
 )
 
 const (
@@ -27,6 +28,11 @@ const (
 	// become reachable, tolerating the race against a freshly launched
 	// database container.
 	dbConnectWait = 60 * time.Second
+
+	// eventRetention is the activity ring window pinned by the API
+	// contract: GET /api/v1/events replays this much history on
+	// reconnect.
+	eventRetention = 5 * time.Minute
 )
 
 func main() {
@@ -69,12 +75,18 @@ func run(logger *slog.Logger) error {
 	// surface the real errors.
 	queries := dbgen.New(pool)
 
+	// The event bus is the SSE activity stream's backbone and the
+	// plugin seam: handlers publish domain events (session lifecycle
+	// in M2a) and every connected stream follows them.
+	bus := events.NewBus(eventRetention, time.Now)
+
 	srv := &http.Server{
 		Addr: cfg.Listen,
 		Handler: api.NewRouter(&api.Deps{
 			Pool:    pool,
 			Logger:  logger,
 			Version: buildinfo.Version,
+			Events:  bus,
 			Initialized: func(ctx context.Context) bool {
 				admins, err := queries.CountAdmins(ctx)
 				if err != nil {
