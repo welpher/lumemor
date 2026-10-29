@@ -66,6 +66,14 @@ func run(logger *slog.Logger) error {
 	}
 	logger.Info("storage layout verified", "data_dir", cfg.DataDir, "config_dir", cfg.ConfigDir)
 
+	// Boot-time sweep of the upload staging directory: a single
+	// process just started, so nothing can be in flight and anything
+	// left in tmp/ is crash debris of the previous run.
+	if err := storage.SweepTmp(cfg.DataDir); err != nil {
+		return err
+	}
+	logger.Info("upload staging swept")
+
 	pool, err := db.Connect(ctx, cfg.DatabaseURL, dbConnectWait)
 	if err != nil {
 		return err
@@ -96,6 +104,10 @@ func run(logger *slog.Logger) error {
 			Logger:  logger,
 			Version: buildinfo.Version,
 			Events:  bus,
+			// The upload endpoint stages and finalizes files under the
+			// data root and honors the configured per-file size limit.
+			DataDir:          cfg.DataDir,
+			UploadLimitBytes: cfg.UploadLimitBytes,
 			Initialized: func(ctx context.Context) bool {
 				admins, err := queries.CountAdmins(ctx)
 				if err != nil {

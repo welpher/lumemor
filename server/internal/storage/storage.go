@@ -58,6 +58,29 @@ func EnsureLayout(dataDir, configDir string) error {
 	return nil
 }
 
+// SweepTmp empties the upload staging directory <dataDir>/tmp at boot,
+// right after EnsureLayout: a single-process boot has no in-flight
+// uploads, so anything in staging is crash debris from the previous
+// run and is removed unconditionally -- files and subdirectories
+// alike. The tmp directory itself survives (uploads stage into it
+// immediately afterwards), and nothing outside it is touched.
+// A staging directory that cannot even be listed is an error: startup
+// fails rather than declaring a layout clean that it never looked at.
+func SweepTmp(dataDir string) error {
+	tmp := filepath.Join(dataDir, "tmp")
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		return fmt.Errorf("storage sweep: list upload staging %s: %w", tmp, err)
+	}
+	for _, entry := range entries {
+		path := filepath.Join(tmp, entry.Name())
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("storage sweep: remove staged %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
 // renameProbe moves a freshly created file from tmp into originals and
 // removes it again, proving that both directories share a filesystem.
 func renameProbe(tmp, originals string) error {

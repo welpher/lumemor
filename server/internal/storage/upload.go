@@ -60,7 +60,9 @@ type formatRule struct {
 // and the EBML family; it cannot identify TIFF, HEIC, AVIF, or MOV
 // and answers application/octet-stream for them, so structural
 // fallbacks decide for those. The MIME entries that the sniffer never
-// produces today keep the table correct should it learn them.
+// produces today keep the table correct should it learn them. The
+// first entry of every mimes list is the format's canonical content
+// type -- the mime_type LookupUploadFormat hands to the database.
 var uploadFormats = map[string]*formatRule{
 	// Images.
 	"jpg":  {mimes: []string{"image/jpeg"}},
@@ -77,9 +79,11 @@ var uploadFormats = map[string]*formatRule{
 	"mov": {mimes: []string{"video/quicktime"}, ftypBrands: quicktimeBrands},
 	// Both WebM and Matroska containers start with the EBML magic,
 	// which the standard sniffer reports as video/webm; they share
-	// the video family and downstream processing.
+	// the video family and downstream processing. The canonical type
+	// (the first entry, which LookupUploadFormat reports) is the
+	// registry name of the container itself.
 	"webm": {mimes: []string{"video/webm"}},
-	"mkv":  {mimes: []string{"video/webm", "video/x-matroska"}},
+	"mkv":  {mimes: []string{"video/x-matroska", "video/webm"}},
 }
 
 var (
@@ -100,6 +104,34 @@ func brandSet(brands ...string) map[string]bool {
 		set[brand] = true
 	}
 	return set
+}
+
+// UploadFormat describes one whitelisted upload format: the canonical
+// MIME type the database records as the asset's mime_type, and the
+// media family it belongs to (Video true for the video family,
+// everything else is an image).
+type UploadFormat struct {
+	// MIMEType is the canonical content type of the format, the first
+	// entry of the format's content-type set.
+	MIMEType string
+	// Video reports whether the format belongs to the video family.
+	Video bool
+}
+
+// LookupUploadFormat returns the format-table entry for ext, which
+// must be canonical (lowercase, dotless) as the callers normalize it
+// before Commit. ok is false for extensions outside the upload
+// whitelist.
+func LookupUploadFormat(ext string) (UploadFormat, bool) {
+	rule, ok := uploadFormats[ext]
+	if !ok {
+		return UploadFormat{}, false
+	}
+	mime := rule.mimes[0]
+	return UploadFormat{
+		MIMEType: mime,
+		Video:    strings.HasPrefix(mime, "video/"),
+	}, true
 }
 
 // consistentWith reports whether sniffed, the content type the
@@ -184,6 +216,7 @@ type Receiver struct {
 	limit      int64
 	state      receiverState
 	checksum   string
+	size       int64
 }
 
 // NewReceiver prepares to receive one upload: the staged temp file is
@@ -213,6 +246,16 @@ func (rec *Receiver) Checksum() string {
 		return ""
 	}
 	return rec.checksum
+}
+
+// Size returns the byte count of the uploaded payload, as streamed
+// during Commit. It is valid after a successful Commit and zero
+// before; the caller records it as the asset's file_size.
+func (rec *Receiver) Size() int64 {
+	if rec.state != stateCommitted {
+		return 0
+	}
+	return rec.size
 }
 
 // Commit streams the payload into the staged file, validates it, and
@@ -274,6 +317,7 @@ func (rec *Receiver) Commit(ext string) (string, error) {
 	}
 
 	rec.checksum = hex.EncodeToString(src.digest.Sum(nil))
+	rec.size = copied
 	absPath := OriginalPath(rec.checksum, ext)
 
 	// Finalize with an atomic rename inside the data root. The

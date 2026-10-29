@@ -464,6 +464,7 @@ type Asset struct {
 	TrashPath        pgtype.Text        `json:"trash_path"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	DeviceAssetID    pgtype.Text        `json:"device_asset_id"`
 }
 
 type AssetTag struct {
