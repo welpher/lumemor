@@ -160,8 +160,6 @@ export interface paths {
          *     session of the user. The server stores only the hash of the
          *     token, so it appears exactly once, in this response; a device
          *     that loses it must pair again.
-         *
-         *     Failed attempts are rate limited to stop guessing tokens.
          */
         post: operations["consumePairingToken"];
         delete?: never;
@@ -193,9 +191,11 @@ export interface paths {
          *       `asset.trashed`, `asset.restored`, `asset.deleted`
          *     - `album.created`, `album.updated`, `album.deleted`,
          *       `album.items-changed`, `album.shared`, `album.unshared`
+         *     - `auth.login_failed`
          *     - `face.cluster-updated`
          *     - `job.progress`, `job.finished`
          *     - `model.changed`
+         *     - `pairing.token_created`
          *     - `session.started`, `session.revoked`
          *     - `server.settings-changed`
          *
@@ -726,6 +726,12 @@ export interface operations {
              */
             429: {
                 headers: {
+                    /**
+                     * @description Seconds until the daily budget resets at UTC
+                     *     midnight; clients must not retry before it elapses.
+                     * @example 3600
+                     */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -783,21 +789,6 @@ export interface operations {
             /** @description The token is unknown, expired or already consumed. */
             401: {
                 headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Too many failed attempts from this address. */
-            429: {
-                headers: {
-                    /**
-                     * @description Seconds until the lockout ends and another attempt is
-                     *     accepted; clients must not retry before it elapses.
-                     * @example 900
-                     */
-                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {

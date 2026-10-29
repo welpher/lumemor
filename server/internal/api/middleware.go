@@ -1,10 +1,13 @@
 // Middleware of the /api/v1 tree: the shared request pipeline (body
-// limit, security headers, origin check) and the session middleware
-// that turns a cookie or bearer credential into request-scoped user
-// identity. Order matters and is pinned in NewRouter: body limit first
-// (nothing downstream reads an unbounded body), then headers on every
-// response, then the origin check guarding every state change, then
-// the route groups with the authed one wrapped in RequireSession.
+// limit, security headers, origin check), the per-request handler
+// timeout wrapping the non-streaming route groups, and the session
+// middleware that turns a cookie or bearer credential into
+// request-scoped user identity. Order matters and is pinned in
+// NewRouter: body limit first (nothing downstream reads an unbounded
+// body), then headers on every response, then the origin check
+// guarding every state change, then the route groups -- each
+// non-streaming one inside timeoutMiddleware, the SSE stream group
+// outside it -- with the authed groups behind requireSession.
 package api
 
 import (
@@ -47,6 +50,32 @@ const (
 	// use.
 	webSessionTTL = 30 * 24 * time.Hour
 )
+
+// handlerTimeout bounds every non-streaming /api/v1 handler: half a
+// minute is generous for this surface while keeping a wedged handler
+// from pinning its connection forever. It is a per-request bound --
+// chi has no per-route timeout -- implemented by wrapping the
+// non-streaming route groups in http.TimeoutHandler; see
+// timeoutMiddleware.
+const handlerTimeout = 30 * time.Second
+
+// timeoutMiddleware wraps a handler chain in http.TimeoutHandler: a
+// chain that outlives the bound answers 503 (TimeoutHandler's
+// default) while the request context handed to the chain is canceled,
+// so parked queries wind down on their own. The duration is a
+// parameter only so tests can shorten it; production wiring pins
+// handlerTimeout.
+//
+// Streaming handlers must never sit behind this wrapper: the
+// timeoutWriter buffers the whole response until the handler returns
+// and implements no Flusher, so a stream would first stall and then
+// be cut at the deadline. The SSE activity stream therefore lives in
+// its own route group outside it.
+func timeoutMiddleware(timeout time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.TimeoutHandler(next, timeout, "")
+	}
+}
 
 // limitJSONBody wraps every request body in an http.MaxBytesReader
 // capped at maxJSONBodyBytes.

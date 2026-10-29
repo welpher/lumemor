@@ -90,12 +90,30 @@ func (s *server) CreatePairingToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The mint reached the audit stream before the secret leaves in
+	// the response: the payload names the minting user only, never the
+	// token or its hash.
+	s.publishPairingTokenCreated(user.userID)
+
 	// The raw token exists exactly twice: this response and the QR
 	// code the client renders from it.
 	s.writeJSON(w, http.StatusOK, apigen.PairingTokenResponse{
 		Token:     raw,
 		ExpiresAt: expires.UTC(),
 	})
+}
+
+// publishPairingTokenCreated reports a pairing token mint onto the
+// activity stream: the security spec's audit minimum includes pairing
+// generation. The payload names the minting user only -- the secret
+// and its hash never travel on the stream, and the event deliberately
+// fires only for tokens that exist in the store, so a failed mint
+// audits nothing.
+func (s *server) publishPairingTokenCreated(userID uuid.UUID) {
+	if s.events == nil {
+		return
+	}
+	s.events.Publish("pairing.token_created", map[string]string{"userId": userID.String()})
 }
 
 // ConsumePairingToken implements POST /auth/pairing/consume: the

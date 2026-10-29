@@ -102,7 +102,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 			// attacker could probe addresses without ever hitting the
 			// limit.
 			s.limiter.Fail(key)
-			s.rejectLogin(w)
+			s.rejectLogin(w, email)
 			return
 		}
 		s.internalError(w, r, "lookup login user", err)
@@ -113,12 +113,12 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	// attempt still counts as a failure.
 	if user.IsDisabled {
 		s.limiter.Fail(key)
-		s.rejectLogin(w)
+		s.rejectLogin(w, email)
 		return
 	}
 	if !auth.Verify(user.PasswordHash, req.Password) {
 		s.limiter.Fail(key)
-		s.rejectLogin(w)
+		s.rejectLogin(w, email)
 		return
 	}
 	s.limiter.Reset(key)
@@ -237,11 +237,29 @@ func (s *server) RevokeSession(w http.ResponseWriter, r *http.Request, id oapity
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// rejectLogin answers the anti-enumeration 401: byte-identical for a
-// wrong password, an unknown account and a disabled account.
-func (s *server) rejectLogin(w http.ResponseWriter) {
+// rejectLogin answers the anti-enumeration 401 -- byte-identical for a
+// wrong password, an unknown account and a disabled account -- and
+// reports the failed attempt onto the activity stream. The rate-limit
+// 429 is not a credential outcome and deliberately publishes nothing.
+// The publish precedes the response write and is a cheap synchronous
+// bus append, so it never meaningfully delays the response.
+func (s *server) rejectLogin(w http.ResponseWriter, email string) {
+	s.publishLoginFailed(email)
 	s.writeError(w, http.StatusUnauthorized, apigen.AUTHINVALIDCREDENTIALS,
 		"invalid email or password", nil)
+}
+
+// publishLoginFailed reports a failed login attempt onto the activity
+// stream: the security spec's audit minimum names login success and
+// failure, and this is the failure half. The payload carries the
+// attempted address only -- no password, no token, nothing about which
+// check failed -- because the stream is the same admin-audience SSE
+// surface that carries the session events.
+func (s *server) publishLoginFailed(email string) {
+	if s.events == nil {
+		return
+	}
+	s.events.Publish("auth.login_failed", map[string]string{"email": email})
 }
 
 // expireSessionCookie instructs web clients to drop the session cookie

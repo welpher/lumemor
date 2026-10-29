@@ -409,6 +409,122 @@ func TestLogin(t *testing.T) {
 	})
 }
 
+// awaitEventNamed drains an open subscription until an event with the
+// given name arrives; the test fails when the subscription's context
+// ends first (the expected event was never published).
+func awaitEventNamed(t *testing.T, sub *events.Subscription, name string) events.Event {
+	t.Helper()
+	for {
+		event, ok := sub.Next()
+		if !ok {
+			t.Fatalf("subscription ended before a %s event arrived", name)
+		}
+		if event.Name == name {
+			return event
+		}
+	}
+}
+
+// subscribeAfterCursor opens a subscription that only sees events
+// published after the returned cursor id, so assertions are independent
+// of whatever the bus already holds from earlier setup.
+func subscribeAfterCursor(t *testing.T, bus *events.Bus) (int64, *events.Subscription) {
+	t.Helper()
+	cursor := bus.Publish("test.cursor", map[string]string{})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	t.Cleanup(cancel)
+	return cursor, bus.Subscribe(ctx, cursor)
+}
+
+// TestLoginAuditEvents pins the audit half of the login contract: a
+// successful login reports only session.started onto the activity
+// stream, while every 401 rejection -- wrong password, unknown
+// address, disabled account -- reports auth.login_failed carrying the
+// attempted address.
+func TestLoginAuditEvents(t *testing.T) {
+	env := newAuthEnv(t, nil)
+	env.createAdmin(t, "ada@example.com", testPassword)
+
+	t.Run("SuccessPublishesOnlySessionStarted", func(t *testing.T) {
+		_, sub := subscribeAfterCursor(t, env.bus)
+
+		cookie, info := loginCookie(t, env.router, "ada@example.com", testPassword, "")
+
+		// The sentinel marks the end of the login's own publishes: the
+		// drain below stops there, having seen everything the login
+		// put on the bus.
+		sentinel := env.bus.Publish("test.sentinel", map[string]string{})
+		started := 0
+		for {
+			event, ok := sub.Next()
+			if !ok {
+				t.Fatal("subscription ended before the sentinel arrived")
+			}
+			if event.ID == sentinel {
+				break
+			}
+			if event.Name == "auth.login_failed" {
+				t.Errorf("successful login also published auth.login_failed (payload %s)", event.Payload)
+			}
+			if event.Name == "session.started" {
+				started++
+				if payload := eventPayload(t, event); payload["id"] != info.Id.String() {
+					t.Errorf("session.started payload id = %q, want %q", payload["id"], info.Id)
+				}
+			}
+		}
+		if started != 1 {
+			t.Errorf("successful login published %d session.started events, want 1", started)
+		}
+		if cookie.Value == "" {
+			t.Error("login cookie carries no credential; the success path is not what this subtest thinks")
+		}
+	})
+
+	t.Run("FailurePublishesLoginFailed", func(t *testing.T) {
+		cases := []struct {
+			name     string
+			email    string
+			disabled bool
+		}{
+			{name: "WrongPassword", email: "ada@example.com"},
+			{name: "UnknownEmail", email: "nobody@example.com"},
+			{name: "DisabledAccount", email: "ada@example.com", disabled: true},
+		}
+		for _, testCase := range cases {
+			t.Run(testCase.name, func(t *testing.T) {
+				if testCase.disabled {
+					env.exec(t, "UPDATE users SET is_disabled = true WHERE email = 'ada@example.com'")
+					t.Cleanup(func() {
+						env.exec(t, "UPDATE users SET is_disabled = false WHERE email = 'ada@example.com'")
+					})
+				}
+
+				// Subscribe before the attempt: the assertion must
+				// observe the live publish, not only a ring replay.
+				cursor, sub := subscribeAfterCursor(t, env.bus)
+
+				rec := postLogin(t, env.router, testCase.email, "wrong horse battery staple", "")
+				if rec.Code != http.StatusUnauthorized {
+					t.Fatalf("failed login (%s): status = %d, want %d (body %q)", testCase.name, rec.Code, http.StatusUnauthorized, rec.Body.String())
+				}
+
+				event := awaitEventNamed(t, sub, "auth.login_failed")
+				payload := eventPayload(t, event)
+				if payload["email"] != testCase.email {
+					t.Errorf("auth.login_failed payload email = %q, want the attempted address %q", payload["email"], testCase.email)
+				}
+				if len(payload) != 1 {
+					t.Errorf("auth.login_failed payload = %v, want exactly the email field (no credentials ever)", payload)
+				}
+				if event.ID <= cursor {
+					t.Errorf("auth.login_failed id = %d, want one published after the cursor %d", event.ID, cursor)
+				}
+			})
+		}
+	})
+}
+
 // TestLogoutAndRevoke walks the session management surface: logout
 // revokes the current session and expires the cookie; DELETE
 // /auth/sessions/{id} follows set semantics without existence leaks,

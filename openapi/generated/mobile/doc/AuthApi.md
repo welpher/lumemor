@@ -22,7 +22,7 @@ Method | HTTP request | Description
 
 Exchange a pairing token for a mobile session.
 
-Completes device pairing: the mobile app scans the QR code and posts the token together with its device metadata. The server burns the one-time token and returns the bearer credential of a new mobile session of the user who created the token.  Bearer sessions never expire; the app holds the token until the session is revoked -- from the device list, by logging the device out, or by a password change, which revokes every session of the user. The server stores only the hash of the token, so it appears exactly once, in this response; a device that loses it must pair again.  Failed attempts are rate limited to stop guessing tokens. 
+Completes device pairing: the mobile app scans the QR code and posts the token together with its device metadata. The server burns the one-time token and returns the bearer credential of a new mobile session of the user who created the token.  Bearer sessions never expire; the app holds the token until the session is revoked -- from the device list, by logging the device out, or by a password change, which revokes every session of the user. The server stores only the hash of the token, so it appears exactly once, in this response; a device that loses it must pair again. 
 
 ### Example
 ```dart

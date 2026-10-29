@@ -363,6 +363,14 @@ paths:
           description: |
             The user exhausted the pairing token budget; retry after
             it resets.
+          headers:
+            Retry-After:
+              description: |
+                Seconds until the daily budget resets at UTC
+                midnight; clients must not retry before it elapses.
+              schema:
+                type: integer
+              example: 3600
           content:
             application/json:
               schema:
@@ -396,8 +404,6 @@ paths:
         session of the user. The server stores only the hash of the
         token, so it appears exactly once, in this response; a device
         that loses it must pair again.
-
-        Failed attempts are rate limited to stop guessing tokens.
       security: []
       requestBody:
         required: true
@@ -455,25 +461,6 @@ paths:
                   value:
                     code: PAIRING_TOKEN_INVALID
                     message: pairing token is invalid or expired
-        '429':
-          description: Too many failed attempts from this address.
-          headers:
-            Retry-After:
-              description: |
-                Seconds until the lockout ends and another attempt is
-                accepted; clients must not retry before it elapses.
-              schema:
-                type: integer
-              example: 900
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                rateLimited:
-                  value:
-                    code: AUTH_RATE_LIMITED
-                    message: too many failed attempts, retry later
         '500':
           description: Unexpected server failure.
           content:
@@ -501,9 +488,11 @@ paths:
           `asset.trashed`, `asset.restored`, `asset.deleted`
         - `album.created`, `album.updated`, `album.deleted`,
           `album.items-changed`, `album.shared`, `album.unshared`
+        - `auth.login_failed`
         - `face.cluster-updated`
         - `job.progress`, `job.finished`
         - `model.changed`
+        - `pairing.token_created`
         - `session.started`, `session.revoked`
         - `server.settings-changed`
 

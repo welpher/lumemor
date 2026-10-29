@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,9 +50,20 @@ type Deps struct {
 // The /api/v1 pipeline order is pinned and security-relevant: the JSON
 // body limit first (nothing downstream may buffer an unbounded body),
 // then the security headers on every API response, then the origin
-// check guarding every state change, and finally the route groups,
-// with the authed group wrapped in RequireSession.
+// check guarding every state change, and finally the route groups:
+// the authed groups sit behind RequireSession, and every
+// non-streaming group runs inside the per-request handler timeout
+// (http.TimeoutHandler -- a handler that outlives it answers 503),
+// while the SSE stream group stays outside it.
 func NewRouter(deps *Deps) *chi.Mux {
+	return newRouter(deps, handlerTimeout)
+}
+
+// newRouter builds the router with a configurable timeout for the
+// non-streaming handler groups. NewRouter pins that bound to
+// handlerTimeout; tests shorten it so the timeout behavior itself is
+// exercisable in bounded time.
+func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 	s := &server{
 		pool:    deps.Pool,
 		queries: dbgen.New(deps.Pool),
@@ -95,7 +107,7 @@ func NewRouter(deps *Deps) *chi.Mux {
 		// The wrapper reuses the generated request binders (the path
 		// uuid, the Last-Event-ID header) and routes their failures
 		// into the shared error envelope through binderError. Routes
-		// are mounted by hand into two groups because the generated
+		// are mounted by hand into groups because the generated
 		// HandlerFromMux registers every operation on one flat
 		// router; TestAPIRoutesCoverContract guards the mounted set
 		// against contract drift.
@@ -106,22 +118,39 @@ func NewRouter(deps *Deps) *chi.Mux {
 
 		// Public group: the unauthenticated entry points. Login and
 		// the pairing exchange carry their own credentials; server
-		// info and the one-time wizard precede any account.
+		// info and the one-time wizard precede any account. The group
+		// runs inside the handler timeout like every non-streaming
+		// group.
 		r.Group(func(r chi.Router) {
+			r.Use(timeoutMiddleware(timeout))
 			r.Post("/auth/login", wrapper.Login)
 			r.Post("/auth/pairing/consume", wrapper.ConsumePairingToken)
 			r.Get("/server/info", wrapper.GetServerInfo)
 			r.Post("/server/setup/admin", wrapper.CreateAdmin)
 		})
 
-		// Authed group: everything else requires a live session,
-		// including the SSE activity stream.
+		// Authed non-streaming group: session management and pairing
+		// generation behind RequireSession, all inside the handler
+		// timeout. The timeout wraps the session middleware too, so
+		// even a wedged session lookup cannot pin a connection.
 		r.Group(func(r chi.Router) {
-			r.Use(s.requireSession)
+			r.Use(timeoutMiddleware(timeout), s.requireSession)
 			r.Post("/auth/logout", wrapper.Logout)
 			r.Get("/auth/sessions", wrapper.ListSessions)
 			r.Delete("/auth/sessions/{id}", wrapper.RevokeSession)
 			r.Post("/auth/pairing/token", wrapper.CreatePairingToken)
+		})
+
+		// Authed streaming group: the SSE activity stream. It requires
+		// a live session like the group above but deliberately runs
+		// OUTSIDE the handler timeout: http.TimeoutHandler buffers the
+		// response until the handler returns (it implements no
+		// Flusher) and cancels the request context at the deadline,
+		// which would stall and then cut a stream that is meant to
+		// outlive any bound; its liveness bound is the client
+		// connection, not a timer.
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireSession)
 			r.Get("/events", wrapper.GetEvents)
 		})
 	})
