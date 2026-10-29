@@ -799,6 +799,11 @@ func (failingEnqueuer) EnqueueMetadata(context.Context, uuid.UUID) error {
 	return errors.New("queue unavailable")
 }
 
+// EnqueueThumbnail implements AssetJobEnqueuer by always failing.
+func (failingEnqueuer) EnqueueThumbnail(context.Context, uuid.UUID) error {
+	return errors.New("queue unavailable")
+}
+
 // TestUploadAssetEnqueueFailureStillCreated pins the enqueue seam's
 // failure semantics: the enqueue happens AFTER the upload transaction
 // commits, so a failing queue cannot fail the response -- the upload
@@ -825,8 +830,8 @@ func TestUploadAssetEnqueueFailureStillCreated(t *testing.T) {
 	}
 
 	asset := env.assetByChecksum(t, sha256Hex(content))
-	if asset.PendingJobs != 1 {
-		t.Errorf("pending_jobs = %d, want the enqueued-but-never-run 1", asset.PendingJobs)
+	if asset.PendingJobs != 2 {
+		t.Errorf("pending_jobs = %d, want the enqueued-but-never-run 2", asset.PendingJobs)
 	}
 	if asset.ReadyAt.Valid {
 		t.Error("ready_at is set without a pipeline run, want NULL")

@@ -35,6 +35,17 @@ jobs:
           go-version: '1.26.x'
           cache-dependency-path: server/go.sum
 
+      # The media package is CGO: the govips binding compiles against
+      # libvips and libheif headers, so the lint/test/build steps below
+      # need them installed. ffmpeg rides along so the video poster
+      # pipeline's tests run here rather than only in the dev
+      # container (the metadata pipeline's exiftool stays dev-container
+      # only; its tests skip cleanly here).
+      - name: Install media toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvips-dev libheif-dev ffmpeg
+
       - name: Lint
         uses: golangci/golangci-lint-action@v7
         with:

@@ -36,6 +36,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/db/dbtest"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
 
@@ -189,8 +190,17 @@ func jsonRequest(method, target string, body []byte) (*httptest.ResponseRecorder
 // insertAsset stores content under the originals tree, inserts the
 // asset row with its exif placeholder, and returns the new asset id.
 // The path is relative to the data root, mirroring the receiver's
-// stored file_path form.
+// stored file_path form. The row pins the pipeline shape of the plain
+// metadata-only tests: image kind, one pending job.
 func (e *env) insertAsset(t *testing.T, rel string, content []byte, takenAt time.Time, placeholder string) uuid.UUID {
+	t.Helper()
+	return e.insertAssetKind(t, rel, content, takenAt, placeholder, dbgen.MediaKindImage, "image/jpeg", 1)
+}
+
+// insertAssetKind is insertAsset with the row's media kind, mime type,
+// and pending-jobs count explicit: the thumbnail tests drive video
+// rows and two-job pipelines through it.
+func (e *env) insertAssetKind(t *testing.T, rel string, content []byte, takenAt time.Time, placeholder string, kind dbgen.MediaKind, mimeType string, pendingJobs int32) uuid.UUID {
 	t.Helper()
 
 	path := filepath.Join(e.dataDir, filepath.FromSlash(rel))
@@ -212,10 +222,10 @@ func (e *env) insertAsset(t *testing.T, rel string, content []byte, takenAt time
 		Checksum:         "test-" + id.String(),
 		OriginalFilename: filepath.Base(rel),
 		FileSize:         int64(len(content)),
-		MimeType:         "image/jpeg",
-		MediaKind:        dbgen.MediaKindImage,
+		MimeType:         mimeType,
+		MediaKind:        kind,
 		TakenAt:          pgtype.Timestamptz{Time: takenAt, Valid: true},
-		PendingJobs:      1,
+		PendingJobs:      pendingJobs,
 	}); err != nil {
 		t.Fatalf("insert asset: %v", err)
 	}
@@ -429,6 +439,19 @@ func goldenNoOffsetFixture(t *testing.T) []byte {
 	data, err := os.ReadFile(filepath.Join("testdata", "golden-nooffset.jpg"))
 	if err != nil {
 		t.Fatalf("read no-offset golden fixture: %v", err)
+	}
+	return data
+}
+
+// goldenPerTagOffsetFixture reads the golden JPEG variant whose EXIF
+// carries DateTimeOriginal with ONLY the per-tag OffsetTimeOriginal
+// (no composite OffsetTime): the zone then resolves through that
+// per-tag offset, ahead of the device-declared zone.
+func goldenPerTagOffsetFixture(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "golden-offsetoriginal.jpg"))
+	if err != nil {
+		t.Fatalf("read per-tag offset golden fixture: %v", err)
 	}
 	return data
 }
@@ -740,9 +763,11 @@ func TestMetadataJobNoExifDate(t *testing.T) {
 
 // TestMetadataJobTakenAtZoneFallback pins the zone resolution chain
 // below the EXIF offset: DateTimeOriginal without OffsetTime resolves
-// through the device-declared IANA zone (recorded in tz_offset), and
-// without any zone at all it does not refine -- the upload's value
-// stands rather than a guessed-zone instant twelve hours wrong.
+// through the per-tag OffsetTimeOriginal when only that one is present
+// (many cameras write it exclusively), then through the device-declared
+// IANA zone, and without any zone at all it does not refine -- the
+// upload's value stands rather than a guessed-zone instant twelve
+// hours wrong.
 func TestMetadataJobTakenAtZoneFallback(t *testing.T) {
 	requireExiftool(t)
 	e := newEnv(t)
@@ -752,14 +777,17 @@ func TestMetadataJobTakenAtZoneFallback(t *testing.T) {
 		`{"deviceCreatedAt":"2019-06-15T06:00:00Z","deviceTimeZone":"Asia/Shanghai"}`)
 	withoutZone := e.insertAsset(t, "originals/fallback/none.jpg", goldenNoOffsetFixture(t), deviceTakenAt,
 		`{}`)
+	withPerTagOffset := e.insertAsset(t, "originals/fallback/pertag.jpg", goldenPerTagOffsetFixture(t), deviceTakenAt,
+		`{"deviceCreatedAt":"2019-06-15T06:00:00Z","deviceTimeZone":"Asia/Shanghai"}`)
 
-	for _, id := range []uuid.UUID{withZone, withoutZone} {
+	for _, id := range []uuid.UUID{withZone, withoutZone, withPerTagOffset} {
 		if err := e.queue.EnqueueMetadata(context.Background(), id); err != nil {
 			t.Fatalf("enqueue metadata job: %v", err)
 		}
 	}
-	eventually(t, jobWaitTimeout, "both fallback assets to become ready", func() bool {
-		return e.assetOf(t, withZone).readyAt.Valid && e.assetOf(t, withoutZone).readyAt.Valid
+	eventually(t, jobWaitTimeout, "the fallback assets to become ready", func() bool {
+		return e.assetOf(t, withZone).readyAt.Valid && e.assetOf(t, withoutZone).readyAt.Valid &&
+			e.assetOf(t, withPerTagOffset).readyAt.Valid
 	})
 
 	// 2023:07:14 10:15:30 in Asia/Shanghai (+08:00) is 02:15:30Z.
@@ -777,6 +805,26 @@ func TestMetadataJobTakenAtZoneFallback(t *testing.T) {
 	}
 	if zoneRow.tzOffset == nil || *zoneRow.tzOffset != "+08:00" {
 		t.Errorf("tz_offset = %v, want the device zone's offset +08:00", zoneRow.tzOffset)
+	}
+
+	// The per-tag offset wins over the device zone: the fixture's
+	// OffsetTimeOriginal +07:00 resolves DateTimeOriginal to 03:15:30Z
+	// -- NOT the Asia/Shanghai +08:00 instant the device zone would
+	// produce.
+	perTagState := e.assetOf(t, withPerTagOffset)
+	wantPerTagTakenAt := time.Date(2023, 7, 14, 3, 15, 30, 0, time.UTC)
+	if !perTagState.takenAt.Equal(wantPerTagTakenAt) {
+		t.Errorf("per-tag offset taken_at = %s, want %s", perTagState.takenAt, wantPerTagTakenAt)
+	}
+	if perTagState.source != "exif" {
+		t.Errorf("per-tag offset taken_at_source = %q, want exif", perTagState.source)
+	}
+	perTagRow, ok := e.exifOf(t, withPerTagOffset)
+	if !ok {
+		t.Fatal("exif row missing for the per-tag offset asset")
+	}
+	if perTagRow.tzOffset == nil || *perTagRow.tzOffset != "+07:00" {
+		t.Errorf("tz_offset = %v, want the per-tag offset +07:00", perTagRow.tzOffset)
 	}
 
 	// No zone anywhere: the wall clock is left unrefined.
@@ -866,11 +914,14 @@ func exifHotFieldsOf(row exifRow) string {
 }
 
 // TestUploadToReadyFullFlow is the mandated end-to-end: a multipart
-// upload through the HTTP endpoint enqueues the metadata job after
-// the transaction commits, the job refines the asset, and asset.ready
-// (with asset.uploaded before it) reaches the bus.
+// upload through the HTTP endpoint enqueues both pipeline jobs after
+// the transaction commits (pending_jobs starts at 2), the jobs refine
+// the asset and derive its serving copies, and asset.ready -- with
+// asset.uploaded before it -- reaches the bus exactly once, only after
+// BOTH jobs completed.
 func TestUploadToReadyFullFlow(t *testing.T) {
 	requireExiftool(t)
+	requireThumbnails(t)
 	e := newEnv(t)
 
 	golden := goldenFixture(t)
@@ -894,6 +945,11 @@ func TestUploadToReadyFullFlow(t *testing.T) {
 		t.Errorf("upload response taken_at = %s, want the device value", response.TakenAt.UTC())
 	}
 
+	// The uploader counts both jobs: readiness only follows their
+	// combined completion.
+	if state := e.assetOf(t, assetID); state.pending != 2 {
+		t.Errorf("pending_jobs right after upload = %d, want 2", state.pending)
+	}
 	eventually(t, jobWaitTimeout, "the uploaded asset to become ready", func() bool {
 		return e.assetOf(t, assetID).readyAt.Valid
 	})
@@ -907,6 +963,16 @@ func TestUploadToReadyFullFlow(t *testing.T) {
 	}
 	if state.source != "exif" {
 		t.Errorf("taken_at_source = %q, want exif", state.source)
+	}
+
+	// The thumbnail job ran too: the three AVIF serving copies exist
+	// (64x64 source: tile and view keep the source size) and the
+	// blurhash is stored on the row.
+	requireJobThumbDimensions(t, assetID, media.SizeTile, 64, 64)
+	requireJobThumbDimensions(t, assetID, media.SizeView, 64, 64)
+	requireJobThumbDimensions(t, assetID, media.SizeOriginal, 64, 64)
+	if hash := e.blurhashOf(t, assetID); !hash.Valid || len(hash.String) < 6 {
+		t.Errorf("blurhash = %v, want the stored non-empty hash", hash)
 	}
 
 	if got := countEvents(e.bus, "asset.uploaded"); got != 1 {
@@ -926,11 +992,14 @@ func TestUploadToReadyFullFlow(t *testing.T) {
 
 // TestUploadLivePhotoPipeline pins the Live Photo pipeline shape: the
 // upload enqueues a metadata job for BOTH rows (each carries an exif
-// sidecar to refine), but only the photo row's pipeline announces
-// readiness -- the component video's completion is the guarded
-// decrement's no-op, so asset.ready fires exactly once, for the photo.
+// sidecar to refine) and a thumbnail job for the photo row ONLY (the
+// component video is never the client-visible asset, so it gets no
+// poster and its counter stays empty) -- only the photo row's pipeline
+// announces readiness, and asset.ready fires exactly once, for the
+// photo.
 func TestUploadLivePhotoPipeline(t *testing.T) {
 	requireExiftool(t)
+	requireThumbnails(t)
 	e := newEnv(t)
 
 	golden := goldenFixture(t)
@@ -1003,6 +1072,15 @@ func TestUploadLivePhotoPipeline(t *testing.T) {
 	videoState := e.assetOf(t, videoID)
 	if videoState.readyAt.Valid {
 		t.Error("component video became ready, want it to stay outside the readiness pipeline")
+	}
+
+	// The photo's serving copies exist; the component video derives
+	// none (no thumbnail job was enqueued for it -- its directory is
+	// not even created).
+	requireJobThumbDimensions(t, photoID, media.SizeTile, 64, 64)
+	requireJobThumbDimensions(t, photoID, media.SizeOriginal, 64, 64)
+	if files := e.thumbFiles(t, videoID); files != nil {
+		t.Errorf("component video derived files = %v, want none", files)
 	}
 }
 

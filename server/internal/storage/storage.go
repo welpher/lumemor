@@ -137,6 +137,17 @@ func ThumbPath(assetID, size string) string {
 	return filepath.Join(dataRoot, "storage", "thumbs", assetID, size+".avif")
 }
 
+// PosterPath returns the path of the poster frame of a video asset
+// under the data root: storage/thumbs/<assetID>/poster.jpg. The poster
+// is a JPEG, not an AVIF thumbnail: it is extracted by ffmpeg from the
+// video's first frame, and Task 6 serves it wherever a video asset's
+// thumbnail is requested. It panics when EnsureLayout has not
+// succeeded yet.
+func PosterPath(assetID string) string {
+	requireDataRoot("PosterPath")
+	return filepath.Join(dataRoot, "storage", "thumbs", assetID, "poster.jpg")
+}
+
 // isHex reports whether s is a checksum in canonical form: at least
 // four lowercase hexadecimal characters, as produced by hex encoding a
 // digest. Uppercase digests are rejected so every content hash maps to

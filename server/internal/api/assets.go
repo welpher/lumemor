@@ -222,7 +222,7 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 		// not-ready, so a failure here is logged, not failed -- the
 		// upload itself succeeded, and failing the response would not
 		// undo the commit.
-		s.enqueueMetadataJobs(r, asset)
+		s.enqueueAssetJobs(r, asset)
 		s.publishAssetUploaded(asset)
 		s.writeJSON(w, http.StatusCreated, assetResponseFrom(asset, state))
 		return
@@ -465,11 +465,14 @@ func assetInsertParams(id, owner uuid.UUID, form uploadForm, up committedUpload,
 	}
 	originalFilename := up.partName
 	deviceAssetID := pgtype.Text{}
-	pendingJobs := int32(1)
+	// The pipeline count the uploader enqueues: the photo row's
+	// metadata job plus its thumbnail job (the main asset gets a
+	// thumbnail whatever its kind -- an image's three AVIF sizes, a
+	// video's poster frame). The component video row stays at 0: it is
+	// refined by the metadata job but is never the client-visible
+	// asset whose readiness the event announces.
+	pendingJobs := int32(2)
 	if isComponent {
-		// The component video row is refined by the metadata job like
-		// any other, but it is never the client-visible asset whose
-		// readiness the event announces, so its counter stays empty.
 		pendingJobs = 0
 	} else {
 		originalFilename = form.fileName
@@ -616,27 +619,35 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 	s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, details)
 }
 
-// enqueueMetadataJobs starts the pipeline of a committed upload: one
+// enqueueAssetJobs starts the pipeline of a committed upload: one
 // metadata job for the photo row and one for the Live Photo's
 // component video row (both carry exif sidecars the job refines; only
-// the photo's pipeline announces readiness). The request context is
-// still live at this point -- the response has not been written. A
-// failed enqueue logs and moves on: the upload is committed and its
-// idempotent re-upload resolves as duplicate without re-enqueueing, so
-// recovery from a lost job belongs to a future requeue sweep, not to
-// the response of this request.
-func (s *server) enqueueMetadataJobs(r *http.Request, asset dbgen.Asset) {
+// the photo's pipeline announces readiness), plus one thumbnail job
+// for the photo row itself -- image or video kind alike: an image gets
+// its three AVIF sizes, a video its poster frame. The component video
+// gets no thumbnail job: it is never the client-visible asset, and the
+// photo it belongs to already provides the timeline tile. The request
+// context is still live at this point -- the response has not been
+// written. A failed enqueue logs and moves on: the upload is committed
+// and its idempotent re-upload resolves as duplicate without
+// re-enqueueing, so recovery from a lost job belongs to a future
+// requeue sweep, not to the response of this request.
+func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset) {
 	if s.jobs == nil {
 		return
 	}
-	assetIDs := []uuid.UUID{uuid.UUID(asset.ID.Bytes)}
+	assetID := uuid.UUID(asset.ID.Bytes)
+	assetIDs := []uuid.UUID{assetID}
 	if asset.LivePhotoVideoID.Valid {
 		assetIDs = append(assetIDs, uuid.UUID(asset.LivePhotoVideoID.Bytes))
 	}
-	for _, assetID := range assetIDs {
-		if err := s.jobs.EnqueueMetadata(r.Context(), assetID); err != nil {
-			s.logger.Error("enqueue metadata job", "error", err, "asset_id", assetID)
+	for _, id := range assetIDs {
+		if err := s.jobs.EnqueueMetadata(r.Context(), id); err != nil {
+			s.logger.Error("enqueue metadata job", "error", err, "asset_id", id)
 		}
+	}
+	if err := s.jobs.EnqueueThumbnail(r.Context(), assetID); err != nil {
+		s.logger.Error("enqueue thumbnail job", "error", err, "asset_id", assetID)
 	}
 }
 

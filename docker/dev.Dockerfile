@@ -3,7 +3,8 @@
 # The host stays free of media dependencies: everything the server and
 # its tests need lives here -- the Go toolchain, libvips and libheif
 # headers for the CGO thumbnail pipeline, exiftool and ffmpeg for the
-# metadata pipeline, and the Docker CLI so testcontainers can start
+# metadata pipeline, golangci-lint so the lint gate runs where the CGO
+# package compiles, and the Docker CLI so testcontainers can start
 # throwaway PostgreSQL containers through the daemon socket mounted
 # from the host.
 #
@@ -24,6 +25,14 @@ ENV GOTOOLCHAIN=local
 # into the committed image.
 ARG APT_MIRROR=""
 
+# golangci-lint is pinned to the version the CI workflow runs, so the
+# containerized lint gate and CI agree. go install builds it from the
+# module proxy (the image has no curl); the GOPROXY build arg is passed
+# at build time from the host's go env, like the Makefile's docker run
+# flags -- the committed image itself carries no proxy configuration.
+ARG GOLANGCI_LINT_VERSION=v2.15.0
+ARG GOPROXY=""
+
 # Media and container tooling:
 # - libvips-dev / libheif-dev: headers for the CGO thumbnail pipeline;
 # - exiftool / ffmpeg: the metadata and video pipelines' subprocesses;
@@ -40,7 +49,43 @@ RUN if [ -n "$APT_MIRROR" ]; then \
         exiftool \
         ffmpeg \
         docker-cli \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && GOPROXY="${GOPROXY}" GOBIN=/usr/local/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$GOLANGCI_LINT_VERSION
+
+# libheif encoder plugins (aom for AVIF, x265 for HEIC). Debian trixie
+# ships libheif with decoder plugins only (dav1d, libde265) and no
+# encoder plugin packages at all, so the CGO thumbnail pipeline's AVIF
+# encoding would fail with "heifsave: Unsupported compression". The
+# plugins are therefore built from the source of the EXACT installed
+# libheif version (fetched from the Debian source archive, so no
+# GitHub access is needed) and dropped into the plugin directory the
+# installed libheif scans. The build toolchain is removed afterwards:
+# the runtime keeps only the two plugin .so files.
+RUN set -eux; \
+    main_uri="$(sed -n 's|^URIs: \(.*\)$|\1|p' /etc/apt/sources.list.d/debian.sources | sed -n 1p)"; \
+    security_uri="$(sed -n 's|^URIs: \(.*\)$|\1|p' /etc/apt/sources.list.d/debian.sources | sed -n 2p)"; \
+    keyring="$(sed -n 's|^Signed-By: \(.*\)$|\1|p' /etc/apt/sources.list.d/debian.sources | sed -n 1p)"; \
+    printf 'Types: deb-src\nURIs: %s\nSuites: trixie trixie-updates\nComponents: main\nSigned-By: %s\n\n' "$main_uri" "$keyring" > /etc/apt/sources.list.d/debian-src.sources; \
+    printf 'Types: deb-src\nURIs: %s\nSuites: trixie-security\nComponents: main\nSigned-By: %s\n\n' "$security_uri" "$keyring" >> /etc/apt/sources.list.d/debian-src.sources; \
+    apt-get update; \
+    buildDeps="cmake dpkg-dev libaom-dev libx265-dev"; \
+    apt-get install -y --no-install-recommends $buildDeps; \
+    heif_version="$(dpkg-query -W -f '${Version}' libheif1)"; \
+    mkdir -p /tmp/libheif-src; \
+    cd /tmp/libheif-src; \
+    apt-get source --download-only "libheif=$heif_version"; \
+    dpkg-source -x ./*.dsc unpacked; \
+    cmake -S unpacked -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DWITH_AOM_ENCODER=ON -DWITH_AOM_ENCODER_PLUGIN=ON \
+        -DWITH_X265=ON -DWITH_X265_PLUGIN=ON \
+        -DWITH_AOM_DECODER=OFF -DWITH_LIBDE265=OFF -DWITH_DAV1D=OFF \
+        -DWITH_EXAMPLES=OFF -DWITH_GDK_PIXBUF=OFF; \
+    cmake --build build --target heif-aomenc heif-x265 -j"$(nproc)"; \
+    plugin_dir="$(dirname "$(dpkg -L libheif-plugin-dav1d | grep 'libheif-dav1d\.so$')")"; \
+    cp build/libheif/plugins/libheif-aomenc.so build/libheif/plugins/libheif-x265.so "$plugin_dir/"; \
+    apt-get purge -y --auto-remove $buildDeps; \
+    rm -rf /tmp/libheif-src /etc/apt/sources.list.d/debian-src.sources /var/lib/apt/lists/*;
 
 # The default working directory matches the repository layout mounted
 # at /src by `make docker-test`: the Go module lives in server/.
