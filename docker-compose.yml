@@ -5,6 +5,12 @@
 # serves the first-run wizard at http://localhost:8244 until an
 # administrator account exists. The credentials below are fixed
 # development placeholders, not secrets.
+#
+# ./lumemor is the single storage root: the server keeps photo data
+# (originals, upload staging, derivatives) under data/ and models under
+# config/ inside it. Split them across volumes by pointing the
+# LUMEMOR_DATA_DIR and LUMEMOR_CONFIG_DIR variables below at additional
+# mounts; the defaults keep the zero-configuration single volume.
 
 services:
   db:
@@ -35,8 +41,12 @@ services:
     ports:
       # 8244 binds all interfaces so family devices can run the wizard from the LAN; this unauthenticated pre-setup window closes once the first admin exists.
       - "8244:8244"
+    volumes:
+      - ./lumemor:/var/lib/lumemor
     environment:
       LUMEMOR_DATABASE_URL: "postgres://lumemor:lumemor@db:5432/lumemor?sslmode=disable"
+      LUMEMOR_DATA_DIR: "/var/lib/lumemor/data"
+      LUMEMOR_CONFIG_DIR: "/var/lib/lumemor/config"
     # No app healthcheck in M1: /healthz exists, but compose-level
     # dependency gating on the server is deferred until the container
     # gains something meaningful to probe beyond liveness.
