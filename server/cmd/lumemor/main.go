@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/jobs"
+	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
 
@@ -38,10 +40,11 @@ const (
 
 	// queueStopTimeout bounds the job queue's graceful drain after the
 	// HTTP server stopped. It sits above the queue's internal soft stop
-	// timeout so a healthy metadata job (whose exiftool subprocess is
-	// capped at 30s) always finishes; anything wedged beyond it is
-	// dropped back to the queue and retried on the next start.
-	queueStopTimeout = 45 * time.Second
+	// timeout (which itself sits above the pipeline's largest job
+	// envelope, the thumbnail job's 90s) so a healthy job always
+	// finishes; anything wedged beyond it is dropped back to the queue
+	// and retried on the next start.
+	queueStopTimeout = 110 * time.Second
 )
 
 func main() {
@@ -73,6 +76,19 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	logger.Info("storage layout verified", "data_dir", cfg.DataDir, "config_dir", cfg.ConfigDir)
+
+	// libvips starts before anything can use it (the thumbnail job's
+	// workers) and shuts down after the job queue has drained: the
+	// deferred Shutdown therefore runs last, behind the queue's
+	// explicit Stop at the end of run. Startup is one-shot per
+	// process -- govips cannot restart it afterwards. The media
+	// package owns the libvips seam so this file carries no direct
+	// CGO import.
+	if err := media.Startup(); err != nil {
+		return fmt.Errorf("start libvips: %w", err)
+	}
+	defer media.Shutdown()
+	logger.Info("libvips started", "version", media.LibvipsVersion())
 
 	// Boot-time sweep of the upload staging directory: a single
 	// process just started, so nothing can be in flight and anything

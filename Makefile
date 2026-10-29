@@ -92,7 +92,10 @@ APT_MIRROR ?=
 
 .PHONY: docker-test
 docker-test:
-	docker build -f docker/dev.Dockerfile --build-arg APT_MIRROR=$(APT_MIRROR) -t $(DEV_IMAGE) .
+	docker build -f docker/dev.Dockerfile \
+		--build-arg APT_MIRROR=$(APT_MIRROR) \
+		--build-arg GOPROXY=$(shell go env GOPROXY) \
+		-t $(DEV_IMAGE) .
 	docker run --rm \
 		-v $(CURDIR):/src \
 		-w /src/server \
@@ -103,3 +106,25 @@ docker-test:
 		$(TEST_ENV) \
 		$(DEV_IMAGE) \
 		go test ./...
+
+# Lint the server inside the dev container: the media package is CGO
+# (govips/libvips), so the lint toolchain must run where libvips
+# headers exist -- a host without them cannot even compile the package
+# being linted. The container carries golangci-lint (pinned to the CI
+# version), and the run covers the full Go gate set: gofmt -l (any
+# output fails), go vet, then golangci-lint.
+.PHONY: docker-lint
+docker-lint:
+	docker build -f docker/dev.Dockerfile \
+		--build-arg APT_MIRROR=$(APT_MIRROR) \
+		--build-arg GOPROXY=$(shell go env GOPROXY) \
+		-t $(DEV_IMAGE) .
+	docker run --rm \
+		-v $(CURDIR):/src \
+		-w /src/server \
+		-v gocache:/root/.cache/go-build \
+		-v gomodcache:/go/pkg/mod \
+		-e GOPROXY=$(shell go env GOPROXY) \
+		$(TEST_ENV) \
+		$(DEV_IMAGE) \
+		sh -c 'unformatted=$$(gofmt -l .); if [ -n "$$unformatted" ]; then echo "gofmt needed on:" $$unformatted; exit 1; fi && go vet ./... && golangci-lint run'

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -65,7 +64,7 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 		return fmt.Errorf("load asset: %w", err)
 	}
 
-	path, err := w.assetPath(row.FilePath)
+	path, err := resolveAssetPath(w.dataDir, row.FilePath)
 	if err != nil {
 		return fmt.Errorf("resolve file of asset %s: %w", assetID, err)
 	}
@@ -80,9 +79,10 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	}
 
 	// The taken-at chain: EXIF DateTimeOriginal resolved with an
-	// offset (the EXIF OffsetTime tag, else the device-declared time
-	// zone from the upload sidecar) refines taken_at; without a
-	// resolvable zone the upload's value stands (see resolveExifTime).
+	// offset (the EXIF OffsetTime tag, else the per-tag
+	// OffsetTimeOriginal, else the device-declared time zone from the
+	// upload sidecar) refines taken_at; without a resolvable zone the
+	// upload's value stands (see resolveExifTime).
 	exifTime, ok := resolveExifTime(tags, deviceTimeZone(row.Exif))
 
 	tx, err := w.pool.Begin(ctx)
@@ -124,20 +124,6 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 		})
 	}
 	return nil
-}
-
-// assetPath resolves the asset's stored relative file path against the
-// data root and refuses anything that would leave the originals tree.
-// file_path values are server-generated (content-addressed by the
-// upload receiver), so this guard is defense in depth against a
-// corrupted row, not an input validation layer.
-func (w *MetadataWorker) assetPath(rel string) (string, error) {
-	originals := filepath.Join(w.dataDir, "originals") + string(filepath.Separator)
-	abs := filepath.Join(w.dataDir, filepath.FromSlash(rel))
-	if !strings.HasPrefix(abs, originals) {
-		return "", fmt.Errorf("file path %q escapes the originals tree", rel)
-	}
-	return abs, nil
 }
 
 // parseExiftoolJSON decodes the -json output of an invocation over one
@@ -191,8 +177,9 @@ type resolvedTime struct {
 }
 
 // resolveExifTime turns the EXIF DateTimeOriginal wall clock into an
-// instant. The zone resolution chain: the EXIF OffsetTime tag, then
-// the device-declared IANA time zone of the upload. If neither yields
+// instant. The zone resolution chain: the EXIF OffsetTime tag, the
+// per-tag OffsetTimeOriginal (many cameras write only that one), then
+// the device-declared IANA time zone of the upload. If none yields
 // a zone, the time is NOT refined: an EXIF wall clock interpreted in
 // a guessed zone can be twelve hours wrong, which is strictly worse
 // than the device-reported instant the upload already recorded, so
@@ -212,6 +199,14 @@ func resolveExifTime(tags map[string]any, deviceZone string) (resolvedTime, bool
 	}
 
 	if offset, ok := tagString(tags, "OffsetTime"); ok {
+		if seconds, ok := parseOffset(offset); ok {
+			return resolveWithFixedZone(wall, seconds), true
+		}
+	}
+	// Many cameras write only the per-tag offset next to the capture
+	// time, never the composite OffsetTime, so it is the next link of
+	// the chain before the device-declared zone.
+	if offset, ok := tagString(tags, "OffsetTimeOriginal"); ok {
 		if seconds, ok := parseOffset(offset); ok {
 			return resolveWithFixedZone(wall, seconds), true
 		}
@@ -299,6 +294,11 @@ func exifParams(assetID pgtype.UUID, tags map[string]any, raw []byte, exifTime r
 // taken_at is set only when the EXIF time resolved (ok); the SQL then
 // moves the value and flips taken_at_source to 'exif', and a NULL
 // leaves the upload's chain untouched.
+//
+// Dimensions are stored in sensor order, deliberately NOT
+// orientation-corrected: the file reports them that way, and the
+// serving copies handle orientation themselves at render time
+// (libvips auto-rotates when it derives the thumbnails).
 func refineParams(assetID pgtype.UUID, tags map[string]any, exifTime resolvedTime, ok bool) dbgen.RefineAssetFromMetadataParams {
 	params := dbgen.RefineAssetFromMetadataParams{
 		ID:         assetID,

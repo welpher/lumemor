@@ -32,9 +32,11 @@ const maxWorkers = 4
 // softStopTimeout bounds a graceful drain: once it elapses, in-flight
 // job contexts are cancelled (River escalates the soft stop to a hard
 // one) instead of the drain waiting forever. It sits above the
-// exiftool timeout so a healthy metadata job always finishes within
-// the drain.
-const softStopTimeout = 35 * time.Second
+// pipeline's largest job envelope -- the thumbnail job's 90s (whose
+// ffmpeg subprocess carries a 60s cap of its own; the metadata job's
+// exiftool only 30s) -- so a healthy job always finishes within the
+// drain.
+const softStopTimeout = 95 * time.Second
 
 // Config carries the dependencies of the job queue.
 type Config struct {
@@ -100,6 +102,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		dataDir: cfg.DataDir,
 		logger:  logger,
 	})
+	river.AddWorker(workers, &ThumbnailWorker{
+		pool:    cfg.Pool,
+		bus:     cfg.Bus,
+		dataDir: cfg.DataDir,
+		logger:  logger,
+	})
 
 	workerCount := cfg.Workers
 	if workerCount <= 0 {
@@ -116,7 +124,9 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		// Everything else keeps River's defaults: the default retry
 		// policy (25 attempts, exponential backoff) and the one minute
 		// job timeout. The metadata job's exiftool subprocess carries
-		// its own tighter 30 second bound inside that envelope.
+		// its own tighter 30 second bound inside that envelope; the
+		// thumbnail job raises its envelope to 90s for the ffmpeg
+		// poster extraction's 60s budget (see ThumbnailWorker.Timeout).
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jobs: create river client: %w", err)
@@ -139,6 +149,19 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 func (q *Queue) EnqueueMetadata(ctx context.Context, assetID uuid.UUID) error {
 	if _, err := q.client.Insert(ctx, MetadataArgs{AssetID: assetID}, nil); err != nil {
 		return fmt.Errorf("insert metadata job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueThumbnail inserts the thumbnail job for the asset. Like
+// EnqueueMetadata it must run after the upload transaction committed:
+// the job reads the asset row (and its file) that the transaction
+// wrote. Re-enqueueing runs the job again idempotently: the derivations
+// overwrite the same output paths, the guarded readiness decrement
+// does not fire twice, and no second asset.ready event is published.
+func (q *Queue) EnqueueThumbnail(ctx context.Context, assetID uuid.UUID) error {
+	if _, err := q.client.Insert(ctx, ThumbnailArgs{AssetID: assetID}, nil); err != nil {
+		return fmt.Errorf("insert thumbnail job: %w", err)
 	}
 	return nil
 }

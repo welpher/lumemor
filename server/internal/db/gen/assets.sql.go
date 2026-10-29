@@ -345,6 +345,25 @@ func (q *Queries) RefineAssetFromMetadata(ctx context.Context, arg RefineAssetFr
 	return err
 }
 
+const updateAssetBlurhash = `-- name: UpdateAssetBlurhash :exec
+UPDATE assets SET blurhash = $2, updated_at = now()
+WHERE id = $1
+`
+
+type UpdateAssetBlurhashParams struct {
+	ID       pgtype.UUID `json:"id"`
+	Blurhash pgtype.Text `json:"blurhash"`
+}
+
+// The thumbnail job's write: stores the blurhash the job computed from
+// the tile (image assets) or the poster frame (video assets). The
+// value converges on re-runs (the same derivation over the same bytes
+// yields the same hash), so the update is idempotent.
+func (q *Queries) UpdateAssetBlurhash(ctx context.Context, arg UpdateAssetBlurhashParams) error {
+	_, err := q.db.Exec(ctx, updateAssetBlurhash, arg.ID, arg.Blurhash)
+	return err
+}
+
 const updateExifFromMetadata = `-- name: UpdateExifFromMetadata :exec
 INSERT INTO exif (
     asset_id, exif, camera_make, camera_model, lens, iso, aperture,

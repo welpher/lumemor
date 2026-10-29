@@ -53,9 +53,10 @@ type Deps struct {
 	// (production wiring, tests) is responsible for a usable value.
 	UploadLimitBytes int64
 	// Jobs enqueues pipeline jobs for uploaded assets: the upload
-	// handler enqueues the metadata job after its transaction commits.
-	// Nil keeps the upload working without a queue (tests, wiring
-	// order); the assets simply stay not-ready until one runs.
+	// handler enqueues the metadata job and the thumbnail job after its
+	// transaction commits. Nil keeps the upload working without a queue
+	// (tests, wiring order); the assets simply stay not-ready until one
+	// runs.
 	Jobs AssetJobEnqueuer
 }
 
@@ -66,6 +67,11 @@ type AssetJobEnqueuer interface {
 	// EnqueueMetadata inserts the metadata job of the asset. It must
 	// only be called once the asset's rows are committed.
 	EnqueueMetadata(ctx context.Context, assetID uuid.UUID) error
+	// EnqueueThumbnail inserts the thumbnail job of the asset (the
+	// three AVIF sizes of an image, the poster frame of a video). Like
+	// the metadata job it must only be called once the asset's rows
+	// are committed.
+	EnqueueThumbnail(ctx context.Context, assetID uuid.UUID) error
 }
 
 // NewRouter builds the HTTP routes of the server: the operational

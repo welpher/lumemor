@@ -139,3 +139,11 @@ UPDATE assets SET
     updated_at   = now()
 WHERE id = $1 AND pending_jobs > 0
 RETURNING (ready_at IS NOT NULL)::boolean AS became_ready, media_kind;
+
+-- name: UpdateAssetBlurhash :exec
+-- The thumbnail job's write: stores the blurhash the job computed from
+-- the tile (image assets) or the poster frame (video assets). The
+-- value converges on re-runs (the same derivation over the same bytes
+-- yields the same hash), so the update is idempotent.
+UPDATE assets SET blurhash = $2, updated_at = now()
+WHERE id = $1;
