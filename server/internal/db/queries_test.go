@@ -159,8 +159,13 @@ func TestSessionQueries(t *testing.T) {
 
 	// All expiry comparisons happen against the database clock inside
 	// the queries, so fixtures are anchored to the real now with
-	// margins far larger than any clock skew.
-	now := time.Now()
+	// margins far larger than any clock skew. Truncated to microseconds
+	// because PostgreSQL stores timestamptz at microsecond precision:
+	// Linux wall clocks carry nanoseconds, and an untruncated Go time
+	// can never round-trip Equal against a database value there (macOS
+	// clocks happen to be microsecond-resolution, which is why this
+	// only fails on the CI runners).
+	now := time.Now().Truncate(time.Microsecond)
 
 	t.Run("CreateAndLookupByTokenHash", func(t *testing.T) {
 		id, raw, hash := newSessionFixture(t, ctx, queries, ada.ID, gen.SessionKindWeb, now, now.Add(30*24*time.Hour))
