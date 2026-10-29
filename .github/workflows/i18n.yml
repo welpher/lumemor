@@ -12,6 +12,7 @@ on:
       - 'i18n/**'
       - 'openapi/lumemor.yaml'
       - 'scripts/check_i18n.py'
+      - 'scripts/test_check_i18n.sh'
       - '.github/workflows/i18n.yml'
   push:
     branches: [main]
@@ -19,6 +20,7 @@ on:
       - 'i18n/**'
       - 'openapi/lumemor.yaml'
       - 'scripts/check_i18n.py'
+      - 'scripts/test_check_i18n.sh'
       - '.github/workflows/i18n.yml'
 
 permissions:
@@ -34,10 +36,15 @@ jobs:
 
       # The two check families run as separate steps so a red build is
       # easy to attribute in the CI log; locally
-      # `python3 scripts/check_i18n.py` runs both in one go, and
-      # `scripts/test_check_i18n.sh` exercises the negative fixtures.
+      # `python3 scripts/check_i18n.py` runs both in one go. The
+      # self-test step afterwards runs the negative fixtures of
+      # `scripts/test_check_i18n.sh`, so the checker's own failure
+      # behavior is exercised in CI too, not only locally.
       - name: Check translation files
         run: python3 scripts/check_i18n.py --translations-only
 
       - name: Cross-check error codes against i18n keys
         run: python3 scripts/check_i18n.py --error-codes-only
+
+      - name: i18n check self-test
+        run: bash scripts/test_check_i18n.sh
