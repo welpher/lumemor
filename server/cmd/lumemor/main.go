@@ -17,6 +17,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/storage"
 )
 
 const (
@@ -45,9 +46,9 @@ func main() {
 	}
 }
 
-// run executes the server lifecycle: load config, connect to the database
-// and apply migrations, start the HTTP server, then shut down gracefully on
-// SIGINT/SIGTERM.
+// run executes the server lifecycle: load config, prepare the storage
+// layout, connect to the database and apply migrations, start the HTTP
+// server, then shut down gracefully on SIGINT/SIGTERM.
 func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -56,6 +57,14 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+
+	// Fail fast on unusable storage mounts: the layout must exist and
+	// upload staging must share a filesystem with the originals
+	// directory so uploads can finalize with an atomic rename.
+	if err := storage.EnsureLayout(cfg.DataDir, cfg.ConfigDir); err != nil {
+		return err
+	}
+	logger.Info("storage layout verified", "data_dir", cfg.DataDir, "config_dir", cfg.ConfigDir)
 
 	pool, err := db.Connect(ctx, cfg.DatabaseURL, dbConnectWait)
 	if err != nil {
