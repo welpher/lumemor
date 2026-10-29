@@ -17,6 +17,11 @@ info:
       is an English technical description for debugging and is never
       localized. Client UIs translate `code` through their i18n tables
       (translation key = the lowercase error code).
+    - Web clients authenticate with the `lumemor_session` cookie issued
+      by `POST /auth/login`; mobile clients hold the bearer token issued
+      by `POST /auth/pairing/consume` and send it as
+      `Authorization: Bearer`. Both credentials front the same session
+      records.
     - System timestamps (`createdAt`, ...) are RFC 3339 UTC (`Z`).
     - IDs are UUIDv7.
   contact:
@@ -29,9 +34,493 @@ servers:
   - url: /api/v1
     description: Instance-local API served by the Go binary.
 tags:
+  - name: auth
+    description: Login, session management and device pairing.
+  - name: events
+    description: Server-sent activity stream.
   - name: server
     description: Instance discovery and first-run setup.
 paths:
+  /auth/login:
+    post:
+      operationId: login
+      tags:
+        - auth
+      summary: Exchange credentials for a web session.
+      description: |
+        The login endpoint of web clients: a valid email and password
+        create a new web session. The session credential is the
+        `lumemor_session` cookie set by this response (HttpOnly,
+        SameSite=Strict, Secure over HTTPS); the body describes the
+        session for the account view and the device list. Mobile
+        devices never log in here -- they pair through
+        `POST /auth/pairing/consume` and hold a bearer token instead.
+
+        Web sessions slide their expiry by 30 days on use. Failed
+        attempts are rate limited per address and account: after a
+        burst of failures the endpoint answers 429 and the lockout
+        grows with each further attempt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: |
+            A web session was created. The credential travels in the
+            Set-Cookie header and is not repeated in the body.
+          headers:
+            Set-Cookie:
+              description: |
+                Session cookie of the new web session: HttpOnly,
+                SameSite=Strict, Secure when the instance is reached
+                over HTTPS, sliding 30-day expiry.
+              schema:
+                type: string
+              example: lumemor_session=<opaque>; Path=/; HttpOnly; SameSite=Strict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionInfo'
+              examples:
+                browserSession:
+                  summary: A browser that just signed in.
+                  value:
+                    id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                    kind: web
+                    deviceName: Firefox on macOS
+                    createdAt: '2026-10-29T08:30:00Z'
+                    lastSeenAt: '2026-10-29T08:30:00Z'
+                    expiresAt: '2026-11-28T08:30:00Z'
+        '400':
+          description: |
+            The request body is not a valid login payload, for example
+            a malformed email or a missing password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: Missing or invalid fields.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: password is required
+                    details:
+                      fields:
+                        - password
+        '401':
+          description: The credentials do not match an account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: invalid email or password
+        '429':
+          description: |
+            Too many failed attempts for this address and account; the
+            lockout grows with each further attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                rateLimited:
+                  value:
+                    code: AUTH_RATE_LIMITED
+                    message: too many failed attempts, retry later
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/logout:
+    post:
+      operationId: logout
+      tags:
+        - auth
+      summary: Revoke the current session.
+      description: |
+        Signs the caller out by revoking the session that
+        authenticates the request -- the web cookie session and the
+        mobile bearer session are the same session records. On web
+        clients the response also clears the session cookie. A request
+        made with an already-revoked session fails authentication with
+        401 before reaching this handler.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '204':
+          description: The session was revoked; the response has no body.
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/sessions:
+    get:
+      operationId: listSessions
+      tags:
+        - auth
+      summary: List the caller's active sessions.
+      description: |
+        Returns every active session of the authenticated user across
+        devices -- web cookie sessions and mobile bearer sessions --
+        most recently used first. The device management view (signing
+        out other devices) is this list plus
+        `DELETE /auth/sessions/{id}`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Active sessions of the caller, most recently used first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionInfo'
+              examples:
+                mixedDevices:
+                  summary: A browser and a paired phone.
+                  value:
+                    - id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                      kind: web
+                      deviceName: Firefox on macOS
+                      createdAt: '2026-10-01T08:30:00Z'
+                      lastSeenAt: '2026-10-29T21:05:00Z'
+                      expiresAt: '2026-11-28T21:05:00Z'
+                    - id: 0192f3b2-4c5d-7e8f-8a9b-0c1d2e3f4a5b
+                      kind: mobile
+                      deviceName: Pixel 9
+                      createdAt: '2026-10-02T10:12:00Z'
+                      lastSeenAt: '2026-10-28T18:40:00Z'
+                      expiresAt: null
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/sessions/{id}:
+    delete:
+      operationId: revokeSession
+      tags:
+        - auth
+      summary: Revoke one of the caller's sessions.
+      description: |
+        Signs out one device by revoking the session with the given
+        id, for example from the device management list. Sessions are
+        scoped to their owner and the delete follows set semantics:
+        an id that is unknown, belongs to another user, or is already
+        revoked still answers 204, without revealing whether such a
+        session exists. Revoking the session of the current request
+        behaves like logout.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identifier of the session to revoke.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: |
+            The session is revoked (or never was); the response has no
+            body.
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/pairing/token:
+    post:
+      operationId: createPairingToken
+      tags:
+        - auth
+      summary: Create a one-time device pairing token.
+      description: |
+        Issues the secret behind the add-a-family-device QR code: a
+        signed-in user opens the pairing page, and the new device scans
+        the rendered code and redeems it at
+        `POST /auth/pairing/consume` to gain a session of that user.
+
+        The token encodes 128 random bits as a URL-safe string, can be
+        consumed once within five minutes, and is stored only as a
+        hash, so a leaked database cannot redeem it. Creation is rate
+        limited per user to stop farming QR codes.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            The pairing token; render it as a QR code immediately, it
+            expires within five minutes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairingTokenResponse'
+              examples:
+                freshToken:
+                  summary: A token valid for five minutes.
+                  value:
+                    token: q73x9QmV2pZ8sL4wR6tY0A
+                    expiresAt: '2026-10-29T09:00:00Z'
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '429':
+          description: |
+            The user exhausted the pairing token budget; retry after
+            it resets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                rateLimited:
+                  value:
+                    code: AUTH_RATE_LIMITED
+                    message: pairing token budget exhausted
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/pairing/consume:
+    post:
+      operationId: consumePairingToken
+      tags:
+        - auth
+      summary: Exchange a pairing token for a mobile session.
+      description: |
+        Completes device pairing: the mobile app scans the QR code and
+        posts the token together with its device metadata. The server
+        burns the one-time token and returns the bearer credential of
+        a new mobile session of the user who created the token.
+
+        Bearer sessions never expire; the app holds the token until
+        the session is revoked -- from the device list, by logging the
+        device out, or by a password change, which revokes every
+        session of the user. The server stores only the hash of the
+        token, so it appears exactly once, in this response; a device
+        that loses it must pair again.
+
+        Failed attempts are rate limited to stop guessing tokens.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PairingConsumeRequest'
+      responses:
+        '200':
+          description: |
+            The mobile session was created; `session.kind` is always
+            `mobile` here.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BearerSession'
+              examples:
+                pairedPhone:
+                  summary: A phone that just paired.
+                  value:
+                    token: 8N3Jz5xqKv2RtW9mY4bC7dFgH1jL6p0s
+                    session:
+                      id: 0192f3b2-4c5d-7e8f-8a9b-0c1d2e3f4a5b
+                      kind: mobile
+                      deviceName: Pixel 9
+                      createdAt: '2026-10-29T08:31:00Z'
+                      lastSeenAt: '2026-10-29T08:31:00Z'
+                      expiresAt: null
+        '400':
+          description: |
+            The request body is not a valid pairing payload, for
+            example a missing device name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: Missing or invalid fields.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: deviceName is required
+                    details:
+                      fields:
+                        - deviceName
+        '401':
+          description: |
+            The token is unknown, expired or already consumed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                tokenInvalid:
+                  value:
+                    code: PAIRING_TOKEN_INVALID
+                    message: pairing token is invalid or expired
+        '429':
+          description: Too many failed attempts from this address.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                rateLimited:
+                  value:
+                    code: AUTH_RATE_LIMITED
+                    message: too many failed attempts, retry later
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /events:
+    get:
+      operationId: getEvents
+      tags:
+        - events
+      summary: Stream instance activity over server-sent events.
+      description: |
+        The activity stream of the instance, authenticated like the
+        REST API: the web session cookie and the mobile bearer token
+        both open the stream.
+
+        Every event is one `text/event-stream` block: `event:` carries
+        the event name, `id:` a monotonically increasing number, and
+        `data:` the JSON payload -- the resource id plus a summary of
+        the changed fields. Event names follow
+        `<resource>.<past-tense verb>`:
+
+        - `asset.uploaded`, `asset.ready`, `asset.updated`,
+          `asset.trashed`, `asset.restored`, `asset.deleted`
+        - `album.created`, `album.updated`, `album.deleted`,
+          `album.items-changed`, `album.shared`, `album.unshared`
+        - `face.cluster-updated`
+        - `job.progress`, `job.finished`
+        - `model.changed`
+        - `session.started`, `session.revoked`
+        - `server.settings-changed`
+
+        The server keeps the last five minutes of events in a ring
+        buffer. Browser EventSource clients reconnect automatically and
+        resend `Last-Event-ID`; the server replays everything newer
+        than that id, and events that fell out of the ring are skipped.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: |
+            The id of the last received event, resent automatically by
+            browser EventSource implementations on reconnect. When
+            present, the server replays the events newer than this id
+            from its five-minute ring buffer; events that fell out of
+            the ring are skipped.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: |
+            The stream is open. Each block carries `event: <name>`,
+            `id: <n>` and `data: <json payload>`.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: The event stream could not be started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /server/info:
     get:
       operationId: getServerInfo
@@ -125,6 +614,133 @@ paths:
                     message: an administrator account already exists
 components:
   schemas:
+    LoginRequest:
+      type: object
+      description: Credentials of `POST /auth/login`.
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Login address of the account.
+        password:
+          type: string
+          format: password
+          description: Account password; never echoed in any response.
+          examples:
+            - correct horse battery staple
+    SessionInfo:
+      type: object
+      description: |
+        One authenticated session of a user. Web sessions authenticate
+        through the `lumemor_session` cookie and mobile sessions
+        through their bearer token; both are the same session records
+        and appear together in `GET /auth/sessions`.
+      required:
+        - id
+        - kind
+        - createdAt
+        - lastSeenAt
+        - expiresAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 identifier of the session.
+        kind:
+          type: string
+          description: |
+            Where the session credential lives: `web` sessions ride
+            the `lumemor_session` cookie and slide their expiry by 30
+            days on use; `mobile` sessions ride a bearer token and are
+            revoked explicitly.
+          enum:
+            - web
+            - mobile
+        deviceName:
+          type: string
+          description: |
+            Human-readable device label of the session. For web
+            sessions it is the browser user agent captured at login;
+            mobile sessions carry the name supplied during pairing.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the session was created (RFC 3339 UTC).
+        lastSeenAt:
+          type: string
+          format: date-time
+          description: When the session was last used (RFC 3339 UTC).
+        expiresAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: |
+            When the session expires (RFC 3339 UTC). Null for bearer
+            sessions, which are revoked explicitly instead of
+            expiring.
+    PairingTokenResponse:
+      type: object
+      description: The one-time pairing token issued by `POST /auth/pairing/token`.
+      required:
+        - token
+        - expiresAt
+      properties:
+        token:
+          type: string
+          description: |
+            One-time pairing secret, 128 random bits as a URL-safe
+            string. Render it as a QR code and never store or log it;
+            the server keeps only its hash.
+        expiresAt:
+          type: string
+          format: date-time
+          description: |
+            When the token expires (RFC 3339 UTC); five minutes after
+            issuance.
+    PairingConsumeRequest:
+      type: object
+      description: Payload of `POST /auth/pairing/consume`.
+      required:
+        - token
+        - deviceName
+        - deviceId
+      properties:
+        token:
+          type: string
+          description: The pairing token read from the QR code.
+        deviceName:
+          type: string
+          description: |
+            Human-readable device label shown in the session list,
+            for example `Pixel 9`.
+        deviceId:
+          type: string
+          description: |
+            Stable client-generated identifier of the physical device,
+            for example a UUID the app persists; it lets the server
+            recognize the same device across pairings.
+    BearerSession:
+      type: object
+      description: |
+        The mobile session minted by consuming a pairing token: the
+        bearer credential plus the session it authenticates.
+      required:
+        - token
+        - session
+      properties:
+        token:
+          type: string
+          description: |
+            Bearer credential of the new mobile session; send it as
+            `Authorization: Bearer <token>`. It appears only in this
+            response, and the server stores only its hash: a device
+            that loses it must pair again.
+        session:
+          $ref: '#/components/schemas/SessionInfo'
     ServerInfo:
       type: object
       description: Instance capability report served by `GET /server/info`.
@@ -221,11 +837,16 @@ components:
           enum:
             - SETUP_ALREADY_COMPLETED
             - VALIDATION_FAILED
+            - INTERNAL
+            - AUTH_INVALID_CREDENTIALS
+            - AUTH_RATE_LIMITED
+            - PAIRING_TOKEN_INVALID
         message:
           type: string
           description: English technical description for debugging.
         details:
           type: object
+          additionalProperties: true
           description: |
             Optional structured context, for example the offending field
             names of a `VALIDATION_FAILED` request. Its shape is
@@ -239,11 +860,14 @@ components:
       in: cookie
       name: lumemor_session
       description: |
-        Web session cookie issued after login (Secure + HttpOnly). Declared
-        for documentation; operations bind it starting with M2.
+        Web session cookie issued by `POST /auth/login`: HttpOnly,
+        SameSite=Strict, Secure when the instance is reached over
+        HTTPS, sliding 30-day expiry.
     bearerAuth:
       type: http
       scheme: bearer
       description: |
-        Mobile pairing token or API key sent as `Authorization: Bearer`.
-        Declared for documentation; operations bind it starting with M2.
+        Mobile session token issued by `POST /auth/pairing/consume`,
+        sent as `Authorization: Bearer`. It is the mobile form of the
+        same session records the cookie authenticates; both are
+        revoked together.

@@ -20,7 +20,7 @@ void main() {
     });
 
     // Optional structured context, for example the offending field names of a `VALIDATION_FAILED` request. Its shape is code-specific. 
-    // JsonObject details
+    // BuiltMap<String, JsonObject> details
     test('to test the property `details`', () async {
       // TODO
     });

@@ -76,7 +76,14 @@ func NewRouter(deps *Deps) *chi.Mux {
 }
 
 // server implements apigen.ServerInterface on top of the injected Deps.
+// It embeds apigen.Unimplemented so that every endpoint not yet
+// overridden answers 501; implemented endpoints (GetServerInfo,
+// CreateAdmin today) override the promoted methods. Later milestones
+// keep adding overrides one operation at a time -- do not restructure
+// this embed.
 type server struct {
+	apigen.Unimplemented
+
 	// pool begins the setup transaction; queries serves read paths.
 	pool    *pgxpool.Pool
 	queries *dbgen.Queries
