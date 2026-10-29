@@ -98,7 +98,7 @@ func (s *server) CreateAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	// The rollback is a no-op after a successful commit; arguments are
 	// captured while the request context is still live.
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
 
 	if _, err := tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock($1)", firstRunSetupLockKey); err != nil {
 		s.internalError(w, r, "acquire setup lock", err)
