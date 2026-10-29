@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -51,6 +52,20 @@ type Deps struct {
 	// 413 ASSET_TOO_LARGE. Zero rejects every upload -- the caller
 	// (production wiring, tests) is responsible for a usable value.
 	UploadLimitBytes int64
+	// Jobs enqueues pipeline jobs for uploaded assets: the upload
+	// handler enqueues the metadata job after its transaction commits.
+	// Nil keeps the upload working without a queue (tests, wiring
+	// order); the assets simply stay not-ready until one runs.
+	Jobs AssetJobEnqueuer
+}
+
+// AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
+// between the upload handler and the job queue: production passes the
+// jobs package's Queue, which implements it structurally.
+type AssetJobEnqueuer interface {
+	// EnqueueMetadata inserts the metadata job of the asset. It must
+	// only be called once the asset's rows are committed.
+	EnqueueMetadata(ctx context.Context, assetID uuid.UUID) error
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
@@ -89,6 +104,8 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		// valid (reject-everything) configuration, not a request for
 		// a default -- production wiring owns the value.
 		uploadLimit: deps.UploadLimitBytes,
+		// The job queue seam: nil is a valid (no pipeline) wiring.
+		jobs: deps.Jobs,
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
@@ -224,6 +241,9 @@ type server struct {
 	dataDir string
 	// uploadLimit caps each uploaded file.
 	uploadLimit int64
+	// jobs enqueues the pipeline jobs of a committed upload; nil means
+	// no queue is wired and uploads simply stay not-ready.
+	jobs AssetJobEnqueuer
 }
 
 // writeJSON emits v as the JSON response body with the given status.

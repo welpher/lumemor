@@ -790,6 +790,52 @@ func TestUploadAssetRequiresSession(t *testing.T) {
 	}
 }
 
+// failingEnqueuer rejects every enqueue, standing in for a broken
+// queue behind the upload endpoint's job seam.
+type failingEnqueuer struct{}
+
+// EnqueueMetadata implements AssetJobEnqueuer by always failing.
+func (failingEnqueuer) EnqueueMetadata(context.Context, uuid.UUID) error {
+	return errors.New("queue unavailable")
+}
+
+// TestUploadAssetEnqueueFailureStillCreated pins the enqueue seam's
+// failure semantics: the enqueue happens AFTER the upload transaction
+// commits, so a failing queue cannot fail the response -- the upload
+// succeeded, its event still fires, and the asset simply stays
+// not-ready (its pending pipeline job never started).
+func TestUploadAssetEnqueueFailureStillCreated(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	env.router = NewRouter(&Deps{
+		Pool:             env.pool,
+		Version:          testVersion,
+		Events:           env.bus,
+		DataDir:          env.dataDir,
+		UploadLimitBytes: testUploadLimit,
+		Jobs:             failingEnqueuer{},
+	})
+
+	content := jpegFixture(t)
+	rec := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-noqueue",
+		"fileName":      "IMG_noqueue.jpg",
+	}, []assetUploadFile{{field: "photo", name: "IMG_noqueue.jpg", content: content}})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("upload with failing queue status = %d, want %d (body %q)", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	asset := env.assetByChecksum(t, sha256Hex(content))
+	if asset.PendingJobs != 1 {
+		t.Errorf("pending_jobs = %d, want the enqueued-but-never-run 1", asset.PendingJobs)
+	}
+	if asset.ReadyAt.Valid {
+		t.Error("ready_at is set without a pipeline run, want NULL")
+	}
+	if got := countAssetUploadedEvents(t, env.bus); got != 1 {
+		t.Errorf("asset.uploaded events = %d, want 1: the upload itself succeeded", got)
+	}
+}
+
 // TestUploadAssetValidatesStructure walks the structural contract of
 // the multipart body: required fields, unknown parts, duplicate file
 // parts, and value validation. None of the rejected bodies may stage

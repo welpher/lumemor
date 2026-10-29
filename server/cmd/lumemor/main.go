@@ -17,6 +17,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/jobs"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
 
@@ -34,6 +35,13 @@ const (
 	// contract: GET /api/v1/events replays this much history on
 	// reconnect.
 	eventRetention = 5 * time.Minute
+
+	// queueStopTimeout bounds the job queue's graceful drain after the
+	// HTTP server stopped. It sits above the queue's internal soft stop
+	// timeout so a healthy metadata job (whose exiftool subprocess is
+	// capped at 30s) always finishes; anything wedged beyond it is
+	// dropped back to the queue and retried on the next start.
+	queueStopTimeout = 45 * time.Second
 )
 
 func main() {
@@ -97,6 +105,22 @@ func run(logger *slog.Logger) error {
 	// in M2a) and every connected stream follows them.
 	bus := events.NewBus(eventRetention, time.Now)
 
+	// The job queue starts only after the schema exists: River applies
+	// its own table migrations here (river_job and friends live outside
+	// the goose schema by design), then the workers begin consuming.
+	// Its lifecycle is owned by the explicit Stop below, not by this
+	// context -- a cancelled context would be a hard stop.
+	queue, err := jobs.Start(ctx, jobs.Config{
+		Pool:    pool,
+		Bus:     bus,
+		DataDir: cfg.DataDir,
+		Logger:  logger,
+	})
+	if err != nil {
+		return err
+	}
+	logger.Info("job queue started")
+
 	srv := &http.Server{
 		Addr: cfg.Listen,
 		Handler: api.NewRouter(&api.Deps{
@@ -108,6 +132,9 @@ func run(logger *slog.Logger) error {
 			// data root and honors the configured per-file size limit.
 			DataDir:          cfg.DataDir,
 			UploadLimitBytes: cfg.UploadLimitBytes,
+			// The upload handler enqueues the metadata job of every
+			// committed asset through the queue.
+			Jobs: queue,
 			Initialized: func(ctx context.Context) bool {
 				admins, err := queries.CountAdmins(ctx)
 				if err != nil {
@@ -139,7 +166,17 @@ func run(logger *slog.Logger) error {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return err
 	}
-
 	logger.Info("server stopped")
+
+	// Drain the job queue after the HTTP surface went quiet: no new
+	// enqueues can arrive, in-flight jobs finish, and the bounded wait
+	// keeps a wedged job from stalling the shutdown forever (the queue
+	// cancels stragglers itself after its soft stop timeout).
+	queueCtx, queueCancel := context.WithTimeout(context.Background(), queueStopTimeout)
+	defer queueCancel()
+	if err := queue.Stop(queueCtx); err != nil {
+		logger.Error("drain job queue", "error", err)
+	}
+	logger.Info("job queue stopped")
 	return nil
 }

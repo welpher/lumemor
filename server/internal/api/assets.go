@@ -215,6 +215,14 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if state == apigen.Created {
+		// The transaction committed: the asset's rows are durable and
+		// visible, so the pipeline may start. Enqueueing earlier (inside
+		// the transaction) would race the job's reads against the
+		// commit; enqueueing never at all leaves the asset honestly
+		// not-ready, so a failure here is logged, not failed -- the
+		// upload itself succeeded, and failing the response would not
+		// undo the commit.
+		s.enqueueMetadataJobs(r, asset)
 		s.publishAssetUploaded(asset)
 		s.writeJSON(w, http.StatusCreated, assetResponseFrom(asset, state))
 		return
@@ -457,7 +465,13 @@ func assetInsertParams(id, owner uuid.UUID, form uploadForm, up committedUpload,
 	}
 	originalFilename := up.partName
 	deviceAssetID := pgtype.Text{}
-	if !isComponent {
+	pendingJobs := int32(1)
+	if isComponent {
+		// The component video row is refined by the metadata job like
+		// any other, but it is never the client-visible asset whose
+		// readiness the event announces, so its counter stays empty.
+		pendingJobs = 0
+	} else {
 		originalFilename = form.fileName
 		deviceAssetID = pgtype.Text{String: form.deviceAssetID, Valid: true}
 	}
@@ -474,6 +488,7 @@ func assetInsertParams(id, owner uuid.UUID, form uploadForm, up committedUpload,
 		IsComponent:      isComponent,
 		DeviceAssetID:    deviceAssetID,
 		TakenAt:          pgtype.Timestamptz{Time: takenAt, Valid: true},
+		PendingJobs:      pendingJobs,
 	}
 }
 
@@ -599,6 +614,30 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 		details = &wrapped
 	}
 	s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, details)
+}
+
+// enqueueMetadataJobs starts the pipeline of a committed upload: one
+// metadata job for the photo row and one for the Live Photo's
+// component video row (both carry exif sidecars the job refines; only
+// the photo's pipeline announces readiness). The request context is
+// still live at this point -- the response has not been written. A
+// failed enqueue logs and moves on: the upload is committed and its
+// idempotent re-upload resolves as duplicate without re-enqueueing, so
+// recovery from a lost job belongs to a future requeue sweep, not to
+// the response of this request.
+func (s *server) enqueueMetadataJobs(r *http.Request, asset dbgen.Asset) {
+	if s.jobs == nil {
+		return
+	}
+	assetIDs := []uuid.UUID{uuid.UUID(asset.ID.Bytes)}
+	if asset.LivePhotoVideoID.Valid {
+		assetIDs = append(assetIDs, uuid.UUID(asset.LivePhotoVideoID.Bytes))
+	}
+	for _, assetID := range assetIDs {
+		if err := s.jobs.EnqueueMetadata(r.Context(), assetID); err != nil {
+			s.logger.Error("enqueue metadata job", "error", err, "asset_id", assetID)
+		}
+	}
 }
 
 // publishAssetUploaded reports the upload onto the activity stream:
