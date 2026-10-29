@@ -7,12 +7,39 @@ void main() {
   final instance = LumemorApi().getAssetsApi();
 
   group(AssetsApi, () {
+    // Fetch the detail of one owned asset.
+    //
+    // The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- which the asset detail view renders.  Access is owner-only: an id that belongs to another account answers the same 404 `ASSET_NOT_FOUND` as an id that does not exist, byte for byte, so asset ids cannot be enumerated. Album sharing and ACLs widen access for shared content in a later milestone (M2c, with the album domain); until then only the owner's own assets answer.  A trashed asset answers 200 with `isTrashed: true` -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the future playback endpoint resolves it through `livePhotoVideoId`) but never appears in the timeline. 
+    //
+    //Future<AssetDetail> getAsset(String id) async
+    test('test getAsset', () async {
+      // TODO
+    });
+
     // Look up an uploaded asset by its device identifier.
     //
     // The backup idempotency probe: the app asks, before uploading a local file, whether its `deviceAssetId` already exists for this account, and skips the upload when it does.  The lookup is owner-scoped -- a `deviceAssetId` of another user's asset is invisible and answers 404. The `state` field mirrors what a re-upload of the same content would produce: `duplicate` when the asset is live, `trashed` when it sits in the trash (the client can then offer restore or save-as-new before spending bandwidth). 404 means the device has not uploaded this identifier (or only under another account). 
     //
     //Future<AssetResponse> getAssetByDeviceId(String deviceAssetId) async
     test('test getAssetByDeviceId', () async {
+      // TODO
+    });
+
+    // Download the original file of one owned asset.
+    //
+    // Streams the stored original bytes as a download. It is available immediately after the upload: the original is the uploaded content-addressed file itself, not a pipeline product.  The download is always an attachment: `Content-Disposition: attachment; filename*=UTF-8''...` with the original file name escaped per RFC 5987 -- every byte outside the attribute character set is percent-encoded, which rules out header injection and in-browser rendering alike (SVG is not in the upload whitelist, so the download-only rule covers every stored format). `Content-Type` is the asset's stored MIME type. The response carries the same `ETag` and `Cache-Control` validators as the thumbnail (the original bytes are content-addressed, hence immutable).  Byte ranges follow the Go standard library's `ServeContent` semantics: a satisfiable single range answers 206 with `Content-Range`; multiple ranges answer a `multipart/byteranges` body; an unsatisfiable range answers 416 with the total size in `Content-Range`; a malformed Range header is ignored and the full body answers 200.  The same owner-only download gate as every asset endpoint: foreign and unknown ids answer byte-identical 404 `ASSET_NOT_FOUND`. 
+    //
+    //Future<Uint8List> getAssetOriginal(String id) async
+    test('test getAssetOriginal', () async {
+      // TODO
+    });
+
+    // Serve a derived thumbnail, or a video's poster frame.
+    //
+    // The static serving copy of the asset:  - image assets: the AVIF thumbnail of the requested size --   `tile` (fits the 250px timeline box), `view` (long edge   capped at 1080px), `original` (the full-resolution   re-encode) -- served as `image/avif`; - video assets: the poster frame, whatever `size` says -- the   poster (the first frame, scaled into the tile box) is the   video's only serving copy until transcodes exist -- served   as `image/jpeg`.  The response is a private immutable static asset: `Cache-Control: private, max-age=31536000, immutable`, and a strong `ETag` built from the first 16 hex characters of the asset's checksum (quoted). A matching `If-None-Match` answers 304 with the same validators and no body. Conditional requests and byte ranges otherwise follow the Go standard library's `ServeContent` semantics.  The asset exists but its derived file is absent -- the thumbnail job has not run yet, or failed and is retrying -- answers 404 `ASSET_NOT_READY`: the client renders the blurhash or a placeholder and waits for the `asset.ready` event instead of treating the asset as gone. `ASSET_NOT_FOUND`, by contrast, means the id is unknown or not the caller's; the owner-only anti-enumeration of the detail endpoint applies here too, with byte-identical 404 bodies for foreign and unknown ids.  `size` must be one of the three values below; anything else (including a missing `size`) answers 400 `VALIDATION_FAILED`. 
+    //
+    //Future<Uint8List> getAssetThumbnail(String id, String size) async
+    test('test getAssetThumbnail', () async {
       // TODO
     });
 

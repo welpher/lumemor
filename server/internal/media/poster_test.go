@@ -67,9 +67,10 @@ func TestGeneratePoster(t *testing.T) {
 }
 
 // TestGeneratePosterOverwritesSamePath pins the poster idempotency: a
-// second run over the same video rewrites the same poster.jpg -- one
-// file, no duplicate beside it (ffmpeg's fixed argv carries no -y; the
-// previous poster is removed first).
+// second run over the same video converges to the same single
+// poster.jpg -- one file, no duplicate and no temporary residue beside
+// it (each run stages its frame in a unique temporary file and
+// renames it onto the poster).
 func TestGeneratePosterOverwritesSamePath(t *testing.T) {
 	requireFFmpeg(t)
 	dataDir := newMediaEnv(t)
@@ -99,7 +100,8 @@ func TestGeneratePosterOverwritesSamePath(t *testing.T) {
 
 // TestGeneratePosterUndecodableVideo fails cleanly on a file that is
 // not a video: ffmpeg's bounded stderr rides along in the error, the
-// poster file is not left behind.
+// poster file is not left behind, and neither is any temporary
+// staging residue.
 func TestGeneratePosterUndecodableVideo(t *testing.T) {
 	requireFFmpeg(t)
 	dataDir := newMediaEnv(t)
@@ -111,6 +113,19 @@ func TestGeneratePosterUndecodableVideo(t *testing.T) {
 	}
 	if _, statErr := os.Stat(storage.PosterPath(assetID)); statErr == nil {
 		t.Error("poster exists after a failed extraction, want none")
+	}
+	// The staging directory of the failed extraction holds nothing:
+	// the temporary frame file was removed, not stranded.
+	entries, listErr := os.ReadDir(filepath.Dir(storage.PosterPath(assetID)))
+	if listErr != nil {
+		t.Fatalf("list poster directory: %v", listErr)
+	}
+	if len(entries) != 0 {
+		names := make([]string, len(entries))
+		for i, entry := range entries {
+			names[i] = entry.Name()
+		}
+		t.Errorf("poster directory after a failed extraction = %v, want it empty", names)
 	}
 }
 

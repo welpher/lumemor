@@ -21,7 +21,7 @@ abstract class Error implements Built<Error, ErrorBuilder> {
   /// Stable error code. The i18n translation key is the lowercase form of this value. 
   @BuiltValueField(wireName: r'code')
   ErrorCodeEnum get code;
-  // enum codeEnum {  SETUP_ALREADY_COMPLETED,  VALIDATION_FAILED,  INTERNAL,  AUTH_INVALID_CREDENTIALS,  AUTH_RATE_LIMITED,  PAIRING_TOKEN_INVALID,  ASSET_TOO_LARGE,  ASSET_NOT_FOUND,  };
+  // enum codeEnum {  SETUP_ALREADY_COMPLETED,  VALIDATION_FAILED,  INTERNAL,  AUTH_INVALID_CREDENTIALS,  AUTH_RATE_LIMITED,  PAIRING_TOKEN_INVALID,  ASSET_TOO_LARGE,  ASSET_NOT_FOUND,  ASSET_NOT_READY,  };
 
   /// English technical description for debugging.
   @BuiltValueField(wireName: r'message')
@@ -168,6 +168,8 @@ class ErrorCodeEnum extends EnumClass {
   static const ErrorCodeEnum ASSET_TOO_LARGE = _$errorCodeEnum_ASSET_TOO_LARGE;
   @BuiltValueEnumConst(wireName: r'ASSET_NOT_FOUND')
   static const ErrorCodeEnum ASSET_NOT_FOUND = _$errorCodeEnum_ASSET_NOT_FOUND;
+  @BuiltValueEnumConst(wireName: r'ASSET_NOT_READY')
+  static const ErrorCodeEnum ASSET_NOT_READY = _$errorCodeEnum_ASSET_NOT_READY;
 
   static Serializer<ErrorCodeEnum> get serializer => _$errorCodeEnumSerializer;
 

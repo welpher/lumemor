@@ -20,6 +20,7 @@ import (
 
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/storage"
 )
 
 // MetadataArgs identifies the asset whose file the metadata job
@@ -64,7 +65,7 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 		return fmt.Errorf("load asset: %w", err)
 	}
 
-	path, err := resolveAssetPath(w.dataDir, row.FilePath)
+	path, err := storage.ResolveStoredPath(w.dataDir, row.FilePath)
 	if err != nil {
 		return fmt.Errorf("resolve file of asset %s: %w", assetID, err)
 	}

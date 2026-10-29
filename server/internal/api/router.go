@@ -182,10 +182,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 			})
 
 			// Authed non-streaming group: session management, pairing
-			// generation and the asset idempotency probe behind
-			// RequireSession, all inside the handler timeout. The
-			// timeout wraps the session middleware too, so even a
-			// wedged session lookup cannot pin a connection.
+			// generation and the asset reads behind RequireSession, all
+			// inside the handler timeout. The timeout wraps the session
+			// middleware too, so even a wedged session lookup cannot pin a
+			// connection. The asset detail and the thumbnail serving
+			// belong here: both answer from one row read plus bounded
+			// bytes -- the detail is a small JSON document, the derived
+			// files are re-encoded copies of at most a few megabytes.
 			r.Group(func(r chi.Router) {
 				r.Use(timeoutMiddleware(timeout), s.requireSession)
 				r.Post("/auth/logout", wrapper.Logout)
@@ -193,6 +196,8 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Delete("/auth/sessions/{id}", wrapper.RevokeSession)
 				r.Post("/auth/pairing/token", wrapper.CreatePairingToken)
 				r.Get("/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)
+				r.Get("/assets/{id}", wrapper.GetAsset)
+				r.Get("/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
 			})
 
 			// Authed streaming group: the SSE activity stream. It
@@ -218,6 +223,24 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireSession)
 			r.Post("/assets", wrapper.UploadAsset)
+		})
+
+		// Authed media download group: GET /assets/{id}/original
+		// streams the stored original file, whose size is bounded only
+		// by the per-file upload limit (2 GiB by default) and whose
+		// transfer runs at client speed. It requires a session like
+		// every authed route but deliberately runs OUTSIDE the handler
+		// timeout, mirroring the upload and SSE exemptions:
+		// http.TimeoutHandler buffers the whole response until the
+		// handler returns (see timeoutMiddleware), so a wrapped
+		// original download would first read the entire file into
+		// memory and only then let its first byte reach the client --
+		// an unbounded per-request memory commitment. The handler
+		// itself stays bounded: one row read, one file open, then
+		// http.ServeContent streams the bytes.
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireSession)
+			r.Get("/assets/{id}/original", wrapper.GetAssetOriginal)
 		})
 	})
 	return r

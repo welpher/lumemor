@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"image/jpeg"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,32 +54,44 @@ var posterScaleFilter = fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=dec
 
 // GeneratePoster extracts the first frame of the video at originalPath
 // into storage/thumbs/<assetID>/poster.jpg and returns the blurhash
-// computed from that poster. It runs idempotently: the fixed argv
-// writes to the same path every time, and the destination is removed
-// first because ffmpeg without -y refuses to overwrite -- so a re-run
-// converges to the same single file, no duplicates.
+// computed from that poster. It runs idempotently and atomically: the
+// frame lands in a uniquely named temporary file beside the poster
+// and is renamed into place only once it is complete, so a re-run
+// converges to the same single file with no duplicates, and a
+// concurrent reader never observes a partial poster. A failed
+// extraction removes the temporary file and leaves the previous
+// poster (if any) untouched.
 //
 // The ctx bounds the ffmpeg subprocess (timeout, cancellation); the
 // blurhash itself decodes the small JPEG in-process.
 func GeneratePoster(ctx context.Context, originalPath, assetID string) (string, error) {
-	outPath, err := posterPath(assetID)
+	dir, outPath, err := posterTarget(assetID)
 	if err != nil {
 		return "", err
 	}
-	// The overwrite discipline: ffmpeg's fixed argv carries no -y, so
-	// the previous run's poster is removed first. A missing file is
-	// the expected first-run case.
-	if err := os.Remove(outPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("clear old poster of asset %s: %w", assetID, err)
+	// The frame lands in a scratch directory beside the poster: its
+	// file cannot pre-exist (ffmpeg's fixed argv carries no -y, so it
+	// refuses existing outputs), the rename onto the poster publishes
+	// only complete bytes, and the deferred cleanup removes the
+	// emptied directory -- or the residue of a failed run.
+	scratch, cleanup, err := stageTempDir(dir)
+	if err != nil {
+		return "", err
 	}
+	defer cleanup()
+	staged := filepath.Join(scratch, "poster.jpg")
 
-	if err := extractPosterFrame(ctx, originalPath, outPath); err != nil {
+	if err := extractPosterFrame(ctx, originalPath, staged); err != nil {
 		return "", fmt.Errorf("extract poster of %s: %w", originalPath, err)
 	}
 
-	hash, err := posterBlurhash(outPath)
+	hash, err := posterBlurhash(staged)
 	if err != nil {
 		return "", err
+	}
+
+	if err := os.Rename(staged, outPath); err != nil {
+		return "", fmt.Errorf("publish poster of asset %s: %w", assetID, err)
 	}
 	return hash, nil
 }
@@ -122,13 +133,15 @@ func extractPosterFrame(ctx context.Context, inputPath, outPath string) error {
 	return nil
 }
 
-// posterPath resolves the poster output path and creates its directory.
-func posterPath(assetID string) (string, error) {
-	outPath := storage.PosterPath(assetID)
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-		return "", fmt.Errorf("create poster directory of asset %s: %w", assetID, err)
+// posterTarget resolves the poster output directory and path and
+// creates the directory.
+func posterTarget(assetID string) (dir, outPath string, err error) {
+	outPath = storage.PosterPath(assetID)
+	dir = filepath.Dir(outPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", "", fmt.Errorf("create poster directory of asset %s: %w", assetID, err)
 	}
-	return outPath, nil
+	return dir, outPath, nil
 }
 
 // stderrOf extracts the captured stderr of a failed command, bounded

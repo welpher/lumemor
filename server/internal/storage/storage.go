@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // dataRoot is the photo data root recorded by the last successful
@@ -146,6 +147,25 @@ func ThumbPath(assetID, size string) string {
 func PosterPath(assetID string) string {
 	requireDataRoot("PosterPath")
 	return filepath.Join(dataRoot, "storage", "thumbs", assetID, "poster.jpg")
+}
+
+// ResolveStoredPath resolves an asset's stored relative file path --
+// the portable slash-separated form the upload receiver records in
+// file_path, relative to the data root -- against the given data root
+// and refuses anything that would leave the originals tree. file_path
+// values are server-generated (content-addressed by the upload
+// receiver), so the guard is defense in depth against a corrupted
+// row, not an input validation layer; the API's media endpoints and
+// both pipeline jobs resolve their input through it. Unlike the path
+// helpers above it works on any data root, not the one recorded by
+// EnsureLayout: the callers hold the data root they were wired with.
+func ResolveStoredPath(dataDir, rel string) (string, error) {
+	originals := filepath.Join(dataDir, "originals") + string(filepath.Separator)
+	abs := filepath.Join(dataDir, filepath.FromSlash(rel))
+	if !strings.HasPrefix(abs, originals) {
+		return "", fmt.Errorf("storage: file path %q escapes the originals tree", rel)
+	}
+	return abs, nil
 }
 
 // isHex reports whether s is a checksum in canonical form: at least

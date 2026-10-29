@@ -394,8 +394,8 @@ func TestUploadAssetCreateState(t *testing.T) {
 	if asset.State != apigen.Created {
 		t.Errorf("state = %q, want %q", asset.State, apigen.Created)
 	}
-	if asset.Kind != apigen.Image {
-		t.Errorf("kind = %q, want %q", asset.Kind, apigen.Image)
+	if asset.Kind != apigen.AssetResponseKindImage {
+		t.Errorf("kind = %q, want %q", asset.Kind, apigen.AssetResponseKindImage)
 	}
 	if asset.Checksum != checksum {
 		t.Errorf("checksum = %q, want %q", asset.Checksum, checksum)
@@ -653,8 +653,8 @@ func TestUploadAssetLivePhoto(t *testing.T) {
 		t.Fatalf("live photo upload status = %d, want %d (body %q)", rec.Code, http.StatusCreated, rec.Body.String())
 	}
 	asset := decodeAsset(t, rec)
-	if asset.Kind != apigen.Image {
-		t.Errorf("response kind = %q, want %q (the photo is the asset)", asset.Kind, apigen.Image)
+	if asset.Kind != apigen.AssetResponseKindImage {
+		t.Errorf("response kind = %q, want %q (the photo is the asset)", asset.Kind, apigen.AssetResponseKindImage)
 	}
 
 	// The photo row links to the video row, which is a component
