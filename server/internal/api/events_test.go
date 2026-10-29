@@ -126,7 +126,7 @@ func TestGetEvents(t *testing.T) {
 					id, name, data, want.id, want.name, want.data)
 			}
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// The reconnect: publish an increment, then connect again with
 		// Last-Event-ID naming the last block already seen. Only the
@@ -149,7 +149,7 @@ func TestGetEvents(t *testing.T) {
 			t.Errorf("live block after reconnect = {id %s, event %s, data %s}, want {id %s, event %s, data %s}",
 				id, name, data, want, "test.delta", `{"k":"d"}`)
 		}
-		resp2.Body.Close()
+		_ = resp2.Body.Close()
 	})
 
 	t.Run("Heartbeat", func(t *testing.T) {
@@ -158,7 +158,7 @@ func TestGetEvents(t *testing.T) {
 		defer func() { sseHeartbeatInterval = oldInterval }()
 
 		resp := getEvents(t, client, server, cookie, "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		body := bufio.NewReader(resp.Body)
 		for {
