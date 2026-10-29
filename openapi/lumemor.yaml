@@ -60,6 +60,7 @@ paths:
         attempts are rate limited per address and account: after a
         burst of failures the endpoint answers 429 and the lockout
         grows with each further attempt.
+      security: []
       requestBody:
         required: true
         content:
@@ -126,6 +127,14 @@ paths:
           description: |
             Too many failed attempts for this address and account; the
             lockout grows with each further attempt.
+          headers:
+            Retry-After:
+              description: |
+                Seconds until the lockout ends and another attempt is
+                accepted; clients must not retry before it elapses.
+              schema:
+                type: integer
+              example: 900
           content:
             application/json:
               schema:
@@ -268,6 +277,22 @@ paths:
           description: |
             The session is revoked (or never was); the response has no
             body.
+        '400':
+          description: |
+            The path id is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: Malformed session id.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: invalid request parameter
+                    details:
+                      fields:
+                        - id
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -432,6 +457,14 @@ paths:
                     message: pairing token is invalid or expired
         '429':
           description: Too many failed attempts from this address.
+          headers:
+            Retry-After:
+              description: |
+                Seconds until the lockout ends and another attempt is
+                accepted; clients must not retry before it elapses.
+              schema:
+                type: integer
+              example: 900
           content:
             application/json:
               schema:
@@ -502,6 +535,24 @@ paths:
             text/event-stream:
               schema:
                 type: string
+        '400':
+          description: |
+            The `Last-Event-ID` header is not a single non-negative
+            integer, for example a malformed value or a duplicated
+            header.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: Malformed or duplicated Last-Event-ID.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: Last-Event-ID must be a non-negative integer
+                    details:
+                      fields:
+                        - Last-Event-ID
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
