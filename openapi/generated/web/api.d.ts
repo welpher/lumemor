@@ -530,6 +530,12 @@ export interface operations {
              */
             429: {
                 headers: {
+                    /**
+                     * @description Seconds until the lockout ends and another attempt is
+                     *     accepted; clients must not retry before it elapses.
+                     * @example 900
+                     */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -648,6 +654,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The path id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
             /**
              * @description Authentication is missing or no longer valid: the cookie
@@ -777,6 +792,12 @@ export interface operations {
             /** @description Too many failed attempts from this address. */
             429: {
                 headers: {
+                    /**
+                     * @description Seconds until the lockout ends and another attempt is
+                     *     accepted; clients must not retry before it elapses.
+                     * @example 900
+                     */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -822,6 +843,19 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": string;
+                };
+            };
+            /**
+             * @description The `Last-Event-ID` header is not a single non-negative
+             *     integer, for example a malformed value or a duplicated
+             *     header.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /**

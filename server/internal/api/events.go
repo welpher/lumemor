@@ -21,12 +21,10 @@ var sseHeartbeatInterval = 15 * time.Second
 // It subscribes to the bus with the Last-Event-ID header as the
 // resumption cursor -- the retention ring replays everything newer,
 // events that fell out of the ring are skipped -- then follows live
-// publishes until the client disconnects.
-//
-// NOTE: deliberately unauthenticated for now (M2a Task 2). Task 3
-// introduces the RequireSession middleware and the authed route group
-// and moves this route into it, which puts the stream behind auth
-// without changing this handler.
+// publishes until the client disconnects. The route lives in the
+// authed group of the router, so the stream opens only for a request
+// the session middleware already authenticated (cookie or bearer --
+// the same session records as the REST API).
 func (s *server) GetEvents(w http.ResponseWriter, r *http.Request, params apigen.GetEventsParams) {
 	if s.events == nil {
 		// The router is wired without a bus; production wiring always
