@@ -46,7 +46,7 @@ func TestHandlerTimeout(t *testing.T) {
 		client.Timeout = streamTimeout
 
 		resp := getEvents(t, client, server, cookie, "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("GET /api/v1/events: status = %d, want %d", resp.StatusCode, http.StatusOK)
 		}
