@@ -12,6 +12,11 @@ Conventions shared by every endpoint:
   is an English technical description for debugging and is never
   localized. Client UIs translate `code` through their i18n tables
   (translation key = the lowercase error code).
+- Web clients authenticate with the `lumemor_session` cookie issued
+  by `POST /auth/login`; mobile clients hold the bearer token issued
+  by `POST /auth/pairing/consume` and send it as
+  `Authorization: Bearer`. Both credentials front the same session
+  records.
 - System timestamps (`createdAt`, ...) are RFC 3339 UTC (`Z`).
 - IDs are UUIDv7.
 
@@ -63,14 +68,14 @@ Please follow the [installation procedure](#installation--usage) and then run th
 import 'package:lumemor_api/lumemor_api.dart';
 
 
-final api = LumemorApi().getServerApi();
-final CreateAdminRequest createAdminRequest = ; // CreateAdminRequest | 
+final api = LumemorApi().getAuthApi();
+final PairingConsumeRequest pairingConsumeRequest = ; // PairingConsumeRequest | 
 
 try {
-    final response = await api.createAdmin(createAdminRequest);
+    final response = await api.consumePairingToken(pairingConsumeRequest);
     print(response);
 } on DioException catch (e) {
-    print("Exception when calling ServerApi->createAdmin: $e\n");
+    print("Exception when calling AuthApi->consumePairingToken: $e\n");
 }
 
 ```
@@ -81,15 +86,27 @@ All URIs are relative to */api/v1*
 
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
+[*AuthApi*](doc/AuthApi.md) | [**consumePairingToken**](doc/AuthApi.md#consumepairingtoken) | **POST** /auth/pairing/consume | Exchange a pairing token for a mobile session.
+[*AuthApi*](doc/AuthApi.md) | [**createPairingToken**](doc/AuthApi.md#createpairingtoken) | **POST** /auth/pairing/token | Create a one-time device pairing token.
+[*AuthApi*](doc/AuthApi.md) | [**listSessions**](doc/AuthApi.md#listsessions) | **GET** /auth/sessions | List the caller&#39;s active sessions.
+[*AuthApi*](doc/AuthApi.md) | [**login**](doc/AuthApi.md#login) | **POST** /auth/login | Exchange credentials for a web session.
+[*AuthApi*](doc/AuthApi.md) | [**logout**](doc/AuthApi.md#logout) | **POST** /auth/logout | Revoke the current session.
+[*AuthApi*](doc/AuthApi.md) | [**revokeSession**](doc/AuthApi.md#revokesession) | **DELETE** /auth/sessions/{id} | Revoke one of the caller&#39;s sessions.
+[*EventsApi*](doc/EventsApi.md) | [**getEvents**](doc/EventsApi.md#getevents) | **GET** /events | Stream instance activity over server-sent events.
 [*ServerApi*](doc/ServerApi.md) | [**createAdmin**](doc/ServerApi.md#createadmin) | **POST** /server/setup/admin | Create the first administrator account.
 [*ServerApi*](doc/ServerApi.md) | [**getServerInfo**](doc/ServerApi.md#getserverinfo) | **GET** /server/info | Report instance version and feature switches.
 
 
 ## Documentation For Models
 
+ - [BearerSession](doc/BearerSession.md)
  - [CreateAdminRequest](doc/CreateAdminRequest.md)
  - [Error](doc/Error.md)
+ - [LoginRequest](doc/LoginRequest.md)
+ - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
+ - [PairingTokenResponse](doc/PairingTokenResponse.md)
  - [ServerInfo](doc/ServerInfo.md)
+ - [SessionInfo](doc/SessionInfo.md)
  - [User](doc/User.md)
 
 

@@ -1,6 +1,8 @@
 # Continuous integration for the translation files: run the i18n
 # consistency checks (flat structure, snake_case keys, key-set parity
-# with en.json, ICU placeholder parity).
+# with en.json, ICU placeholder parity) and cross-check the Error.code
+# enum of openapi/lumemor.yaml against the translation keys in both
+# directions (every code has a lowercased key, no orphan keys).
 
 name: i18n
 
@@ -8,13 +10,17 @@ on:
   pull_request:
     paths:
       - 'i18n/**'
+      - 'openapi/lumemor.yaml'
       - 'scripts/check_i18n.py'
+      - 'scripts/test_check_i18n.sh'
       - '.github/workflows/i18n.yml'
   push:
     branches: [main]
     paths:
       - 'i18n/**'
+      - 'openapi/lumemor.yaml'
       - 'scripts/check_i18n.py'
+      - 'scripts/test_check_i18n.sh'
       - '.github/workflows/i18n.yml'
 
 permissions:
@@ -22,11 +28,23 @@ permissions:
 
 jobs:
   i18n:
-    name: translation consistency
+    name: i18n consistency
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
 
+      # The two check families run as separate steps so a red build is
+      # easy to attribute in the CI log; locally
+      # `python3 scripts/check_i18n.py` runs both in one go. The
+      # self-test step afterwards runs the negative fixtures of
+      # `scripts/test_check_i18n.sh`, so the checker's own failure
+      # behavior is exercised in CI too, not only locally.
       - name: Check translation files
-        run: python3 scripts/check_i18n.py
+        run: python3 scripts/check_i18n.py --translations-only
+
+      - name: Cross-check error codes against i18n keys
+        run: python3 scripts/check_i18n.py --error-codes-only
+
+      - name: i18n check self-test
+        run: bash scripts/test_check_i18n.sh
