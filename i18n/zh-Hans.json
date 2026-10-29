@@ -1,5 +1,9 @@
 {
   "app_name": "lumemor",
   "setup_already_completed": "初始化已完成，请直接登录。",
-  "validation_failed": "请检查填写内容后重试。"
+  "validation_failed": "请检查填写内容后重试。",
+  "internal": "出了点问题，请稍后重试。",
+  "auth_invalid_credentials": "邮箱或密码不正确，请重试。",
+  "auth_rate_limited": "尝试次数过多，请稍后再试。",
+  "pairing_token_invalid": "配对码无效或已过期。"
 }

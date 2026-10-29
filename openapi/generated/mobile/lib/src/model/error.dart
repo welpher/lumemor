@@ -21,7 +21,7 @@ abstract class Error implements Built<Error, ErrorBuilder> {
   /// Stable error code. The i18n translation key is the lowercase form of this value. 
   @BuiltValueField(wireName: r'code')
   ErrorCodeEnum get code;
-  // enum codeEnum {  SETUP_ALREADY_COMPLETED,  VALIDATION_FAILED,  };
+  // enum codeEnum {  SETUP_ALREADY_COMPLETED,  VALIDATION_FAILED,  INTERNAL,  AUTH_INVALID_CREDENTIALS,  AUTH_RATE_LIMITED,  PAIRING_TOKEN_INVALID,  };
 
   /// English technical description for debugging.
   @BuiltValueField(wireName: r'message')
@@ -29,7 +29,7 @@ abstract class Error implements Built<Error, ErrorBuilder> {
 
   /// Optional structured context, for example the offending field names of a `VALIDATION_FAILED` request. Its shape is code-specific. 
   @BuiltValueField(wireName: r'details')
-  JsonObject? get details;
+  BuiltMap<String, JsonObject?>? get details;
 
   Error._();
 
@@ -70,7 +70,7 @@ class _$ErrorSerializer implements PrimitiveSerializer<Error> {
       yield r'details';
       yield serializers.serialize(
         object.details,
-        specifiedType: const FullType(JsonObject),
+        specifiedType: const FullType(BuiltMap, [FullType(String), FullType.nullable(JsonObject)]),
       );
     }
   }
@@ -114,10 +114,10 @@ class _$ErrorSerializer implements PrimitiveSerializer<Error> {
         case r'details':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(JsonObject),
-          ) as JsonObject?;
+            specifiedType: const FullType.nullable(BuiltMap, [FullType(String), FullType.nullable(JsonObject)]),
+          ) as BuiltMap<String, JsonObject?>?;
           if (valueDes == null) continue;
-          result.details = valueDes;
+          result.details.replace(valueDes);
           break;
         default:
           unhandled.add(key);
@@ -156,6 +156,14 @@ class ErrorCodeEnum extends EnumClass {
   static const ErrorCodeEnum SETUP_ALREADY_COMPLETED = _$errorCodeEnum_SETUP_ALREADY_COMPLETED;
   @BuiltValueEnumConst(wireName: r'VALIDATION_FAILED')
   static const ErrorCodeEnum VALIDATION_FAILED = _$errorCodeEnum_VALIDATION_FAILED;
+  @BuiltValueEnumConst(wireName: r'INTERNAL')
+  static const ErrorCodeEnum INTERNAL = _$errorCodeEnum_INTERNAL;
+  @BuiltValueEnumConst(wireName: r'AUTH_INVALID_CREDENTIALS')
+  static const ErrorCodeEnum AUTH_INVALID_CREDENTIALS = _$errorCodeEnum_AUTH_INVALID_CREDENTIALS;
+  @BuiltValueEnumConst(wireName: r'AUTH_RATE_LIMITED')
+  static const ErrorCodeEnum AUTH_RATE_LIMITED = _$errorCodeEnum_AUTH_RATE_LIMITED;
+  @BuiltValueEnumConst(wireName: r'PAIRING_TOKEN_INVALID')
+  static const ErrorCodeEnum PAIRING_TOKEN_INVALID = _$errorCodeEnum_PAIRING_TOKEN_INVALID;
 
   static Serializer<ErrorCodeEnum> get serializer => _$errorCodeEnumSerializer;
 

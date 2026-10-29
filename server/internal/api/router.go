@@ -4,8 +4,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,8 +15,10 @@ import (
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	"github.com/welpher/lumemor/server/internal/api/static"
+	"github.com/welpher/lumemor/server/internal/auth"
 	"github.com/welpher/lumemor/server/internal/buildinfo"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/events"
 )
 
 // Deps carries the runtime dependencies of the HTTP handlers. It must be
@@ -33,17 +37,45 @@ type Deps struct {
 	// wires it to the CountAdmins query, tests inject a stub; nil means
 	// "not initialized", keeping the root on the wizard.
 	Initialized func(ctx context.Context) bool
+	// Events is the in-process bus backing the SSE activity stream
+	// (GET /api/v1/events); nil keeps that endpoint answering 500
+	// until the caller wires a bus.
+	Events *events.Bus
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
 // endpoints (/healthz, /metrics), the embedded HTML pages (/setup, /)
 // and the generated /api/v1 API surface.
+//
+// The /api/v1 pipeline order is pinned and security-relevant: the JSON
+// body limit first (nothing downstream may buffer an unbounded body),
+// then the security headers on every API response, then the origin
+// check guarding every state change, and finally the route groups:
+// the authed groups sit behind RequireSession, and every
+// non-streaming group runs inside the per-request handler timeout
+// (http.TimeoutHandler -- a handler that outlives it answers 503),
+// while the SSE stream group stays outside it.
 func NewRouter(deps *Deps) *chi.Mux {
+	return newRouter(deps, handlerTimeout)
+}
+
+// newRouter builds the router with a configurable timeout for the
+// non-streaming handler groups. NewRouter pins that bound to
+// handlerTimeout; tests shorten it so the timeout behavior itself is
+// exercisable in bounded time.
+func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 	s := &server{
 		pool:    deps.Pool,
 		queries: dbgen.New(deps.Pool),
 		version: deps.Version,
 		logger:  deps.Logger,
+		events:  deps.Events,
+		// In-memory per process: a restart clears the login locks, an
+		// accepted trade for not growing a store into the auth path.
+		limiter: auth.NewLimiter(nil),
+		// The same trade for the pairing budget: a restart forgets the
+		// day's count, the daily window re-arms at UTC midnight.
+		pairingBudget: auth.NewDailyLimiter(pairingDailyLimit, nil),
 	}
 	if s.version == "" {
 		s.version = buildinfo.Version
@@ -70,18 +102,81 @@ func NewRouter(deps *Deps) *chi.Mux {
 		handleIndexPage(w, req)
 	})
 	r.Route("/api/v1", func(r chi.Router) {
-		apigen.HandlerFromMux(s, r)
+		r.Use(limitJSONBody, setSecurityHeaders, checkOrigin)
+
+		// The wrapper reuses the generated request binders (the path
+		// uuid, the Last-Event-ID header) and routes their failures
+		// into the shared error envelope through binderError. Routes
+		// are mounted by hand into groups because the generated
+		// HandlerFromMux registers every operation on one flat
+		// router; TestAPIRoutesCoverContract guards the mounted set
+		// against contract drift.
+		wrapper := &apigen.ServerInterfaceWrapper{
+			Handler:          s,
+			ErrorHandlerFunc: s.binderError,
+		}
+
+		// Public group: the unauthenticated entry points. Login and
+		// the pairing exchange carry their own credentials; server
+		// info and the one-time wizard precede any account. The group
+		// runs inside the handler timeout like every non-streaming
+		// group.
+		r.Group(func(r chi.Router) {
+			r.Use(timeoutMiddleware(timeout))
+			r.Post("/auth/login", wrapper.Login)
+			r.Post("/auth/pairing/consume", wrapper.ConsumePairingToken)
+			r.Get("/server/info", wrapper.GetServerInfo)
+			r.Post("/server/setup/admin", wrapper.CreateAdmin)
+		})
+
+		// Authed non-streaming group: session management and pairing
+		// generation behind RequireSession, all inside the handler
+		// timeout. The timeout wraps the session middleware too, so
+		// even a wedged session lookup cannot pin a connection.
+		r.Group(func(r chi.Router) {
+			r.Use(timeoutMiddleware(timeout), s.requireSession)
+			r.Post("/auth/logout", wrapper.Logout)
+			r.Get("/auth/sessions", wrapper.ListSessions)
+			r.Delete("/auth/sessions/{id}", wrapper.RevokeSession)
+			r.Post("/auth/pairing/token", wrapper.CreatePairingToken)
+		})
+
+		// Authed streaming group: the SSE activity stream. It requires
+		// a live session like the group above but deliberately runs
+		// OUTSIDE the handler timeout: http.TimeoutHandler buffers the
+		// response until the handler returns (it implements no
+		// Flusher) and cancels the request context at the deadline,
+		// which would stall and then cut a stream that is meant to
+		// outlive any bound; its liveness bound is the client
+		// connection, not a timer.
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireSession)
+			r.Get("/events", wrapper.GetEvents)
+		})
 	})
 	return r
 }
 
 // server implements apigen.ServerInterface on top of the injected Deps.
+// It embeds apigen.Unimplemented so that every endpoint not yet
+// overridden answers 501; implemented endpoints override the promoted
+// methods. Later milestones keep adding overrides one operation at a
+// time -- do not restructure this embed.
 type server struct {
+	apigen.Unimplemented
+
 	// pool begins the setup transaction; queries serves read paths.
 	pool    *pgxpool.Pool
 	queries *dbgen.Queries
 	version string
 	logger  *slog.Logger
+	// events feeds the SSE activity stream.
+	events *events.Bus
+	// limiter gates login attempts per address+account pair.
+	limiter *auth.Limiter
+	// pairingBudget bounds pairing token generation per user per UTC
+	// day.
+	pairingBudget *auth.DailyLimiter
 }
 
 // writeJSON emits v as the JSON response body with the given status.
@@ -104,12 +199,61 @@ func (s *server) writeError(w http.ResponseWriter, status int, code apigen.Error
 	})
 }
 
-// internalError logs an unexpected failure and answers a bare 500: the
-// error registry has no code for internal failures yet, so no envelope is
-// emitted rather than inventing an undocumented code.
+// internalError logs an unexpected failure and answers the 500 error
+// envelope with the INTERNAL code registered in the contract. The
+// triggering error is logged server-side only; clients get a generic
+// message because internal details are not theirs to see.
 func (s *server) internalError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	s.logger.Error("internal error", "op", op, "error", err, "method", r.Method, "path", r.URL.Path)
-	w.WriteHeader(http.StatusInternalServerError)
+	s.writeError(w, http.StatusInternalServerError, apigen.INTERNAL,
+		"internal server error", nil)
+}
+
+// binderError adapts the generated request binders onto the shared
+// error envelope: a request the binder refuses (a malformed uuid path
+// parameter, a duplicated Last-Event-ID header) is a client input
+// problem, so the answer is 400 VALIDATION_FAILED naming the offending
+// parameter instead of the generated default plain-text 400.
+func (s *server) binderError(w http.ResponseWriter, r *http.Request, err error) {
+	s.logger.Debug("request binder rejected input", "error", err, "method", r.Method, "path", r.URL.Path)
+	var details *map[string]interface{}
+	if param, ok := binderParamName(err); ok {
+		details = &map[string]interface{}{"fields": []interface{}{param}}
+	}
+	s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED,
+		"invalid request parameter", details)
+}
+
+// binderParamName extracts the parameter a generated binder rejected.
+// Every binder error type of the generated wrapper carries a ParamName
+// field; this lists them once so new ones surface here on the next
+// regen.
+func binderParamName(err error) (string, bool) {
+	var invalidFormat *apigen.InvalidParamFormatError
+	if errors.As(err, &invalidFormat) {
+		return invalidFormat.ParamName, true
+	}
+	var tooMany *apigen.TooManyValuesForParamError
+	if errors.As(err, &tooMany) {
+		return tooMany.ParamName, true
+	}
+	var requiredHeader *apigen.RequiredHeaderError
+	if errors.As(err, &requiredHeader) {
+		return requiredHeader.ParamName, true
+	}
+	var requiredParam *apigen.RequiredParamError
+	if errors.As(err, &requiredParam) {
+		return requiredParam.ParamName, true
+	}
+	var unmarshaling *apigen.UnmarshalingParamError
+	if errors.As(err, &unmarshaling) {
+		return unmarshaling.ParamName, true
+	}
+	var unescapedCookie *apigen.UnescapedCookieParamError
+	if errors.As(err, &unescapedCookie) {
+		return unescapedCookie.ParamName, true
+	}
+	return "", false
 }
 
 // handleSetupPage serves GET /setup: the embedded first-run wizard. It
