@@ -1,3 +1,5 @@
 {
-  "app_name": "lumemor"
+  "app_name": "lumemor",
+  "setup_already_completed": "Setup is already complete. Please sign in.",
+  "validation_failed": "Please check your entries and try again."
 }

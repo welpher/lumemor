@@ -1,0 +1,32 @@
+# Continuous integration for the translation files: run the i18n
+# consistency checks (flat structure, snake_case keys, key-set parity
+# with en.json, ICU placeholder parity).
+
+name: i18n
+
+on:
+  pull_request:
+    paths:
+      - 'i18n/**'
+      - 'scripts/check_i18n.py'
+      - '.github/workflows/i18n.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'i18n/**'
+      - 'scripts/check_i18n.py'
+      - '.github/workflows/i18n.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  i18n:
+    name: translation consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Check translation files
+        run: python3 scripts/check_i18n.py

@@ -1,0 +1,48 @@
+# M1 deployment: the lumemor server and its PostgreSQL database.
+#
+# `docker compose up` starts both containers: the server waits for the
+# database to pass its healthcheck, connects, applies migrations and
+# serves the first-run wizard at http://localhost:8244 until an
+# administrator account exists. The credentials below are fixed
+# development placeholders, not secrets.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: lumemor
+      POSTGRES_PASSWORD: lumemor
+      POSTGRES_DB: lumemor
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "lumemor"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  lumemor:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+      args:
+        # Optional passthroughs: release builds pass their version tag,
+        # networks with a restricted default module proxy pass their
+        # GOPROXY. Empty values keep the Dockerfile defaults.
+        VERSION: ${LUMEMOR_VERSION:-dev}
+        GOPROXY: ${LUMEMOR_BUILD_GOPROXY:-}
+    ports:
+      # 8244 binds all interfaces so family devices can run the wizard from the LAN; this unauthenticated pre-setup window closes once the first admin exists.
+      - "8244:8244"
+    environment:
+      LUMEMOR_DATABASE_URL: "postgres://lumemor:lumemor@db:5432/lumemor?sslmode=disable"
+    # No app healthcheck in M1: /healthz exists, but compose-level
+    # dependency gating on the server is deferred until the container
+    # gains something meaningful to probe beyond liveness.
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

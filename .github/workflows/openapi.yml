@@ -1,0 +1,60 @@
+# Continuous integration for the OpenAPI contract: lint the spec and
+# verify that the committed generated artifacts (Go server interface,
+# TypeScript types, Dart client) regenerate byte-identically.
+
+name: openapi
+
+on:
+  pull_request:
+    paths:
+      - 'openapi/**'
+      - 'openapitools.json'
+      - '.spectral.yaml'
+      - 'Makefile'
+      - '.github/workflows/openapi.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'openapi/**'
+      - 'openapitools.json'
+      - '.spectral.yaml'
+      - 'Makefile'
+      - '.github/workflows/openapi.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  openapi:
+    name: lint and codegen determinism
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      # make api-gen drives oapi-codegen through `go run` and runs
+      # `go mod tidy` inside server/, so the Go toolchain is needed
+      # in addition to Node (spectral, openapi-typescript,
+      # openapi-generator-cli) and Java (openapi-generator).
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: server/go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Lint the OpenAPI contract
+        run: make api-lint
+
+      - name: Regenerate API artifacts and check for drift
+        run: make api-check

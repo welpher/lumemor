@@ -1,0 +1,249 @@
+openapi: 3.1.0
+info:
+  title: lumemor API
+  version: 0.1.0
+  summary: Instance API of a self-hosted family photo library.
+  description: |
+    The single source of truth for the lumemor instance API. One contract
+    generates the Go server stubs, the TypeScript web client types and the
+    Flutter Dart client; hand-written bindings must not drift from it.
+
+    Conventions shared by every endpoint:
+
+    - All paths are served under the `/api/v1` prefix. Breaking changes bump
+      the prefix to `/api/v2`; `v1` stays compatible across at least two
+      major releases.
+    - Errors use a stable envelope with a machine-readable `code`; `message`
+      is an English technical description for debugging and is never
+      localized. Client UIs translate `code` through their i18n tables
+      (translation key = the lowercase error code).
+    - System timestamps (`createdAt`, ...) are RFC 3339 UTC (`Z`).
+    - IDs are UUIDv7.
+  contact:
+    name: lumemor contributors
+    url: https://github.com/welpher/lumemor
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+servers:
+  - url: /api/v1
+    description: Instance-local API served by the Go binary.
+tags:
+  - name: server
+    description: Instance discovery and first-run setup.
+paths:
+  /server/info:
+    get:
+      operationId: getServerInfo
+      tags:
+        - server
+      summary: Report instance version and feature switches.
+      description: |
+        Unauthenticated capability discovery. Clients call it before login to
+        locate the API, render the first-run wizard when the instance is not
+        yet initialized, and adapt to the features the instance enables.
+
+        `initialized` is derived from the existence of an administrator
+        account.
+      responses:
+        '200':
+          description: Instance info.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerInfo'
+              examples:
+                freshInstance:
+                  summary: A fresh instance that has no admin yet.
+                  value:
+                    version: 0.1.0
+                    initialized: false
+                    features:
+                      faces: true
+                      semanticSearch: true
+                initializedInstance:
+                  summary: An instance whose first-run wizard is done.
+                  value:
+                    version: 0.1.0
+                    initialized: true
+                    features:
+                      faces: true
+                      semanticSearch: false
+  /server/setup/admin:
+    post:
+      operationId: createAdmin
+      tags:
+        - server
+      summary: Create the first administrator account.
+      description: |
+        One-time first-run wizard endpoint, available only while the instance
+        has no administrator. Once an admin exists the endpoint answers 409
+        `SETUP_ALREADY_COMPLETED` and the client should route to login.
+
+        The password is stored as an Argon2id hash; it never appears in any
+        response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdminRequest'
+      responses:
+        '201':
+          description: The administrator account was created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: |
+            The request body is not a valid account payload, for example a
+            malformed email or a missing password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: Missing or invalid fields.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: email must be a valid address
+                    details:
+                      fields:
+                        - email
+        '409':
+          description: An administrator already exists; setup is complete.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                setupAlreadyCompleted:
+                  value:
+                    code: SETUP_ALREADY_COMPLETED
+                    message: an administrator account already exists
+components:
+  schemas:
+    ServerInfo:
+      type: object
+      description: Instance capability report served by `GET /server/info`.
+      required:
+        - version
+        - initialized
+        - features
+      properties:
+        version:
+          type: string
+          description: Server version (semantic versioning).
+          examples:
+            - 0.1.0
+        initialized:
+          type: boolean
+          description: |
+            True once the instance has an administrator account. Clients use
+            it to decide between the first-run wizard and the login screen.
+        features:
+          type: object
+          description: |
+            Instance feature switches (model slots, search modes, pairing).
+            Unknown keys must be ignored by clients.
+          additionalProperties:
+            type: boolean
+          examples:
+            - faces: true
+              semanticSearch: true
+    CreateAdminRequest:
+      type: object
+      description: Payload of the first-run wizard (`POST /server/setup/admin`).
+      required:
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          description: Optional display name; defaults to the email address.
+        email:
+          type: string
+          format: email
+          description: Login address of the administrator.
+        password:
+          type: string
+          format: password
+          description: Account password; stored only as an Argon2id hash.
+          examples:
+            - correct horse battery staple
+    User:
+      type: object
+      description: A lumemor account.
+      required:
+        - id
+        - name
+        - email
+        - role
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 identifier.
+        name:
+          type: string
+          description: Display name.
+        email:
+          type: string
+          format: email
+          description: Login address.
+        role:
+          type: string
+          description: Authorization role; `admin` is granted by the
+            first-run wizard, later accounts are created by an admin.
+          enum:
+            - admin
+            - user
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation time (RFC 3339 UTC).
+    Error:
+      type: object
+      description: |
+        Error envelope shared by all endpoints. `code` is the authoritative
+        registry of stable error codes; clients must not parse `message`.
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: |
+            Stable error code. The i18n translation key is the lowercase
+            form of this value.
+          enum:
+            - SETUP_ALREADY_COMPLETED
+            - VALIDATION_FAILED
+        message:
+          type: string
+          description: English technical description for debugging.
+        details:
+          type: object
+          description: |
+            Optional structured context, for example the offending field
+            names of a `VALIDATION_FAILED` request. Its shape is
+            code-specific.
+          examples:
+            - fields:
+                - email
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: lumemor_session
+      description: |
+        Web session cookie issued after login (Secure + HttpOnly). Declared
+        for documentation; operations bind it starting with M2.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Mobile pairing token or API key sent as `Authorization: Bearer`.
+        Declared for documentation; operations bind it starting with M2.

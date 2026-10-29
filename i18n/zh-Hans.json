@@ -1,3 +1,5 @@
 {
-  "app_name": "lumemor"
+  "app_name": "lumemor",
+  "setup_already_completed": "初始化已完成，请直接登录。",
+  "validation_failed": "请检查填写内容后重试。"
 }
