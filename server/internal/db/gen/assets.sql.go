@@ -11,16 +11,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const completeAssetJob = `-- name: CompleteAssetJob :one
+UPDATE assets SET
+    ready_at     = CASE WHEN pending_jobs = 1 THEN now() ELSE ready_at END,
+    pending_jobs = pending_jobs - 1,
+    updated_at   = now()
+WHERE id = $1 AND pending_jobs > 0
+RETURNING (ready_at IS NOT NULL)::boolean AS became_ready, media_kind
+`
+
+type CompleteAssetJobRow struct {
+	BecameReady bool      `json:"became_ready"`
+	MediaKind   MediaKind `json:"media_kind"`
+}
+
+// One pipeline job completion: the guarded decrement of the readiness
+// counter. The CASE reads the OLD pending_jobs (unqualified columns
+// in UPDATE expressions reference the pre-update row): a job emptying
+// the counter (old value 1) stamps ready_at; a completion that did
+// not leaves it NULL. The WHERE guard makes the query a no-op for
+// rows with nothing pending (component videos; re-runs of an already
+// completed pipeline, which is what keeps re-enqueued jobs idempotent:
+// no double decrement, no second ready_at) -- those completions
+// return NO ROW, and the job layer reads that as the benign no-op
+// (no asset.ready event) rather than an error. media_kind rides along
+// so the completion publishes the event with the asset's kind without
+// a second read.
+func (q *Queries) CompleteAssetJob(ctx context.Context, id pgtype.UUID) (CompleteAssetJobRow, error) {
+	row := q.db.QueryRow(ctx, completeAssetJob, id)
+	var i CompleteAssetJobRow
+	err := row.Scan(&i.BecameReady, &i.MediaKind)
+	return i, err
+}
+
 const createAsset = `-- name: CreateAsset :one
 
 INSERT INTO assets (
     id, owner_id, storage_kind, file_path, checksum, original_filename,
     file_size, mime_type, media_kind, live_photo_video_id, is_component,
-    device_asset_id, width, height, taken_at, taken_at_source
+    device_asset_id, width, height, taken_at, taken_at_source, pending_jobs
 ) VALUES (
-    $1, $2, 'blob', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12, 'import'
+    $1, $2, 'blob', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12, 'import', $13
 )
-RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id
+RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at
 `
 
 type CreateAssetParams struct {
@@ -36,15 +69,21 @@ type CreateAssetParams struct {
 	IsComponent      bool               `json:"is_component"`
 	DeviceAssetID    pgtype.Text        `json:"device_asset_id"`
 	TakenAt          pgtype.Timestamptz `json:"taken_at"`
+	PendingJobs      int32              `json:"pending_jobs"`
 }
 
-// Asset queries of the upload endpoint (M2b Task 3) and the device
-// idempotency lookup. CreateAsset pins the server-side column values
-// of a fresh upload: storage_kind 'blob' (uploaded bytes live in the
-// content-addressed originals tree), taken_at_source 'import' (the
-// device-reported capture time, refined to 'exif' by the metadata
-// job), and width/height 0 (dimensions are the metadata job's
-// refinement). created_at/updated_at default to now() on insert.
+// Asset queries of the upload endpoint (M2b Task 3), the device
+// idempotency lookup, and the metadata pipeline (M2b Task 4).
+// CreateAsset pins the server-side column values of a fresh upload:
+// storage_kind 'blob' (uploaded bytes live in the content-addressed
+// originals tree), taken_at_source 'import' (the device-reported
+// capture time, refined to 'exif' by the metadata job), and
+// width/height 0 (dimensions are the metadata job's refinement).
+// pending_jobs carries the pipeline count the uploader enqueues: 1
+// for photo rows (the metadata job in Task 4; Task 5's thumbnail job
+// raises it to 2), 0 for component video rows (refined by the
+// metadata job but never the asset whose readiness the event
+// announces). created_at/updated_at default to now() on insert.
 // The upload insert. live_photo_video_id links a Live Photo's image
 // row to its component video row (NULL otherwise); is_component marks
 // the component video rows that never appear in the timeline.
@@ -63,6 +102,7 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset
 		arg.IsComponent,
 		arg.DeviceAssetID,
 		arg.TakenAt,
+		arg.PendingJobs,
 	)
 	var i Asset
 	err := row.Scan(
@@ -93,6 +133,8 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeviceAssetID,
+		&i.PendingJobs,
+		&i.ReadyAt,
 	)
 	return i, err
 }
@@ -116,7 +158,7 @@ func (q *Queries) CreateExifPlaceholder(ctx context.Context, arg CreateExifPlace
 }
 
 const getAssetByDeviceId = `-- name: GetAssetByDeviceId :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at FROM assets
 WHERE owner_id = $1 AND device_asset_id = $2
 ORDER BY deleted_at NULLS FIRST
 LIMIT 1
@@ -161,12 +203,14 @@ func (q *Queries) GetAssetByDeviceId(ctx context.Context, arg GetAssetByDeviceId
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeviceAssetID,
+		&i.PendingJobs,
+		&i.ReadyAt,
 	)
 	return i, err
 }
 
 const getAssetByOwnerChecksum = `-- name: GetAssetByOwnerChecksum :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at FROM assets
 WHERE owner_id = $1 AND checksum = $2
 ORDER BY deleted_at NULLS FIRST
 LIMIT 1
@@ -212,6 +256,157 @@ func (q *Queries) GetAssetByOwnerChecksum(ctx context.Context, arg GetAssetByOwn
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeviceAssetID,
+		&i.PendingJobs,
+		&i.ReadyAt,
 	)
 	return i, err
+}
+
+const getAssetForMetadata = `-- name: GetAssetForMetadata :one
+SELECT a.file_path,
+       a.media_kind,
+       a.taken_at,
+       a.taken_at_source,
+       a.pending_jobs,
+       e.exif
+FROM assets a
+LEFT JOIN exif e ON e.asset_id = a.id
+WHERE a.id = $1
+`
+
+type GetAssetForMetadataRow struct {
+	FilePath      string             `json:"file_path"`
+	MediaKind     MediaKind          `json:"media_kind"`
+	TakenAt       pgtype.Timestamptz `json:"taken_at"`
+	TakenAtSource TakenAtSource      `json:"taken_at_source"`
+	PendingJobs   int32              `json:"pending_jobs"`
+	Exif          []byte             `json:"exif"`
+}
+
+// The metadata job's read: everything it needs to run exiftool and
+// resolve the taken-at fallback chain. exif_jsonb is the placeholder
+// payload of the upload (deviceCreatedAt / deviceTimeZone) until the
+// job itself has run. No row means the asset is gone; the job treats
+// that as success so it does not retry forever against a deleted
+// asset.
+func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetAssetForMetadataRow, error) {
+	row := q.db.QueryRow(ctx, getAssetForMetadata, id)
+	var i GetAssetForMetadataRow
+	err := row.Scan(
+		&i.FilePath,
+		&i.MediaKind,
+		&i.TakenAt,
+		&i.TakenAtSource,
+		&i.PendingJobs,
+		&i.Exif,
+	)
+	return i, err
+}
+
+const refineAssetFromMetadata = `-- name: RefineAssetFromMetadata :exec
+UPDATE assets SET
+    taken_at        = COALESCE($1, taken_at),
+    taken_at_source = CASE WHEN $1 IS NULL THEN taken_at_source
+                           ELSE 'exif'::taken_at_source END,
+    width           = COALESCE($2, width),
+    height          = COALESCE($3, height),
+    duration_ms     = COALESCE($4, duration_ms),
+    updated_at      = now()
+WHERE id = $5
+`
+
+type RefineAssetFromMetadataParams struct {
+	TakenAt    pgtype.Timestamptz `json:"taken_at"`
+	Width      pgtype.Int4        `json:"width"`
+	Height     pgtype.Int4        `json:"height"`
+	DurationMs pgtype.Int4        `json:"duration_ms"`
+	ID         pgtype.UUID        `json:"id"`
+}
+
+// The metadata job's refinement of the asset row. taken_at moves ONLY
+// when exif time is present (EXIF DateTimeOriginal resolved with an
+// offset); a NULL exif time keeps the upload's value and source, so
+// the upload response's initial taken_at never regresses (the fallback
+// chain deviceCreatedAt -> server now stays intact, source 'import').
+// The metadata job never passes the 'file' source: a content-addressed
+// upload blob's mtime is the upload instant itself, so a file-mtime
+// step would churn values without information; 'file' stays reserved
+// for the directory-album importer that reads files in place.
+// Dimensions refine from the same extraction (COALESCE keeps the
+// existing value when the file reports none).
+func (q *Queries) RefineAssetFromMetadata(ctx context.Context, arg RefineAssetFromMetadataParams) error {
+	_, err := q.db.Exec(ctx, refineAssetFromMetadata,
+		arg.TakenAt,
+		arg.Width,
+		arg.Height,
+		arg.DurationMs,
+		arg.ID,
+	)
+	return err
+}
+
+const updateExifFromMetadata = `-- name: UpdateExifFromMetadata :exec
+INSERT INTO exif (
+    asset_id, exif, camera_make, camera_model, lens, iso, aperture,
+    shutter, focal, lat, lon, alt, tz_offset
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+)
+ON CONFLICT (asset_id) DO UPDATE SET
+    exif         = EXCLUDED.exif,
+    camera_make  = EXCLUDED.camera_make,
+    camera_model = EXCLUDED.camera_model,
+    lens         = EXCLUDED.lens,
+    iso          = EXCLUDED.iso,
+    aperture     = EXCLUDED.aperture,
+    shutter      = EXCLUDED.shutter,
+    focal        = EXCLUDED.focal,
+    lat          = EXCLUDED.lat,
+    lon          = EXCLUDED.lon,
+    alt          = EXCLUDED.alt,
+    tz_offset    = EXCLUDED.tz_offset,
+    updated_at   = now()
+`
+
+type UpdateExifFromMetadataParams struct {
+	AssetID     pgtype.UUID   `json:"asset_id"`
+	Exif        []byte        `json:"exif"`
+	CameraMake  pgtype.Text   `json:"camera_make"`
+	CameraModel pgtype.Text   `json:"camera_model"`
+	Lens        pgtype.Text   `json:"lens"`
+	Iso         pgtype.Int4   `json:"iso"`
+	Aperture    pgtype.Float4 `json:"aperture"`
+	Shutter     pgtype.Text   `json:"shutter"`
+	Focal       pgtype.Float4 `json:"focal"`
+	Lat         pgtype.Float8 `json:"lat"`
+	Lon         pgtype.Float8 `json:"lon"`
+	Alt         pgtype.Float4 `json:"alt"`
+	TzOffset    pgtype.Text   `json:"tz_offset"`
+}
+
+// The metadata job's write: replaces the placeholder sidecar with the
+// extracted metadata. exif is 1:1 with asset (asset_id is its primary
+// key), so the upsert makes re-runs converge to one row with the same
+// values: the ON CONFLICT arm updates in place, no second row can
+// ever exist. The exif jsonb is the raw exiftool output verbatim.
+// Null hot fields (a file without GPS or lens data) overwrite to NULL
+// deliberately: the row mirrors the file's actual metadata, not a
+// merge of successive extractions.
+func (q *Queries) UpdateExifFromMetadata(ctx context.Context, arg UpdateExifFromMetadataParams) error {
+	_, err := q.db.Exec(ctx, updateExifFromMetadata,
+		arg.AssetID,
+		arg.Exif,
+		arg.CameraMake,
+		arg.CameraModel,
+		arg.Lens,
+		arg.Iso,
+		arg.Aperture,
+		arg.Shutter,
+		arg.Focal,
+		arg.Lat,
+		arg.Lon,
+		arg.Alt,
+		arg.TzOffset,
+	)
+	return err
 }
