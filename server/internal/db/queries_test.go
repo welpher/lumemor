@@ -374,3 +374,128 @@ func mustUUIDv7(t *testing.T) uuid.UUID {
 	}
 	return id
 }
+
+// newPairingFixture inserts a pairing token row with a freshly minted
+// credential and returns (rawToken, hash).
+func newPairingFixture(t *testing.T, ctx context.Context, queries *gen.Queries, userID pgtype.UUID, expires time.Time) (string, string) {
+	t.Helper()
+	raw, hash := auth.NewPairingToken()
+	_, err := queries.CreatePairingToken(ctx, gen.CreatePairingTokenParams{
+		ID:        pgUUID(mustUUIDv7(t)),
+		TokenHash: hash,
+		CreatedBy: userID,
+		ExpiresAt: ts(expires),
+	})
+	if err != nil {
+		t.Fatalf("CreatePairingToken() error = %v, want nil", err)
+	}
+	return raw, hash
+}
+
+// TestPairingQueries exercises the sqlc-generated pairing queries: the
+// row stores only the token's hash, and the conditional consume burn
+// answers exactly once -- used, expired and unknown hashes all miss.
+func TestPairingQueries(t *testing.T) {
+	pool := dbtest.New(t)
+	ctx := t.Context()
+
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate() error = %v, want nil", err)
+	}
+
+	queries := gen.New(pool)
+
+	ada, err := queries.CreateUser(ctx, gen.CreateUserParams{
+		ID:           pgUUID(mustUUIDv7(t)),
+		Name:         "Ada Lovelace",
+		Email:        "ada@example.com",
+		PasswordHash: "$argon2id$v=19$m=65536,t=3,p=1$placeholder$placeholder",
+	})
+	if err != nil {
+		t.Fatalf("create ada: %v", err)
+	}
+
+	now := time.Now()
+
+	t.Run("CreateStoresHashAndCreator", func(t *testing.T) {
+		raw, hash := newPairingFixture(t, ctx, queries, ada.ID, now.Add(5*time.Minute))
+
+		if hash == raw {
+			t.Fatal("stored hash equals the raw token: the secret would be in the clear")
+		}
+		if hash != auth.HashPairingToken(raw) {
+			t.Errorf("stored hash = %q, want HashPairingToken(raw) = %q", hash, auth.HashPairingToken(raw))
+		}
+		// The row keeps the five-minute expiry and starts unused.
+		var (
+			expiresAt pgtype.Timestamptz
+			usedAt    pgtype.Timestamptz
+			createdBy pgtype.UUID
+		)
+		if err := pool.QueryRow(ctx,
+			"SELECT expires_at, used_at, created_by FROM pairing_tokens WHERE token_hash = $1", hash,
+		).Scan(&expiresAt, &usedAt, &createdBy); err != nil {
+			t.Fatalf("load pairing row: %v", err)
+		}
+		if usedAt.Valid {
+			t.Error("fresh pairing row has used_at set, want NULL")
+		}
+		if createdBy != ada.ID {
+			t.Errorf("pairing row created_by = %v, want %v", createdBy, ada.ID)
+		}
+		if want := now.Add(5 * time.Minute); expiresAt.Time.Before(want.Add(-time.Minute)) || expiresAt.Time.After(want.Add(time.Minute)) {
+			t.Errorf("pairing row expires_at = %v, want ~%v", expiresAt.Time, want)
+		}
+	})
+
+	t.Run("ConsumeBurnsExactlyOnce", func(t *testing.T) {
+		_, hash := newPairingFixture(t, ctx, queries, ada.ID, now.Add(5*time.Minute))
+
+		// The first consumer wins the burn and learns whose token it
+		// was.
+		consumed, err := queries.ConsumePairingToken(ctx, hash)
+		if err != nil {
+			t.Fatalf("ConsumePairingToken() error = %v, want nil", err)
+		}
+		if consumed.CreatedBy != ada.ID {
+			t.Errorf("ConsumePairingToken() created_by = %v, want %v", consumed.CreatedBy, ada.ID)
+		}
+
+		// used_at is stamped: the burn is visible in the row.
+		var usedAt pgtype.Timestamptz
+		if err := pool.QueryRow(ctx, "SELECT used_at FROM pairing_tokens WHERE token_hash = $1", hash).Scan(&usedAt); err != nil {
+			t.Fatalf("load burned row: %v", err)
+		}
+		if !usedAt.Valid {
+			t.Error("burned pairing row has used_at NULL, want the stamp")
+		}
+
+		// The replay finds no row -- one-timeness is the conditional
+		// UPDATE itself.
+		if _, err := queries.ConsumePairingToken(ctx, hash); !errors.Is(err, pgx.ErrNoRows) {
+			t.Errorf("ConsumePairingToken(replay) error = %v, want pgx.ErrNoRows", err)
+		}
+	})
+
+	t.Run("ConsumeRejectsExpired", func(t *testing.T) {
+		_, hash := newPairingFixture(t, ctx, queries, ada.ID, now.Add(-time.Minute))
+
+		if _, err := queries.ConsumePairingToken(ctx, hash); !errors.Is(err, pgx.ErrNoRows) {
+			t.Errorf("ConsumePairingToken(expired) error = %v, want pgx.ErrNoRows", err)
+		}
+		// The miss did not burn the row.
+		var usedAt pgtype.Timestamptz
+		if err := pool.QueryRow(ctx, "SELECT used_at FROM pairing_tokens WHERE token_hash = $1", hash).Scan(&usedAt); err != nil {
+			t.Fatalf("load expired row: %v", err)
+		}
+		if usedAt.Valid {
+			t.Error("expired consume stamped used_at, want no write")
+		}
+	})
+
+	t.Run("ConsumeRejectsUnknown", func(t *testing.T) {
+		if _, err := queries.ConsumePairingToken(ctx, auth.HashPairingToken("no such token")); !errors.Is(err, pgx.ErrNoRows) {
+			t.Errorf("ConsumePairingToken(unknown) error = %v, want pgx.ErrNoRows", err)
+		}
+	})
+}

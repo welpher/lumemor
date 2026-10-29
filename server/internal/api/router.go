@@ -61,6 +61,9 @@ func NewRouter(deps *Deps) *chi.Mux {
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
+		// The same trade for the pairing budget: a restart forgets the
+		// day's count, the daily window re-arms at UTC midnight.
+		pairingBudget: auth.NewDailyLimiter(pairingDailyLimit, nil),
 	}
 	if s.version == "" {
 		s.version = buildinfo.Version
@@ -142,6 +145,9 @@ type server struct {
 	events *events.Bus
 	// limiter gates login attempts per address+account pair.
 	limiter *auth.Limiter
+	// pairingBudget bounds pairing token generation per user per UTC
+	// day.
+	pairingBudget *auth.DailyLimiter
 }
 
 // writeJSON emits v as the JSON response body with the given status.
