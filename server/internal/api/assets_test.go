@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -903,6 +904,82 @@ func TestUploadAssetValidatesStructure(t *testing.T) {
 	env.requireStagingEmpty(t)
 	if got := env.queryInt(t, "SELECT count(*) FROM assets"); got != 0 {
 		t.Errorf("assets rows = %d after rejected bodies, want 0", got)
+	}
+}
+
+// errClientDisconnected stands in for the body read error a request
+// suffers when the client vanishes mid-upload: the connection dies
+// after the file part started streaming.
+var errClientDisconnected = errors.New("client disconnected mid-upload")
+
+// TestUploadAssetClientDisconnectMidStream pins the cleanup contract
+// of an upload whose body fails mid-file-part -- the brief's "client
+// aborts mid-stream" case at the API layer: the fields and part of
+// the photo bytes are delivered, then the body errors instead of ever
+// delivering the closing boundary. The staged file is discarded
+// (upload staging stays empty), nothing reaches the content-addressed
+// originals tree, no row is inserted and no event fires. The handler
+// answers 500 INTERNAL: a body read that fails mid-stream cannot be
+// distinguished from a server-side read failure, so it is not
+// reported as a client validation problem (and the client that
+// dropped the connection is typically not there to read any answer).
+func TestUploadAssetClientDisconnectMidStream(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	// The fixture is built in the main goroutine: jpegColorFixture
+	// uses t.Fatalf, which must not run on a spawned goroutine.
+	payload := jpegColorFixture(t, color.RGBA{R: 0x44, G: 0x55, B: 0x66, A: 0xff})
+
+	pipeReader, pipeWriter := io.Pipe()
+	writer := multipart.NewWriter(pipeWriter)
+	contentType := writer.FormDataContentType()
+	go func() {
+		for field, value := range map[string]string{
+			"deviceAssetId": "device-abort",
+			"fileName":      "IMG_abort.jpg",
+		} {
+			if err := writer.WriteField(field, value); err != nil {
+				_ = pipeWriter.CloseWithError(err)
+				return
+			}
+		}
+		part, err := writer.CreateFormFile("photo", "IMG_abort.jpg")
+		if err != nil {
+			_ = pipeWriter.CloseWithError(err)
+			return
+		}
+		if _, err := part.Write(payload); err != nil {
+			_ = pipeWriter.CloseWithError(err)
+			return
+		}
+		// The client vanishes: the body fails mid-part, before the
+		// closing boundary.
+		_ = pipeWriter.CloseWithError(errClientDisconnected)
+	}()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/assets", pipeReader)
+	req.Header.Set("Content-Type", contentType)
+	req.AddCookie(env.cookie)
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("mid-stream disconnect status = %d, want %d (body %q)",
+			rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+	apiErr, _ := decodeError(t, rec)
+	if apiErr.Code != apigen.INTERNAL {
+		t.Errorf("code = %q, want %q (a failed body read is not a validation problem)",
+			apiErr.Code, apigen.INTERNAL)
+	}
+
+	// The aborted upload left nothing behind anywhere.
+	env.requireStagingEmpty(t)
+	env.requireOriginalsEmpty(t)
+	if got := env.queryInt(t, "SELECT count(*) FROM assets"); got != 0 {
+		t.Errorf("assets rows = %d, want 0", got)
+	}
+	if got := countAssetUploadedEvents(t, env.bus); got != 0 {
+		t.Errorf("asset.uploaded events = %d, want 0", got)
 	}
 }
 
