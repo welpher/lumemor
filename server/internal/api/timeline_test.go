@@ -354,6 +354,7 @@ func TestTimeline(t *testing.T) {
 	s1 := fixtureAssetID("05") // the share Grace receives
 	e1 := fixtureAssetID("06") // own virtual only
 	e2 := fixtureAssetID("07") // own virtual only
+	x1 := fixtureAssetID("15") // sync-ONLY live asset
 	env.insertTimelineAsset(t, a1, adminID, time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertTimelineAsset(t, h1, adminID, time.Date(2026, 1, 11, 12, 0, 0, 0, time.UTC), timelineAssetOpts{isHidden: true})
 	env.insertTimelineAsset(t, d1, adminID, time.Date(2026, 1, 12, 12, 0, 0, 0, time.UTC), timelineAssetOpts{deleted: true})
@@ -361,7 +362,8 @@ func TestTimeline(t *testing.T) {
 	env.insertTimelineAsset(t, s1, adminID, time.Date(2026, 2, 20, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertTimelineAsset(t, e1, adminID, time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertTimelineAsset(t, e2, adminID, time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC), timelineAssetOpts{width: 4032, height: 3024, blurhash: "UHL6aAof00WBWB00ayWB00", ready: true})
-	for _, id := range []uuid.UUID{a1, h1, d1, c1} {
+	env.insertTimelineAsset(t, x1, adminID, time.Date(2026, 1, 8, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	for _, id := range []uuid.UUID{a1, h1, d1, c1, x1} {
 		env.addTimelineItem(t, adminSync, id, adminID)
 	}
 
@@ -387,12 +389,13 @@ func TestTimeline(t *testing.T) {
 
 	t.Run("AggregateDedupAndExclusions", func(t *testing.T) {
 		// The admin's timeline: v1 (shared, March), b2 (shared,
-		// February), a1 (own sync + shared, once). Everything else is
-		// filtered: the hidden, trashed and component rows; the
-		// pref-switched-off album's b1; the own virtual album's e1/e2;
-		// the album shared TO someone else (s1); Grace's private p1.
+		// February), a1 (own sync + shared, once), x1 (own sync only,
+		// January). Everything else is filtered: the hidden, trashed
+		// and component rows; the pref-switched-off album's b1; the
+		// own virtual album's e1/e2; the album shared TO someone else
+		// (s1); Grace's private p1.
 		page := env.getTimeline(t, env.cookie, "")
-		requireTimelineIDs(t, page.Items, v1, b2, a1)
+		requireTimelineIDs(t, page.Items, v1, b2, a1, x1)
 		if page.NextCursor != nil {
 			t.Error("nextCursor set, want absent: the whole timeline fits one page")
 		}
@@ -400,13 +403,18 @@ func TestTimeline(t *testing.T) {
 
 	t.Run("SyncAlbumPreferenceRowDoesNotExclude", func(t *testing.T) {
 		// A preference row on the own sync album excludes nothing: the
-		// core stream is not excludable.
+		// core stream is not excludable. x1 is the discriminating
+		// asset: it lives ONLY in the sync album, so an implementation
+		// that (wrongly) let the preference filter the sync arm would
+		// drop it -- a1 would survive through its second path (the
+		// shared album toAdmin), which is exactly why the old fixture
+		// could not tell the two implementations apart.
 		env.setTimelinePref(t, adminID, adminSync, false)
 		defer env.exec(t, "DELETE FROM user_album_prefs WHERE user_id = $1 AND album_id = $2",
 			pgUUID(adminID), pgUUID(adminSync))
 
 		page := env.getTimeline(t, env.cookie, "")
-		requireTimelineIDs(t, page.Items, v1, b2, a1)
+		requireTimelineIDs(t, page.Items, v1, b2, a1, x1)
 	})
 
 	t.Run("SecondUserTimeline", func(t *testing.T) {
