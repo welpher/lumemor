@@ -297,13 +297,15 @@ func (e GetAssetThumbnailParamsSize) Valid() bool {
 }
 
 // AssetDetail One asset as the detail endpoint returns it: the upload
-// response's identity and storage fields plus the pipeline's
-// refinements. The shape is fixed -- every property is always
-// present -- and the pipeline-dependent values (`width`,
-// `height`, `durationMs`, `blurhash` and the fields inside
-// `exif`) are null until the jobs produced them, turning
-// non-null when `asset.ready` fired. A value that stays null on
-// a ready asset means the file carries no such metadata.
+// response's identity and storage fields, the pipeline's
+// refinements, and the two owner-level attributes the PATCH
+// endpoint edits (`description`, `isHidden`). The shape is
+// fixed -- every property is always present -- and the
+// pipeline-dependent values (`width`, `height`, `durationMs`,
+// `blurhash` and the fields inside `exif`) are null until the
+// jobs produced them, turning non-null when `asset.ready`
+// fired. A value that stays null on a ready asset means the
+// file carries no such metadata.
 type AssetDetail struct {
 	// Blurhash The blurhash of the tile (image assets) or poster frame
 	// (video assets) for placeholder rendering; null until the
@@ -316,6 +318,12 @@ type AssetDetail struct {
 
 	// CreatedAt When the asset record was created (RFC 3339 UTC).
 	CreatedAt time.Time `json:"createdAt"`
+
+	// Description The owner's free-text description of the asset, the text
+	// the detail panel renders; the empty string until the
+	// owner wrote one. Editable only by the owner through
+	// `PATCH /assets/{id}`, which replaces it wholesale.
+	Description string `json:"description"`
 
 	// DurationMs Playback duration of a video in milliseconds; null for
 	// images and until the metadata job refined it.
@@ -335,6 +343,14 @@ type AssetDetail struct {
 
 	// Id UUIDv7 identifier of the asset.
 	Id openapi_types.UUID `json:"id"`
+
+	// IsHidden True while the owner-level visibility switch is off: the
+	// asset is out of every live view (the timeline, the
+	// favorites) and manageable only through the hidden view,
+	// until it is unhidden. The same switch `PATCH
+	// /assets/{id}` and the batch `hide` / `unhide` actions
+	// flip.
+	IsHidden bool `json:"isHidden"`
 
 	// IsReady True once the whole pipeline of the asset (metadata and
 	// serving copies) completed; the `asset.ready` event fires
@@ -397,6 +413,30 @@ type AssetDetailKind string
 // offset, `file` a file timestamp (reserved for the future
 // directory-album importer).
 type AssetDetailTakenAtSource string
+
+// AssetPatch The partial edit of one asset: every field is optional, at
+// least one must be present (a body that carries neither -- null
+// values count as absent -- is a client bug and answers 400),
+// and only the fields the request carries update; the rest keep
+// their values. Both fields are owner-level asset state, so a
+// patch that actually changes one of them publishes a single
+// `asset.updated` event; a patch that repeats the stored values
+// is the idempotent no-op and publishes nothing.
+type AssetPatch struct {
+	// Description The owner's free-text description of the asset, the text
+	// the detail panel renders. The value replaces the stored
+	// text wholesale (an empty string clears it). At most
+	// 10,000 Unicode characters -- the count is over runes, so
+	// a text of multi-byte characters stays within the bound at
+	// the same length.
+	Description *string `json:"description,omitempty"`
+
+	// IsHidden The owner-level visibility switch: `true` keeps the asset
+	// out of every live view (the timeline, the favorites)
+	// until it is unhidden; `false` returns it. The same switch
+	// the batch `hide` / `unhide` actions flip.
+	IsHidden *bool `json:"isHidden,omitempty"`
+}
 
 // AssetResponse One stored asset as the upload and idempotency endpoints return
 // it. `state` discriminates the upload outcome: `created` (201, a
@@ -708,8 +748,10 @@ type SessionInfo struct {
 type SessionInfoKind string
 
 // TimelineItem One asset of the timeline: the asset detail's fields minus the
-// `exif` object (the detail endpoint renders the EXIF panel; the
-// timeline renders tiles). Every item is live by construction --
+// `exif` object and the two detail-panel edit attributes
+// (`description`, `isHidden`) -- the detail endpoint renders the
+// EXIF panel and the edit controls; the timeline renders tiles.
+// Every item is live by construction --
 // hidden assets, trashed assets and the component video rows of
 // Live Photos never enter the timeline -- so `isTrashed` is
 // always false here and is carried only to keep the item shape
@@ -1068,6 +1110,9 @@ type UploadAssetMultipartRequestBody UploadAssetMultipartBody
 // BatchAssetsJSONRequestBody defines body for BatchAssets for application/json ContentType.
 type BatchAssetsJSONRequestBody = BatchRequest
 
+// PatchAssetJSONRequestBody defines body for PatchAsset for application/json ContentType.
+type PatchAssetJSONRequestBody = AssetPatch
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -1103,6 +1148,9 @@ type ServerInterface interface {
 	// GetAsset Fetch the detail of one owned asset.
 	// (GET /assets/{id})
 	GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PatchAsset Edit the description or hidden switch of one asset.
+	// (PATCH /assets/{id})
+	PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetAssetOriginal Download the original file of one owned asset.
 	// (GET /assets/{id}/original)
 	GetAssetOriginal(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -1193,6 +1241,12 @@ func (_ Unimplemented) DeleteAsset(w http.ResponseWriter, r *http.Request, id op
 // GetAsset Fetch the detail of one owned asset.
 // (GET /assets/{id})
 func (_ Unimplemented) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PatchAsset Edit the description or hidden switch of one asset.
+// (PATCH /assets/{id})
+func (_ Unimplemented) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1531,6 +1585,32 @@ func (siw *ServerInterfaceWrapper) GetAsset(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAsset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchAsset operation middleware
+func (siw *ServerInterfaceWrapper) PatchAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchAsset(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1973,6 +2053,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/{id}", wrapper.GetAsset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/assets/{id}", wrapper.PatchAsset)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)

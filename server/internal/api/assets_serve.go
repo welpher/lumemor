@@ -277,7 +277,10 @@ func (s *server) writeAssetNotFound(w http.ResponseWriter) {
 // produced them: width/height stay 0 in the row until the metadata
 // job refines them (a real image is never 0 pixels wide), duration
 // and blurhash are nullable columns, and the exif hot fields are null
-// until the sidecar carries the extraction.
+// until the sidecar carries the extraction. The two owner-level
+// editable attributes (description, isHidden) cross as the row
+// carries them -- the PATCH response reuses this mapper, so the
+// applied values surface exactly as the GET endpoint serves them.
 func assetDetailFrom(row dbgen.GetAssetDetailRow) apigen.AssetDetail {
 	return apigen.AssetDetail{
 		Id:               uuid.UUID(row.ID.Bytes),
@@ -291,6 +294,8 @@ func assetDetailFrom(row dbgen.GetAssetDetailRow) apigen.AssetDetail {
 		TakenAt:          row.TakenAt.Time.UTC(),
 		TakenAtSource:    apigen.AssetDetailTakenAtSource(row.TakenAtSource),
 		IsTrashed:        row.DeletedAt.Valid,
+		IsHidden:         row.IsHidden,
+		Description:      row.Description,
 		IsReady:          row.ReadyAt.Valid,
 		Width:            dimensionValue(row.Width),
 		Height:           dimensionValue(row.Height),

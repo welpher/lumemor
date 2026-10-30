@@ -10,7 +10,7 @@ import 'package:built_value/serializer.dart';
 
 part 'asset_detail.g.dart';
 
-/// One asset as the detail endpoint returns it: the upload response's identity and storage fields plus the pipeline's refinements. The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
+/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, and the two owner-level attributes the PATCH endpoint edits (`description`, `isHidden`). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the asset.
@@ -24,6 +24,8 @@ part 'asset_detail.g.dart';
 /// * [takenAt] - Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the response renders the best value the server has at answer time. 
 /// * [takenAtSource] - Where `takenAt` comes from: `import` is the device-reported capture time of the upload, `exif` an EXIF capture time the metadata job resolved with an offset, `file` a file timestamp (reserved for the future directory-album importer). 
 /// * [isTrashed] - True when the asset sits in the trash.
+/// * [isHidden] - True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
+/// * [description] - The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale. 
 /// * [isReady] - True once the whole pipeline of the asset (metadata and serving copies) completed; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
 /// * [width] - Pixel width in sensor order (not orientation-corrected); null until the metadata job refined the dimensions. 
 /// * [height] - Pixel height in sensor order (not orientation-corrected); null until the metadata job refined the dimensions. 
@@ -78,6 +80,14 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   /// True when the asset sits in the trash.
   @BuiltValueField(wireName: r'isTrashed')
   bool get isTrashed;
+
+  /// True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
+  @BuiltValueField(wireName: r'isHidden')
+  bool get isHidden;
+
+  /// The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale. 
+  @BuiltValueField(wireName: r'description')
+  String get description;
 
   /// True once the whole pipeline of the asset (metadata and serving copies) completed; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
   @BuiltValueField(wireName: r'isReady')
@@ -184,6 +194,16 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
     yield serializers.serialize(
       object.isTrashed,
       specifiedType: const FullType(bool),
+    );
+    yield r'isHidden';
+    yield serializers.serialize(
+      object.isHidden,
+      specifiedType: const FullType(bool),
+    );
+    yield r'description';
+    yield serializers.serialize(
+      object.description,
+      specifiedType: const FullType(String),
     );
     yield r'isReady';
     yield serializers.serialize(
@@ -319,6 +339,20 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
             specifiedType: const FullType(bool),
           ) as bool;
           result.isTrashed = valueDes;
+          break;
+        case r'isHidden':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.isHidden = valueDes;
+          break;
+        case r'description':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.description = valueDes;
           break;
         case r'isReady':
           final valueDes = serializers.deserialize(

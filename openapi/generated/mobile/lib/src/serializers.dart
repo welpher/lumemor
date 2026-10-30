@@ -15,6 +15,7 @@ import 'package:lumemor_api/src/date_serializer.dart';
 import 'package:lumemor_api/src/model/date.dart';
 
 import 'package:lumemor_api/src/model/asset_detail.dart';
+import 'package:lumemor_api/src/model/asset_patch.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
 import 'package:lumemor_api/src/model/batch_request.dart';
 import 'package:lumemor_api/src/model/batch_response.dart';
@@ -37,6 +38,7 @@ part 'serializers.g.dart';
 
 @SerializersFor([
   AssetDetail,
+  AssetPatch,
   AssetResponse,
   BatchRequest,
   BatchResponse,

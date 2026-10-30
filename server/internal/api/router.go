@@ -209,6 +209,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/assets/favorites", wrapper.GetFavorites)
 				r.Get("/assets/hidden", wrapper.GetHidden)
 				r.Get("/assets/{id}", wrapper.GetAsset)
+				r.Patch("/assets/{id}", wrapper.PatchAsset)
 				r.Get("/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
 				// The trash lifecycle endpoints (M2c Task 3): the
 				// owner-scoped listing and restore, and the explicit

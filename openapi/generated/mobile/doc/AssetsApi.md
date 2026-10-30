@@ -19,6 +19,7 @@ Method | HTTP request | Description
 [**getHidden**](AssetsApi.md#gethidden) | **GET** /assets/hidden | The caller&#39;s hidden assets, one keyset page at a time.
 [**getTimeline**](AssetsApi.md#gettimeline) | **GET** /assets/timeline | The aggregated timeline, one keyset page at a time.
 [**getTrash**](AssetsApi.md#gettrash) | **GET** /trash | List the caller&#39;s trashed assets with their retention countdown.
+[**patchAsset**](AssetsApi.md#patchasset) | **PATCH** /assets/{id} | Edit the description or hidden switch of one asset.
 [**restoreAsset**](AssetsApi.md#restoreasset) | **POST** /trash/{id}/restore | Restore one trashed asset.
 [**uploadAsset**](AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 
@@ -121,7 +122,7 @@ void (empty response body)
 
 Fetch the detail of one owned asset.
 
-The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- which the asset detail view renders.  Access is owner-only: an id that belongs to another account answers the same 404 `ASSET_NOT_FOUND` as an id that does not exist, byte for byte, so asset ids cannot be enumerated. Album sharing and ACLs widen access for shared content in a later milestone (M2c, with the album domain); until then only the owner's own assets answer.  A trashed asset answers 200 with `isTrashed: true` -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the future playback endpoint resolves it through `livePhotoVideoId`) but never appears in the timeline. 
+The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- and the two owner-level editable attributes (`description`, `isHidden`), which the asset detail view renders and the `PATCH` endpoint edits.  Access is owner-only: an id that belongs to another account answers the same 404 `ASSET_NOT_FOUND` as an id that does not exist, byte for byte, so asset ids cannot be enumerated. Album sharing and ACLs widen access for shared content in a later milestone (M2c, with the album domain); until then only the owner's own assets answer.  A trashed asset answers 200 with `isTrashed: true` -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the future playback endpoint resolves it through `livePhotoVideoId`) but never appears in the timeline. 
 
 ### Example
 ```dart
@@ -494,6 +495,55 @@ This endpoint does not need any parameter.
 ### HTTP request headers
 
  - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **patchAsset**
+> AssetDetail patchAsset(id, assetPatch)
+
+Edit the description or hidden switch of one asset.
+
+The partial edit of the two owner-level attributes of an asset: `description`, the free text the detail panel renders, and `isHidden`, the owner-level visibility switch that keeps the asset out of every live view until it returns. Both body fields are optional but at least one must be present (a field set to JSON null counts as absent, so a body of nulls is the empty patch); a request that carries neither answers 400 `VALIDATION_FAILED`. Only the fields the request carries update -- the rest keep their values -- and the response is the full asset detail after the edit, the same shape `GET /assets/{id}` serves.  The edit follows set semantics: patching a field with the value the row already carries is the idempotent no-op -- the answer stays the 200 success with the row's current state, nothing is written (not even `updated_at`), and NO `asset.updated` event fires. A patch that actually changes either field publishes exactly ONE `asset.updated` event (the asset id and kind, after the commit): both fields are owner-level asset state, so the same announcement refreshes every viewer of the shared timeline and the detail panel. The description alone has no timeline effect -- it is detail-panel content -- but it is asset state the event covers all the same.  Access is owner-only, the attribute-editing row of the permission matrix: there is deliberately no administrator override here (unlike the permanent delete), so an id that is unknown or foreign answers the same 404 `ASSET_NOT_FOUND`, byte for byte, as every asset endpoint -- asset ids cannot be enumerated. A trashed asset is editable like it is readable (the detail answers 200 with `isTrashed: true`): the edit lands on the row and resurfaces with the restore. The hidden switch this endpoint flips is the same one the batch `hide` / `unhide` actions flip, so the two surfaces agree on the state of an asset.  `description` carries at most 10,000 Unicode characters (runes); above that the request answers 400 `VALIDATION_FAILED`. The value replaces the stored text wholesale -- an empty string is a valid patch and clears it. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String id = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the asset.
+final AssetPatch assetPatch = {"description":"Sunset over the lake, our first evening there."}; // AssetPatch | 
+
+try {
+    final response = api.patchAsset(id, assetPatch);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->patchAsset: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **String**| Identifier of the asset. | 
+ **assetPatch** | [**AssetPatch**](AssetPatch.md)|  | 
+
+### Return type
+
+[**AssetDetail**](AssetDetail.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)

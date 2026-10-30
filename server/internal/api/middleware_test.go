@@ -139,6 +139,7 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"GET /api/v1/assets/favorites",
 		"GET /api/v1/assets/hidden",
 		"GET /api/v1/assets/{id}",
+		"PATCH /api/v1/assets/{id}",
 		"GET /api/v1/assets/{id}/thumbnail",
 		"GET /api/v1/assets/{id}/original",
 		"GET /api/v1/trash",

@@ -16,6 +16,7 @@ export 'package:lumemor_api/src/api/events_api.dart';
 export 'package:lumemor_api/src/api/server_api.dart';
 
 export 'package:lumemor_api/src/model/asset_detail.dart';
+export 'package:lumemor_api/src/model/asset_patch.dart';
 export 'package:lumemor_api/src/model/asset_response.dart';
 export 'package:lumemor_api/src/model/batch_request.dart';
 export 'package:lumemor_api/src/model/batch_response.dart';

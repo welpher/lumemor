@@ -73,6 +73,18 @@ void main() {
       // TODO
     });
 
+    // True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
+    // bool isHidden
+    test('to test the property `isHidden`', () async {
+      // TODO
+    });
+
+    // The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale. 
+    // String description
+    test('to test the property `description`', () async {
+      // TODO
+    });
+
     // True once the whole pipeline of the asset (metadata and serving copies) completed; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
     // bool isReady
     test('to test the property `isReady`', () async {
