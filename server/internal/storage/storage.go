@@ -4,7 +4,9 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -136,6 +138,66 @@ func OriginalPath(checksum, ext string) string {
 func ThumbPath(assetID, size string) string {
 	requireDataRoot("ThumbPath")
 	return filepath.Join(dataRoot, "storage", "thumbs", assetID, size+".avif")
+}
+
+// RemoveAssetFiles removes the on-disk artifacts of one permanently
+// deleted asset under the shared-blob rule. The derived directories
+// (storage/thumbs/<assetID>/ and storage/encoded/<assetID>/) are
+// keyed by the asset id alone -- no other asset can hold files inside
+// them -- so they are always removed. The content-addressed original
+// the row's file_path names is removed only when references is zero:
+// content addressing stores identical bytes of any owner under ONE
+// physical file, so another row referencing the same file (another
+// owner's upload of the same photo, or a live row) keeps it; the
+// caller passes the count of OTHER rows sharing the file_path. Both
+// removals are best-effort and idempotent: a file already gone is
+// success (the delete that owned it may have run concurrently), and
+// a failure is returned for the caller to log -- the database row is
+// already deleted, so a failure here is a storage leak, never data
+// loss. Unlike the path helpers above it works on any data root, not
+// the one recorded by EnsureLayout: the callers hold the data root
+// they were wired with.
+func RemoveAssetFiles(dataDir, relPath, assetID string, references int64) error {
+	if assetID == "" {
+		// The callers pass the uuid string of a database row; empty
+		// would remove the whole thumbs tree, so refuse it outright
+		// rather than trusting a faraway caller.
+		return fmt.Errorf("storage: RemoveAssetFiles: asset id is empty")
+	}
+	var errs []error
+	for _, dir := range []string{
+		filepath.Join(dataDir, "storage", "thumbs", assetID),
+		filepath.Join(dataDir, "storage", "encoded", assetID),
+	} {
+		if err := os.RemoveAll(dir); err != nil {
+			errs = append(errs, fmt.Errorf("remove derived files %s: %w", dir, err))
+		}
+	}
+	if references == 0 {
+		// The originals-tree guard is defense in depth against a
+		// corrupted row: file_path values are server-generated. A
+		// row whose path escapes the tree is left on disk and
+		// reported, not blindly followed. Directory albums (whose
+		// files live outside the tree) arrive with the album domain
+		// and carry their own removal path.
+		abs, err := ResolveStoredPath(dataDir, relPath)
+		if err != nil {
+			errs = append(errs, err)
+		} else if err := removeFileIfPresent(abs); err != nil {
+			errs = append(errs, fmt.Errorf("remove original %s: %w", abs, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// removeFileIfPresent deletes one file, treating "already gone" as
+// success: the delete of a shared blob may race an equivalent delete
+// whose file removal already ran.
+func removeFileIfPresent(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // PosterPath returns the path of the poster frame of a video asset

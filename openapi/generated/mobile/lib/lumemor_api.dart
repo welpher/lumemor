@@ -28,5 +28,7 @@ export 'package:lumemor_api/src/model/server_info.dart';
 export 'package:lumemor_api/src/model/session_info.dart';
 export 'package:lumemor_api/src/model/timeline_item.dart';
 export 'package:lumemor_api/src/model/timeline_response.dart';
+export 'package:lumemor_api/src/model/trash_item.dart';
+export 'package:lumemor_api/src/model/trash_response.dart';
 export 'package:lumemor_api/src/model/user.dart';
 

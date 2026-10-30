@@ -21,6 +21,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/jobs"
 	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/storage"
+	"github.com/welpher/lumemor/server/internal/trash"
 )
 
 const (
@@ -159,6 +160,20 @@ func run(logger *slog.Logger) error {
 		// absent.
 		logger.Info("requeue sweep complete",
 			"stuck", sweepCounts.Stuck, "enqueued", sweepCounts.Enqueued)
+	}
+
+	// The boot trash expiry, the same pattern as the sweep: rows whose
+	// retention closed while the process was down leave with the boot
+	// instead of waiting for the first hourly periodic run. It is
+	// bounded (the run caps its own batch) and idempotent, its failure
+	// does not fail the boot, and the hourly periodic job retries.
+	expiryCounts, err := trash.RunExpiry(ctx, pool, cfg.DataDir, bus)
+	if err != nil {
+		logger.Error("trash expiry failed", "error", err,
+			"expired", expiryCounts.Expired, "files", expiryCounts.FilesRemoved)
+	} else {
+		logger.Info("trash expiry complete",
+			"expired", expiryCounts.Expired, "files", expiryCounts.FilesRemoved)
 	}
 
 	srv := &http.Server{

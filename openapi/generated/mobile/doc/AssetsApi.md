@@ -9,13 +9,62 @@ All URIs are relative to */api/v1*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**deleteAsset**](AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
 [**getAsset**](AssetsApi.md#getasset) | **GET** /assets/{id} | Fetch the detail of one owned asset.
 [**getAssetByDeviceId**](AssetsApi.md#getassetbydeviceid) | **GET** /assets/by-device-id/{deviceAssetId} | Look up an uploaded asset by its device identifier.
 [**getAssetOriginal**](AssetsApi.md#getassetoriginal) | **GET** /assets/{id}/original | Download the original file of one owned asset.
 [**getAssetThumbnail**](AssetsApi.md#getassetthumbnail) | **GET** /assets/{id}/thumbnail | Serve a derived thumbnail, or a video&#39;s poster frame.
 [**getTimeline**](AssetsApi.md#gettimeline) | **GET** /assets/timeline | The aggregated timeline, one keyset page at a time.
+[**getTrash**](AssetsApi.md#gettrash) | **GET** /trash | List the caller&#39;s trashed assets with their retention countdown.
+[**restoreAsset**](AssetsApi.md#restoreasset) | **POST** /trash/{id}/restore | Restore one trashed asset.
 [**uploadAsset**](AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 
+
+# **deleteAsset**
+> deleteAsset(id)
+
+Permanently delete one asset, files and all.
+
+The explicit permanent deletion -- the destructive surface beside the trash. It removes the asset row whatever its state (live or trashed: this endpoint does not route through the trash), and with it the asset's on-disk artifacts under the shared-blob rule: content addressing means another owner's row (or any other row) with the same checksum references the SAME physical file, so the original file is removed only when no other asset row references it; otherwise the row goes and the file stays. The derived serving copies (the per-asset thumbnail directory) belong to this asset id alone and are always removed. The component video row of a Live Photo is deleted with its photo (it is never an asset of its own).  The application-layer permission gate of the two-layer delete discipline: the owner of the asset, or an administrator. An id of another user's asset answers the same 404 `ASSET_NOT_FOUND` as an id that does not exist, byte for byte, so asset ids cannot be enumerated. (The file-system layer of the gate matters for directory albums, whose files move on delete; it arrives with the album domain in a later milestone -- blob originals live inside the server's own data directory.)  The ordinary client \"delete\" is the trash (soft delete through the batch endpoint); this endpoint is the explicit bypass: the client that already knows it wants the asset gone forever, and the empty-trash surface. Repeating the request after a successful deletion answers 404 -- the asset no longer exists, exactly like an unknown id.  The deletion is committed before the files are removed: a failure between the two (a full disk, a failing mount) leaves the row gone and the file orphaned, which is a storage leak, never data loss; it is logged server-side and the response still reports the deletion. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String id = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the asset.
+
+try {
+    api.deleteAsset(id);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->deleteAsset: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **String**| Identifier of the asset. | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **getAsset**
 > AssetDetail getAsset(id)
@@ -246,6 +295,95 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**TimelineResponse**](TimelineResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getTrash**
+> TrashResponse getTrash()
+
+List the caller's trashed assets with their retention countdown.
+
+The trash view of the caller: every asset the caller soft deleted, newest deletion first, each with the countdown of whole days until the expiry job removes it. Retention is the instance setting `trash_retention_days` (default 30): the expiry job runs hourly and permanently deletes rows whose `deletedAt` fell past the retention window, so an item shows `remainingDays` 0 on its way out (the row survives only until the next job run) and disappears afterwards -- restoring it then answers 404, it does not resurrect.  `remainingDays` counts the days left rounded up: an asset trashed moments ago with the default retention shows 30. The list is owner-scoped and bounded: it answers at most the 200 most recent deletions (the trash is a recovery view for recent deletes, and older items age out through expiry long before the bound could bite). The component video rows of Live Photos never appear: the pair is represented by its photo. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+
+try {
+    final response = api.getTrash();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->getTrash: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TrashResponse**](TrashResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **restoreAsset**
+> restoreAsset(id)
+
+Restore one trashed asset.
+
+Clears the trash mark of one asset: the row becomes live again and re-enters the timeline (its album memberships were never removed -- a trashed asset is filtered out of the live views, not evicted from its albums). The component video row of a Live Photo is restored with its photo.  The operation follows set semantics: restoring an asset that is already live succeeds (204, nothing to do) -- a client that races another restore, or asks twice, converges instead of erroring; the row is already in the desired state. Only an id that is unknown, or that belongs to another account while the caller is not its owner, answers 404 -- byte-identical for both cases, so asset ids cannot be enumerated. An asset whose row the expiry job already removed answers 404 as well: a purge is not reversible.  The retention countdown of the trash list is the only signal that a restore is still possible; after the row is gone, the content itself can only return through a re-upload (which the upload idempotency answers as a fresh asset). 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String id = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the trashed asset.
+
+try {
+    api.restoreAsset(id);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->restoreAsset: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **String**| Identifier of the trashed asset. | 
+
+### Return type
+
+void (empty response body)
 
 ### Authorization
 

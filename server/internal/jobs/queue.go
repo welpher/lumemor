@@ -112,6 +112,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		pool:   cfg.Pool,
 		logger: logger,
 	})
+	river.AddWorker(workers, &RetentionWorker{
+		pool:    cfg.Pool,
+		dataDir: cfg.DataDir,
+		bus:     cfg.Bus,
+		logger:  logger,
+	})
 
 	workerCount := cfg.Workers
 	if workerCount <= 0 {
@@ -132,12 +138,17 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		// thumbnail job raises its envelope to 90s for the ffmpeg
 		// poster extraction's 60s budget (see ThumbnailWorker.Timeout).
 		//
-		// The requeue sweep runs hourly through River's periodic job
-		// scheduler: the elected leader enqueues the periodic jobs --
-		// in this single-process deployment, this client -- and the
-		// SweepWorker runs the shared RunRequeueSweep (the boot sweep
-		// of main.go is the other trigger point of the same function).
-		PeriodicJobs: sweepPeriodicJobs(),
+		// The two hourly maintenance jobs run through River's periodic
+		// job scheduler: the elected leader enqueues the periodic jobs
+		// -- in this single-process deployment, this client -- and the
+		// workers run the shared functions (the boot runs of main.go
+		// are the other trigger point of each). The requeue sweep
+		// recovers stuck pipeline assets; the trash expiry purges
+		// soft-deleted assets past their retention. They are separate
+		// periodic registrations and separate workers on purpose:
+		// independent failure and retry, independent kinds and counts
+		// -- see retentionPeriodicJobs.
+		PeriodicJobs: periodicJobs(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jobs: create river client: %w", err)

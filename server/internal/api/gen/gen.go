@@ -188,6 +188,45 @@ func (e TimelineItemTakenAtSource) Valid() bool {
 	}
 }
 
+// Defines values for TrashItemKind.
+const (
+	TrashItemKindImage TrashItemKind = "image"
+	TrashItemKindVideo TrashItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the TrashItemKind enum.
+func (e TrashItemKind) Valid() bool {
+	switch e {
+	case TrashItemKindImage:
+		return true
+	case TrashItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrashItemTakenAtSource.
+const (
+	TrashItemTakenAtSourceExif   TrashItemTakenAtSource = "exif"
+	TrashItemTakenAtSourceFile   TrashItemTakenAtSource = "file"
+	TrashItemTakenAtSourceImport TrashItemTakenAtSource = "import"
+)
+
+// Valid indicates whether the value is a known member of the TrashItemTakenAtSource enum.
+func (e TrashItemTakenAtSource) Valid() bool {
+	switch e {
+	case TrashItemTakenAtSourceExif:
+		return true
+	case TrashItemTakenAtSourceFile:
+		return true
+	case TrashItemTakenAtSourceImport:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserRole.
 const (
 	UserRoleAdmin UserRole = "admin"
@@ -700,6 +739,105 @@ type TimelineResponse struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 }
 
+// TrashItem One asset of the trash view: the timeline item's fields (the
+// tile-relevant identity and pipeline fields, so the trash page
+// renders the same tiles as the timeline) plus the trash
+// semantics -- `deletedAt`, when the soft delete happened, and
+// `remainingDays`, the countdown of whole days until the expiry
+// job removes the row (rounded up; 0 once past the deadline,
+// for the short window until the hourly job catches up). Every
+// item is trashed by construction; there is no `isTrashed`
+// field. The component video rows of Live Photos never appear:
+// the pair is represented by its photo. The shape is fixed --
+// every property is always present.
+type TrashItem struct {
+	// Blurhash The blurhash of the tile for placeholder rendering; null
+	// until the thumbnail job stored it.
+	Blurhash *string `json:"blurhash"`
+
+	// Checksum SHA-256 digest of the file bytes, lowercase hex. The
+	// prefix of the entity tags the media endpoints serve.
+	Checksum string `json:"checksum"`
+
+	// CreatedAt When the asset record was created (RFC 3339 UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DeletedAt When the asset was soft deleted (RFC 3339 UTC). The
+	// retention window ends at `deletedAt` plus the instance's
+	// `trash_retention_days`.
+	DeletedAt time.Time `json:"deletedAt"`
+
+	// DurationMs Playback duration of a video in milliseconds; null for
+	// images and until the metadata job refined it.
+	DurationMs *int `json:"durationMs"`
+
+	// FileSize Size of the stored file in bytes.
+	FileSize int64 `json:"fileSize"`
+
+	// Height Pixel height in sensor order; null until the metadata job
+	// refined the dimensions.
+	Height *int `json:"height"`
+
+	// Id UUIDv7 identifier of the asset.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsReady True once the whole pipeline of the asset (metadata and
+	// serving copies) completed.
+	IsReady bool `json:"isReady"`
+
+	// Kind Media family of the asset.
+	Kind TrashItemKind `json:"kind"`
+
+	// LivePhotoVideoId For a Live Photo image, the id of its linked component
+	// video row (restored and expired together with the photo);
+	// null otherwise.
+	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
+
+	// MimeType Canonical content type of the stored format, for example
+	// `image/jpeg` or `video/quicktime`.
+	MimeType string `json:"mimeType"`
+
+	// OriginalFilename The file name the asset was uploaded with.
+	OriginalFilename string `json:"originalFilename"`
+
+	// OwnerId UUIDv7 identifier of the owning account.
+	OwnerId openapi_types.UUID `json:"ownerId"`
+
+	// RemainingDays Whole days until the expiry job removes the asset,
+	// rounded up (an asset trashed moments ago with the default
+	// retention of 30 days shows 30). 0 once the deadline has
+	// passed -- the row survives only until the next hourly
+	// expiry run.
+	RemainingDays int `json:"remainingDays"`
+
+	// TakenAt Capture time (RFC 3339), the value the timeline would
+	// order the asset by.
+	TakenAt time.Time `json:"takenAt"`
+
+	// TakenAtSource Where `takenAt` comes from.
+	TakenAtSource TrashItemTakenAtSource `json:"takenAtSource"`
+
+	// Width Pixel width in sensor order; null until the metadata job
+	// refined the dimensions.
+	Width *int `json:"width"`
+}
+
+// TrashItemKind Media family of the asset.
+type TrashItemKind string
+
+// TrashItemTakenAtSource Where `takenAt` comes from.
+type TrashItemTakenAtSource string
+
+// TrashResponse The trash view: the caller's trashed assets, newest deletion
+// first. The list is bounded (the 200 most recent deletions)
+// and unpaginated -- the trash is a recovery view for recent
+// deletes, and items age out through expiry on their own.
+type TrashResponse struct {
+	// Items The trashed assets of the caller, ordered by `deletedAt`
+	// descending.
+	Items []TrashItem `json:"items"`
+}
+
 // User A lumemor account.
 type User struct {
 	// CreatedAt Creation time (RFC 3339 UTC).
@@ -824,6 +962,9 @@ type ServerInterface interface {
 	// GetTimeline The aggregated timeline, one keyset page at a time.
 	// (GET /assets/timeline)
 	GetTimeline(w http.ResponseWriter, r *http.Request, params GetTimelineParams)
+	// DeleteAsset Permanently delete one asset, files and all.
+	// (DELETE /assets/{id})
+	DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetAsset Fetch the detail of one owned asset.
 	// (GET /assets/{id})
 	GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -860,6 +1001,12 @@ type ServerInterface interface {
 	// CreateAdmin Create the first administrator account.
 	// (POST /server/setup/admin)
 	CreateAdmin(w http.ResponseWriter, r *http.Request)
+	// GetTrash List the caller's trashed assets with their retention countdown.
+	// (GET /trash)
+	GetTrash(w http.ResponseWriter, r *http.Request)
+	// RestoreAsset Restore one trashed asset.
+	// (POST /trash/{id}/restore)
+	RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -881,6 +1028,12 @@ func (_ Unimplemented) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request
 // GetTimeline The aggregated timeline, one keyset page at a time.
 // (GET /assets/timeline)
 func (_ Unimplemented) GetTimeline(w http.ResponseWriter, r *http.Request, params GetTimelineParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteAsset Permanently delete one asset, files and all.
+// (DELETE /assets/{id})
+func (_ Unimplemented) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -953,6 +1106,18 @@ func (_ Unimplemented) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 // CreateAdmin Create the first administrator account.
 // (POST /server/setup/admin)
 func (_ Unimplemented) CreateAdmin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTrash List the caller's trashed assets with their retention countdown.
+// (GET /trash)
+func (_ Unimplemented) GetTrash(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RestoreAsset Restore one trashed asset.
+// (POST /trash/{id}/restore)
+func (_ Unimplemented) RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1055,6 +1220,32 @@ func (siw *ServerInterfaceWrapper) GetTimeline(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTimeline(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAsset operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAsset(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1323,6 +1514,46 @@ func (siw *ServerInterfaceWrapper) CreateAdmin(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetTrash operation middleware
+func (siw *ServerInterfaceWrapper) GetTrash(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrash(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreAsset operation middleware
+func (siw *ServerInterfaceWrapper) RestoreAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreAsset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1470,6 +1701,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/assets/timeline", wrapper.GetTimeline)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/assets/{id}", wrapper.DeleteAsset)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/{id}", wrapper.GetAsset)
 	})
 	r.Group(func(r chi.Router) {
@@ -1480,6 +1714,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/trash", wrapper.GetTrash)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/trash/{id}/restore", wrapper.RestoreAsset)
 	})
 
 	return r

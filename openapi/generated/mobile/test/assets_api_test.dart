@@ -7,6 +7,15 @@ void main() {
   final instance = LumemorApi().getAssetsApi();
 
   group(AssetsApi, () {
+    // Permanently delete one asset, files and all.
+    //
+    // The explicit permanent deletion -- the destructive surface beside the trash. It removes the asset row whatever its state (live or trashed: this endpoint does not route through the trash), and with it the asset's on-disk artifacts under the shared-blob rule: content addressing means another owner's row (or any other row) with the same checksum references the SAME physical file, so the original file is removed only when no other asset row references it; otherwise the row goes and the file stays. The derived serving copies (the per-asset thumbnail directory) belong to this asset id alone and are always removed. The component video row of a Live Photo is deleted with its photo (it is never an asset of its own).  The application-layer permission gate of the two-layer delete discipline: the owner of the asset, or an administrator. An id of another user's asset answers the same 404 `ASSET_NOT_FOUND` as an id that does not exist, byte for byte, so asset ids cannot be enumerated. (The file-system layer of the gate matters for directory albums, whose files move on delete; it arrives with the album domain in a later milestone -- blob originals live inside the server's own data directory.)  The ordinary client \"delete\" is the trash (soft delete through the batch endpoint); this endpoint is the explicit bypass: the client that already knows it wants the asset gone forever, and the empty-trash surface. Repeating the request after a successful deletion answers 404 -- the asset no longer exists, exactly like an unknown id.  The deletion is committed before the files are removed: a failure between the two (a full disk, a failing mount) leaves the row gone and the file orphaned, which is a storage leak, never data loss; it is logged server-side and the response still reports the deletion. 
+    //
+    //Future deleteAsset(String id) async
+    test('test deleteAsset', () async {
+      // TODO
+    });
+
     // Fetch the detail of one owned asset.
     //
     // The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- which the asset detail view renders.  Access is owner-only: an id that belongs to another account answers the same 404 `ASSET_NOT_FOUND` as an id that does not exist, byte for byte, so asset ids cannot be enumerated. Album sharing and ACLs widen access for shared content in a later milestone (M2c, with the album domain); until then only the owner's own assets answer.  A trashed asset answers 200 with `isTrashed: true` -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the future playback endpoint resolves it through `livePhotoVideoId`) but never appears in the timeline. 
@@ -49,6 +58,24 @@ void main() {
     //
     //Future<TimelineResponse> getTimeline({ String cursor, int limit, String albumId }) async
     test('test getTimeline', () async {
+      // TODO
+    });
+
+    // List the caller's trashed assets with their retention countdown.
+    //
+    // The trash view of the caller: every asset the caller soft deleted, newest deletion first, each with the countdown of whole days until the expiry job removes it. Retention is the instance setting `trash_retention_days` (default 30): the expiry job runs hourly and permanently deletes rows whose `deletedAt` fell past the retention window, so an item shows `remainingDays` 0 on its way out (the row survives only until the next job run) and disappears afterwards -- restoring it then answers 404, it does not resurrect.  `remainingDays` counts the days left rounded up: an asset trashed moments ago with the default retention shows 30. The list is owner-scoped and bounded: it answers at most the 200 most recent deletions (the trash is a recovery view for recent deletes, and older items age out through expiry long before the bound could bite). The component video rows of Live Photos never appear: the pair is represented by its photo. 
+    //
+    //Future<TrashResponse> getTrash() async
+    test('test getTrash', () async {
+      // TODO
+    });
+
+    // Restore one trashed asset.
+    //
+    // Clears the trash mark of one asset: the row becomes live again and re-enters the timeline (its album memberships were never removed -- a trashed asset is filtered out of the live views, not evicted from its albums). The component video row of a Live Photo is restored with its photo.  The operation follows set semantics: restoring an asset that is already live succeeds (204, nothing to do) -- a client that races another restore, or asks twice, converges instead of erroring; the row is already in the desired state. Only an id that is unknown, or that belongs to another account while the caller is not its owner, answers 404 -- byte-identical for both cases, so asset ids cannot be enumerated. An asset whose row the expiry job already removed answers 404 as well: a purge is not reversible.  The retention countdown of the trash list is the only signal that a restore is still possible; after the row is gone, the content itself can only return through a re-upload (which the upload idempotency answers as a fresh asset). 
+    //
+    //Future restoreAsset(String id) async
+    test('test restoreAsset', () async {
       // TODO
     });
 
