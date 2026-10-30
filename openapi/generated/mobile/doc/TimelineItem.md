@@ -19,6 +19,7 @@ Name | Type | Description | Notes
 **takenAt** | [**DateTime**](DateTime.md) | Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the timeline orders by it.  | 
 **takenAtSource** | **String** | Where `takenAt` comes from: `import` is the device-reported capture time of the upload, `exif` an EXIF capture time the metadata job resolved with an offset, `file` a file timestamp (reserved for the future directory-album importer).  | 
 **isTrashed** | **bool** | Always false in the timeline: trashed assets never enter it. The field exists to keep the shape identical to the asset detail's.  | 
+**isFavorite** | **bool** | Whether the REQUESTING user favorites this asset: the caller's own row of the per-user favorites state, written by the batch endpoint's favorite action. False whenever the caller has no favorites row for the asset -- the same asset can be a favorite for one viewer of a shared timeline and not for another.  | 
 **isReady** | **bool** | True once the whole pipeline of the asset (metadata and serving copies) completed; until then the pipeline-dependent fields are null and the client renders placeholders.  | 
 **width** | **int** | Pixel width in sensor order; null until the metadata job refined the dimensions.  | 
 **height** | **int** | Pixel height in sensor order; null until the metadata job refined the dimensions.  | 

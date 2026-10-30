@@ -16,6 +16,8 @@ import 'package:lumemor_api/src/model/date.dart';
 
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
+import 'package:lumemor_api/src/model/batch_request.dart';
+import 'package:lumemor_api/src/model/batch_response.dart';
 import 'package:lumemor_api/src/model/bearer_session.dart';
 import 'package:lumemor_api/src/model/create_admin_request.dart';
 import 'package:lumemor_api/src/model/error.dart';
@@ -36,6 +38,8 @@ part 'serializers.g.dart';
 @SerializersFor([
   AssetDetail,
   AssetResponse,
+  BatchRequest,
+  BatchResponse,
   BearerSession,
   CreateAdminRequest,
   Error,
@@ -71,6 +75,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType(bool)]),
         () => MapBuilder<String, bool>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(String)]),
+        () => ListBuilder<String>(),
       )
       ..add(const OneOfSerializer())
       ..add(const AnyOfSerializer())

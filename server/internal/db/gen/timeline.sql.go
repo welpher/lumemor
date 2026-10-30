@@ -12,11 +12,15 @@ import (
 )
 
 const listAlbumTimelineAssets = `-- name: ListAlbumTimelineAssets :many
-SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at,
+       EXISTS (
+           SELECT 1 FROM user_favorites uf
+           WHERE uf.asset_id = a.id AND uf.user_id = $1
+       ) AS is_favorite
 FROM assets a
 JOIN album_items ai ON ai.asset_id = a.id
 JOIN albums al ON al.id = ai.album_id
-WHERE al.id = $1
+WHERE al.id = $2
   -- The visibility check of the in-album timeline: the caller owns
   -- the album or it is shared to the caller. An album that fails both
   -- resolves to no rows -- the empty list, indistinguishable from an
@@ -24,10 +28,10 @@ WHERE al.id = $1
   -- timeline preference does not apply here: it scopes the aggregate,
   -- not the album's own view.
   AND (
-      al.owner_id = $2
+      al.owner_id = $1
       OR EXISTS (
           SELECT 1 FROM album_shares s
-          WHERE s.album_id = al.id AND s.user_id = $2
+          WHERE s.album_id = al.id AND s.user_id = $1
       )
   )
   AND a.deleted_at IS NULL
@@ -42,17 +46,25 @@ LIMIT $5
 `
 
 type ListAlbumTimelineAssetsParams struct {
-	AlbumID       pgtype.UUID        `json:"album_id"`
 	UserID        pgtype.UUID        `json:"user_id"`
+	AlbumID       pgtype.UUID        `json:"album_id"`
 	CursorTakenAt pgtype.Timestamptz `json:"cursor_taken_at"`
 	CursorID      pgtype.UUID        `json:"cursor_id"`
 	LimitCount    int32              `json:"limit_count"`
 }
 
-func (q *Queries) ListAlbumTimelineAssets(ctx context.Context, arg ListAlbumTimelineAssetsParams) ([]Asset, error) {
+type ListAlbumTimelineAssetsRow struct {
+	Asset      Asset `json:"asset"`
+	IsFavorite bool  `json:"is_favorite"`
+}
+
+// The album's own timeline with the same is_favorite computation as
+// the aggregate: per-user state of the requesting viewer, whatever
+// the album or the asset's owner.
+func (q *Queries) ListAlbumTimelineAssets(ctx context.Context, arg ListAlbumTimelineAssetsParams) ([]ListAlbumTimelineAssetsRow, error) {
 	rows, err := q.db.Query(ctx, listAlbumTimelineAssets,
-		arg.AlbumID,
 		arg.UserID,
+		arg.AlbumID,
 		arg.CursorTakenAt,
 		arg.CursorID,
 		arg.LimitCount,
@@ -61,39 +73,40 @@ func (q *Queries) ListAlbumTimelineAssets(ctx context.Context, arg ListAlbumTime
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Asset
+	var items []ListAlbumTimelineAssetsRow
 	for rows.Next() {
-		var i Asset
+		var i ListAlbumTimelineAssetsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.OwnerID,
-			&i.StorageKind,
-			&i.FilePath,
-			&i.Checksum,
-			&i.OriginalFilename,
-			&i.FileSize,
-			&i.MimeType,
-			&i.MediaKind,
-			&i.LivePhotoVideoID,
-			&i.IsComponent,
-			&i.Width,
-			&i.Height,
-			&i.DurationMs,
-			&i.TakenAt,
-			&i.TakenAtSource,
-			&i.PlaceID,
-			&i.Blurhash,
-			&i.Phash,
-			&i.IsHidden,
-			&i.Description,
-			&i.DeletedAt,
-			&i.OriginalPath,
-			&i.TrashPath,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.DeviceAssetID,
-			&i.PendingJobs,
-			&i.ReadyAt,
+			&i.Asset.ID,
+			&i.Asset.OwnerID,
+			&i.Asset.StorageKind,
+			&i.Asset.FilePath,
+			&i.Asset.Checksum,
+			&i.Asset.OriginalFilename,
+			&i.Asset.FileSize,
+			&i.Asset.MimeType,
+			&i.Asset.MediaKind,
+			&i.Asset.LivePhotoVideoID,
+			&i.Asset.IsComponent,
+			&i.Asset.Width,
+			&i.Asset.Height,
+			&i.Asset.DurationMs,
+			&i.Asset.TakenAt,
+			&i.Asset.TakenAtSource,
+			&i.Asset.PlaceID,
+			&i.Asset.Blurhash,
+			&i.Asset.Phash,
+			&i.Asset.IsHidden,
+			&i.Asset.Description,
+			&i.Asset.DeletedAt,
+			&i.Asset.OriginalPath,
+			&i.Asset.TrashPath,
+			&i.Asset.CreatedAt,
+			&i.Asset.UpdatedAt,
+			&i.Asset.DeviceAssetID,
+			&i.Asset.PendingJobs,
+			&i.Asset.ReadyAt,
+			&i.IsFavorite,
 		); err != nil {
 			return nil, err
 		}
@@ -107,29 +120,33 @@ func (q *Queries) ListAlbumTimelineAssets(ctx context.Context, arg ListAlbumTime
 
 const listTimelineAssets = `-- name: ListTimelineAssets :many
 
-SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at,
+       EXISTS (
+           SELECT 1 FROM user_favorites uf
+           WHERE uf.asset_id = a.id AND uf.user_id = $1
+       ) AS is_favorite
 FROM assets a
 WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
   AND (
-      $1::timestamptz IS NULL
-      OR (a.taken_at, a.id) < ($1::timestamptz, $2::uuid)
+      $2::timestamptz IS NULL
+      OR (a.taken_at, a.id) < ($2::timestamptz, $3::uuid)
   )
   AND EXISTS (
       SELECT 1
       FROM album_items ai
       JOIN albums al ON al.id = ai.album_id
       LEFT JOIN album_shares s
-             ON s.album_id = al.id AND s.user_id = $3
+             ON s.album_id = al.id AND s.user_id = $1
       LEFT JOIN user_album_prefs p
-             ON p.album_id = al.id AND p.user_id = $3
+             ON p.album_id = al.id AND p.user_id = $1
       WHERE ai.asset_id = a.id
         AND (
-            (al.type = 'sync' AND al.owner_id = $3)
+            (al.type = 'sync' AND al.owner_id = $1)
             OR (
                 (
-                    (al.type = 'directory' AND al.owner_id = $3)
+                    (al.type = 'directory' AND al.owner_id = $1)
                     OR s.user_id IS NOT NULL
                 )
                 AND (p.in_timeline IS NULL OR p.in_timeline)
@@ -141,10 +158,15 @@ LIMIT $4
 `
 
 type ListTimelineAssetsParams struct {
+	UserID        pgtype.UUID        `json:"user_id"`
 	CursorTakenAt pgtype.Timestamptz `json:"cursor_taken_at"`
 	CursorID      pgtype.UUID        `json:"cursor_id"`
-	UserID        pgtype.UUID        `json:"user_id"`
 	LimitCount    int32              `json:"limit_count"`
+}
+
+type ListTimelineAssetsRow struct {
+	Asset      Asset `json:"asset"`
+	IsFavorite bool  `json:"is_favorite"`
 }
 
 // Timeline queries (M2c Task 2): the read side of the aggregated
@@ -177,50 +199,56 @@ type ListTimelineAssetsParams struct {
 // stable across rows sharing one taken_at. The cursor pair is passed
 // as nullable arguments: NULL on the first page, where the predicate
 // short-circuits to TRUE.
-func (q *Queries) ListTimelineAssets(ctx context.Context, arg ListTimelineAssetsParams) ([]Asset, error) {
+// The per-user is_favorite flag rides along as an EXISTS: the
+// caller's own favorites row for each asset, computed here so the
+// timeline items carry the per-user state (the same asset is a
+// favorite for one viewer and a plain tile for another) without a
+// second roundtrip.
+func (q *Queries) ListTimelineAssets(ctx context.Context, arg ListTimelineAssetsParams) ([]ListTimelineAssetsRow, error) {
 	rows, err := q.db.Query(ctx, listTimelineAssets,
+		arg.UserID,
 		arg.CursorTakenAt,
 		arg.CursorID,
-		arg.UserID,
 		arg.LimitCount,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Asset
+	var items []ListTimelineAssetsRow
 	for rows.Next() {
-		var i Asset
+		var i ListTimelineAssetsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.OwnerID,
-			&i.StorageKind,
-			&i.FilePath,
-			&i.Checksum,
-			&i.OriginalFilename,
-			&i.FileSize,
-			&i.MimeType,
-			&i.MediaKind,
-			&i.LivePhotoVideoID,
-			&i.IsComponent,
-			&i.Width,
-			&i.Height,
-			&i.DurationMs,
-			&i.TakenAt,
-			&i.TakenAtSource,
-			&i.PlaceID,
-			&i.Blurhash,
-			&i.Phash,
-			&i.IsHidden,
-			&i.Description,
-			&i.DeletedAt,
-			&i.OriginalPath,
-			&i.TrashPath,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.DeviceAssetID,
-			&i.PendingJobs,
-			&i.ReadyAt,
+			&i.Asset.ID,
+			&i.Asset.OwnerID,
+			&i.Asset.StorageKind,
+			&i.Asset.FilePath,
+			&i.Asset.Checksum,
+			&i.Asset.OriginalFilename,
+			&i.Asset.FileSize,
+			&i.Asset.MimeType,
+			&i.Asset.MediaKind,
+			&i.Asset.LivePhotoVideoID,
+			&i.Asset.IsComponent,
+			&i.Asset.Width,
+			&i.Asset.Height,
+			&i.Asset.DurationMs,
+			&i.Asset.TakenAt,
+			&i.Asset.TakenAtSource,
+			&i.Asset.PlaceID,
+			&i.Asset.Blurhash,
+			&i.Asset.Phash,
+			&i.Asset.IsHidden,
+			&i.Asset.Description,
+			&i.Asset.DeletedAt,
+			&i.Asset.OriginalPath,
+			&i.Asset.TrashPath,
+			&i.Asset.CreatedAt,
+			&i.Asset.UpdatedAt,
+			&i.Asset.DeviceAssetID,
+			&i.Asset.PendingJobs,
+			&i.Asset.ReadyAt,
+			&i.IsFavorite,
 		); err != nil {
 			return nil, err
 		}

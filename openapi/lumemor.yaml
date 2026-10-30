@@ -928,6 +928,12 @@ paths:
         the trash, and the component video rows of Live Photos never
         appear.
 
+        `isFavorite` is per-user state: it reports whether the
+        CALLING user favorites the asset (the favorites rows the
+        batch endpoint writes), whatever the asset's owner -- the
+        same item is a favorite for one viewer and a plain tile for
+        another.
+
         Pages are keyset-paginated with an opaque cursor: the response
         carries `nextCursor` exactly when another page exists, and the
         client passes it back as `cursor` to continue after the last
@@ -1012,6 +1018,7 @@ paths:
                         takenAt: '2026-10-13T12:30:00Z'
                         takenAtSource: exif
                         isTrashed: false
+                        isFavorite: false
                         isReady: true
                         width: 4032
                         height: 3024
@@ -1034,11 +1041,398 @@ paths:
                         takenAt: '2026-10-12T08:00:00Z'
                         takenAtSource: import
                         isTrashed: false
+                        isFavorite: false
                         isReady: false
                         width: null
                         height: null
                         durationMs: null
                         blurhash: null
+                        livePhotoVideoId: null
+        '400':
+          description: |
+            The pagination parameters are invalid: `cursor` is not a
+            value this endpoint produced, or `limit` is below 1.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: A mangled cursor.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: invalid timeline cursor
+                    details:
+                      fields:
+                        - cursor
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /assets/batch:
+    post:
+      operationId: batchAssets
+      tags:
+        - assets
+      summary: Apply one set action to a batch of assets.
+      description: |
+        The batch surface of the curation actions: one request applies
+        one action -- favorite, unfavorite, hide, unhide, trash or
+        restore -- to a list of up to 1000 asset ids, in one
+        transaction. The endpoint follows set semantics: it is a
+        convergence operation, not a state-change counter. Every id
+        that resolves to an asset the caller owns is applied (an id
+        already in the target state is the idempotent no-op and still
+        counts as affected), and every id that does not resolve --
+        unknown, or another account's asset, the two
+        indistinguishable -- is ignored and reported in the response's
+        `missing` list. The two lists partition the request's
+        distinct ids: no individual id ever fails the request, and a
+        repeat of a successful batch converges to the same answer.
+
+        This is the deliberate trade of the list surface: the
+        byte-identical 404 anti-enumeration of the single-asset
+        endpoints does not apply here. The caller handed the ids over
+        themselves, so reporting the unresolvable ones back in
+        `missing` hides nothing -- and hands honest clients their
+        retry list.
+
+        `ids` must carry between 1 and 1000 entries: an empty list, or
+        one past the cap, answers 400 `VALIDATION_FAILED`, as does an
+        `action` outside the enum or a body that is not valid JSON
+        (an id that is not a uuid fails the body decode). Repeated ids
+        collapse to one application.
+
+        The whole batch commits as one transaction: the action's
+        writes land together or not at all, so a partial batch never
+        surfaces. Failures on resolvable ids are not expected -- the
+        per-item guards turn foreign and already-in-state ids into
+        no-ops, not errors -- so the all-or-nothing bound is the
+        infrastructure safety, not a client-visible case.
+
+        The actions resolve to their single-row primitives: favorite
+        / unfavorite write or remove the caller's per-user favorites
+        rows; hide / unhide flip the owner-level visibility switch of
+        the row the id names (a hidden asset leaves every live view
+        -- the timeline, the favorites -- until unhidden); trash /
+        restore run the trash lifecycle of the trash endpoints, Live
+        Photo pair included (trashing or restoring the photo carries
+        its component video row along, whichever row the id names).
+
+        Events publish AFTER the commit, one per asset whose state
+        actually changed -- the idempotent no-op stays silent, the
+        same discipline as the single-asset restore: `asset.trashed`
+        and `asset.restored` for trash and restore, `asset.updated`
+        for hide and unhide (visibility is owner-level state, and
+        every viewer of the shared timeline sees it change).
+        favorite / unfavorite publish nothing: favorites are per-user
+        state with no cross-user visibility effect, so no other
+        session has anything to refresh.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchRequest'
+            examples:
+              trashSelection:
+                summary: Trash a selection of assets.
+                value:
+                  action: trash
+                  ids:
+                    - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                    - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+              unhideSelection:
+                summary: Return hidden assets to the timeline.
+                value:
+                  action: unhide
+                  ids:
+                    - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72
+      responses:
+        '200':
+          description: |
+            The set-semantics report: `affected` distinct ids resolved
+            and were applied (idempotent no-ops included), `missing`
+            lists the ids that did not resolve.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResponse'
+              examples:
+                partial:
+                  summary: Two ids applied, one unresolvable reported.
+                  value:
+                    affected: 2
+                    missing:
+                      - 31000000-0000-0000-0000-000000000001
+                clean:
+                  summary: Every id resolved.
+                  value:
+                    affected: 3
+                    missing: []
+        '400':
+          description: |
+            The request is not a well-formed batch: `action` is not a
+            member of the enum, `ids` is empty or exceeds the
+            1000-id cap, or the body is not valid JSON (an id that is
+            not a uuid included).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: An id list past the cap.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: ids exceed the batch limit of 1000
+                    details:
+                      fields:
+                        - ids
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /assets/favorites:
+    get:
+      operationId: getFavorites
+      tags:
+        - assets
+      summary: The caller's favorites, one keyset page at a time.
+      description: |
+        The favorites view: the assets the calling user favorites,
+        filtered to the live view -- hidden assets, assets in the
+        trash and the component video rows of Live Photos never
+        appear -- with every item carrying `isFavorite: true` by
+        construction (the listing joins the caller's favorites rows).
+
+        The view shares the timeline's shape, ordering and pagination:
+        `takenAt` descending with the id as the tiebreak, `limit`
+        absent meaning 100 and capped at 200, and the opaque `cursor`
+        handed back as `nextCursor` precisely when another page
+        follows, so the same wall UI that walks the timeline walks
+        the favorites.
+
+        Favorites are per-user state written by the batch endpoint's
+        favorite action. In this milestone the batch actions are
+        owner-scoped, so favorites apply to the caller's own assets;
+        the listing itself joins the caller's favorites rows with
+        the live-asset filters, nothing more. Hiding (or trashing) a
+        favorited asset removes it from this view; it returns when
+        unhidden (or restored), the favorite row untouched -- an
+        idempotent per-user mark, not a copy of the asset.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: |
+            The `nextCursor` of the previous page; absent on the first
+            page. An unparseable value answers 400
+            `VALIDATION_FAILED` (cursors are opaque strings produced
+            by this endpoint, never assembled by clients).
+          schema:
+            type: string
+          example: AAAAAAAAAADvr_8PaGVsbw==
+        - name: limit
+          in: query
+          required: false
+          description: |
+            Page size: the number of timeline items one response
+            carries at most. Defaults to 100; values over 200 are
+            answered with 200, values below 1 answer 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+          example: 100
+      responses:
+        '200':
+          description: |
+            One page of the favorites view. `nextCursor` is present
+            exactly when another page follows; the last page carries
+            none.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineResponse'
+              examples:
+                oneFavorite:
+                  summary: One favorited photo.
+                  value:
+                    items:
+                      - id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        ownerId: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                        kind: image
+                        originalFilename: IMG_1234.jpg
+                        fileSize: 4821933
+                        mimeType: image/jpeg
+                        checksum: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+                        createdAt: '2026-10-29T09:12:00Z'
+                        takenAt: '2026-10-13T12:30:00Z'
+                        takenAtSource: exif
+                        isTrashed: false
+                        isFavorite: true
+                        isReady: true
+                        width: 4032
+                        height: 3024
+                        durationMs: null
+                        blurhash: UHL6aAof00WBWB00ayWB00
+                        livePhotoVideoId: null
+        '400':
+          description: |
+            The pagination parameters are invalid: `cursor` is not a
+            value this endpoint produced, or `limit` is below 1.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: A mangled cursor.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: invalid timeline cursor
+                    details:
+                      fields:
+                        - cursor
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /assets/hidden:
+    get:
+      operationId: getHidden
+      tags:
+        - assets
+      summary: The caller's hidden assets, one keyset page at a time.
+      description: |
+        The hidden view: the caller's own assets whose owner-level
+        visibility switch is off. Live rows only -- a trashed asset
+        stays in the trash view until restored or expired, and a
+        restored one returns here still hidden -- and no Live Photo
+        component rows (the pair is represented by its photo). The
+        same ordering and keyset pagination as the timeline:
+        `takenAt` descending with the id as the tiebreak, `limit`
+        absent meaning 100 and capped at 200, `nextCursor` exactly
+        when another page follows.
+
+        Unhiding through the batch endpoint returns an asset to every
+        live view (the timeline, the favorites if favorited).
+        `isFavorite` still reports the caller's favorites state of a
+        hidden asset -- the favorite row survives the hiding, exactly
+        like it survives the trash.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: |
+            The `nextCursor` of the previous page; absent on the first
+            page. An unparseable value answers 400
+            `VALIDATION_FAILED` (cursors are opaque strings produced
+            by this endpoint, never assembled by clients).
+          schema:
+            type: string
+          example: AAAAAAAAAADvr_8PaGVsbw==
+        - name: limit
+          in: query
+          required: false
+          description: |
+            Page size: the number of timeline items one response
+            carries at most. Defaults to 100; values over 200 are
+            answered with 200, values below 1 answer 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+          example: 100
+      responses:
+        '200':
+          description: |
+            One page of the hidden view. `nextCursor` is present
+            exactly when another page follows; the last page carries
+            none.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineResponse'
+              examples:
+                oneHidden:
+                  summary: One hidden photo, still favorited.
+                  value:
+                    items:
+                      - id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        ownerId: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                        kind: image
+                        originalFilename: IMG_1234.jpg
+                        fileSize: 4821933
+                        mimeType: image/jpeg
+                        checksum: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+                        createdAt: '2026-10-29T09:12:00Z'
+                        takenAt: '2026-10-13T12:30:00Z'
+                        takenAtSource: exif
+                        isTrashed: false
+                        isFavorite: true
+                        isReady: true
+                        width: 4032
+                        height: 3024
+                        durationMs: null
+                        blurhash: UHL6aAof00WBWB00ayWB00
                         livePhotoVideoId: null
         '400':
           description: |
@@ -2360,9 +2754,9 @@ components:
         upload enters the timeline immediately with its
         pipeline-dependent fields null, and the client upgrades the
         tile when `asset.ready` fires. The shape is fixed -- every
-        property is always present. Favorites are per-user state
-        (`isFavorite`) and join this shape with the favorites API of
-        the same milestone.
+        property is always present. `isFavorite` is per-user state
+        computed for the requesting user, so the same asset is a
+        favorite tile for one viewer and a plain tile for another.
       required:
         - id
         - ownerId
@@ -2375,6 +2769,7 @@ components:
         - takenAt
         - takenAtSource
         - isTrashed
+        - isFavorite
         - isReady
         - width
         - height
@@ -2445,6 +2840,15 @@ components:
             Always false in the timeline: trashed assets never enter
             it. The field exists to keep the shape identical to the
             asset detail's.
+        isFavorite:
+          type: boolean
+          description: |
+            Whether the REQUESTING user favorites this asset: the
+            caller's own row of the per-user favorites state, written
+            by the batch endpoint's favorite action. False whenever
+            the caller has no favorites row for the asset -- the same
+            asset can be a favorite for one viewer of a shared
+            timeline and not for another.
         isReady:
           type: boolean
           description: |
@@ -2492,12 +2896,15 @@ components:
     TimelineResponse:
       type: object
       description: |
-        One page of the timeline. `nextCursor` is present exactly when
-        another page follows the `items` of this one: the client
-        passes it back as the `cursor` query parameter to continue,
-        and a response without it ends the pagination. The last page
-        is the one whose follow-up page would be empty, so no run
-        ever observes an empty page mid-pagination.
+        One page of a timeline-shaped view: the aggregated timeline,
+        the favorites view or the hidden view all answer with this
+        page shape (the same ordering and the same cursor semantics).
+        `nextCursor` is present exactly when another page follows the
+        `items` of this one: the client passes it back as the
+        `cursor` query parameter to continue, and a response without
+        it ends the pagination. The last page is the one whose
+        follow-up page would be empty, so no run ever observes an
+        empty page mid-pagination.
       required:
         - items
       properties:
@@ -2671,6 +3078,82 @@ components:
             descending.
           items:
             $ref: '#/components/schemas/TrashItem'
+    BatchRequest:
+      type: object
+      description: |
+        One batch action over a list of asset ids. The action applies
+        to every id that resolves to a caller-owned asset; the rest
+        (unknown or another account's, indistinguishable) are ignored
+        and reported in the response's `missing` list -- a batch never
+        fails over an individual id. `ids` carries between 1 and 1000
+        entries; repeated ids collapse to one application.
+      required:
+        - action
+        - ids
+      properties:
+        action:
+          type: string
+          description: |
+            The set operation to apply. `favorite` / `unfavorite`
+            write or remove the caller's per-user favorites rows;
+            `hide` / `unhide` flip the owner-level visibility switch
+            (a hidden asset leaves every live view until unhidden);
+            `trash` / `restore` run the trash lifecycle of the trash
+            endpoints, the Live Photo pair moving as one asset.
+          enum:
+            - favorite
+            - unfavorite
+            - hide
+            - unhide
+            - trash
+            - restore
+        ids:
+          type: array
+          description: |
+            The asset ids to apply the action to: at least 1, at most
+            1000.
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          maxItems: 1000
+    BatchResponse:
+      type: object
+      description: |
+        The set-semantics report of one batch action. `affected` and
+        `missing` partition the request's distinct ids: every id is
+        either applied or unresolvable, none is both, and none is
+        silently dropped.
+      required:
+        - affected
+        - missing
+      properties:
+        affected:
+          type: integer
+          description: |
+            How many distinct request ids resolved to a caller-owned
+            asset and were processed -- INCLUDING ids that were
+            already in the target state (the idempotent no-op of the
+            set semantics: a repeat of a successful batch answers the
+            same count, because the endpoint is a convergence
+            operation, not a state-change counter). NOT a count of
+            rows written: trashing a Live Photo pair moves two rows
+            but one request id, and counts once.
+          minimum: 0
+        missing:
+          type: array
+          description: |
+            The distinct request ids that did not resolve to a
+            caller-owned asset -- unknown ids and other accounts'
+            assets, indistinguishable by design -- in the order of
+            their first appearance in the request. Empty when every
+            id resolved. This deliberate reporting (instead of the
+            byte-identical 404 of the single-asset endpoints) is the
+            trade of the list surface: the caller handed the ids over
+            themselves, so reporting them back hides nothing.
+          items:
+            type: string
+            format: uuid
     Error:
       type: object
       description: |

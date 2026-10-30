@@ -73,6 +73,12 @@ void main() {
       // TODO
     });
 
+    // Whether the REQUESTING user favorites this asset: the caller's own row of the per-user favorites state, written by the batch endpoint's favorite action. False whenever the caller has no favorites row for the asset -- the same asset can be a favorite for one viewer of a shared timeline and not for another. 
+    // bool isFavorite
+    test('to test the property `isFavorite`', () async {
+      // TODO
+    });
+
     // True once the whole pipeline of the asset (metadata and serving copies) completed; until then the pipeline-dependent fields are null and the client renders placeholders. 
     // bool isReady
     test('to test the property `isReady`', () async {

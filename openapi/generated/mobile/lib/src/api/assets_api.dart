@@ -12,6 +12,8 @@ import 'dart:typed_data';
 import 'package:lumemor_api/src/api_util.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
+import 'package:lumemor_api/src/model/batch_request.dart';
+import 'package:lumemor_api/src/model/batch_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/timeline_response.dart';
 import 'package:lumemor_api/src/model/trash_response.dart';
@@ -23,6 +25,112 @@ class AssetsApi {
   final Serializers _serializers;
 
   const AssetsApi(this._dio, this._serializers);
+
+  /// Apply one set action to a batch of assets.
+  /// The batch surface of the curation actions: one request applies one action -- favorite, unfavorite, hide, unhide, trash or restore -- to a list of up to 1000 asset ids, in one transaction. The endpoint follows set semantics: it is a convergence operation, not a state-change counter. Every id that resolves to an asset the caller owns is applied (an id already in the target state is the idempotent no-op and still counts as affected), and every id that does not resolve -- unknown, or another account&#39;s asset, the two indistinguishable -- is ignored and reported in the response&#39;s &#x60;missing&#x60; list. The two lists partition the request&#39;s distinct ids: no individual id ever fails the request, and a repeat of a successful batch converges to the same answer.  This is the deliberate trade of the list surface: the byte-identical 404 anti-enumeration of the single-asset endpoints does not apply here. The caller handed the ids over themselves, so reporting the unresolvable ones back in &#x60;missing&#x60; hides nothing -- and hands honest clients their retry list.  &#x60;ids&#x60; must carry between 1 and 1000 entries: an empty list, or one past the cap, answers 400 &#x60;VALIDATION_FAILED&#x60;, as does an &#x60;action&#x60; outside the enum or a body that is not valid JSON (an id that is not a uuid fails the body decode). Repeated ids collapse to one application.  The whole batch commits as one transaction: the action&#39;s writes land together or not at all, so a partial batch never surfaces. Failures on resolvable ids are not expected -- the per-item guards turn foreign and already-in-state ids into no-ops, not errors -- so the all-or-nothing bound is the infrastructure safety, not a client-visible case.  The actions resolve to their single-row primitives: favorite / unfavorite write or remove the caller&#39;s per-user favorites rows; hide / unhide flip the owner-level visibility switch of the row the id names (a hidden asset leaves every live view -- the timeline, the favorites -- until unhidden); trash / restore run the trash lifecycle of the trash endpoints, Live Photo pair included (trashing or restoring the photo carries its component video row along, whichever row the id names).  Events publish AFTER the commit, one per asset whose state actually changed -- the idempotent no-op stays silent, the same discipline as the single-asset restore: &#x60;asset.trashed&#x60; and &#x60;asset.restored&#x60; for trash and restore, &#x60;asset.updated&#x60; for hide and unhide (visibility is owner-level state, and every viewer of the shared timeline sees it change). favorite / unfavorite publish nothing: favorites are per-user state with no cross-user visibility effect, so no other session has anything to refresh. 
+  ///
+  /// Parameters:
+  /// * [batchRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [BatchResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<BatchResponse>> batchAssets({ 
+    required BatchRequest batchRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/assets/batch';
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(BatchRequest);
+      _bodyData = _serializers.serialize(batchRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    BatchResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(BatchResponse),
+      ) as BatchResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<BatchResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
 
   /// Permanently delete one asset, files and all.
   /// The explicit permanent deletion -- the destructive surface beside the trash. It removes the asset row whatever its state (live or trashed: this endpoint does not route through the trash), and with it the asset&#39;s on-disk artifacts under the shared-blob rule: content addressing means another owner&#39;s row (or any other row) with the same checksum references the SAME physical file, so the original file is removed only when no other asset row references it; otherwise the row goes and the file stays. The derived serving copies (the per-asset thumbnail directory) belong to this asset id alone and are always removed. The component video row of a Live Photo is deleted with its photo (it is never an asset of its own).  The application-layer permission gate of the two-layer delete discipline: the owner of the asset, or an administrator. An id of another user&#39;s asset answers the same 404 &#x60;ASSET_NOT_FOUND&#x60; as an id that does not exist, byte for byte, so asset ids cannot be enumerated. (The file-system layer of the gate matters for directory albums, whose files move on delete; it arrives with the album domain in a later milestone -- blob originals live inside the server&#39;s own data directory.)  The ordinary client \&quot;delete\&quot; is the trash (soft delete through the batch endpoint); this endpoint is the explicit bypass: the client that already knows it wants the asset gone forever, and the empty-trash surface. Repeating the request after a successful deletion answers 404 -- the asset no longer exists, exactly like an unknown id.  The deletion is committed before the files are removed: a failure between the two (a full disk, a failing mount) leaves the row gone and the file orphaned, which is a storage leak, never data loss; it is logged server-side and the response still reports the deletion. 
@@ -429,8 +537,196 @@ class AssetsApi {
     );
   }
 
+  /// The caller&#39;s favorites, one keyset page at a time.
+  /// The favorites view: the assets the calling user favorites, filtered to the live view -- hidden assets, assets in the trash and the component video rows of Live Photos never appear -- with every item carrying &#x60;isFavorite: true&#x60; by construction (the listing joins the caller&#39;s favorites rows).  The view shares the timeline&#39;s shape, ordering and pagination: &#x60;takenAt&#x60; descending with the id as the tiebreak, &#x60;limit&#x60; absent meaning 100 and capped at 200, and the opaque &#x60;cursor&#x60; handed back as &#x60;nextCursor&#x60; precisely when another page follows, so the same wall UI that walks the timeline walks the favorites.  Favorites are per-user state written by the batch endpoint&#39;s favorite action. In this milestone the batch actions are owner-scoped, so favorites apply to the caller&#39;s own assets; the listing itself joins the caller&#39;s favorites rows with the live-asset filters, nothing more. Hiding (or trashing) a favorited asset removes it from this view; it returns when unhidden (or restored), the favorite row untouched -- an idempotent per-user mark, not a copy of the asset. 
+  ///
+  /// Parameters:
+  /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
+  /// * [limit] - Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [TimelineResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<TimelineResponse>> getFavorites({ 
+    String? cursor,
+    int? limit = 100,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/assets/favorites';
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _queryParameters = <String, dynamic>{
+      if (cursor != null) r'cursor': encodeQueryParameter(_serializers, cursor, const FullType(String)),
+      if (limit != null) r'limit': encodeQueryParameter(_serializers, limit, const FullType(int)),
+    };
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      queryParameters: _queryParameters,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    TimelineResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(TimelineResponse),
+      ) as TimelineResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<TimelineResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// The caller&#39;s hidden assets, one keyset page at a time.
+  /// The hidden view: the caller&#39;s own assets whose owner-level visibility switch is off. Live rows only -- a trashed asset stays in the trash view until restored or expired, and a restored one returns here still hidden -- and no Live Photo component rows (the pair is represented by its photo). The same ordering and keyset pagination as the timeline: &#x60;takenAt&#x60; descending with the id as the tiebreak, &#x60;limit&#x60; absent meaning 100 and capped at 200, &#x60;nextCursor&#x60; exactly when another page follows.  Unhiding through the batch endpoint returns an asset to every live view (the timeline, the favorites if favorited). &#x60;isFavorite&#x60; still reports the caller&#39;s favorites state of a hidden asset -- the favorite row survives the hiding, exactly like it survives the trash. 
+  ///
+  /// Parameters:
+  /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
+  /// * [limit] - Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [TimelineResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<TimelineResponse>> getHidden({ 
+    String? cursor,
+    int? limit = 100,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/assets/hidden';
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _queryParameters = <String, dynamic>{
+      if (cursor != null) r'cursor': encodeQueryParameter(_serializers, cursor, const FullType(String)),
+      if (limit != null) r'limit': encodeQueryParameter(_serializers, limit, const FullType(int)),
+    };
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      queryParameters: _queryParameters,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    TimelineResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(TimelineResponse),
+      ) as TimelineResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<TimelineResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
   /// The aggregated timeline, one keyset page at a time.
-  /// The aggregated timeline of the caller: the union of the albums that feed it -- the caller&#39;s sync album (the core backup stream, never excludable), the caller&#39;s own directory albums, and every album shared to the caller regardless of type (virtual albums included) -- minus the albums the caller turned off with the per-user \&quot;keep out of the timeline\&quot; preference (a missing preference row means kept in). The caller&#39;s own virtual albums never feed their own timeline: in-stream curation would be pure duplication. One asset visible through several albums appears once.  Every item is live by construction: hidden assets, assets in the trash, and the component video rows of Live Photos never appear.  Pages are keyset-paginated with an opaque cursor: the response carries &#x60;nextCursor&#x60; exactly when another page exists, and the client passes it back as &#x60;cursor&#x60; to continue after the last item of the page. Cursors are stable for the ordering key (&#x60;takenAt&#x60; descending, &#x60;id&#x60; as the tiebreak); an asset uploaded with an older &#x60;takenAt&#x60; than the cursor appears only in a fresh pagination run, never in the current one. The first page omits the &#x60;cursor&#x60; parameter.  &#x60;limit&#x60; bounds the page size: absent means the default of 100, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 &#x60;VALIDATION_FAILED&#x60;.  &#x60;albumId&#x60; narrows the response to that album&#39;s own timeline instead of the aggregate: the album&#39;s items in the same ordering and filtering. The caller must be able to see the album (own album of any type, or an album shared to the caller); an album that does not exist or is not visible answers the empty list, not an error, so album ids cannot be probed for existence through this endpoint. 
+  /// The aggregated timeline of the caller: the union of the albums that feed it -- the caller&#39;s sync album (the core backup stream, never excludable), the caller&#39;s own directory albums, and every album shared to the caller regardless of type (virtual albums included) -- minus the albums the caller turned off with the per-user \&quot;keep out of the timeline\&quot; preference (a missing preference row means kept in). The caller&#39;s own virtual albums never feed their own timeline: in-stream curation would be pure duplication. One asset visible through several albums appears once.  Every item is live by construction: hidden assets, assets in the trash, and the component video rows of Live Photos never appear.  &#x60;isFavorite&#x60; is per-user state: it reports whether the CALLING user favorites the asset (the favorites rows the batch endpoint writes), whatever the asset&#39;s owner -- the same item is a favorite for one viewer and a plain tile for another.  Pages are keyset-paginated with an opaque cursor: the response carries &#x60;nextCursor&#x60; exactly when another page exists, and the client passes it back as &#x60;cursor&#x60; to continue after the last item of the page. Cursors are stable for the ordering key (&#x60;takenAt&#x60; descending, &#x60;id&#x60; as the tiebreak); an asset uploaded with an older &#x60;takenAt&#x60; than the cursor appears only in a fresh pagination run, never in the current one. The first page omits the &#x60;cursor&#x60; parameter.  &#x60;limit&#x60; bounds the page size: absent means the default of 100, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 &#x60;VALIDATION_FAILED&#x60;.  &#x60;albumId&#x60; narrows the response to that album&#39;s own timeline instead of the aggregate: the album&#39;s items in the same ordering and filtering. The caller must be able to see the album (own album of any type, or an album shared to the caller); an album that does not exist or is not visible answers the empty list, not an error, so album ids cannot be probed for existence through this endpoint. 
   ///
   /// Parameters:
   /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
