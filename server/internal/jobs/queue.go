@@ -108,6 +108,10 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		dataDir: cfg.DataDir,
 		logger:  logger,
 	})
+	river.AddWorker(workers, &SweepWorker{
+		pool:   cfg.Pool,
+		logger: logger,
+	})
 
 	workerCount := cfg.Workers
 	if workerCount <= 0 {
@@ -127,6 +131,13 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		// its own tighter 30 second bound inside that envelope; the
 		// thumbnail job raises its envelope to 90s for the ffmpeg
 		// poster extraction's 60s budget (see ThumbnailWorker.Timeout).
+		//
+		// The requeue sweep runs hourly through River's periodic job
+		// scheduler: the elected leader enqueues the periodic jobs --
+		// in this single-process deployment, this client -- and the
+		// SweepWorker runs the shared RunRequeueSweep (the boot sweep
+		// of main.go is the other trigger point of the same function).
+		PeriodicJobs: sweepPeriodicJobs(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jobs: create river client: %w", err)

@@ -467,6 +467,54 @@ func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetA
 	return i, err
 }
 
+const listStuckAssets = `-- name: ListStuckAssets :many
+SELECT id, media_kind FROM assets
+WHERE pending_jobs > 0 AND ready_at IS NULL AND deleted_at IS NULL
+`
+
+type ListStuckAssetsRow struct {
+	ID        pgtype.UUID `json:"id"`
+	MediaKind MediaKind   `json:"media_kind"`
+}
+
+// The requeue sweep's stuck-row finder (M2c Task 1): assets whose
+// upload committed -- pending_jobs counted the jobs the uploader
+// meant to enqueue -- but whose readiness never arrived (ready_at
+// still NULL). These are the rows an enqueue insert failure or a
+// crash in the commit-to-enqueue window left with no (or missing)
+// jobs in the queue; a re-upload answers duplicate without
+// re-enqueueing, so the sweep is their only recovery. Soft-deleted
+// assets are deliberately excluded: a trashed asset is headed for
+// expiry, not recovery. Rows whose jobs are merely in flight (a live
+// upload mid-pipeline) match too -- the query cannot tell "lost
+// jobs" from "busy jobs", and it does not need to: the sweep's
+// re-enqueue inserts are unique keyed on kind + asset id, so a job
+// that still exists in the queue is not re-inserted, and the sweep
+// never resets pending_jobs (the counter already counts the missing
+// jobs; the re-enqueued completions drive it down). media_kind rides
+// along because the sweep re-enqueues by the row's kind (the same
+// two jobs for image and video until Task 6's transcode job splits
+// the video arm).
+func (q *Queries) ListStuckAssets(ctx context.Context) ([]ListStuckAssetsRow, error) {
+	rows, err := q.db.Query(ctx, listStuckAssets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStuckAssetsRow
+	for rows.Next() {
+		var i ListStuckAssetsRow
+		if err := rows.Scan(&i.ID, &i.MediaKind); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const refineAssetFromMetadata = `-- name: RefineAssetFromMetadata :exec
 UPDATE assets SET
     taken_at        = COALESCE($1, taken_at),

@@ -195,3 +195,25 @@ RETURNING (ready_at IS NOT NULL)::boolean AS became_ready, media_kind;
 -- yields the same hash), so the update is idempotent.
 UPDATE assets SET blurhash = $2, updated_at = now()
 WHERE id = $1;
+
+-- name: ListStuckAssets :many
+-- The requeue sweep's stuck-row finder (M2c Task 1): assets whose
+-- upload committed -- pending_jobs counted the jobs the uploader
+-- meant to enqueue -- but whose readiness never arrived (ready_at
+-- still NULL). These are the rows an enqueue insert failure or a
+-- crash in the commit-to-enqueue window left with no (or missing)
+-- jobs in the queue; a re-upload answers duplicate without
+-- re-enqueueing, so the sweep is their only recovery. Soft-deleted
+-- assets are deliberately excluded: a trashed asset is headed for
+-- expiry, not recovery. Rows whose jobs are merely in flight (a live
+-- upload mid-pipeline) match too -- the query cannot tell "lost
+-- jobs" from "busy jobs", and it does not need to: the sweep's
+-- re-enqueue inserts are unique keyed on kind + asset id, so a job
+-- that still exists in the queue is not re-inserted, and the sweep
+-- never resets pending_jobs (the counter already counts the missing
+-- jobs; the re-enqueued completions drive it down). media_kind rides
+-- along because the sweep re-enqueues by the row's kind (the same
+-- two jobs for image and video until Task 6's transcode job splits
+-- the video arm).
+SELECT id, media_kind FROM assets
+WHERE pending_jobs > 0 AND ready_at IS NULL AND deleted_at IS NULL;
