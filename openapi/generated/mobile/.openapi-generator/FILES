@@ -19,6 +19,8 @@ doc/ServerInfo.md
 doc/SessionInfo.md
 doc/TimelineItem.md
 doc/TimelineResponse.md
+doc/TrashItem.md
+doc/TrashResponse.md
 doc/User.md
 lib/lumemor_api.dart
 lib/src/api.dart
@@ -47,6 +49,8 @@ lib/src/model/server_info.dart
 lib/src/model/session_info.dart
 lib/src/model/timeline_item.dart
 lib/src/model/timeline_response.dart
+lib/src/model/trash_item.dart
+lib/src/model/trash_response.dart
 lib/src/model/user.dart
 lib/src/serializers.dart
 pubspec.yaml
@@ -67,4 +71,6 @@ test/server_info_test.dart
 test/session_info_test.dart
 test/timeline_item_test.dart
 test/timeline_response_test.dart
+test/trash_item_test.dart
+test/trash_response_test.dart
 test/user_test.dart

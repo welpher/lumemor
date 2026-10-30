@@ -421,7 +421,45 @@ export interface paths {
         get: operations["getAsset"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Permanently delete one asset, files and all.
+         * @description The explicit permanent deletion -- the destructive surface
+         *     beside the trash. It removes the asset row whatever its state
+         *     (live or trashed: this endpoint does not route through the
+         *     trash), and with it the asset's on-disk artifacts under the
+         *     shared-blob rule: content addressing means another owner's row
+         *     (or any other row) with the same checksum references the SAME
+         *     physical file, so the original file is removed only when no
+         *     other asset row references it; otherwise the row goes and the
+         *     file stays. The derived serving copies (the per-asset
+         *     thumbnail directory) belong to this asset id alone and are
+         *     always removed. The component video row of a Live Photo is
+         *     deleted with its photo (it is never an asset of its own).
+         *
+         *     The application-layer permission gate of the two-layer delete
+         *     discipline: the owner of the asset, or an administrator. An
+         *     id of another user's asset answers the same 404
+         *     `ASSET_NOT_FOUND` as an id that does not exist, byte for
+         *     byte, so asset ids cannot be enumerated. (The file-system
+         *     layer of the gate matters for directory albums, whose files
+         *     move on delete; it arrives with the album domain in a later
+         *     milestone -- blob originals live inside the server's own data
+         *     directory.)
+         *
+         *     The ordinary client "delete" is the trash (soft delete
+         *     through the batch endpoint); this endpoint is the explicit
+         *     bypass: the client that already knows it wants the asset gone
+         *     forever, and the empty-trash surface. Repeating the request
+         *     after a successful deletion answers 404 -- the asset no
+         *     longer exists, exactly like an unknown id.
+         *
+         *     The deletion is committed before the files are removed: a
+         *     failure between the two (a full disk, a failing mount) leaves
+         *     the row gone and the file orphaned, which is a storage leak,
+         *     never data loss; it is logged server-side and the response
+         *     still reports the deletion.
+         */
+        delete: operations["deleteAsset"];
         options?: never;
         head?: never;
         patch?: never;
@@ -545,6 +583,82 @@ export interface paths {
         get: operations["getAssetByDeviceId"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's trashed assets with their retention countdown.
+         * @description The trash view of the caller: every asset the caller soft
+         *     deleted, newest deletion first, each with the countdown of
+         *     whole days until the expiry job removes it. Retention is the
+         *     instance setting `trash_retention_days` (default 30): the
+         *     expiry job runs hourly and permanently deletes rows whose
+         *     `deletedAt` fell past the retention window, so an item shows
+         *     `remainingDays` 0 on its way out (the row survives only until
+         *     the next job run) and disappears afterwards -- restoring it
+         *     then answers 404, it does not resurrect.
+         *
+         *     `remainingDays` counts the days left rounded up: an asset
+         *     trashed moments ago with the default retention shows 30. The
+         *     list is owner-scoped and bounded: it answers at most the 200
+         *     most recent deletions (the trash is a recovery view for
+         *     recent deletes, and older items age out through expiry long
+         *     before the bound could bite). The component video rows of
+         *     Live Photos never appear: the pair is represented by its
+         *     photo.
+         */
+        get: operations["getTrash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trash/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore one trashed asset.
+         * @description Clears the trash mark of one asset: the row becomes live
+         *     again and re-enters the timeline (its album memberships were
+         *     never removed -- a trashed asset is filtered out of the live
+         *     views, not evicted from its albums). The component video row
+         *     of a Live Photo is restored with its photo.
+         *
+         *     The operation follows set semantics: restoring an asset that
+         *     is already live succeeds (204, nothing to do) -- a client
+         *     that races another restore, or asks twice, converges instead
+         *     of erroring; the row is already in the desired state. Only an
+         *     id that is unknown, or that belongs to another account while
+         *     the caller is not its owner, answers 404 -- byte-identical
+         *     for both cases, so asset ids cannot be enumerated. An asset
+         *     whose row the expiry job already removed answers 404 as well:
+         *     a purge is not reversible.
+         *
+         *     The retention countdown of the trash list is the only signal
+         *     that a restore is still possible; after the row is gone, the
+         *     content itself can only return through a re-upload (which the
+         *     upload idempotency answers as a fresh asset).
+         */
+        post: operations["restoreAsset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1090,6 +1204,129 @@ export interface components {
              *     exactly when this is the last page.
              */
             nextCursor?: string;
+        };
+        /**
+         * @description One asset of the trash view: the timeline item's fields (the
+         *     tile-relevant identity and pipeline fields, so the trash page
+         *     renders the same tiles as the timeline) plus the trash
+         *     semantics -- `deletedAt`, when the soft delete happened, and
+         *     `remainingDays`, the countdown of whole days until the expiry
+         *     job removes the row (rounded up; 0 once past the deadline,
+         *     for the short window until the hourly job catches up). Every
+         *     item is trashed by construction; there is no `isTrashed`
+         *     field. The component video rows of Live Photos never appear:
+         *     the pair is represented by its photo. The shape is fixed --
+         *     every property is always present.
+         */
+        TrashItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the asset.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the owning account.
+             */
+            ownerId: string;
+            /**
+             * @description Media family of the asset.
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** @description The file name the asset was uploaded with. */
+            originalFilename: string;
+            /**
+             * Format: int64
+             * @description Size of the stored file in bytes.
+             */
+            fileSize: number;
+            /**
+             * @description Canonical content type of the stored format, for example
+             *     `image/jpeg` or `video/quicktime`.
+             */
+            mimeType: string;
+            /**
+             * @description SHA-256 digest of the file bytes, lowercase hex. The
+             *     prefix of the entity tags the media endpoints serve.
+             */
+            checksum: string;
+            /**
+             * Format: date-time
+             * @description When the asset record was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Capture time (RFC 3339), the value the timeline would
+             *     order the asset by.
+             */
+            takenAt: string;
+            /**
+             * @description Where `takenAt` comes from.
+             * @enum {string}
+             */
+            takenAtSource: "exif" | "file" | "import";
+            /**
+             * @description True once the whole pipeline of the asset (metadata and
+             *     serving copies) completed.
+             */
+            isReady: boolean;
+            /**
+             * @description Pixel width in sensor order; null until the metadata job
+             *     refined the dimensions.
+             */
+            width: number | null;
+            /**
+             * @description Pixel height in sensor order; null until the metadata job
+             *     refined the dimensions.
+             */
+            height: number | null;
+            /**
+             * @description Playback duration of a video in milliseconds; null for
+             *     images and until the metadata job refined it.
+             */
+            durationMs: number | null;
+            /**
+             * @description The blurhash of the tile for placeholder rendering; null
+             *     until the thumbnail job stored it.
+             */
+            blurhash: string | null;
+            /**
+             * Format: uuid
+             * @description For a Live Photo image, the id of its linked component
+             *     video row (restored and expired together with the photo);
+             *     null otherwise.
+             */
+            livePhotoVideoId: string | null;
+            /**
+             * Format: date-time
+             * @description When the asset was soft deleted (RFC 3339 UTC). The
+             *     retention window ends at `deletedAt` plus the instance's
+             *     `trash_retention_days`.
+             */
+            deletedAt: string;
+            /**
+             * @description Whole days until the expiry job removes the asset,
+             *     rounded up (an asset trashed moments ago with the default
+             *     retention of 30 days shows 30). 0 once the deadline has
+             *     passed -- the row survives only until the next hourly
+             *     expiry run.
+             */
+            remainingDays: number;
+        };
+        /**
+         * @description The trash view: the caller's trashed assets, newest deletion
+         *     first. The list is bounded (the 200 most recent deletions)
+         *     and unpaginated -- the trash is a recovery view for recent
+         *     deletes, and items age out through expiry on their own.
+         */
+        TrashResponse: {
+            /**
+             * @description The trashed assets of the caller, ordered by `deletedAt`
+             *     descending.
+             */
+            items: components["schemas"]["TrashItem"][];
         };
         /**
          * @description Error envelope shared by all endpoints. `code` is the authoritative
@@ -1867,6 +2104,66 @@ export interface operations {
             };
         };
     };
+    deleteAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The asset is permanently deleted: the row is gone, the
+             *     derived files are removed, and the original file is
+             *     removed unless another asset row still references it.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No asset with this id exists: the id is unknown, was
+             *     already permanently deleted, or belongs to another
+             *     account while the caller is neither its owner nor an
+             *     administrator -- all indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getAssetThumbnail: {
         parameters: {
             query: {
@@ -2131,6 +2428,110 @@ export interface operations {
                 };
             };
             /** @description No asset of this account carries the device identifier. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTrash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The trashed assets of the caller, newest deletion first.
+             *     `items` is the full (bounded) list -- there is no
+             *     pagination.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    restoreAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the trashed asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The asset is live again (or already was: the idempotent
+             *     success). The row re-enters the timeline and every live
+             *     view.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No asset with this id is restorable by the caller: the id
+             *     is unknown, already purged by the expiry job, or belongs
+             *     to another account -- all indistinguishable by design.
+             */
             404: {
                 headers: {
                     [name: string]: unknown;

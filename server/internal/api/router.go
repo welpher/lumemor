@@ -201,6 +201,15 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/assets/timeline", wrapper.GetTimeline)
 				r.Get("/assets/{id}", wrapper.GetAsset)
 				r.Get("/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
+				// The trash lifecycle endpoints (M2c Task 3): the
+				// owner-scoped listing and restore, and the explicit
+				// permanent delete. All three are bounded operations
+				// (row reads and writes plus metadata-only file
+				// removals), so they belong in this group like every
+				// other JSON handler.
+				r.Get("/trash", wrapper.GetTrash)
+				r.Post("/trash/{id}/restore", wrapper.RestoreAsset)
+				r.Delete("/assets/{id}", wrapper.DeleteAsset)
 			})
 
 			// Authed streaming group: the SSE activity stream. It

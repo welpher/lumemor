@@ -27,6 +27,8 @@ import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
 import 'package:lumemor_api/src/model/timeline_item.dart';
 import 'package:lumemor_api/src/model/timeline_response.dart';
+import 'package:lumemor_api/src/model/trash_item.dart';
+import 'package:lumemor_api/src/model/trash_response.dart';
 import 'package:lumemor_api/src/model/user.dart';
 
 part 'serializers.g.dart';
@@ -45,6 +47,8 @@ part 'serializers.g.dart';
   SessionInfo,
   TimelineItem,
   TimelineResponse,
+  TrashItem,
+  TrashResponse,
   User,
 ])
 Serializers serializers = (_$serializers.toBuilder()
@@ -55,6 +59,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(SessionInfo)]),
         () => ListBuilder<SessionInfo>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(TrashItem)]),
+        () => ListBuilder<TrashItem>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType.nullable(JsonObject)]),
