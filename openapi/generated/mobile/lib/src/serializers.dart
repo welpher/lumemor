@@ -14,9 +14,12 @@ import 'package:built_value/iso_8601_date_time_serializer.dart';
 import 'package:lumemor_api/src/date_serializer.dart';
 import 'package:lumemor_api/src/model/date.dart';
 
+import 'package:lumemor_api/src/model/asset_detail.dart';
+import 'package:lumemor_api/src/model/asset_response.dart';
 import 'package:lumemor_api/src/model/bearer_session.dart';
 import 'package:lumemor_api/src/model/create_admin_request.dart';
 import 'package:lumemor_api/src/model/error.dart';
+import 'package:lumemor_api/src/model/exif_summary.dart';
 import 'package:lumemor_api/src/model/login_request.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
 import 'package:lumemor_api/src/model/pairing_token_response.dart';
@@ -27,9 +30,12 @@ import 'package:lumemor_api/src/model/user.dart';
 part 'serializers.g.dart';
 
 @SerializersFor([
+  AssetDetail,
+  AssetResponse,
   BearerSession,
   CreateAdminRequest,
   Error,
+  ExifSummary,
   LoginRequest,
   PairingConsumeRequest,
   PairingTokenResponse,

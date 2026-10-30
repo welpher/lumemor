@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,9 @@ import (
 	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/jobs"
+	"github.com/welpher/lumemor/server/internal/media"
+	"github.com/welpher/lumemor/server/internal/storage"
 )
 
 const (
@@ -33,6 +37,14 @@ const (
 	// contract: GET /api/v1/events replays this much history on
 	// reconnect.
 	eventRetention = 5 * time.Minute
+
+	// queueStopTimeout bounds the job queue's graceful drain after the
+	// HTTP server stopped. It sits above the queue's internal soft stop
+	// timeout (which itself sits above the pipeline's largest job
+	// envelope, the thumbnail job's 90s) so a healthy job always
+	// finishes; anything wedged beyond it is dropped back to the queue
+	// and retried on the next start.
+	queueStopTimeout = 110 * time.Second
 )
 
 func main() {
@@ -45,9 +57,9 @@ func main() {
 	}
 }
 
-// run executes the server lifecycle: load config, connect to the database
-// and apply migrations, start the HTTP server, then shut down gracefully on
-// SIGINT/SIGTERM.
+// run executes the server lifecycle: load config, prepare the storage
+// layout, connect to the database and apply migrations, start the HTTP
+// server, then shut down gracefully on SIGINT/SIGTERM.
 func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -56,6 +68,35 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+
+	// Fail fast on unusable storage mounts: the layout must exist and
+	// upload staging must share a filesystem with the originals
+	// directory so uploads can finalize with an atomic rename.
+	if err := storage.EnsureLayout(cfg.DataDir, cfg.ConfigDir); err != nil {
+		return err
+	}
+	logger.Info("storage layout verified", "data_dir", cfg.DataDir, "config_dir", cfg.ConfigDir)
+
+	// libvips starts before anything can use it (the thumbnail job's
+	// workers) and shuts down after the job queue has drained: the
+	// deferred Shutdown therefore runs last, behind the queue's
+	// explicit Stop at the end of run. Startup is one-shot per
+	// process -- govips cannot restart it afterwards. The media
+	// package owns the libvips seam so this file carries no direct
+	// CGO import.
+	if err := media.Startup(); err != nil {
+		return fmt.Errorf("start libvips: %w", err)
+	}
+	defer media.Shutdown()
+	logger.Info("libvips started", "version", media.LibvipsVersion())
+
+	// Boot-time sweep of the upload staging directory: a single
+	// process just started, so nothing can be in flight and anything
+	// left in tmp/ is crash debris of the previous run.
+	if err := storage.SweepTmp(cfg.DataDir); err != nil {
+		return err
+	}
+	logger.Info("upload staging swept")
 
 	pool, err := db.Connect(ctx, cfg.DatabaseURL, dbConnectWait)
 	if err != nil {
@@ -80,6 +121,22 @@ func run(logger *slog.Logger) error {
 	// in M2a) and every connected stream follows them.
 	bus := events.NewBus(eventRetention, time.Now)
 
+	// The job queue starts only after the schema exists: River applies
+	// its own table migrations here (river_job and friends live outside
+	// the goose schema by design), then the workers begin consuming.
+	// Its lifecycle is owned by the explicit Stop below, not by this
+	// context -- a cancelled context would be a hard stop.
+	queue, err := jobs.Start(ctx, jobs.Config{
+		Pool:    pool,
+		Bus:     bus,
+		DataDir: cfg.DataDir,
+		Logger:  logger,
+	})
+	if err != nil {
+		return err
+	}
+	logger.Info("job queue started")
+
 	srv := &http.Server{
 		Addr: cfg.Listen,
 		Handler: api.NewRouter(&api.Deps{
@@ -87,6 +144,13 @@ func run(logger *slog.Logger) error {
 			Logger:  logger,
 			Version: buildinfo.Version,
 			Events:  bus,
+			// The upload endpoint stages and finalizes files under the
+			// data root and honors the configured per-file size limit.
+			DataDir:          cfg.DataDir,
+			UploadLimitBytes: cfg.UploadLimitBytes,
+			// The upload handler enqueues the metadata job of every
+			// committed asset through the queue.
+			Jobs: queue,
 			Initialized: func(ctx context.Context) bool {
 				admins, err := queries.CountAdmins(ctx)
 				if err != nil {
@@ -118,7 +182,17 @@ func run(logger *slog.Logger) error {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return err
 	}
-
 	logger.Info("server stopped")
+
+	// Drain the job queue after the HTTP surface went quiet: no new
+	// enqueues can arrive, in-flight jobs finish, and the bounded wait
+	// keeps a wedged job from stalling the shutdown forever (the queue
+	// cancels stragglers itself after its soft stop timeout).
+	queueCtx, queueCancel := context.WithTimeout(context.Background(), queueStopTimeout)
+	defer queueCancel()
+	if err := queue.Stop(queueCtx); err != nil {
+		logger.Error("drain job queue", "error", err)
+	}
+	logger.Info("job queue stopped")
 	return nil
 }

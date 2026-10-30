@@ -53,3 +53,78 @@ api-check: api-gen
 		echo "generated artifacts drifted: untracked or changed files"; \
 		exit 1; \
 	fi
+
+# --- Development/test container --------------------------------------------
+#
+# The media toolchain (libvips, exiftool, ffmpeg) lives in the dev
+# container, not on the host. docker-test builds the image from
+# docker/dev.Dockerfile and runs the full Go test suite inside it with
+# the repository bind-mounted at /src, so the image itself carries
+# nothing environment-specific.
+#
+# Mechanics:
+# - gocache / gomodcache named volumes keep the build and module caches
+#   across runs, so repeat invocations compile incrementally;
+# - /var/run/docker.sock is mounted so testcontainers (and the Docker
+#   CLI) can start throwaway PostgreSQL containers through the host
+#   daemon -- they run as siblings of this container;
+# - GOPROXY is read from the HOST's `go env` at run time and passed
+#   with -e, keeping the image free of proxy configuration;
+# - Networking hint: if a sibling container's published port is not
+#   reachable from inside this container (testcontainers derives the
+#   host address from the Docker daemon), make the connection go
+#   through the host's loopback instead:
+#       make docker-test 'TEST_ENV=-e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal'
+#   OrbStack resolves host.docker.internal inside containers. Extend
+#   TEST_ENV with further docker run flags as needed.
+DEV_IMAGE ?= lumemor-dev
+# Extra docker run flags for docker-test, empty by default. Quote the
+# whole assignment on the make command line (see the hint above) so the
+# shell of the recipe receives the flags as one expansion.
+TEST_ENV ?=
+# Optional apt mirror for the dev image build, empty by default
+# (upstream Debian). Pass a mirror for networks where deb.debian.org is
+# slow or unreachable, e.g.:
+#     make docker-test APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+# Like GOPROXY, it is passed in at build time; the committed image
+# carries no mirror configuration.
+APT_MIRROR ?=
+
+.PHONY: docker-test
+docker-test:
+	docker build -f docker/dev.Dockerfile \
+		--build-arg APT_MIRROR=$(APT_MIRROR) \
+		--build-arg GOPROXY=$(shell go env GOPROXY) \
+		-t $(DEV_IMAGE) .
+	docker run --rm \
+		-v $(CURDIR):/src \
+		-w /src/server \
+		-v gocache:/root/.cache/go-build \
+		-v gomodcache:/go/pkg/mod \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-e GOPROXY=$(shell go env GOPROXY) \
+		$(TEST_ENV) \
+		$(DEV_IMAGE) \
+		go test ./...
+
+# Lint the server inside the dev container: the media package is CGO
+# (govips/libvips), so the lint toolchain must run where libvips
+# headers exist -- a host without them cannot even compile the package
+# being linted. The container carries golangci-lint (pinned to the CI
+# version), and the run covers the full Go gate set: gofmt -l (any
+# output fails), go vet, then golangci-lint.
+.PHONY: docker-lint
+docker-lint:
+	docker build -f docker/dev.Dockerfile \
+		--build-arg APT_MIRROR=$(APT_MIRROR) \
+		--build-arg GOPROXY=$(shell go env GOPROXY) \
+		-t $(DEV_IMAGE) .
+	docker run --rm \
+		-v $(CURDIR):/src \
+		-w /src/server \
+		-v gocache:/root/.cache/go-build \
+		-v gomodcache:/go/pkg/mod \
+		-e GOPROXY=$(shell go env GOPROXY) \
+		$(TEST_ENV) \
+		$(DEV_IMAGE) \
+		sh -c 'unformatted=$$(gofmt -l .); if [ -n "$$unformatted" ]; then echo "gofmt needed on:" $$unformatted; exit 1; fi && go vet ./... && golangci-lint run'

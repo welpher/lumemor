@@ -35,6 +35,26 @@ jobs:
           go-version: '1.26.x'
           cache-dependency-path: server/go.sum
 
+      # The media package is CGO: the govips binding compiles against
+      # libvips and libheif headers, so the lint/test/build steps below
+      # need them installed. ffmpeg rides along so the video poster
+      # pipeline's tests run here rather than only in the dev
+      # container (the metadata pipeline's exiftool stays dev-container
+      # only; its tests skip cleanly here).
+      #
+      # The libheif codec plugins must be named explicitly: on the
+      # runner's libheif the AVIF encoder (libheif-plugin-aomenc) is
+      # only a Recommends and the HEIC decoder
+      # (libheif-plugin-libde265) is only a Suggests, both cut by
+      # --no-install-recommends -- without them every image-derivation
+      # test fails with "heifsave: Unsupported compression".
+      - name: Install media toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libvips-dev libheif-dev ffmpeg \
+            libheif-plugin-aomenc libheif-plugin-libde265
+
       - name: Lint
         uses: golangci/golangci-lint-action@v7
         with:

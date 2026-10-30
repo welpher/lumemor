@@ -263,6 +263,240 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload one photo, optionally with its Live Photo video.
+         * @description The backup upload endpoint: one photo per request, streamed into
+         *     content-addressed storage while it is read, with the Live Photo
+         *     pairing video riding the same request as a second file part.
+         *
+         *     The request body is `multipart/form-data` with these parts:
+         *
+         *     - `deviceAssetId` (text, required) -- the stable identity the
+         *       uploading device assigned to the file; together with the
+         *       account it scopes the device idempotency of backups.
+         *     - `fileName` (text, required) -- the original client-side file
+         *       name of the photo, recorded as the asset's
+         *       `originalFilename`.
+         *     - `deviceCreatedAt` (text, optional) -- the capture time the
+         *       device reports, RFC 3339 with offset. It seeds the asset's
+         *       `takenAt` until the metadata pipeline refines it from EXIF.
+         *     - `deviceTimeZone` (text, optional) -- the IANA time zone name
+         *       of the capture location; it feeds the metadata pipeline's
+         *       timezone fallback chain and is not validated at upload.
+         *     - `photo` (file, required) -- the photo bytes.
+         *     - `liveVideo` (file, optional) -- the pairing video of a Live
+         *       Photo; present only together with `photo`.
+         *
+         *     Part order is part of the contract: all text fields precede
+         *     every file part, and the `liveVideo` part follows the `photo`
+         *     part. The server streams file parts to disk without buffering
+         *     them, so every field must be known and validated before the
+         *     first file byte is accepted -- a file part arriving before the
+         *     required fields, a text field after a file part, or a
+         *     `liveVideo` without a preceding `photo` answers 400
+         *     `VALIDATION_FAILED`. Each text field value is capped at 1024
+         *     bytes; `deviceAssetId`, `fileName` and `deviceTimeZone` carry
+         *     the length bounds below. The storage extension and the media
+         *     kind derive from the *file part's own* file name, and the
+         *     payload must be consistent with it: a renamed file of another
+         *     type answers 400 `VALIDATION_FAILED`.
+         *
+         *     Uploads are idempotent through the owner-scoped checksum:
+         *     re-uploading identical bytes never creates a second asset.
+         *     The outcome is one of three states, discriminated by the
+         *     `state` field of the response body:
+         *
+         *     - 201 `created`: no asset with this checksum existed; a new
+         *       asset was created (a Live Photo created two rows, the
+         *       response describes the photo).
+         *     - 200 `duplicate`: an identical asset of the same owner is
+         *       live; that asset is returned.
+         *     - 200 `trashed`: an identical asset of the same owner sits in
+         *       the trash; that asset is returned (with `isTrashed: true`)
+         *       so the client can offer the user restore or save-as-new.
+         *
+         *     Each file is capped at the instance's per-file upload limit
+         *     (2 GiB by default); a file over the limit aborts mid-stream
+         *     with 413 `ASSET_TOO_LARGE`. This endpoint takes multipart
+         *     bodies, not JSON, and is deliberately exempt from the API-wide
+         *     JSON body cap; the per-file upload limit governs instead.
+         */
+        post: operations["uploadAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch the detail of one owned asset.
+         * @description The asset detail: the identity and storage fields of the upload
+         *     response plus the refinements the pipeline produced afterwards
+         *     -- dimensions, duration, blurhash, the EXIF hot fields, and
+         *     readiness -- which the asset detail view renders.
+         *
+         *     Access is owner-only: an id that belongs to another account
+         *     answers the same 404 `ASSET_NOT_FOUND` as an id that does not
+         *     exist, byte for byte, so asset ids cannot be enumerated. Album
+         *     sharing and ACLs widen access for shared content in a later
+         *     milestone (M2c, with the album domain); until then only the
+         *     owner's own assets answer.
+         *
+         *     A trashed asset answers 200 with `isTrashed: true` -- the
+         *     trash view reads the detail the same way. The component video
+         *     row of a Live Photo is readable by its id (the future playback
+         *     endpoint resolves it through `livePhotoVideoId`) but never
+         *     appears in the timeline.
+         */
+        get: operations["getAsset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve a derived thumbnail, or a video's poster frame.
+         * @description The static serving copy of the asset:
+         *
+         *     - image assets: the AVIF thumbnail of the requested size --
+         *       `tile` (fits the 250px timeline box), `view` (long edge
+         *       capped at 1080px), `original` (the full-resolution
+         *       re-encode) -- served as `image/avif`;
+         *     - video assets: the poster frame, whatever `size` says -- the
+         *       poster (the first frame, scaled into the tile box) is the
+         *       video's only serving copy until transcodes exist -- served
+         *       as `image/jpeg`.
+         *
+         *     The response is a private immutable static asset:
+         *     `Cache-Control: private, max-age=31536000, immutable`, and a
+         *     strong `ETag` built from the first 16 hex characters of the
+         *     asset's checksum (quoted). A matching `If-None-Match` answers
+         *     304 with the same validators and no body. Conditional requests
+         *     and byte ranges otherwise follow the Go standard library's
+         *     `ServeContent` semantics.
+         *
+         *     The asset exists but its derived file is absent -- the
+         *     thumbnail job has not run yet, or failed and is retrying --
+         *     answers 404 `ASSET_NOT_READY`: the client renders the blurhash
+         *     or a placeholder and waits for the `asset.ready` event instead
+         *     of treating the asset as gone. `ASSET_NOT_FOUND`, by contrast,
+         *     means the id is unknown or not the caller's; the owner-only
+         *     anti-enumeration of the detail endpoint applies here too, with
+         *     byte-identical 404 bodies for foreign and unknown ids.
+         *
+         *     `size` must be one of the three values below; anything else
+         *     (including a missing `size`) answers 400 `VALIDATION_FAILED`.
+         */
+        get: operations["getAssetThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{id}/original": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the original file of one owned asset.
+         * @description Streams the stored original bytes as a download. It is
+         *     available immediately after the upload: the original is the
+         *     uploaded content-addressed file itself, not a pipeline
+         *     product.
+         *
+         *     The download is always an attachment: `Content-Disposition:
+         *     attachment; filename*=UTF-8''...` with the original file name
+         *     escaped per RFC 5987 -- every byte outside the attribute
+         *     character set is percent-encoded, which rules out header
+         *     injection and in-browser rendering alike (SVG is not in the
+         *     upload whitelist, so the download-only rule covers every
+         *     stored format). `Content-Type` is the asset's stored MIME
+         *     type. The response carries the same `ETag` and
+         *     `Cache-Control` validators as the thumbnail (the original
+         *     bytes are content-addressed, hence immutable).
+         *
+         *     Byte ranges follow the Go standard library's `ServeContent`
+         *     semantics: a satisfiable single range answers 206 with
+         *     `Content-Range`; multiple ranges answer a
+         *     `multipart/byteranges` body; an unsatisfiable range answers
+         *     416 with the total size in `Content-Range`; a malformed Range
+         *     header is ignored and the full body answers 200.
+         *
+         *     The same owner-only download gate as every asset endpoint:
+         *     foreign and unknown ids answer byte-identical 404
+         *     `ASSET_NOT_FOUND`.
+         */
+        get: operations["getAssetOriginal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/by-device-id/{deviceAssetId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look up an uploaded asset by its device identifier.
+         * @description The backup idempotency probe: the app asks, before uploading a
+         *     local file, whether its `deviceAssetId` already exists for this
+         *     account, and skips the upload when it does.
+         *
+         *     The lookup is owner-scoped -- a `deviceAssetId` of another
+         *     user's asset is invisible and answers 404. The `state` field
+         *     mirrors what a re-upload of the same content would produce:
+         *     `duplicate` when the asset is live, `trashed` when it sits in
+         *     the trash (the client can then offer restore or save-as-new
+         *     before spending bandwidth). 404 means the device has not
+         *     uploaded this identifier (or only under another account).
+         */
+        get: operations["getAssetByDeviceId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -436,6 +670,241 @@ export interface components {
             createdAt: string;
         };
         /**
+         * @description One stored asset as the upload and idempotency endpoints return
+         *     it. `state` discriminates the upload outcome: `created` (201, a
+         *     new asset), `duplicate` (200, an identical live asset already
+         *     existed), `trashed` (200, an identical asset sits in the trash;
+         *     the body carries that asset so the client can offer restore or
+         *     save-as-new). The idempotency lookup mirrors the same states:
+         *     it reports what a re-upload of the content would yield, so
+         *     `created` never appears there.
+         */
+        AssetResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the asset.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the owning account.
+             */
+            ownerId: string;
+            /**
+             * @description Media family of the asset. A Live Photo is an `image` whose
+             *     video component is stored as a linked `video` row that
+             *     never appears in the timeline.
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /**
+             * @description The file name the asset was uploaded with: the client-side
+             *     `fileName` of the photo (the component video keeps its own
+             *     file part name).
+             */
+            originalFilename: string;
+            /**
+             * Format: int64
+             * @description Size of the stored file in bytes.
+             */
+            fileSize: number;
+            /**
+             * @description Canonical content type of the stored format, for example
+             *     `image/jpeg` or `video/quicktime`.
+             */
+            mimeType: string;
+            /**
+             * @description SHA-256 digest of the file bytes, lowercase hex. The
+             *     owner-scoped idempotency key of the upload.
+             */
+            checksum: string;
+            /**
+             * @description The upload outcome: `created` (201), `duplicate` (200, an
+             *     identical live asset) or `trashed` (200, an identical asset
+             *     in the trash).
+             * @enum {string}
+             */
+            state: "created" | "duplicate" | "trashed";
+            /**
+             * Format: date-time
+             * @description When the asset record was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
+             *     the upload time when absent) and refined from EXIF by the
+             *     metadata pipeline; responses render the best value the
+             *     server has at answer time.
+             */
+            takenAt: string;
+            /**
+             * @description True when the asset sits in the trash; `state: trashed`
+             *     responses carry it as true so clients can offer the
+             *     restore or save-as-new decision.
+             */
+            isTrashed: boolean;
+        };
+        /**
+         * @description One asset as the detail endpoint returns it: the upload
+         *     response's identity and storage fields plus the pipeline's
+         *     refinements. The shape is fixed -- every property is always
+         *     present -- and the pipeline-dependent values (`width`,
+         *     `height`, `durationMs`, `blurhash` and the fields inside
+         *     `exif`) are null until the jobs produced them, turning
+         *     non-null when `asset.ready` fired. A value that stays null on
+         *     a ready asset means the file carries no such metadata.
+         */
+        AssetDetail: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the asset.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the owning account.
+             */
+            ownerId: string;
+            /**
+             * @description Media family of the asset. A Live Photo is an `image` whose
+             *     video component is stored as a linked `video` row that
+             *     never appears in the timeline.
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /**
+             * @description The file name the asset was uploaded with; the original
+             *     download re-uses it (RFC 5987 escaped) for
+             *     `Content-Disposition`.
+             */
+            originalFilename: string;
+            /**
+             * Format: int64
+             * @description Size of the stored file in bytes.
+             */
+            fileSize: number;
+            /**
+             * @description Canonical content type of the stored format, for example
+             *     `image/jpeg` or `video/quicktime`.
+             */
+            mimeType: string;
+            /**
+             * @description SHA-256 digest of the file bytes, lowercase hex. The
+             *     prefix of the entity tags the media endpoints serve.
+             */
+            checksum: string;
+            /**
+             * Format: date-time
+             * @description When the asset record was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
+             *     the upload time when absent) and refined from EXIF by the
+             *     metadata pipeline; the response renders the best value the
+             *     server has at answer time.
+             */
+            takenAt: string;
+            /**
+             * @description Where `takenAt` comes from: `import` is the
+             *     device-reported capture time of the upload, `exif` an
+             *     EXIF capture time the metadata job resolved with an
+             *     offset, `file` a file timestamp (reserved for the future
+             *     directory-album importer).
+             * @enum {string}
+             */
+            takenAtSource: "exif" | "file" | "import";
+            /** @description True when the asset sits in the trash. */
+            isTrashed: boolean;
+            /**
+             * @description True once the whole pipeline of the asset (metadata and
+             *     serving copies) completed; the `asset.ready` event fires
+             *     at that moment. Until then the client shows placeholders
+             *     and the media endpoints answer `ASSET_NOT_READY` for
+             *     missing derived files.
+             */
+            isReady: boolean;
+            /**
+             * @description Pixel width in sensor order (not orientation-corrected);
+             *     null until the metadata job refined the dimensions.
+             */
+            width: number | null;
+            /**
+             * @description Pixel height in sensor order (not orientation-corrected);
+             *     null until the metadata job refined the dimensions.
+             */
+            height: number | null;
+            /**
+             * @description Playback duration of a video in milliseconds; null for
+             *     images and until the metadata job refined it.
+             */
+            durationMs: number | null;
+            /**
+             * @description The blurhash of the tile (image assets) or poster frame
+             *     (video assets) for placeholder rendering; null until the
+             *     thumbnail job stored it.
+             */
+            blurhash: string | null;
+            /**
+             * Format: uuid
+             * @description For a Live Photo image, the id of its linked component
+             *     video row (never in the timeline, but resolvable for
+             *     playback); null otherwise.
+             */
+            livePhotoVideoId: string | null;
+            /**
+             * @description The EXIF hot fields. Always present as an object; every
+             *     field inside it is null until the metadata job wrote the
+             *     extraction.
+             */
+            exif: components["schemas"]["ExifSummary"];
+        };
+        /**
+         * @description The EXIF hot fields of an asset, flattened from the raw
+         *     exiftool output by the metadata job. Every property is always
+         *     present and null until the job wrote it -- or forever, for
+         *     files that carry no such tag.
+         */
+        ExifSummary: {
+            /** @description Camera manufacturer (EXIF Make). */
+            cameraMake: string | null;
+            /** @description Camera model (EXIF Model). */
+            cameraModel: string | null;
+            /** @description Lens identifier (LensModel, LensID or Lens). */
+            lens: string | null;
+            /** @description ISO sensitivity. */
+            iso: number | null;
+            /** @description Aperture as the f-number. */
+            aperture: number | null;
+            /**
+             * @description Exposure time in photo notation, for example `1/250` or
+             *     `2.5s`.
+             */
+            shutter: string | null;
+            /** @description Focal length in millimeters. */
+            focal: number | null;
+            /**
+             * Format: double
+             * @description GPS latitude in degrees.
+             */
+            lat: number | null;
+            /**
+             * Format: double
+             * @description GPS longitude in degrees.
+             */
+            lon: number | null;
+            /** @description GPS altitude in meters. */
+            alt: number | null;
+            /**
+             * @description The offset that resolved the capture time, in EXIF
+             *     notation (`+05:30`); null when the capture time did not
+             *     resolve through EXIF.
+             */
+            tzOffset: string | null;
+        };
+        /**
          * @description Error envelope shared by all endpoints. `code` is the authoritative
          *     registry of stable error codes; clients must not parse `message`.
          */
@@ -445,7 +914,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -928,6 +1397,484 @@ export interface operations {
             };
             /** @description An administrator already exists; setup is complete. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    uploadAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * @description Stable device-side identity of the uploaded file.
+                     * @example IMG_1234
+                     */
+                    deviceAssetId: string;
+                    /**
+                     * @description Original client-side file name of the photo.
+                     * @example IMG_1234.jpg
+                     */
+                    fileName: string;
+                    /**
+                     * Format: date-time
+                     * @description Capture time reported by the device (RFC 3339 with
+                     *     offset). Optional; when absent the server records
+                     *     the upload time until the metadata pipeline
+                     *     refines it.
+                     * @example 2026-10-13T20:30:00+08:00
+                     */
+                    deviceCreatedAt?: string;
+                    /**
+                     * @description IANA time zone name of the capture location, for
+                     *     the metadata pipeline's timezone fallback chain.
+                     *     Not validated at upload time.
+                     * @example Asia/Shanghai
+                     */
+                    deviceTimeZone?: string;
+                    /**
+                     * Format: binary
+                     * @description The photo bytes; their file part name carries the extension.
+                     */
+                    photo: string;
+                    /**
+                     * Format: binary
+                     * @description The Live Photo pairing video; present only together
+                     *     with `photo`. The server stores it as a linked
+                     *     component row that never appears in the timeline.
+                     */
+                    liveVideo?: string;
+                };
+            };
+        };
+        responses: {
+            /**
+             * @description The upload hit the owner-scoped checksum idempotency:
+             *     `state` is `duplicate` (an identical live asset) or
+             *     `trashed` (an identical asset in the trash, returned with
+             *     `isTrashed: true` so the client can offer restore or
+             *     save-as-new). The response body is the existing asset.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /**
+             * @description The photo asset was created; `state` is `created`. A Live
+             *     Photo also created its linked video component row; the
+             *     response describes the photo asset.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /**
+             * @description The upload body is structurally or semantically invalid:
+             *     a missing required field, a misordered part, an unknown
+             *     part, a text field over its bound, an unparseable
+             *     `deviceCreatedAt`, or file bytes inconsistent with their
+             *     claimed extension (a renamed file of another type).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description One of the uploaded files exceeds the instance's per-file
+             *     upload limit (2 GiB by default); the transfer is aborted
+             *     mid-stream.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The asset detail. `isReady` is true once the whole pipeline
+             *     (metadata and serving copies) completed; until then the
+             *     pipeline-dependent fields stay null and the client waits
+             *     for the `asset.ready` event. `exif` is always present; its
+             *     fields are null until the metadata job wrote the
+             *     extraction.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDetail"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No asset with this id is visible to the caller: the id is
+             *     unknown or belongs to another account, and the two cases
+             *     are indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAssetThumbnail: {
+        parameters: {
+            query: {
+                /**
+                 * @description The serving size: `tile` for the timeline, `view` for the
+                 *     inline display, `original` for the full-resolution serving
+                 *     copy. Video assets answer the poster frame for every
+                 *     value.
+                 * @example tile
+                 */
+                size: "tile" | "view" | "original";
+            };
+            header?: never;
+            path: {
+                /** @description Identifier of the asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The serving copy: `image/avif` for an image thumbnail,
+             *     `image/jpeg` for a video poster.
+             */
+            200: {
+                headers: {
+                    /**
+                     * @description Strong entity tag: the first 16 hex characters of the
+                     *     asset's checksum, quoted. The derivation is
+                     *     deterministic, so the tag is stable across re-runs of
+                     *     the thumbnail job.
+                     * @example "9f86d081884c7d65"
+                     */
+                    ETag?: string;
+                    /**
+                     * @description The derived file is private to the owner and immutable
+                     *     (its content is a function of the immutable original
+                     *     bytes), so clients may cache it for a year.
+                     * @example private, max-age=31536000, immutable
+                     */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/avif": string;
+                    "image/jpeg": string;
+                };
+            };
+            /**
+             * @description The `If-None-Match` value matched the entity tag; the
+             *     cached copy is current. The response carries the same
+             *     `ETag` and `Cache-Control` validators and no body.
+             */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The `size` parameter is missing or not one of the three
+             *     serving sizes.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Either no asset with this id is visible to the caller
+             *     (unknown or foreign id, `ASSET_NOT_FOUND`), or the asset
+             *     exists but its derived file is not on disk yet
+             *     (`ASSET_NOT_READY` -- the pipeline has not produced it).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAssetOriginal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The original file. The `Content-Type` header carries the
+             *     asset's stored MIME type (the media type below is the
+             *     generic documentation placeholder).
+             */
+            200: {
+                headers: {
+                    /**
+                     * @description Strong entity tag: the first 16 hex characters of the
+                     *     asset's checksum, quoted.
+                     * @example "9f86d081884c7d65"
+                     */
+                    ETag?: string;
+                    /**
+                     * @description The original bytes are content-addressed and therefore
+                     *     immutable; the download is private to the owner.
+                     * @example private, max-age=31536000, immutable
+                     */
+                    "Cache-Control"?: string;
+                    /**
+                     * @description Always `attachment` with the RFC 5987 escaped original
+                     *     file name, so browsers download instead of rendering.
+                     * @example attachment; filename*=UTF-8''IMG_1234.jpg
+                     */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /**
+             * @description A satisfiable single byte range; `Content-Range` names the
+             *     served slice. Multi-range requests answer
+             *     `multipart/byteranges` instead.
+             */
+            206: {
+                headers: {
+                    /**
+                     * @description The served slice of the total file size.
+                     * @example bytes 0-99/12345
+                     */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /**
+             * @description The `If-None-Match` value matched the entity tag; the
+             *     cached copy is current.
+             */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No asset with this id is visible to the caller: the id is
+             *     unknown or belongs to another account, and the two cases
+             *     are indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The requested range is unsatisfiable for this file; the
+             *     `Content-Range` header of the error carries the total size
+             *     (`bytes *\/<size>`).
+             */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAssetByDeviceId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The device-side identity the asset was uploaded with. */
+                deviceAssetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The asset recorded under this device identifier. `state` is
+             *     `duplicate` (live) or `trashed` (in the trash).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No asset of this account carries the device identifier. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

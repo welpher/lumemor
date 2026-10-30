@@ -29,4 +29,6 @@ Thumbs.db
 
 # Local data & tool output
 data/
+# Bind-mount target created by docker compose up (see docker-compose.yml).
+/lumemor/
 *.log
