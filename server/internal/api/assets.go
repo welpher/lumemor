@@ -382,6 +382,36 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 		return dbgen.Asset{}, "", err
 	}
 
+	// The photo lands in the owner's sync album -- the core stream the
+	// timeline aggregates. The insert rides the upload transaction, so
+	// the asset and its album membership commit atomically: an upload
+	// that committed but stayed album-less would be invisible to every
+	// timeline. The component video row deliberately does NOT land in
+	// the album: it is reachable only through the photo's
+	// livePhotoVideoId and filtered out of every timeline by
+	// is_component, so a membership row would be pure dead weight. The
+	// ensure (rather than a plain insert) is the recovery path for an
+	// account whose rows predate this wiring; its upsert arm keeps a
+	// concurrent recovery from failing this upload.
+	syncAlbumID, err := uuid.NewV7()
+	if err != nil {
+		return dbgen.Asset{}, "", err
+	}
+	albumID, err := queries.EnsureSyncAlbum(ctx, dbgen.EnsureSyncAlbumParams{
+		ID:      pgUUID(syncAlbumID),
+		OwnerID: pgUUID(owner),
+	})
+	if err != nil {
+		return dbgen.Asset{}, "", err
+	}
+	if err := queries.AddAssetToAlbum(ctx, dbgen.AddAssetToAlbumParams{
+		AlbumID: albumID,
+		AssetID: photoRow.ID,
+		AddedBy: pgUUID(owner),
+	}); err != nil {
+		return dbgen.Asset{}, "", err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return dbgen.Asset{}, "", err
 	}

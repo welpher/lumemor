@@ -1303,7 +1303,7 @@ func TestGetAssetByDeviceId(t *testing.T) {
 
 	t.Run("OwnerScoped", func(t *testing.T) {
 		// A second account cannot see the first one's device asset.
-		other := env.createSecondUser(t, "grace@example.com")
+		_, other := env.createSecondUser(t, "grace@example.com")
 		rec := get(other, "device-1")
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want %d (another owner's asset is invisible)", rec.Code, http.StatusNotFound)
@@ -1312,8 +1312,11 @@ func TestGetAssetByDeviceId(t *testing.T) {
 }
 
 // createSecondUser seeds a plain user directly in the database (admin
-// user management is M2c) and returns a session cookie of that user.
-func (e *assetEnv) createSecondUser(t *testing.T, email string) *http.Cookie {
+// user management is M2d) and returns the user's id together with a
+// session cookie of that user. The row carries no sync album: callers
+// that need one insert it (fixtures) or let the upload path's ensure
+// create it, which is exactly the recovery the ensure exists for.
+func (e *assetEnv) createSecondUser(t *testing.T, email string) (uuid.UUID, *http.Cookie) {
 	t.Helper()
 	hash, err := auth.Hash(testPassword)
 	if err != nil {
@@ -1332,12 +1335,12 @@ func (e *assetEnv) createSecondUser(t *testing.T, email string) *http.Cookie {
 	if err != nil {
 		t.Fatalf("generate session id: %v", err)
 	}
-	raw := "second-user-session-token"
+	raw := "second-user-session-token-" + email
 	if _, err := e.pool.Exec(context.Background(),
 		"INSERT INTO sessions (id, user_id, token_hash, kind, expires_at) VALUES ($1, $2, $3, 'mobile', $4)",
 		pgUUID(sessionID), pgUUID(userID), auth.HashSessionToken(raw),
 		time.Now().Add(24*time.Hour)); err != nil {
 		t.Fatalf("insert second user session: %v", err)
 	}
-	return &http.Cookie{Name: sessionCookieName, Value: raw}
+	return userID, &http.Cookie{Name: sessionCookieName, Value: raw}
 }

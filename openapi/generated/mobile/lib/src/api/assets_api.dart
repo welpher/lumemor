@@ -13,6 +13,7 @@ import 'package:lumemor_api/src/api_util.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
+import 'package:lumemor_api/src/model/timeline_response.dart';
 
 class AssetsApi {
 
@@ -358,6 +359,103 @@ class AssetsApi {
     }
 
     return Response<Uint8List>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// The aggregated timeline, one keyset page at a time.
+  /// The aggregated timeline of the caller: the union of the albums that feed it -- the caller&#39;s sync album (the core backup stream, never excludable), the caller&#39;s own directory albums, and every album shared to the caller regardless of type (virtual albums included) -- minus the albums the caller turned off with the per-user \&quot;keep out of the timeline\&quot; preference (a missing preference row means kept in). The caller&#39;s own virtual albums never feed their own timeline: in-stream curation would be pure duplication. One asset visible through several albums appears once.  Every item is live by construction: hidden assets, assets in the trash, and the component video rows of Live Photos never appear.  Pages are keyset-paginated with an opaque cursor: the response carries &#x60;nextCursor&#x60; exactly when another page exists, and the client passes it back as &#x60;cursor&#x60; to continue after the last item of the page. Cursors are stable for the ordering key (&#x60;takenAt&#x60; descending, &#x60;id&#x60; as the tiebreak); an asset uploaded with an older &#x60;takenAt&#x60; than the cursor appears only in a fresh pagination run, never in the current one. The first page omits the &#x60;cursor&#x60; parameter.  &#x60;limit&#x60; bounds the page size: absent means the default of 100, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 &#x60;VALIDATION_FAILED&#x60;.  &#x60;albumId&#x60; narrows the response to that album&#39;s own timeline instead of the aggregate: the album&#39;s items in the same ordering and filtering. The caller must be able to see the album (own album of any type, or an album shared to the caller); an album that does not exist or is not visible answers the empty list, not an error, so album ids cannot be probed for existence through this endpoint. 
+  ///
+  /// Parameters:
+  /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
+  /// * [limit] - Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
+  /// * [albumId] - Restrict the response to the timeline of this one album (an album the caller owns or that is shared to the caller) instead of the aggregate. An unknown or invisible album answers the empty list. 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [TimelineResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<TimelineResponse>> getTimeline({ 
+    String? cursor,
+    int? limit = 100,
+    String? albumId,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/assets/timeline';
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _queryParameters = <String, dynamic>{
+      if (cursor != null) r'cursor': encodeQueryParameter(_serializers, cursor, const FullType(String)),
+      if (limit != null) r'limit': encodeQueryParameter(_serializers, limit, const FullType(int)),
+      if (albumId != null) r'albumId': encodeQueryParameter(_serializers, albumId, const FullType(String)),
+    };
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      queryParameters: _queryParameters,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    TimelineResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(TimelineResponse),
+      ) as TimelineResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<TimelineResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

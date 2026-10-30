@@ -25,6 +25,8 @@ import 'package:lumemor_api/src/model/pairing_consume_request.dart';
 import 'package:lumemor_api/src/model/pairing_token_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
+import 'package:lumemor_api/src/model/timeline_item.dart';
+import 'package:lumemor_api/src/model/timeline_response.dart';
 import 'package:lumemor_api/src/model/user.dart';
 
 part 'serializers.g.dart';
@@ -41,9 +43,15 @@ part 'serializers.g.dart';
   PairingTokenResponse,
   ServerInfo,
   SessionInfo,
+  TimelineItem,
+  TimelineResponse,
   User,
 ])
 Serializers serializers = (_$serializers.toBuilder()
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(TimelineItem)]),
+        () => ListBuilder<TimelineItem>(),
+      )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(SessionInfo)]),
         () => ListBuilder<SessionInfo>(),

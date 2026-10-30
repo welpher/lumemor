@@ -185,10 +185,12 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 			// generation and the asset reads behind RequireSession, all
 			// inside the handler timeout. The timeout wraps the session
 			// middleware too, so even a wedged session lookup cannot pin a
-			// connection. The asset detail and the thumbnail serving
-			// belong here: both answer from one row read plus bounded
-			// bytes -- the detail is a small JSON document, the derived
-			// files are re-encoded copies of at most a few megabytes.
+			// connection. The asset detail, the aggregated timeline and
+			// the thumbnail serving belong here: all answer from bounded
+			// row reads plus bounded bytes -- the detail and the timeline
+			// are small JSON documents (the timeline's page size is
+			// capped by the contract), the derived files are re-encoded
+			// copies of at most a few megabytes.
 			r.Group(func(r chi.Router) {
 				r.Use(timeoutMiddleware(timeout), s.requireSession)
 				r.Post("/auth/logout", wrapper.Logout)
@@ -196,6 +198,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Delete("/auth/sessions/{id}", wrapper.RevokeSession)
 				r.Post("/auth/pairing/token", wrapper.CreatePairingToken)
 				r.Get("/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)
+				r.Get("/assets/timeline", wrapper.GetTimeline)
 				r.Get("/assets/{id}", wrapper.GetAsset)
 				r.Get("/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
 			})
