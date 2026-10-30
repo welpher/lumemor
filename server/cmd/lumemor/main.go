@@ -149,7 +149,11 @@ func run(logger *slog.Logger) error {
 	// retries.
 	sweepCounts, err := jobs.RunRequeueSweep(ctx, pool, queue)
 	if err != nil {
-		logger.Error("requeue sweep failed", "error", err)
+		// The counts ride along even on the aborted run (partial on a
+		// mid-sweep enqueue failure; zero when the listing itself
+		// failed), mirroring the worker's failure line.
+		logger.Error("requeue sweep failed", "error", err,
+			"stuck", sweepCounts.Stuck, "enqueued", sweepCounts.Enqueued)
 	} else {
 		// The run's single log line; per-asset logs are deliberately
 		// absent.

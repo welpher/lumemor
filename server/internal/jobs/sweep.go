@@ -28,11 +28,16 @@ import (
 // The counter is deliberately NOT reset: it already counts exactly
 // the missing jobs, the re-enqueued jobs' completions drive it down,
 // and CompleteAssetJob's WHERE pending_jobs > 0 guard turns the extra
-// decrements of any duplicate run into no-ops. River's unique opts
-// over kind + encoded args (the asset id) make the re-insert itself
-// idempotent, so a row whose jobs are actually still in the queue --
-// the stuck-row query cannot tell the difference -- is left untouched
-// instead of double-run.
+// decrements of any duplicate run into no-ops -- which is the actual
+// safety net for duplicate runs: River's unique opts over kind +
+// encoded args (the asset id) only dedupe the sweep's KEYED inserts
+// against each other (a previous or concurrent sweep's jobs, or a
+// completed sweep job still inside River's retention). The upload
+// path enqueues WITHOUT unique opts, so its in-flight rows never join
+// the unique index: a stuck-looking row whose jobs are mid-pipeline
+// through the upload path gets a duplicate pair from the sweep, and
+// both run -- converged, not prevented, by the pipeline jobs' own
+// idempotency and the guarded decrement.
 
 // SweepInterval is the periodic cadence of the requeue sweep. One
 // hour bounds how long a stuck asset stays stuck after the process is
@@ -47,10 +52,10 @@ const sweepPeriodicJobID = "requeue-sweep"
 
 // SweepCounts reports one sweep run: the stuck assets found and the
 // pipeline jobs the run actually inserted. A requeue insert that
-// River deduplicated (an equivalent job already exists) does not
-// count -- operationally what matters is how much new work entered
-// the queue. The two numbers are the single log line each sweep run
-// emits.
+// River deduplicated against an earlier keyed insert (sweep-vs-sweep;
+// see the boundary note on AssetRequeuer) does not count --
+// operationally what matters is how much new work entered the queue.
+// The two numbers are the single log line each sweep run emits.
 type SweepCounts struct {
 	Stuck    int
 	Enqueued int
@@ -58,9 +63,12 @@ type SweepCounts struct {
 
 // AssetRequeuer is the sweep's enqueue seam. It mirrors the upload
 // path's AssetJobEnqueuer shape, but its implementations insert
-// through the sweep's unique-keyed path: the insert must be
-// idempotent over the job kind and the asset id, so a job that
-// already exists in the queue is not re-inserted.
+// through the sweep's unique-keyed path: the insert is idempotent
+// over the job kind and the asset id AGAINST OTHER SWEEP-PATH
+// INSERTS (a previous or concurrent sweep, or a completed sweep job
+// inside River's retention). The upload path's unkeyed inserts are
+// outside that dedupe -- the boundary is pinned in
+// TestRequeueSweepUniqueKeyBoundary.
 type AssetRequeuer interface {
 	// RequeueMetadata inserts the metadata job for the asset unless
 	// an equivalent job already exists in River. It reports whether
@@ -121,12 +129,17 @@ func RunRequeueSweep(ctx context.Context, pool *pgxpool.Pool, enqueuer AssetRequ
 // RequeueMetadata inserts the metadata job for the asset through the
 // sweep path. Unlike the upload path's EnqueueMetadata it inserts
 // with River's unique opts over the job kind and the encoded args
-// (the asset id): when a metadata job of this asset is still queued
-// (available, pending, running, retryable, or scheduled) or has
+// (the asset id): when a metadata job of this asset is still present
+// FROM A KEYED INSERT -- a previous or concurrent sweep's insert,
+// queued (available, pending, running, retryable, or scheduled) or
 // completed within River's completed-job retention (24 hours by
-// default), the insert is skipped as a duplicate and this returns
-// false without error. That is what makes the blind re-enqueue safe:
-// rows whose jobs are merely in flight, not lost, are left alone.
+// default) -- the insert is skipped as a duplicate and this returns
+// false without error. The upload path's inserts are unkeyed and
+// never match the unique key, so a row whose jobs are in flight
+// through the upload path gets a duplicate job, and both run to
+// completion: harmless by design (the pipeline jobs are idempotent
+// and the guarded readiness decrement no-ops), which is what makes
+// the blind re-enqueue safe.
 func (q *Queue) RequeueMetadata(ctx context.Context, assetID uuid.UUID) (bool, error) {
 	return requeueInsert(ctx, q.client, MetadataArgs{AssetID: assetID})
 }
@@ -148,11 +161,16 @@ func requeueInsert(ctx context.Context, client *river.Client[pgx.Tx], args river
 		// uniqueness is (kind, asset id). The default unique state set
 		// covers every state a live job can hold plus completed (until
 		// the job cleaner removes the row after its retention), which
-		// keeps the dedupe window open over jobs that already ran. A
-		// duplicate run would be harmless -- the pipeline jobs are
-		// idempotent and the guarded readiness decrement no-ops -- but
-		// not running it is cheaper, and the in-flight rows the sweep
-		// cannot distinguish from stuck ones stay untouched.
+		// keeps the dedupe window open over the sweep's own jobs that
+		// already ran: a repeated or overlapping sweep re-inserts
+		// nothing. The boundary: River's conflict clause matches rows
+		// carrying the same unique key, and only KEYED inserts carry
+		// one -- the upload path's EnqueueMetadata/EnqueueThumbnail
+		// insert unkeyed, so a row whose jobs are in flight through
+		// the upload path gets a duplicate pair from the sweep, and
+		// both run. That duplicate is converged, not prevented: the
+		// pipeline jobs are idempotent (re-runs overwrite the same
+		// outputs) and the guarded readiness decrement no-ops.
 		UniqueOpts: river.UniqueOpts{ByArgs: true},
 	})
 	if err != nil {
