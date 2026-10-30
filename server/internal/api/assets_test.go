@@ -13,6 +13,7 @@ import (
 	"image/jpeg"
 	"io"
 	"io/fs"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -838,6 +839,64 @@ func TestUploadAssetEnqueueFailureStillCreated(t *testing.T) {
 	}
 	if got := countAssetUploadedEvents(t, env.bus); got != 1 {
 		t.Errorf("asset.uploaded events = %d, want 1: the upload itself succeeded", got)
+	}
+}
+
+// recordingEnqueuer records every enqueue it is asked to perform and
+// succeeds at all of them, standing in for a healthy queue behind the
+// upload endpoint's job seam.
+type recordingEnqueuer struct {
+	metadataContexts []context.Context
+	metadataIDs      []uuid.UUID
+	thumbnailContext context.Context
+	thumbnailID      uuid.UUID
+}
+
+// EnqueueMetadata implements AssetJobEnqueuer by recording the call.
+func (r *recordingEnqueuer) EnqueueMetadata(ctx context.Context, id uuid.UUID) error {
+	r.metadataContexts = append(r.metadataContexts, ctx)
+	r.metadataIDs = append(r.metadataIDs, id)
+	return nil
+}
+
+// EnqueueThumbnail implements AssetJobEnqueuer by recording the call.
+func (r *recordingEnqueuer) EnqueueThumbnail(ctx context.Context, id uuid.UUID) error {
+	r.thumbnailContext = ctx
+	r.thumbnailID = id
+	return nil
+}
+
+// TestEnqueueAssetJobsSurvivesClientDisconnect pins the disconnect half
+// of the enqueue seam's semantics: the pipeline jobs are enqueued on
+// the request context with its cancellation removed, so a client that
+// vanishes in the commit-to-enqueue window cannot fail the enqueue and
+// strand the asset's pending-jobs counter forever.
+func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
+	assetID := uuid.Must(uuid.NewV7())
+	recorder := &recordingEnqueuer{}
+	s := &server{
+		jobs:   recorder,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	// The client is already gone: the request context is canceled.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/assets", nil).WithContext(ctx)
+
+	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID)})
+
+	if len(recorder.metadataIDs) != 1 || recorder.metadataIDs[0] != assetID {
+		t.Fatalf("metadata enqueues = %v, want exactly [%s]", recorder.metadataIDs, assetID)
+	}
+	if recorder.thumbnailID != assetID {
+		t.Errorf("thumbnail enqueue id = %s, want %s", recorder.thumbnailID, assetID)
+	}
+	contexts := append(append([]context.Context(nil), recorder.metadataContexts...), recorder.thumbnailContext)
+	for i, ctx := range contexts {
+		if err := ctx.Err(); err != nil {
+			t.Errorf("enqueue context %d err = %v, want nil: the client disconnect must not cancel the enqueue", i, err)
+		}
 	}
 }
 

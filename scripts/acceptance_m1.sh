@@ -59,6 +59,14 @@ echo "==> resetting to a clean stack state"
 docker compose down -v --remove-orphans
 stack_up=1
 
+echo "==> preparing the storage bind mount for uid 10001 (sudo-less)"
+# The container's fixed uid 10001 cannot write a root:root bind source Docker creates, so prepare it sudo-less: mkdir as the host user, then chown through the image running as root (which must be built first).
+mkdir -p lumemor
+docker compose build || fail "docker compose build failed"
+docker compose run --rm --no-deps --entrypoint /bin/sh -u 0 lumemor \
+    -c 'chown -R 10001:10001 /var/lib/lumemor' \
+    || fail "chown of ./lumemor to 10001:10001 through the image failed"
+
 echo "==> building and starting the stack"
 docker compose up -d --build || fail "docker compose up -d --build failed"
 
