@@ -488,13 +488,17 @@ type ListStuckAssetsRow struct {
 // expiry, not recovery. Rows whose jobs are merely in flight (a live
 // upload mid-pipeline) match too -- the query cannot tell "lost
 // jobs" from "busy jobs", and it does not need to: the sweep's
-// re-enqueue inserts are unique keyed on kind + asset id, so a job
-// that still exists in the queue is not re-inserted, and the sweep
-// never resets pending_jobs (the counter already counts the missing
-// jobs; the re-enqueued completions drive it down). media_kind rides
-// along because the sweep re-enqueues by the row's kind (the same
-// two jobs for image and video until Task 6's transcode job splits
-// the video arm).
+// re-enqueue inserts carry River unique keys over kind + asset id, so
+// repeated or overlapping sweeps do not pile up jobs, but the upload
+// path's enqueues are unkeyed and never join the unique index -- an
+// in-flight upload row gets one duplicate pair from the sweep, and
+// both jobs run, converged by the pipeline jobs' own idempotency and
+// the guarded readiness decrement (the extra completions no-op). The
+// sweep never resets pending_jobs (the counter already counts the
+// missing jobs; the re-enqueued completions drive it down). media_kind
+// rides along because the sweep re-enqueues by the row's kind (the
+// same two jobs for image and video until Task 6's transcode job
+// splits the video arm).
 func (q *Queries) ListStuckAssets(ctx context.Context) ([]ListStuckAssetsRow, error) {
 	rows, err := q.db.Query(ctx, listStuckAssets)
 	if err != nil {

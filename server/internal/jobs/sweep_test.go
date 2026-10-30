@@ -188,10 +188,13 @@ func TestRequeueSweepSkipsSoftDeleted(t *testing.T) {
 // TestRequeueSweepTwiceIsIdempotent pins the double-run contract over
 // the same stuck row: the second sweep may find the row again (the
 // counter is deliberately not reset, so the row stays stuck until its
-// jobs complete) but inserts NO duplicate jobs -- River's unique opts
-// over kind + asset id dedupe while the jobs are queued or completed
-// -- and the drained pipeline still fires asset.ready exactly once
-// (the guarded decrement turns extra completions into no-ops).
+// jobs complete) but inserts NO duplicate jobs -- the first sweep's
+// inserts are unique-keyed, so the second sweep's keyed inserts dedupe
+// against them while those jobs are queued or completed (the
+// sweep-vs-sweep boundary; upload-path inserts are unkeyed and
+// outside it, see TestRequeueSweepUniqueKeyBoundary) -- and the
+// drained pipeline still fires asset.ready exactly once (the guarded
+// decrement turns extra completions into no-ops).
 func TestRequeueSweepTwiceIsIdempotent(t *testing.T) {
 	requireExiftool(t)
 	requireThumbnails(t)
@@ -250,6 +253,81 @@ func TestRequeueSweepTwiceIsIdempotent(t *testing.T) {
 	}
 	if got := e.riverJobTotal(t, id); got != 2 {
 		t.Errorf("river jobs after the third sweep = %d, want still 2", got)
+	}
+}
+
+// TestRequeueSweepUniqueKeyBoundary pins the actual uniqueness
+// boundary of the sweep's re-inserts, the contract the corrected
+// comments state: River's unique key compares only KEYED inserts
+// against each other -- a previous or concurrent sweep's jobs, or a
+// completed sweep job inside River's retention. The upload path
+// enqueues WITHOUT unique opts (unique_key NULL), so its in-flight
+// rows never join the unique index: a stuck-looking row whose jobs
+// are mid-pipeline through the upload path gets a duplicate pair from
+// the sweep, and both run. Safety there comes from the pipeline jobs'
+// idempotency and CompleteAssetJob's guarded decrement -- the
+// duplicate converges, it is not prevented. (This test pins existing
+// behavior by design: it is the regression guard that keeps the
+// comments from drifting back into the false invariant.)
+func TestRequeueSweepUniqueKeyBoundary(t *testing.T) {
+	e := newEnv(t)
+
+	deviceTakenAt := time.Date(2021, 8, 9, 10, 11, 12, 0, time.UTC).Truncate(time.Microsecond)
+	id := e.insertAssetKind(t, "originals/sweep/boundary.jpg", jpegBytes(t), deviceTakenAt,
+		`{}`, dbgen.MediaKindImage, "image/jpeg", 2)
+
+	// The upload path enqueues its pair: unkeyed inserts, the row
+	// stuck-looking only while the jobs work. (Whether the workers
+	// complete, fail, or retry these jobs afterwards is irrelevant to
+	// the insert assertions below -- the rows persist in river_job in
+	// every state.)
+	if err := e.queue.EnqueueMetadata(context.Background(), id); err != nil {
+		t.Fatalf("enqueue upload-path metadata job: %v", err)
+	}
+	if err := e.queue.EnqueueThumbnail(context.Background(), id); err != nil {
+		t.Fatalf("enqueue upload-path thumbnail job: %v", err)
+	}
+
+	// The sweep-path re-inserts do NOT dedupe against the unkeyed
+	// upload pair: both keyed inserts succeed, duplicating the jobs.
+	inserted, err := e.queue.RequeueMetadata(context.Background(), id)
+	if err != nil {
+		t.Fatalf("requeue metadata job: %v", err)
+	}
+	if !inserted {
+		t.Error("requeue metadata insert was deduped, want it to duplicate the unkeyed upload-path job")
+	}
+	inserted, err = e.queue.RequeueThumbnail(context.Background(), id)
+	if err != nil {
+		t.Fatalf("requeue thumbnail job: %v", err)
+	}
+	if !inserted {
+		t.Error("requeue thumbnail insert was deduped, want it to duplicate the unkeyed upload-path job")
+	}
+	kinds := e.riverJobsOf(t, id)
+	if kinds["metadata"] != 2 || kinds["thumbnail"] != 2 {
+		t.Errorf("river jobs = %v, want the upload pair PLUS the sweep pair (2 of each kind)", kinds)
+	}
+
+	// The second sweep-path insert of each kind dedupes against the
+	// FIRST sweep's keyed rows (sweep-vs-sweep): nothing new enters.
+	inserted, err = e.queue.RequeueMetadata(context.Background(), id)
+	if err != nil {
+		t.Fatalf("second requeue metadata job: %v", err)
+	}
+	if inserted {
+		t.Error("second requeue metadata insert duplicated, want the sweep-vs-sweep dedupe")
+	}
+	inserted, err = e.queue.RequeueThumbnail(context.Background(), id)
+	if err != nil {
+		t.Fatalf("second requeue thumbnail job: %v", err)
+	}
+	if inserted {
+		t.Error("second requeue thumbnail insert duplicated, want the sweep-vs-sweep dedupe")
+	}
+	kinds = e.riverJobsOf(t, id)
+	if kinds["metadata"] != 2 || kinds["thumbnail"] != 2 {
+		t.Errorf("river jobs after the second sweep-path insert = %v, want still 2 of each kind", kinds)
 	}
 }
 
