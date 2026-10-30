@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -41,20 +42,54 @@ type Deps struct {
 	// (GET /api/v1/events); nil keeps that endpoint answering 500
 	// until the caller wires a bus.
 	Events *events.Bus
+	// DataDir is the photo data root: the upload endpoint stages
+	// multipart file parts in its tmp/ directory and finalizes
+	// accepted files into its content-addressed originals tree. It
+	// must name a layout prepared by storage.EnsureLayout.
+	DataDir string
+	// UploadLimitBytes caps each uploaded file of POST /assets; the
+	// streaming receiver aborts over-limit transfers mid-stream with
+	// 413 ASSET_TOO_LARGE. Zero rejects every upload -- the caller
+	// (production wiring, tests) is responsible for a usable value.
+	UploadLimitBytes int64
+	// Jobs enqueues pipeline jobs for uploaded assets: the upload
+	// handler enqueues the metadata job and the thumbnail job after its
+	// transaction commits. Nil keeps the upload working without a queue
+	// (tests, wiring order); the assets simply stay not-ready until one
+	// runs.
+	Jobs AssetJobEnqueuer
+}
+
+// AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
+// between the upload handler and the job queue: production passes the
+// jobs package's Queue, which implements it structurally.
+type AssetJobEnqueuer interface {
+	// EnqueueMetadata inserts the metadata job of the asset. It must
+	// only be called once the asset's rows are committed.
+	EnqueueMetadata(ctx context.Context, assetID uuid.UUID) error
+	// EnqueueThumbnail inserts the thumbnail job of the asset (the
+	// three AVIF sizes of an image, the poster frame of a video). Like
+	// the metadata job it must only be called once the asset's rows
+	// are committed.
+	EnqueueThumbnail(ctx context.Context, assetID uuid.UUID) error
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
 // endpoints (/healthz, /metrics), the embedded HTML pages (/setup, /)
 // and the generated /api/v1 API surface.
 //
-// The /api/v1 pipeline order is pinned and security-relevant: the JSON
-// body limit first (nothing downstream may buffer an unbounded body),
-// then the security headers on every API response, then the origin
-// check guarding every state change, and finally the route groups:
-// the authed groups sit behind RequireSession, and every
-// non-streaming group runs inside the per-request handler timeout
-// (http.TimeoutHandler -- a handler that outlives it answers 503),
-// while the SSE stream group stays outside it.
+// The /api/v1 pipeline order is pinned and security-relevant: the
+// security headers on every API response, then the origin check
+// guarding every state change, then the route groups. The JSON body
+// limit and the per-request handler timeout apply only to the JSON
+// surface (nothing downstream of limitJSONBody may buffer an
+// unbounded body, and http.TimeoutHandler -- a handler that outlives
+// it answers 503 -- bounds every non-streaming JSON handler): the
+// authed groups sit behind RequireSession, the SSE stream group runs
+// outside the timeout, and the upload group runs outside both the
+// JSON body limit and the timeout -- a multipart upload is not JSON,
+// and a multi-gigabyte video legitimately outlives any timer; the
+// streaming receiver's own size limit governs instead.
 func NewRouter(deps *Deps) *chi.Mux {
 	return newRouter(deps, handlerTimeout)
 }
@@ -70,6 +105,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		version: deps.Version,
 		logger:  deps.Logger,
 		events:  deps.Events,
+		dataDir: deps.DataDir,
+		// The upload limit passes through as configured: zero is a
+		// valid (reject-everything) configuration, not a request for
+		// a default -- production wiring owns the value.
+		uploadLimit: deps.UploadLimitBytes,
+		// The job queue seam: nil is a valid (no pipeline) wiring.
+		jobs: deps.Jobs,
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
@@ -102,7 +144,11 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		handleIndexPage(w, req)
 	})
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(limitJSONBody, setSecurityHeaders, checkOrigin)
+		// Security headers and the origin check guard every API
+		// response, uploads included; the JSON body limit moved into
+		// the JSON group below so multipart uploads can stream past
+		// it (the receiver's own size limit governs them).
+		r.Use(setSecurityHeaders, checkOrigin)
 
 		// The wrapper reuses the generated request binders (the path
 		// uuid, the Last-Event-ID header) and routes their failures
@@ -116,42 +162,85 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 			ErrorHandlerFunc: s.binderError,
 		}
 
-		// Public group: the unauthenticated entry points. Login and
-		// the pairing exchange carry their own credentials; server
-		// info and the one-time wizard precede any account. The group
-		// runs inside the handler timeout like every non-streaming
-		// group.
+		// The JSON surface: small structured request bodies, bounded
+		// by the 1 MiB cap and (for everything but the SSE stream)
+		// the handler timeout.
 		r.Group(func(r chi.Router) {
-			r.Use(timeoutMiddleware(timeout))
-			r.Post("/auth/login", wrapper.Login)
-			r.Post("/auth/pairing/consume", wrapper.ConsumePairingToken)
-			r.Get("/server/info", wrapper.GetServerInfo)
-			r.Post("/server/setup/admin", wrapper.CreateAdmin)
+			r.Use(limitJSONBody)
+
+			// Public group: the unauthenticated entry points. Login and
+			// the pairing exchange carry their own credentials; server
+			// info and the one-time wizard precede any account. The
+			// group runs inside the handler timeout like every
+			// non-streaming group.
+			r.Group(func(r chi.Router) {
+				r.Use(timeoutMiddleware(timeout))
+				r.Post("/auth/login", wrapper.Login)
+				r.Post("/auth/pairing/consume", wrapper.ConsumePairingToken)
+				r.Get("/server/info", wrapper.GetServerInfo)
+				r.Post("/server/setup/admin", wrapper.CreateAdmin)
+			})
+
+			// Authed non-streaming group: session management, pairing
+			// generation and the asset reads behind RequireSession, all
+			// inside the handler timeout. The timeout wraps the session
+			// middleware too, so even a wedged session lookup cannot pin a
+			// connection. The asset detail and the thumbnail serving
+			// belong here: both answer from one row read plus bounded
+			// bytes -- the detail is a small JSON document, the derived
+			// files are re-encoded copies of at most a few megabytes.
+			r.Group(func(r chi.Router) {
+				r.Use(timeoutMiddleware(timeout), s.requireSession)
+				r.Post("/auth/logout", wrapper.Logout)
+				r.Get("/auth/sessions", wrapper.ListSessions)
+				r.Delete("/auth/sessions/{id}", wrapper.RevokeSession)
+				r.Post("/auth/pairing/token", wrapper.CreatePairingToken)
+				r.Get("/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)
+				r.Get("/assets/{id}", wrapper.GetAsset)
+				r.Get("/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
+			})
+
+			// Authed streaming group: the SSE activity stream. It
+			// requires a live session like the group above but
+			// deliberately runs OUTSIDE the handler timeout:
+			// http.TimeoutHandler buffers the response until the
+			// handler returns (it implements no Flusher) and cancels
+			// the request context at the deadline, which would stall
+			// and then cut a stream that is meant to outlive any
+			// bound; its liveness bound is the client connection,
+			// not a timer.
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireSession)
+				r.Get("/events", wrapper.GetEvents)
+			})
 		})
 
-		// Authed non-streaming group: session management and pairing
-		// generation behind RequireSession, all inside the handler
-		// timeout. The timeout wraps the session middleware too, so
-		// even a wedged session lookup cannot pin a connection.
-		r.Group(func(r chi.Router) {
-			r.Use(timeoutMiddleware(timeout), s.requireSession)
-			r.Post("/auth/logout", wrapper.Logout)
-			r.Get("/auth/sessions", wrapper.ListSessions)
-			r.Delete("/auth/sessions/{id}", wrapper.RevokeSession)
-			r.Post("/auth/pairing/token", wrapper.CreatePairingToken)
-		})
-
-		// Authed streaming group: the SSE activity stream. It requires
-		// a live session like the group above but deliberately runs
-		// OUTSIDE the handler timeout: http.TimeoutHandler buffers the
-		// response until the handler returns (it implements no
-		// Flusher) and cancels the request context at the deadline,
-		// which would stall and then cut a stream that is meant to
-		// outlive any bound; its liveness bound is the client
-		// connection, not a timer.
+		// Authed upload group: POST /assets streams multipart bodies
+		// that are neither JSON nor bounded by any timer, so it sits
+		// outside limitJSONBody and the handler timeout. It still
+		// requires a session like every authed route; the receiver's
+		// per-file size limit is the bound that governs the body.
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireSession)
-			r.Get("/events", wrapper.GetEvents)
+			r.Post("/assets", wrapper.UploadAsset)
+		})
+
+		// Authed media download group: GET /assets/{id}/original
+		// streams the stored original file, whose size is bounded only
+		// by the per-file upload limit (2 GiB by default) and whose
+		// transfer runs at client speed. It requires a session like
+		// every authed route but deliberately runs OUTSIDE the handler
+		// timeout, mirroring the upload and SSE exemptions:
+		// http.TimeoutHandler buffers the whole response until the
+		// handler returns (see timeoutMiddleware), so a wrapped
+		// original download would first read the entire file into
+		// memory and only then let its first byte reach the client --
+		// an unbounded per-request memory commitment. The handler
+		// itself stays bounded: one row read, one file open, then
+		// http.ServeContent streams the bytes.
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireSession)
+			r.Get("/assets/{id}/original", wrapper.GetAssetOriginal)
 		})
 	})
 	return r
@@ -177,6 +266,13 @@ type server struct {
 	// pairingBudget bounds pairing token generation per user per UTC
 	// day.
 	pairingBudget *auth.DailyLimiter
+	// dataDir is the photo data root the upload endpoint stages into.
+	dataDir string
+	// uploadLimit caps each uploaded file.
+	uploadLimit int64
+	// jobs enqueues the pipeline jobs of a committed upload; nil means
+	// no queue is wired and uploads simply stay not-ready.
+	jobs AssetJobEnqueuer
 }
 
 // writeJSON emits v as the JSON response body with the given status.
