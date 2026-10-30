@@ -150,6 +150,25 @@ func (s *server) CreateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The account's sync album -- the core backup stream every upload
+	// lands in and the timeline aggregates -- is created with the
+	// account, in the same transaction: an account whose stream is
+	// missing would take uploads that never surface anywhere. The
+	// upsert arm is the safety net for replayed or racing creations;
+	// inside this fresh-account transaction the insert arm always runs.
+	syncAlbumID, err := uuid.NewV7()
+	if err != nil {
+		s.internalError(w, r, "generate sync album id", err)
+		return
+	}
+	if _, err := queries.EnsureSyncAlbum(r.Context(), dbgen.EnsureSyncAlbumParams{
+		ID:      pgtype.UUID{Bytes: syncAlbumID, Valid: true},
+		OwnerID: user.ID,
+	}); err != nil {
+		s.internalError(w, r, "create sync album", err)
+		return
+	}
+
 	if err := tx.Commit(r.Context()); err != nil {
 		s.internalError(w, r, "commit setup transaction", err)
 		return

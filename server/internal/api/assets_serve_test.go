@@ -104,8 +104,8 @@ func TestGetAssetDetail(t *testing.T) {
 	if fresh.LivePhotoVideoId != nil {
 		t.Error("livePhotoVideoId set, want null for a plain photo")
 	}
-	if fresh.TakenAtSource != apigen.Import {
-		t.Errorf("takenAtSource = %q, want %q", fresh.TakenAtSource, apigen.Import)
+	if fresh.TakenAtSource != apigen.AssetDetailTakenAtSourceImport {
+		t.Errorf("takenAtSource = %q, want %q", fresh.TakenAtSource, apigen.AssetDetailTakenAtSourceImport)
 	}
 	if !fresh.TakenAt.Truncate(time.Microsecond).Equal(wantTakenAt) {
 		t.Errorf("fresh takenAt = %v, want the device-reported %v", fresh.TakenAt, wantTakenAt)
@@ -172,8 +172,8 @@ func TestGetAssetDetail(t *testing.T) {
 	if !detail.TakenAt.Truncate(time.Microsecond).Equal(takenAtExif) {
 		t.Errorf("takenAt = %v, want the EXIF-refined %v", detail.TakenAt, takenAtExif)
 	}
-	if detail.TakenAtSource != apigen.Exif {
-		t.Errorf("takenAtSource = %q, want %q", detail.TakenAtSource, apigen.Exif)
+	if detail.TakenAtSource != apigen.AssetDetailTakenAtSourceExif {
+		t.Errorf("takenAtSource = %q, want %q", detail.TakenAtSource, apigen.AssetDetailTakenAtSourceExif)
 	}
 	if detail.Width == nil || *detail.Width != 64 {
 		t.Errorf("width = %v, want 64", detail.Width)
@@ -258,7 +258,7 @@ func TestAssetEndpointsOwnerScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate random id: %v", err)
 	}
-	other := env.createSecondUser(t, "grace@example.com")
+	_, other := env.createSecondUser(t, "grace@example.com")
 
 	targets := []string{
 		"/api/v1/assets/" + created.Id.String(),

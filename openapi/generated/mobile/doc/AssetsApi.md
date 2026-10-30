@@ -13,6 +13,7 @@ Method | HTTP request | Description
 [**getAssetByDeviceId**](AssetsApi.md#getassetbydeviceid) | **GET** /assets/by-device-id/{deviceAssetId} | Look up an uploaded asset by its device identifier.
 [**getAssetOriginal**](AssetsApi.md#getassetoriginal) | **GET** /assets/{id}/original | Download the original file of one owned asset.
 [**getAssetThumbnail**](AssetsApi.md#getassetthumbnail) | **GET** /assets/{id}/thumbnail | Serve a derived thumbnail, or a video&#39;s poster frame.
+[**getTimeline**](AssetsApi.md#gettimeline) | **GET** /assets/timeline | The aggregated timeline, one keyset page at a time.
 [**uploadAsset**](AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 
 
@@ -203,6 +204,57 @@ Name | Type | Description  | Notes
 
  - **Content-Type**: Not defined
  - **Accept**: image/avif, image/jpeg, application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getTimeline**
+> TimelineResponse getTimeline(cursor, limit, albumId)
+
+The aggregated timeline, one keyset page at a time.
+
+The aggregated timeline of the caller: the union of the albums that feed it -- the caller's sync album (the core backup stream, never excludable), the caller's own directory albums, and every album shared to the caller regardless of type (virtual albums included) -- minus the albums the caller turned off with the per-user \"keep out of the timeline\" preference (a missing preference row means kept in). The caller's own virtual albums never feed their own timeline: in-stream curation would be pure duplication. One asset visible through several albums appears once.  Every item is live by construction: hidden assets, assets in the trash, and the component video rows of Live Photos never appear.  Pages are keyset-paginated with an opaque cursor: the response carries `nextCursor` exactly when another page exists, and the client passes it back as `cursor` to continue after the last item of the page. Cursors are stable for the ordering key (`takenAt` descending, `id` as the tiebreak); an asset uploaded with an older `takenAt` than the cursor appears only in a fresh pagination run, never in the current one. The first page omits the `cursor` parameter.  `limit` bounds the page size: absent means the default of 100, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 `VALIDATION_FAILED`.  `albumId` narrows the response to that album's own timeline instead of the aggregate: the album's items in the same ordering and filtering. The caller must be able to see the album (own album of any type, or an album shared to the caller); an album that does not exist or is not visible answers the empty list, not an error, so album ids cannot be probed for existence through this endpoint. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String cursor = AAAAAAAAAADvr_8PaGVsbw==; // String | The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
+final int limit = 100; // int | Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
+final String albumId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Restrict the response to the timeline of this one album (an album the caller owns or that is shared to the caller) instead of the aggregate. An unknown or invisible album answers the empty list. 
+
+try {
+    final response = api.getTimeline(cursor, limit, albumId);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->getTimeline: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **cursor** | **String**| The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients).  | [optional] 
+ **limit** | **int**| Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400.  | [optional] [default to 100]
+ **albumId** | **String**| Restrict the response to the timeline of this one album (an album the caller owns or that is shared to the caller) instead of the aggregate. An unknown or invisible album answers the empty list.  | [optional] 
+
+### Return type
+
+[**TimelineResponse**](TimelineResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

@@ -26,5 +26,7 @@ export 'package:lumemor_api/src/model/pairing_consume_request.dart';
 export 'package:lumemor_api/src/model/pairing_token_response.dart';
 export 'package:lumemor_api/src/model/server_info.dart';
 export 'package:lumemor_api/src/model/session_info.dart';
+export 'package:lumemor_api/src/model/timeline_item.dart';
+export 'package:lumemor_api/src/model/timeline_response.dart';
 export 'package:lumemor_api/src/model/user.dart';
 

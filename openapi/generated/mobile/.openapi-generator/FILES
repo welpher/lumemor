@@ -17,6 +17,8 @@ doc/PairingTokenResponse.md
 doc/ServerApi.md
 doc/ServerInfo.md
 doc/SessionInfo.md
+doc/TimelineItem.md
+doc/TimelineResponse.md
 doc/User.md
 lib/lumemor_api.dart
 lib/src/api.dart
@@ -43,6 +45,8 @@ lib/src/model/pairing_consume_request.dart
 lib/src/model/pairing_token_response.dart
 lib/src/model/server_info.dart
 lib/src/model/session_info.dart
+lib/src/model/timeline_item.dart
+lib/src/model/timeline_response.dart
 lib/src/model/user.dart
 lib/src/serializers.dart
 pubspec.yaml
@@ -61,4 +65,6 @@ test/pairing_token_response_test.dart
 test/server_api_test.dart
 test/server_info_test.dart
 test/session_info_test.dart
+test/timeline_item_test.dart
+test/timeline_response_test.dart
 test/user_test.dart

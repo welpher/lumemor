@@ -34,19 +34,19 @@ func (e AssetDetailKind) Valid() bool {
 
 // Defines values for AssetDetailTakenAtSource.
 const (
-	Exif   AssetDetailTakenAtSource = "exif"
-	File   AssetDetailTakenAtSource = "file"
-	Import AssetDetailTakenAtSource = "import"
+	AssetDetailTakenAtSourceExif   AssetDetailTakenAtSource = "exif"
+	AssetDetailTakenAtSourceFile   AssetDetailTakenAtSource = "file"
+	AssetDetailTakenAtSourceImport AssetDetailTakenAtSource = "import"
 )
 
 // Valid indicates whether the value is a known member of the AssetDetailTakenAtSource enum.
 func (e AssetDetailTakenAtSource) Valid() bool {
 	switch e {
-	case Exif:
+	case AssetDetailTakenAtSourceExif:
 		return true
-	case File:
+	case AssetDetailTakenAtSourceFile:
 		return true
-	case Import:
+	case AssetDetailTakenAtSourceImport:
 		return true
 	default:
 		return false
@@ -143,6 +143,45 @@ func (e SessionInfoKind) Valid() bool {
 	case Mobile:
 		return true
 	case Web:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TimelineItemKind.
+const (
+	TimelineItemKindImage TimelineItemKind = "image"
+	TimelineItemKindVideo TimelineItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the TimelineItemKind enum.
+func (e TimelineItemKind) Valid() bool {
+	switch e {
+	case TimelineItemKindImage:
+		return true
+	case TimelineItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TimelineItemTakenAtSource.
+const (
+	TimelineItemTakenAtSourceExif   TimelineItemTakenAtSource = "exif"
+	TimelineItemTakenAtSourceFile   TimelineItemTakenAtSource = "file"
+	TimelineItemTakenAtSourceImport TimelineItemTakenAtSource = "import"
+)
+
+// Valid indicates whether the value is a known member of the TimelineItemTakenAtSource enum.
+func (e TimelineItemTakenAtSource) Valid() bool {
+	switch e {
+	case TimelineItemTakenAtSourceExif:
+		return true
+	case TimelineItemTakenAtSourceFile:
+		return true
+	case TimelineItemTakenAtSourceImport:
 		return true
 	default:
 		return false
@@ -545,6 +584,122 @@ type SessionInfo struct {
 // revoked explicitly.
 type SessionInfoKind string
 
+// TimelineItem One asset of the timeline: the asset detail's fields minus the
+// `exif` object (the detail endpoint renders the EXIF panel; the
+// timeline renders tiles). Every item is live by construction --
+// hidden assets, trashed assets and the component video rows of
+// Live Photos never enter the timeline -- so `isTrashed` is
+// always false here and is carried only to keep the item shape
+// identical to the detail's. `isReady` still varies: a fresh
+// upload enters the timeline immediately with its
+// pipeline-dependent fields null, and the client upgrades the
+// tile when `asset.ready` fires. The shape is fixed -- every
+// property is always present. Favorites are per-user state
+// (`isFavorite`) and join this shape with the favorites API of
+// the same milestone.
+type TimelineItem struct {
+	// Blurhash The blurhash of the tile (image assets) or poster frame
+	// (video assets) for placeholder rendering; null until the
+	// thumbnail job stored it.
+	Blurhash *string `json:"blurhash"`
+
+	// Checksum SHA-256 digest of the file bytes, lowercase hex. The
+	// prefix of the entity tags the media endpoints serve.
+	Checksum string `json:"checksum"`
+
+	// CreatedAt When the asset record was created (RFC 3339 UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DurationMs Playback duration of a video in milliseconds; null for
+	// images and until the metadata job refined it.
+	DurationMs *int `json:"durationMs"`
+
+	// FileSize Size of the stored file in bytes.
+	FileSize int64 `json:"fileSize"`
+
+	// Height Pixel height in sensor order; null until the metadata job
+	// refined the dimensions.
+	Height *int `json:"height"`
+
+	// Id UUIDv7 identifier of the asset.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsReady True once the whole pipeline of the asset (metadata and
+	// serving copies) completed; until then the
+	// pipeline-dependent fields are null and the client renders
+	// placeholders.
+	IsReady bool `json:"isReady"`
+
+	// IsTrashed Always false in the timeline: trashed assets never enter
+	// it. The field exists to keep the shape identical to the
+	// asset detail's.
+	IsTrashed bool `json:"isTrashed"`
+
+	// Kind Media family of the asset. A Live Photo is an `image`
+	// whose linked component video row never appears in the
+	// timeline.
+	Kind TimelineItemKind `json:"kind"`
+
+	// LivePhotoVideoId For a Live Photo image, the id of its linked component
+	// video row (resolvable for playback); null otherwise.
+	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
+
+	// MimeType Canonical content type of the stored format, for example
+	// `image/jpeg` or `video/quicktime`.
+	MimeType string `json:"mimeType"`
+
+	// OriginalFilename The file name the asset was uploaded with.
+	OriginalFilename string `json:"originalFilename"`
+
+	// OwnerId UUIDv7 identifier of the owning account.
+	OwnerId openapi_types.UUID `json:"ownerId"`
+
+	// TakenAt Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
+	// the upload time when absent) and refined from EXIF by the
+	// metadata pipeline; the timeline orders by it.
+	TakenAt time.Time `json:"takenAt"`
+
+	// TakenAtSource Where `takenAt` comes from: `import` is the
+	// device-reported capture time of the upload, `exif` an
+	// EXIF capture time the metadata job resolved with an
+	// offset, `file` a file timestamp (reserved for the future
+	// directory-album importer).
+	TakenAtSource TimelineItemTakenAtSource `json:"takenAtSource"`
+
+	// Width Pixel width in sensor order; null until the metadata job
+	// refined the dimensions.
+	Width *int `json:"width"`
+}
+
+// TimelineItemKind Media family of the asset. A Live Photo is an `image`
+// whose linked component video row never appears in the
+// timeline.
+type TimelineItemKind string
+
+// TimelineItemTakenAtSource Where `takenAt` comes from: `import` is the
+// device-reported capture time of the upload, `exif` an
+// EXIF capture time the metadata job resolved with an
+// offset, `file` a file timestamp (reserved for the future
+// directory-album importer).
+type TimelineItemTakenAtSource string
+
+// TimelineResponse One page of the timeline. `nextCursor` is present exactly when
+// another page follows the `items` of this one: the client
+// passes it back as the `cursor` query parameter to continue,
+// and a response without it ends the pagination. The last page
+// is the one whose follow-up page would be empty, so no run
+// ever observes an empty page mid-pagination.
+type TimelineResponse struct {
+	// Items The timeline items of this page, ordered by `takenAt`
+	// descending with the id as the tiebreak.
+	Items []TimelineItem `json:"items"`
+
+	// NextCursor The opaque continuation cursor: pass it back as the
+	// `cursor` query parameter to fetch the next page. Absent
+	// exactly when this is the last page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // User A lumemor account.
 type User struct {
 	// CreatedAt Creation time (RFC 3339 UTC).
@@ -604,6 +759,26 @@ type UploadAssetMultipartBody struct {
 	Photo openapi_types.File `json:"photo"`
 }
 
+// GetTimelineParams defines parameters for GetTimeline.
+type GetTimelineParams struct {
+	// Cursor The `nextCursor` of the previous page; absent on the first
+	// page. An unparseable value answers 400
+	// `VALIDATION_FAILED` (cursors are opaque strings produced
+	// by this endpoint, never assembled by clients).
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size: the number of timeline items one response
+	// carries at most. Defaults to 100; values over 200 are
+	// answered with 200, values below 1 answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// AlbumId Restrict the response to the timeline of this one album
+	// (an album the caller owns or that is shared to the caller)
+	// instead of the aggregate. An unknown or invisible album
+	// answers the empty list.
+	AlbumId *openapi_types.UUID `form:"albumId,omitempty" json:"albumId,omitempty"`
+}
+
 // GetAssetThumbnailParams defines parameters for GetAssetThumbnail.
 type GetAssetThumbnailParams struct {
 	// Size The serving size: `tile` for the timeline, `view` for the
@@ -646,6 +821,9 @@ type ServerInterface interface {
 	// GetAssetByDeviceId Look up an uploaded asset by its device identifier.
 	// (GET /assets/by-device-id/{deviceAssetId})
 	GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string)
+	// GetTimeline The aggregated timeline, one keyset page at a time.
+	// (GET /assets/timeline)
+	GetTimeline(w http.ResponseWriter, r *http.Request, params GetTimelineParams)
 	// GetAsset Fetch the detail of one owned asset.
 	// (GET /assets/{id})
 	GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -697,6 +875,12 @@ func (_ Unimplemented) UploadAsset(w http.ResponseWriter, r *http.Request) {
 // GetAssetByDeviceId Look up an uploaded asset by its device identifier.
 // (GET /assets/by-device-id/{deviceAssetId})
 func (_ Unimplemented) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTimeline The aggregated timeline, one keyset page at a time.
+// (GET /assets/timeline)
+func (_ Unimplemented) GetTimeline(w http.ResponseWriter, r *http.Request, params GetTimelineParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -812,6 +996,65 @@ func (siw *ServerInterfaceWrapper) GetAssetByDeviceId(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssetByDeviceId(w, r, deviceAssetId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTimeline operation middleware
+func (siw *ServerInterfaceWrapper) GetTimeline(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTimelineParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "albumId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "albumId", r.URL.Query(), &params.AlbumId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "albumId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTimeline(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1222,6 +1465,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/assets", wrapper.UploadAsset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/timeline", wrapper.GetTimeline)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/{id}", wrapper.GetAsset)

@@ -337,6 +337,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assets/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The aggregated timeline, one keyset page at a time.
+         * @description The aggregated timeline of the caller: the union of the albums
+         *     that feed it -- the caller's sync album (the core backup
+         *     stream, never excludable), the caller's own directory albums,
+         *     and every album shared to the caller regardless of type
+         *     (virtual albums included) -- minus the albums the caller
+         *     turned off with the per-user "keep out of the timeline"
+         *     preference (a missing preference row means kept in). The
+         *     caller's own virtual albums never feed their own timeline:
+         *     in-stream curation would be pure duplication. One asset
+         *     visible through several albums appears once.
+         *
+         *     Every item is live by construction: hidden assets, assets in
+         *     the trash, and the component video rows of Live Photos never
+         *     appear.
+         *
+         *     Pages are keyset-paginated with an opaque cursor: the response
+         *     carries `nextCursor` exactly when another page exists, and the
+         *     client passes it back as `cursor` to continue after the last
+         *     item of the page. Cursors are stable for the ordering key
+         *     (`takenAt` descending, `id` as the tiebreak); an asset
+         *     uploaded with an older `takenAt` than the cursor appears only
+         *     in a fresh pagination run, never in the current one. The
+         *     first page omits the `cursor` parameter.
+         *
+         *     `limit` bounds the page size: absent means the default of
+         *     100, a value over 200 is answered with the maximum of 200,
+         *     and a value below 1 answers 400 `VALIDATION_FAILED`.
+         *
+         *     `albumId` narrows the response to that album's own timeline
+         *     instead of the aggregate: the album's items in the same
+         *     ordering and filtering. The caller must be able to see the
+         *     album (own album of any type, or an album shared to the
+         *     caller); an album that does not exist or is not visible
+         *     answers the empty list, not an error, so album ids cannot be
+         *     probed for existence through this endpoint.
+         */
+        get: operations["getTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assets/{id}": {
         parameters: {
             query?: never;
@@ -903,6 +957,139 @@ export interface components {
              *     resolve through EXIF.
              */
             tzOffset: string | null;
+        };
+        /**
+         * @description One asset of the timeline: the asset detail's fields minus the
+         *     `exif` object (the detail endpoint renders the EXIF panel; the
+         *     timeline renders tiles). Every item is live by construction --
+         *     hidden assets, trashed assets and the component video rows of
+         *     Live Photos never enter the timeline -- so `isTrashed` is
+         *     always false here and is carried only to keep the item shape
+         *     identical to the detail's. `isReady` still varies: a fresh
+         *     upload enters the timeline immediately with its
+         *     pipeline-dependent fields null, and the client upgrades the
+         *     tile when `asset.ready` fires. The shape is fixed -- every
+         *     property is always present. Favorites are per-user state
+         *     (`isFavorite`) and join this shape with the favorites API of
+         *     the same milestone.
+         */
+        TimelineItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the asset.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the owning account.
+             */
+            ownerId: string;
+            /**
+             * @description Media family of the asset. A Live Photo is an `image`
+             *     whose linked component video row never appears in the
+             *     timeline.
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** @description The file name the asset was uploaded with. */
+            originalFilename: string;
+            /**
+             * Format: int64
+             * @description Size of the stored file in bytes.
+             */
+            fileSize: number;
+            /**
+             * @description Canonical content type of the stored format, for example
+             *     `image/jpeg` or `video/quicktime`.
+             */
+            mimeType: string;
+            /**
+             * @description SHA-256 digest of the file bytes, lowercase hex. The
+             *     prefix of the entity tags the media endpoints serve.
+             */
+            checksum: string;
+            /**
+             * Format: date-time
+             * @description When the asset record was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
+             *     the upload time when absent) and refined from EXIF by the
+             *     metadata pipeline; the timeline orders by it.
+             */
+            takenAt: string;
+            /**
+             * @description Where `takenAt` comes from: `import` is the
+             *     device-reported capture time of the upload, `exif` an
+             *     EXIF capture time the metadata job resolved with an
+             *     offset, `file` a file timestamp (reserved for the future
+             *     directory-album importer).
+             * @enum {string}
+             */
+            takenAtSource: "exif" | "file" | "import";
+            /**
+             * @description Always false in the timeline: trashed assets never enter
+             *     it. The field exists to keep the shape identical to the
+             *     asset detail's.
+             */
+            isTrashed: boolean;
+            /**
+             * @description True once the whole pipeline of the asset (metadata and
+             *     serving copies) completed; until then the
+             *     pipeline-dependent fields are null and the client renders
+             *     placeholders.
+             */
+            isReady: boolean;
+            /**
+             * @description Pixel width in sensor order; null until the metadata job
+             *     refined the dimensions.
+             */
+            width: number | null;
+            /**
+             * @description Pixel height in sensor order; null until the metadata job
+             *     refined the dimensions.
+             */
+            height: number | null;
+            /**
+             * @description Playback duration of a video in milliseconds; null for
+             *     images and until the metadata job refined it.
+             */
+            durationMs: number | null;
+            /**
+             * @description The blurhash of the tile (image assets) or poster frame
+             *     (video assets) for placeholder rendering; null until the
+             *     thumbnail job stored it.
+             */
+            blurhash: string | null;
+            /**
+             * Format: uuid
+             * @description For a Live Photo image, the id of its linked component
+             *     video row (resolvable for playback); null otherwise.
+             */
+            livePhotoVideoId: string | null;
+        };
+        /**
+         * @description One page of the timeline. `nextCursor` is present exactly when
+         *     another page follows the `items` of this one: the client
+         *     passes it back as the `cursor` query parameter to continue,
+         *     and a response without it ends the pagination. The last page
+         *     is the one whose follow-up page would be empty, so no run
+         *     ever observes an empty page mid-pagination.
+         */
+        TimelineResponse: {
+            /**
+             * @description The timeline items of this page, ordered by `takenAt`
+             *     descending with the id as the tiebreak.
+             */
+            items: components["schemas"]["TimelineItem"][];
+            /**
+             * @description The opaque continuation cursor: pass it back as the
+             *     `cursor` query parameter to fetch the next page. Absent
+             *     exactly when this is the last page.
+             */
+            nextCursor?: string;
         };
         /**
          * @description Error envelope shared by all endpoints. `code` is the authoritative
@@ -1519,6 +1706,85 @@ export interface operations {
              *     mid-stream.
              */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTimeline: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The `nextCursor` of the previous page; absent on the first
+                 *     page. An unparseable value answers 400
+                 *     `VALIDATION_FAILED` (cursors are opaque strings produced
+                 *     by this endpoint, never assembled by clients).
+                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 */
+                cursor?: string;
+                /**
+                 * @description Page size: the number of timeline items one response
+                 *     carries at most. Defaults to 100; values over 200 are
+                 *     answered with 200, values below 1 answer 400.
+                 * @example 100
+                 */
+                limit?: number;
+                /**
+                 * @description Restrict the response to the timeline of this one album
+                 *     (an album the caller owns or that is shared to the caller)
+                 *     instead of the aggregate. An unknown or invisible album
+                 *     answers the empty list.
+                 */
+                albumId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description One page of the timeline. `nextCursor` is present exactly
+             *     when another page follows; the last page carries none.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineResponse"];
+                };
+            };
+            /**
+             * @description The pagination parameters are invalid: `cursor` is not a
+             *     value this endpoint produced, or `limit` is below 1.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

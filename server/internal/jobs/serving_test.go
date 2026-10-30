@@ -159,7 +159,7 @@ func TestServeReadyAssetDetailAndThumbnail(t *testing.T) {
 	if !detail.TakenAt.Truncate(time.Microsecond).Equal(wantTakenAt) {
 		t.Errorf("detail takenAt = %v, want the EXIF instant %v", detail.TakenAt, wantTakenAt)
 	}
-	if detail.TakenAtSource != apigen.Exif {
+	if detail.TakenAtSource != apigen.AssetDetailTakenAtSourceExif {
 		t.Errorf("detail takenAtSource = %q, want exif", detail.TakenAtSource)
 	}
 	if detail.Exif.CameraMake == nil || *detail.Exif.CameraMake != "Lumemor" {
