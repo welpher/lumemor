@@ -27,7 +27,7 @@ void main() {
 
     // Fetch the detail of one owned asset.
     //
-    // The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- which the asset detail view renders.  Access is owner-only: an id that belongs to another account answers the same 404 `ASSET_NOT_FOUND` as an id that does not exist, byte for byte, so asset ids cannot be enumerated. Album sharing and ACLs widen access for shared content in a later milestone (M2c, with the album domain); until then only the owner's own assets answer.  A trashed asset answers 200 with `isTrashed: true` -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the future playback endpoint resolves it through `livePhotoVideoId`) but never appears in the timeline. 
+    // The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- and the two owner-level editable attributes (`description`, `isHidden`), which the asset detail view renders and the `PATCH` endpoint edits.  Access is owner-only: an id that belongs to another account answers the same 404 `ASSET_NOT_FOUND` as an id that does not exist, byte for byte, so asset ids cannot be enumerated. Album sharing and ACLs widen access for shared content in a later milestone (M2c, with the album domain); until then only the owner's own assets answer.  A trashed asset answers 200 with `isTrashed: true` -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the future playback endpoint resolves it through `livePhotoVideoId`) but never appears in the timeline. 
     //
     //Future<AssetDetail> getAsset(String id) async
     test('test getAsset', () async {
@@ -94,6 +94,15 @@ void main() {
     //
     //Future<TrashResponse> getTrash() async
     test('test getTrash', () async {
+      // TODO
+    });
+
+    // Edit the description or hidden switch of one asset.
+    //
+    // The partial edit of the two owner-level attributes of an asset: `description`, the free text the detail panel renders, and `isHidden`, the owner-level visibility switch that keeps the asset out of every live view until it returns. Both body fields are optional but at least one must be present (a field set to JSON null counts as absent, so a body of nulls is the empty patch); a request that carries neither answers 400 `VALIDATION_FAILED`. Only the fields the request carries update -- the rest keep their values -- and the response is the full asset detail after the edit, the same shape `GET /assets/{id}` serves.  The edit follows set semantics: patching a field with the value the row already carries is the idempotent no-op -- the answer stays the 200 success with the row's current state, nothing is written (not even `updated_at`), and NO `asset.updated` event fires. A patch that actually changes either field publishes exactly ONE `asset.updated` event (the asset id and kind, after the commit): both fields are owner-level asset state, so the same announcement refreshes every viewer of the shared timeline and the detail panel. The description alone has no timeline effect -- it is detail-panel content -- but it is asset state the event covers all the same.  Access is owner-only, the attribute-editing row of the permission matrix: there is deliberately no administrator override here (unlike the permanent delete), so an id that is unknown or foreign answers the same 404 `ASSET_NOT_FOUND`, byte for byte, as every asset endpoint -- asset ids cannot be enumerated. A trashed asset is editable like it is readable (the detail answers 200 with `isTrashed: true`): the edit lands on the row and resurfaces with the restore. The hidden switch this endpoint flips is the same one the batch `hide` / `unhide` actions flip, so the two surfaces agree on the state of an asset.  `description` carries at most 10,000 Unicode characters (runes); above that the request answers 400 `VALIDATION_FAILED`. The value replaces the stored text wholesale -- an empty string is a valid patch and clears it. 
+    //
+    //Future<AssetDetail> patchAsset(String id, AssetPatch assetPatch) async
+    test('test patchAsset', () async {
       // TODO
     });
 

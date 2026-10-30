@@ -554,7 +554,9 @@ export interface paths {
          * @description The asset detail: the identity and storage fields of the upload
          *     response plus the refinements the pipeline produced afterwards
          *     -- dimensions, duration, blurhash, the EXIF hot fields, and
-         *     readiness -- which the asset detail view renders.
+         *     readiness -- and the two owner-level editable attributes
+         *     (`description`, `isHidden`), which the asset detail view
+         *     renders and the `PATCH` endpoint edits.
          *
          *     Access is owner-only: an id that belongs to another account
          *     answers the same 404 `ASSET_NOT_FOUND` as an id that does not
@@ -613,7 +615,51 @@ export interface paths {
         delete: operations["deleteAsset"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit the description or hidden switch of one asset.
+         * @description The partial edit of the two owner-level attributes of an
+         *     asset: `description`, the free text the detail panel renders,
+         *     and `isHidden`, the owner-level visibility switch that keeps
+         *     the asset out of every live view until it returns. Both body
+         *     fields are optional but at least one must be present (a field
+         *     set to JSON null counts as absent, so a body of nulls is the
+         *     empty patch); a request that carries neither answers 400
+         *     `VALIDATION_FAILED`. Only the fields the request carries
+         *     update -- the rest keep their values -- and the response is
+         *     the full asset detail after the edit, the same shape `GET
+         *     /assets/{id}` serves.
+         *
+         *     The edit follows set semantics: patching a field with the
+         *     value the row already carries is the idempotent no-op -- the
+         *     answer stays the 200 success with the row's current state,
+         *     nothing is written (not even `updated_at`), and NO
+         *     `asset.updated` event fires. A patch that actually changes
+         *     either field publishes exactly ONE `asset.updated` event
+         *     (the asset id and kind, after the commit): both fields are
+         *     owner-level asset state, so the same announcement refreshes
+         *     every viewer of the shared timeline and the detail panel.
+         *     The description alone has no timeline effect -- it is
+         *     detail-panel content -- but it is asset state the event
+         *     covers all the same.
+         *
+         *     Access is owner-only, the attribute-editing row of the
+         *     permission matrix: there is deliberately no administrator
+         *     override here (unlike the permanent delete), so an id that
+         *     is unknown or foreign answers the same 404
+         *     `ASSET_NOT_FOUND`, byte for byte, as every asset endpoint --
+         *     asset ids cannot be enumerated. A trashed asset is editable
+         *     like it is readable (the detail answers 200 with `isTrashed:
+         *     true`): the edit lands on the row and resurfaces with the
+         *     restore. The hidden switch this endpoint flips is the same
+         *     one the batch `hide` / `unhide` actions flip, so the two
+         *     surfaces agree on the state of an asset.
+         *
+         *     `description` carries at most 10,000 Unicode characters
+         *     (runes); above that the request answers 400
+         *     `VALIDATION_FAILED`. The value replaces the stored text
+         *     wholesale -- an empty string is a valid patch and clears it.
+         */
+        patch: operations["patchAsset"];
         trace?: never;
     };
     "/assets/{id}/thumbnail": {
@@ -1066,13 +1112,15 @@ export interface components {
         };
         /**
          * @description One asset as the detail endpoint returns it: the upload
-         *     response's identity and storage fields plus the pipeline's
-         *     refinements. The shape is fixed -- every property is always
-         *     present -- and the pipeline-dependent values (`width`,
-         *     `height`, `durationMs`, `blurhash` and the fields inside
-         *     `exif`) are null until the jobs produced them, turning
-         *     non-null when `asset.ready` fired. A value that stays null on
-         *     a ready asset means the file carries no such metadata.
+         *     response's identity and storage fields, the pipeline's
+         *     refinements, and the two owner-level attributes the PATCH
+         *     endpoint edits (`description`, `isHidden`). The shape is
+         *     fixed -- every property is always present -- and the
+         *     pipeline-dependent values (`width`, `height`, `durationMs`,
+         *     `blurhash` and the fields inside `exif`) are null until the
+         *     jobs produced them, turning non-null when `asset.ready`
+         *     fired. A value that stays null on a ready asset means the
+         *     file carries no such metadata.
          */
         AssetDetail: {
             /**
@@ -1137,6 +1185,22 @@ export interface components {
             takenAtSource: "exif" | "file" | "import";
             /** @description True when the asset sits in the trash. */
             isTrashed: boolean;
+            /**
+             * @description True while the owner-level visibility switch is off: the
+             *     asset is out of every live view (the timeline, the
+             *     favorites) and manageable only through the hidden view,
+             *     until it is unhidden. The same switch `PATCH
+             *     /assets/{id}` and the batch `hide` / `unhide` actions
+             *     flip.
+             */
+            isHidden: boolean;
+            /**
+             * @description The owner's free-text description of the asset, the text
+             *     the detail panel renders; the empty string until the
+             *     owner wrote one. Editable only by the owner through
+             *     `PATCH /assets/{id}`, which replaces it wholesale.
+             */
+            description: string;
             /**
              * @description True once the whole pipeline of the asset (metadata and
              *     serving copies) completed; the `asset.ready` event fires
@@ -1225,8 +1289,10 @@ export interface components {
         };
         /**
          * @description One asset of the timeline: the asset detail's fields minus the
-         *     `exif` object (the detail endpoint renders the EXIF panel; the
-         *     timeline renders tiles). Every item is live by construction --
+         *     `exif` object and the two detail-panel edit attributes
+         *     (`description`, `isHidden`) -- the detail endpoint renders the
+         *     EXIF panel and the edit controls; the timeline renders tiles.
+         *     Every item is live by construction --
          *     hidden assets, trashed assets and the component video rows of
          *     Live Photos never enter the timeline -- so `isTrashed` is
          *     always false here and is carried only to keep the item shape
@@ -1545,6 +1611,34 @@ export interface components {
              *     themselves, so reporting them back hides nothing.
              */
             missing: string[];
+        };
+        /**
+         * @description The partial edit of one asset: every field is optional, at
+         *     least one must be present (a body that carries neither -- null
+         *     values count as absent -- is a client bug and answers 400),
+         *     and only the fields the request carries update; the rest keep
+         *     their values. Both fields are owner-level asset state, so a
+         *     patch that actually changes one of them publishes a single
+         *     `asset.updated` event; a patch that repeats the stored values
+         *     is the idempotent no-op and publishes nothing.
+         */
+        AssetPatch: {
+            /**
+             * @description The owner's free-text description of the asset, the text
+             *     the detail panel renders. The value replaces the stored
+             *     text wholesale (an empty string clears it). At most
+             *     10,000 Unicode characters -- the count is over runes, so
+             *     a text of multi-byte characters stays within the bound at
+             *     the same length.
+             */
+            description?: string;
+            /**
+             * @description The owner-level visibility switch: `true` keeps the asset
+             *     out of every live view (the timeline, the favorites)
+             *     until it is unhidden; `false` returns it. The same switch
+             *     the batch `hide` / `unhide` actions flip.
+             */
+            isHidden?: boolean;
         };
         /**
          * @description Error envelope shared by all endpoints. `code` is the authoritative
@@ -2571,6 +2665,87 @@ export interface operations {
              *     already permanently deleted, or belongs to another
              *     account while the caller is neither its owner nor an
              *     administrator -- all indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetPatch"];
+            };
+        };
+        responses: {
+            /**
+             * @description The asset detail after the edit -- the same shape `GET
+             *     /assets/{id}` serves, with the applied values. The
+             *     idempotent no-op answers it too, with the row's current
+             *     state unchanged.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDetail"];
+                };
+            };
+            /**
+             * @description The patch is not well-formed: the body is not valid JSON
+             *     (a field of the wrong type included), carries neither
+             *     field, or the description exceeds the 10,000-character
+             *     bound.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No asset with this id is editable by the caller: the id
+             *     is unknown or belongs to another account (the owner-only
+             *     gate applies to administrators too), and the two cases
+             *     are indistinguishable by design.
              */
             404: {
                 headers: {

@@ -73,7 +73,8 @@ type CreateAssetParams struct {
 }
 
 // Asset queries of the upload endpoint (M2b Task 3), the device
-// idempotency lookup, and the metadata pipeline (M2b Task 4).
+// idempotency lookup, the metadata pipeline (M2b Task 4), and the
+// attribute PATCH (M2c Task 5).
 // CreateAsset pins the server-side column values of a fresh upload:
 // storage_kind 'blob' (uploaded bytes live in the content-addressed
 // originals tree), taken_at_source 'import' (the device-reported
@@ -333,6 +334,8 @@ SELECT a.id,
        a.live_photo_video_id,
        a.deleted_at,
        a.ready_at,
+       a.description,
+       a.is_hidden,
        e.camera_make,
        e.camera_model,
        e.lens,
@@ -372,6 +375,8 @@ type GetAssetDetailRow struct {
 	LivePhotoVideoID pgtype.UUID        `json:"live_photo_video_id"`
 	DeletedAt        pgtype.Timestamptz `json:"deleted_at"`
 	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
+	Description      string             `json:"description"`
+	IsHidden         bool               `json:"is_hidden"`
 	CameraMake       pgtype.Text        `json:"camera_make"`
 	CameraModel      pgtype.Text        `json:"camera_model"`
 	Lens             pgtype.Text        `json:"lens"`
@@ -390,6 +395,9 @@ type GetAssetDetailRow struct {
 // (the join only attaches the sidecar of the row that matched).
 // The LEFT JOIN keeps the detail answering before and after the
 // metadata job refined the sidecar: hot fields are NULL until then.
+// description and is_hidden ride along (M2c Task 5): the PATCH
+// response reuses this read after its writes, so it serves the same
+// shape the GET endpoint serves, applied values included.
 func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) (GetAssetDetailRow, error) {
 	row := q.db.QueryRow(ctx, getAssetDetail, arg.ID, arg.OwnerID)
 	var i GetAssetDetailRow
@@ -411,6 +419,8 @@ func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) 
 		&i.LivePhotoVideoID,
 		&i.DeletedAt,
 		&i.ReadyAt,
+		&i.Description,
+		&i.IsHidden,
 		&i.CameraMake,
 		&i.CameraModel,
 		&i.Lens,
@@ -578,6 +588,40 @@ type UpdateAssetBlurhashParams struct {
 func (q *Queries) UpdateAssetBlurhash(ctx context.Context, arg UpdateAssetBlurhashParams) error {
 	_, err := q.db.Exec(ctx, updateAssetBlurhash, arg.ID, arg.Blurhash)
 	return err
+}
+
+const updateAssetDescription = `-- name: UpdateAssetDescription :execrows
+UPDATE assets SET
+    description = $1,
+    updated_at = now()
+WHERE id = $2
+  AND owner_id = $3
+  AND description <> $1
+`
+
+type UpdateAssetDescriptionParams struct {
+	Description string      `json:"description"`
+	ID          pgtype.UUID `json:"id"`
+	OwnerID     pgtype.UUID `json:"owner_id"`
+}
+
+// The owner-scoped description write of PATCH /assets/{id} (M2c
+// Task 5). The description <> $3 arm is the set-semantics guard:
+// patching the text the row already carries matches nothing, so the
+// idempotent repeat is the same success, updated_at stays un-stamped
+// and the event stays silent -- the rows-affected count is the
+// handler's change signal. The owner guard IS the permission check
+// (asset attribute editing is owner-only, no admin override), so a
+// foreign id matches nothing exactly like an unknown one -- the same
+// anti-enumeration shape as GetAsset. No state filter: a trashed
+// asset is editable like it is readable, and the edit resurfaces
+// with the restore.
+func (q *Queries) UpdateAssetDescription(ctx context.Context, arg UpdateAssetDescriptionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateAssetDescription, arg.Description, arg.ID, arg.OwnerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateExifFromMetadata = `-- name: UpdateExifFromMetadata :exec

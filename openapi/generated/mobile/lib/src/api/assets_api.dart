@@ -11,6 +11,7 @@ import 'package:dio/dio.dart';
 import 'dart:typed_data';
 import 'package:lumemor_api/src/api_util.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
+import 'package:lumemor_api/src/model/asset_patch.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
 import 'package:lumemor_api/src/model/batch_request.dart';
 import 'package:lumemor_api/src/model/batch_response.dart';
@@ -191,7 +192,7 @@ class AssetsApi {
   }
 
   /// Fetch the detail of one owned asset.
-  /// The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- which the asset detail view renders.  Access is owner-only: an id that belongs to another account answers the same 404 &#x60;ASSET_NOT_FOUND&#x60; as an id that does not exist, byte for byte, so asset ids cannot be enumerated. Album sharing and ACLs widen access for shared content in a later milestone (M2c, with the album domain); until then only the owner&#39;s own assets answer.  A trashed asset answers 200 with &#x60;isTrashed: true&#x60; -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the future playback endpoint resolves it through &#x60;livePhotoVideoId&#x60;) but never appears in the timeline. 
+  /// The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- and the two owner-level editable attributes (&#x60;description&#x60;, &#x60;isHidden&#x60;), which the asset detail view renders and the &#x60;PATCH&#x60; endpoint edits.  Access is owner-only: an id that belongs to another account answers the same 404 &#x60;ASSET_NOT_FOUND&#x60; as an id that does not exist, byte for byte, so asset ids cannot be enumerated. Album sharing and ACLs widen access for shared content in a later milestone (M2c, with the album domain); until then only the owner&#39;s own assets answer.  A trashed asset answers 200 with &#x60;isTrashed: true&#x60; -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the future playback endpoint resolves it through &#x60;livePhotoVideoId&#x60;) but never appears in the timeline. 
   ///
   /// Parameters:
   /// * [id] - Identifier of the asset.
@@ -895,6 +896,114 @@ class AssetsApi {
     }
 
     return Response<TrashResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Edit the description or hidden switch of one asset.
+  /// The partial edit of the two owner-level attributes of an asset: &#x60;description&#x60;, the free text the detail panel renders, and &#x60;isHidden&#x60;, the owner-level visibility switch that keeps the asset out of every live view until it returns. Both body fields are optional but at least one must be present (a field set to JSON null counts as absent, so a body of nulls is the empty patch); a request that carries neither answers 400 &#x60;VALIDATION_FAILED&#x60;. Only the fields the request carries update -- the rest keep their values -- and the response is the full asset detail after the edit, the same shape &#x60;GET /assets/{id}&#x60; serves.  The edit follows set semantics: patching a field with the value the row already carries is the idempotent no-op -- the answer stays the 200 success with the row&#39;s current state, nothing is written (not even &#x60;updated_at&#x60;), and NO &#x60;asset.updated&#x60; event fires. A patch that actually changes either field publishes exactly ONE &#x60;asset.updated&#x60; event (the asset id and kind, after the commit): both fields are owner-level asset state, so the same announcement refreshes every viewer of the shared timeline and the detail panel. The description alone has no timeline effect -- it is detail-panel content -- but it is asset state the event covers all the same.  Access is owner-only, the attribute-editing row of the permission matrix: there is deliberately no administrator override here (unlike the permanent delete), so an id that is unknown or foreign answers the same 404 &#x60;ASSET_NOT_FOUND&#x60;, byte for byte, as every asset endpoint -- asset ids cannot be enumerated. A trashed asset is editable like it is readable (the detail answers 200 with &#x60;isTrashed: true&#x60;): the edit lands on the row and resurfaces with the restore. The hidden switch this endpoint flips is the same one the batch &#x60;hide&#x60; / &#x60;unhide&#x60; actions flip, so the two surfaces agree on the state of an asset.  &#x60;description&#x60; carries at most 10,000 Unicode characters (runes); above that the request answers 400 &#x60;VALIDATION_FAILED&#x60;. The value replaces the stored text wholesale -- an empty string is a valid patch and clears it. 
+  ///
+  /// Parameters:
+  /// * [id] - Identifier of the asset.
+  /// * [assetPatch] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [AssetDetail] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<AssetDetail>> patchAsset({ 
+    required String id,
+    required AssetPatch assetPatch,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/assets/{id}'.replaceAll('{' r'id' '}', encodeQueryParameter(_serializers, id, const FullType(String)).toString());
+    final _options = Options(
+      method: r'PATCH',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(AssetPatch);
+      _bodyData = _serializers.serialize(assetPatch, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    AssetDetail? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(AssetDetail),
+      ) as AssetDetail;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<AssetDetail>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

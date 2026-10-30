@@ -63,7 +63,9 @@ WHERE user_id = sqlc.arg('user_id')
 -- visibility. No deleted_at arm either: hiding a trashed row (or
 -- unhiding one) simply coexists with the trash mark -- the row
 -- re-enters the live views still hidden once restored, which is the
--- documented behavior of the hidden view.
+-- documented behavior of the hidden view. The PATCH endpoint
+-- (M2c Task 5) reuses this write as its isHidden arm: one authority
+-- for the switch, both surfaces agreeing on the state of an asset.
 UPDATE assets SET
     is_hidden = sqlc.arg('hidden'),
     updated_at = now()

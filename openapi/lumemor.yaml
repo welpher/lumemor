@@ -1480,7 +1480,9 @@ paths:
         The asset detail: the identity and storage fields of the upload
         response plus the refinements the pipeline produced afterwards
         -- dimensions, duration, blurhash, the EXIF hot fields, and
-        readiness -- which the asset detail view renders.
+        readiness -- and the two owner-level editable attributes
+        (`description`, `isHidden`), which the asset detail view
+        renders and the `PATCH` endpoint edits.
 
         Access is owner-only: an id that belongs to another account
         answers the same 404 `ASSET_NOT_FOUND` as an id that does not
@@ -1533,6 +1535,8 @@ paths:
                     takenAt: '2026-10-13T12:30:00Z'
                     takenAtSource: exif
                     isTrashed: false
+                    isHidden: false
+                    description: Sunset over the lake, our first evening there.
                     isReady: true
                     width: 4032
                     height: 3024
@@ -1568,6 +1572,183 @@ paths:
           description: |
             No asset with this id is visible to the caller: the id is
             unknown or belongs to another account, and the two cases
+            are indistinguishable by design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                assetNotFound:
+                  value:
+                    code: ASSET_NOT_FOUND
+                    message: no asset with this identifier
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      operationId: patchAsset
+      tags:
+        - assets
+      summary: Edit the description or hidden switch of one asset.
+      description: |
+        The partial edit of the two owner-level attributes of an
+        asset: `description`, the free text the detail panel renders,
+        and `isHidden`, the owner-level visibility switch that keeps
+        the asset out of every live view until it returns. Both body
+        fields are optional but at least one must be present (a field
+        set to JSON null counts as absent, so a body of nulls is the
+        empty patch); a request that carries neither answers 400
+        `VALIDATION_FAILED`. Only the fields the request carries
+        update -- the rest keep their values -- and the response is
+        the full asset detail after the edit, the same shape `GET
+        /assets/{id}` serves.
+
+        The edit follows set semantics: patching a field with the
+        value the row already carries is the idempotent no-op -- the
+        answer stays the 200 success with the row's current state,
+        nothing is written (not even `updated_at`), and NO
+        `asset.updated` event fires. A patch that actually changes
+        either field publishes exactly ONE `asset.updated` event
+        (the asset id and kind, after the commit): both fields are
+        owner-level asset state, so the same announcement refreshes
+        every viewer of the shared timeline and the detail panel.
+        The description alone has no timeline effect -- it is
+        detail-panel content -- but it is asset state the event
+        covers all the same.
+
+        Access is owner-only, the attribute-editing row of the
+        permission matrix: there is deliberately no administrator
+        override here (unlike the permanent delete), so an id that
+        is unknown or foreign answers the same 404
+        `ASSET_NOT_FOUND`, byte for byte, as every asset endpoint --
+        asset ids cannot be enumerated. A trashed asset is editable
+        like it is readable (the detail answers 200 with `isTrashed:
+        true`): the edit lands on the row and resurfaces with the
+        restore. The hidden switch this endpoint flips is the same
+        one the batch `hide` / `unhide` actions flip, so the two
+        surfaces agree on the state of an asset.
+
+        `description` carries at most 10,000 Unicode characters
+        (runes); above that the request answers 400
+        `VALIDATION_FAILED`. The value replaces the stored text
+        wholesale -- an empty string is a valid patch and clears it.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identifier of the asset.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetPatch'
+            examples:
+              describe:
+                summary: Describe a photo from the detail panel.
+                value:
+                  description: Sunset over the lake, our first evening there.
+              hide:
+                summary: Hide one asset from the family timeline.
+                value:
+                  isHidden: true
+              both:
+                summary: Edit both attributes in one request.
+                value:
+                  description: Captioned, and hidden for now.
+                  isHidden: true
+      responses:
+        '200':
+          description: |
+            The asset detail after the edit -- the same shape `GET
+            /assets/{id}` serves, with the applied values. The
+            idempotent no-op answers it too, with the row's current
+            state unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetDetail'
+              examples:
+                described:
+                  summary: A described, visible, pipeline-ready asset.
+                  value:
+                    id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                    ownerId: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                    kind: image
+                    originalFilename: IMG_1234.jpg
+                    fileSize: 4821933
+                    mimeType: image/jpeg
+                    checksum: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+                    createdAt: '2026-10-29T09:12:00Z'
+                    takenAt: '2026-10-13T12:30:00Z'
+                    takenAtSource: exif
+                    isTrashed: false
+                    isHidden: false
+                    description: Sunset over the lake, our first evening there.
+                    isReady: true
+                    width: 4032
+                    height: 3024
+                    durationMs: null
+                    blurhash: UHL6aAof00WBWB00ayWB00
+                    livePhotoVideoId: null
+                    exif:
+                      cameraMake: Lumemor
+                      cameraModel: Golden Camera
+                      lens: Golden 35mm f/2.8
+                      iso: 200
+                      aperture: 2.8
+                      shutter: 1/250
+                      focal: 35
+                      lat: 48.8584
+                      lon: 2.2945
+                      alt: 35
+                      tzOffset: '+05:30'
+        '400':
+          description: |
+            The patch is not well-formed: the body is not valid JSON
+            (a field of the wrong type included), carries neither
+            field, or the description exceeds the 10,000-character
+            bound.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: A patch that carries no field.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: the patch must carry description or isHidden
+                    details:
+                      fields:
+                        - body
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '404':
+          description: |
+            No asset with this id is editable by the caller: the id
+            is unknown or belongs to another account (the owner-only
+            gate applies to administrators too), and the two cases
             are indistinguishable by design.
           content:
             application/json:
@@ -2515,13 +2696,15 @@ components:
       type: object
       description: |
         One asset as the detail endpoint returns it: the upload
-        response's identity and storage fields plus the pipeline's
-        refinements. The shape is fixed -- every property is always
-        present -- and the pipeline-dependent values (`width`,
-        `height`, `durationMs`, `blurhash` and the fields inside
-        `exif`) are null until the jobs produced them, turning
-        non-null when `asset.ready` fired. A value that stays null on
-        a ready asset means the file carries no such metadata.
+        response's identity and storage fields, the pipeline's
+        refinements, and the two owner-level attributes the PATCH
+        endpoint edits (`description`, `isHidden`). The shape is
+        fixed -- every property is always present -- and the
+        pipeline-dependent values (`width`, `height`, `durationMs`,
+        `blurhash` and the fields inside `exif`) are null until the
+        jobs produced them, turning non-null when `asset.ready`
+        fired. A value that stays null on a ready asset means the
+        file carries no such metadata.
       required:
         - id
         - ownerId
@@ -2534,6 +2717,8 @@ components:
         - takenAt
         - takenAtSource
         - isTrashed
+        - isHidden
+        - description
         - isReady
         - width
         - height
@@ -2606,6 +2791,22 @@ components:
         isTrashed:
           type: boolean
           description: True when the asset sits in the trash.
+        isHidden:
+          type: boolean
+          description: |
+            True while the owner-level visibility switch is off: the
+            asset is out of every live view (the timeline, the
+            favorites) and manageable only through the hidden view,
+            until it is unhidden. The same switch `PATCH
+            /assets/{id}` and the batch `hide` / `unhide` actions
+            flip.
+        description:
+          type: string
+          description: |
+            The owner's free-text description of the asset, the text
+            the detail panel renders; the empty string until the
+            owner wrote one. Editable only by the owner through
+            `PATCH /assets/{id}`, which replaces it wholesale.
         isReady:
           type: boolean
           description: |
@@ -2745,8 +2946,10 @@ components:
       type: object
       description: |
         One asset of the timeline: the asset detail's fields minus the
-        `exif` object (the detail endpoint renders the EXIF panel; the
-        timeline renders tiles). Every item is live by construction --
+        `exif` object and the two detail-panel edit attributes
+        (`description`, `isHidden`) -- the detail endpoint renders the
+        EXIF panel and the edit controls; the timeline renders tiles.
+        Every item is live by construction --
         hidden assets, trashed assets and the component video rows of
         Live Photos never enter the timeline -- so `isTrashed` is
         always false here and is carried only to keep the item shape
@@ -3154,6 +3357,36 @@ components:
           items:
             type: string
             format: uuid
+    AssetPatch:
+      type: object
+      description: |
+        The partial edit of one asset: every field is optional, at
+        least one must be present (a body that carries neither -- null
+        values count as absent -- is a client bug and answers 400),
+        and only the fields the request carries update; the rest keep
+        their values. Both fields are owner-level asset state, so a
+        patch that actually changes one of them publishes a single
+        `asset.updated` event; a patch that repeats the stored values
+        is the idempotent no-op and publishes nothing.
+      minProperties: 1
+      properties:
+        description:
+          type: string
+          maxLength: 10000
+          description: |
+            The owner's free-text description of the asset, the text
+            the detail panel renders. The value replaces the stored
+            text wholesale (an empty string clears it). At most
+            10,000 Unicode characters -- the count is over runes, so
+            a text of multi-byte characters stays within the bound at
+            the same length.
+        isHidden:
+          type: boolean
+          description: |
+            The owner-level visibility switch: `true` keeps the asset
+            out of every live view (the timeline, the favorites)
+            until it is unhidden; `false` returns it. The same switch
+            the batch `hide` / `unhide` actions flip.
     Error:
       type: object
       description: |
