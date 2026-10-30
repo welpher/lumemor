@@ -27,6 +27,7 @@ ENV GOTOOLCHAIN=local
 # deb.debian.org is slow or unreachable -- the same pattern as
 # docker/dev.Dockerfile. Empty keeps upstream Debian; the value is
 # passed at build time, never baked into the committed image.
+# The value is a bare host name, never a URL with a scheme: the sed swaps the deb.debian.org host inside URIs that already carry http://.
 ARG APT_MIRROR=""
 
 # The cgo build needs the headers of the libraries the runtime stage
@@ -81,6 +82,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
 FROM debian:trixie-slim
 
 # Same optional mirror override as the builder stage.
+# The value is a bare host name, never a URL with a scheme: the sed swaps the deb.debian.org host inside URIs that already carry http://.
 ARG APT_MIRROR=""
 
 RUN if [ -n "$APT_MIRROR" ]; then \
