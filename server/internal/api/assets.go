@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -626,27 +627,32 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 // for the photo row itself -- image or video kind alike: an image gets
 // its three AVIF sizes, a video its poster frame. The component video
 // gets no thumbnail job: it is never the client-visible asset, and the
-// photo it belongs to already provides the timeline tile. The request
-// context is still live at this point -- the response has not been
-// written. A failed enqueue logs and moves on: the upload is committed
-// and its idempotent re-upload resolves as duplicate without
+// photo it belongs to already provides the timeline tile. The enqueue
+// runs after the upload transaction committed, so its context must not
+// die with the client connection: a disconnect in the commit-to-enqueue
+// window would fail the enqueue and strand the asset's pipeline counter
+// not-ready forever, with no API path to requeue it. WithoutCancel
+// keeps the request's deadline and values while shedding its
+// cancellation. A failed enqueue logs and moves on: the upload is
+// committed and its idempotent re-upload resolves as duplicate without
 // re-enqueueing, so recovery from a lost job belongs to a future
 // requeue sweep, not to the response of this request.
 func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset) {
 	if s.jobs == nil {
 		return
 	}
+	ctx := context.WithoutCancel(r.Context())
 	assetID := uuid.UUID(asset.ID.Bytes)
 	assetIDs := []uuid.UUID{assetID}
 	if asset.LivePhotoVideoID.Valid {
 		assetIDs = append(assetIDs, uuid.UUID(asset.LivePhotoVideoID.Bytes))
 	}
 	for _, id := range assetIDs {
-		if err := s.jobs.EnqueueMetadata(r.Context(), id); err != nil {
+		if err := s.jobs.EnqueueMetadata(ctx, id); err != nil {
 			s.logger.Error("enqueue metadata job", "error", err, "asset_id", id)
 		}
 	}
-	if err := s.jobs.EnqueueThumbnail(r.Context(), assetID); err != nil {
+	if err := s.jobs.EnqueueThumbnail(ctx, assetID); err != nil {
 		s.logger.Error("enqueue thumbnail job", "error", err, "asset_id", assetID)
 	}
 }
