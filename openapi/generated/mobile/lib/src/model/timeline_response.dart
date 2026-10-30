@@ -10,7 +10,7 @@ import 'package:built_value/serializer.dart';
 
 part 'timeline_response.g.dart';
 
-/// One page of the timeline. `nextCursor` is present exactly when another page follows the `items` of this one: the client passes it back as the `cursor` query parameter to continue, and a response without it ends the pagination. The last page is the one whose follow-up page would be empty, so no run ever observes an empty page mid-pagination. 
+/// One page of a timeline-shaped view: the aggregated timeline, the favorites view or the hidden view all answer with this page shape (the same ordering and the same cursor semantics). `nextCursor` is present exactly when another page follows the `items` of this one: the client passes it back as the `cursor` query parameter to continue, and a response without it ends the pagination. The last page is the one whose follow-up page would be empty, so no run ever observes an empty page mid-pagination. 
 ///
 /// Properties:
 /// * [items] - The timeline items of this page, ordered by `takenAt` descending with the id as the tiebreak. 

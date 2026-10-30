@@ -30,7 +30,16 @@
 -- short-circuits to TRUE.
 
 -- name: ListTimelineAssets :many
-SELECT a.*
+-- The per-user is_favorite flag rides along as an EXISTS: the
+-- caller's own favorites row for each asset, computed here so the
+-- timeline items carry the per-user state (the same asset is a
+-- favorite for one viewer and a plain tile for another) without a
+-- second roundtrip.
+SELECT sqlc.embed(a),
+       EXISTS (
+           SELECT 1 FROM user_favorites uf
+           WHERE uf.asset_id = a.id AND uf.user_id = sqlc.arg('user_id')
+       ) AS is_favorite
 FROM assets a
 WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
@@ -63,7 +72,14 @@ ORDER BY a.taken_at DESC, a.id DESC
 LIMIT sqlc.arg('limit_count');
 
 -- name: ListAlbumTimelineAssets :many
-SELECT a.*
+-- The album's own timeline with the same is_favorite computation as
+-- the aggregate: per-user state of the requesting viewer, whatever
+-- the album or the asset's owner.
+SELECT sqlc.embed(a),
+       EXISTS (
+           SELECT 1 FROM user_favorites uf
+           WHERE uf.asset_id = a.id AND uf.user_id = sqlc.arg('user_id')
+       ) AS is_favorite
 FROM assets a
 JOIN album_items ai ON ai.asset_id = a.id
 JOIN albums al ON al.id = ai.album_id

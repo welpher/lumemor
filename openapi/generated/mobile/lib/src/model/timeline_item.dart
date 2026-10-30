@@ -9,7 +9,7 @@ import 'package:built_value/serializer.dart';
 
 part 'timeline_item.g.dart';
 
-/// One asset of the timeline: the asset detail's fields minus the `exif` object (the detail endpoint renders the EXIF panel; the timeline renders tiles). Every item is live by construction -- hidden assets, trashed assets and the component video rows of Live Photos never enter the timeline -- so `isTrashed` is always false here and is carried only to keep the item shape identical to the detail's. `isReady` still varies: a fresh upload enters the timeline immediately with its pipeline-dependent fields null, and the client upgrades the tile when `asset.ready` fires. The shape is fixed -- every property is always present. Favorites are per-user state (`isFavorite`) and join this shape with the favorites API of the same milestone. 
+/// One asset of the timeline: the asset detail's fields minus the `exif` object (the detail endpoint renders the EXIF panel; the timeline renders tiles). Every item is live by construction -- hidden assets, trashed assets and the component video rows of Live Photos never enter the timeline -- so `isTrashed` is always false here and is carried only to keep the item shape identical to the detail's. `isReady` still varies: a fresh upload enters the timeline immediately with its pipeline-dependent fields null, and the client upgrades the tile when `asset.ready` fires. The shape is fixed -- every property is always present. `isFavorite` is per-user state computed for the requesting user, so the same asset is a favorite tile for one viewer and a plain tile for another. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the asset.
@@ -23,6 +23,7 @@ part 'timeline_item.g.dart';
 /// * [takenAt] - Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the timeline orders by it. 
 /// * [takenAtSource] - Where `takenAt` comes from: `import` is the device-reported capture time of the upload, `exif` an EXIF capture time the metadata job resolved with an offset, `file` a file timestamp (reserved for the future directory-album importer). 
 /// * [isTrashed] - Always false in the timeline: trashed assets never enter it. The field exists to keep the shape identical to the asset detail's. 
+/// * [isFavorite] - Whether the REQUESTING user favorites this asset: the caller's own row of the per-user favorites state, written by the batch endpoint's favorite action. False whenever the caller has no favorites row for the asset -- the same asset can be a favorite for one viewer of a shared timeline and not for another. 
 /// * [isReady] - True once the whole pipeline of the asset (metadata and serving copies) completed; until then the pipeline-dependent fields are null and the client renders placeholders. 
 /// * [width] - Pixel width in sensor order; null until the metadata job refined the dimensions. 
 /// * [height] - Pixel height in sensor order; null until the metadata job refined the dimensions. 
@@ -76,6 +77,10 @@ abstract class TimelineItem implements Built<TimelineItem, TimelineItemBuilder> 
   /// Always false in the timeline: trashed assets never enter it. The field exists to keep the shape identical to the asset detail's. 
   @BuiltValueField(wireName: r'isTrashed')
   bool get isTrashed;
+
+  /// Whether the REQUESTING user favorites this asset: the caller's own row of the per-user favorites state, written by the batch endpoint's favorite action. False whenever the caller has no favorites row for the asset -- the same asset can be a favorite for one viewer of a shared timeline and not for another. 
+  @BuiltValueField(wireName: r'isFavorite')
+  bool get isFavorite;
 
   /// True once the whole pipeline of the asset (metadata and serving copies) completed; until then the pipeline-dependent fields are null and the client renders placeholders. 
   @BuiltValueField(wireName: r'isReady')
@@ -177,6 +182,11 @@ class _$TimelineItemSerializer implements PrimitiveSerializer<TimelineItem> {
     yield r'isTrashed';
     yield serializers.serialize(
       object.isTrashed,
+      specifiedType: const FullType(bool),
+    );
+    yield r'isFavorite';
+    yield serializers.serialize(
+      object.isFavorite,
       specifiedType: const FullType(bool),
     );
     yield r'isReady';
@@ -308,6 +318,13 @@ class _$TimelineItemSerializer implements PrimitiveSerializer<TimelineItem> {
             specifiedType: const FullType(bool),
           ) as bool;
           result.isTrashed = valueDes;
+          break;
+        case r'isFavorite':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.isFavorite = valueDes;
           break;
         case r'isReady':
           final valueDes = serializers.deserialize(

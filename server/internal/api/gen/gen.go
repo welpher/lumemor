@@ -92,6 +92,36 @@ func (e AssetResponseState) Valid() bool {
 	}
 }
 
+// Defines values for BatchRequestAction.
+const (
+	Favorite   BatchRequestAction = "favorite"
+	Hide       BatchRequestAction = "hide"
+	Restore    BatchRequestAction = "restore"
+	Trash      BatchRequestAction = "trash"
+	Unfavorite BatchRequestAction = "unfavorite"
+	Unhide     BatchRequestAction = "unhide"
+)
+
+// Valid indicates whether the value is a known member of the BatchRequestAction enum.
+func (e BatchRequestAction) Valid() bool {
+	switch e {
+	case Favorite:
+		return true
+	case Hide:
+		return true
+	case Restore:
+		return true
+	case Trash:
+		return true
+	case Unfavorite:
+		return true
+	case Unhide:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
@@ -434,6 +464,60 @@ type AssetResponseKind string
 // in the trash).
 type AssetResponseState string
 
+// BatchRequest One batch action over a list of asset ids. The action applies
+// to every id that resolves to a caller-owned asset; the rest
+// (unknown or another account's, indistinguishable) are ignored
+// and reported in the response's `missing` list -- a batch never
+// fails over an individual id. `ids` carries between 1 and 1000
+// entries; repeated ids collapse to one application.
+type BatchRequest struct {
+	// Action The set operation to apply. `favorite` / `unfavorite`
+	// write or remove the caller's per-user favorites rows;
+	// `hide` / `unhide` flip the owner-level visibility switch
+	// (a hidden asset leaves every live view until unhidden);
+	// `trash` / `restore` run the trash lifecycle of the trash
+	// endpoints, the Live Photo pair moving as one asset.
+	Action BatchRequestAction `json:"action"`
+
+	// Ids The asset ids to apply the action to: at least 1, at most
+	// 1000.
+	Ids []openapi_types.UUID `json:"ids"`
+}
+
+// BatchRequestAction The set operation to apply. `favorite` / `unfavorite`
+// write or remove the caller's per-user favorites rows;
+// `hide` / `unhide` flip the owner-level visibility switch
+// (a hidden asset leaves every live view until unhidden);
+// `trash` / `restore` run the trash lifecycle of the trash
+// endpoints, the Live Photo pair moving as one asset.
+type BatchRequestAction string
+
+// BatchResponse The set-semantics report of one batch action. `affected` and
+// `missing` partition the request's distinct ids: every id is
+// either applied or unresolvable, none is both, and none is
+// silently dropped.
+type BatchResponse struct {
+	// Affected How many distinct request ids resolved to a caller-owned
+	// asset and were processed -- INCLUDING ids that were
+	// already in the target state (the idempotent no-op of the
+	// set semantics: a repeat of a successful batch answers the
+	// same count, because the endpoint is a convergence
+	// operation, not a state-change counter). NOT a count of
+	// rows written: trashing a Live Photo pair moves two rows
+	// but one request id, and counts once.
+	Affected int `json:"affected"`
+
+	// Missing The distinct request ids that did not resolve to a
+	// caller-owned asset -- unknown ids and other accounts'
+	// assets, indistinguishable by design -- in the order of
+	// their first appearance in the request. Empty when every
+	// id resolved. This deliberate reporting (instead of the
+	// byte-identical 404 of the single-asset endpoints) is the
+	// trade of the list surface: the caller handed the ids over
+	// themselves, so reporting them back hides nothing.
+	Missing []openapi_types.UUID `json:"missing"`
+}
+
 // BearerSession The mobile session minted by consuming a pairing token: the
 // bearer credential plus the session it authenticates.
 type BearerSession struct {
@@ -633,9 +717,9 @@ type SessionInfoKind string
 // upload enters the timeline immediately with its
 // pipeline-dependent fields null, and the client upgrades the
 // tile when `asset.ready` fires. The shape is fixed -- every
-// property is always present. Favorites are per-user state
-// (`isFavorite`) and join this shape with the favorites API of
-// the same milestone.
+// property is always present. `isFavorite` is per-user state
+// computed for the requesting user, so the same asset is a
+// favorite tile for one viewer and a plain tile for another.
 type TimelineItem struct {
 	// Blurhash The blurhash of the tile (image assets) or poster frame
 	// (video assets) for placeholder rendering; null until the
@@ -662,6 +746,14 @@ type TimelineItem struct {
 
 	// Id UUIDv7 identifier of the asset.
 	Id openapi_types.UUID `json:"id"`
+
+	// IsFavorite Whether the REQUESTING user favorites this asset: the
+	// caller's own row of the per-user favorites state, written
+	// by the batch endpoint's favorite action. False whenever
+	// the caller has no favorites row for the asset -- the same
+	// asset can be a favorite for one viewer of a shared
+	// timeline and not for another.
+	IsFavorite bool `json:"isFavorite"`
 
 	// IsReady True once the whole pipeline of the asset (metadata and
 	// serving copies) completed; until then the
@@ -722,12 +814,15 @@ type TimelineItemKind string
 // directory-album importer).
 type TimelineItemTakenAtSource string
 
-// TimelineResponse One page of the timeline. `nextCursor` is present exactly when
-// another page follows the `items` of this one: the client
-// passes it back as the `cursor` query parameter to continue,
-// and a response without it ends the pagination. The last page
-// is the one whose follow-up page would be empty, so no run
-// ever observes an empty page mid-pagination.
+// TimelineResponse One page of a timeline-shaped view: the aggregated timeline,
+// the favorites view or the hidden view all answer with this
+// page shape (the same ordering and the same cursor semantics).
+// `nextCursor` is present exactly when another page follows the
+// `items` of this one: the client passes it back as the
+// `cursor` query parameter to continue, and a response without
+// it ends the pagination. The last page is the one whose
+// follow-up page would be empty, so no run ever observes an
+// empty page mid-pagination.
 type TimelineResponse struct {
 	// Items The timeline items of this page, ordered by `takenAt`
 	// descending with the id as the tiebreak.
@@ -897,6 +992,34 @@ type UploadAssetMultipartBody struct {
 	Photo openapi_types.File `json:"photo"`
 }
 
+// GetFavoritesParams defines parameters for GetFavorites.
+type GetFavoritesParams struct {
+	// Cursor The `nextCursor` of the previous page; absent on the first
+	// page. An unparseable value answers 400
+	// `VALIDATION_FAILED` (cursors are opaque strings produced
+	// by this endpoint, never assembled by clients).
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size: the number of timeline items one response
+	// carries at most. Defaults to 100; values over 200 are
+	// answered with 200, values below 1 answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetHiddenParams defines parameters for GetHidden.
+type GetHiddenParams struct {
+	// Cursor The `nextCursor` of the previous page; absent on the first
+	// page. An unparseable value answers 400
+	// `VALIDATION_FAILED` (cursors are opaque strings produced
+	// by this endpoint, never assembled by clients).
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size: the number of timeline items one response
+	// carries at most. Defaults to 100; values over 200 are
+	// answered with 200, values below 1 answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetTimelineParams defines parameters for GetTimeline.
 type GetTimelineParams struct {
 	// Cursor The `nextCursor` of the previous page; absent on the first
@@ -942,6 +1065,9 @@ type GetEventsParams struct {
 // UploadAssetMultipartRequestBody defines body for UploadAsset for multipart/form-data ContentType.
 type UploadAssetMultipartRequestBody UploadAssetMultipartBody
 
+// BatchAssetsJSONRequestBody defines body for BatchAssets for application/json ContentType.
+type BatchAssetsJSONRequestBody = BatchRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -956,9 +1082,18 @@ type ServerInterface interface {
 	// UploadAsset Upload one photo, optionally with its Live Photo video.
 	// (POST /assets)
 	UploadAsset(w http.ResponseWriter, r *http.Request)
+	// BatchAssets Apply one set action to a batch of assets.
+	// (POST /assets/batch)
+	BatchAssets(w http.ResponseWriter, r *http.Request)
 	// GetAssetByDeviceId Look up an uploaded asset by its device identifier.
 	// (GET /assets/by-device-id/{deviceAssetId})
 	GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string)
+	// GetFavorites The caller's favorites, one keyset page at a time.
+	// (GET /assets/favorites)
+	GetFavorites(w http.ResponseWriter, r *http.Request, params GetFavoritesParams)
+	// GetHidden The caller's hidden assets, one keyset page at a time.
+	// (GET /assets/hidden)
+	GetHidden(w http.ResponseWriter, r *http.Request, params GetHiddenParams)
 	// GetTimeline The aggregated timeline, one keyset page at a time.
 	// (GET /assets/timeline)
 	GetTimeline(w http.ResponseWriter, r *http.Request, params GetTimelineParams)
@@ -1019,9 +1154,27 @@ func (_ Unimplemented) UploadAsset(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// BatchAssets Apply one set action to a batch of assets.
+// (POST /assets/batch)
+func (_ Unimplemented) BatchAssets(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetAssetByDeviceId Look up an uploaded asset by its device identifier.
 // (GET /assets/by-device-id/{deviceAssetId})
 func (_ Unimplemented) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFavorites The caller's favorites, one keyset page at a time.
+// (GET /assets/favorites)
+func (_ Unimplemented) GetFavorites(w http.ResponseWriter, r *http.Request, params GetFavoritesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetHidden The caller's hidden assets, one keyset page at a time.
+// (GET /assets/hidden)
+func (_ Unimplemented) GetHidden(w http.ResponseWriter, r *http.Request, params GetHiddenParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1144,6 +1297,20 @@ func (siw *ServerInterfaceWrapper) UploadAsset(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// BatchAssets operation middleware
+func (siw *ServerInterfaceWrapper) BatchAssets(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BatchAssets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetAssetByDeviceId operation middleware
 func (siw *ServerInterfaceWrapper) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request) {
 
@@ -1161,6 +1328,98 @@ func (siw *ServerInterfaceWrapper) GetAssetByDeviceId(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssetByDeviceId(w, r, deviceAssetId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFavorites operation middleware
+func (siw *ServerInterfaceWrapper) GetFavorites(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFavoritesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFavorites(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHidden operation middleware
+func (siw *ServerInterfaceWrapper) GetHidden(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetHiddenParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHidden(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1699,6 +1958,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/timeline", wrapper.GetTimeline)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/assets/batch", wrapper.BatchAssets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/favorites", wrapper.GetFavorites)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/hidden", wrapper.GetHidden)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/assets/{id}", wrapper.DeleteAsset)

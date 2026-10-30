@@ -199,6 +199,15 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Post("/auth/pairing/token", wrapper.CreatePairingToken)
 				r.Get("/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)
 				r.Get("/assets/timeline", wrapper.GetTimeline)
+				// The batch and curation views (M2c Task 4): the
+				// set-semantics batch write, and the favorites and
+				// hidden listings. The static segments win over the
+				// /assets/{id} parameter below, so mounting them in
+				// this group keeps every asset read a bounded row
+				// read plus a bounded JSON document.
+				r.Post("/assets/batch", wrapper.BatchAssets)
+				r.Get("/assets/favorites", wrapper.GetFavorites)
+				r.Get("/assets/hidden", wrapper.GetHidden)
 				r.Get("/assets/{id}", wrapper.GetAsset)
 				r.Get("/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
 				// The trash lifecycle endpoints (M2c Task 3): the

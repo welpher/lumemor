@@ -256,14 +256,9 @@ func trashItemFrom(row dbgen.ListTrashRow) apigen.TrashItem {
 }
 
 // publishAssetEvent reports a trash lifecycle transition onto the
-// activity stream: the resource id and its media kind, nothing more
-// -- the event audience discipline of M2a.
+// activity stream through the shared (id, kind) publisher: the
+// resource id and its media kind, nothing more -- the event audience
+// discipline of M2a.
 func (s *server) publishAssetEvent(name string, row dbgen.Asset) {
-	if s.events == nil {
-		return
-	}
-	s.events.Publish(name, map[string]string{
-		"assetId": uuid.UUID(row.ID.Bytes).String(),
-		"kind":    string(row.MediaKind),
-	})
+	s.publishAssetEventByID(name, uuid.UUID(row.ID.Bytes), row.MediaKind)
 }

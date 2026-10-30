@@ -9,16 +9,66 @@ All URIs are relative to */api/v1*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**batchAssets**](AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
 [**deleteAsset**](AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
 [**getAsset**](AssetsApi.md#getasset) | **GET** /assets/{id} | Fetch the detail of one owned asset.
 [**getAssetByDeviceId**](AssetsApi.md#getassetbydeviceid) | **GET** /assets/by-device-id/{deviceAssetId} | Look up an uploaded asset by its device identifier.
 [**getAssetOriginal**](AssetsApi.md#getassetoriginal) | **GET** /assets/{id}/original | Download the original file of one owned asset.
 [**getAssetThumbnail**](AssetsApi.md#getassetthumbnail) | **GET** /assets/{id}/thumbnail | Serve a derived thumbnail, or a video&#39;s poster frame.
+[**getFavorites**](AssetsApi.md#getfavorites) | **GET** /assets/favorites | The caller&#39;s favorites, one keyset page at a time.
+[**getHidden**](AssetsApi.md#gethidden) | **GET** /assets/hidden | The caller&#39;s hidden assets, one keyset page at a time.
 [**getTimeline**](AssetsApi.md#gettimeline) | **GET** /assets/timeline | The aggregated timeline, one keyset page at a time.
 [**getTrash**](AssetsApi.md#gettrash) | **GET** /trash | List the caller&#39;s trashed assets with their retention countdown.
 [**restoreAsset**](AssetsApi.md#restoreasset) | **POST** /trash/{id}/restore | Restore one trashed asset.
 [**uploadAsset**](AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 
+
+# **batchAssets**
+> BatchResponse batchAssets(batchRequest)
+
+Apply one set action to a batch of assets.
+
+The batch surface of the curation actions: one request applies one action -- favorite, unfavorite, hide, unhide, trash or restore -- to a list of up to 1000 asset ids, in one transaction. The endpoint follows set semantics: it is a convergence operation, not a state-change counter. Every id that resolves to an asset the caller owns is applied (an id already in the target state is the idempotent no-op and still counts as affected), and every id that does not resolve -- unknown, or another account's asset, the two indistinguishable -- is ignored and reported in the response's `missing` list. The two lists partition the request's distinct ids: no individual id ever fails the request, and a repeat of a successful batch converges to the same answer.  This is the deliberate trade of the list surface: the byte-identical 404 anti-enumeration of the single-asset endpoints does not apply here. The caller handed the ids over themselves, so reporting the unresolvable ones back in `missing` hides nothing -- and hands honest clients their retry list.  `ids` must carry between 1 and 1000 entries: an empty list, or one past the cap, answers 400 `VALIDATION_FAILED`, as does an `action` outside the enum or a body that is not valid JSON (an id that is not a uuid fails the body decode). Repeated ids collapse to one application.  The whole batch commits as one transaction: the action's writes land together or not at all, so a partial batch never surfaces. Failures on resolvable ids are not expected -- the per-item guards turn foreign and already-in-state ids into no-ops, not errors -- so the all-or-nothing bound is the infrastructure safety, not a client-visible case.  The actions resolve to their single-row primitives: favorite / unfavorite write or remove the caller's per-user favorites rows; hide / unhide flip the owner-level visibility switch of the row the id names (a hidden asset leaves every live view -- the timeline, the favorites -- until unhidden); trash / restore run the trash lifecycle of the trash endpoints, Live Photo pair included (trashing or restoring the photo carries its component video row along, whichever row the id names).  Events publish AFTER the commit, one per asset whose state actually changed -- the idempotent no-op stays silent, the same discipline as the single-asset restore: `asset.trashed` and `asset.restored` for trash and restore, `asset.updated` for hide and unhide (visibility is owner-level state, and every viewer of the shared timeline sees it change). favorite / unfavorite publish nothing: favorites are per-user state with no cross-user visibility effect, so no other session has anything to refresh. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final BatchRequest batchRequest = {"action":"trash","ids":["0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70","0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71"]}; // BatchRequest | 
+
+try {
+    final response = api.batchAssets(batchRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->batchAssets: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **batchRequest** | [**BatchRequest**](BatchRequest.md)|  | 
+
+### Return type
+
+[**BatchResponse**](BatchResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **deleteAsset**
 > deleteAsset(id)
@@ -256,12 +306,110 @@ Name | Type | Description  | Notes
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **getFavorites**
+> TimelineResponse getFavorites(cursor, limit)
+
+The caller's favorites, one keyset page at a time.
+
+The favorites view: the assets the calling user favorites, filtered to the live view -- hidden assets, assets in the trash and the component video rows of Live Photos never appear -- with every item carrying `isFavorite: true` by construction (the listing joins the caller's favorites rows).  The view shares the timeline's shape, ordering and pagination: `takenAt` descending with the id as the tiebreak, `limit` absent meaning 100 and capped at 200, and the opaque `cursor` handed back as `nextCursor` precisely when another page follows, so the same wall UI that walks the timeline walks the favorites.  Favorites are per-user state written by the batch endpoint's favorite action. In this milestone the batch actions are owner-scoped, so favorites apply to the caller's own assets; the listing itself joins the caller's favorites rows with the live-asset filters, nothing more. Hiding (or trashing) a favorited asset removes it from this view; it returns when unhidden (or restored), the favorite row untouched -- an idempotent per-user mark, not a copy of the asset. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String cursor = AAAAAAAAAADvr_8PaGVsbw==; // String | The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
+final int limit = 100; // int | Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
+
+try {
+    final response = api.getFavorites(cursor, limit);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->getFavorites: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **cursor** | **String**| The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients).  | [optional] 
+ **limit** | **int**| Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400.  | [optional] [default to 100]
+
+### Return type
+
+[**TimelineResponse**](TimelineResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getHidden**
+> TimelineResponse getHidden(cursor, limit)
+
+The caller's hidden assets, one keyset page at a time.
+
+The hidden view: the caller's own assets whose owner-level visibility switch is off. Live rows only -- a trashed asset stays in the trash view until restored or expired, and a restored one returns here still hidden -- and no Live Photo component rows (the pair is represented by its photo). The same ordering and keyset pagination as the timeline: `takenAt` descending with the id as the tiebreak, `limit` absent meaning 100 and capped at 200, `nextCursor` exactly when another page follows.  Unhiding through the batch endpoint returns an asset to every live view (the timeline, the favorites if favorited). `isFavorite` still reports the caller's favorites state of a hidden asset -- the favorite row survives the hiding, exactly like it survives the trash. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String cursor = AAAAAAAAAADvr_8PaGVsbw==; // String | The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
+final int limit = 100; // int | Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
+
+try {
+    final response = api.getHidden(cursor, limit);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->getHidden: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **cursor** | **String**| The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients).  | [optional] 
+ **limit** | **int**| Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400.  | [optional] [default to 100]
+
+### Return type
+
+[**TimelineResponse**](TimelineResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **getTimeline**
 > TimelineResponse getTimeline(cursor, limit, albumId)
 
 The aggregated timeline, one keyset page at a time.
 
-The aggregated timeline of the caller: the union of the albums that feed it -- the caller's sync album (the core backup stream, never excludable), the caller's own directory albums, and every album shared to the caller regardless of type (virtual albums included) -- minus the albums the caller turned off with the per-user \"keep out of the timeline\" preference (a missing preference row means kept in). The caller's own virtual albums never feed their own timeline: in-stream curation would be pure duplication. One asset visible through several albums appears once.  Every item is live by construction: hidden assets, assets in the trash, and the component video rows of Live Photos never appear.  Pages are keyset-paginated with an opaque cursor: the response carries `nextCursor` exactly when another page exists, and the client passes it back as `cursor` to continue after the last item of the page. Cursors are stable for the ordering key (`takenAt` descending, `id` as the tiebreak); an asset uploaded with an older `takenAt` than the cursor appears only in a fresh pagination run, never in the current one. The first page omits the `cursor` parameter.  `limit` bounds the page size: absent means the default of 100, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 `VALIDATION_FAILED`.  `albumId` narrows the response to that album's own timeline instead of the aggregate: the album's items in the same ordering and filtering. The caller must be able to see the album (own album of any type, or an album shared to the caller); an album that does not exist or is not visible answers the empty list, not an error, so album ids cannot be probed for existence through this endpoint. 
+The aggregated timeline of the caller: the union of the albums that feed it -- the caller's sync album (the core backup stream, never excludable), the caller's own directory albums, and every album shared to the caller regardless of type (virtual albums included) -- minus the albums the caller turned off with the per-user \"keep out of the timeline\" preference (a missing preference row means kept in). The caller's own virtual albums never feed their own timeline: in-stream curation would be pure duplication. One asset visible through several albums appears once.  Every item is live by construction: hidden assets, assets in the trash, and the component video rows of Live Photos never appear.  `isFavorite` is per-user state: it reports whether the CALLING user favorites the asset (the favorites rows the batch endpoint writes), whatever the asset's owner -- the same item is a favorite for one viewer and a plain tile for another.  Pages are keyset-paginated with an opaque cursor: the response carries `nextCursor` exactly when another page exists, and the client passes it back as `cursor` to continue after the last item of the page. Cursors are stable for the ordering key (`takenAt` descending, `id` as the tiebreak); an asset uploaded with an older `takenAt` than the cursor appears only in a fresh pagination run, never in the current one. The first page omits the `cursor` parameter.  `limit` bounds the page size: absent means the default of 100, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 `VALIDATION_FAILED`.  `albumId` narrows the response to that album's own timeline instead of the aggregate: the album's items in the same ordering and filtering. The caller must be able to see the album (own album of any type, or an album shared to the caller); an album that does not exist or is not visible answers the empty list, not an error, so album ids cannot be probed for existence through this endpoint. 
 
 ### Example
 ```dart

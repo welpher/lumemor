@@ -1,5 +1,9 @@
 // The timeline handler (M2c Task 2): the aggregated timeline of the
 // caller (and its per-album narrowing), one keyset page at a time.
+// The page-parameter validation and the item mapping here are the
+// shared machinery of every timeline-shaped view: the favorites and
+// hidden views of Task 4 answer the same page shape through the same
+// helpers.
 package api
 
 import (
@@ -84,35 +88,9 @@ func (s *server) GetTimeline(w http.ResponseWriter, r *http.Request, params apig
 		return
 	}
 
-	// Page size: absent means the contract default, over the maximum
-	// clamps to it, below 1 is a client bug the 400 names. The clamp
-	// of the upper bound (rather than a 400) keeps honest clients
-	// future-proof: a page size the instance currently considers
-	// generous still answers.
-	limit := timelineDefaultLimit
-	if params.Limit != nil {
-		if *params.Limit < 1 {
-			s.writeValidationError(w, "limit must be at least 1", []string{"limit"})
-			return
-		}
-		if *params.Limit > timelineMaxLimit {
-			limit = timelineMaxLimit
-		} else {
-			limit = *params.Limit
-		}
-	}
-
-	// The continuation point: a cursor is either absent (the first
-	// page) or exactly the string this endpoint handed out. Anything
-	// else the decode refuses with the 400 of the contract.
-	var cursor timelineCursor
-	if params.Cursor != nil && *params.Cursor != "" {
-		decoded, err := decodeTimelineCursor(*params.Cursor)
-		if err != nil {
-			s.writeValidationError(w, "invalid timeline cursor", []string{"cursor"})
-			return
-		}
-		cursor = decoded
+	limit, cursor, ok := s.timelinePageParams(w, params.Limit, params.Cursor)
+	if !ok {
+		return
 	}
 
 	// One row beyond the page is the exact "another page exists"
@@ -121,59 +99,128 @@ func (s *server) GetTimeline(w http.ResponseWriter, r *http.Request, params apig
 	// and no run ever walks into an empty trailing page.
 	fetch := int32(limit) + 1
 
-	var (
-		rows  []dbgen.Asset
-		query string
-		err   error
-	)
+	// The queries are SELECTs over committed rows; a failure is an
+	// infrastructure problem, not a client one. An invisible album is
+	// NOT an error path: it resolves to no rows -- the empty list,
+	// indistinguishable from an unknown id -- never to a 404.
+	var response apigen.TimelineResponse
 	if params.AlbumId != nil {
-		query = "album timeline"
-		rows, err = s.queries.ListAlbumTimelineAssets(r.Context(), dbgen.ListAlbumTimelineAssetsParams{
+		rows, err := s.queries.ListAlbumTimelineAssets(r.Context(), dbgen.ListAlbumTimelineAssetsParams{
 			AlbumID:       pgUUID(uuid.UUID(*params.AlbumId)),
 			UserID:        pgUUID(requester.userID),
 			CursorTakenAt: cursor.takenAt,
 			CursorID:      cursor.id,
 			LimitCount:    fetch,
 		})
+		if err != nil {
+			s.internalError(w, r, "load album timeline", err)
+			return
+		}
+		response = timelinePage(rows, limit, albumAssetFields)
 	} else {
-		query = "timeline"
-		rows, err = s.queries.ListTimelineAssets(r.Context(), dbgen.ListTimelineAssetsParams{
+		rows, err := s.queries.ListTimelineAssets(r.Context(), dbgen.ListTimelineAssetsParams{
 			CursorTakenAt: cursor.takenAt,
 			CursorID:      cursor.id,
 			UserID:        pgUUID(requester.userID),
 			LimitCount:    fetch,
 		})
-	}
-	// The queries are SELECTs over committed rows; a failure is an
-	// infrastructure problem, not a client one. An invisible album is
-	// NOT an error path: it resolves to no rows -- the empty list,
-	// indistinguishable from an unknown id -- never to a 404.
-	if err != nil {
-		s.internalError(w, r, "load "+query, err)
-		return
-	}
-
-	response := apigen.TimelineResponse{Items: make([]apigen.TimelineItem, 0, len(rows))}
-	if len(rows) > limit {
-		rows = rows[:limit]
-		last := rows[limit-1]
-		next := encodeTimelineCursor(last.TakenAt, last.ID)
-		response.NextCursor = &next
-	}
-	for _, row := range rows {
-		response.Items = append(response.Items, timelineItemFrom(row))
+		if err != nil {
+			s.internalError(w, r, "load timeline", err)
+			return
+		}
+		response = timelinePage(rows, limit, timelineAssetFields)
 	}
 
 	s.writeJSON(w, http.StatusOK, response)
 }
 
+// timelinePage renders one keyset page out of the rows a
+// timeline-shaped query fetched (limit+1 of them when another page
+// follows): it trims the look-ahead row, encodes the continuation
+// cursor from the last kept row and maps the survivors onto the API
+// shape. The generic row folds through fields, which adapts each
+// query's generated row type -- they all carry the embedded asset row
+// and the per-user is_favorite flag; the views differ in how they
+// select rows, not in how a page renders.
+func timelinePage[T any](rows []T, limit int, fields func(T) (dbgen.Asset, bool)) apigen.TimelineResponse {
+	response := apigen.TimelineResponse{Items: make([]apigen.TimelineItem, 0, len(rows))}
+	if len(rows) > limit {
+		rows = rows[:limit]
+		last, _ := fields(rows[limit-1])
+		next := encodeTimelineCursor(last.TakenAt, last.ID)
+		response.NextCursor = &next
+	}
+	for _, row := range rows {
+		asset, isFavorite := fields(row)
+		response.Items = append(response.Items, timelineItemFrom(asset, isFavorite))
+	}
+	return response
+}
+
+// The field extractors of the four timeline-shaped queries (the
+// aggregate, the album, the favorites view, the hidden view): each
+// folds its generated row type onto the (asset, isFavorite) pair the
+// shared page renderer consumes.
+func timelineAssetFields(row dbgen.ListTimelineAssetsRow) (dbgen.Asset, bool) {
+	return row.Asset, row.IsFavorite
+}
+
+func albumAssetFields(row dbgen.ListAlbumTimelineAssetsRow) (dbgen.Asset, bool) {
+	return row.Asset, row.IsFavorite
+}
+
+func favoriteAssetFields(row dbgen.ListFavoriteAssetsRow) (dbgen.Asset, bool) {
+	return row.Asset, row.IsFavorite
+}
+
+func hiddenAssetFields(row dbgen.ListHiddenAssetsRow) (dbgen.Asset, bool) {
+	return row.Asset, row.IsFavorite
+}
+
+// timelinePageParams validates and normalizes the pagination
+// parameters every timeline-shaped view shares (the aggregate, the
+// favorites, the hidden): the limit -- absent means the contract
+// default, over the maximum clamps to it, below 1 is a client bug the
+// 400 names (the clamp of the upper bound rather than a 400 keeps
+// honest clients future-proof: a page size the instance currently
+// considers generous still answers) -- and the cursor -- absent is
+// the first page, anything else must be exactly the string this
+// endpoint family produced. It answers ok=false once it has written
+// the 400 envelope.
+func (s *server) timelinePageParams(w http.ResponseWriter, limit *int, cursor *string) (int, timelineCursor, bool) {
+	pageLimit := timelineDefaultLimit
+	if limit != nil {
+		if *limit < 1 {
+			s.writeValidationError(w, "limit must be at least 1", []string{"limit"})
+			return 0, timelineCursor{}, false
+		}
+		if *limit > timelineMaxLimit {
+			pageLimit = timelineMaxLimit
+		} else {
+			pageLimit = *limit
+		}
+	}
+
+	var pageCursor timelineCursor
+	if cursor != nil && *cursor != "" {
+		decoded, err := decodeTimelineCursor(*cursor)
+		if err != nil {
+			s.writeValidationError(w, "invalid timeline cursor", []string{"cursor"})
+			return 0, timelineCursor{}, false
+		}
+		pageCursor = decoded
+	}
+	return pageLimit, pageCursor, true
+}
+
 // timelineItemFrom maps one timeline row onto the API shape. The row
-// is live by construction (the query filters hidden, trashed and
-// component rows), so isTrashed is always false here -- carried only
-// to keep the shape identical to the asset detail's. The
-// pipeline-dependent values cross as null while the jobs have not
-// produced them, exactly like the detail's.
-func timelineItemFrom(row dbgen.Asset) apigen.TimelineItem {
+// is live by construction (every timeline-shaped query filters
+// hidden, trashed and component rows), so isTrashed is always false
+// here -- carried only to keep the shape identical to the asset
+// detail's. isFavorite is the per-user state the query computed for
+// the requesting user. The pipeline-dependent values cross as null
+// while the jobs have not produced them, exactly like the detail's.
+func timelineItemFrom(row dbgen.Asset, isFavorite bool) apigen.TimelineItem {
 	return apigen.TimelineItem{
 		Id:               uuid.UUID(row.ID.Bytes),
 		OwnerId:          uuid.UUID(row.OwnerID.Bytes),
@@ -186,6 +233,7 @@ func timelineItemFrom(row dbgen.Asset) apigen.TimelineItem {
 		TakenAt:          row.TakenAt.Time.UTC(),
 		TakenAtSource:    apigen.TimelineItemTakenAtSource(row.TakenAtSource),
 		IsTrashed:        row.DeletedAt.Valid,
+		IsFavorite:       isFavorite,
 		IsReady:          row.ReadyAt.Valid,
 		Width:            dimensionValue(row.Width),
 		Height:           dimensionValue(row.Height),

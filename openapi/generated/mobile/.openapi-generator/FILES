@@ -6,6 +6,8 @@ doc/AssetDetail.md
 doc/AssetResponse.md
 doc/AssetsApi.md
 doc/AuthApi.md
+doc/BatchRequest.md
+doc/BatchResponse.md
 doc/BearerSession.md
 doc/CreateAdminRequest.md
 doc/Error.md
@@ -37,6 +39,8 @@ lib/src/auth/oauth.dart
 lib/src/date_serializer.dart
 lib/src/model/asset_detail.dart
 lib/src/model/asset_response.dart
+lib/src/model/batch_request.dart
+lib/src/model/batch_response.dart
 lib/src/model/bearer_session.dart
 lib/src/model/create_admin_request.dart
 lib/src/model/date.dart
@@ -58,6 +62,8 @@ test/asset_detail_test.dart
 test/asset_response_test.dart
 test/assets_api_test.dart
 test/auth_api_test.dart
+test/batch_request_test.dart
+test/batch_response_test.dart
 test/bearer_session_test.dart
 test/create_admin_request_test.dart
 test/error_test.dart
