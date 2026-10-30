@@ -137,6 +137,26 @@ func run(logger *slog.Logger) error {
 	}
 	logger.Info("job queue started")
 
+	// The boot requeue sweep: the recovery of the pipeline assets stuck
+	// by a previous run (an enqueue insert failure, or a crash in the
+	// commit-to-enqueue window). It runs after the queue started -- the
+	// re-enqueued jobs are picked up immediately -- and before the HTTP
+	// server begins listening, so the first client request already sees
+	// the recovered state; the cost on a healthy database is one SELECT
+	// plus the re-inserts of the rare genuinely stuck row. Its failure
+	// does not fail the boot: the sweep is a recovery mechanism, the
+	// server is fully usable without it, and the hourly periodic sweep
+	// retries.
+	sweepCounts, err := jobs.RunRequeueSweep(ctx, pool, queue)
+	if err != nil {
+		logger.Error("requeue sweep failed", "error", err)
+	} else {
+		// The run's single log line; per-asset logs are deliberately
+		// absent.
+		logger.Info("requeue sweep complete",
+			"stuck", sweepCounts.Stuck, "enqueued", sweepCounts.Enqueued)
+	}
+
 	srv := &http.Server{
 		Addr: cfg.Listen,
 		Handler: api.NewRouter(&api.Deps{

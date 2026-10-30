@@ -81,7 +81,17 @@ type env struct {
 }
 
 // newEnv provisions the environment and signs its administrator in.
+// River logs chatty service diagnostics; those go to io.Discard so
+// the test output stays on the assertions.
 func newEnv(t *testing.T) *env {
+	t.Helper()
+	return newEnvLogger(t, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+// newEnvLogger is newEnv with the queue's logger injected: the sweep
+// tests capture the queue's log output to pin the one-log-line-per-run
+// discipline of the requeue sweep.
+func newEnvLogger(t *testing.T, logger *slog.Logger) *env {
 	t.Helper()
 
 	pool := dbtest.New(t)
@@ -100,9 +110,7 @@ func newEnv(t *testing.T) *env {
 		Bus:     bus,
 		DataDir: dataDir,
 		Workers: 1,
-		// River logs chatty service diagnostics; keep the test output
-		// to the assertions.
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger:  logger,
 	})
 	if err != nil {
 		t.Fatalf("start queue: %v", err)
