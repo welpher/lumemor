@@ -60,5 +60,20 @@
   "action_clear_selection": "清除选择",
   "asset_favorite_label": "收藏",
   "asset_live_photo_label": "实况照片",
-  "asset_video_label": "视频"
+  "asset_video_label": "视频",
+  "upload_queue_title": "上传",
+  "upload_state_waiting": "等待中",
+  "upload_state_uploading": "上传中…",
+  "upload_state_conflict": "需要处理",
+  "upload_state_processing": "处理中…",
+  "upload_state_done": "完成",
+  "upload_state_failed": "失败",
+  "upload_active_count": "{count, plural, other {# 个进行中}}",
+  "upload_dismiss": "从列表移除",
+  "upload_resolve_conflict": "处理",
+  "upload_drop_hint": "松开以上传文件",
+  "upload_conflict_title": "回收站中已有副本",
+  "upload_conflict_body": "「{name}」的一份相同内容已在回收站中。可以恢复那份副本，或仅保留本次上传。",
+  "upload_conflict_restore": "恢复回收站副本",
+  "upload_conflict_save_as": "仅保留本次上传"
 }

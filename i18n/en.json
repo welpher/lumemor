@@ -60,5 +60,20 @@
   "action_clear_selection": "Clear selection",
   "asset_favorite_label": "Favorite",
   "asset_live_photo_label": "Live Photo",
-  "asset_video_label": "Video"
+  "asset_video_label": "Video",
+  "upload_queue_title": "Uploads",
+  "upload_state_waiting": "Waiting",
+  "upload_state_uploading": "Uploading…",
+  "upload_state_conflict": "Needs a decision",
+  "upload_state_processing": "Processing…",
+  "upload_state_done": "Done",
+  "upload_state_failed": "Failed",
+  "upload_active_count": "{count, plural, one {# in flight} other {# in flight}}",
+  "upload_dismiss": "Remove from list",
+  "upload_resolve_conflict": "Decide",
+  "upload_drop_hint": "Drop files to upload",
+  "upload_conflict_title": "Duplicate in trash",
+  "upload_conflict_body": "A copy of \"{name}\" is already in the trash. Restore that copy, or keep only the new upload.",
+  "upload_conflict_restore": "Restore the trash copy",
+  "upload_conflict_save_as": "Keep the new upload"
 }

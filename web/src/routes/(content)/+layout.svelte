@@ -16,6 +16,8 @@
 	} from '$lib/theme/theme.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
+	import UploadOverlay from '$lib/upload/UploadOverlay.svelte';
+	import { enqueueUploadFiles } from '$lib/upload/queue.svelte';
 	import { logout } from '$lib/auth/session.svelte';
 	import type { LayoutProps } from './$types';
 
@@ -25,6 +27,43 @@
 	let accountMenuOpen = $state(false);
 	let signingOut = $state(false);
 	let accountWrap: HTMLElement | undefined = $state();
+	// The top bar's own hidden picker (the overlay component carries
+	// only the queue panel and the drop zone): the button trigger and
+	// its input live side by side, and picked files join the same
+	// singleton queue as the drop zone's.
+	let picker = $state<HTMLInputElement>();
+
+	// The picker's accept mirrors the hint-level upload whitelist
+	// (format set v1; the server stays authoritative).
+	const PICKER_ACCEPT = [
+		'.jpg',
+		'.jpeg',
+		'.png',
+		'.gif',
+		'.webp',
+		'.tif',
+		'.tiff',
+		'.heic',
+		'.avif',
+		'.mp4',
+		'.mov',
+		'.webm',
+		'.mkv'
+	].join(',');
+
+	function pickFiles(): void {
+		picker?.click();
+	}
+
+	function handlePicked(): void {
+		const files = picker?.files;
+		if (files !== null && files !== undefined && files.length > 0) {
+			enqueueUploadFiles(files);
+		}
+		if (picker !== undefined) {
+			picker.value = '';
+		}
+	}
 
 	const themeOptions: ReadonlyArray<{ value: ThemePreference; labelKey: string }> = [
 		{ value: 'light', labelKey: 'theme_light' },
@@ -96,7 +135,19 @@
 			placeholder={$_('nav_search')}
 			aria-label={$_('nav_search')}
 		/>
-		<Button class="topbar-upload">{$_('action_upload')}</Button>
+		<span
+			class="topbar-upload-wrap"
+		>
+			<input
+				bind:this={picker}
+				class="topbar-picker"
+				type="file"
+				multiple
+				accept={PICKER_ACCEPT}
+				onchange={handlePicked}
+			/>
+			<Button class="topbar-upload" onclick={pickFiles}>{$_('action_upload')}</Button>
+		</span>
 		<div class="topbar-account" bind:this={accountWrap}>
 			<button
 				class="topbar-avatar"
@@ -161,6 +212,7 @@
 		{@render children()}
 	</main>
 </div>
+<UploadOverlay />
 
 <style>
 	.shell {
@@ -223,6 +275,12 @@
 
 	.topbar-search:focus {
 		border-color: var(--color-accent);
+	}
+
+	.topbar-picker {
+		/* The hidden input of the top bar's Upload button; picked
+		 * files join the upload queue through enqueueUploadFiles. */
+		display: none;
 	}
 
 	.topbar-account {
