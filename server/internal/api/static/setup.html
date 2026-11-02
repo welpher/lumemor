@@ -234,6 +234,11 @@ button:disabled { opacity: 0.6; cursor: default; }
     els.done.textContent = t.done;
     els.done.hidden = false;
     els.done.focus();
+    // Land the fresh administrator back in the app: the root now
+    // serves the web app, whose session guard leads to the sign-in
+    // page. The short pause keeps the completion message readable
+    // before the navigation swaps the document.
+    setTimeout(function () { window.location.assign("/"); }, 1500);
   }
 
   async function submit(event) {

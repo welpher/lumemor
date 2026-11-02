@@ -85,18 +85,23 @@ type AssetJobEnqueuer interface {
 // hashed assets and the client-side-route fallback) and the generated
 // /api/v1 API surface.
 //
-// The /api/v1 pipeline order is pinned and security-relevant: the
-// security headers on every API response, then the origin check
-// guarding every state change, then the route groups. The JSON body
-// limit and the per-request handler timeout apply only to the JSON
-// surface (nothing downstream of limitJSONBody may buffer an
-// unbounded body, and http.TimeoutHandler -- a handler that outlives
-// it answers 503 -- bounds every non-streaming JSON handler): the
-// authed groups sit behind RequireSession, the SSE stream group runs
-// outside the timeout, and the upload group runs outside both the
-// JSON body limit and the timeout -- a multipart upload is not JSON,
-// and a multi-gigabyte video legitimately outlives any timer; the
-// streaming receiver's own size limit governs instead.
+// The security headers (nosniff, Referrer-Policy) run as ROOT-level
+// middleware: every response of the server carries them -- pages,
+// static assets, the SPA shell, the API, the operational endpoints
+// (the M2a handoff's HTML-surface item; the CSP arrives with the
+// map milestone). The /api/v1 pipeline order is pinned and
+// security-relevant: after the root middleware, the origin check
+// guards every state-changing API request, then the route groups.
+// The JSON body limit and the per-request handler timeout apply only
+// to the JSON surface (nothing downstream of limitJSONBody may
+// buffer an unbounded body, and http.TimeoutHandler -- a handler
+// that outlives it answers 503 -- bounds every non-streaming JSON
+// handler): the authed groups sit behind RequireSession, the SSE
+// stream group runs outside the timeout, and the upload group runs
+// outside both the JSON body limit and the timeout -- a multipart
+// upload is not JSON, and a multi-gigabyte video legitimately
+// outlives any timer; the streaming receiver's own size limit
+// governs instead.
 func NewRouter(deps *Deps) *chi.Mux {
 	return newRouter(deps, handlerTimeout)
 }
@@ -140,6 +145,10 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 	}
 
 	r := chi.NewRouter()
+	// Root-level middleware: the security headers cover every response
+	// the server emits -- pages, the SPA shell and its assets, the API,
+	// and the operational endpoints (M2a handoff's HTML-surface item).
+	r.Use(setSecurityHeaders)
 	r.Get("/healthz", handleHealthz)
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/setup", handleSetupPage)
@@ -156,11 +165,12 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		spa.ServeHTTP(w, req)
 	})
 	r.Route("/api/v1", func(r chi.Router) {
-		// Security headers and the origin check guard every API
-		// response, uploads included; the JSON body limit moved into
-		// the JSON group below so multipart uploads can stream past
-		// it (the receiver's own size limit governs them).
-		r.Use(setSecurityHeaders, checkOrigin)
+		// The origin check guards every state-changing API request;
+		// the security headers already ran at the router root. The
+		// JSON body limit moved into the JSON group below so multipart
+		// uploads can stream past it (the receiver's own size limit
+		// governs them).
+		r.Use(checkOrigin)
 
 		// The wrapper reuses the generated request binders (the path
 		// uuid, the Last-Event-ID header) and routes their failures

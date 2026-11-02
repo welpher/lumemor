@@ -62,7 +62,10 @@ test('a locale switch updates <html lang> and the rendered text', async () => {
 	await initI18n();
 	setLocale('en');
 	await tick();
-	const app = mount(Login, { target: document.body });
+	const app = mount(Login, {
+		target: document.body,
+		props: { data: { setupRequired: false, redirectTo: '/timeline' }, params: {} }
+	});
 	flushSync();
 	expect(document.body.textContent).toContain('Sign in');
 	setLocale('zh-Hans');

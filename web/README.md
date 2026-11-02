@@ -39,19 +39,30 @@ build before the Go build.
 
 ```
 src/routes/
-  +layout.ts        SPA mode: ssr=false, prerender=false
-  +layout.svelte    app shell skeleton (top bar, static placeholders)
+  +layout.ts        SPA mode: ssr=false, prerender=false; boot load:
+                    i18n init + session probe
+  +layout.svelte    app shell root: fonts, theme, SessionGuard watcher
   +page.svelte      welcome placeholder at /
-  (content)/        content shell routes
+  (content)/        content shell: top bar + drawer + avatar menu
+    +layout.ts      session guard (unauthenticated -> /login?redirectTo=)
+    +layout.svelte  the content-shell chrome
     timeline/ albums/ a/[id]/ trash/ favorites/
   (auth)/           minimal shell routes
-    login/
+    login/          the sign-in form (+page.ts: guard mirror, first-run
+                    check, redirectTo validation)
   (tool)/           tool shell routes
+    +layout.ts      session guard (the tool chrome is a later task)
     admin/
 ```
 
+The session machinery lives in `src/lib/auth`: `api.ts` (the shared
+fetch wrapper with the 401 interceptor), `session.svelte.ts` (the
+session store: boot probe, login, logout), `guard.ts` (the load-time
+route guard) and `SessionGuard.svelte` (the runtime watcher that
+reacts to a mid-session expiry with the redirect to the login page).
+
 Current pages are placeholders; later tasks fill them in and add the
-per-group layouts, remaining routes and behaviors.
+remaining routes and behaviors.
 
 ## Serving contract
 
