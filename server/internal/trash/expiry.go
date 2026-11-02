@@ -19,10 +19,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/welpher/lumemor/server/internal/db"
@@ -51,10 +49,15 @@ type ExpiryCounts struct {
 // RunExpiry purges the expired trash rows: rows whose deleted_at
 // fell past the instance's retention window (instance settings key
 // trash_retention_days, default 30). The retention window is read
-// once per run and becomes the cutoff of both the candidate listing
-// and the guarded delete, so the two never disagree. A corrupt
-// setting row degrades to the default (logged, never fatal) so one
-// bad row cannot silently stop the lifecycle.
+// once per run and parameterizes both the candidate listing and the
+// guarded delete, and each statement computes the deadline itself
+// on the database's own clock -- the same clock that stamped the
+// deletion marks, so an application clock drifting against the
+// database's (a separate container in the compose deployment, or
+// the test host against the throwaway database container) can never
+// shift the boundary. A corrupt setting row degrades to the default
+// (logged, never fatal) so one bad row cannot silently stop the
+// lifecycle.
 //
 // Per candidate: the shared-blob reference count is taken first, the
 // guarded delete runs, and only a row the delete actually removed
@@ -80,11 +83,10 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 		// for the operator; the counts and the deadline stay honest.
 		slog.Error("trash expiry: retention setting is corrupt, using the default", "error", err)
 	}
-	cutoff := time.Now().AddDate(0, 0, -retention)
 
 	rows, err := queries.ListExpiredAssets(ctx, dbgen.ListExpiredAssetsParams{
-		DeletedAt: pgtype.Timestamptz{Time: cutoff, Valid: true},
-		Limit:     ExpiryBatchLimit,
+		RetentionDays: int32(retention),
+		LimitCount:    ExpiryBatchLimit,
 	})
 	if err != nil {
 		return ExpiryCounts{}, fmt.Errorf("trash expiry: list expired assets: %w", err)
@@ -110,8 +112,8 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 		// run skips its files -- the restore-vs-expiry race guard,
 		// in the statement itself.
 		deleted, err := queries.ExpireAsset(ctx, dbgen.ExpireAssetParams{
-			ID:        row.ID,
-			DeletedAt: pgtype.Timestamptz{Time: cutoff, Valid: true},
+			ID:            row.ID,
+			RetentionDays: int32(retention),
 		})
 		if err != nil {
 			return counts, fmt.Errorf("trash expiry: expire asset %s: %w", uuid.UUID(row.ID.Bytes), err)

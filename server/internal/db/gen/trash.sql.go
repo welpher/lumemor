@@ -62,17 +62,21 @@ const expireAsset = `-- name: ExpireAsset :execrows
 DELETE FROM assets
 WHERE id = $1
   AND deleted_at IS NOT NULL
-  AND deleted_at < $2
+  AND deleted_at < now() - make_interval(days => $2::int)
 `
 
 type ExpireAssetParams struct {
-	ID        pgtype.UUID        `json:"id"`
-	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
+	ID            pgtype.UUID `json:"id"`
+	RetentionDays int32       `json:"retention_days"`
 }
 
 // The expiry job's guarded delete: the row goes only if it is still
-// trashed AND still past the cutoff inside the deleting statement
-// itself. This is the restore-vs-expiry race guard (Review Focus
+// trashed AND still past the deadline inside the deleting statement
+// itself -- the deadline recomputed on the database's own clock,
+// exactly as the candidate listing computed it, so the guard and the
+// listing can never disagree across clocks (and time only moves
+// forward, so a row the listing found past the deadline stays past
+// it here). This is the restore-vs-expiry race guard (Review Focus
 // 4): a row restored between the job's candidate listing and this
 // statement fails the deleted_at IS NOT NULL arm, the delete
 // matches nothing, and the job skips the row's files -- a restored
@@ -80,7 +84,7 @@ type ExpireAssetParams struct {
 // deleted the row answers zero rows the same way. The cascades
 // (album_items, exif, favorites) take the row's dependents with it.
 func (q *Queries) ExpireAsset(ctx context.Context, arg ExpireAssetParams) (int64, error) {
-	result, err := q.db.Exec(ctx, expireAsset, arg.ID, arg.DeletedAt)
+	result, err := q.db.Exec(ctx, expireAsset, arg.ID, arg.RetentionDays)
 	if err != nil {
 		return 0, err
 	}
@@ -139,14 +143,14 @@ func (q *Queries) GetAssetByID(ctx context.Context, id pgtype.UUID) (Asset, erro
 const listExpiredAssets = `-- name: ListExpiredAssets :many
 SELECT id, file_path, media_kind FROM assets
 WHERE deleted_at IS NOT NULL
-  AND deleted_at < $1
+  AND deleted_at < now() - make_interval(days => $1::int)
 ORDER BY deleted_at
 LIMIT $2
 `
 
 type ListExpiredAssetsParams struct {
-	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
-	Limit     int32              `json:"limit"`
+	RetentionDays int32 `json:"retention_days"`
+	LimitCount    int32 `json:"limit_count"`
 }
 
 type ListExpiredAssetsRow struct {
@@ -156,15 +160,21 @@ type ListExpiredAssetsRow struct {
 }
 
 // The expiry job's candidates: trashed rows whose retention window
-// closed before the cutoff, oldest first, bounded per run so one
-// hour's sweep can never turn into an unbounded delete loop (v1
-// scale: 500 rows per run; anything deeper waits for the next run).
+// closed, oldest first, bounded per run so one hour's sweep can
+// never turn into an unbounded delete loop (v1 scale: 500 rows per
+// run; anything deeper waits for the next run). The deadline is
+// computed HERE, against the database's own clock -- the deletion
+// mark was stamped by now() on that same clock (SoftDeleteAsset
+// above), so the two can never disagree about "moments ago" (an
+// application container a fraction ahead or behind the database
+// would otherwise shift every boundary, the same drift the trash
+// listing's countdown already avoids by computing on this clock).
 // file_path rides along because the blob reference check below
 // needs it before the row goes away; media_kind rides along for the
 // asset.deleted event the run publishes per purged row (the same
 // id-plus-kind payload every asset event carries).
 func (q *Queries) ListExpiredAssets(ctx context.Context, arg ListExpiredAssetsParams) ([]ListExpiredAssetsRow, error) {
-	rows, err := q.db.Query(ctx, listExpiredAssets, arg.DeletedAt, arg.Limit)
+	rows, err := q.db.Query(ctx, listExpiredAssets, arg.RetentionDays, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}
