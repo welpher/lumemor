@@ -107,6 +107,26 @@ NON_ERROR_KEYS = {
     "welcome_body",
     "common_cancel",
     "common_close",
+    # Timeline wall UI strings (M2d Task 4).
+    "timeline_loading",
+    "timeline_empty",
+    "timeline_load_more",
+    "timeline_scrubber_label",
+    "action_retry",
+    "action_select",
+    "action_done",
+    "select_asset",
+    "batch_selected_count",
+    "action_favorite",
+    "action_unfavorite",
+    "action_hide",
+    "action_unhide",
+    "action_trash",
+    "action_restore",
+    "action_clear_selection",
+    "asset_favorite_label",
+    "asset_live_photo_label",
+    "asset_video_label",
 }
 
 KEY_PATTERN = re.compile(r"^[a-z0-9_]+$")
