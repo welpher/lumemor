@@ -1,0 +1,208 @@
+/*
+ * lumemor design tokens and base styles — the single central
+ * stylesheet for the visual language.
+ *
+ * Layer 1 (raw palette) holds every color token of the brand
+ * specification §3 verbatim, as `--color-<token>` custom properties
+ * named exactly after the token table. Raw values never change with
+ * the theme.
+ *
+ * Layer 2 (semantic roles) maps the palette onto UI roles and IS
+ * theme-dependent: `:root` carries the light theme (Paper page,
+ * Surface cards, Navy 900 text, Blue 700 accent), `html.dark` carries
+ * the dark theme (Night page, Night Surface cards, Cream text,
+ * Blue 300 accent). The contrast pairs follow the AA rules of the
+ * same spec section: primary button Blue 700 + white text in light
+ * (6.1:1) and Blue 300 + Navy 900 text in dark (7.6:1), links
+ * Blue 700 with Blue 800 hover in light and Blue 300 in dark.
+ *
+ * Typography, radii, shadows and motion follow spec §4/§5: Nunito for
+ * the wordmark and headings, a system stack for body text, card radii
+ * 16-20px, overlay radii 20-24px, very light shadows, 150-250ms
+ * ease-out transitions, and `prefers-reduced-motion` always honored.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Layer 1: raw palette (brand spec §3, verbatim, theme-independent)  */
+/* ------------------------------------------------------------------ */
+
+:root {
+	--color-navy-900: #1b2a5b; /* primary text, wordmark */
+	--color-navy-700: #2a3c75; /* secondary text, hover strokes */
+	--color-blue-800: #164a96; /* link hover, deep accent */
+	--color-blue-700: #1d5fbf; /* primary accent (light theme) */
+	--color-blue-600: #2f7de1; /* logo/chart only; large bold text */
+	--color-blue-300: #9dc3ff; /* dark-theme accent and links */
+	--color-blue-100: #dcebff; /* selected/chip background */
+	--color-blue-900: #1c4f9c; /* text on Blue 100 backgrounds */
+	--color-sun: #f6c15b; /* highlights and notices (sparingly) */
+	--color-gold-600: #c9974f; /* favorite star and brand warmth only */
+	--color-teal: #2e7d74; /* success state */
+	--color-ember: #e8694a; /* danger, delete, error */
+	--color-paper: #fff9f0; /* light page background (warm paper) */
+	--color-surface: #fffdf8; /* light cards and floating layers */
+	--color-night: #141a2e; /* dark page background */
+	--color-night-surface: #1b2238; /* dark cards and floating layers */
+	--color-text-secondary: #5b4e3f; /* secondary text on light */
+	--color-muted: #8b7e6a; /* placeholders and hints on light */
+	--color-cream-text: #f5efe2; /* text on dark backgrounds */
+
+	/* ---------------------------------------------------------------- */
+	/* Layer 2: semantic roles — light theme (Paper/Surface defaults)   */
+	/* ---------------------------------------------------------------- */
+
+	color-scheme: light;
+
+	--color-page: var(--color-paper);
+	--color-card: var(--color-surface);
+	--color-text: var(--color-navy-900);
+	--color-text-soft: var(--color-text-secondary);
+	--color-text-faint: var(--color-muted);
+
+	--color-accent: var(--color-blue-700); /* buttons, links, selection */
+	--color-accent-strong: var(--color-blue-800); /* button/link hover */
+	--color-accent-soft: var(--color-blue-100); /* selected background */
+	--color-accent-soft-text: var(--color-blue-900); /* text on soft */
+	--color-accent-on: #ffffff; /* text on primary accent fills */
+
+	--color-link: var(--color-blue-700);
+	--color-link-hover: var(--color-blue-800);
+
+	--color-success: var(--color-teal);
+	--color-danger: var(--color-ember); /* borders, icons, fills */
+	/* AA-safe destructive text: pure Ember on Paper reaches only 3:1,
+	 * so message text mixes it toward Navy 900 (about 4.8:1). */
+	--color-danger-text: color-mix(in srgb, var(--color-ember) 70%, var(--color-navy-900));
+	--color-notice: var(--color-sun);
+	--color-star: var(--color-gold-600); /* favorite star accents only */
+
+	--color-border: color-mix(in srgb, var(--color-navy-900) 14%, transparent);
+	--color-border-strong: color-mix(in srgb, var(--color-navy-900) 28%, transparent);
+
+	--shadow-card: 0 1px 2px rgb(27 42 91 / 0.05), 0 2px 12px rgb(27 42 91 / 0.07);
+	--shadow-overlay: 0 12px 40px rgb(20 26 46 / 0.18), 0 2px 8px rgb(20 26 46 / 0.12);
+
+	/* ---------------------------------------------------------------- */
+	/* Typography (spec §4)                                             */
+	/* ---------------------------------------------------------------- */
+
+	--font-display: 'Nunito',
+		system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
+	--font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC',
+		'Noto Sans SC', 'Helvetica Neue', Arial, sans-serif;
+
+	/* ---------------------------------------------------------------- */
+	/* Radii, shadows' companions and motion (spec §5)                  */
+	/* ---------------------------------------------------------------- */
+
+	--radius-control: 12px; /* buttons, inputs, chips */
+	--radius-card: 16px; /* cards (spec range 16-20) */
+	--radius-overlay: 20px; /* modals and popovers (spec range 20-24) */
+
+	--motion-fast: 150ms; /* micro interactions */
+	--motion-base: 200ms; /* surfaces entering/leaving (spec 150-250ms) */
+	--ease-standard: ease-out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Layer 2 (dark): Night/Night Surface, Cream text, Blue 300 accent    */
+/* ------------------------------------------------------------------ */
+
+html.dark {
+	color-scheme: dark;
+
+	--color-page: var(--color-night);
+	--color-card: var(--color-night-surface);
+	--color-text: var(--color-cream-text);
+	--color-text-soft: color-mix(in srgb, var(--color-cream-text) 78%, transparent);
+	--color-text-faint: color-mix(in srgb, var(--color-cream-text) 60%, transparent);
+
+	--color-accent: var(--color-blue-300);
+	--color-accent-strong: color-mix(in srgb, var(--color-blue-300) 82%, white);
+	--color-accent-soft: color-mix(in srgb, var(--color-blue-300) 18%, transparent);
+	--color-accent-soft-text: var(--color-blue-300);
+	/* Blue 300 fills carry Navy 900 text (7.6:1 on the dark theme). */
+	--color-accent-on: var(--color-navy-900);
+
+	--color-link: var(--color-blue-300);
+	--color-link-hover: color-mix(in srgb, var(--color-blue-300) 82%, white);
+
+	/* Pure Ember passes AA on Night (about 5.3:1), no darkening needed. */
+	--color-danger-text: var(--color-ember);
+
+	--color-border: color-mix(in srgb, var(--color-cream-text) 16%, transparent);
+	--color-border-strong: color-mix(in srgb, var(--color-cream-text) 30%, transparent);
+
+	--shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 12px rgb(0 0 0 / 0.3);
+	--shadow-overlay: 0 12px 40px rgb(0 0 0 / 0.55), 0 2px 8px rgb(0 0 0 / 0.4);
+}
+
+/* ------------------------------------------------------------------ */
+/* Base element styles                                                 */
+/* ------------------------------------------------------------------ */
+
+html {
+	background-color: var(--color-page);
+}
+
+body {
+	margin: 0;
+	font: 400 16px/1.6 var(--font-body);
+	color: var(--color-text);
+	background-color: var(--color-page);
+	/* Times, counts and other numerals align in tables and timelines. */
+	font-variant-numeric: tabular-nums;
+	-webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	margin: 0;
+	font-family: var(--font-display);
+	font-weight: 700;
+	line-height: 1.3;
+	color: var(--color-text);
+}
+
+a {
+	color: var(--color-link);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	transition: color var(--motion-fast) var(--ease-standard);
+}
+
+a:hover {
+	color: var(--color-link-hover);
+}
+
+::placeholder {
+	color: var(--color-text-faint);
+	opacity: 1;
+}
+
+/* A clearly visible keyboard focus everywhere (IA §6). */
+:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+/*
+ * Motion rules of spec §5: transitions run at 150-250ms ease-out and
+ * collapse under `prefers-reduced-motion`, so no decoration can force
+ * movement on motion-sensitive users.
+ */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		transition-delay: 0ms !important;
+		scroll-behavior: auto !important;
+	}
+}

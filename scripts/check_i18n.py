@@ -67,11 +67,31 @@ ERROR_ENUM_PATH = ("components", "schemas", "Error", "properties", "code", "enum
 # en.json keys that are UI strings rather than error-code translations
 # and are therefore exempt from the reverse direction of check 5: every
 # other en.json key must be the lowercase form of an Error.code enum
-# value. When the first real UI strings land, extend this allowlist;
-# once the UI string tables grow, split error-code translations and UI
+# value. The UI strings of the web shell (navigation, theme and
+# language toggles, login placeholder, modal chrome) live here; once
+# the UI string tables grow, split error-code translations and UI
 # strings into separate key namespaces and narrow the reverse check to
 # the error-code namespace.
-NON_ERROR_KEYS = {"app_name"}
+NON_ERROR_KEYS = {
+    "app_name",
+    "nav_open_menu",
+    "nav_search",
+    "action_upload",
+    "account_menu",
+    "theme_label",
+    "theme_light",
+    "theme_dark",
+    "theme_system",
+    "language_label",
+    "language_english",
+    "language_chinese",
+    "login_title",
+    "login_description",
+    "welcome_title",
+    "welcome_body",
+    "common_cancel",
+    "common_close",
+}
 
 KEY_PATTERN = re.compile(r"^[a-z0-9_]+$")
 PLACEHOLDER_PATTERN = re.compile(r"\{([A-Za-z0-9_]+)\}")

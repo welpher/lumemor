@@ -9,6 +9,16 @@ embedded into the Go server binary.
 - API clients are generated from the root `openapi/` spec via
   openapi-typescript — never hand-written
 - i18n consumes the flat JSON files in the root `i18n/` directory
+  directly (no copy, no sync step): `src/lib/i18n` reads them through
+  a relative `import.meta.glob`; vite's `server.fs.allow` (see
+  `vite.config.ts`) lets the dev server serve those out-of-tree files,
+  and rollup inlines them at build time
+- Design tokens live in `src/lib/theme/theme.css` (brand palette as
+  `--color-*` custom properties plus semantic light/dark roles); the
+  dark theme is the `.dark` class on `<html>`, following
+  `prefers-color-scheme` with a persisted manual override, and Nunito
+  (400/600/700, self-hosted via `@fontsource/nunito`) carries the
+  wordmark and headings
 
 ## Build pipeline
 
