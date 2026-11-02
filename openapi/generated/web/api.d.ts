@@ -679,8 +679,9 @@ export interface paths {
          *       re-encode) -- served as `image/avif`;
          *     - video assets: the poster frame, whatever `size` says -- the
          *       poster (the first frame, scaled into the tile box) is the
-         *       video's only serving copy until transcodes exist -- served
-         *       as `image/jpeg`.
+         *       video's thumbnail, while the playable stream is the
+         *       transcoded copy of `GET /assets/{id}/play` -- served as
+         *       `image/jpeg`.
          *
          *     The response is a private immutable static asset:
          *     `Cache-Control: private, max-age=31536000, immutable`, and a
@@ -748,6 +749,63 @@ export interface paths {
          *     `ASSET_NOT_FOUND`.
          */
         get: operations["getAssetOriginal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{id}/play": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream the transcoded playable copy of one owned video.
+         * @description Streams the web-safe transcoded MP4 of a video asset: the
+         *     pipeline's transcode job re-encoded the original into H.264
+         *     video (yuv420p) plus AAC audio -- the pair every browser plays
+         *     natively -- with the movie index relocated to the front of the
+         *     container (`+faststart`), so playback begins while the file is
+         *     still downloading. The stream is served inline as `video/mp4`
+         *     with no `Content-Disposition`: it feeds the client's video
+         *     element, while downloading the original bytes stays on `GET
+         *     /assets/{id}/original` (the transcoded copy is a derivative,
+         *     never the archival original).
+         *
+         *     The response is a private immutable static asset like the
+         *     thumbnail: `Cache-Control: private, max-age=31536000,
+         *     immutable`, and a strong `ETag` built from the first 16 hex
+         *     characters of the asset's checksum (quoted) -- the transcode is
+         *     a deterministic function of the immutable original bytes, so
+         *     the tag is stable across re-runs of the job. A matching
+         *     `If-None-Match` answers 304 with the same validators and no
+         *     body.
+         *
+         *     Byte ranges follow the Go standard library's `ServeContent`
+         *     semantics (video seeking needs them): a satisfiable single
+         *     range answers 206 with `Content-Range`; multiple ranges answer
+         *     a `multipart/byteranges` body; an unsatisfiable range answers
+         *     416 with the total size in `Content-Range`; a malformed Range
+         *     header is ignored and the full body answers 200.
+         *
+         *     Only video assets have a playable stream: an image asset
+         *     answers 404 `ASSET_NOT_FOUND` -- there is nothing to play, and
+         *     the answer is the asset's own not-found envelope, the same
+         *     anti-enumeration shape (byte for byte) as an unknown or a
+         *     foreign id. A video whose transcode has not been produced yet
+         *     -- the pipeline is still running, or the transcode job failed
+         *     and is retrying -- answers 404 `ASSET_NOT_READY`: the client
+         *     renders the poster frame (the thumbnail endpoint serves it)
+         *     and waits for the `asset.ready` event instead of treating the
+         *     asset as gone. The video pipeline counts three jobs (metadata,
+         *     thumbnail, transcode), so readiness follows all three.
+         */
+        get: operations["playAsset"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1202,8 +1260,9 @@ export interface components {
              */
             description: string;
             /**
-             * @description True once the whole pipeline of the asset (metadata and
-             *     serving copies) completed; the `asset.ready` event fires
+             * @description True once the whole pipeline of the asset completed -- the
+             *     metadata and thumbnail jobs for an image, plus the
+             *     transcode job for a video; the `asset.ready` event fires
              *     at that moment. Until then the client shows placeholders
              *     and the media endpoints answer `ASSET_NOT_READY` for
              *     missing derived files.
@@ -2962,6 +3021,120 @@ export interface operations {
              * @description No asset with this id is visible to the caller: the id is
              *     unknown or belongs to another account, and the two cases
              *     are indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The requested range is unsatisfiable for this file; the
+             *     `Content-Range` header of the error carries the total size
+             *     (`bytes *\/<size>`).
+             */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    playAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The transcoded stream, `video/mp4`. */
+            200: {
+                headers: {
+                    /**
+                     * @description Strong entity tag: the first 16 hex characters of the
+                     *     asset's checksum, quoted. The transcode is a
+                     *     deterministic function of the immutable original bytes,
+                     *     so the tag is stable across re-runs of the job.
+                     * @example "9f86d081884c7d65"
+                     */
+                    ETag?: string;
+                    /**
+                     * @description The transcoded copy is private to the owner and
+                     *     immutable (its content is a function of the immutable
+                     *     original bytes), so clients may cache it for a year.
+                     * @example private, max-age=31536000, immutable
+                     */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
+            /**
+             * @description A satisfiable single byte range (video seeking); the
+             *     `Content-Range` header names the served slice.
+             *     Multi-range requests answer `multipart/byteranges` instead.
+             */
+            206: {
+                headers: {
+                    /**
+                     * @description The served slice of the total file size.
+                     * @example bytes 0-99/24680
+                     */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
+            /**
+             * @description The `If-None-Match` value matched the entity tag; the
+             *     cached copy is current. The response carries the same
+             *     `ETag` and `Cache-Control` validators and no body.
+             */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Either no playable asset with this id is visible to the
+             *     caller (unknown id, foreign id, or an image asset --
+             *     `ASSET_NOT_FOUND`), or the video exists but its transcoded
+             *     stream is not on disk yet (`ASSET_NOT_READY` -- the
+             *     transcode job has not produced it).
              */
             404: {
                 headers: {

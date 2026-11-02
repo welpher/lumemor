@@ -35,9 +35,10 @@ import (
 // completed sweep job still inside River's retention). The upload
 // path enqueues WITHOUT unique opts, so its in-flight rows never join
 // the unique index: a stuck-looking row whose jobs are mid-pipeline
-// through the upload path gets a duplicate pair from the sweep, and
-// both run -- converged, not prevented, by the pipeline jobs' own
-// idempotency and the guarded decrement.
+// through the upload path gets a duplicate set from the sweep (two
+// jobs for an image, three for a video), and all of them run --
+// converged, not prevented, by the pipeline jobs' own idempotency
+// and the guarded decrement.
 
 // SweepInterval is the periodic cadence of the requeue sweep. One
 // hour bounds how long a stuck asset stays stuck after the process is
@@ -78,6 +79,10 @@ type AssetRequeuer interface {
 	// RequeueThumbnail inserts the thumbnail job for the asset under
 	// the same unique-keyed contract.
 	RequeueThumbnail(ctx context.Context, assetID uuid.UUID) (bool, error)
+	// RequeueTranscode inserts the transcode job for the asset under
+	// the same unique-keyed contract. The video arm calls it; the
+	// image arm does not.
+	RequeueTranscode(ctx context.Context, assetID uuid.UUID) (bool, error)
 }
 
 // RunRequeueSweep finds the stuck pipeline assets and re-enqueues
@@ -99,14 +104,14 @@ func RunRequeueSweep(ctx context.Context, pool *pgxpool.Pool, enqueuer AssetRequ
 		assetID := uuid.UUID(row.ID.Bytes)
 
 		// The row's media kind picks the jobs the recovery re-inserts.
-		// Both kinds share the same pair today -- the M2b two-job
-		// pipeline, a video's poster frame riding the thumbnail job.
-		// Task 6's transcode job splits the arms (video: metadata +
-		// thumbnail + transcode) and raises the upload's pending_jobs
-		// initialization to 3. Values outside the column's enum cannot
-		// reach here; one that somehow did is skipped, not fatal.
+		// An image counts the two-job pipeline of M2b (metadata +
+		// thumbnail); a video counts THREE since Task 6's transcode
+		// job (metadata + thumbnail + transcode), matching the
+		// upload's pending_jobs initialization. Values outside the
+		// column's enum cannot reach here; one that somehow did is
+		// skipped, not fatal.
 		switch row.MediaKind {
-		case dbgen.MediaKindImage, dbgen.MediaKindVideo:
+		case dbgen.MediaKindImage:
 			inserted, err := enqueuer.RequeueMetadata(ctx, assetID)
 			if err != nil {
 				return counts, fmt.Errorf("jobs: requeue metadata job of asset %s: %w", assetID, err)
@@ -117,6 +122,28 @@ func RunRequeueSweep(ctx context.Context, pool *pgxpool.Pool, enqueuer AssetRequ
 			inserted, err = enqueuer.RequeueThumbnail(ctx, assetID)
 			if err != nil {
 				return counts, fmt.Errorf("jobs: requeue thumbnail job of asset %s: %w", assetID, err)
+			}
+			if inserted {
+				counts.Enqueued++
+			}
+		case dbgen.MediaKindVideo:
+			inserted, err := enqueuer.RequeueMetadata(ctx, assetID)
+			if err != nil {
+				return counts, fmt.Errorf("jobs: requeue metadata job of asset %s: %w", assetID, err)
+			}
+			if inserted {
+				counts.Enqueued++
+			}
+			inserted, err = enqueuer.RequeueThumbnail(ctx, assetID)
+			if err != nil {
+				return counts, fmt.Errorf("jobs: requeue thumbnail job of asset %s: %w", assetID, err)
+			}
+			if inserted {
+				counts.Enqueued++
+			}
+			inserted, err = enqueuer.RequeueTranscode(ctx, assetID)
+			if err != nil {
+				return counts, fmt.Errorf("jobs: requeue transcode job of asset %s: %w", assetID, err)
 			}
 			if inserted {
 				counts.Enqueued++
@@ -150,6 +177,12 @@ func (q *Queue) RequeueThumbnail(ctx context.Context, assetID uuid.UUID) (bool, 
 	return requeueInsert(ctx, q.client, ThumbnailArgs{AssetID: assetID})
 }
 
+// RequeueTranscode inserts the transcode job for the asset under the
+// same unique-keyed contract as RequeueMetadata.
+func (q *Queue) RequeueTranscode(ctx context.Context, assetID uuid.UUID) (bool, error) {
+	return requeueInsert(ctx, q.client, TranscodeArgs{AssetID: assetID})
+}
+
 // requeueInsert inserts one pipeline job with uniqueness over its
 // kind and encoded args, reporting whether a new job entered the
 // queue (River marks a unique-skipped insert through
@@ -165,12 +198,13 @@ func requeueInsert(ctx context.Context, client *river.Client[pgx.Tx], args river
 		// already ran: a repeated or overlapping sweep re-inserts
 		// nothing. The boundary: River's conflict clause matches rows
 		// carrying the same unique key, and only KEYED inserts carry
-		// one -- the upload path's EnqueueMetadata/EnqueueThumbnail
-		// insert unkeyed, so a row whose jobs are in flight through
-		// the upload path gets a duplicate pair from the sweep, and
-		// both run. That duplicate is converged, not prevented: the
-		// pipeline jobs are idempotent (re-runs overwrite the same
-		// outputs) and the guarded readiness decrement no-ops.
+		// one -- the upload path's EnqueueMetadata/EnqueueThumbnail/
+		// EnqueueTranscode insert unkeyed, so a row whose jobs are in
+		// flight through the upload path gets a duplicate set from the
+		// sweep, and all of them run. That duplicate is converged, not
+		// prevented: the pipeline jobs are idempotent (re-runs
+		// overwrite the same outputs) and the guarded readiness
+		// decrement no-ops.
 		UniqueOpts: river.UniqueOpts{ByArgs: true},
 	})
 	if err != nil {
@@ -232,6 +266,12 @@ func (r sweepClientRequeuer) RequeueMetadata(ctx context.Context, assetID uuid.U
 // unique-keyed insert.
 func (r sweepClientRequeuer) RequeueThumbnail(ctx context.Context, assetID uuid.UUID) (bool, error) {
 	return requeueInsert(ctx, r.client, ThumbnailArgs{AssetID: assetID})
+}
+
+// RequeueTranscode implements AssetRequeuer through the shared
+// unique-keyed insert.
+func (r sweepClientRequeuer) RequeueTranscode(ctx context.Context, assetID uuid.UUID) (bool, error) {
+	return requeueInsert(ctx, r.client, TranscodeArgs{AssetID: assetID})
 }
 
 // sweepPeriodicJobs returns the periodic job registrations the queue

@@ -1,7 +1,8 @@
 // Package jobs runs the lumemor asset pipeline on a River queue
 // (PostgreSQL-native, over the shared pgxpool): the metadata job of
-// Task 4 and, from Task 5 on, the thumbnail job. River owns its queue
-// tables (river_job and friends) -- they are created by River's
+// Task 4, the thumbnail job of Task 5, and the transcode job of
+// Task 6 -- three jobs per video asset, two per image. River owns its
+// queue tables (river_job and friends) -- they are created by River's
 // bundled migrations at startup and are deliberately not part of the
 // goose-managed schema.
 package jobs
@@ -32,11 +33,12 @@ const maxWorkers = 4
 // softStopTimeout bounds a graceful drain: once it elapses, in-flight
 // job contexts are cancelled (River escalates the soft stop to a hard
 // one) instead of the drain waiting forever. It sits above the
-// pipeline's largest job envelope -- the thumbnail job's 90s (whose
-// ffmpeg subprocess carries a 60s cap of its own; the metadata job's
-// exiftool only 30s) -- so a healthy job always finishes within the
-// drain.
-const softStopTimeout = 95 * time.Second
+// pipeline's largest job envelope -- the transcode job's 150s (whose
+// ffmpeg subprocess carries a 120s cap of its own; the thumbnail
+// job's 90s carries the poster extraction's 60s subprocess cap, and
+// the metadata job's exiftool only 30s) -- so a healthy job always
+// finishes within the drain.
+const softStopTimeout = 155 * time.Second
 
 // Config carries the dependencies of the job queue.
 type Config struct {
@@ -108,6 +110,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		dataDir: cfg.DataDir,
 		logger:  logger,
 	})
+	river.AddWorker(workers, &TranscodeWorker{
+		pool:    cfg.Pool,
+		bus:     cfg.Bus,
+		dataDir: cfg.DataDir,
+		logger:  logger,
+	})
 	river.AddWorker(workers, &SweepWorker{
 		pool:   cfg.Pool,
 		logger: logger,
@@ -136,7 +144,9 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		// job timeout. The metadata job's exiftool subprocess carries
 		// its own tighter 30 second bound inside that envelope; the
 		// thumbnail job raises its envelope to 90s for the ffmpeg
-		// poster extraction's 60s budget (see ThumbnailWorker.Timeout).
+		// poster extraction's 60s budget (see ThumbnailWorker.Timeout);
+		// the transcode job raises its envelope to 150s for its
+		// ffmpeg re-encode's 120s budget (see TranscodeWorker.Timeout).
 		//
 		// The two hourly maintenance jobs run through River's periodic
 		// job scheduler: the elected leader enqueues the periodic jobs
@@ -184,6 +194,21 @@ func (q *Queue) EnqueueMetadata(ctx context.Context, assetID uuid.UUID) error {
 func (q *Queue) EnqueueThumbnail(ctx context.Context, assetID uuid.UUID) error {
 	if _, err := q.client.Insert(ctx, ThumbnailArgs{AssetID: assetID}, nil); err != nil {
 		return fmt.Errorf("insert thumbnail job: %w", err)
+	}
+	return nil
+}
+
+// EnqueueTranscode inserts the transcode job for a VIDEO asset: the
+// playable web-safe MP4 only videos need (the upload handler gates the
+// call on the media kind; an image asset's pipeline counts two jobs,
+// not three). Like the other enqueues it must run after the upload
+// transaction committed. Re-enqueueing runs the job again idempotently:
+// the re-encode overwrites the same play.mp4, the guarded readiness
+// decrement does not fire twice, and no second asset.ready event is
+// published.
+func (q *Queue) EnqueueTranscode(ctx context.Context, assetID uuid.UUID) error {
+	if _, err := q.client.Insert(ctx, TranscodeArgs{AssetID: assetID}, nil); err != nil {
+		return fmt.Errorf("insert transcode job: %w", err)
 	}
 	return nil
 }
