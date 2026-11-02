@@ -53,6 +53,15 @@
 		return () => clearInterval(timer);
 	});
 
+	// An unknown error code (a proxy answer, a drifted contract) has
+	// no i18n key; svelte-i18n echoes the key itself, which would leak
+	// code jargon into the UI -- such codes fall back to the generic
+	// message.
+	function errorText(key: string): string {
+		const text = $_(key);
+		return text === key ? $_('internal') : text;
+	}
+
 	async function handleSubmit(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
 		if (submitting) {
@@ -100,9 +109,13 @@
 						bind:value={password}
 					/>
 					{#if errorKey !== ''}
-						<p class="login__error" role="alert">{$_(errorKey)}</p>
+						<p class="login__error" role="alert">{errorText(errorKey)}</p>
 					{/if}
-					{#if countdownRemaining > 0}
+					{#if retryAfterSeconds !== null && countdownRemaining > 0}
+						<!-- The hint's lifetime is retryAfterSeconds (the response's
+						     authoritative rate-limit state): a resubmit nulls it, so a
+						     credential-failure outcome can never leave a frozen
+						     countdown next to its own message. -->
 						<p class="login__hint">{$_('login_retry_in', { values: { seconds: countdownRemaining } })}</p>
 					{/if}
 					<div class="login__actions">
