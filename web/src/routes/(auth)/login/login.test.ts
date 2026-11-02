@@ -152,6 +152,66 @@ test('a 429 without a Retry-After shows the message without a countdown', async 
 	flushSync();
 });
 
+test('retrying during a countdown clears the hint on a different outcome', async () => {
+	const page = mountLogin();
+	flushSync();
+
+	// First attempt: rate-limited with a 30-second Retry-After, the
+	// countdown hint ticking.
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () =>
+			jsonResponse(429, { code: 'AUTH_RATE_LIMITED', message: 'slow down' }, { 'Retry-After': '30' })
+		)
+	);
+	fillField('#login-email', 'ada@example.test');
+	fillField('#login-password', 'again');
+	submitForm();
+	await settle();
+	expect(document.body.querySelector('.login__hint')?.textContent).toBe(
+		'You can try again in 30 seconds.'
+	);
+
+	// The user retries before the window ends and the server now
+	// answers a plain credential failure: the stale countdown must be
+	// gone -- only the credential error may show (the regression the
+	// review found: a frozen "try again in N seconds" hint).
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS', message: 'no' }))
+	);
+	submitForm();
+	await settle();
+
+	expect(document.body.querySelector('.login__hint')).toBeNull();
+	expect(document.body.querySelector('.login__error')?.textContent).toBe(
+		'Incorrect email or password. Please try again.'
+	);
+	unmount(page);
+	flushSync();
+});
+
+test('an unknown error code falls back to the generic message', async () => {
+	const page = mountLogin();
+	flushSync();
+
+	// A code with no i18n key (a proxy answer, contract drift) must
+	// not leak the raw key into the UI.
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(502, { code: 'MYSTERY_PROXY_CODE', message: 'what' }))
+	);
+	fillField('#login-email', 'ada@example.test');
+	fillField('#login-password', 'x');
+	submitForm();
+	await settle();
+
+	const error = document.body.querySelector<HTMLParagraphElement>('.login__error');
+	expect(error?.textContent).toBe('Something went wrong. Please try again.');
+	unmount(page);
+	flushSync();
+});
+
 test('a network failure maps to the generic internal message', async () => {
 	const page = mountLogin();
 	flushSync();
