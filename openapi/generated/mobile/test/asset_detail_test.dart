@@ -85,7 +85,7 @@ void main() {
       // TODO
     });
 
-    // True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
+    // True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video (for a Live Photo component, the transcode job alone); the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
     // bool isReady
     test('to test the property `isReady`', () async {
       // TODO
@@ -115,7 +115,7 @@ void main() {
       // TODO
     });
 
-    // For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, the transcoded play stream is not); null otherwise. 
+    // For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, and its transcoded play stream is served there too); null otherwise. 
     // String livePhotoVideoId
     test('to test the property `livePhotoVideoId`', () async {
       // TODO

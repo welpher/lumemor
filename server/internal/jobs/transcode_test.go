@@ -461,3 +461,78 @@ func TestTranscodeJobNonVideoIsNoop(t *testing.T) {
 		t.Errorf("asset.ready events = %d, want 0", got)
 	}
 }
+
+// TestTranscodeJobTrashedPairComponentCompletes pins the trashed-pair
+// semantics of the component's transcode job. The verified behavior
+// it matches: the metadata and thumbnail jobs hold NO deleted_at
+// check -- an in-flight job whose row was soft-deleted mid-queue runs
+// to completion, because the soft delete deliberately leaves pipeline
+// state alone (a trashed row finishing its pipeline is harmless; its
+// readiness never surfaces in any live view). The transcode job rides
+// the same discipline: over a trashed pair it still derives the
+// playable copy and completes the component's counter -- but, being a
+// component, it never announces. (The gone-row no-op above stays the
+// only early exit: an EXPIRED row answers no row at all.)
+func TestTranscodeJobTrashedPairComponentCompletes(t *testing.T) {
+	requireTranscodeToolchain(t)
+	e := newEnv(t)
+
+	video, err := os.ReadFile(filepath.Join("..", "media", "testdata", "tiny.mp4"))
+	if err != nil {
+		t.Fatalf("read video fixture: %v", err)
+	}
+	deviceTakenAt := time.Date(2021, 8, 9, 10, 11, 12, 0, time.UTC).Truncate(time.Microsecond)
+	componentID := e.insertAssetKind(t, "originals/video/trashed-pair.mov", video, deviceTakenAt,
+		`{}`, dbgen.MediaKindVideo, "video/quicktime", 1)
+	photoID := e.insertAssetKind(t, "originals/video/trashed-pair.jpg", jpegBytes(t), deviceTakenAt,
+		`{}`, dbgen.MediaKindImage, "image/jpeg", 2)
+	// The pair's shape: the photo links to its component, the
+	// component carries the flag -- then the pair is trashed, both
+	// rows together (the pair-trash semantics of the trash handler,
+	// stamped directly here to keep the worker drive deterministic).
+	if _, err := e.pool.Exec(context.Background(), `
+		UPDATE assets SET live_photo_video_id = $1 WHERE id = $2`, pgUUID(componentID), pgUUID(photoID)); err != nil {
+		t.Fatalf("link the pair: %v", err)
+	}
+	if _, err := e.pool.Exec(context.Background(), `
+		UPDATE assets SET is_component = true WHERE id = $1`, pgUUID(componentID)); err != nil {
+		t.Fatalf("flag the component: %v", err)
+	}
+	if _, err := e.pool.Exec(context.Background(), `
+		UPDATE assets SET deleted_at = now() WHERE id IN ($1, $2)`,
+		pgUUID(componentID), pgUUID(photoID)); err != nil {
+		t.Fatalf("trash the pair: %v", err)
+	}
+
+	// The worker is invoked directly, mirroring a job that was
+	// already in the queue when the pair was trashed.
+	worker := &TranscodeWorker{
+		pool:    e.pool,
+		bus:     e.bus,
+		dataDir: e.dataDir,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	job := &river.Job[TranscodeArgs]{Args: TranscodeArgs{AssetID: componentID}}
+	if err := worker.Work(context.Background(), job); err != nil {
+		t.Fatalf("Work of a trashed pair's component = %v, want nil", err)
+	}
+
+	// The derivation ran (no deleted_at no-op): the playable copy
+	// exists with the +faststart layout, the counter drained, and
+	// ready_at is stamped -- the trashed row's completion is inert to
+	// every live view, exactly like the metadata and thumbnail jobs.
+	requireTranscodedOutput(t, componentID)
+	state := e.assetOf(t, componentID)
+	if state.pending != 0 {
+		t.Errorf("component pending_jobs = %d, want 0 after the completion", state.pending)
+	}
+	if !state.readyAt.Valid {
+		t.Error("component ready_at is not stamped after the completion, want the drained counter")
+	}
+
+	// The component never announces -- trashed or not.
+	time.Sleep(300 * time.Millisecond)
+	if got := countEvents(e.bus, "asset.ready"); got != 0 {
+		t.Errorf("asset.ready events = %d, want 0 (a component announces nothing)", got)
+	}
+}

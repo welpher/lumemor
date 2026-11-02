@@ -36,8 +36,10 @@ import (
 // volume, so in practice the bound never bites.
 const ExpiryBatchLimit = 500
 
-// ExpiryCounts reports one expiry run: the rows it deleted, the
-// original files it removed, and the ids it announced. A shared blob
+// ExpiryCounts reports one expiry run: the rows it deleted and the
+// original files it removed (announcements are not counted -- every
+// non-component purge publishes one asset.deleted, component purges
+// none, so the rows are the honest number). A shared blob
 // (another row still referencing the file) keeps the file, so the
 // row and file counts diverge by design; the counts are the single
 // log line each run emits.
@@ -70,8 +72,12 @@ type ExpiryCounts struct {
 //
 // The bus, when wired, receives one asset.deleted event per purged
 // row -- the trash view of a connected client follows the expiry the
-// same way it follows every other lifecycle transition. A nil bus
-// publishes nothing.
+// same way it follows every other lifecycle transition. A Live
+// Photo's component row (M2d) is the one exception: its purge stays
+// silent, because the trash view never listed components (the pair
+// is represented by its photo), so an announcement for one would be
+// noise no client can act on -- the row still goes, only the event
+// is suppressed. A nil bus publishes nothing.
 func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *events.Bus) (ExpiryCounts, error) {
 	queries := dbgen.New(pool)
 
@@ -133,7 +139,10 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 		if refs == 0 {
 			counts.FilesRemoved++
 		}
-		if bus != nil {
+		if bus != nil && !row.IsComponent {
+			// Components stay silent (see the function comment): the
+			// row is purged above like any other, but no client view
+			// ever listed it, so there is nothing to announce.
 			bus.Publish("asset.deleted", map[string]string{
 				"assetId": assetID.String(),
 				"kind":    string(row.MediaKind),

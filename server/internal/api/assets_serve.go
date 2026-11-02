@@ -2,7 +2,9 @@
 // asset, the derived thumbnail (or video poster) as a cacheable
 // static asset, and the original file as a download with Range
 // support. M2c Task 6 adds the video play stream: the transcoded
-// web-safe MP4 served inline with the same static-asset discipline.
+// web-safe MP4 served inline with the same static-asset discipline;
+// M2d extends it to the Live Photo component video, whose playable
+// copy arrives through its own transcode job.
 // The permission model is owner-only: every read funnels through the
 // owner-scoped sqlc query, and a miss answers the anti-enumeration
 // 404 -- byte-identical for unknown and foreign ids.
@@ -187,9 +189,12 @@ func (s *server) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id ope
 }
 
 // PlayAsset implements GET /api/v1/assets/{id}/play: the transcoded
-// playable copy of a video asset, streamed inline for playback (the
-// client's video element), with byte ranges for seeking. The stream
-// is a pipeline product, so it exists only once the transcode job
+// playable copy of a video asset -- a standalone video, or a Live
+// Photo's component video (M2d: the component counts a transcode of
+// its own, so the pair's motion plays through this endpoint by the
+// component's id) -- streamed inline for playback (the client's
+// video element), with byte ranges for seeking. The stream is a
+// pipeline product, so it exists only once the transcode job
 // produced it -- unlike the original, which is servable immediately.
 func (s *server) PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
@@ -211,18 +216,19 @@ func (s *server) PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_ty
 		return
 	}
 
-	// A playable stream exists only for the client-visible video
-	// assets. An image has none; so does a Live Photo's component
-	// video row -- it counts no pipeline of its own (its pending_jobs
-	// stays 0, the pair's visible asset is the image), so no job will
-	// ever produce its play file and a not-ready answer would have a
-	// client waiting for an event that never fires. Both answer the
-	// asset's own anti-enumeration 404 -- the same envelope, byte for
-	// byte, as an unknown or a foreign id -- rather than a distinct
-	// error that would leak the kind's shape for ids the caller may
-	// not even own. (The component's original stays downloadable by
-	// its id through /original.)
-	if row.MediaKind != dbgen.MediaKindVideo || row.IsComponent {
+	// A playable stream exists only for the video family. An image
+	// has none -- it answers the asset's own anti-enumeration 404, the
+	// same envelope, byte for byte, as an unknown or a foreign id,
+	// rather than a distinct error that would leak the kind's shape
+	// for ids the caller may not even own. A Live Photo's component
+	// video row DOES have one (M2d reversed the M2c gate that 404ed
+	// it): the component counts a transcode job of its own, so its
+	// playable copy arrives exactly like any video's and the pair's
+	// motion plays through this endpoint by the component's id --
+	// HEVC components re-encoded to the web-safe pair every browser
+	// plays. (The component's original also stays downloadable by its
+	// id through /original.)
+	if row.MediaKind != dbgen.MediaKindVideo {
 		s.writeAssetNotFound(w)
 		return
 	}
@@ -231,8 +237,10 @@ func (s *server) PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_ty
 	// (storage/encoded/<assetID>/play.mp4). A miss is the not-ready
 	// state of every derived file: the transcode job has not produced
 	// it yet (or failed and is retrying), so the client renders the
-	// poster and waits for asset.ready instead of treating the asset
-	// as gone.
+	// poster (a standalone video) or keeps the pair's still photo (a
+	// Live Photo component, whose readiness the photo announces on
+	// its own schedule) and retries instead of treating the asset as
+	// gone.
 	file, err := os.Open(storage.EncodedPath(uuid.UUID(row.ID.Bytes).String()))
 	if errors.Is(err, fs.ErrNotExist) {
 		s.writeError(w, http.StatusNotFound, apigen.ASSETNOTREADY,

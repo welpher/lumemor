@@ -141,7 +141,7 @@ func (q *Queries) GetAssetByID(ctx context.Context, id pgtype.UUID) (Asset, erro
 }
 
 const listExpiredAssets = `-- name: ListExpiredAssets :many
-SELECT id, file_path, media_kind FROM assets
+SELECT id, file_path, media_kind, is_component FROM assets
 WHERE deleted_at IS NOT NULL
   AND deleted_at < now() - make_interval(days => $1::int)
 ORDER BY deleted_at
@@ -154,9 +154,10 @@ type ListExpiredAssetsParams struct {
 }
 
 type ListExpiredAssetsRow struct {
-	ID        pgtype.UUID `json:"id"`
-	FilePath  string      `json:"file_path"`
-	MediaKind MediaKind   `json:"media_kind"`
+	ID          pgtype.UUID `json:"id"`
+	FilePath    string      `json:"file_path"`
+	MediaKind   MediaKind   `json:"media_kind"`
+	IsComponent bool        `json:"is_component"`
 }
 
 // The expiry job's candidates: trashed rows whose retention window
@@ -172,7 +173,10 @@ type ListExpiredAssetsRow struct {
 // file_path rides along because the blob reference check below
 // needs it before the row goes away; media_kind rides along for the
 // asset.deleted event the run publishes per purged row (the same
-// id-plus-kind payload every asset event carries).
+// id-plus-kind payload every asset event carries); is_component
+// rides along (M2d) so the run can keep the component rows' purges
+// SILENT -- the trash view never lists components (the pair is
+// represented by its photo), so their expiry events would be noise.
 func (q *Queries) ListExpiredAssets(ctx context.Context, arg ListExpiredAssetsParams) ([]ListExpiredAssetsRow, error) {
 	rows, err := q.db.Query(ctx, listExpiredAssets, arg.RetentionDays, arg.LimitCount)
 	if err != nil {
@@ -182,7 +186,12 @@ func (q *Queries) ListExpiredAssets(ctx context.Context, arg ListExpiredAssetsPa
 	var items []ListExpiredAssetsRow
 	for rows.Next() {
 		var i ListExpiredAssetsRow
-		if err := rows.Scan(&i.ID, &i.FilePath, &i.MediaKind); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.FilePath,
+			&i.MediaKind,
+			&i.IsComponent,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
