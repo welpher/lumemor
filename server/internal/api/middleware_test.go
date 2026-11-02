@@ -12,12 +12,13 @@ import (
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 )
 
-// TestMiddlewareChain pins the request pipeline of the /api/v1 tree:
-// every JSON body is capped at 1 MiB, every API response carries the
-// security headers, and non-GET requests with a foreign Origin header
-// are refused before any handler runs. The handlers themselves are
-// irrelevant here -- a malformed login payload reaches none of the
-// database code, so the router runs without a pool.
+// TestMiddlewareChain pins the request pipeline of the server: every
+// JSON body is capped at 1 MiB, every response carries the security
+// headers (the root-level chain covers the API tree and the
+// operational endpoints alike), and non-GET requests with a foreign
+// Origin header are refused before any handler runs. The handlers
+// themselves are irrelevant here -- a malformed login payload reaches
+// none of the database code, so the router runs without a pool.
 func TestMiddlewareChain(t *testing.T) {
 	router := NewRouter(&Deps{Version: testVersion})
 	postLogin := func(origin string, body string) *httptest.ResponseRecorder {
@@ -31,7 +32,11 @@ func TestMiddlewareChain(t *testing.T) {
 		return rec
 	}
 
-	t.Run("SecurityHeadersOnAPIResponses", func(t *testing.T) {
+	t.Run("SecurityHeadersOnEveryResponse", func(t *testing.T) {
+		// The chain lives at the router root: the API tree, the
+		// operational endpoints, the wizard page and the SPA shell
+		// (with its assets -- see static_test.go for the SPA-surface
+		// half) all carry the two headers.
 		rec := postLogin("", `not json`)
 
 		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
@@ -41,13 +46,35 @@ func TestMiddlewareChain(t *testing.T) {
 			t.Errorf("Referrer-Policy = %q, want strict-origin-when-cross-origin", got)
 		}
 
-		// The chain belongs to the API tree: the operational endpoints
-		// outside it stay as they are (page-level headers arrive with
-		// the web milestone's CSP work).
+		// The operational endpoints share the root chain.
 		rec = httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
-		if got := rec.Header().Get("X-Content-Type-Options"); got != "" {
-			t.Errorf("GET /healthz carries X-Content-Type-Options = %q, want none (outside the API chain)", got)
+		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("GET /healthz X-Content-Type-Options = %q, want nosniff (root-level chain)", got)
+		}
+		if got := rec.Header().Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
+			t.Errorf("GET /healthz Referrer-Policy = %q, want strict-origin-when-cross-origin", got)
+		}
+
+		// The first-run wizard page too.
+		rec = httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/setup", nil))
+		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("GET /setup X-Content-Type-Options = %q, want nosniff (root-level chain)", got)
+		}
+		if got := rec.Header().Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
+			t.Errorf("GET /setup Referrer-Policy = %q, want strict-origin-when-cross-origin", got)
+		}
+
+		// The SPA client-side-route fallback (the catch-all) is a
+		// page response like the shell itself.
+		rec = httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
+		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Errorf("GET /login X-Content-Type-Options = %q, want nosniff (root-level chain)", got)
+		}
+		if got := rec.Header().Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
+			t.Errorf("GET /login Referrer-Policy = %q, want strict-origin-when-cross-origin", got)
 		}
 	})
 
