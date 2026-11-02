@@ -1,0 +1,54 @@
+# Continuous integration for the web (SvelteKit) app: toolchain
+# install, static checks plus unit tests, and the adapter-static build
+# whose output the Go server embeds. The path filters keep this
+# workflow from running on changes that cannot affect it; the workflow
+# also runs when its own definition changes.
+
+name: web
+
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - '.github/workflows/web.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/web.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: install, check, build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # Matches web/package.json's packageManager field; bump both
+          # together.
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      # The Makefile targets are the same gates developers run locally;
+      # pnpm freezes the committed lockfile automatically in CI.
+      - name: Install dependencies
+        run: make web-install
+
+      - name: Check (svelte-check and vitest)
+        run: make web-check
+
+      - name: Build (adapter-static)
+        run: make web-build
