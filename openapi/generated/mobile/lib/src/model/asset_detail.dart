@@ -10,7 +10,7 @@ import 'package:built_value/serializer.dart';
 
 part 'asset_detail.g.dart';
 
-/// One asset as the detail endpoint returns it: the upload response's identity and storage fields plus the pipeline's refinements. The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
+/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, and the two owner-level attributes the PATCH endpoint edits (`description`, `isHidden`). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the asset.
@@ -24,12 +24,14 @@ part 'asset_detail.g.dart';
 /// * [takenAt] - Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the response renders the best value the server has at answer time. 
 /// * [takenAtSource] - Where `takenAt` comes from: `import` is the device-reported capture time of the upload, `exif` an EXIF capture time the metadata job resolved with an offset, `file` a file timestamp (reserved for the future directory-album importer). 
 /// * [isTrashed] - True when the asset sits in the trash.
-/// * [isReady] - True once the whole pipeline of the asset (metadata and serving copies) completed; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
+/// * [isHidden] - True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
+/// * [description] - The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale. 
+/// * [isReady] - True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
 /// * [width] - Pixel width in sensor order (not orientation-corrected); null until the metadata job refined the dimensions. 
 /// * [height] - Pixel height in sensor order (not orientation-corrected); null until the metadata job refined the dimensions. 
 /// * [durationMs] - Playback duration of a video in milliseconds; null for images and until the metadata job refined it. 
 /// * [blurhash] - The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it. 
-/// * [livePhotoVideoId] - For a Live Photo image, the id of its linked component video row (never in the timeline, but resolvable for playback); null otherwise. 
+/// * [livePhotoVideoId] - For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, the transcoded play stream is not); null otherwise. 
 /// * [exif] - The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
 @BuiltValue()
 abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
@@ -79,7 +81,15 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   @BuiltValueField(wireName: r'isTrashed')
   bool get isTrashed;
 
-  /// True once the whole pipeline of the asset (metadata and serving copies) completed; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
+  /// True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
+  @BuiltValueField(wireName: r'isHidden')
+  bool get isHidden;
+
+  /// The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale. 
+  @BuiltValueField(wireName: r'description')
+  String get description;
+
+  /// True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
   @BuiltValueField(wireName: r'isReady')
   bool get isReady;
 
@@ -99,7 +109,7 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   @BuiltValueField(wireName: r'blurhash')
   String? get blurhash;
 
-  /// For a Live Photo image, the id of its linked component video row (never in the timeline, but resolvable for playback); null otherwise. 
+  /// For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, the transcoded play stream is not); null otherwise. 
   @BuiltValueField(wireName: r'livePhotoVideoId')
   String? get livePhotoVideoId;
 
@@ -184,6 +194,16 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
     yield serializers.serialize(
       object.isTrashed,
       specifiedType: const FullType(bool),
+    );
+    yield r'isHidden';
+    yield serializers.serialize(
+      object.isHidden,
+      specifiedType: const FullType(bool),
+    );
+    yield r'description';
+    yield serializers.serialize(
+      object.description,
+      specifiedType: const FullType(String),
     );
     yield r'isReady';
     yield serializers.serialize(
@@ -319,6 +339,20 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
             specifiedType: const FullType(bool),
           ) as bool;
           result.isTrashed = valueDes;
+          break;
+        case r'isHidden':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.isHidden = valueDes;
+          break;
+        case r'description':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.description = valueDes;
           break;
         case r'isReady':
           final valueDes = serializers.deserialize(

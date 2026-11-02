@@ -337,6 +337,211 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assets/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The aggregated timeline, one keyset page at a time.
+         * @description The aggregated timeline of the caller: the union of the albums
+         *     that feed it -- the caller's sync album (the core backup
+         *     stream, never excludable), the caller's own directory albums,
+         *     and every album shared to the caller regardless of type
+         *     (virtual albums included) -- minus the albums the caller
+         *     turned off with the per-user "keep out of the timeline"
+         *     preference (a missing preference row means kept in). The
+         *     caller's own virtual albums never feed their own timeline:
+         *     in-stream curation would be pure duplication. One asset
+         *     visible through several albums appears once.
+         *
+         *     Every item is live by construction: hidden assets, assets in
+         *     the trash, and the component video rows of Live Photos never
+         *     appear.
+         *
+         *     `isFavorite` is per-user state: it reports whether the
+         *     CALLING user favorites the asset (the favorites rows the
+         *     batch endpoint writes), whatever the asset's owner -- the
+         *     same item is a favorite for one viewer and a plain tile for
+         *     another.
+         *
+         *     Pages are keyset-paginated with an opaque cursor: the response
+         *     carries `nextCursor` exactly when another page exists, and the
+         *     client passes it back as `cursor` to continue after the last
+         *     item of the page. Cursors are stable for the ordering key
+         *     (`takenAt` descending, `id` as the tiebreak); an asset
+         *     uploaded with an older `takenAt` than the cursor appears only
+         *     in a fresh pagination run, never in the current one. The
+         *     first page omits the `cursor` parameter.
+         *
+         *     `limit` bounds the page size: absent means the default of
+         *     100, a value over 200 is answered with the maximum of 200,
+         *     and a value below 1 answers 400 `VALIDATION_FAILED`.
+         *
+         *     `albumId` narrows the response to that album's own timeline
+         *     instead of the aggregate: the album's items in the same
+         *     ordering and filtering. The caller must be able to see the
+         *     album (own album of any type, or an album shared to the
+         *     caller); an album that does not exist or is not visible
+         *     answers the empty list, not an error, so album ids cannot be
+         *     probed for existence through this endpoint.
+         */
+        get: operations["getTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply one set action to a batch of assets.
+         * @description The batch surface of the curation actions: one request applies
+         *     one action -- favorite, unfavorite, hide, unhide, trash or
+         *     restore -- to a list of up to 1000 asset ids, in one
+         *     transaction. The endpoint follows set semantics: it is a
+         *     convergence operation, not a state-change counter. Every id
+         *     that resolves to an asset the caller owns is applied (an id
+         *     already in the target state is the idempotent no-op and still
+         *     counts as affected), and every id that does not resolve --
+         *     unknown, or another account's asset, the two
+         *     indistinguishable -- is ignored and reported in the response's
+         *     `missing` list. The two lists partition the request's
+         *     distinct ids: no individual id ever fails the request, and a
+         *     repeat of a successful batch converges to the same answer.
+         *
+         *     This is the deliberate trade of the list surface: the
+         *     byte-identical 404 anti-enumeration of the single-asset
+         *     endpoints does not apply here. The caller handed the ids over
+         *     themselves, so reporting the unresolvable ones back in
+         *     `missing` hides nothing -- and hands honest clients their
+         *     retry list.
+         *
+         *     `ids` must carry between 1 and 1000 entries: an empty list, or
+         *     one past the cap, answers 400 `VALIDATION_FAILED`, as does an
+         *     `action` outside the enum or a body that is not valid JSON
+         *     (an id that is not a uuid fails the body decode). Repeated ids
+         *     collapse to one application.
+         *
+         *     The whole batch commits as one transaction: the action's
+         *     writes land together or not at all, so a partial batch never
+         *     surfaces. Failures on resolvable ids are not expected -- the
+         *     per-item guards turn foreign and already-in-state ids into
+         *     no-ops, not errors -- so the all-or-nothing bound is the
+         *     infrastructure safety, not a client-visible case.
+         *
+         *     The actions resolve to their single-row primitives: favorite
+         *     / unfavorite write or remove the caller's per-user favorites
+         *     rows; hide / unhide flip the owner-level visibility switch of
+         *     the row the id names (a hidden asset leaves every live view
+         *     -- the timeline, the favorites -- until unhidden); trash /
+         *     restore run the trash lifecycle of the trash endpoints, Live
+         *     Photo pair included (trashing or restoring the photo carries
+         *     its component video row along, whichever row the id names).
+         *
+         *     Events publish AFTER the commit, one per asset whose state
+         *     actually changed -- the idempotent no-op stays silent, the
+         *     same discipline as the single-asset restore: `asset.trashed`
+         *     and `asset.restored` for trash and restore, `asset.updated`
+         *     for hide and unhide (visibility is owner-level state, and
+         *     every viewer of the shared timeline sees it change).
+         *     favorite / unfavorite publish nothing: favorites are per-user
+         *     state with no cross-user visibility effect, so no other
+         *     session has anything to refresh.
+         */
+        post: operations["batchAssets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's favorites, one keyset page at a time.
+         * @description The favorites view: the assets the calling user favorites,
+         *     filtered to the live view -- hidden assets, assets in the
+         *     trash and the component video rows of Live Photos never
+         *     appear -- with every item carrying `isFavorite: true` by
+         *     construction (the listing joins the caller's favorites rows).
+         *
+         *     The view shares the timeline's shape, ordering and pagination:
+         *     `takenAt` descending with the id as the tiebreak, `limit`
+         *     absent meaning 100 and capped at 200, and the opaque `cursor`
+         *     handed back as `nextCursor` precisely when another page
+         *     follows, so the same wall UI that walks the timeline walks
+         *     the favorites.
+         *
+         *     Favorites are per-user state written by the batch endpoint's
+         *     favorite action. In this milestone the batch actions are
+         *     owner-scoped, so favorites apply to the caller's own assets;
+         *     the listing itself joins the caller's favorites rows with
+         *     the live-asset filters, nothing more. Hiding (or trashing) a
+         *     favorited asset removes it from this view; it returns when
+         *     unhidden (or restored), the favorite row untouched -- an
+         *     idempotent per-user mark, not a copy of the asset.
+         */
+        get: operations["getFavorites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/hidden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's hidden assets, one keyset page at a time.
+         * @description The hidden view: the caller's own assets whose owner-level
+         *     visibility switch is off. Live rows only -- a trashed asset
+         *     stays in the trash view until restored or expired, and a
+         *     restored one returns here still hidden -- and no Live Photo
+         *     component rows (the pair is represented by its photo). The
+         *     same ordering and keyset pagination as the timeline:
+         *     `takenAt` descending with the id as the tiebreak, `limit`
+         *     absent meaning 100 and capped at 200, `nextCursor` exactly
+         *     when another page follows.
+         *
+         *     Unhiding through the batch endpoint returns an asset to every
+         *     live view (the timeline, the favorites if favorited).
+         *     `isFavorite` still reports the caller's favorites state of a
+         *     hidden asset -- the favorite row survives the hiding, exactly
+         *     like it survives the trash.
+         */
+        get: operations["getHidden"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assets/{id}": {
         parameters: {
             query?: never;
@@ -349,7 +554,9 @@ export interface paths {
          * @description The asset detail: the identity and storage fields of the upload
          *     response plus the refinements the pipeline produced afterwards
          *     -- dimensions, duration, blurhash, the EXIF hot fields, and
-         *     readiness -- which the asset detail view renders.
+         *     readiness -- and the two owner-level editable attributes
+         *     (`description`, `isHidden`), which the asset detail view
+         *     renders and the `PATCH` endpoint edits.
          *
          *     Access is owner-only: an id that belongs to another account
          *     answers the same 404 `ASSET_NOT_FOUND` as an id that does not
@@ -360,17 +567,100 @@ export interface paths {
          *
          *     A trashed asset answers 200 with `isTrashed: true` -- the
          *     trash view reads the detail the same way. The component video
-         *     row of a Live Photo is readable by its id (the future playback
-         *     endpoint resolves it through `livePhotoVideoId`) but never
-         *     appears in the timeline.
+         *     row of a Live Photo is readable by its id (the detail and the
+         *     original download resolve it through `livePhotoVideoId`; the
+         *     play endpoint answers 404 for it -- the component counts no
+         *     transcode of its own) but never appears in the timeline.
          */
         get: operations["getAsset"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Permanently delete one asset, files and all.
+         * @description The explicit permanent deletion -- the destructive surface
+         *     beside the trash. It removes the asset row whatever its state
+         *     (live or trashed: this endpoint does not route through the
+         *     trash), and with it the asset's on-disk artifacts under the
+         *     shared-blob rule: content addressing means another owner's row
+         *     (or any other row) with the same checksum references the SAME
+         *     physical file, so the original file is removed only when no
+         *     other asset row references it; otherwise the row goes and the
+         *     file stays. The derived serving copies (the per-asset
+         *     thumbnail directory) belong to this asset id alone and are
+         *     always removed. The component video row of a Live Photo is
+         *     deleted with its photo (it is never an asset of its own).
+         *
+         *     The application-layer permission gate of the two-layer delete
+         *     discipline: the owner of the asset, or an administrator. An
+         *     id of another user's asset answers the same 404
+         *     `ASSET_NOT_FOUND` as an id that does not exist, byte for
+         *     byte, so asset ids cannot be enumerated. (The file-system
+         *     layer of the gate matters for directory albums, whose files
+         *     move on delete; it arrives with the album domain in a later
+         *     milestone -- blob originals live inside the server's own data
+         *     directory.)
+         *
+         *     The ordinary client "delete" is the trash (soft delete
+         *     through the batch endpoint); this endpoint is the explicit
+         *     bypass: the client that already knows it wants the asset gone
+         *     forever, and the empty-trash surface. Repeating the request
+         *     after a successful deletion answers 404 -- the asset no
+         *     longer exists, exactly like an unknown id.
+         *
+         *     The deletion is committed before the files are removed: a
+         *     failure between the two (a full disk, a failing mount) leaves
+         *     the row gone and the file orphaned, which is a storage leak,
+         *     never data loss; it is logged server-side and the response
+         *     still reports the deletion.
+         */
+        delete: operations["deleteAsset"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit the description or hidden switch of one asset.
+         * @description The partial edit of the two owner-level attributes of an
+         *     asset: `description`, the free text the detail panel renders,
+         *     and `isHidden`, the owner-level visibility switch that keeps
+         *     the asset out of every live view until it returns. Both body
+         *     fields are optional but at least one must be present (a field
+         *     set to JSON null counts as absent, so a body of nulls is the
+         *     empty patch); a request that carries neither answers 400
+         *     `VALIDATION_FAILED`. Only the fields the request carries
+         *     update -- the rest keep their values -- and the response is
+         *     the full asset detail after the edit, the same shape `GET
+         *     /assets/{id}` serves.
+         *
+         *     The edit follows set semantics: patching a field with the
+         *     value the row already carries is the idempotent no-op -- the
+         *     answer stays the 200 success with the row's current state,
+         *     nothing is written (not even `updated_at`), and NO
+         *     `asset.updated` event fires. A patch that actually changes
+         *     either field publishes exactly ONE `asset.updated` event
+         *     (the asset id and kind, after the commit): both fields are
+         *     owner-level asset state, so the same announcement refreshes
+         *     every viewer of the shared timeline and the detail panel.
+         *     The description alone has no timeline effect -- it is
+         *     detail-panel content -- but it is asset state the event
+         *     covers all the same.
+         *
+         *     Access is owner-only, the attribute-editing row of the
+         *     permission matrix: there is deliberately no administrator
+         *     override here (unlike the permanent delete), so an id that
+         *     is unknown or foreign answers the same 404
+         *     `ASSET_NOT_FOUND`, byte for byte, as every asset endpoint --
+         *     asset ids cannot be enumerated. A trashed asset is editable
+         *     like it is readable (the detail answers 200 with `isTrashed:
+         *     true`): the edit lands on the row and resurfaces with the
+         *     restore. The hidden switch this endpoint flips is the same
+         *     one the batch `hide` / `unhide` actions flip, so the two
+         *     surfaces agree on the state of an asset.
+         *
+         *     `description` carries at most 10,000 Unicode characters
+         *     (runes); above that the request answers 400
+         *     `VALIDATION_FAILED`. The value replaces the stored text
+         *     wholesale -- an empty string is a valid patch and clears it.
+         */
+        patch: operations["patchAsset"];
         trace?: never;
     };
     "/assets/{id}/thumbnail": {
@@ -390,8 +680,9 @@ export interface paths {
          *       re-encode) -- served as `image/avif`;
          *     - video assets: the poster frame, whatever `size` says -- the
          *       poster (the first frame, scaled into the tile box) is the
-         *       video's only serving copy until transcodes exist -- served
-         *       as `image/jpeg`.
+         *       video's thumbnail, while the playable stream is the
+         *       transcoded copy of `GET /assets/{id}/play` -- served as
+         *       `image/jpeg`.
          *
          *     The response is a private immutable static asset:
          *     `Cache-Control: private, max-age=31536000, immutable`, and a
@@ -467,6 +758,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assets/{id}/play": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream the transcoded playable copy of one owned video.
+         * @description Streams the web-safe transcoded MP4 of a video asset: the
+         *     pipeline's transcode job re-encoded the original into H.264
+         *     video (yuv420p) plus AAC audio -- the pair every browser plays
+         *     natively -- with the movie index relocated to the front of the
+         *     container (`+faststart`), so playback begins while the file is
+         *     still downloading. The stream is served inline as `video/mp4`
+         *     with no `Content-Disposition`: it feeds the client's video
+         *     element, while downloading the original bytes stays on `GET
+         *     /assets/{id}/original` (the transcoded copy is a derivative,
+         *     never the archival original).
+         *
+         *     The response is a private immutable static asset like the
+         *     thumbnail: `Cache-Control: private, max-age=31536000,
+         *     immutable`, and a strong `ETag` built from the first 16 hex
+         *     characters of the asset's checksum (quoted) -- the transcode is
+         *     a deterministic function of the immutable original bytes, so
+         *     the tag is stable across re-runs of the job. A matching
+         *     `If-None-Match` answers 304 with the same validators and no
+         *     body.
+         *
+         *     Byte ranges follow the Go standard library's `ServeContent`
+         *     semantics (video seeking needs them): a satisfiable single
+         *     range answers 206 with `Content-Range`; multiple ranges answer
+         *     a `multipart/byteranges` body; an unsatisfiable range answers
+         *     416 with the total size in `Content-Range`; a malformed Range
+         *     header is ignored and the full body answers 200.
+         *
+         *     Only client-visible video assets have a playable stream: an
+         *     image asset, and a Live Photo's component video row (linked
+         *     through `livePhotoVideoId` -- it counts no transcode pipeline
+         *     of its own, its pair's visible asset being the image), answer
+         *     404 `ASSET_NOT_FOUND` -- there is nothing to play by that id,
+         *     and the answer is the asset's own not-found envelope, the same
+         *     anti-enumeration shape (byte for byte) as an unknown or a
+         *     foreign id. The component's original stays downloadable by its
+         *     id through `GET /assets/{id}/original`. A video whose
+         *     transcode has not been produced yet -- the pipeline is still
+         *     running, or the transcode job failed and is retrying --
+         *     answers 404 `ASSET_NOT_READY`: the client renders the poster
+         *     frame (the thumbnail endpoint serves it) and waits for the
+         *     `asset.ready` event instead of treating the asset as gone. The
+         *     video pipeline counts three jobs (metadata, thumbnail,
+         *     transcode), so readiness follows all three.
+         */
+        get: operations["playAsset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assets/by-device-id/{deviceAssetId}": {
         parameters: {
             query?: never;
@@ -491,6 +844,82 @@ export interface paths {
         get: operations["getAssetByDeviceId"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's trashed assets with their retention countdown.
+         * @description The trash view of the caller: every asset the caller soft
+         *     deleted, newest deletion first, each with the countdown of
+         *     whole days until the expiry job removes it. Retention is the
+         *     instance setting `trash_retention_days` (default 30): the
+         *     expiry job runs hourly and permanently deletes rows whose
+         *     `deletedAt` fell past the retention window, so an item shows
+         *     `remainingDays` 0 on its way out (the row survives only until
+         *     the next job run) and disappears afterwards -- restoring it
+         *     then answers 404, it does not resurrect.
+         *
+         *     `remainingDays` counts the days left rounded up: an asset
+         *     trashed moments ago with the default retention shows 30. The
+         *     list is owner-scoped and bounded: it answers at most the 200
+         *     most recent deletions (the trash is a recovery view for
+         *     recent deletes, and older items age out through expiry long
+         *     before the bound could bite). The component video rows of
+         *     Live Photos never appear: the pair is represented by its
+         *     photo.
+         */
+        get: operations["getTrash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trash/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore one trashed asset.
+         * @description Clears the trash mark of one asset: the row becomes live
+         *     again and re-enters the timeline (its album memberships were
+         *     never removed -- a trashed asset is filtered out of the live
+         *     views, not evicted from its albums). The component video row
+         *     of a Live Photo is restored with its photo.
+         *
+         *     The operation follows set semantics: restoring an asset that
+         *     is already live succeeds (204, nothing to do) -- a client
+         *     that races another restore, or asks twice, converges instead
+         *     of erroring; the row is already in the desired state. Only an
+         *     id that is unknown, or that belongs to another account while
+         *     the caller is not its owner, answers 404 -- byte-identical
+         *     for both cases, so asset ids cannot be enumerated. An asset
+         *     whose row the expiry job already removed answers 404 as well:
+         *     a purge is not reversible.
+         *
+         *     The retention countdown of the trash list is the only signal
+         *     that a restore is still possible; after the row is gone, the
+         *     content itself can only return through a re-upload (which the
+         *     upload idempotency answers as a fresh asset).
+         */
+        post: operations["restoreAsset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -747,13 +1176,15 @@ export interface components {
         };
         /**
          * @description One asset as the detail endpoint returns it: the upload
-         *     response's identity and storage fields plus the pipeline's
-         *     refinements. The shape is fixed -- every property is always
-         *     present -- and the pipeline-dependent values (`width`,
-         *     `height`, `durationMs`, `blurhash` and the fields inside
-         *     `exif`) are null until the jobs produced them, turning
-         *     non-null when `asset.ready` fired. A value that stays null on
-         *     a ready asset means the file carries no such metadata.
+         *     response's identity and storage fields, the pipeline's
+         *     refinements, and the two owner-level attributes the PATCH
+         *     endpoint edits (`description`, `isHidden`). The shape is
+         *     fixed -- every property is always present -- and the
+         *     pipeline-dependent values (`width`, `height`, `durationMs`,
+         *     `blurhash` and the fields inside `exif`) are null until the
+         *     jobs produced them, turning non-null when `asset.ready`
+         *     fired. A value that stays null on a ready asset means the
+         *     file carries no such metadata.
          */
         AssetDetail: {
             /**
@@ -819,8 +1250,25 @@ export interface components {
             /** @description True when the asset sits in the trash. */
             isTrashed: boolean;
             /**
-             * @description True once the whole pipeline of the asset (metadata and
-             *     serving copies) completed; the `asset.ready` event fires
+             * @description True while the owner-level visibility switch is off: the
+             *     asset is out of every live view (the timeline, the
+             *     favorites) and manageable only through the hidden view,
+             *     until it is unhidden. The same switch `PATCH
+             *     /assets/{id}` and the batch `hide` / `unhide` actions
+             *     flip.
+             */
+            isHidden: boolean;
+            /**
+             * @description The owner's free-text description of the asset, the text
+             *     the detail panel renders; the empty string until the
+             *     owner wrote one. Editable only by the owner through
+             *     `PATCH /assets/{id}`, which replaces it wholesale.
+             */
+            description: string;
+            /**
+             * @description True once the whole pipeline of the asset completed -- the
+             *     metadata and thumbnail jobs for an image, plus the
+             *     transcode job for a video; the `asset.ready` event fires
              *     at that moment. Until then the client shows placeholders
              *     and the media endpoints answer `ASSET_NOT_READY` for
              *     missing derived files.
@@ -850,8 +1298,9 @@ export interface components {
             /**
              * Format: uuid
              * @description For a Live Photo image, the id of its linked component
-             *     video row (never in the timeline, but resolvable for
-             *     playback); null otherwise.
+             *     video row (never in the timeline; its original is
+             *     downloadable by that id, the transcoded play stream is
+             *     not); null otherwise.
              */
             livePhotoVideoId: string | null;
             /**
@@ -903,6 +1352,360 @@ export interface components {
              *     resolve through EXIF.
              */
             tzOffset: string | null;
+        };
+        /**
+         * @description One asset of the timeline: the asset detail's fields minus the
+         *     `exif` object and the two detail-panel edit attributes
+         *     (`description`, `isHidden`) -- the detail endpoint renders the
+         *     EXIF panel and the edit controls; the timeline renders tiles.
+         *     Every item is live by construction --
+         *     hidden assets, trashed assets and the component video rows of
+         *     Live Photos never enter the timeline -- so `isTrashed` is
+         *     always false here and is carried only to keep the item shape
+         *     identical to the detail's. `isReady` still varies: a fresh
+         *     upload enters the timeline immediately with its
+         *     pipeline-dependent fields null, and the client upgrades the
+         *     tile when `asset.ready` fires. The shape is fixed -- every
+         *     property is always present. `isFavorite` is per-user state
+         *     computed for the requesting user, so the same asset is a
+         *     favorite tile for one viewer and a plain tile for another.
+         */
+        TimelineItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the asset.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the owning account.
+             */
+            ownerId: string;
+            /**
+             * @description Media family of the asset. A Live Photo is an `image`
+             *     whose linked component video row never appears in the
+             *     timeline.
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** @description The file name the asset was uploaded with. */
+            originalFilename: string;
+            /**
+             * Format: int64
+             * @description Size of the stored file in bytes.
+             */
+            fileSize: number;
+            /**
+             * @description Canonical content type of the stored format, for example
+             *     `image/jpeg` or `video/quicktime`.
+             */
+            mimeType: string;
+            /**
+             * @description SHA-256 digest of the file bytes, lowercase hex. The
+             *     prefix of the entity tags the media endpoints serve.
+             */
+            checksum: string;
+            /**
+             * Format: date-time
+             * @description When the asset record was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
+             *     the upload time when absent) and refined from EXIF by the
+             *     metadata pipeline; the timeline orders by it.
+             */
+            takenAt: string;
+            /**
+             * @description Where `takenAt` comes from: `import` is the
+             *     device-reported capture time of the upload, `exif` an
+             *     EXIF capture time the metadata job resolved with an
+             *     offset, `file` a file timestamp (reserved for the future
+             *     directory-album importer).
+             * @enum {string}
+             */
+            takenAtSource: "exif" | "file" | "import";
+            /**
+             * @description Always false in the timeline: trashed assets never enter
+             *     it. The field exists to keep the shape identical to the
+             *     asset detail's.
+             */
+            isTrashed: boolean;
+            /**
+             * @description Whether the REQUESTING user favorites this asset: the
+             *     caller's own row of the per-user favorites state, written
+             *     by the batch endpoint's favorite action. False whenever
+             *     the caller has no favorites row for the asset -- the same
+             *     asset can be a favorite for one viewer of a shared
+             *     timeline and not for another.
+             */
+            isFavorite: boolean;
+            /**
+             * @description True once the whole pipeline of the asset (metadata and
+             *     serving copies) completed; until then the
+             *     pipeline-dependent fields are null and the client renders
+             *     placeholders.
+             */
+            isReady: boolean;
+            /**
+             * @description Pixel width in sensor order; null until the metadata job
+             *     refined the dimensions.
+             */
+            width: number | null;
+            /**
+             * @description Pixel height in sensor order; null until the metadata job
+             *     refined the dimensions.
+             */
+            height: number | null;
+            /**
+             * @description Playback duration of a video in milliseconds; null for
+             *     images and until the metadata job refined it.
+             */
+            durationMs: number | null;
+            /**
+             * @description The blurhash of the tile (image assets) or poster frame
+             *     (video assets) for placeholder rendering; null until the
+             *     thumbnail job stored it.
+             */
+            blurhash: string | null;
+            /**
+             * Format: uuid
+             * @description For a Live Photo image, the id of its linked component
+             *     video row (its original is downloadable by that id, the
+             *     transcoded play stream is not); null otherwise.
+             */
+            livePhotoVideoId: string | null;
+        };
+        /**
+         * @description One page of a timeline-shaped view: the aggregated timeline,
+         *     the favorites view or the hidden view all answer with this
+         *     page shape (the same ordering and the same cursor semantics).
+         *     `nextCursor` is present exactly when another page follows the
+         *     `items` of this one: the client passes it back as the
+         *     `cursor` query parameter to continue, and a response without
+         *     it ends the pagination. The last page is the one whose
+         *     follow-up page would be empty, so no run ever observes an
+         *     empty page mid-pagination.
+         */
+        TimelineResponse: {
+            /**
+             * @description The timeline items of this page, ordered by `takenAt`
+             *     descending with the id as the tiebreak.
+             */
+            items: components["schemas"]["TimelineItem"][];
+            /**
+             * @description The opaque continuation cursor: pass it back as the
+             *     `cursor` query parameter to fetch the next page. Absent
+             *     exactly when this is the last page.
+             */
+            nextCursor?: string;
+        };
+        /**
+         * @description One asset of the trash view: the timeline item's fields (the
+         *     tile-relevant identity and pipeline fields, so the trash page
+         *     renders the same tiles as the timeline) plus the trash
+         *     semantics -- `deletedAt`, when the soft delete happened, and
+         *     `remainingDays`, the countdown of whole days until the expiry
+         *     job removes the row (rounded up; 0 once past the deadline,
+         *     for the short window until the hourly job catches up). Every
+         *     item is trashed by construction; there is no `isTrashed`
+         *     field. The component video rows of Live Photos never appear:
+         *     the pair is represented by its photo. The shape is fixed --
+         *     every property is always present.
+         */
+        TrashItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the asset.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the owning account.
+             */
+            ownerId: string;
+            /**
+             * @description Media family of the asset.
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** @description The file name the asset was uploaded with. */
+            originalFilename: string;
+            /**
+             * Format: int64
+             * @description Size of the stored file in bytes.
+             */
+            fileSize: number;
+            /**
+             * @description Canonical content type of the stored format, for example
+             *     `image/jpeg` or `video/quicktime`.
+             */
+            mimeType: string;
+            /**
+             * @description SHA-256 digest of the file bytes, lowercase hex. The
+             *     prefix of the entity tags the media endpoints serve.
+             */
+            checksum: string;
+            /**
+             * Format: date-time
+             * @description When the asset record was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Capture time (RFC 3339), the value the timeline would
+             *     order the asset by.
+             */
+            takenAt: string;
+            /**
+             * @description Where `takenAt` comes from.
+             * @enum {string}
+             */
+            takenAtSource: "exif" | "file" | "import";
+            /**
+             * @description True once the whole pipeline of the asset (metadata and
+             *     serving copies) completed.
+             */
+            isReady: boolean;
+            /**
+             * @description Pixel width in sensor order; null until the metadata job
+             *     refined the dimensions.
+             */
+            width: number | null;
+            /**
+             * @description Pixel height in sensor order; null until the metadata job
+             *     refined the dimensions.
+             */
+            height: number | null;
+            /**
+             * @description Playback duration of a video in milliseconds; null for
+             *     images and until the metadata job refined it.
+             */
+            durationMs: number | null;
+            /**
+             * @description The blurhash of the tile for placeholder rendering; null
+             *     until the thumbnail job stored it.
+             */
+            blurhash: string | null;
+            /**
+             * Format: uuid
+             * @description For a Live Photo image, the id of its linked component
+             *     video row (restored and expired together with the photo);
+             *     null otherwise.
+             */
+            livePhotoVideoId: string | null;
+            /**
+             * Format: date-time
+             * @description When the asset was soft deleted (RFC 3339 UTC). The
+             *     retention window ends at `deletedAt` plus the instance's
+             *     `trash_retention_days`.
+             */
+            deletedAt: string;
+            /**
+             * @description Whole days until the expiry job removes the asset,
+             *     rounded up (an asset trashed moments ago with the default
+             *     retention of 30 days shows 30). 0 once the deadline has
+             *     passed -- the row survives only until the next hourly
+             *     expiry run.
+             */
+            remainingDays: number;
+        };
+        /**
+         * @description The trash view: the caller's trashed assets, newest deletion
+         *     first. The list is bounded (the 200 most recent deletions)
+         *     and unpaginated -- the trash is a recovery view for recent
+         *     deletes, and items age out through expiry on their own.
+         */
+        TrashResponse: {
+            /**
+             * @description The trashed assets of the caller, ordered by `deletedAt`
+             *     descending.
+             */
+            items: components["schemas"]["TrashItem"][];
+        };
+        /**
+         * @description One batch action over a list of asset ids. The action applies
+         *     to every id that resolves to a caller-owned asset; the rest
+         *     (unknown or another account's, indistinguishable) are ignored
+         *     and reported in the response's `missing` list -- a batch never
+         *     fails over an individual id. `ids` carries between 1 and 1000
+         *     entries; repeated ids collapse to one application.
+         */
+        BatchRequest: {
+            /**
+             * @description The set operation to apply. `favorite` / `unfavorite`
+             *     write or remove the caller's per-user favorites rows;
+             *     `hide` / `unhide` flip the owner-level visibility switch
+             *     (a hidden asset leaves every live view until unhidden);
+             *     `trash` / `restore` run the trash lifecycle of the trash
+             *     endpoints, the Live Photo pair moving as one asset.
+             * @enum {string}
+             */
+            action: "favorite" | "unfavorite" | "hide" | "unhide" | "trash" | "restore";
+            /**
+             * @description The asset ids to apply the action to: at least 1, at most
+             *     1000.
+             */
+            ids: string[];
+        };
+        /**
+         * @description The set-semantics report of one batch action. `affected` and
+         *     `missing` partition the request's distinct ids: every id is
+         *     either applied or unresolvable, none is both, and none is
+         *     silently dropped.
+         */
+        BatchResponse: {
+            /**
+             * @description How many distinct request ids resolved to a caller-owned
+             *     asset and were processed -- INCLUDING ids that were
+             *     already in the target state (the idempotent no-op of the
+             *     set semantics: a repeat of a successful batch answers the
+             *     same count, because the endpoint is a convergence
+             *     operation, not a state-change counter). NOT a count of
+             *     rows written: trashing a Live Photo pair moves two rows
+             *     but one request id, and counts once.
+             */
+            affected: number;
+            /**
+             * @description The distinct request ids that did not resolve to a
+             *     caller-owned asset -- unknown ids and other accounts'
+             *     assets, indistinguishable by design -- in the order of
+             *     their first appearance in the request. Empty when every
+             *     id resolved. This deliberate reporting (instead of the
+             *     byte-identical 404 of the single-asset endpoints) is the
+             *     trade of the list surface: the caller handed the ids over
+             *     themselves, so reporting them back hides nothing.
+             */
+            missing: string[];
+        };
+        /**
+         * @description The partial edit of one asset: every field is optional, at
+         *     least one must be present (a body that carries neither -- null
+         *     values count as absent -- is a client bug and answers 400),
+         *     and only the fields the request carries update; the rest keep
+         *     their values. Both fields are owner-level asset state, so a
+         *     patch that actually changes one of them publishes a single
+         *     `asset.updated` event; a patch that repeats the stored values
+         *     is the idempotent no-op and publishes nothing.
+         */
+        AssetPatch: {
+            /**
+             * @description The owner's free-text description of the asset, the text
+             *     the detail panel renders. The value replaces the stored
+             *     text wholesale (an empty string clears it). At most
+             *     10,000 Unicode characters -- the count is over runes, so
+             *     a text of multi-byte characters stays within the bound at
+             *     the same length.
+             */
+            description?: string;
+            /**
+             * @description The owner-level visibility switch: `true` keeps the asset
+             *     out of every live view (the timeline, the favorites)
+             *     until it is unhidden; `false` returns it. The same switch
+             *     the batch `hide` / `unhide` actions flip.
+             */
+            isHidden?: boolean;
         };
         /**
          * @description Error envelope shared by all endpoints. `code` is the authoritative
@@ -1537,6 +2340,294 @@ export interface operations {
             };
         };
     };
+    getTimeline: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The `nextCursor` of the previous page; absent on the first
+                 *     page. An unparseable value answers 400
+                 *     `VALIDATION_FAILED` (cursors are opaque strings produced
+                 *     by this endpoint, never assembled by clients).
+                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 */
+                cursor?: string;
+                /**
+                 * @description Page size: the number of timeline items one response
+                 *     carries at most. Defaults to 100; values over 200 are
+                 *     answered with 200, values below 1 answer 400.
+                 * @example 100
+                 */
+                limit?: number;
+                /**
+                 * @description Restrict the response to the timeline of this one album
+                 *     (an album the caller owns or that is shared to the caller)
+                 *     instead of the aggregate. An unknown or invisible album
+                 *     answers the empty list.
+                 */
+                albumId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description One page of the timeline. `nextCursor` is present exactly
+             *     when another page follows; the last page carries none.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineResponse"];
+                };
+            };
+            /**
+             * @description The pagination parameters are invalid: `cursor` is not a
+             *     value this endpoint produced, or `limit` is below 1.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    batchAssets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The set-semantics report: `affected` distinct ids resolved
+             *     and were applied (idempotent no-ops included), `missing`
+             *     lists the ids that did not resolve.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResponse"];
+                };
+            };
+            /**
+             * @description The request is not a well-formed batch: `action` is not a
+             *     member of the enum, `ids` is empty or exceeds the
+             *     1000-id cap, or the body is not valid JSON (an id that is
+             *     not a uuid included).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getFavorites: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The `nextCursor` of the previous page; absent on the first
+                 *     page. An unparseable value answers 400
+                 *     `VALIDATION_FAILED` (cursors are opaque strings produced
+                 *     by this endpoint, never assembled by clients).
+                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 */
+                cursor?: string;
+                /**
+                 * @description Page size: the number of timeline items one response
+                 *     carries at most. Defaults to 100; values over 200 are
+                 *     answered with 200, values below 1 answer 400.
+                 * @example 100
+                 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description One page of the favorites view. `nextCursor` is present
+             *     exactly when another page follows; the last page carries
+             *     none.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineResponse"];
+                };
+            };
+            /**
+             * @description The pagination parameters are invalid: `cursor` is not a
+             *     value this endpoint produced, or `limit` is below 1.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getHidden: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The `nextCursor` of the previous page; absent on the first
+                 *     page. An unparseable value answers 400
+                 *     `VALIDATION_FAILED` (cursors are opaque strings produced
+                 *     by this endpoint, never assembled by clients).
+                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 */
+                cursor?: string;
+                /**
+                 * @description Page size: the number of timeline items one response
+                 *     carries at most. Defaults to 100; values over 200 are
+                 *     answered with 200, values below 1 answer 400.
+                 * @example 100
+                 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description One page of the hidden view. `nextCursor` is present
+             *     exactly when another page follows; the last page carries
+             *     none.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineResponse"];
+                };
+            };
+            /**
+             * @description The pagination parameters are invalid: `cursor` is not a
+             *     value this endpoint produced, or `limit` is below 1.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getAsset: {
         parameters: {
             query?: never;
@@ -1580,6 +2671,147 @@ export interface operations {
             /**
              * @description No asset with this id is visible to the caller: the id is
              *     unknown or belongs to another account, and the two cases
+             *     are indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The asset is permanently deleted: the row is gone, the
+             *     derived files are removed, and the original file is
+             *     removed unless another asset row still references it.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No asset with this id exists: the id is unknown, was
+             *     already permanently deleted, or belongs to another
+             *     account while the caller is neither its owner nor an
+             *     administrator -- all indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetPatch"];
+            };
+        };
+        responses: {
+            /**
+             * @description The asset detail after the edit -- the same shape `GET
+             *     /assets/{id}` serves, with the applied values. The
+             *     idempotent no-op answers it too, with the row's current
+             *     state unchanged.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDetail"];
+                };
+            };
+            /**
+             * @description The patch is not well-formed: the body is not valid JSON
+             *     (a field of the wrong type included), carries neither
+             *     field, or the description exceeds the 10,000-character
+             *     bound.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No asset with this id is editable by the caller: the id
+             *     is unknown or belongs to another account (the owner-only
+             *     gate applies to administrators too), and the two cases
              *     are indistinguishable by design.
              */
             404: {
@@ -1828,6 +3060,120 @@ export interface operations {
             };
         };
     };
+    playAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The transcoded stream, `video/mp4`. */
+            200: {
+                headers: {
+                    /**
+                     * @description Strong entity tag: the first 16 hex characters of the
+                     *     asset's checksum, quoted. The transcode is a
+                     *     deterministic function of the immutable original bytes,
+                     *     so the tag is stable across re-runs of the job.
+                     * @example "9f86d081884c7d65"
+                     */
+                    ETag?: string;
+                    /**
+                     * @description The transcoded copy is private to the owner and
+                     *     immutable (its content is a function of the immutable
+                     *     original bytes), so clients may cache it for a year.
+                     * @example private, max-age=31536000, immutable
+                     */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
+            /**
+             * @description A satisfiable single byte range (video seeking); the
+             *     `Content-Range` header names the served slice.
+             *     Multi-range requests answer `multipart/byteranges` instead.
+             */
+            206: {
+                headers: {
+                    /**
+                     * @description The served slice of the total file size.
+                     * @example bytes 0-99/24680
+                     */
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
+            /**
+             * @description The `If-None-Match` value matched the entity tag; the
+             *     cached copy is current. The response carries the same
+             *     `ETag` and `Cache-Control` validators and no body.
+             */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Either no playable asset with this id is visible to the
+             *     caller (unknown id, foreign id, or an image asset --
+             *     `ASSET_NOT_FOUND`), or the video exists but its transcoded
+             *     stream is not on disk yet (`ASSET_NOT_READY` -- the
+             *     transcode job has not produced it).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The requested range is unsatisfiable for this file; the
+             *     `Content-Range` header of the error carries the total size
+             *     (`bytes *\/<size>`).
+             */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getAssetByDeviceId: {
         parameters: {
             query?: never;
@@ -1865,6 +3211,110 @@ export interface operations {
                 };
             };
             /** @description No asset of this account carries the device identifier. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTrash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The trashed assets of the caller, newest deletion first.
+             *     `items` is the full (bounded) list -- there is no
+             *     pagination.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    restoreAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the trashed asset. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The asset is live again (or already was: the idempotent
+             *     success). The row re-enters the timeline and every live
+             *     view.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No asset with this id is restorable by the caller: the id
+             *     is unknown, already purged by the expiry job, or belongs
+             *     to another account -- all indistinguishable by design.
+             */
             404: {
                 headers: {
                     [name: string]: unknown;

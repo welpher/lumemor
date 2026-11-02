@@ -382,6 +382,36 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 		return dbgen.Asset{}, "", err
 	}
 
+	// The photo lands in the owner's sync album -- the core stream the
+	// timeline aggregates. The insert rides the upload transaction, so
+	// the asset and its album membership commit atomically: an upload
+	// that committed but stayed album-less would be invisible to every
+	// timeline. The component video row deliberately does NOT land in
+	// the album: it is reachable only through the photo's
+	// livePhotoVideoId and filtered out of every timeline by
+	// is_component, so a membership row would be pure dead weight. The
+	// ensure (rather than a plain insert) is the recovery path for an
+	// account whose rows predate this wiring; its upsert arm keeps a
+	// concurrent recovery from failing this upload.
+	syncAlbumID, err := uuid.NewV7()
+	if err != nil {
+		return dbgen.Asset{}, "", err
+	}
+	albumID, err := queries.EnsureSyncAlbum(ctx, dbgen.EnsureSyncAlbumParams{
+		ID:      pgUUID(syncAlbumID),
+		OwnerID: pgUUID(owner),
+	})
+	if err != nil {
+		return dbgen.Asset{}, "", err
+	}
+	if err := queries.AddAssetToAlbum(ctx, dbgen.AddAssetToAlbumParams{
+		AlbumID: albumID,
+		AssetID: photoRow.ID,
+		AddedBy: pgUUID(owner),
+	}); err != nil {
+		return dbgen.Asset{}, "", err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return dbgen.Asset{}, "", err
 	}
@@ -469,15 +499,21 @@ func assetInsertParams(id, owner uuid.UUID, form uploadForm, up committedUpload,
 	// The pipeline count the uploader enqueues: the photo row's
 	// metadata job plus its thumbnail job (the main asset gets a
 	// thumbnail whatever its kind -- an image's three AVIF sizes, a
-	// video's poster frame). The component video row stays at 0: it is
-	// refined by the metadata job but is never the client-visible
-	// asset whose readiness the event announces.
+	// video's poster frame), plus the transcode job when the photo
+	// row itself is a video (a standalone video upload: three jobs).
+	// The component video row stays at 0: it is refined by the
+	// metadata job but is never the client-visible asset whose
+	// readiness the event announces (and the Live Photo's visible
+	// asset is the image, so no transcode belongs to the pair).
 	pendingJobs := int32(2)
 	if isComponent {
 		pendingJobs = 0
 	} else {
 		originalFilename = form.fileName
 		deviceAssetID = pgtype.Text{String: form.deviceAssetID, Valid: true}
+		if kind == dbgen.MediaKindVideo {
+			pendingJobs = 3
+		}
 	}
 	return dbgen.CreateAssetParams{
 		ID:               pgUUID(id),
@@ -625,18 +661,25 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 // component video row (both carry exif sidecars the job refines; only
 // the photo's pipeline announces readiness), plus one thumbnail job
 // for the photo row itself -- image or video kind alike: an image gets
-// its three AVIF sizes, a video its poster frame. The component video
-// gets no thumbnail job: it is never the client-visible asset, and the
-// photo it belongs to already provides the timeline tile. The enqueue
-// runs after the upload transaction committed, so its context must not
-// die with the client connection: a disconnect in the commit-to-enqueue
-// window would fail the enqueue and strand the asset's pipeline counter
-// not-ready forever, with no API path to requeue it. WithoutCancel
-// keeps the request's deadline and values while shedding its
-// cancellation. A failed enqueue logs and moves on: the upload is
-// committed and its idempotent re-upload resolves as duplicate without
-// re-enqueueing, so recovery from a lost job belongs to a future
-// requeue sweep, not to the response of this request.
+// its three AVIF sizes, a video its poster frame -- and, when the
+// photo row itself is a video (a standalone video upload), the
+// transcode job that derives its playable web-safe MP4 (three jobs
+// total; the pending_jobs counter was initialized to match). The
+// component video gets no thumbnail and no transcode job: it is never
+// the client-visible asset, and the photo it belongs to already
+// provides the timeline tile (the component also counts no pipeline
+// of its own, and the play endpoint gates on is_component, so its id
+// answers 404 there -- the pair's motion stays reachable through the
+// component's original download). The enqueue runs after the upload
+// transaction committed, so its context must not die with the client
+// connection: a disconnect in the commit-to-enqueue window would fail
+// the enqueue and strand the asset's pipeline counter not-ready
+// forever, with no API path to requeue it. WithoutCancel keeps the
+// request's deadline and values while shedding its cancellation. A
+// failed enqueue logs and moves on: the upload is committed and its
+// idempotent re-upload resolves as duplicate without re-enqueueing,
+// so recovery from a lost job belongs to the requeue sweep, not to
+// the response of this request.
 func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset) {
 	if s.jobs == nil {
 		return
@@ -654,6 +697,11 @@ func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset) {
 	}
 	if err := s.jobs.EnqueueThumbnail(ctx, assetID); err != nil {
 		s.logger.Error("enqueue thumbnail job", "error", err, "asset_id", assetID)
+	}
+	if asset.MediaKind == dbgen.MediaKindVideo {
+		if err := s.jobs.EnqueueTranscode(ctx, assetID); err != nil {
+			s.logger.Error("enqueue transcode job", "error", err, "asset_id", assetID)
+		}
 	}
 }
 

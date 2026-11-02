@@ -34,19 +34,19 @@ func (e AssetDetailKind) Valid() bool {
 
 // Defines values for AssetDetailTakenAtSource.
 const (
-	Exif   AssetDetailTakenAtSource = "exif"
-	File   AssetDetailTakenAtSource = "file"
-	Import AssetDetailTakenAtSource = "import"
+	AssetDetailTakenAtSourceExif   AssetDetailTakenAtSource = "exif"
+	AssetDetailTakenAtSourceFile   AssetDetailTakenAtSource = "file"
+	AssetDetailTakenAtSourceImport AssetDetailTakenAtSource = "import"
 )
 
 // Valid indicates whether the value is a known member of the AssetDetailTakenAtSource enum.
 func (e AssetDetailTakenAtSource) Valid() bool {
 	switch e {
-	case Exif:
+	case AssetDetailTakenAtSourceExif:
 		return true
-	case File:
+	case AssetDetailTakenAtSourceFile:
 		return true
-	case Import:
+	case AssetDetailTakenAtSourceImport:
 		return true
 	default:
 		return false
@@ -86,6 +86,36 @@ func (e AssetResponseState) Valid() bool {
 	case Duplicate:
 		return true
 	case Trashed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BatchRequestAction.
+const (
+	Favorite   BatchRequestAction = "favorite"
+	Hide       BatchRequestAction = "hide"
+	Restore    BatchRequestAction = "restore"
+	Trash      BatchRequestAction = "trash"
+	Unfavorite BatchRequestAction = "unfavorite"
+	Unhide     BatchRequestAction = "unhide"
+)
+
+// Valid indicates whether the value is a known member of the BatchRequestAction enum.
+func (e BatchRequestAction) Valid() bool {
+	switch e {
+	case Favorite:
+		return true
+	case Hide:
+		return true
+	case Restore:
+		return true
+	case Trash:
+		return true
+	case Unfavorite:
+		return true
+	case Unhide:
 		return true
 	default:
 		return false
@@ -149,6 +179,84 @@ func (e SessionInfoKind) Valid() bool {
 	}
 }
 
+// Defines values for TimelineItemKind.
+const (
+	TimelineItemKindImage TimelineItemKind = "image"
+	TimelineItemKindVideo TimelineItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the TimelineItemKind enum.
+func (e TimelineItemKind) Valid() bool {
+	switch e {
+	case TimelineItemKindImage:
+		return true
+	case TimelineItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TimelineItemTakenAtSource.
+const (
+	TimelineItemTakenAtSourceExif   TimelineItemTakenAtSource = "exif"
+	TimelineItemTakenAtSourceFile   TimelineItemTakenAtSource = "file"
+	TimelineItemTakenAtSourceImport TimelineItemTakenAtSource = "import"
+)
+
+// Valid indicates whether the value is a known member of the TimelineItemTakenAtSource enum.
+func (e TimelineItemTakenAtSource) Valid() bool {
+	switch e {
+	case TimelineItemTakenAtSourceExif:
+		return true
+	case TimelineItemTakenAtSourceFile:
+		return true
+	case TimelineItemTakenAtSourceImport:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrashItemKind.
+const (
+	TrashItemKindImage TrashItemKind = "image"
+	TrashItemKindVideo TrashItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the TrashItemKind enum.
+func (e TrashItemKind) Valid() bool {
+	switch e {
+	case TrashItemKindImage:
+		return true
+	case TrashItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrashItemTakenAtSource.
+const (
+	TrashItemTakenAtSourceExif   TrashItemTakenAtSource = "exif"
+	TrashItemTakenAtSourceFile   TrashItemTakenAtSource = "file"
+	TrashItemTakenAtSourceImport TrashItemTakenAtSource = "import"
+)
+
+// Valid indicates whether the value is a known member of the TrashItemTakenAtSource enum.
+func (e TrashItemTakenAtSource) Valid() bool {
+	switch e {
+	case TrashItemTakenAtSourceExif:
+		return true
+	case TrashItemTakenAtSourceFile:
+		return true
+	case TrashItemTakenAtSourceImport:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserRole.
 const (
 	UserRoleAdmin UserRole = "admin"
@@ -189,13 +297,15 @@ func (e GetAssetThumbnailParamsSize) Valid() bool {
 }
 
 // AssetDetail One asset as the detail endpoint returns it: the upload
-// response's identity and storage fields plus the pipeline's
-// refinements. The shape is fixed -- every property is always
-// present -- and the pipeline-dependent values (`width`,
-// `height`, `durationMs`, `blurhash` and the fields inside
-// `exif`) are null until the jobs produced them, turning
-// non-null when `asset.ready` fired. A value that stays null on
-// a ready asset means the file carries no such metadata.
+// response's identity and storage fields, the pipeline's
+// refinements, and the two owner-level attributes the PATCH
+// endpoint edits (`description`, `isHidden`). The shape is
+// fixed -- every property is always present -- and the
+// pipeline-dependent values (`width`, `height`, `durationMs`,
+// `blurhash` and the fields inside `exif`) are null until the
+// jobs produced them, turning non-null when `asset.ready`
+// fired. A value that stays null on a ready asset means the
+// file carries no such metadata.
 type AssetDetail struct {
 	// Blurhash The blurhash of the tile (image assets) or poster frame
 	// (video assets) for placeholder rendering; null until the
@@ -208,6 +318,12 @@ type AssetDetail struct {
 
 	// CreatedAt When the asset record was created (RFC 3339 UTC).
 	CreatedAt time.Time `json:"createdAt"`
+
+	// Description The owner's free-text description of the asset, the text
+	// the detail panel renders; the empty string until the
+	// owner wrote one. Editable only by the owner through
+	// `PATCH /assets/{id}`, which replaces it wholesale.
+	Description string `json:"description"`
 
 	// DurationMs Playback duration of a video in milliseconds; null for
 	// images and until the metadata job refined it.
@@ -228,8 +344,17 @@ type AssetDetail struct {
 	// Id UUIDv7 identifier of the asset.
 	Id openapi_types.UUID `json:"id"`
 
-	// IsReady True once the whole pipeline of the asset (metadata and
-	// serving copies) completed; the `asset.ready` event fires
+	// IsHidden True while the owner-level visibility switch is off: the
+	// asset is out of every live view (the timeline, the
+	// favorites) and manageable only through the hidden view,
+	// until it is unhidden. The same switch `PATCH
+	// /assets/{id}` and the batch `hide` / `unhide` actions
+	// flip.
+	IsHidden bool `json:"isHidden"`
+
+	// IsReady True once the whole pipeline of the asset completed -- the
+	// metadata and thumbnail jobs for an image, plus the
+	// transcode job for a video; the `asset.ready` event fires
 	// at that moment. Until then the client shows placeholders
 	// and the media endpoints answer `ASSET_NOT_READY` for
 	// missing derived files.
@@ -244,8 +369,9 @@ type AssetDetail struct {
 	Kind AssetDetailKind `json:"kind"`
 
 	// LivePhotoVideoId For a Live Photo image, the id of its linked component
-	// video row (never in the timeline, but resolvable for
-	// playback); null otherwise.
+	// video row (never in the timeline; its original is
+	// downloadable by that id, the transcoded play stream is
+	// not); null otherwise.
 	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
 
 	// MimeType Canonical content type of the stored format, for example
@@ -289,6 +415,30 @@ type AssetDetailKind string
 // offset, `file` a file timestamp (reserved for the future
 // directory-album importer).
 type AssetDetailTakenAtSource string
+
+// AssetPatch The partial edit of one asset: every field is optional, at
+// least one must be present (a body that carries neither -- null
+// values count as absent -- is a client bug and answers 400),
+// and only the fields the request carries update; the rest keep
+// their values. Both fields are owner-level asset state, so a
+// patch that actually changes one of them publishes a single
+// `asset.updated` event; a patch that repeats the stored values
+// is the idempotent no-op and publishes nothing.
+type AssetPatch struct {
+	// Description The owner's free-text description of the asset, the text
+	// the detail panel renders. The value replaces the stored
+	// text wholesale (an empty string clears it). At most
+	// 10,000 Unicode characters -- the count is over runes, so
+	// a text of multi-byte characters stays within the bound at
+	// the same length.
+	Description *string `json:"description,omitempty"`
+
+	// IsHidden The owner-level visibility switch: `true` keeps the asset
+	// out of every live view (the timeline, the favorites)
+	// until it is unhidden; `false` returns it. The same switch
+	// the batch `hide` / `unhide` actions flip.
+	IsHidden *bool `json:"isHidden,omitempty"`
+}
 
 // AssetResponse One stored asset as the upload and idempotency endpoints return
 // it. `state` discriminates the upload outcome: `created` (201, a
@@ -355,6 +505,60 @@ type AssetResponseKind string
 // identical live asset) or `trashed` (200, an identical asset
 // in the trash).
 type AssetResponseState string
+
+// BatchRequest One batch action over a list of asset ids. The action applies
+// to every id that resolves to a caller-owned asset; the rest
+// (unknown or another account's, indistinguishable) are ignored
+// and reported in the response's `missing` list -- a batch never
+// fails over an individual id. `ids` carries between 1 and 1000
+// entries; repeated ids collapse to one application.
+type BatchRequest struct {
+	// Action The set operation to apply. `favorite` / `unfavorite`
+	// write or remove the caller's per-user favorites rows;
+	// `hide` / `unhide` flip the owner-level visibility switch
+	// (a hidden asset leaves every live view until unhidden);
+	// `trash` / `restore` run the trash lifecycle of the trash
+	// endpoints, the Live Photo pair moving as one asset.
+	Action BatchRequestAction `json:"action"`
+
+	// Ids The asset ids to apply the action to: at least 1, at most
+	// 1000.
+	Ids []openapi_types.UUID `json:"ids"`
+}
+
+// BatchRequestAction The set operation to apply. `favorite` / `unfavorite`
+// write or remove the caller's per-user favorites rows;
+// `hide` / `unhide` flip the owner-level visibility switch
+// (a hidden asset leaves every live view until unhidden);
+// `trash` / `restore` run the trash lifecycle of the trash
+// endpoints, the Live Photo pair moving as one asset.
+type BatchRequestAction string
+
+// BatchResponse The set-semantics report of one batch action. `affected` and
+// `missing` partition the request's distinct ids: every id is
+// either applied or unresolvable, none is both, and none is
+// silently dropped.
+type BatchResponse struct {
+	// Affected How many distinct request ids resolved to a caller-owned
+	// asset and were processed -- INCLUDING ids that were
+	// already in the target state (the idempotent no-op of the
+	// set semantics: a repeat of a successful batch answers the
+	// same count, because the endpoint is a convergence
+	// operation, not a state-change counter). NOT a count of
+	// rows written: trashing a Live Photo pair moves two rows
+	// but one request id, and counts once.
+	Affected int `json:"affected"`
+
+	// Missing The distinct request ids that did not resolve to a
+	// caller-owned asset -- unknown ids and other accounts'
+	// assets, indistinguishable by design -- in the order of
+	// their first appearance in the request. Empty when every
+	// id resolved. This deliberate reporting (instead of the
+	// byte-identical 404 of the single-asset endpoints) is the
+	// trade of the list surface: the caller handed the ids over
+	// themselves, so reporting them back hides nothing.
+	Missing []openapi_types.UUID `json:"missing"`
+}
 
 // BearerSession The mobile session minted by consuming a pairing token: the
 // bearer credential plus the session it authenticates.
@@ -545,6 +749,235 @@ type SessionInfo struct {
 // revoked explicitly.
 type SessionInfoKind string
 
+// TimelineItem One asset of the timeline: the asset detail's fields minus the
+// `exif` object and the two detail-panel edit attributes
+// (`description`, `isHidden`) -- the detail endpoint renders the
+// EXIF panel and the edit controls; the timeline renders tiles.
+// Every item is live by construction --
+// hidden assets, trashed assets and the component video rows of
+// Live Photos never enter the timeline -- so `isTrashed` is
+// always false here and is carried only to keep the item shape
+// identical to the detail's. `isReady` still varies: a fresh
+// upload enters the timeline immediately with its
+// pipeline-dependent fields null, and the client upgrades the
+// tile when `asset.ready` fires. The shape is fixed -- every
+// property is always present. `isFavorite` is per-user state
+// computed for the requesting user, so the same asset is a
+// favorite tile for one viewer and a plain tile for another.
+type TimelineItem struct {
+	// Blurhash The blurhash of the tile (image assets) or poster frame
+	// (video assets) for placeholder rendering; null until the
+	// thumbnail job stored it.
+	Blurhash *string `json:"blurhash"`
+
+	// Checksum SHA-256 digest of the file bytes, lowercase hex. The
+	// prefix of the entity tags the media endpoints serve.
+	Checksum string `json:"checksum"`
+
+	// CreatedAt When the asset record was created (RFC 3339 UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DurationMs Playback duration of a video in milliseconds; null for
+	// images and until the metadata job refined it.
+	DurationMs *int `json:"durationMs"`
+
+	// FileSize Size of the stored file in bytes.
+	FileSize int64 `json:"fileSize"`
+
+	// Height Pixel height in sensor order; null until the metadata job
+	// refined the dimensions.
+	Height *int `json:"height"`
+
+	// Id UUIDv7 identifier of the asset.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsFavorite Whether the REQUESTING user favorites this asset: the
+	// caller's own row of the per-user favorites state, written
+	// by the batch endpoint's favorite action. False whenever
+	// the caller has no favorites row for the asset -- the same
+	// asset can be a favorite for one viewer of a shared
+	// timeline and not for another.
+	IsFavorite bool `json:"isFavorite"`
+
+	// IsReady True once the whole pipeline of the asset (metadata and
+	// serving copies) completed; until then the
+	// pipeline-dependent fields are null and the client renders
+	// placeholders.
+	IsReady bool `json:"isReady"`
+
+	// IsTrashed Always false in the timeline: trashed assets never enter
+	// it. The field exists to keep the shape identical to the
+	// asset detail's.
+	IsTrashed bool `json:"isTrashed"`
+
+	// Kind Media family of the asset. A Live Photo is an `image`
+	// whose linked component video row never appears in the
+	// timeline.
+	Kind TimelineItemKind `json:"kind"`
+
+	// LivePhotoVideoId For a Live Photo image, the id of its linked component
+	// video row (its original is downloadable by that id, the
+	// transcoded play stream is not); null otherwise.
+	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
+
+	// MimeType Canonical content type of the stored format, for example
+	// `image/jpeg` or `video/quicktime`.
+	MimeType string `json:"mimeType"`
+
+	// OriginalFilename The file name the asset was uploaded with.
+	OriginalFilename string `json:"originalFilename"`
+
+	// OwnerId UUIDv7 identifier of the owning account.
+	OwnerId openapi_types.UUID `json:"ownerId"`
+
+	// TakenAt Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
+	// the upload time when absent) and refined from EXIF by the
+	// metadata pipeline; the timeline orders by it.
+	TakenAt time.Time `json:"takenAt"`
+
+	// TakenAtSource Where `takenAt` comes from: `import` is the
+	// device-reported capture time of the upload, `exif` an
+	// EXIF capture time the metadata job resolved with an
+	// offset, `file` a file timestamp (reserved for the future
+	// directory-album importer).
+	TakenAtSource TimelineItemTakenAtSource `json:"takenAtSource"`
+
+	// Width Pixel width in sensor order; null until the metadata job
+	// refined the dimensions.
+	Width *int `json:"width"`
+}
+
+// TimelineItemKind Media family of the asset. A Live Photo is an `image`
+// whose linked component video row never appears in the
+// timeline.
+type TimelineItemKind string
+
+// TimelineItemTakenAtSource Where `takenAt` comes from: `import` is the
+// device-reported capture time of the upload, `exif` an
+// EXIF capture time the metadata job resolved with an
+// offset, `file` a file timestamp (reserved for the future
+// directory-album importer).
+type TimelineItemTakenAtSource string
+
+// TimelineResponse One page of a timeline-shaped view: the aggregated timeline,
+// the favorites view or the hidden view all answer with this
+// page shape (the same ordering and the same cursor semantics).
+// `nextCursor` is present exactly when another page follows the
+// `items` of this one: the client passes it back as the
+// `cursor` query parameter to continue, and a response without
+// it ends the pagination. The last page is the one whose
+// follow-up page would be empty, so no run ever observes an
+// empty page mid-pagination.
+type TimelineResponse struct {
+	// Items The timeline items of this page, ordered by `takenAt`
+	// descending with the id as the tiebreak.
+	Items []TimelineItem `json:"items"`
+
+	// NextCursor The opaque continuation cursor: pass it back as the
+	// `cursor` query parameter to fetch the next page. Absent
+	// exactly when this is the last page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// TrashItem One asset of the trash view: the timeline item's fields (the
+// tile-relevant identity and pipeline fields, so the trash page
+// renders the same tiles as the timeline) plus the trash
+// semantics -- `deletedAt`, when the soft delete happened, and
+// `remainingDays`, the countdown of whole days until the expiry
+// job removes the row (rounded up; 0 once past the deadline,
+// for the short window until the hourly job catches up). Every
+// item is trashed by construction; there is no `isTrashed`
+// field. The component video rows of Live Photos never appear:
+// the pair is represented by its photo. The shape is fixed --
+// every property is always present.
+type TrashItem struct {
+	// Blurhash The blurhash of the tile for placeholder rendering; null
+	// until the thumbnail job stored it.
+	Blurhash *string `json:"blurhash"`
+
+	// Checksum SHA-256 digest of the file bytes, lowercase hex. The
+	// prefix of the entity tags the media endpoints serve.
+	Checksum string `json:"checksum"`
+
+	// CreatedAt When the asset record was created (RFC 3339 UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DeletedAt When the asset was soft deleted (RFC 3339 UTC). The
+	// retention window ends at `deletedAt` plus the instance's
+	// `trash_retention_days`.
+	DeletedAt time.Time `json:"deletedAt"`
+
+	// DurationMs Playback duration of a video in milliseconds; null for
+	// images and until the metadata job refined it.
+	DurationMs *int `json:"durationMs"`
+
+	// FileSize Size of the stored file in bytes.
+	FileSize int64 `json:"fileSize"`
+
+	// Height Pixel height in sensor order; null until the metadata job
+	// refined the dimensions.
+	Height *int `json:"height"`
+
+	// Id UUIDv7 identifier of the asset.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsReady True once the whole pipeline of the asset (metadata and
+	// serving copies) completed.
+	IsReady bool `json:"isReady"`
+
+	// Kind Media family of the asset.
+	Kind TrashItemKind `json:"kind"`
+
+	// LivePhotoVideoId For a Live Photo image, the id of its linked component
+	// video row (restored and expired together with the photo);
+	// null otherwise.
+	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
+
+	// MimeType Canonical content type of the stored format, for example
+	// `image/jpeg` or `video/quicktime`.
+	MimeType string `json:"mimeType"`
+
+	// OriginalFilename The file name the asset was uploaded with.
+	OriginalFilename string `json:"originalFilename"`
+
+	// OwnerId UUIDv7 identifier of the owning account.
+	OwnerId openapi_types.UUID `json:"ownerId"`
+
+	// RemainingDays Whole days until the expiry job removes the asset,
+	// rounded up (an asset trashed moments ago with the default
+	// retention of 30 days shows 30). 0 once the deadline has
+	// passed -- the row survives only until the next hourly
+	// expiry run.
+	RemainingDays int `json:"remainingDays"`
+
+	// TakenAt Capture time (RFC 3339), the value the timeline would
+	// order the asset by.
+	TakenAt time.Time `json:"takenAt"`
+
+	// TakenAtSource Where `takenAt` comes from.
+	TakenAtSource TrashItemTakenAtSource `json:"takenAtSource"`
+
+	// Width Pixel width in sensor order; null until the metadata job
+	// refined the dimensions.
+	Width *int `json:"width"`
+}
+
+// TrashItemKind Media family of the asset.
+type TrashItemKind string
+
+// TrashItemTakenAtSource Where `takenAt` comes from.
+type TrashItemTakenAtSource string
+
+// TrashResponse The trash view: the caller's trashed assets, newest deletion
+// first. The list is bounded (the 200 most recent deletions)
+// and unpaginated -- the trash is a recovery view for recent
+// deletes, and items age out through expiry on their own.
+type TrashResponse struct {
+	// Items The trashed assets of the caller, ordered by `deletedAt`
+	// descending.
+	Items []TrashItem `json:"items"`
+}
+
 // User A lumemor account.
 type User struct {
 	// CreatedAt Creation time (RFC 3339 UTC).
@@ -604,6 +1037,54 @@ type UploadAssetMultipartBody struct {
 	Photo openapi_types.File `json:"photo"`
 }
 
+// GetFavoritesParams defines parameters for GetFavorites.
+type GetFavoritesParams struct {
+	// Cursor The `nextCursor` of the previous page; absent on the first
+	// page. An unparseable value answers 400
+	// `VALIDATION_FAILED` (cursors are opaque strings produced
+	// by this endpoint, never assembled by clients).
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size: the number of timeline items one response
+	// carries at most. Defaults to 100; values over 200 are
+	// answered with 200, values below 1 answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetHiddenParams defines parameters for GetHidden.
+type GetHiddenParams struct {
+	// Cursor The `nextCursor` of the previous page; absent on the first
+	// page. An unparseable value answers 400
+	// `VALIDATION_FAILED` (cursors are opaque strings produced
+	// by this endpoint, never assembled by clients).
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size: the number of timeline items one response
+	// carries at most. Defaults to 100; values over 200 are
+	// answered with 200, values below 1 answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetTimelineParams defines parameters for GetTimeline.
+type GetTimelineParams struct {
+	// Cursor The `nextCursor` of the previous page; absent on the first
+	// page. An unparseable value answers 400
+	// `VALIDATION_FAILED` (cursors are opaque strings produced
+	// by this endpoint, never assembled by clients).
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size: the number of timeline items one response
+	// carries at most. Defaults to 100; values over 200 are
+	// answered with 200, values below 1 answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// AlbumId Restrict the response to the timeline of this one album
+	// (an album the caller owns or that is shared to the caller)
+	// instead of the aggregate. An unknown or invisible album
+	// answers the empty list.
+	AlbumId *openapi_types.UUID `form:"albumId,omitempty" json:"albumId,omitempty"`
+}
+
 // GetAssetThumbnailParams defines parameters for GetAssetThumbnail.
 type GetAssetThumbnailParams struct {
 	// Size The serving size: `tile` for the timeline, `view` for the
@@ -629,6 +1110,12 @@ type GetEventsParams struct {
 // UploadAssetMultipartRequestBody defines body for UploadAsset for multipart/form-data ContentType.
 type UploadAssetMultipartRequestBody UploadAssetMultipartBody
 
+// BatchAssetsJSONRequestBody defines body for BatchAssets for application/json ContentType.
+type BatchAssetsJSONRequestBody = BatchRequest
+
+// PatchAssetJSONRequestBody defines body for PatchAsset for application/json ContentType.
+type PatchAssetJSONRequestBody = AssetPatch
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -643,15 +1130,36 @@ type ServerInterface interface {
 	// UploadAsset Upload one photo, optionally with its Live Photo video.
 	// (POST /assets)
 	UploadAsset(w http.ResponseWriter, r *http.Request)
+	// BatchAssets Apply one set action to a batch of assets.
+	// (POST /assets/batch)
+	BatchAssets(w http.ResponseWriter, r *http.Request)
 	// GetAssetByDeviceId Look up an uploaded asset by its device identifier.
 	// (GET /assets/by-device-id/{deviceAssetId})
 	GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string)
+	// GetFavorites The caller's favorites, one keyset page at a time.
+	// (GET /assets/favorites)
+	GetFavorites(w http.ResponseWriter, r *http.Request, params GetFavoritesParams)
+	// GetHidden The caller's hidden assets, one keyset page at a time.
+	// (GET /assets/hidden)
+	GetHidden(w http.ResponseWriter, r *http.Request, params GetHiddenParams)
+	// GetTimeline The aggregated timeline, one keyset page at a time.
+	// (GET /assets/timeline)
+	GetTimeline(w http.ResponseWriter, r *http.Request, params GetTimelineParams)
+	// DeleteAsset Permanently delete one asset, files and all.
+	// (DELETE /assets/{id})
+	DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetAsset Fetch the detail of one owned asset.
 	// (GET /assets/{id})
 	GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PatchAsset Edit the description or hidden switch of one asset.
+	// (PATCH /assets/{id})
+	PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetAssetOriginal Download the original file of one owned asset.
 	// (GET /assets/{id}/original)
 	GetAssetOriginal(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PlayAsset Stream the transcoded playable copy of one owned video.
+	// (GET /assets/{id}/play)
+	PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetAssetThumbnail Serve a derived thumbnail, or a video's poster frame.
 	// (GET /assets/{id}/thumbnail)
 	GetAssetThumbnail(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAssetThumbnailParams)
@@ -682,6 +1190,12 @@ type ServerInterface interface {
 	// CreateAdmin Create the first administrator account.
 	// (POST /server/setup/admin)
 	CreateAdmin(w http.ResponseWriter, r *http.Request)
+	// GetTrash List the caller's trashed assets with their retention countdown.
+	// (GET /trash)
+	GetTrash(w http.ResponseWriter, r *http.Request)
+	// RestoreAsset Restore one trashed asset.
+	// (POST /trash/{id}/restore)
+	RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -694,9 +1208,39 @@ func (_ Unimplemented) UploadAsset(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// BatchAssets Apply one set action to a batch of assets.
+// (POST /assets/batch)
+func (_ Unimplemented) BatchAssets(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetAssetByDeviceId Look up an uploaded asset by its device identifier.
 // (GET /assets/by-device-id/{deviceAssetId})
 func (_ Unimplemented) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, deviceAssetId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFavorites The caller's favorites, one keyset page at a time.
+// (GET /assets/favorites)
+func (_ Unimplemented) GetFavorites(w http.ResponseWriter, r *http.Request, params GetFavoritesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetHidden The caller's hidden assets, one keyset page at a time.
+// (GET /assets/hidden)
+func (_ Unimplemented) GetHidden(w http.ResponseWriter, r *http.Request, params GetHiddenParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTimeline The aggregated timeline, one keyset page at a time.
+// (GET /assets/timeline)
+func (_ Unimplemented) GetTimeline(w http.ResponseWriter, r *http.Request, params GetTimelineParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteAsset Permanently delete one asset, files and all.
+// (DELETE /assets/{id})
+func (_ Unimplemented) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -706,9 +1250,21 @@ func (_ Unimplemented) GetAsset(w http.ResponseWriter, r *http.Request, id opena
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// PatchAsset Edit the description or hidden switch of one asset.
+// (PATCH /assets/{id})
+func (_ Unimplemented) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetAssetOriginal Download the original file of one owned asset.
 // (GET /assets/{id}/original)
 func (_ Unimplemented) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PlayAsset Stream the transcoded playable copy of one owned video.
+// (GET /assets/{id}/play)
+func (_ Unimplemented) PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -772,6 +1328,18 @@ func (_ Unimplemented) CreateAdmin(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetTrash List the caller's trashed assets with their retention countdown.
+// (GET /trash)
+func (_ Unimplemented) GetTrash(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RestoreAsset Restore one trashed asset.
+// (POST /trash/{id}/restore)
+func (_ Unimplemented) RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ServerInterfaceWrapper converts contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler            ServerInterface
@@ -786,6 +1354,20 @@ func (siw *ServerInterfaceWrapper) UploadAsset(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UploadAsset(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BatchAssets operation middleware
+func (siw *ServerInterfaceWrapper) BatchAssets(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BatchAssets(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -821,6 +1403,183 @@ func (siw *ServerInterfaceWrapper) GetAssetByDeviceId(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetFavorites operation middleware
+func (siw *ServerInterfaceWrapper) GetFavorites(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFavoritesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFavorites(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHidden operation middleware
+func (siw *ServerInterfaceWrapper) GetHidden(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetHiddenParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHidden(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTimeline operation middleware
+func (siw *ServerInterfaceWrapper) GetTimeline(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTimelineParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "albumId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "albumId", r.URL.Query(), &params.AlbumId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "albumId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTimeline(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAsset operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAsset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetAsset operation middleware
 func (siw *ServerInterfaceWrapper) GetAsset(w http.ResponseWriter, r *http.Request) {
 
@@ -847,6 +1606,32 @@ func (siw *ServerInterfaceWrapper) GetAsset(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// PatchAsset operation middleware
+func (siw *ServerInterfaceWrapper) PatchAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchAsset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetAssetOriginal operation middleware
 func (siw *ServerInterfaceWrapper) GetAssetOriginal(w http.ResponseWriter, r *http.Request) {
 
@@ -864,6 +1649,32 @@ func (siw *ServerInterfaceWrapper) GetAssetOriginal(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssetOriginal(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PlayAsset operation middleware
+func (siw *ServerInterfaceWrapper) PlayAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PlayAsset(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1080,6 +1891,46 @@ func (siw *ServerInterfaceWrapper) CreateAdmin(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetTrash operation middleware
+func (siw *ServerInterfaceWrapper) GetTrash(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrash(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreAsset operation middleware
+func (siw *ServerInterfaceWrapper) RestoreAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreAsset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1224,7 +2075,25 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/assets", wrapper.UploadAsset)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/timeline", wrapper.GetTimeline)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/assets/batch", wrapper.BatchAssets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/favorites", wrapper.GetFavorites)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/hidden", wrapper.GetHidden)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/assets/{id}", wrapper.DeleteAsset)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/{id}", wrapper.GetAsset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/assets/{id}", wrapper.PatchAsset)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
@@ -1233,7 +2102,16 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/assets/{id}/original", wrapper.GetAssetOriginal)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/{id}/play", wrapper.PlayAsset)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/trash", wrapper.GetTrash)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/trash/{id}/restore", wrapper.RestoreAsset)
 	})
 
 	return r

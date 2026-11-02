@@ -53,10 +53,10 @@ type Deps struct {
 	// (production wiring, tests) is responsible for a usable value.
 	UploadLimitBytes int64
 	// Jobs enqueues pipeline jobs for uploaded assets: the upload
-	// handler enqueues the metadata job and the thumbnail job after its
-	// transaction commits. Nil keeps the upload working without a queue
-	// (tests, wiring order); the assets simply stay not-ready until one
-	// runs.
+	// handler enqueues the metadata and thumbnail jobs (and, for a
+	// video upload, the transcode job) after its transaction commits.
+	// Nil keeps the upload working without a queue (tests, wiring
+	// order); the assets simply stay not-ready until one runs.
 	Jobs AssetJobEnqueuer
 }
 
@@ -72,6 +72,10 @@ type AssetJobEnqueuer interface {
 	// the metadata job it must only be called once the asset's rows
 	// are committed.
 	EnqueueThumbnail(ctx context.Context, assetID uuid.UUID) error
+	// EnqueueTranscode inserts the transcode job of a VIDEO asset
+	// (the playable web-safe MP4). The upload handler calls it only
+	// for video kind, matching the pending_jobs count of three.
+	EnqueueTranscode(ctx context.Context, assetID uuid.UUID) error
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
@@ -185,10 +189,12 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 			// generation and the asset reads behind RequireSession, all
 			// inside the handler timeout. The timeout wraps the session
 			// middleware too, so even a wedged session lookup cannot pin a
-			// connection. The asset detail and the thumbnail serving
-			// belong here: both answer from one row read plus bounded
-			// bytes -- the detail is a small JSON document, the derived
-			// files are re-encoded copies of at most a few megabytes.
+			// connection. The asset detail, the aggregated timeline and
+			// the thumbnail serving belong here: all answer from bounded
+			// row reads plus bounded bytes -- the detail and the timeline
+			// are small JSON documents (the timeline's page size is
+			// capped by the contract), the derived files are re-encoded
+			// copies of at most a few megabytes.
 			r.Group(func(r chi.Router) {
 				r.Use(timeoutMiddleware(timeout), s.requireSession)
 				r.Post("/auth/logout", wrapper.Logout)
@@ -196,8 +202,28 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Delete("/auth/sessions/{id}", wrapper.RevokeSession)
 				r.Post("/auth/pairing/token", wrapper.CreatePairingToken)
 				r.Get("/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)
+				r.Get("/assets/timeline", wrapper.GetTimeline)
+				// The batch and curation views (M2c Task 4): the
+				// set-semantics batch write, and the favorites and
+				// hidden listings. The static segments win over the
+				// /assets/{id} parameter below, so mounting them in
+				// this group keeps every asset read a bounded row
+				// read plus a bounded JSON document.
+				r.Post("/assets/batch", wrapper.BatchAssets)
+				r.Get("/assets/favorites", wrapper.GetFavorites)
+				r.Get("/assets/hidden", wrapper.GetHidden)
 				r.Get("/assets/{id}", wrapper.GetAsset)
+				r.Patch("/assets/{id}", wrapper.PatchAsset)
 				r.Get("/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
+				// The trash lifecycle endpoints (M2c Task 3): the
+				// owner-scoped listing and restore, and the explicit
+				// permanent delete. All three are bounded operations
+				// (row reads and writes plus metadata-only file
+				// removals), so they belong in this group like every
+				// other JSON handler.
+				r.Get("/trash", wrapper.GetTrash)
+				r.Post("/trash/{id}/restore", wrapper.RestoreAsset)
+				r.Delete("/assets/{id}", wrapper.DeleteAsset)
 			})
 
 			// Authed streaming group: the SSE activity stream. It
@@ -225,22 +251,24 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 			r.Post("/assets", wrapper.UploadAsset)
 		})
 
-		// Authed media download group: GET /assets/{id}/original
-		// streams the stored original file, whose size is bounded only
-		// by the per-file upload limit (2 GiB by default) and whose
-		// transfer runs at client speed. It requires a session like
-		// every authed route but deliberately runs OUTSIDE the handler
-		// timeout, mirroring the upload and SSE exemptions:
-		// http.TimeoutHandler buffers the whole response until the
-		// handler returns (see timeoutMiddleware), so a wrapped
-		// original download would first read the entire file into
+		// Authed media download group: GET /assets/{id}/original and
+		// GET /assets/{id}/play stream media files whose size is
+		// bounded only by the per-file upload limit (2 GiB by default
+		// for the original; the transcoded play copy is a re-encode of
+		// it) and whose transfer runs at client speed. They require a
+		// session like every authed route but deliberately run
+		// OUTSIDE the handler timeout, mirroring the upload and SSE
+		// exemptions: http.TimeoutHandler buffers the whole response
+		// until the handler returns (see timeoutMiddleware), so a
+		// wrapped media stream would first read the entire file into
 		// memory and only then let its first byte reach the client --
-		// an unbounded per-request memory commitment. The handler
-		// itself stays bounded: one row read, one file open, then
+		// an unbounded per-request memory commitment. The handlers
+		// themselves stay bounded: one row read, one file open, then
 		// http.ServeContent streams the bytes.
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireSession)
 			r.Get("/assets/{id}/original", wrapper.GetAssetOriginal)
+			r.Get("/assets/{id}/play", wrapper.PlayAsset)
 		})
 	})
 	return r

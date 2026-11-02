@@ -133,10 +133,19 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"GET /api/v1/server/info",
 		"POST /api/v1/server/setup/admin",
 		"POST /api/v1/assets",
+		"POST /api/v1/assets/batch",
 		"GET /api/v1/assets/by-device-id/{deviceAssetId}",
+		"GET /api/v1/assets/timeline",
+		"GET /api/v1/assets/favorites",
+		"GET /api/v1/assets/hidden",
 		"GET /api/v1/assets/{id}",
+		"PATCH /api/v1/assets/{id}",
 		"GET /api/v1/assets/{id}/thumbnail",
 		"GET /api/v1/assets/{id}/original",
+		"GET /api/v1/assets/{id}/play",
+		"GET /api/v1/trash",
+		"POST /api/v1/trash/{id}/restore",
+		"DELETE /api/v1/assets/{id}",
 	}
 	for _, route := range want {
 		if !got[route] {
