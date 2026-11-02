@@ -13,6 +13,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"image/color"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -567,8 +568,9 @@ func TestGetAssetOriginalRange(t *testing.T) {
 // been produced, the inline video/mp4 stream with the static-asset
 // validators and NO Content-Disposition (playback, not a download --
 // the original download stays on /original), the byte ranges, the
-// conditional 304, and the image asset's 404 (an image has no
-// playable stream).
+// conditional 304, and the no-playable-stream 404s: an image asset
+// and a Live Photo's component video row (the component's original
+// download stays reachable by its id).
 func TestGetAssetPlayServing(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	video, err := os.ReadFile(filepath.Join("..", "media", "testdata", "tiny.mp4"))
@@ -675,5 +677,52 @@ func TestGetAssetPlayServing(t *testing.T) {
 	apiErr, _ = decodeError(t, imagePlay)
 	if apiErr.Code != apigen.ASSETNOTFOUND {
 		t.Errorf("image play code = %q, want %q", apiErr.Code, apigen.ASSETNOTFOUND)
+	}
+
+	// A Live Photo's component video row is video-kind and
+	// owner-visible, but it counts no pipeline of its own: no job ever
+	// produces its play file, so a not-ready answer would have a
+	// client wait for an event that never fires. The honest answer is
+	// the same 404 ASSET_NOT_FOUND (the pair's motion stays reachable
+	// through the component's original download).
+	live := decodeAsset(t, env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-play-live",
+		"fileName":      "IMG_live.jpg",
+	}, []assetUploadFile{
+		// A distinct pixel color from the image upload above: the
+		// owner+checksum idempotency would otherwise resolve this as
+		// a duplicate of that asset and never create the pair.
+		{field: "photo", name: "IMG_live.jpg", content: jpegColorFixture(t, color.RGBA{R: 0x11, G: 0x22, B: 0x33, A: 0xff})},
+		{field: "liveVideo", name: "live.mov", content: movFixture()},
+	}))
+	detailRec := env.serveGet(t, "/api/v1/assets/"+live.Id.String(), env.cookie, nil)
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("live photo detail status = %d, want %d (body %q)", detailRec.Code, http.StatusOK, detailRec.Body.String())
+	}
+	var detail apigen.AssetDetail
+	if err := json.Unmarshal(detailRec.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("decode live photo detail %q: %v", detailRec.Body.String(), err)
+	}
+	if detail.LivePhotoVideoId == nil {
+		t.Fatal("live photo detail carries no livePhotoVideoId")
+	}
+	componentPlay := env.serveGet(t, "/api/v1/assets/"+detail.LivePhotoVideoId.String()+"/play", env.cookie, nil)
+	if componentPlay.Code != http.StatusNotFound {
+		t.Fatalf("component play status = %d, want %d (body %q)", componentPlay.Code, http.StatusNotFound, componentPlay.Body.String())
+	}
+	componentUnknown := env.serveGet(t, "/api/v1/assets/"+random.String()+"/play", env.cookie, nil)
+	if componentPlay.Body.String() != componentUnknown.Body.String() {
+		t.Errorf("component play 404 body %q differs from the unknown id's %q, want byte-identical", componentPlay.Body.String(), componentUnknown.Body.String())
+	}
+	apiErr, _ = decodeError(t, componentPlay)
+	if apiErr.Code != apigen.ASSETNOTFOUND {
+		t.Errorf("component play code = %q, want %q", apiErr.Code, apigen.ASSETNOTFOUND)
+	}
+
+	// The component's ORIGINAL stays servable by its id: the pair's
+	// motion is reachable, just not through the transcoded stream.
+	componentOriginal := env.serveGet(t, "/api/v1/assets/"+detail.LivePhotoVideoId.String()+"/original", env.cookie, nil)
+	if componentOriginal.Code != http.StatusOK {
+		t.Fatalf("component original status = %d, want %d (body %q)", componentOriginal.Code, http.StatusOK, componentOriginal.Body.String())
 	}
 }

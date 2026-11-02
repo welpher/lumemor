@@ -32,6 +32,19 @@ func requireTranscodeFFmpeg(t *testing.T) {
 	}
 }
 
+// ffprobeInstalled reports whether this host carries ffprobe. The
+// transcode tests' codec/pixel-format/duration assertions probe the
+// output with it; a host without it (the dev container and CI carry
+// ffprobe as part of the ffmpeg package) still runs every pure-Go
+// assertion -- the +faststart box walk, the file-set checks -- and
+// only the probes drop out. Tests read this once at the top so the
+// skip decision stays scoped to the probe assertions and never
+// aborts the pure-Go ones around them.
+func ffprobeInstalled() bool {
+	_, err := exec.LookPath("ffprobe")
+	return err == nil
+}
+
 // probeStream is one stream of an ffprobe report.
 type probeStream struct {
 	CodecType string `json:"codec_type"`
@@ -48,13 +61,16 @@ type probeReport struct {
 	} `json:"format"`
 }
 
-// probeOf runs ffprobe over the file and decodes its JSON report. The
-// fixed invocation carries no user-controlled input beyond the path
-// the test itself names.
+// probeOf runs ffprobe over the file and decodes its JSON report. It
+// hard-requires ffprobe (Fatal, never Skip): only tests that already
+// read ffprobeInstalled call it, so a missing binary is a test-wiring
+// bug, not a condition to silently abort the caller mid-assertion.
+// The fixed invocation carries no user-controlled input beyond the
+// path the test itself names.
 func probeOf(t *testing.T, path string) probeReport {
 	t.Helper()
 	if _, err := exec.LookPath("ffprobe"); err != nil {
-		t.Skipf("ffprobe is not installed on this host; run the suite inside the dev container (make docker-test): %v", err)
+		t.Fatalf("probeOf requires ffprobe; the caller must scope its call on ffprobeInstalled (run the suite inside the dev container): %v", err)
 	}
 	out, err := exec.Command("ffprobe", "-v", "error", "-show_streams", "-show_entries", "format=duration", "-of", "json", path).Output()
 	if err != nil {
@@ -166,8 +182,13 @@ func containsString(values []string, value string) bool {
 // storage/encoded/<assetID>/play.mp4, the container duration preserved
 // within transcode tolerances, and the +faststart layout present (the
 // source's moov sits behind its mdat, so this is the remux assertion).
+// The codec and duration facts need ffprobe; a host without it still
+// runs the output-existence and box-walk assertions.
 func TestGenerateTranscode(t *testing.T) {
 	requireTranscodeFFmpeg(t)
+	// Determined once at the top: a host without ffprobe loses only
+	// the probes below, never the assertions around them.
+	probeCodecs := ffprobeInstalled()
 	dataDir := newMediaEnv(t)
 	assetID := writeOriginal(t, dataDir, "tiny.mp4", fixtureBytes(t, "tiny.mp4"))
 
@@ -180,25 +201,30 @@ func TestGenerateTranscode(t *testing.T) {
 		t.Fatalf("transcoded %s missing: %v", outPath, err)
 	}
 
-	report := probeOf(t, outPath)
-	video := probeVideoStream(t, report)
-	if video.CodecName != "h264" {
-		t.Errorf("video codec = %q, want h264", video.CodecName)
-	}
-	if video.PixFmt != "yuv420p" {
-		t.Errorf("video pixel format = %q, want yuv420p", video.PixFmt)
-	}
-	// The fixture is video-only; the transcode keeps exactly that
-	// (the optional audio map adds nothing when the source has none).
-	if probeAudioCodec(report) != "" {
-		t.Errorf("audio codec = %q, want none for the video-only fixture", probeAudioCodec(report))
-	}
+	if probeCodecs {
+		report := probeOf(t, outPath)
+		video := probeVideoStream(t, report)
+		if video.CodecName != "h264" {
+			t.Errorf("video codec = %q, want h264", video.CodecName)
+		}
+		if video.PixFmt != "yuv420p" {
+			t.Errorf("video pixel format = %q, want yuv420p", video.PixFmt)
+		}
+		// The fixture is video-only; the transcode keeps exactly that
+		// (the optional audio map adds nothing when the source has
+		// none).
+		if probeAudioCodec(report) != "" {
+			t.Errorf("audio codec = %q, want none for the video-only fixture", probeAudioCodec(report))
+		}
 
-	// Duration tolerance: the container timing is preserved through
-	// the re-encode; the fixture runs 0.3s.
-	seconds := probeDurationSeconds(t, report)
-	if diff := seconds - 0.3; diff < -0.2 || diff > 0.2 {
-		t.Errorf("transcoded duration = %fs, want 0.3s within the 0.2s tolerance", seconds)
+		// Duration tolerance: the container timing is preserved
+		// through the re-encode; the fixture runs 0.3s.
+		seconds := probeDurationSeconds(t, report)
+		if diff := seconds - 0.3; diff < -0.2 || diff > 0.2 {
+			t.Errorf("transcoded duration = %fs, want 0.3s within the 0.2s tolerance", seconds)
+		}
+	} else {
+		t.Log("ffprobe is not installed on this host; the codec/pix_fmt/duration probes are skipped (run the suite inside the dev container)")
 	}
 
 	requireFaststartLayout(t, outPath)
@@ -208,6 +234,7 @@ func TestGenerateTranscode(t *testing.T) {
 // an audio track transcodes into AAC alongside the H.264 video.
 func TestGenerateTranscodeWithAudio(t *testing.T) {
 	requireTranscodeFFmpeg(t)
+	probeCodecs := ffprobeInstalled()
 	dataDir := newMediaEnv(t)
 	source := audioVideoFixture(t, dataDir)
 	assetID := "99999999-8888-7777-6666-555555555555"
@@ -216,19 +243,23 @@ func TestGenerateTranscodeWithAudio(t *testing.T) {
 		t.Fatalf("GenerateTranscode: %v", err)
 	}
 
-	report := probeOf(t, storage.EncodedPath(assetID))
-	video := probeVideoStream(t, report)
-	if video.CodecName != "h264" {
-		t.Errorf("video codec = %q, want h264", video.CodecName)
-	}
-	if got := probeAudioCodec(report); got != "aac" {
-		t.Errorf("audio codec = %q, want aac", got)
-	}
+	if probeCodecs {
+		report := probeOf(t, storage.EncodedPath(assetID))
+		video := probeVideoStream(t, report)
+		if video.CodecName != "h264" {
+			t.Errorf("video codec = %q, want h264", video.CodecName)
+		}
+		if got := probeAudioCodec(report); got != "aac" {
+			t.Errorf("audio codec = %q, want aac", got)
+		}
 
-	// The source runs 1s; the transcode preserves it.
-	seconds := probeDurationSeconds(t, report)
-	if diff := seconds - 1; diff < -0.25 || diff > 0.25 {
-		t.Errorf("transcoded duration = %fs, want 1s within the 0.25s tolerance", seconds)
+		// The source runs 1s; the transcode preserves it.
+		seconds := probeDurationSeconds(t, report)
+		if diff := seconds - 1; diff < -0.25 || diff > 0.25 {
+			t.Errorf("transcoded duration = %fs, want 1s within the 0.25s tolerance", seconds)
+		}
+	} else {
+		t.Log("ffprobe is not installed on this host; the codec/duration probes are skipped (run the suite inside the dev container)")
 	}
 	requireFaststartLayout(t, storage.EncodedPath(assetID))
 }

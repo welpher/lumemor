@@ -109,7 +109,7 @@ void main() {
       // TODO
     });
 
-    // For a Live Photo image, the id of its linked component video row (resolvable for playback); null otherwise. 
+    // For a Live Photo image, the id of its linked component video row (its original is downloadable by that id, the transcoded play stream is not); null otherwise. 
     // String livePhotoVideoId
     test('to test the property `livePhotoVideoId`', () async {
       // TODO

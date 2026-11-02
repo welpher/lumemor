@@ -369,8 +369,9 @@ type AssetDetail struct {
 	Kind AssetDetailKind `json:"kind"`
 
 	// LivePhotoVideoId For a Live Photo image, the id of its linked component
-	// video row (never in the timeline, but resolvable for
-	// playback); null otherwise.
+	// video row (never in the timeline; its original is
+	// downloadable by that id, the transcoded play stream is
+	// not); null otherwise.
 	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
 
 	// MimeType Canonical content type of the stored format, for example
@@ -815,7 +816,8 @@ type TimelineItem struct {
 	Kind TimelineItemKind `json:"kind"`
 
 	// LivePhotoVideoId For a Live Photo image, the id of its linked component
-	// video row (resolvable for playback); null otherwise.
+	// video row (its original is downloadable by that id, the
+	// transcoded play stream is not); null otherwise.
 	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
 
 	// MimeType Canonical content type of the stored format, for example
