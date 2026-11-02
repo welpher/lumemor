@@ -127,6 +127,22 @@ NON_ERROR_KEYS = {
     "asset_favorite_label",
     "asset_live_photo_label",
     "asset_video_label",
+    # Upload queue overlay UI strings (M2d Task 5).
+    "upload_queue_title",
+    "upload_state_waiting",
+    "upload_state_uploading",
+    "upload_state_conflict",
+    "upload_state_processing",
+    "upload_state_done",
+    "upload_state_failed",
+    "upload_active_count",
+    "upload_dismiss",
+    "upload_resolve_conflict",
+    "upload_drop_hint",
+    "upload_conflict_title",
+    "upload_conflict_body",
+    "upload_conflict_restore",
+    "upload_conflict_save_as",
 }
 
 KEY_PATTERN = re.compile(r"^[a-z0-9_]+$")

@@ -9,18 +9,82 @@
 		title: string;
 		/** Optional footer row, e.g. a cancel and a confirm button. */
 		footer?: Snippet;
+		/** Notified of every close path (Escape, backdrop, the close mark). */
+		onclose?: () => void;
 		children?: Snippet;
 	};
 
-	let { open = $bindable(false), title, footer, children }: Props = $props();
+	let { open = $bindable(false), title, footer, onclose, children }: Props = $props();
+
+	let panel: HTMLElement | undefined = $state();
+	let previouslyFocused: HTMLElement | null = null;
 
 	function close(): void {
 		open = false;
+		onclose?.();
+	}
+
+	// The focus trap: opening the dialog saves the focus, targets the
+	// panel, and cycles Tab/Shift-Tab inside it; closing restores the
+	// saved focus (the invoking control) so keyboard users land back
+	// where they came from.
+	$effect(() => {
+		if (!open) {
+			return;
+		}
+		previouslyFocused = document.activeElement as HTMLElement | null;
+		panel?.focus();
+		return () => {
+			previouslyFocused?.focus();
+		};
+	});
+
+	/** The focusable elements inside the panel, document order. */
+	function focusables(): HTMLElement[] {
+		if (panel === undefined) {
+			return [];
+		}
+		return Array.from(
+			panel.querySelectorAll<HTMLElement>(
+				'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+			)
+		);
+	}
+
+	function trapTab(event: KeyboardEvent): void {
+		const candidates = focusables();
+		if (candidates.length === 0) {
+			// Nothing inside takes a Tab: keep the focus on the panel.
+			event.preventDefault();
+			panel?.focus();
+			return;
+		}
+		const first = candidates[0];
+		const last = candidates[candidates.length - 1];
+		const active = document.activeElement;
+		if (event.shiftKey) {
+			if (active === first || active === panel) {
+				event.preventDefault();
+				last?.focus();
+			}
+			return;
+		}
+		if (active === last) {
+			event.preventDefault();
+			first?.focus();
+		}
 	}
 
 	function handleKeydown(event: KeyboardEvent): void {
-		if (open && event.key === 'Escape') {
+		if (!open) {
+			return;
+		}
+		if (event.key === 'Escape') {
 			close();
+			return;
+		}
+		if (event.key === 'Tab') {
+			trapTab(event);
 		}
 	}
 </script>
@@ -38,6 +102,7 @@
 	>
 		<div
 			class="modal__panel"
+			bind:this={panel}
 			role="dialog"
 			aria-modal="true"
 			aria-label={title}
