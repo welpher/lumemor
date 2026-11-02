@@ -211,12 +211,18 @@ func (s *server) PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_ty
 		return
 	}
 
-	// A playable stream exists only for video assets. An image has
-	// none, and the answer is the asset's own anti-enumeration 404 --
-	// the same envelope, byte for byte, as an unknown or a foreign id
-	// -- rather than a distinct error that would leak the kind's
-	// shape for ids the caller may not even own.
-	if row.MediaKind != dbgen.MediaKindVideo {
+	// A playable stream exists only for the client-visible video
+	// assets. An image has none; so does a Live Photo's component
+	// video row -- it counts no pipeline of its own (its pending_jobs
+	// stays 0, the pair's visible asset is the image), so no job will
+	// ever produce its play file and a not-ready answer would have a
+	// client waiting for an event that never fires. Both answer the
+	// asset's own anti-enumeration 404 -- the same envelope, byte for
+	// byte, as an unknown or a foreign id -- rather than a distinct
+	// error that would leak the kind's shape for ids the caller may
+	// not even own. (The component's original stays downloadable by
+	// its id through /original.)
+	if row.MediaKind != dbgen.MediaKindVideo || row.IsComponent {
 		s.writeAssetNotFound(w)
 		return
 	}

@@ -667,9 +667,10 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 // total; the pending_jobs counter was initialized to match). The
 // component video gets no thumbnail and no transcode job: it is never
 // the client-visible asset, and the photo it belongs to already
-// provides the timeline tile (and the pair's visible asset is an
-// image, so nothing of the pair is playable through /play by the
-// component's id either). The enqueue runs after the upload
+// provides the timeline tile (the component also counts no pipeline
+// of its own, and the play endpoint gates on is_component, so its id
+// answers 404 there -- the pair's motion stays reachable through the
+// component's original download). The enqueue runs after the upload
 // transaction committed, so its context must not die with the client
 // connection: a disconnect in the commit-to-enqueue window would fail
 // the enqueue and strand the asset's pipeline counter not-ready

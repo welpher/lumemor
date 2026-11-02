@@ -31,7 +31,7 @@ part 'asset_detail.g.dart';
 /// * [height] - Pixel height in sensor order (not orientation-corrected); null until the metadata job refined the dimensions. 
 /// * [durationMs] - Playback duration of a video in milliseconds; null for images and until the metadata job refined it. 
 /// * [blurhash] - The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it. 
-/// * [livePhotoVideoId] - For a Live Photo image, the id of its linked component video row (never in the timeline, but resolvable for playback); null otherwise. 
+/// * [livePhotoVideoId] - For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, the transcoded play stream is not); null otherwise. 
 /// * [exif] - The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
 @BuiltValue()
 abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
@@ -109,7 +109,7 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   @BuiltValueField(wireName: r'blurhash')
   String? get blurhash;
 
-  /// For a Live Photo image, the id of its linked component video row (never in the timeline, but resolvable for playback); null otherwise. 
+  /// For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, the transcoded play stream is not); null otherwise. 
   @BuiltValueField(wireName: r'livePhotoVideoId')
   String? get livePhotoVideoId;
 

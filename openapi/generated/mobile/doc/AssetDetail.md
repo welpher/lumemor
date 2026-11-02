@@ -26,7 +26,7 @@ Name | Type | Description | Notes
 **height** | **int** | Pixel height in sensor order (not orientation-corrected); null until the metadata job refined the dimensions.  | 
 **durationMs** | **int** | Playback duration of a video in milliseconds; null for images and until the metadata job refined it.  | 
 **blurhash** | **String** | The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it.  | 
-**livePhotoVideoId** | **String** | For a Live Photo image, the id of its linked component video row (never in the timeline, but resolvable for playback); null otherwise.  | 
+**livePhotoVideoId** | **String** | For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, the transcoded play stream is not); null otherwise.  | 
 **exif** | [**ExifSummary**](ExifSummary.md) | The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction.  | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

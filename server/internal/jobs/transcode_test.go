@@ -37,6 +37,19 @@ func requireTranscodeToolchain(t *testing.T) {
 	}
 }
 
+// ffprobeInstalled reports whether this host carries ffprobe. The
+// pipeline tests' codec/pixel-format assertions probe the transcoded
+// output with it; a host without it (the dev container and CI carry
+// ffprobe as part of the ffmpeg package) still runs every pure-Go
+// assertion -- the +faststart box walk, the poster file set, the
+// ready-once event count -- and only the probes drop out. Tests read
+// this once at the top so the skip decision stays scoped to the probe
+// assertions and never aborts the pure-Go ones around them.
+func ffprobeInstalled() bool {
+	_, err := exec.LookPath("ffprobe")
+	return err == nil
+}
+
 // transcodeProbeStream is one stream of an ffprobe report over the
 // transcoded file (the output-validity assertion of the pipeline
 // tests, mirroring the media package's transcode tests).
@@ -50,51 +63,18 @@ type transcodeProbeReport struct {
 	Streams []transcodeProbeStream `json:"streams"`
 }
 
-// requireTranscodedOutput asserts the pipeline's playable copy: the
-// file exists, its video stream is H.264 at yuv420p, its audio (when
-// the source carries one) is AAC, and the container holds the
-// +faststart layout -- ftyp first, moov before mdat. ffprobe carries
-// the codec truth; the box walk carries the streaming layout (the
-// source fixture's moov sits BEHIND its mdat, so the walk is
-// discriminating: only a +faststart remux passes it).
+// requireTranscodedOutput asserts the pipeline's playable copy at the
+// pure-Go layer: the file exists and the container holds the
+// +faststart layout -- ftyp first, moov before mdat (the source
+// fixture's moov sits BEHIND its mdat, so the walk is discriminating:
+// only a +faststart remux passes it). No external tool is involved;
+// the codec facts are requireTranscodeCodecs' business.
 func requireTranscodedOutput(t *testing.T, assetID uuid.UUID) {
 	t.Helper()
 	outPath := storage.EncodedPath(assetID.String())
 	data, err := os.ReadFile(outPath)
 	if err != nil {
 		t.Fatalf("read transcoded %s: %v", outPath, err)
-	}
-
-	if _, err := exec.LookPath("ffprobe"); err != nil {
-		t.Skipf("ffprobe is not installed on this host; run the suite inside the dev container (make docker-test): %v", err)
-	}
-	out, err := exec.Command("ffprobe", "-v", "error", "-show_streams", "-of", "json", outPath).Output()
-	if err != nil {
-		t.Fatalf("probe %s: %v: %s", outPath, err, out)
-	}
-	var report transcodeProbeReport
-	if err := json.Unmarshal(out, &report); err != nil {
-		t.Fatalf("decode probe report of %s: %v", outPath, err)
-	}
-	var video *transcodeProbeStream
-	for i := range report.Streams {
-		switch report.Streams[i].CodecType {
-		case "video":
-			video = &report.Streams[i]
-		case "audio":
-			if report.Streams[i].CodecName != "aac" {
-				t.Errorf("audio codec = %q, want aac", report.Streams[i].CodecName)
-			}
-		}
-	}
-	if video == nil {
-		t.Fatalf("probe report of %s carries no video stream: %+v", outPath, report.Streams)
-	}
-	if video.CodecName != "h264" {
-		t.Errorf("video codec = %q, want h264", video.CodecName)
-	}
-	if video.PixFmt != "yuv420p" {
-		t.Errorf("video pixel format = %q, want yuv420p", video.PixFmt)
 	}
 
 	// The +faststart box walk: ftyp first, moov before mdat.
@@ -127,6 +107,48 @@ func requireTranscodedOutput(t *testing.T, assetID uuid.UUID) {
 	}
 	if !moovBeforeMDat {
 		t.Errorf("%s box order = %v, want moov before mdat (the +faststart layout)", outPath, types)
+	}
+}
+
+// requireTranscodeCodecs asserts the ffprobe-backed codec facts of the
+// transcoded copy: its video stream is H.264 at yuv420p, its audio
+// (when the source carries one) is AAC. It hard-requires ffprobe
+// (Fatal, never Skip): only tests that already read ffprobeInstalled
+// call it, so a missing binary is a test-wiring bug, not a condition
+// to silently abort the caller mid-assertion.
+func requireTranscodeCodecs(t *testing.T, assetID uuid.UUID) {
+	t.Helper()
+	outPath := storage.EncodedPath(assetID.String())
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Fatalf("requireTranscodeCodecs requires ffprobe; the caller must scope its call on ffprobeInstalled (run the suite inside the dev container): %v", err)
+	}
+	out, err := exec.Command("ffprobe", "-v", "error", "-show_streams", "-of", "json", outPath).Output()
+	if err != nil {
+		t.Fatalf("probe %s: %v: %s", outPath, err, out)
+	}
+	var report transcodeProbeReport
+	if err := json.Unmarshal(out, &report); err != nil {
+		t.Fatalf("decode probe report of %s: %v", outPath, err)
+	}
+	var video *transcodeProbeStream
+	for i := range report.Streams {
+		switch report.Streams[i].CodecType {
+		case "video":
+			video = &report.Streams[i]
+		case "audio":
+			if report.Streams[i].CodecName != "aac" {
+				t.Errorf("audio codec = %q, want aac", report.Streams[i].CodecName)
+			}
+		}
+	}
+	if video == nil {
+		t.Fatalf("probe report of %s carries no video stream: %+v", outPath, report.Streams)
+	}
+	if video.CodecName != "h264" {
+		t.Errorf("video codec = %q, want h264", video.CodecName)
+	}
+	if video.PixFmt != "yuv420p" {
+		t.Errorf("video pixel format = %q, want yuv420p", video.PixFmt)
 	}
 }
 
@@ -197,10 +219,16 @@ func (e *env) encodedModifiedAt(t *testing.T, id uuid.UUID) time.Time {
 // pending_jobs = 3 (metadata, thumbnail, transcode), all three jobs
 // run, asset.ready fires EXACTLY once -- only when the last of the
 // three completed -- and the playable copy the transcode produced is
-// valid: H.264 at yuv420p, the +faststart layout. The poster the
-// thumbnail job derived still exists alongside it.
+// valid: the +faststart layout always (a pure-Go box walk), the
+// H.264/yuv420p codec facts when this host carries ffprobe. The poster
+// the thumbnail job derived still exists alongside it.
 func TestUploadVideoThreeJobsToReady(t *testing.T) {
 	requireTranscodeToolchain(t)
+	// The codec probes need ffprobe; everything else in this test is
+	// pure Go (the endpoint assertions, the box walk, the poster file
+	// set, the event count). Determined once at the top: a host
+	// without ffprobe loses only the probes, never the rest.
+	probeCodecs := ffprobeInstalled()
 	e := newEnv(t)
 
 	video, err := os.ReadFile(filepath.Join("..", "media", "testdata", "tiny.mp4"))
@@ -249,6 +277,11 @@ func TestUploadVideoThreeJobsToReady(t *testing.T) {
 	}
 
 	requireTranscodedOutput(t, asset.Id)
+	if probeCodecs {
+		requireTranscodeCodecs(t, asset.Id)
+	} else {
+		t.Log("ffprobe is not installed on this host; the codec/pix_fmt probes are skipped (run the suite inside the dev container)")
+	}
 
 	// The thumbnail job's poster still exists: three jobs, two
 	// derived-file families, one readiness.
