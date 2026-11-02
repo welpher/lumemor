@@ -1000,18 +1000,26 @@ func TestUploadToReadyFullFlow(t *testing.T) {
 
 // TestUploadLivePhotoPipeline pins the Live Photo pipeline shape: the
 // upload enqueues a metadata job for BOTH rows (each carries an exif
-// sidecar to refine) and a thumbnail job for the photo row ONLY (the
+// sidecar to refine), a thumbnail job for the photo row ONLY (the
 // component video is never the client-visible asset, so it gets no
-// poster and its counter stays empty) -- only the photo row's pipeline
-// announces readiness, and asset.ready fires exactly once, for the
-// photo.
+// poster), and -- M2d -- exactly one transcode job for the COMPONENT
+// row (its playable stream; the photo row itself is an image and gets
+// none). The component's counter counts that transcode alone (1),
+// while the photo row's keeps its two; the metadata completion on the
+// component must not consume the transcode's count, and the
+// component's transcode completion stamps its ready_at but never
+// announces -- asset.ready fires exactly once, for the photo. The
+// component's play endpoint then serves the stream the job produced.
 func TestUploadLivePhotoPipeline(t *testing.T) {
 	requireExiftool(t)
 	requireThumbnails(t)
+	requireTranscodeToolchain(t)
 	e := newEnv(t)
 
 	golden := goldenFixture(t)
-	video, err := os.ReadFile(filepath.Join("..", "storage", "testdata", "minimal.mp4"))
+	// A real video: the component's transcode re-encodes it, so the
+	// structural 28-byte mp4 fixture is not enough here.
+	video, err := os.ReadFile(filepath.Join("..", "media", "testdata", "tiny.mp4"))
 	if err != nil {
 		t.Fatalf("read video fixture: %v", err)
 	}
@@ -1033,7 +1041,8 @@ func TestUploadLivePhotoPipeline(t *testing.T) {
 	}
 	photoID := response.Id
 
-	// The component video row: linked from the photo, never ready.
+	// The component video row: linked from the photo, counting its
+	// one transcode job.
 	var videoID uuid.UUID
 	var videoPending int32
 	var videoReadyAt pgtype.Timestamptz
@@ -1044,8 +1053,25 @@ func TestUploadLivePhotoPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load component video row: %v", err)
 	}
-	if videoPending != 0 {
-		t.Errorf("component pending_jobs = %d, want 0 (no pipeline of its own)", videoPending)
+	if videoPending != 1 {
+		t.Errorf("component pending_jobs = %d, want 1 (the transcode job alone)", videoPending)
+	}
+
+	// Exactly one transcode job entered the queue for the component
+	// (plus its metadata job, which refines the sidecar); the photo
+	// row keeps its own metadata and thumbnail pair and gains no
+	// transcode of its own (it is an image). The enqueue happens
+	// before the upload response is written, so the queue state is
+	// already settled here.
+	kinds := e.riverJobsOf(t, videoID)
+	if kinds["metadata"] != 1 || kinds["transcode"] != 1 || e.riverJobTotal(t, videoID) != 2 {
+		t.Errorf("component river jobs = %v, want exactly one metadata and one transcode job", kinds)
+	}
+	if kinds["thumbnail"] != 0 {
+		t.Errorf("component thumbnail jobs = %d, want 0 (never the client-visible asset)", kinds["thumbnail"])
+	}
+	if photoKinds := e.riverJobsOf(t, photoID); photoKinds["transcode"] != 0 {
+		t.Errorf("photo transcode jobs = %d, want 0 (the pair's visible asset is the image)", photoKinds["transcode"])
 	}
 
 	eventually(t, jobWaitTimeout, "the photo to become ready", func() bool {
@@ -1061,13 +1087,18 @@ func TestUploadLivePhotoPipeline(t *testing.T) {
 		}
 		return refined
 	})
+	// The component's transcode completes: its own pipeline (the one
+	// job it counts) drains and stamps ready_at.
+	eventually(t, jobWaitTimeout, "the component to become ready", func() bool {
+		return e.assetOf(t, videoID).readyAt.Valid
+	})
 
 	state := e.assetOf(t, photoID)
 	if !state.readyAt.Valid {
 		t.Fatal("photo never became ready")
 	}
 	if got := countEvents(e.bus, "asset.ready"); got != 1 {
-		t.Errorf("asset.ready events = %d, want exactly 1 (the photo only)", got)
+		t.Errorf("asset.ready events = %d, want exactly 1 (the photo only; components never announce)", got)
 	}
 	payload := eventPayloadOf(t, e.bus, "asset.ready")
 	if payload["assetId"] != photoID.String() {
@@ -1078,17 +1109,52 @@ func TestUploadLivePhotoPipeline(t *testing.T) {
 	}
 
 	videoState := e.assetOf(t, videoID)
-	if videoState.readyAt.Valid {
-		t.Error("component video became ready, want it to stay outside the readiness pipeline")
+	if !videoState.readyAt.Valid {
+		t.Fatal("component video never became ready, want its transcode completion to stamp ready_at")
+	}
+	if videoState.pending != 0 {
+		t.Errorf("component pending_jobs = %d, want 0 after its transcode completed", videoState.pending)
 	}
 
 	// The photo's serving copies exist; the component video derives
-	// none (no thumbnail job was enqueued for it -- its directory is
-	// not even created).
+	// no thumbnails (no thumbnail job was enqueued for it) but its
+	// playable stream does exist -- with the +faststart layout the
+	// transcode produces.
 	requireJobThumbDimensions(t, photoID, media.SizeTile, 64, 64)
 	requireJobThumbDimensions(t, photoID, media.SizeOriginal, 64, 64)
 	if files := e.thumbFiles(t, videoID); files != nil {
 		t.Errorf("component video derived files = %v, want none", files)
+	}
+	requireTranscodedOutput(t, videoID)
+
+	// The pair's motion plays: the component's play endpoint serves
+	// the transcoded stream with the static-asset validators of a
+	// derived media file.
+	play := e.serveGet(t, "/api/v1/assets/"+videoID.String()+"/play", nil)
+	if play.Code != http.StatusOK {
+		t.Fatalf("component play status = %d, want %d (body %q)", play.Code, http.StatusOK, play.Body.String())
+	}
+	if got := play.Header().Get("Content-Type"); got != "video/mp4" {
+		t.Errorf("component play content-type = %q, want video/mp4", got)
+	}
+	videoChecksum := sha256Hex(video)
+	if got := play.Header().Get("ETag"); got != `"`+videoChecksum[:16]+`"` {
+		t.Errorf("component play etag = %q, want the component checksum prefix", got)
+	}
+	onDisk, err := os.ReadFile(storage.EncodedPath(videoID.String()))
+	if err != nil {
+		t.Fatalf("read transcoded file of the component: %v", err)
+	}
+	if play.Body.Len() != len(onDisk) {
+		t.Errorf("component play body = %d bytes, want the %d bytes of the transcoded file", play.Body.Len(), len(onDisk))
+	}
+	partial := e.serveGet(t, "/api/v1/assets/"+videoID.String()+"/play",
+		map[string]string{"Range": "bytes=0-99"})
+	if partial.Code != http.StatusPartialContent {
+		t.Fatalf("component play range status = %d, want %d", partial.Code, http.StatusPartialContent)
+	}
+	if got := partial.Header().Get("Content-Range"); got != "bytes 0-99/"+strconv.Itoa(len(onDisk)) {
+		t.Errorf("component play content-range = %q, want bytes 0-99/%d", got, len(onDisk))
 	}
 }
 

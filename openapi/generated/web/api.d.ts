@@ -567,10 +567,10 @@ export interface paths {
          *
          *     A trashed asset answers 200 with `isTrashed: true` -- the
          *     trash view reads the detail the same way. The component video
-         *     row of a Live Photo is readable by its id (the detail and the
-         *     original download resolve it through `livePhotoVideoId`; the
-         *     play endpoint answers 404 for it -- the component counts no
-         *     transcode of its own) but never appears in the timeline.
+         *     row of a Live Photo is readable by its id (the detail, the
+         *     original download and the transcoded play stream resolve it
+         *     through `livePhotoVideoId`; it counts a transcode job of its
+         *     own) but never appears in the timeline.
          */
         get: operations["getAsset"];
         put?: never;
@@ -794,22 +794,26 @@ export interface paths {
          *     416 with the total size in `Content-Range`; a malformed Range
          *     header is ignored and the full body answers 200.
          *
-         *     Only client-visible video assets have a playable stream: an
-         *     image asset, and a Live Photo's component video row (linked
-         *     through `livePhotoVideoId` -- it counts no transcode pipeline
-         *     of its own, its pair's visible asset being the image), answer
-         *     404 `ASSET_NOT_FOUND` -- there is nothing to play by that id,
-         *     and the answer is the asset's own not-found envelope, the same
+         *     Only the video family has a playable stream: a standalone
+         *     video and a Live Photo's component video row alike (linked
+         *     through `livePhotoVideoId` -- since the component counts a
+         *     transcode job of its own, its playable copy arrives exactly
+         *     like any video's, and the pair's motion plays through this
+         *     endpoint by the component's id). An image asset answers 404
+         *     `ASSET_NOT_FOUND` -- there is nothing to play by that id, and
+         *     the answer is the asset's own not-found envelope, the same
          *     anti-enumeration shape (byte for byte) as an unknown or a
-         *     foreign id. The component's original stays downloadable by its
-         *     id through `GET /assets/{id}/original`. A video whose
-         *     transcode has not been produced yet -- the pipeline is still
-         *     running, or the transcode job failed and is retrying --
-         *     answers 404 `ASSET_NOT_READY`: the client renders the poster
-         *     frame (the thumbnail endpoint serves it) and waits for the
-         *     `asset.ready` event instead of treating the asset as gone. The
-         *     video pipeline counts three jobs (metadata, thumbnail,
-         *     transcode), so readiness follows all three.
+         *     foreign id. A video whose transcode has not been produced
+         *     yet -- the pipeline is still running, or the transcode job
+         *     failed and is retrying -- answers 404 `ASSET_NOT_READY`: the
+         *     client renders the poster frame (the thumbnail endpoint
+         *     serves it) and waits for the `asset.ready` event instead of
+         *     treating the asset as gone; for a Live Photo component, whose
+         *     readiness the pair's photo announces on its own schedule,
+         *     the client keeps the still photo until the stream appears.
+         *     The standalone video pipeline counts three jobs (metadata,
+         *     thumbnail, transcode), so its readiness follows all three;
+         *     the component's counter counts its transcode alone.
          */
         get: operations["playAsset"];
         put?: never;
@@ -1268,7 +1272,8 @@ export interface components {
             /**
              * @description True once the whole pipeline of the asset completed -- the
              *     metadata and thumbnail jobs for an image, plus the
-             *     transcode job for a video; the `asset.ready` event fires
+             *     transcode job for a video (for a Live Photo component,
+             *     the transcode job alone); the `asset.ready` event fires
              *     at that moment. Until then the client shows placeholders
              *     and the media endpoints answer `ASSET_NOT_READY` for
              *     missing derived files.
@@ -1299,8 +1304,8 @@ export interface components {
              * Format: uuid
              * @description For a Live Photo image, the id of its linked component
              *     video row (never in the timeline; its original is
-             *     downloadable by that id, the transcoded play stream is
-             *     not); null otherwise.
+             *     downloadable by that id, and its transcoded play stream
+             *     is served there too); null otherwise.
              */
             livePhotoVideoId: string | null;
             /**
@@ -2254,7 +2259,9 @@ export interface operations {
                      * Format: binary
                      * @description The Live Photo pairing video; present only together
                      *     with `photo`. The server stores it as a linked
-                     *     component row that never appears in the timeline.
+                     *     component row that never appears in the timeline,
+                     *     and queues its transcode so the pair's motion is
+                     *     playable in the browser.
                      */
                     liveVideo?: string;
                 };

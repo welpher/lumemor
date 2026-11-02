@@ -29,11 +29,15 @@ func (TranscodeArgs) Kind() string { return "transcode" }
 
 // TranscodeWorker runs the transcode job: the web-safe MP4 of a video
 // asset -- H.264 + AAC, +faststart -- written atomically to
-// storage/encoded/<assetID>/play.mp4. The pipeline completion is
-// recorded through the same guarded decrement the metadata and
-// thumbnail jobs use, so the completion that empties pending_jobs
-// (three for a video: metadata, thumbnail, transcode) publishes
-// asset.ready exactly once.
+// storage/encoded/<assetID>/play.mp4. It serves standalone videos
+// (the third job of their three-job pipeline) and, since M2d, the
+// Live Photo component video (the ONE job its counter counts -- the
+// component's playable stream is what the pair's motion plays
+// through, its completion stamps ready_at but never announces). The
+// pipeline completion is recorded through the same guarded decrement
+// the metadata and thumbnail jobs use, so the completion that empties
+// pending_jobs (three for a standalone video: metadata, thumbnail,
+// transcode) publishes asset.ready exactly once.
 type TranscodeWorker struct {
 	river.WorkerDefaults[TranscodeArgs]
 
@@ -71,10 +75,10 @@ func (w *TranscodeWorker) Work(ctx context.Context, job *river.Job[TranscodeArgs
 		return fmt.Errorf("load asset: %w", err)
 	}
 
-	// A playable stream exists only for video assets. Both enqueue
-	// paths (the upload handler, the requeue sweep) gate on the kind,
-	// so a non-video row here is a mis-routed job, not a retryable
-	// failure: completing it as a no-op (no derivation, no
+	// A playable stream exists only for video-family rows. Both
+	// enqueue paths (the upload handler, the requeue sweep) gate on
+	// the kind, so a non-video row here is a mis-routed job, not a
+	// retryable failure: completing it as a no-op (no derivation, no
 	// decrement, no event) keeps the row's own pipeline untouched
 	// instead of corrupting its counter or burning retries against
 	// an image that can never transcode.
@@ -114,12 +118,17 @@ func (w *TranscodeWorker) Work(ctx context.Context, job *river.Job[TranscodeArgs
 		return fmt.Errorf("commit transcode transaction: %w", err)
 	}
 
-	if completion.BecameReady {
+	if completion.BecameReady && !row.IsComponent {
 		// Published after the commit so a subscriber that turns around
 		// and reads the database sees the final state. The payload
 		// discipline mirrors asset.uploaded and the metadata and
 		// thumbnail jobs' completions: the resource id and its media
-		// kind, nothing more.
+		// kind, nothing more. A Live Photo component row (M2d) never
+		// announces: its completion drains the one-job counter (the
+		// ready_at stamp is also what lets the requeue sweep stop
+		// matching the row), but the pair's announcement belongs to
+		// the photo row alone -- a component id in the timeline's
+		// event stream would be noise about an asset no view lists.
 		w.bus.Publish("asset.ready", map[string]string{
 			"assetId": assetID.String(),
 			"kind":    string(completion.MediaKind),

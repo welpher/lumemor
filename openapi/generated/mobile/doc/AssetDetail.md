@@ -21,12 +21,12 @@ Name | Type | Description | Notes
 **isTrashed** | **bool** | True when the asset sits in the trash. | 
 **isHidden** | **bool** | True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip.  | 
 **description** | **String** | The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale.  | 
-**isReady** | **bool** | True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files.  | 
+**isReady** | **bool** | True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video (for a Live Photo component, the transcode job alone); the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files.  | 
 **width** | **int** | Pixel width in sensor order (not orientation-corrected); null until the metadata job refined the dimensions.  | 
 **height** | **int** | Pixel height in sensor order (not orientation-corrected); null until the metadata job refined the dimensions.  | 
 **durationMs** | **int** | Playback duration of a video in milliseconds; null for images and until the metadata job refined it.  | 
 **blurhash** | **String** | The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it.  | 
-**livePhotoVideoId** | **String** | For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, the transcoded play stream is not); null otherwise.  | 
+**livePhotoVideoId** | **String** | For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, and its transcoded play stream is served there too); null otherwise.  | 
 **exif** | [**ExifSummary**](ExifSummary.md) | The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction.  | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
