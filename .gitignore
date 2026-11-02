@@ -14,6 +14,14 @@ dist/
 .env.*
 !.env.example
 
+# Web app build output and its staging tree for the Go embed: never
+# committed. `make web-build` rebuilds web/build from source and stages
+# the copy into server/internal/web/dist; CI and local Go builds run it
+# first (a Go build without it fails at the embed directive).
+web/build/
+web/node_modules/
+server/internal/web/dist/
+
 # Flutter / Dart
 mobile/.dart_tool/
 mobile/.flutter-plugins*

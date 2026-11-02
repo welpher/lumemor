@@ -54,6 +54,39 @@ api-check: api-gen
 		exit 1; \
 	fi
 
+# --- Web app (SvelteKit) ----------------------------------------------------
+#
+# The web client is a pure SvelteKit single-page app under web/:
+# adapter-static builds it into web/build (the index.html app shell
+# plus the content-hashed _app/ assets), and web-build then stages that
+# output into server/internal/web/dist, where the Go embed directive
+# picks it up. The staged tree is never committed: a Go build without a
+# prior web-build fails at the embed directive ("no matching files
+# found") -- that loud failure is intentional and pins the build order,
+# so CI runs the web build before the Go build.
+
+# Install the web toolchain and its dependencies with pnpm. The
+# lockfile is committed; pnpm freezes it automatically in CI.
+.PHONY: web-install
+web-install:
+	cd web && pnpm install
+
+# Type-check and unit-test the web app: svelte-check plus vitest. The
+# CI gate for web changes.
+.PHONY: web-check
+web-check:
+	cd web && pnpm run check
+	cd web && pnpm run test
+
+# Build the web app and stage the output for the Go embed. Must run
+# before any step that compiles the server (go build, go test,
+# docker-test, docker-lint, the compose image build).
+.PHONY: web-build
+web-build:
+	cd web && pnpm run build
+	rm -rf server/internal/web/dist
+	cp -R web/build server/internal/web/dist
+
 # --- Development/test container --------------------------------------------
 #
 # The media toolchain (libvips, exiftool, ffmpeg) lives in the dev

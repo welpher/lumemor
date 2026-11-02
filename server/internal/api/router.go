@@ -20,6 +20,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/buildinfo"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/web"
 )
 
 // Deps carries the runtime dependencies of the HTTP handlers. It must be
@@ -79,8 +80,10 @@ type AssetJobEnqueuer interface {
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
-// endpoints (/healthz, /metrics), the embedded HTML pages (/setup, /)
-// and the generated /api/v1 API surface.
+// endpoints (/healthz, /metrics), the first-run wizard (/setup), the
+// embedded single-page web app (/ and, through the SPA catch-all, its
+// hashed assets and the client-side-route fallback) and the generated
+// /api/v1 API surface.
 //
 // The /api/v1 pipeline order is pinned and security-relevant: the
 // security headers on every API response, then the origin check
@@ -140,12 +143,17 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 	r.Get("/healthz", handleHealthz)
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/setup", handleSetupPage)
+	// The embedded single-page web app. The root serves its shell (the
+	// app div mounts the client-side router) once setup is done; before
+	// that the first-run redirect in the handler below keeps the wizard
+	// as the face of a fresh instance.
+	spa := web.Handler()
 	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 		if !initialized(req.Context()) {
 			http.Redirect(w, req, "/setup", http.StatusFound)
 			return
 		}
-		handleIndexPage(w, req)
+		spa.ServeHTTP(w, req)
 	})
 	r.Route("/api/v1", func(r chi.Router) {
 		// Security headers and the origin check guard every API
@@ -271,6 +279,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 			r.Get("/assets/{id}/play", wrapper.PlayAsset)
 		})
 	})
+	// The SPA catch-all, registered last: content-hashed _app/ assets
+	// (immutable cache) and the shell fallback for every other unknown
+	// GET path, so unknown routes belong to the client-side router.
+	// chi matches the static routes above and the /api/v1 mount ahead
+	// of this wildcard; an unknown /api/v1 path 404s inside its own
+	// router and never falls through to the shell.
+	r.Get("/*", spa.ServeHTTP)
 	return r
 }
 
@@ -385,12 +400,6 @@ func binderParamName(err error) (string, bool) {
 // completed instances.
 func handleSetupPage(w http.ResponseWriter, _ *http.Request) {
 	servePage(w, "setup.html")
-}
-
-// handleIndexPage serves GET /: the embedded landing page an initialized
-// instance shows.
-func handleIndexPage(w http.ResponseWriter, _ *http.Request) {
-	servePage(w, "index.html")
 }
 
 // servePage writes one of the embedded HTML pages. A missing page is a

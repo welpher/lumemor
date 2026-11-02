@@ -1,7 +1,8 @@
 # Continuous integration for the Go server: lint, test, sqlc codegen
 # drift check, and build. The path filters keep this workflow from
 # running on changes that cannot affect it; each workflow also runs
-# when its own definition changes.
+# when its own definition changes. Web changes are included: the
+# server embeds the web app's build output, so it compiles against it.
 
 name: server
 
@@ -9,12 +10,14 @@ on:
   pull_request:
     paths:
       - 'server/**'
+      - 'web/**'
       - 'Makefile'
       - '.github/workflows/server.yml'
   push:
     branches: [main]
     paths:
       - 'server/**'
+      - 'web/**'
       - 'Makefile'
       - '.github/workflows/server.yml'
 
@@ -28,6 +31,30 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
+
+      # The Go server embeds the web app's build output (staged into
+      # server/internal/web/dist by make web-build), so the web build
+      # must run before every Go step below -- including the lint step,
+      # which compiles the packages it lints. Without it the Go build
+      # fails loudly at the embed directive.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # Matches web/package.json's packageManager field; bump both
+          # together.
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build web app (embedded into the server)
+        run: |
+          make web-install
+          make web-build
 
       - name: Set up Go
         uses: actions/setup-go@v5

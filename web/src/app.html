@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- A private family photo library: keep web crawlers out. -->
+		<meta name="robots" content="noindex" />
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<!-- The app shell root: every route renders inside this node after
+			the client-side router boots (SSR is off). -->
+		<div id="app" style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

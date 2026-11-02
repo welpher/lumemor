@@ -79,6 +79,12 @@ go build ./...
 cd ..
 make api-lint
 make api-check        # regenerates artifacts; the git tree must stay clean
+make web-install web-check web-build
+                      # web gate: svelte-check + vitest, then the
+                      # adapter-static build staged into
+                      # server/internal/web/dist for the Go embed --
+                      # docker-test below compiles the embed, so
+                      # web-build must run first
 python3 scripts/check_i18n.py
 make docker-test      # authoritative full suite (dev image, Linux parity
                       # with CI — platform-dependent failures surface here
