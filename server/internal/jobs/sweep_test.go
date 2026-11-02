@@ -15,6 +15,8 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -328,6 +330,54 @@ func TestRequeueSweepUniqueKeyBoundary(t *testing.T) {
 	kinds = e.riverJobsOf(t, id)
 	if kinds["metadata"] != 2 || kinds["thumbnail"] != 2 {
 		t.Errorf("river jobs after the second sweep-path insert = %v, want still 2 of each kind", kinds)
+	}
+}
+
+// TestRequeueSweepVideoUniqueKeyBoundary pins the video arm of the
+// uniqueness boundary (the image arm is pinned above): the upload
+// path's UNKEYED transcode insert and the sweep's KEYED re-insert do
+// not dedupe against each other -- the duplicate job runs, converged
+// by the transcode job's own idempotency and the guarded decrement --
+// while sweep-vs-sweep keyed inserts do dedupe. Whether the workers
+// complete or retry the jobs afterwards is irrelevant to the insert
+// assertions (the rows persist in river_job in every state).
+func TestRequeueSweepVideoUniqueKeyBoundary(t *testing.T) {
+	e := newEnv(t)
+
+	deviceTakenAt := time.Date(2021, 8, 9, 10, 11, 12, 0, time.UTC).Truncate(time.Microsecond)
+	video, err := os.ReadFile(filepath.Join("..", "media", "testdata", "tiny.mp4"))
+	if err != nil {
+		t.Fatalf("read video fixture: %v", err)
+	}
+	id := e.insertAssetKind(t, "originals/sweep/boundary-video.mp4", video, deviceTakenAt,
+		`{}`, dbgen.MediaKindVideo, "video/mp4", 3)
+
+	// The upload path enqueues its unkeyed transcode job.
+	if err := e.queue.EnqueueTranscode(context.Background(), id); err != nil {
+		t.Fatalf("enqueue upload-path transcode job: %v", err)
+	}
+
+	// The sweep-path re-insert does NOT dedupe against the unkeyed
+	// upload-path job: it duplicates it.
+	inserted, err := e.queue.RequeueTranscode(context.Background(), id)
+	if err != nil {
+		t.Fatalf("requeue transcode job: %v", err)
+	}
+	if !inserted {
+		t.Error("requeue transcode insert was deduped, want it to duplicate the unkeyed upload-path job")
+	}
+	// The second sweep-path insert dedupes against the first sweep's
+	// keyed row (sweep-vs-sweep): nothing new enters.
+	inserted, err = e.queue.RequeueTranscode(context.Background(), id)
+	if err != nil {
+		t.Fatalf("second requeue transcode job: %v", err)
+	}
+	if inserted {
+		t.Error("second requeue transcode insert duplicated, want the sweep-vs-sweep dedupe")
+	}
+	kinds := e.riverJobsOf(t, id)
+	if kinds["transcode"] != 2 {
+		t.Errorf("transcode river jobs = %d, want the upload-path job PLUS the sweep job (2)", kinds["transcode"])
 	}
 }
 

@@ -21,7 +21,7 @@ Name | Type | Description | Notes
 **isTrashed** | **bool** | True when the asset sits in the trash. | 
 **isHidden** | **bool** | True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip.  | 
 **description** | **String** | The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale.  | 
-**isReady** | **bool** | True once the whole pipeline of the asset (metadata and serving copies) completed; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files.  | 
+**isReady** | **bool** | True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files.  | 
 **width** | **int** | Pixel width in sensor order (not orientation-corrected); null until the metadata job refined the dimensions.  | 
 **height** | **int** | Pixel height in sensor order (not orientation-corrected); null until the metadata job refined the dimensions.  | 
 **durationMs** | **int** | Playback duration of a video in milliseconds; null for images and until the metadata job refined it.  | 

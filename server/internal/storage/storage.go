@@ -211,6 +211,17 @@ func PosterPath(assetID string) string {
 	return filepath.Join(dataRoot, "storage", "thumbs", assetID, "poster.jpg")
 }
 
+// EncodedPath returns the path of the transcoded playable copy of a
+// video asset under the data root: storage/encoded/<assetID>/play.mp4.
+// The file is the ffmpeg re-encode (H.264 + AAC, the web-safe pair)
+// the transcode job derives from the immutable original -- a serving
+// derivative, never the archival bytes themselves. Like the other
+// path helpers it panics when EnsureLayout has not succeeded yet.
+func EncodedPath(assetID string) string {
+	requireDataRoot("EncodedPath")
+	return filepath.Join(dataRoot, "storage", "encoded", assetID, "play.mp4")
+}
+
 // ResolveStoredPath resolves an asset's stored relative file path --
 // the portable slash-separated form the upload receiver records in
 // file_path, relative to the data root -- against the given data root

@@ -85,7 +85,7 @@ void main() {
       // TODO
     });
 
-    // True once the whole pipeline of the asset (metadata and serving copies) completed; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
+    // True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
     // bool isReady
     test('to test the property `isReady`', () async {
       // TODO

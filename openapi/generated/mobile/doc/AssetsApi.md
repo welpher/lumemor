@@ -20,6 +20,7 @@ Method | HTTP request | Description
 [**getTimeline**](AssetsApi.md#gettimeline) | **GET** /assets/timeline | The aggregated timeline, one keyset page at a time.
 [**getTrash**](AssetsApi.md#gettrash) | **GET** /trash | List the caller&#39;s trashed assets with their retention countdown.
 [**patchAsset**](AssetsApi.md#patchasset) | **PATCH** /assets/{id} | Edit the description or hidden switch of one asset.
+[**playAsset**](AssetsApi.md#playasset) | **GET** /assets/{id}/play | Stream the transcoded playable copy of one owned video.
 [**restoreAsset**](AssetsApi.md#restoreasset) | **POST** /trash/{id}/restore | Restore one trashed asset.
 [**uploadAsset**](AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 
@@ -263,7 +264,7 @@ Name | Type | Description  | Notes
 
 Serve a derived thumbnail, or a video's poster frame.
 
-The static serving copy of the asset:  - image assets: the AVIF thumbnail of the requested size --   `tile` (fits the 250px timeline box), `view` (long edge   capped at 1080px), `original` (the full-resolution   re-encode) -- served as `image/avif`; - video assets: the poster frame, whatever `size` says -- the   poster (the first frame, scaled into the tile box) is the   video's only serving copy until transcodes exist -- served   as `image/jpeg`.  The response is a private immutable static asset: `Cache-Control: private, max-age=31536000, immutable`, and a strong `ETag` built from the first 16 hex characters of the asset's checksum (quoted). A matching `If-None-Match` answers 304 with the same validators and no body. Conditional requests and byte ranges otherwise follow the Go standard library's `ServeContent` semantics.  The asset exists but its derived file is absent -- the thumbnail job has not run yet, or failed and is retrying -- answers 404 `ASSET_NOT_READY`: the client renders the blurhash or a placeholder and waits for the `asset.ready` event instead of treating the asset as gone. `ASSET_NOT_FOUND`, by contrast, means the id is unknown or not the caller's; the owner-only anti-enumeration of the detail endpoint applies here too, with byte-identical 404 bodies for foreign and unknown ids.  `size` must be one of the three values below; anything else (including a missing `size`) answers 400 `VALIDATION_FAILED`. 
+The static serving copy of the asset:  - image assets: the AVIF thumbnail of the requested size --   `tile` (fits the 250px timeline box), `view` (long edge   capped at 1080px), `original` (the full-resolution   re-encode) -- served as `image/avif`; - video assets: the poster frame, whatever `size` says -- the   poster (the first frame, scaled into the tile box) is the   video's thumbnail, while the playable stream is the   transcoded copy of `GET /assets/{id}/play` -- served as   `image/jpeg`.  The response is a private immutable static asset: `Cache-Control: private, max-age=31536000, immutable`, and a strong `ETag` built from the first 16 hex characters of the asset's checksum (quoted). A matching `If-None-Match` answers 304 with the same validators and no body. Conditional requests and byte ranges otherwise follow the Go standard library's `ServeContent` semantics.  The asset exists but its derived file is absent -- the thumbnail job has not run yet, or failed and is retrying -- answers 404 `ASSET_NOT_READY`: the client renders the blurhash or a placeholder and waits for the `asset.ready` event instead of treating the asset as gone. `ASSET_NOT_FOUND`, by contrast, means the id is unknown or not the caller's; the owner-only anti-enumeration of the detail endpoint applies here too, with byte-identical 404 bodies for foreign and unknown ids.  `size` must be one of the three values below; anything else (including a missing `size`) answers 400 `VALIDATION_FAILED`. 
 
 ### Example
 ```dart
@@ -545,6 +546,53 @@ Name | Type | Description  | Notes
 
  - **Content-Type**: application/json
  - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **playAsset**
+> Uint8List playAsset(id)
+
+Stream the transcoded playable copy of one owned video.
+
+Streams the web-safe transcoded MP4 of a video asset: the pipeline's transcode job re-encoded the original into H.264 video (yuv420p) plus AAC audio -- the pair every browser plays natively -- with the movie index relocated to the front of the container (`+faststart`), so playback begins while the file is still downloading. The stream is served inline as `video/mp4` with no `Content-Disposition`: it feeds the client's video element, while downloading the original bytes stays on `GET /assets/{id}/original` (the transcoded copy is a derivative, never the archival original).  The response is a private immutable static asset like the thumbnail: `Cache-Control: private, max-age=31536000, immutable`, and a strong `ETag` built from the first 16 hex characters of the asset's checksum (quoted) -- the transcode is a deterministic function of the immutable original bytes, so the tag is stable across re-runs of the job. A matching `If-None-Match` answers 304 with the same validators and no body.  Byte ranges follow the Go standard library's `ServeContent` semantics (video seeking needs them): a satisfiable single range answers 206 with `Content-Range`; multiple ranges answer a `multipart/byteranges` body; an unsatisfiable range answers 416 with the total size in `Content-Range`; a malformed Range header is ignored and the full body answers 200.  Only video assets have a playable stream: an image asset answers 404 `ASSET_NOT_FOUND` -- there is nothing to play, and the answer is the asset's own not-found envelope, the same anti-enumeration shape (byte for byte) as an unknown or a foreign id. A video whose transcode has not been produced yet -- the pipeline is still running, or the transcode job failed and is retrying -- answers 404 `ASSET_NOT_READY`: the client renders the poster frame (the thumbnail endpoint serves it) and waits for the `asset.ready` event instead of treating the asset as gone. The video pipeline counts three jobs (metadata, thumbnail, transcode), so readiness follows all three. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final String id = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the asset.
+
+try {
+    final response = api.playAsset(id);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->playAsset: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **String**| Identifier of the asset. | 
+
+### Return type
+
+[**Uint8List**](Uint8List.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: video/mp4, application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

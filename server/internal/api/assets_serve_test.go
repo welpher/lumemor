@@ -3,7 +3,8 @@
 // anti-enumeration 404 shared by every endpoint, the derived-file
 // serving mechanics (headers, conditional requests, the poster of a
 // video), the original download with its escaped file name, and
-// ranges. The full pipeline that PRODUCES the derived files runs in
+// ranges. The video play stream's serving mechanics are pinned the
+// same way. The full pipeline that PRODUCES the derived files runs in
 // the jobs package (its env wires the queue); these tests drive the
 // handler layer directly and write the derived bytes the pipeline
 // would have left behind.
@@ -16,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -264,6 +266,7 @@ func TestAssetEndpointsOwnerScope(t *testing.T) {
 		"/api/v1/assets/" + created.Id.String(),
 		"/api/v1/assets/" + created.Id.String() + "/thumbnail?size=tile",
 		"/api/v1/assets/" + created.Id.String() + "/original",
+		"/api/v1/assets/" + created.Id.String() + "/play",
 	}
 	for _, target := range targets {
 		// The foreign id: the second account asks for the owner's
@@ -555,5 +558,122 @@ func TestGetAssetOriginalRange(t *testing.T) {
 	}
 	if got := unsatisfiable.Header().Get("Content-Range"); got != "bytes */101796" {
 		t.Errorf("unsatisfiable content-range = %q, want bytes */101796", got)
+	}
+}
+
+// TestGetAssetPlayServing walks the serving mechanics of the play
+// endpoint with the derived file the transcode job would leave
+// behind: the 404 ASSET_NOT_READY of a video whose play.mp4 has not
+// been produced, the inline video/mp4 stream with the static-asset
+// validators and NO Content-Disposition (playback, not a download --
+// the original download stays on /original), the byte ranges, the
+// conditional 304, and the image asset's 404 (an image has no
+// playable stream).
+func TestGetAssetPlayServing(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	video, err := os.ReadFile(filepath.Join("..", "media", "testdata", "tiny.mp4"))
+	if err != nil {
+		t.Fatalf("read video fixture: %v", err)
+	}
+	created := decodeAsset(t, env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-play-1",
+		"fileName":      "VID_0003.mp4",
+	}, []assetUploadFile{{field: "photo", name: "VID_0003.mp4", content: video}}))
+	if created.Kind != apigen.AssetResponseKindVideo {
+		t.Fatalf("play upload kind = %q, want video", created.Kind)
+	}
+	assetID := created.Id.String()
+	target := "/api/v1/assets/" + assetID + "/play"
+
+	// The environment wires no queue, so the transcode never runs:
+	// the video exists but its playable copy does not.
+	notReady := env.serveGet(t, target, env.cookie, nil)
+	if notReady.Code != http.StatusNotFound {
+		t.Fatalf("not-ready play status = %d, want %d (body %q)", notReady.Code, http.StatusNotFound, notReady.Body.String())
+	}
+	apiErr, _ := decodeError(t, notReady)
+	if apiErr.Code != apigen.ASSETNOTREADY {
+		t.Errorf("not-ready play code = %q, want %q", apiErr.Code, apigen.ASSETNOTREADY)
+	}
+
+	// The derived play.mp4 the transcode job would have left behind.
+	// The bytes are arbitrary here: the handler serves whatever the
+	// file holds (the real transcode output is pinned end to end in
+	// the jobs package).
+	play := bytes.Repeat([]byte("playable-mp4-bytes."), 32)
+	env.writeDerivedFile(t, storage.EncodedPath(assetID), play)
+	wantETag := `"` + sha256Hex(video)[:16] + `"`
+
+	rec := env.serveGet(t, target, env.cookie, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("play status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "video/mp4" {
+		t.Errorf("play content-type = %q, want video/mp4", got)
+	}
+	if got := rec.Header().Get("ETag"); got != wantETag {
+		t.Errorf("play etag = %q, want %q", got, wantETag)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "private, max-age=31536000, immutable" {
+		t.Errorf("play cache-control = %q, want the immutable private policy", got)
+	}
+	if got := rec.Header().Get("Content-Disposition"); got != "" {
+		t.Errorf("play content-disposition = %q, want none (inline playback; the original download stays on /original)", got)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), play) {
+		t.Errorf("play body = %d bytes, want the %d derived file bytes", rec.Body.Len(), len(play))
+	}
+
+	// A satisfiable single range answers 206 with the exact slice.
+	partial := env.serveGet(t, target, env.cookie, map[string]string{"Range": "bytes=0-99"})
+	if partial.Code != http.StatusPartialContent {
+		t.Fatalf("play range status = %d, want %d", partial.Code, http.StatusPartialContent)
+	}
+	if got := partial.Header().Get("Content-Range"); got != "bytes 0-99/"+strconv.Itoa(len(play)) {
+		t.Errorf("play content-range = %q, want bytes 0-99/%d", got, len(play))
+	}
+	if !bytes.Equal(partial.Body.Bytes(), play[0:100]) {
+		t.Errorf("play range body = %d bytes, want the first 100 bytes of the file", partial.Body.Len())
+	}
+
+	// An unsatisfiable range answers 416 with the total size.
+	unsatisfiable := env.serveGet(t, target, env.cookie, map[string]string{"Range": "bytes=999999999-"})
+	if unsatisfiable.Code != http.StatusRequestedRangeNotSatisfiable {
+		t.Fatalf("play unsatisfiable range status = %d, want %d", unsatisfiable.Code, http.StatusRequestedRangeNotSatisfiable)
+	}
+	if got := unsatisfiable.Header().Get("Content-Range"); got != "bytes */"+strconv.Itoa(len(play)) {
+		t.Errorf("play unsatisfiable content-range = %q, want bytes */%d", got, len(play))
+	}
+
+	// A matching If-None-Match turns the request into a 304.
+	conditional := env.serveGet(t, target, env.cookie, map[string]string{"If-None-Match": wantETag})
+	if conditional.Code != http.StatusNotModified {
+		t.Fatalf("conditional play status = %d, want %d", conditional.Code, http.StatusNotModified)
+	}
+	if conditional.Body.Len() != 0 {
+		t.Errorf("conditional play body = %q, want no body on a 304", conditional.Body.String())
+	}
+
+	// An image asset has no playable stream: the asset's own
+	// anti-enumeration 404, indistinguishable from an unknown id.
+	image := decodeAsset(t, env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-play-image",
+		"fileName":      "IMG_1234.jpg",
+	}, []assetUploadFile{{field: "photo", name: "IMG_1234.jpg", content: jpegFixture(t)}}))
+	random, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate random id: %v", err)
+	}
+	imagePlay := env.serveGet(t, "/api/v1/assets/"+image.Id.String()+"/play", env.cookie, nil)
+	if imagePlay.Code != http.StatusNotFound {
+		t.Fatalf("image play status = %d, want %d (body %q)", imagePlay.Code, http.StatusNotFound, imagePlay.Body.String())
+	}
+	unknownPlay := env.serveGet(t, "/api/v1/assets/"+random.String()+"/play", env.cookie, nil)
+	if imagePlay.Body.String() != unknownPlay.Body.String() {
+		t.Errorf("image play 404 body %q differs from the unknown id's %q, want byte-identical", imagePlay.Body.String(), unknownPlay.Body.String())
+	}
+	apiErr, _ = decodeError(t, imagePlay)
+	if apiErr.Code != apigen.ASSETNOTFOUND {
+		t.Errorf("image play code = %q, want %q", apiErr.Code, apigen.ASSETNOTFOUND)
 	}
 }

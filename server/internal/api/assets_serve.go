@@ -1,9 +1,11 @@
 // Asset serving handlers (M2b Task 6): the JSON detail of an owned
 // asset, the derived thumbnail (or video poster) as a cacheable
 // static asset, and the original file as a download with Range
-// support. The permission model is owner-only: every read funnels
-// through the owner-scoped sqlc query, and a miss answers the
-// anti-enumeration 404 -- byte-identical for unknown and foreign ids.
+// support. M2c Task 6 adds the video play stream: the transcoded
+// web-safe MP4 served inline with the same static-asset discipline.
+// The permission model is owner-only: every read funnels through the
+// owner-scoped sqlc query, and a miss answers the anti-enumeration
+// 404 -- byte-identical for unknown and foreign ids.
 package api
 
 import (
@@ -97,8 +99,9 @@ func (s *server) GetAssetThumbnail(w http.ResponseWriter, r *http.Request, id op
 
 	// The serving file of this request: an image serves the AVIF of
 	// the requested size; a video serves its poster frame (a JPEG)
-	// whatever the size says -- the poster is the video's only serving
-	// copy until transcodes exist (M2c).
+	// whatever the size says -- the poster is the video's thumbnail,
+	// while the playable stream is the transcoded copy the play
+	// endpoint serves.
 	path, contentType := derivedMediaPath(row, string(params.Size))
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -181,6 +184,69 @@ func (s *server) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id ope
 	// If-Modified-Since, and the content-addressed blob never changes
 	// under its name.
 	s.serveMediaFile(w, r, file, row.Checksum, row.MimeType, info.ModTime())
+}
+
+// PlayAsset implements GET /api/v1/assets/{id}/play: the transcoded
+// playable copy of a video asset, streamed inline for playback (the
+// client's video element), with byte ranges for seeking. The stream
+// is a pipeline product, so it exists only once the transcode job
+// produced it -- unlike the original, which is servable immediately.
+func (s *server) PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	row, err := s.queries.GetAsset(r.Context(), dbgen.GetAssetParams{
+		ID:      pgUUID(id),
+		OwnerID: pgUUID(requester.userID),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.writeAssetNotFound(w)
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "load asset for play", err)
+		return
+	}
+
+	// A playable stream exists only for video assets. An image has
+	// none, and the answer is the asset's own anti-enumeration 404 --
+	// the same envelope, byte for byte, as an unknown or a foreign id
+	// -- rather than a distinct error that would leak the kind's
+	// shape for ids the caller may not even own.
+	if row.MediaKind != dbgen.MediaKindVideo {
+		s.writeAssetNotFound(w)
+		return
+	}
+
+	// The transcoded copy the pipeline left behind
+	// (storage/encoded/<assetID>/play.mp4). A miss is the not-ready
+	// state of every derived file: the transcode job has not produced
+	// it yet (or failed and is retrying), so the client renders the
+	// poster and waits for asset.ready instead of treating the asset
+	// as gone.
+	file, err := os.Open(storage.EncodedPath(uuid.UUID(row.ID.Bytes).String()))
+	if errors.Is(err, fs.ErrNotExist) {
+		s.writeError(w, http.StatusNotFound, apigen.ASSETNOTREADY,
+			"asset media is not ready yet", nil)
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "open transcoded media", err)
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	// Inline playback, deliberately NOT a download: no
+	// Content-Disposition (the video element consumes the stream
+	// directly), and the fixed video/mp4 content type -- the
+	// transcoded container is an MP4 by construction, whatever the
+	// original's stored MIME type was. The original download stays
+	// on /original. The zero modtime keeps the ETag the single
+	// freshness authority, like every derived file.
+	s.serveMediaFile(w, r, file, row.Checksum, "video/mp4", time.Time{})
 }
 
 // serveMediaFile writes one media file to the response through

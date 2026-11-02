@@ -6,15 +6,15 @@ import (
 	"path/filepath"
 )
 
-// The derived files (thumbnails, poster frames) are served while the
-// thumbnail job may re-run: the derivation is idempotent, but a
-// truncate-in-place write would let a concurrent reader observe a
-// half-written file. Both writers therefore land their bytes in a
-// uniquely named temporary file BESIDE the destination -- same
-// directory, therefore same filesystem -- and rename it into place:
-// a reader sees either the previous complete file or the new one,
-// never a partial one. The rename is the atomicity the upload
-// receiver's staging commit already relies on.
+// The derived files (thumbnails, poster frames, transcoded play
+// copies) are served while their derivation jobs may re-run: the
+// derivation is idempotent, but a truncate-in-place write would let a
+// concurrent reader observe a half-written file. Both writers land
+// their bytes in a uniquely named temporary location BESIDE the
+// destination -- same directory, therefore same filesystem -- and
+// rename it into place: a reader sees either the previous complete
+// file or the new one, never a partial one. The rename is the
+// atomicity the upload receiver's staging commit already relies on.
 
 // writeFileAtomic writes data to path through a temporary file in the
 // same directory and an atomic rename into place. A failed write
@@ -49,14 +49,14 @@ func writeFileAtomic(path string, data []byte) error {
 
 // stageTempDir reserves a uniquely named scratch directory inside
 // parent for a derived-media writer that produces its destination
-// through an external process (the poster's ffmpeg): the scratch file
-// lives in a directory that did not exist a moment ago, so the
-// external writer's target cannot pre-exist -- ffmpeg, invoked
-// without -y by its fixed argument template, refuses to overwrite an
-// existing output file. The scratch directory sits in parent's own
-// tree (same filesystem), so renaming the finished file onto its
-// destination stays atomic; the caller removes the directory --
-// emptied by the rename -- through the returned cleanup.
+// through an external process (the poster's and the transcode's
+// ffmpeg): the scratch file lives in a directory that did not exist
+// a moment ago, so the external writer's target cannot pre-exist --
+// ffmpeg, invoked without -y by its fixed argument template, refuses
+// to overwrite an existing output file. The scratch directory sits
+// in parent's own tree (same filesystem), so renaming the finished
+// file onto its destination stays atomic; the caller removes the
+// directory -- emptied by the rename -- through the returned cleanup.
 func stageTempDir(parent string) (scratch string, cleanup func(), err error) {
 	scratch, err = os.MkdirTemp(parent, ".tmp-*")
 	if err != nil {

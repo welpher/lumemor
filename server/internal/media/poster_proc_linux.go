@@ -10,12 +10,20 @@ import (
 )
 
 // ffmpegMemLimitBytes is the Linux address-space cap of the ffmpeg
-// child (RLIMIT_AS applied through prlimit below). 4 GiB: a video
-// decoder maps generous virtual memory (codec init, frame buffers,
-// allocator arenas), so the metadata job's 1 GiB exiftool cap would
-// fail legitimate decodes; anything runaway still dies at the limit
-// long before it threatens the server.
+// poster child (RLIMIT_AS applied through prlimit below). 4 GiB: a
+// video decoder maps generous virtual memory (codec init, frame
+// buffers, allocator arenas), so the metadata job's 1 GiB exiftool
+// cap would fail legitimate decodes; anything runaway still dies at
+// the limit long before it threatens the server.
 const ffmpegMemLimitBytes = 4 << 30
+
+// transcodeMemLimitBytes is the Linux address-space cap of the ffmpeg
+// transcode child: 8 GiB, double the poster's cap. A full re-encode
+// runs the decoder AND the x264 encoder (lookahead buffers, reference
+// frames, frame-type analysis) in one process, so the poster's 4 GiB
+// would fail legitimate encodes of longer videos; 8 GiB still kills
+// anything runaway long before it threatens the server.
+const transcodeMemLimitBytes = 8 << 30
 
 // ffmpegCommand builds the fixed ffmpeg poster invocation for Linux.
 //
@@ -36,6 +44,17 @@ func ffmpegCommand(ctx context.Context, inputPath, outPath string) *exec.Cmd {
 	return exec.CommandContext(ctx, "prlimit", argv...)
 }
 
+// transcodeCommand builds the fixed ffmpeg transcode invocation for
+// Linux: the same prlimit wrapper as the poster invocation, with the
+// transcode's own (higher) address-space cap and argument template.
+func transcodeCommand(ctx context.Context, inputPath, outPath string) *exec.Cmd {
+	argv := append([]string{
+		"--as=" + strconv.FormatUint(transcodeMemLimitBytes, 10),
+		transcodeBinary,
+	}, transcodeArgs(inputPath, outPath)...)
+	return exec.CommandContext(ctx, "prlimit", argv...)
+}
+
 // posterArgs is the fixed argument template beyond the binary: seek to
 // the first frame, take exactly one frame, scale it into the tile box,
 // write the JPEG. Nothing here is user-controlled; the two paths are
@@ -48,6 +67,30 @@ func posterArgs(inputPath, outPath string) []string {
 		"-frames:v", "1",
 		"-vf", posterScaleFilter,
 		"-q:v", "5",
+		outPath,
+	}
+}
+
+// transcodeArgs is the fixed argument template beyond the binary: the
+// first video stream and (optionally, the trailing question mark) the
+// first audio stream, re-encoded to the web-safe pair -- libx264 at
+// CRF 23 / preset fast, yuv420p, AAC at 128k -- muxed with +faststart
+// so the index precedes the media bytes and playback starts while the
+// file downloads. Nothing here is user-controlled; the two paths are
+// server-generated (the input is guarded by the job's asset path
+// resolution, the output derived from the asset id).
+func transcodeArgs(inputPath, outPath string) []string {
+	return []string{
+		"-i", inputPath,
+		"-map", "0:v:0",
+		"-map", "0:a:0?",
+		"-c:v", "libx264",
+		"-preset", "fast",
+		"-crf", "23",
+		"-pix_fmt", "yuv420p",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart",
 		outPath,
 	}
 }

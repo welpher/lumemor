@@ -448,7 +448,7 @@ class AssetsApi {
   }
 
   /// Serve a derived thumbnail, or a video&#39;s poster frame.
-  /// The static serving copy of the asset:  - image assets: the AVIF thumbnail of the requested size --   &#x60;tile&#x60; (fits the 250px timeline box), &#x60;view&#x60; (long edge   capped at 1080px), &#x60;original&#x60; (the full-resolution   re-encode) -- served as &#x60;image/avif&#x60;; - video assets: the poster frame, whatever &#x60;size&#x60; says -- the   poster (the first frame, scaled into the tile box) is the   video&#39;s only serving copy until transcodes exist -- served   as &#x60;image/jpeg&#x60;.  The response is a private immutable static asset: &#x60;Cache-Control: private, max-age&#x3D;31536000, immutable&#x60;, and a strong &#x60;ETag&#x60; built from the first 16 hex characters of the asset&#39;s checksum (quoted). A matching &#x60;If-None-Match&#x60; answers 304 with the same validators and no body. Conditional requests and byte ranges otherwise follow the Go standard library&#39;s &#x60;ServeContent&#x60; semantics.  The asset exists but its derived file is absent -- the thumbnail job has not run yet, or failed and is retrying -- answers 404 &#x60;ASSET_NOT_READY&#x60;: the client renders the blurhash or a placeholder and waits for the &#x60;asset.ready&#x60; event instead of treating the asset as gone. &#x60;ASSET_NOT_FOUND&#x60;, by contrast, means the id is unknown or not the caller&#39;s; the owner-only anti-enumeration of the detail endpoint applies here too, with byte-identical 404 bodies for foreign and unknown ids.  &#x60;size&#x60; must be one of the three values below; anything else (including a missing &#x60;size&#x60;) answers 400 &#x60;VALIDATION_FAILED&#x60;. 
+  /// The static serving copy of the asset:  - image assets: the AVIF thumbnail of the requested size --   &#x60;tile&#x60; (fits the 250px timeline box), &#x60;view&#x60; (long edge   capped at 1080px), &#x60;original&#x60; (the full-resolution   re-encode) -- served as &#x60;image/avif&#x60;; - video assets: the poster frame, whatever &#x60;size&#x60; says -- the   poster (the first frame, scaled into the tile box) is the   video&#39;s thumbnail, while the playable stream is the   transcoded copy of &#x60;GET /assets/{id}/play&#x60; -- served as   &#x60;image/jpeg&#x60;.  The response is a private immutable static asset: &#x60;Cache-Control: private, max-age&#x3D;31536000, immutable&#x60;, and a strong &#x60;ETag&#x60; built from the first 16 hex characters of the asset&#39;s checksum (quoted). A matching &#x60;If-None-Match&#x60; answers 304 with the same validators and no body. Conditional requests and byte ranges otherwise follow the Go standard library&#39;s &#x60;ServeContent&#x60; semantics.  The asset exists but its derived file is absent -- the thumbnail job has not run yet, or failed and is retrying -- answers 404 &#x60;ASSET_NOT_READY&#x60;: the client renders the blurhash or a placeholder and waits for the &#x60;asset.ready&#x60; event instead of treating the asset as gone. &#x60;ASSET_NOT_FOUND&#x60;, by contrast, means the id is unknown or not the caller&#39;s; the owner-only anti-enumeration of the detail endpoint applies here too, with byte-identical 404 bodies for foreign and unknown ids.  &#x60;size&#x60; must be one of the three values below; anything else (including a missing &#x60;size&#x60;) answers 400 &#x60;VALIDATION_FAILED&#x60;. 
   ///
   /// Parameters:
   /// * [id] - Identifier of the asset.
@@ -1004,6 +1004,90 @@ class AssetsApi {
     }
 
     return Response<AssetDetail>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Stream the transcoded playable copy of one owned video.
+  /// Streams the web-safe transcoded MP4 of a video asset: the pipeline&#39;s transcode job re-encoded the original into H.264 video (yuv420p) plus AAC audio -- the pair every browser plays natively -- with the movie index relocated to the front of the container (&#x60;+faststart&#x60;), so playback begins while the file is still downloading. The stream is served inline as &#x60;video/mp4&#x60; with no &#x60;Content-Disposition&#x60;: it feeds the client&#39;s video element, while downloading the original bytes stays on &#x60;GET /assets/{id}/original&#x60; (the transcoded copy is a derivative, never the archival original).  The response is a private immutable static asset like the thumbnail: &#x60;Cache-Control: private, max-age&#x3D;31536000, immutable&#x60;, and a strong &#x60;ETag&#x60; built from the first 16 hex characters of the asset&#39;s checksum (quoted) -- the transcode is a deterministic function of the immutable original bytes, so the tag is stable across re-runs of the job. A matching &#x60;If-None-Match&#x60; answers 304 with the same validators and no body.  Byte ranges follow the Go standard library&#39;s &#x60;ServeContent&#x60; semantics (video seeking needs them): a satisfiable single range answers 206 with &#x60;Content-Range&#x60;; multiple ranges answer a &#x60;multipart/byteranges&#x60; body; an unsatisfiable range answers 416 with the total size in &#x60;Content-Range&#x60;; a malformed Range header is ignored and the full body answers 200.  Only video assets have a playable stream: an image asset answers 404 &#x60;ASSET_NOT_FOUND&#x60; -- there is nothing to play, and the answer is the asset&#39;s own not-found envelope, the same anti-enumeration shape (byte for byte) as an unknown or a foreign id. A video whose transcode has not been produced yet -- the pipeline is still running, or the transcode job failed and is retrying -- answers 404 &#x60;ASSET_NOT_READY&#x60;: the client renders the poster frame (the thumbnail endpoint serves it) and waits for the &#x60;asset.ready&#x60; event instead of treating the asset as gone. The video pipeline counts three jobs (metadata, thumbnail, transcode), so readiness follows all three. 
+  ///
+  /// Parameters:
+  /// * [id] - Identifier of the asset.
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [Uint8List] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<Uint8List>> playAsset({ 
+    required String id,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/assets/{id}/play'.replaceAll('{' r'id' '}', encodeQueryParameter(_serializers, id, const FullType(String)).toString());
+    final _options = Options(
+      method: r'GET',
+      responseType: ResponseType.bytes,
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    Uint8List? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : rawResponse as Uint8List;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<Uint8List>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

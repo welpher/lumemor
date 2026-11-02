@@ -97,6 +97,7 @@ Class | Method | HTTP request | Description
 [*AssetsApi*](doc/AssetsApi.md) | [**getTimeline**](doc/AssetsApi.md#gettimeline) | **GET** /assets/timeline | The aggregated timeline, one keyset page at a time.
 [*AssetsApi*](doc/AssetsApi.md) | [**getTrash**](doc/AssetsApi.md#gettrash) | **GET** /trash | List the caller&#39;s trashed assets with their retention countdown.
 [*AssetsApi*](doc/AssetsApi.md) | [**patchAsset**](doc/AssetsApi.md#patchasset) | **PATCH** /assets/{id} | Edit the description or hidden switch of one asset.
+[*AssetsApi*](doc/AssetsApi.md) | [**playAsset**](doc/AssetsApi.md#playasset) | **GET** /assets/{id}/play | Stream the transcoded playable copy of one owned video.
 [*AssetsApi*](doc/AssetsApi.md) | [**restoreAsset**](doc/AssetsApi.md#restoreasset) | **POST** /trash/{id}/restore | Restore one trashed asset.
 [*AssetsApi*](doc/AssetsApi.md) | [**uploadAsset**](doc/AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 [*AuthApi*](doc/AuthApi.md) | [**consumePairingToken**](doc/AuthApi.md#consumepairingtoken) | **POST** /auth/pairing/consume | Exchange a pairing token for a mobile session.

@@ -352,8 +352,9 @@ type AssetDetail struct {
 	// flip.
 	IsHidden bool `json:"isHidden"`
 
-	// IsReady True once the whole pipeline of the asset (metadata and
-	// serving copies) completed; the `asset.ready` event fires
+	// IsReady True once the whole pipeline of the asset completed -- the
+	// metadata and thumbnail jobs for an image, plus the
+	// transcode job for a video; the `asset.ready` event fires
 	// at that moment. Until then the client shows placeholders
 	// and the media endpoints answer `ASSET_NOT_READY` for
 	// missing derived files.
@@ -1154,6 +1155,9 @@ type ServerInterface interface {
 	// GetAssetOriginal Download the original file of one owned asset.
 	// (GET /assets/{id}/original)
 	GetAssetOriginal(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PlayAsset Stream the transcoded playable copy of one owned video.
+	// (GET /assets/{id}/play)
+	PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetAssetThumbnail Serve a derived thumbnail, or a video's poster frame.
 	// (GET /assets/{id}/thumbnail)
 	GetAssetThumbnail(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAssetThumbnailParams)
@@ -1253,6 +1257,12 @@ func (_ Unimplemented) PatchAsset(w http.ResponseWriter, r *http.Request, id ope
 // GetAssetOriginal Download the original file of one owned asset.
 // (GET /assets/{id}/original)
 func (_ Unimplemented) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PlayAsset Stream the transcoded playable copy of one owned video.
+// (GET /assets/{id}/play)
+func (_ Unimplemented) PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1637,6 +1647,32 @@ func (siw *ServerInterfaceWrapper) GetAssetOriginal(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAssetOriginal(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PlayAsset operation middleware
+func (siw *ServerInterfaceWrapper) PlayAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PlayAsset(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2062,6 +2098,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/{id}/original", wrapper.GetAssetOriginal)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/assets/{id}/play", wrapper.PlayAsset)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)

@@ -26,7 +26,7 @@ part 'asset_detail.g.dart';
 /// * [isTrashed] - True when the asset sits in the trash.
 /// * [isHidden] - True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
 /// * [description] - The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale. 
-/// * [isReady] - True once the whole pipeline of the asset (metadata and serving copies) completed; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
+/// * [isReady] - True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
 /// * [width] - Pixel width in sensor order (not orientation-corrected); null until the metadata job refined the dimensions. 
 /// * [height] - Pixel height in sensor order (not orientation-corrected); null until the metadata job refined the dimensions. 
 /// * [durationMs] - Playback duration of a video in milliseconds; null for images and until the metadata job refined it. 
@@ -89,7 +89,7 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   @BuiltValueField(wireName: r'description')
   String get description;
 
-  /// True once the whole pipeline of the asset (metadata and serving copies) completed; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
+  /// True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video; the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
   @BuiltValueField(wireName: r'isReady')
   bool get isReady;
 
