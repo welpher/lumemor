@@ -50,22 +50,37 @@ queries or schema.
   and the acceptance script all assume it.
 - **Commits** follow Conventional Commits (`feat:`, `fix:`, `docs:`,
   `chore:`, `refactor:`, ...) with an English imperative subject line.
+- **Time assertions against DB values** must truncate to microseconds:
+  PostgreSQL stores `timestamptz` at microsecond precision while Linux wall
+  clocks carry nanoseconds — an untruncated Go time can never round-trip
+  `Equal` against a database value on Linux (macOS clocks happen to be
+  microsecond-resolution, which hides the bug locally and surfaces it on
+  CI runners).
 - **Toolchain versions** (sqlc, oapi-codegen, openapi-generator,
-  openapi-typescript, spectral) are pinned in the root `Makefile`.
-  Extend the Makefile instead of duplicating or restructuring its
-  targets.
+  openapi-typescript, spectral, golangci-lint) are pinned in the root
+  `Makefile` and the dev image. Extend the Makefile instead of
+  duplicating or restructuring its targets.
 
 ## Before reporting work as done
 
-Run the same checks CI runs:
+Run the same checks CI runs. Media-pipeline packages (libvips CGO,
+exiftool, ffmpeg) are **containerized** — the host installs nothing; run
+those through the dev image:
 
 ```sh
 cd server
-golangci-lint run ./...
-go test ./...      # needs a local Docker daemon (testcontainers)
+gofmt -l .            # empty output
+go vet ./...
+golangci-lint run     # pinned v2.15.0; or `make docker-lint` from the repo root
+go test ./...         # needs a local Docker daemon (testcontainers);
+                      # media-dependent tests skip with a message on hosts
+                      # without the toolchain
 go build ./...
 cd ..
 make api-lint
-make api-check     # regenerates artifacts; the git tree must stay clean
+make api-check        # regenerates artifacts; the git tree must stay clean
 python3 scripts/check_i18n.py
+make docker-test      # authoritative full suite (dev image, Linux parity
+                      # with CI — platform-dependent failures surface here
+                      # before CI does)
 ```
