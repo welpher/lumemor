@@ -49,7 +49,7 @@
   "action_retry": "重试",
   "action_select": "选择",
   "action_done": "完成",
-  "select_asset": "选择",
+  "session_expired": "登录状态已失效，请重新登录。",
   "batch_selected_count": "已选择 {count} 张",
   "action_favorite": "收藏",
   "action_unfavorite": "取消收藏",

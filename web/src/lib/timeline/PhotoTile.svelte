@@ -141,7 +141,7 @@
 		type="button"
 		role="checkbox"
 		aria-checked={selected}
-		aria-label="{$_('select_asset')}: {item.originalFilename}"
+		aria-label="{$_('action_select')}: {item.originalFilename}"
 		onclick={toggle}
 	>
 		<svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">

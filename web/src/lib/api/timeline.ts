@@ -29,7 +29,11 @@
 //   direct removal and every other asset.* event to a convergence
 //   refetch of GET /api/v1/assets/{id} -- not live (trashed, hidden
 //   or gone) removes the tile, live patches or inserts it. The
-//   detail carries no `isFavorite`, so a patch of a loaded tile
+//   convergence is SEQUENCED by the server-monotonic event id (see
+//   the converge* maps in the client): a stale detail response never
+//   applies over a newer event, and a removal supersedes any
+//   in-flight convergence so a removed tile cannot be resurrected.
+//   The detail carries no `isFavorite`, so a patch of a loaded tile
 //   keeps the loaded flag (favorites publish no events: per-user
 //   state, per the contract).
 // - Batch: `runBatch` applies the optimistic state first (favorite
@@ -127,6 +131,26 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	// racing an event must not resurrect either.
 	let nextCursor: string | null = null;
 	const tombstones = new Set<string>();
+
+	// Convergence sequencing (the out-of-order fix): SSE event ids
+	// are server-monotonic, so each asset's convergence is OWNED by
+	// the newest event that claimed it -- `convergeClaim` maps an
+	// asset id to that event id. A detail response applies only when
+	// its claiming id is still the asset's newest claim; a newer
+	// event (or a removal) supersedes the in-flight response, which
+	// is discarded instead of applied over fresher state. A removal
+	// also RAISES the claim, so a stale live detail can never
+	// resurrect a removed tile (the upsert path clears tombstones).
+	//
+	// The same maps collapse bursts: while one detail fetch runs
+	// (`convergeRunning`), newer claims park in `convergeQueued`
+	// (newest wins) and the single-flight loop re-converges with
+	// the newest id once the running fetch lands -- a burst of N
+	// events for one asset costs at most two fetches, and only the
+	// newest event's detail ever applies.
+	const convergeClaim = new Map<string, number>();
+	const convergeQueued = new Map<string, number>();
+	const convergeRunning = new Set<string>();
 
 	/**
 	 * The keyset ordering comparator: takenAt descending with the id
@@ -271,11 +295,15 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	}
 
 	/**
-	 * The convergence refetch behind every non-removal asset event:
-	 * the detail decides whether the tile leaves the wall (trashed,
-	 * hidden, gone) or returns to it (restored, unhidden, refined).
+	 * Fetch and apply one asset's detail under its claiming event id.
+	 * The claim may move while the fetch is in flight (a newer event
+	 * or a removal); a superseded response never applies.
 	 */
-	async function convergeFromDetail(assetId: string): Promise<void> {
+	async function convergeOnce(assetId: string, eventId: number): Promise<void> {
+		if ((convergeClaim.get(assetId) ?? -1) > eventId) {
+			// A newer event already owns the asset's convergence.
+			return;
+		}
 		let response: Response;
 		try {
 			response = await apiFetch(
@@ -286,6 +314,11 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		} catch {
 			// Network failure: keep the current state, later events
 			// or the next pagination run converge.
+			return;
+		}
+		if (convergeClaim.get(assetId) !== eventId) {
+			// Superseded mid-flight (a newer event, or a removal):
+			// the fresher claim's own fetch decides the state.
 			return;
 		}
 		if (response.status === 404) {
@@ -311,6 +344,48 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			return;
 		}
 		upsertLiveItem(itemFromDetail(detail));
+	}
+
+	/**
+	 * The single-flight loop behind one asset's convergence: at most
+	 * one detail fetch in flight at a time, re-converging with the
+	 * newest queued claim until the queue drains.
+	 */
+	async function runConvergeLoop(assetId: string): Promise<void> {
+		convergeRunning.add(assetId);
+		try {
+			while (convergeQueued.has(assetId)) {
+				const eventId = convergeQueued.get(assetId) ?? -1;
+				convergeQueued.delete(assetId);
+				await convergeOnce(assetId, eventId);
+			}
+		} finally {
+			convergeRunning.delete(assetId);
+		}
+	}
+
+	/**
+	 * The convergence entry point behind every non-removal asset
+	 * event: the detail decides whether the tile leaves the wall
+	 * (trashed, hidden, gone) or returns to it (restored, unhidden,
+	 * refined), sequenced by the event id (see the maps above).
+	 */
+	async function convergeFromDetail(assetId: string, eventId: number): Promise<void> {
+		const prior = convergeClaim.get(assetId) ?? -1;
+		if (eventId < prior) {
+			// A newer event already owns the asset's convergence; its
+			// fetch is the authoritative one.
+			return;
+		}
+		convergeClaim.set(assetId, eventId);
+		if (convergeRunning.has(assetId)) {
+			// Collapse the burst: the running loop re-converges with
+			// this (the newest) id when its fetch lands.
+			convergeQueued.set(assetId, eventId);
+			return;
+		}
+		convergeQueued.set(assetId, eventId);
+		await runConvergeLoop(assetId);
 	}
 
 	/** Restore pre-action items after a failed batch, by id. */
@@ -358,6 +433,15 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			return;
 		}
 		if (!response.ok) {
+			if (response.status === 401) {
+				// A 401 here means the session died mid-wall (credential
+				// failures only come from the login endpoint): the
+				// interceptor has flipped the store and the guard is
+				// redirecting -- the box shows the session message,
+				// never login-credential text.
+				setError('session_expired');
+				return;
+			}
 			const envelope = await errorEnvelope(response);
 			setError(envelope !== null ? envelope.code.toLowerCase() : 'internal');
 			return;
@@ -392,17 +476,31 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	function reset(): void {
 		nextCursor = null;
 		tombstones.clear();
+		// A reset invalidates every convergence claim: an in-flight
+		// detail fetch lands to a cleared claim and is discarded (a
+		// fresh event for the same asset starts a new, clean loop).
+		convergeClaim.clear();
+		convergeQueued.clear();
 		store.set({ items: [], status: 'idle', hasMore: true, errorKey: '' });
 	}
 
 	async function applyEvent(event: AssetEvent): Promise<void> {
 		if (event.name === 'asset.trashed' || event.name === 'asset.deleted') {
-			// Unambiguous removals: no refetch needed.
+			// Unambiguous removals: no refetch needed. The removal's
+			// id supersedes any convergence claim the asset holds, so
+			// an in-flight live detail (whose upsert clears
+			// tombstones) can never resurrect the tile.
+			convergeClaim.set(
+				event.assetId,
+				Math.max(convergeClaim.get(event.assetId) ?? -1, event.id)
+			);
+			convergeQueued.delete(event.assetId);
 			removeIds([event.assetId]);
 			return;
 		}
-		// ready / updated / restored / uploaded: converge on the detail.
-		await convergeFromDetail(event.assetId);
+		// ready / updated / restored / uploaded: converge on the
+		// detail, sequenced by the event id.
+		await convergeFromDetail(event.assetId, event.id);
 	}
 
 	async function runBatch(action: BatchAction, ids: string[]): Promise<BatchOutcome> {
@@ -459,6 +557,12 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			return { ok: false, errorKey: 'internal' };
 		}
 		if (!response.ok) {
+			if (response.status === 401) {
+				// Same rule as the page path: a dead session shows the
+				// session message, not login-credential text.
+				rollback(ids, snapshot);
+				return { ok: false, errorKey: 'session_expired' };
+			}
 			const envelope = await errorEnvelope(response);
 			rollback(ids, snapshot);
 			return { ok: false, errorKey: envelope !== null ? envelope.code.toLowerCase() : 'internal' };
