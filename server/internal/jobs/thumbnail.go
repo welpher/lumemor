@@ -103,15 +103,23 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 	}); err != nil {
 		return fmt.Errorf("store blurhash: %w", err)
 	}
-	completion, err := queries.CompleteAssetJob(ctx, pgUUID(assetID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		// The guarded decrement found nothing to decrement: either the
-		// pipeline already completed (a re-run: idempotency -- no
-		// double decrement, no second event) or the row counts no
-		// pipeline of its own. Both are successful no-ops.
-		completion = dbgen.CompleteAssetJobRow{BecameReady: false}
-	} else if err != nil {
-		return fmt.Errorf("complete pipeline job: %w", err)
+	// The component guard mirrors the metadata job's: a Live Photo
+	// component row's counter counts its transcode alone (M2d), so a
+	// thumbnail completion (no enqueue path produces one for a
+	// component, but a stale or mis-routed job can reach here) must
+	// not consume the count or announce on its behalf.
+	completion := dbgen.CompleteAssetJobRow{BecameReady: false}
+	if !row.IsComponent {
+		completion, err = queries.CompleteAssetJob(ctx, pgUUID(assetID))
+		if errors.Is(err, pgx.ErrNoRows) {
+			// The guarded decrement found nothing to decrement: either the
+			// pipeline already completed (a re-run: idempotency -- no
+			// double decrement, no second event), or the row counts no
+			// pipeline of its own. Both are successful no-ops.
+			completion = dbgen.CompleteAssetJobRow{BecameReady: false}
+		} else if err != nil {
+			return fmt.Errorf("complete pipeline job: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit thumbnail transaction: %w", err)

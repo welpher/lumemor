@@ -381,6 +381,74 @@ func TestRequeueSweepVideoUniqueKeyBoundary(t *testing.T) {
 	}
 }
 
+// TestRequeueSweepRecoversStuckComponent pins the sweep's component
+// arm (the M2d third site of the pipeline sync): a Live Photo
+// component video row the uploader left stuck at pending_jobs = 1 is
+// recovered with EXACTLY ONE transcode job re-enqueued -- never
+// metadata or thumbnail (the component counts a transcode alone; its
+// metadata refinement rides the upload path and consumes nothing off
+// the counter) -- and the drained pipeline stamps the component's
+// ready_at without announcing: components never publish asset.ready.
+func TestRequeueSweepRecoversStuckComponent(t *testing.T) {
+	requireTranscodeToolchain(t)
+	e := newEnv(t)
+
+	video, err := os.ReadFile(filepath.Join("..", "media", "testdata", "tiny.mp4"))
+	if err != nil {
+		t.Fatalf("read video fixture: %v", err)
+	}
+	deviceTakenAt := time.Date(2021, 8, 9, 10, 11, 12, 0, time.UTC).Truncate(time.Microsecond)
+	id := e.insertAssetKind(t, "originals/sweep/component.mp4", video, deviceTakenAt,
+		`{}`, dbgen.MediaKindVideo, "video/mp4", 1)
+	// The row becomes the Live Photo's component: the flag the sweep
+	// dispatches on, and the pair's shape (the link lives on the
+	// photo row; the component itself carries none).
+	if _, err := e.pool.Exec(context.Background(),
+		`UPDATE assets SET is_component = true WHERE id = $1`, id); err != nil {
+		t.Fatalf("flag the fixture row as a component: %v", err)
+	}
+	if got := e.riverJobTotal(t, id); got != 0 {
+		t.Fatalf("river jobs before the sweep = %d, want 0 (the stuck precondition: the transcode never entered the queue)", got)
+	}
+
+	counts, err := RunRequeueSweep(context.Background(), e.pool, e.queue)
+	if err != nil {
+		t.Fatalf("run requeue sweep: %v", err)
+	}
+	if counts.Stuck != 1 || counts.Enqueued != 1 {
+		t.Errorf("sweep counts = stuck %d enqueued %d, want stuck 1 enqueued 1 (the transcode alone)", counts.Stuck, counts.Enqueued)
+	}
+
+	// Exactly one transcode job, nothing else: the component arm must
+	// not reach for the metadata or thumbnail requeues.
+	kinds := e.riverJobsOf(t, id)
+	if kinds["transcode"] != 1 || e.riverJobTotal(t, id) != 1 {
+		t.Errorf("river jobs = %v, want exactly one transcode job (no metadata, no thumbnail)", kinds)
+	}
+
+	// The counter was never reset: the re-enqueued completion drives
+	// it from 1 to 0 and stamps ready_at -- which is also what stops
+	// the next sweep from matching the row again.
+	eventually(t, jobWaitTimeout, "the swept component to become ready", func() bool {
+		return e.assetOf(t, id).readyAt.Valid
+	})
+	state := e.assetOf(t, id)
+	if state.pending != 0 {
+		t.Errorf("pending_jobs = %d, want 0 after the drained recovery", state.pending)
+	}
+	if !state.readyAt.Valid {
+		t.Fatal("the swept component never became ready")
+	}
+	requireTranscodedOutput(t, id)
+
+	// The recovery never announces: asset.ready stays silent for a
+	// component row (the pair's photo owns the announcement).
+	time.Sleep(300 * time.Millisecond)
+	if got := countEvents(e.bus, "asset.ready"); got != 0 {
+		t.Errorf("asset.ready events = %d, want 0 (components never announce)", got)
+	}
+}
+
 // TestSweepPeriodicRegistration pins the hourly periodic wiring
 // without waiting a wall-clock hour: the cadence is one hour, the
 // schedule advances by exactly that interval, the constructor

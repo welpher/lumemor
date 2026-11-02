@@ -113,6 +113,57 @@ func (e *env) setRetention(t *testing.T, value string) {
 	}
 }
 
+// insertLivePhotoPair writes a trashed Live Photo pair: the photo
+// row linked to its video component row, both deletion marks
+// backdated by the given interval, real distinct files on disk, and
+// returns both ids together with their stored file paths. The pair's
+// shape mirrors the upload's: the link lives on the photo row, the
+// flag on the component, the component's counter counts its
+// transcode.
+func (e *env) insertLivePhotoPair(t *testing.T, owner uuid.UUID, i int, backdate string) (photo, component uuid.UUID, photoRel, componentRel string) {
+	t.Helper()
+	photo = uuid.MustParse("00000000-0000-0000-0005-" + fixedHex12(i*2))
+	component = uuid.MustParse("00000000-0000-0000-0005-" + fixedHex12(i*2+1))
+	photoRel = "originals/expiry/pair-photo-" + fixedHex12(i*2) + ".jpg"
+	componentRel = "originals/expiry/pair-video-" + fixedHex12(i*2+1) + ".mov"
+	rows := []struct {
+		id     uuid.UUID
+		rel    string
+		kind   string
+		mime   string
+		link   *uuid.UUID
+		isComp bool
+	}{
+		// The component first: the photo's live_photo_video_id foreign
+		// key must find its row already present.
+		{id: component, rel: componentRel, kind: "video", mime: "video/quicktime", isComp: true},
+		{id: photo, rel: photoRel, kind: "image", mime: "image/jpeg", link: &component},
+	}
+	for _, row := range rows {
+		path := filepath.Join(e.dataDir, filepath.FromSlash(row.rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("create pair fixture directory: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("expiry pair fixture "+row.rel), 0o644); err != nil {
+			t.Fatalf("write pair fixture file: %v", err)
+		}
+		if _, err := e.pool.Exec(context.Background(), `
+			INSERT INTO assets (
+				id, owner_id, storage_kind, file_path, checksum, original_filename,
+				file_size, mime_type, media_kind, live_photo_video_id, is_component,
+				width, height, taken_at, taken_at_source, deleted_at
+			) VALUES (
+				$1, $2, 'blob', $3, $4, $5, 1024, $6, $7::media_kind, $8, $9,
+				0, 0, now(), 'import', now() - `+backdate+`
+			)`,
+			row.id, owner, row.rel, "pair-checksum-"+fixedHex12(i)+row.rel, row.rel, row.mime, row.kind,
+			row.link, row.isComp); err != nil {
+			t.Fatalf("insert pair fixture row %s: %v", row.id, err)
+		}
+	}
+	return photo, component, photoRel, componentRel
+}
+
 // run fires the expiry under test.
 func (e *env) run(t *testing.T) ExpiryCounts {
 	t.Helper()
@@ -388,6 +439,52 @@ func TestExpiryBatchLimit(t *testing.T) {
 	}
 	if remaining != 1 {
 		t.Fatalf("remaining trashed rows = %d, want the 1 past the batch bound", remaining)
+	}
+}
+
+// TestExpiryLivePhotoPairSilentComponent pins the M2d expiry fix for
+// Live Photo pairs: the component row is purged like any trashed row
+// (its file handled under the same shared-blob rule), but its
+// asset.deleted event is suppressed -- the trash view never listed
+// components (the pair is represented by its photo), so announcing
+// their expiry would be noise to every connected client. The photo
+// row's own announcement is unchanged.
+func TestExpiryLivePhotoPairSilentComponent(t *testing.T) {
+	e := newEnv(t)
+	owner := e.insertUser(t, 1)
+
+	photo, component, photoRel, componentRel := e.insertLivePhotoPair(t, owner, 1, "make_interval(days => 31)")
+	photoFile := filepath.Join(e.dataDir, filepath.FromSlash(photoRel))
+	componentFile := filepath.Join(e.dataDir, filepath.FromSlash(componentRel))
+
+	counts := e.run(t)
+	if counts.Expired != 2 {
+		t.Fatalf("counts.Expired = %d, want both rows of the pair purged", counts.Expired)
+	}
+	if counts.FilesRemoved != 2 {
+		t.Fatalf("counts.FilesRemoved = %d, want the two distinct files removed", counts.FilesRemoved)
+	}
+	if e.rowExists(t, photo) || e.rowExists(t, component) {
+		t.Error("a row of the pair survived, want both purged (only the component's event is suppressed)")
+	}
+	if _, err := os.Stat(photoFile); err == nil {
+		t.Error("the photo's file survived the expiry, want it removed")
+	}
+	if _, err := os.Stat(componentFile); err == nil {
+		t.Error("the component's file survived the expiry, want it removed")
+	}
+
+	// Exactly one announcement, the photo's: the component never
+	// appears in the trash view, so its purge stays silent.
+	payloads := e.assetDeletedEvents(t)
+	if len(payloads) != 1 {
+		t.Fatalf("asset.deleted events = %d, want exactly 1 (the photo; the component stays silent)", len(payloads))
+	}
+	if payloads[0]["assetId"] != photo.String() {
+		t.Errorf("asset.deleted assetId = %q, want the photo %s", payloads[0]["assetId"], photo)
+	}
+	if payloads[0]["kind"] != "image" {
+		t.Errorf("asset.deleted kind = %q, want image", payloads[0]["kind"])
 	}
 }
 

@@ -23,7 +23,8 @@ import (
 // counting jobs that never entered the queue and ready_at never set.
 // A re-upload answers duplicate without re-enqueueing, so no API path
 // recovers the row. The sweep does: it finds the stuck rows and
-// re-inserts the pipeline jobs their media kind calls for.
+// re-inserts the pipeline jobs their media kind and role call for
+// (the component rows of Live Photos recover their transcode alone).
 //
 // The counter is deliberately NOT reset: it already counts exactly
 // the missing jobs, the re-enqueued jobs' completions drive it down,
@@ -80,8 +81,8 @@ type AssetRequeuer interface {
 	// the same unique-keyed contract.
 	RequeueThumbnail(ctx context.Context, assetID uuid.UUID) (bool, error)
 	// RequeueTranscode inserts the transcode job for the asset under
-	// the same unique-keyed contract. The video arm calls it; the
-	// image arm does not.
+	// the same unique-keyed contract. The video arm and the Live
+	// Photo component arm call it; the image arm does not.
 	RequeueTranscode(ctx context.Context, assetID uuid.UUID) (bool, error)
 }
 
@@ -103,15 +104,34 @@ func RunRequeueSweep(ctx context.Context, pool *pgxpool.Pool, enqueuer AssetRequ
 	for _, row := range rows {
 		assetID := uuid.UUID(row.ID.Bytes)
 
-		// The row's media kind picks the jobs the recovery re-inserts.
-		// An image counts the two-job pipeline of M2b (metadata +
-		// thumbnail); a video counts THREE since Task 6's transcode
-		// job (metadata + thumbnail + transcode), matching the
-		// upload's pending_jobs initialization. Values outside the
-		// column's enum cannot reach here; one that somehow did is
-		// skipped, not fatal.
-		switch row.MediaKind {
-		case dbgen.MediaKindImage:
+		// The row's media kind and role pick the jobs the recovery
+		// re-inserts. An image counts the two-job pipeline of M2b
+		// (metadata + thumbnail); a video counts THREE since Task 6's
+		// transcode job (metadata + thumbnail + transcode), matching
+		// the upload's pending_jobs initialization. A Live Photo's
+		// component row (M2d) counts ONE -- the transcode alone: its
+		// counter was initialized to exactly that job, its metadata
+		// refinement rides the upload path and consumes nothing off
+		// the counter, so the recovery re-inserts the transcode only
+		// (a metadata or thumbnail requeue here would derive files no
+		// view ever reads and could consume the transcode's count
+		// through an early completion). An image-family component
+		// counts no pipeline at all -- nothing to requeue; values
+		// outside the column's enum cannot reach here either. One of
+		// those shapes being skipped, not fatal, mirrors the kind
+		// arm's discipline below.
+		switch {
+		case row.IsComponent:
+			if row.MediaKind == dbgen.MediaKindVideo {
+				inserted, err := enqueuer.RequeueTranscode(ctx, assetID)
+				if err != nil {
+					return counts, fmt.Errorf("jobs: requeue transcode job of asset %s: %w", assetID, err)
+				}
+				if inserted {
+					counts.Enqueued++
+				}
+			}
+		case row.MediaKind == dbgen.MediaKindImage:
 			inserted, err := enqueuer.RequeueMetadata(ctx, assetID)
 			if err != nil {
 				return counts, fmt.Errorf("jobs: requeue metadata job of asset %s: %w", assetID, err)
@@ -126,7 +146,7 @@ func RunRequeueSweep(ctx context.Context, pool *pgxpool.Pool, enqueuer AssetRequ
 			if inserted {
 				counts.Enqueued++
 			}
-		case dbgen.MediaKindVideo:
+		case row.MediaKind == dbgen.MediaKindVideo:
 			inserted, err := enqueuer.RequeueMetadata(ctx, assetID)
 			if err != nil {
 				return counts, fmt.Errorf("jobs: requeue metadata job of asset %s: %w", assetID, err)
