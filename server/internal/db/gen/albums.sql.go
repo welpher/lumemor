@@ -25,8 +25,12 @@ type AddAssetToAlbumParams struct {
 
 // The materialized membership insert. ON CONFLICT DO NOTHING keeps
 // re-adding an asset that already sits in the album a no-op: album
-// membership is a set, and the callers (the upload path, later the
-// trash-restore path) converge to the same row instead of failing.
+// membership is a set, and the callers converge to the same row
+// instead of failing. (The upload path is the only caller: the
+// trash-restore path needs no re-insertion -- soft delete never
+// removed the membership rows, and the live views' deleted_at filter
+// is the only thing that hid the asset while it sat in the trash, so
+// clearing the mark restores the timeline presence wholesale.)
 func (q *Queries) AddAssetToAlbum(ctx context.Context, arg AddAssetToAlbumParams) error {
 	_, err := q.db.Exec(ctx, addAssetToAlbum, arg.AlbumID, arg.AssetID, arg.AddedBy)
 	return err

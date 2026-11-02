@@ -201,11 +201,12 @@ func (q *Queue) EnqueueThumbnail(ctx context.Context, assetID uuid.UUID) error {
 // EnqueueTranscode inserts the transcode job for a VIDEO asset: the
 // playable web-safe MP4 only videos need (the upload handler gates the
 // call on the media kind; an image asset's pipeline counts two jobs,
-// not three). Like the other enqueues it must run after the upload
-// transaction committed. Re-enqueueing runs the job again idempotently:
-// the re-encode overwrites the same play.mp4, the guarded readiness
-// decrement does not fire twice, and no second asset.ready event is
-// published.
+// not three) -- and for a Live Photo's video-family component, the
+// one job its counter counts. Like the other enqueues it must run
+// after the upload transaction committed. Re-enqueueing runs the job
+// again idempotently: the re-encode overwrites the same play.mp4, the
+// guarded readiness decrement does not fire twice, and no second
+// asset.ready event is published.
 func (q *Queue) EnqueueTranscode(ctx context.Context, assetID uuid.UUID) error {
 	if _, err := q.client.Insert(ctx, TranscodeArgs{AssetID: assetID}, nil); err != nil {
 		return fmt.Errorf("insert transcode job: %w", err)

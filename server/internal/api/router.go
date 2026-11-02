@@ -55,7 +55,8 @@ type Deps struct {
 	UploadLimitBytes int64
 	// Jobs enqueues pipeline jobs for uploaded assets: the upload
 	// handler enqueues the metadata and thumbnail jobs (and, for a
-	// video upload, the transcode job) after its transaction commits.
+	// video upload or a Live Photo's video-family component, the
+	// transcode job) after its transaction commits.
 	// Nil keeps the upload working without a queue (tests, wiring
 	// order); the assets simply stay not-ready until one runs.
 	Jobs AssetJobEnqueuer
@@ -74,8 +75,10 @@ type AssetJobEnqueuer interface {
 	// are committed.
 	EnqueueThumbnail(ctx context.Context, assetID uuid.UUID) error
 	// EnqueueTranscode inserts the transcode job of a VIDEO asset
-	// (the playable web-safe MP4). The upload handler calls it only
-	// for video kind, matching the pending_jobs count of three.
+	// (the playable web-safe MP4) -- a standalone video, or a Live
+	// Photo's video-family component (the one job its counter
+	// counts). The upload handler gates the call on the asset's own
+	// family, matching the pending_jobs initialization.
 	EnqueueTranscode(ctx context.Context, assetID uuid.UUID) error
 }
 

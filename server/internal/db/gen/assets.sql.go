@@ -30,11 +30,16 @@ type CompleteAssetJobRow struct {
 // in UPDATE expressions reference the pre-update row): a job emptying
 // the counter (old value 1) stamps ready_at; a completion that did
 // not leaves it NULL. The WHERE guard makes the query a no-op for
-// rows with nothing pending (component videos; re-runs of an already
-// completed pipeline, which is what keeps re-enqueued jobs idempotent:
-// no double decrement, no second ready_at) -- those completions
-// return NO ROW, and the job layer reads that as the benign no-op
-// (no asset.ready event) rather than an error. media_kind rides along
+// rows with nothing pending (rows whose pipeline drained -- an
+// image-family Live Photo component counts none; re-runs of an
+// already completed pipeline, which is what keeps re-enqueued jobs
+// idempotent: no double decrement, no second ready_at) -- those
+// completions return NO ROW, and the job layer reads that as the
+// benign no-op (no asset.ready event) rather than an error. Which
+// completions may consume the counter at all is decided one layer
+// up, by the jobs: the metadata and thumbnail workers skip the call
+// for component rows entirely (the component's transcode alone owns
+// its counter, M2d). media_kind rides along
 // so the completion publishes the event with the asset's kind without
 // a second read.
 func (q *Queries) CompleteAssetJob(ctx context.Context, id pgtype.UUID) (CompleteAssetJobRow, error) {
@@ -80,11 +85,13 @@ type CreateAssetParams struct {
 // originals tree), taken_at_source 'import' (the device-reported
 // capture time, refined to 'exif' by the metadata job), and
 // width/height 0 (dimensions are the metadata job's refinement).
-// pending_jobs carries the pipeline count the uploader enqueues: 1
-// for photo rows (the metadata job in Task 4; Task 5's thumbnail job
-// raises it to 2), 0 for component video rows (refined by the
-// metadata job but never the asset whose readiness the event
-// announces). created_at/updated_at default to now() on insert.
+// pending_jobs carries the pipeline count the uploader enqueues: 2
+// for photo rows (metadata + thumbnail), 3 for standalone video rows
+// (+ transcode), and -- since the M2d Live Photo component transcode
+// -- 1 for a video-family component row (the transcode job that
+// derives its playable stream; an image-family component counts
+// none: no job of any kind can run for it). created_at/updated_at
+// default to now() on insert.
 // The upload insert. live_photo_video_id links a Live Photo's image
 // row to its component video row (NULL otherwise); is_component marks
 // the component video rows that never appear in the timeline.
@@ -442,6 +449,7 @@ SELECT a.file_path,
        a.taken_at,
        a.taken_at_source,
        a.pending_jobs,
+       a.is_component,
        e.exif
 FROM assets a
 LEFT JOIN exif e ON e.asset_id = a.id
@@ -454,15 +462,20 @@ type GetAssetForMetadataRow struct {
 	TakenAt       pgtype.Timestamptz `json:"taken_at"`
 	TakenAtSource TakenAtSource      `json:"taken_at_source"`
 	PendingJobs   int32              `json:"pending_jobs"`
+	IsComponent   bool               `json:"is_component"`
 	Exif          []byte             `json:"exif"`
 }
 
-// The metadata job's read: everything it needs to run exiftool and
-// resolve the taken-at fallback chain. exif_jsonb is the placeholder
-// payload of the upload (deviceCreatedAt / deviceTimeZone) until the
-// job itself has run. No row means the asset is gone; the job treats
-// that as success so it does not retry forever against a deleted
-// asset.
+// The pipeline jobs' shared read: everything a job needs to run its
+// derivation and resolve the taken-at fallback chain. exif_jsonb is
+// the placeholder payload of the upload (deviceCreatedAt /
+// deviceTimeZone) until the metadata job itself has run. No row
+// means the asset is gone; every job treats that as success so it
+// does not retry forever against a deleted asset. is_component rides
+// along (M2d) for the completion discipline: the metadata and
+// thumbnail jobs must not consume a component row's counter (the
+// transcode alone owns it), and the transcode job completes the
+// counter but never announces for a component.
 func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetAssetForMetadataRow, error) {
 	row := q.db.QueryRow(ctx, getAssetForMetadata, id)
 	var i GetAssetForMetadataRow
@@ -472,19 +485,21 @@ func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetA
 		&i.TakenAt,
 		&i.TakenAtSource,
 		&i.PendingJobs,
+		&i.IsComponent,
 		&i.Exif,
 	)
 	return i, err
 }
 
 const listStuckAssets = `-- name: ListStuckAssets :many
-SELECT id, media_kind FROM assets
+SELECT id, media_kind, is_component FROM assets
 WHERE pending_jobs > 0 AND ready_at IS NULL AND deleted_at IS NULL
 `
 
 type ListStuckAssetsRow struct {
-	ID        pgtype.UUID `json:"id"`
-	MediaKind MediaKind   `json:"media_kind"`
+	ID          pgtype.UUID `json:"id"`
+	MediaKind   MediaKind   `json:"media_kind"`
+	IsComponent bool        `json:"is_component"`
 }
 
 // The requeue sweep's stuck-row finder (M2c Task 1): assets whose
@@ -493,24 +508,29 @@ type ListStuckAssetsRow struct {
 // still NULL). These are the rows an enqueue insert failure or a
 // crash in the commit-to-enqueue window left with no (or missing)
 // jobs in the queue; a re-upload answers duplicate without
-// re-enqueueing, so the sweep is their only recovery. Soft-deleted
-// assets are deliberately excluded: a trashed asset is headed for
-// expiry, not recovery. Rows whose jobs are merely in flight (a live
-// upload mid-pipeline) match too -- the query cannot tell "lost
-// jobs" from "busy jobs", and it does not need to: the sweep's
-// re-enqueue inserts carry River unique keys over kind + asset id, so
-// repeated or overlapping sweeps do not pile up jobs, but the upload
-// path's enqueues are unkeyed and never join the unique index -- an
-// in-flight upload row gets one duplicate set from the sweep (two
-// jobs for an image, three for a video), and all of them run,
-// converged by the pipeline jobs' own idempotency and
-// the guarded readiness decrement (the extra completions no-op). The
-// sweep never resets pending_jobs (the counter already counts the
-// missing jobs; the re-enqueued completions drive it down). media_kind
-// rides along because the sweep re-enqueues by the row's kind: two
-// jobs for an image (metadata + thumbnail), three for a video since
-// Task 6's transcode job split the video arm (metadata + thumbnail +
-// transcode, matching the upload's pending_jobs initialization).
+// re-enqueueing, so the sweep is their only recovery. Since the M2d
+// component transcode, a video-family component row counts one job
+// and matches here like any row. Soft-deleted assets are deliberately
+// excluded: a trashed asset is headed for expiry, not recovery.
+// Rows whose jobs are merely in flight (a live upload mid-pipeline)
+// match too -- the query cannot tell "lost jobs" from "busy jobs",
+// and it does not need to: the sweep's re-enqueue inserts carry
+// River unique keys over kind + asset id, so repeated or overlapping
+// sweeps do not pile up jobs, but the upload path's enqueues are
+// unkeyed and never join the unique index -- an in-flight upload row
+// gets one duplicate set from the sweep (two jobs for an image,
+// three for a video), and all of them run, converged by the pipeline
+// jobs' own idempotency and the guarded readiness decrement (the
+// extra completions no-op). The sweep never resets pending_jobs (the
+// counter already counts the missing jobs; the re-enqueued
+// completions drive it down). media_kind and is_component ride along
+// because the sweep re-enqueues by the row's kind and role: two jobs
+// for an image (metadata + thumbnail), three for a standalone video
+// since Task 6's transcode job split the video arm (metadata +
+// thumbnail + transcode, matching the upload's pending_jobs
+// initialization), and for a Live Photo component the transcode
+// ALONE (the one job its counter counts; its metadata refinement
+// rides the upload path and never touches the counter).
 func (q *Queries) ListStuckAssets(ctx context.Context) ([]ListStuckAssetsRow, error) {
 	rows, err := q.db.Query(ctx, listStuckAssets)
 	if err != nil {
@@ -520,7 +540,7 @@ func (q *Queries) ListStuckAssets(ctx context.Context) ([]ListStuckAssetsRow, er
 	var items []ListStuckAssetsRow
 	for rows.Next() {
 		var i ListStuckAssetsRow
-		if err := rows.Scan(&i.ID, &i.MediaKind); err != nil {
+		if err := rows.Scan(&i.ID, &i.MediaKind, &i.IsComponent); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -608,7 +628,7 @@ type UpdateAssetDescriptionParams struct {
 }
 
 // The owner-scoped description write of PATCH /assets/{id} (M2c
-// Task 5). The description <> $3 arm is the set-semantics guard:
+// Task 5). The description <> $1 arm is the set-semantics guard:
 // patching the text the row already carries matches nothing, so the
 // idempotent repeat is the same success, updated_at stays un-stamped
 // and the event stays silent -- the rows-affected count is the

@@ -354,7 +354,8 @@ type AssetDetail struct {
 
 	// IsReady True once the whole pipeline of the asset completed -- the
 	// metadata and thumbnail jobs for an image, plus the
-	// transcode job for a video; the `asset.ready` event fires
+	// transcode job for a video (for a Live Photo component,
+	// the transcode job alone); the `asset.ready` event fires
 	// at that moment. Until then the client shows placeholders
 	// and the media endpoints answer `ASSET_NOT_READY` for
 	// missing derived files.
@@ -370,8 +371,8 @@ type AssetDetail struct {
 
 	// LivePhotoVideoId For a Live Photo image, the id of its linked component
 	// video row (never in the timeline; its original is
-	// downloadable by that id, the transcoded play stream is
-	// not); null otherwise.
+	// downloadable by that id, and its transcoded play stream
+	// is served there too); null otherwise.
 	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
 
 	// MimeType Canonical content type of the stored format, for example
@@ -1030,7 +1031,9 @@ type UploadAssetMultipartBody struct {
 
 	// LiveVideo The Live Photo pairing video; present only together
 	// with `photo`. The server stores it as a linked
-	// component row that never appears in the timeline.
+	// component row that never appears in the timeline,
+	// and queues its transcode so the pair's motion is
+	// playable in the browser.
 	LiveVideo *openapi_types.File `json:"liveVideo,omitempty"`
 
 	// Photo The photo bytes; their file part name carries the extension.

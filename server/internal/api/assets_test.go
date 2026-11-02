@@ -636,6 +636,9 @@ func TestUploadAssetConcurrent(t *testing.T) {
 // photo and liveVideo commits both files, inserts the video as a
 // linked component row (never in the timeline), links the photo to
 // it, and fires exactly one asset.uploaded event -- for the photo.
+// The component row counts ONE pipeline job of its own (the
+// transcode -- the playable stream of the pair's motion), while the
+// photo row keeps its unchanged two.
 func TestUploadAssetLivePhoto(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	photo := jpegFixture(t)
@@ -679,6 +682,12 @@ func TestUploadAssetLivePhoto(t *testing.T) {
 	}
 	if videoRow.MediaKind != dbgen.MediaKindVideo {
 		t.Errorf("video row media_kind = %q, want %q", videoRow.MediaKind, dbgen.MediaKindVideo)
+	}
+	if videoRow.PendingJobs != 1 {
+		t.Errorf("video row pending_jobs = %d, want 1 (the transcode job alone)", videoRow.PendingJobs)
+	}
+	if photoRow.PendingJobs != 2 {
+		t.Errorf("photo row pending_jobs = %d, want the unchanged 2 (metadata + thumbnail)", photoRow.PendingJobs)
 	}
 	if videoRow.DeviceAssetID.Valid {
 		t.Errorf("video row device_asset_id = %q, want NULL (components carry no device identity)", videoRow.DeviceAssetID.String)
@@ -851,12 +860,12 @@ func TestUploadAssetEnqueueFailureStillCreated(t *testing.T) {
 // succeeds at all of them, standing in for a healthy queue behind the
 // upload endpoint's job seam.
 type recordingEnqueuer struct {
-	metadataContexts []context.Context
-	metadataIDs      []uuid.UUID
-	thumbnailContext context.Context
-	thumbnailID      uuid.UUID
-	transcodeContext context.Context
-	transcodeID      uuid.UUID
+	metadataContexts  []context.Context
+	metadataIDs       []uuid.UUID
+	thumbnailContext  context.Context
+	thumbnailID       uuid.UUID
+	transcodeContexts []context.Context
+	transcodeIDs      []uuid.UUID
 }
 
 // EnqueueMetadata implements AssetJobEnqueuer by recording the call.
@@ -875,8 +884,8 @@ func (r *recordingEnqueuer) EnqueueThumbnail(ctx context.Context, id uuid.UUID) 
 
 // EnqueueTranscode implements AssetJobEnqueuer by recording the call.
 func (r *recordingEnqueuer) EnqueueTranscode(ctx context.Context, id uuid.UUID) error {
-	r.transcodeContext = ctx
-	r.transcodeID = id
+	r.transcodeContexts = append(r.transcodeContexts, ctx)
+	r.transcodeIDs = append(r.transcodeIDs, id)
 	return nil
 }
 
@@ -884,7 +893,11 @@ func (r *recordingEnqueuer) EnqueueTranscode(ctx context.Context, id uuid.UUID) 
 // of the enqueue seam's semantics: the pipeline jobs are enqueued on
 // the request context with its cancellation removed, so a client that
 // vanishes in the commit-to-enqueue window cannot fail the enqueue and
-// strand the asset's pending-jobs counter forever.
+// strand the asset's pending-jobs counter forever. The Live Photo arm
+// pins the M2d component enqueue: a video-family liveVideo part adds
+// exactly one transcode job -- for the COMPONENT id -- on the same
+// disconnect-safe context, while an image-family part adds none (the
+// enqueue mirrors the pending_jobs initialization).
 func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	assetID := uuid.Must(uuid.NewV7())
 	recorder := &recordingEnqueuer{}
@@ -898,7 +911,7 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	cancel()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/assets", nil).WithContext(ctx)
 
-	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID)})
+	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID)}, nil)
 
 	if len(recorder.metadataIDs) != 1 || recorder.metadataIDs[0] != assetID {
 		t.Fatalf("metadata enqueues = %v, want exactly [%s]", recorder.metadataIDs, assetID)
@@ -906,8 +919,8 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	if recorder.thumbnailID != assetID {
 		t.Errorf("thumbnail enqueue id = %s, want %s", recorder.thumbnailID, assetID)
 	}
-	if recorder.transcodeID != uuid.Nil {
-		t.Errorf("transcode enqueued for an image-kind row (%s), want none", recorder.transcodeID)
+	if len(recorder.transcodeIDs) != 0 {
+		t.Errorf("transcode enqueues = %v, want none for an image-kind row", recorder.transcodeIDs)
 	}
 	contexts := append(append([]context.Context(nil), recorder.metadataContexts...), recorder.thumbnailContext)
 	for i, ctx := range contexts {
@@ -920,16 +933,62 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	// disconnect-safe context: its counter counts three jobs.
 	videoRecorder := &recordingEnqueuer{}
 	s.jobs = videoRecorder
-	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID), MediaKind: dbgen.MediaKindVideo})
-	if videoRecorder.transcodeID != assetID {
-		t.Errorf("video transcode enqueue id = %s, want %s", videoRecorder.transcodeID, assetID)
+	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID), MediaKind: dbgen.MediaKindVideo}, nil)
+	if len(videoRecorder.transcodeIDs) != 1 || videoRecorder.transcodeIDs[0] != assetID {
+		t.Errorf("video transcode enqueues = %v, want exactly [%s]", videoRecorder.transcodeIDs, assetID)
 	}
-	if err := videoRecorder.transcodeContext.Err(); err != nil {
+	if err := videoRecorder.transcodeContexts[0].Err(); err != nil {
 		t.Errorf("video transcode enqueue context err = %v, want nil: the disconnect must not cancel it", err)
 	}
 	if len(videoRecorder.metadataIDs) != 1 || videoRecorder.thumbnailID != assetID {
 		t.Errorf("video enqueue set = metadata %v thumbnail %s, want one of each for %s",
 			videoRecorder.metadataIDs, videoRecorder.thumbnailID, assetID)
+	}
+
+	// A Live Photo: the metadata loop covers BOTH rows, the thumbnail
+	// stays with the photo, and the video-family liveVideo part adds
+	// exactly one transcode -- for the component id (the photo row is
+	// image-kind and gets none of its own).
+	componentID := uuid.Must(uuid.NewV7())
+	liveRecorder := &recordingEnqueuer{}
+	s.jobs = liveRecorder
+	s.enqueueAssetJobs(req, dbgen.Asset{
+		ID:               pgUUID(assetID),
+		LivePhotoVideoID: pgUUID(componentID),
+	}, &committedUpload{format: storage.UploadFormat{Video: true}})
+	if len(liveRecorder.metadataIDs) != 2 {
+		t.Errorf("live photo metadata enqueues = %v, want one per row (photo and component)", liveRecorder.metadataIDs)
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, id := range liveRecorder.metadataIDs {
+		seen[id] = true
+	}
+	if !seen[assetID] || !seen[componentID] {
+		t.Errorf("live photo metadata enqueues = %v, want the photo %s and the component %s",
+			liveRecorder.metadataIDs, assetID, componentID)
+	}
+	if liveRecorder.thumbnailID != assetID {
+		t.Errorf("live photo thumbnail enqueue id = %s, want the photo %s", liveRecorder.thumbnailID, assetID)
+	}
+	if len(liveRecorder.transcodeIDs) != 1 || liveRecorder.transcodeIDs[0] != componentID {
+		t.Errorf("live photo transcode enqueues = %v, want exactly the component [%s]",
+			liveRecorder.transcodeIDs, componentID)
+	}
+	if err := liveRecorder.transcodeContexts[0].Err(); err != nil {
+		t.Errorf("component transcode enqueue context err = %v, want nil: the disconnect must not cancel it", err)
+	}
+
+	// The gate mirrors the counter: an image-family liveVideo part
+	// counts no transcode, so none is enqueued for it either.
+	imagePartRecorder := &recordingEnqueuer{}
+	s.jobs = imagePartRecorder
+	s.enqueueAssetJobs(req, dbgen.Asset{
+		ID:               pgUUID(assetID),
+		LivePhotoVideoID: pgUUID(componentID),
+	}, &committedUpload{})
+	if len(imagePartRecorder.transcodeIDs) != 0 {
+		t.Errorf("image-family component transcode enqueues = %v, want none (no job can run for it)",
+			imagePartRecorder.transcodeIDs)
 	}
 }
 
