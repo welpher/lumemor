@@ -968,7 +968,7 @@ paths:
             by this endpoint, never assembled by clients).
           schema:
             type: string
-          example: AAAAAAAAAADvr_8PaGVsbw==
+          example: GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
         - name: limit
           in: query
           required: false
@@ -1025,7 +1025,7 @@ paths:
                         durationMs: null
                         blurhash: UHL6aAof00WBWB00ayWB00
                         livePhotoVideoId: null
-                    nextCursor: AAAAAAAAAADvr_8PaGVsbw==
+                    nextCursor: GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
                 lastPage:
                   summary: The final page carries no cursor.
                   value:
@@ -1268,7 +1268,7 @@ paths:
             by this endpoint, never assembled by clients).
           schema:
             type: string
-          example: AAAAAAAAAADvr_8PaGVsbw==
+          example: GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
         - name: limit
           in: query
           required: false
@@ -1387,7 +1387,7 @@ paths:
             by this endpoint, never assembled by clients).
           schema:
             type: string
-          example: AAAAAAAAAADvr_8PaGVsbw==
+          example: GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
         - name: limit
           in: query
           required: false

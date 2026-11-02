@@ -2348,7 +2348,7 @@ export interface operations {
                  *     page. An unparseable value answers 400
                  *     `VALIDATION_FAILED` (cursors are opaque strings produced
                  *     by this endpoint, never assembled by clients).
-                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 * @example GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
                  */
                 cursor?: string;
                 /**
@@ -2490,7 +2490,7 @@ export interface operations {
                  *     page. An unparseable value answers 400
                  *     `VALIDATION_FAILED` (cursors are opaque strings produced
                  *     by this endpoint, never assembled by clients).
-                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 * @example GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
                  */
                 cursor?: string;
                 /**
@@ -2563,7 +2563,7 @@ export interface operations {
                  *     page. An unparseable value answers 400
                  *     `VALIDATION_FAILED` (cursors are opaque strings produced
                  *     by this endpoint, never assembled by clients).
-                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 * @example GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
                  */
                 cursor?: string;
                 /**
