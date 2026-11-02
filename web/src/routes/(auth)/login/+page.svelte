@@ -1,8 +1,12 @@
+<script lang="ts">
+	import { _ } from 'svelte-i18n';
+</script>
+
 <svelte:head>
 	<title>Sign in · lumemor</title>
 </svelte:head>
 
 <section>
-	<h1>Sign in</h1>
-	<p>Placeholder page. The login form arrives with the authentication wiring.</p>
+	<h1>{$_('login_title')}</h1>
+	<p>{$_('login_description')}</p>
 </section>

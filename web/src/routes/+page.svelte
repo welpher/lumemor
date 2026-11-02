@@ -1,11 +1,12 @@
+<script lang="ts">
+	import { _ } from 'svelte-i18n';
+</script>
+
 <svelte:head>
 	<title>lumemor</title>
 </svelte:head>
 
 <section>
-	<h1>Welcome to lumemor</h1>
-	<p>
-		The web app skeleton is running. The photo views are on their way; the
-		<a href="/timeline">timeline placeholder</a> pins where they will live.
-	</p>
+	<h1>{$_('welcome_title')}</h1>
+	<p>{$_('welcome_body')}</p>
 </section>

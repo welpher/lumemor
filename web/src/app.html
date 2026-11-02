@@ -5,6 +5,24 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<!-- A private family photo library: keep web crawlers out. -->
 		<meta name="robots" content="noindex" />
+		<script>
+			// Apply the theme before first paint so the shell never
+			// flashes the wrong colors while the app boots. Mirrors the
+			// rule of src/lib/theme: stored manual preference first,
+			// otherwise the system preference.
+			try {
+				var stored = localStorage.getItem('lumemor:theme');
+				var dark =
+					stored === 'dark' ||
+					((stored === null || stored === 'system') &&
+						window.matchMedia('(prefers-color-scheme: dark)').matches);
+				if (dark) {
+					document.documentElement.classList.add('dark');
+				}
+			} catch (error) {
+				/* storage or matchMedia unavailable: stay on the light theme */
+			}
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
