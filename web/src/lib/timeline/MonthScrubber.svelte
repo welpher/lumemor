@@ -81,6 +81,13 @@
 		dragging = false;
 	}
 
+	function handlePointerCancel(): void {
+		dragging = false;
+		// A cancelled press (the host took the gesture over) is
+		// followed by no click, so the next genuine tap must jump.
+		suppressClick = false;
+	}
+
 	function handleClick(key: string): void {
 		if (suppressClick) {
 			suppressClick = false;
@@ -102,7 +109,7 @@
 					onpointerdown={(event) => handlePointerDown(event, month.key)}
 					onpointermove={handlePointerMove}
 					onpointerup={handlePointerUp}
-					onpointercancel={handlePointerUp}
+					onpointercancel={handlePointerCancel}
 					onclick={() => handleClick(month.key)}
 				>
 					{month.label}

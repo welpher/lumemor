@@ -216,6 +216,41 @@ test('a failed first load shows the error box with a working retry', async () =>
 	flushSync();
 });
 
+test('an unknown error code renders the generic message, never raw code jargon', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/assets/timeline?limit=100': () => jsonResponse(500, { code: 'PROXY_TEAPOT' })
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	const failure = document.body.querySelector('.timeline__failure');
+	expect(failure?.textContent).toContain('Something went wrong.');
+	expect(failure?.textContent).not.toContain('proxy_teapot');
+	unmount(page);
+	flushSync();
+});
+
+test('a dead session renders the session message, never credential text', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/assets/timeline?limit=100': () =>
+				jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	const failure = document.body.querySelector('.timeline__failure');
+	expect(failure?.textContent).toContain('Your session has ended.');
+	expect(failure?.textContent).not.toContain('Incorrect email or password');
+	unmount(page);
+	flushSync();
+});
+
 test('a burst of sentinel intersections collapses into one fetch (the guard)', async () => {
 	type Callback = IntersectionObserverCallback;
 	const observers: Array<{ callback: Callback }> = [];

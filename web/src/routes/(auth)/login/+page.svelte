@@ -12,6 +12,7 @@
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import { login } from '$lib/auth/session.svelte';
+	import { resolveErrorText } from '$lib/i18n/errors';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -53,13 +54,12 @@
 		return () => clearInterval(timer);
 	});
 
-	// An unknown error code (a proxy answer, a drifted contract) has
-	// no i18n key; svelte-i18n echoes the key itself, which would leak
-	// code jargon into the UI -- such codes fall back to the generic
-	// message.
+	// The shared unknown-code fallback (see $lib/i18n/errors): an
+	// unknown error code has no i18n key, and svelte-i18n would echo
+	// the key itself -- such codes render the generic message. The
+	// reactive `$_` keeps the text locale-tracked.
 	function errorText(key: string): string {
-		const text = $_(key);
-		return text === key ? $_('internal') : text;
+		return resolveErrorText($_, key);
 	}
 
 	async function handleSubmit(event: SubmitEvent): Promise<void> {

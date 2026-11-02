@@ -115,6 +115,26 @@ test('a layout-less rail (zero height) answers the first month on drag', () => {
 	flushSync();
 });
 
+test('a cancelled press does not swallow the next genuine tap', () => {
+	const { scrubber, onjump } = mountScrubber();
+
+	const stops = document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop');
+
+	// The press jumps, then the host cancels the drag (a scroll
+	// appropriation, say): no click follows a cancel.
+	stops[1]?.dispatchEvent(pointerEvent('pointerdown', 25));
+	expect(onjump).toHaveBeenCalledWith('2026-10');
+	stops[1]?.dispatchEvent(pointerEvent('pointercancel', 25));
+
+	// The next genuine tap must still jump (a sticky suppressClick
+	// would swallow it exactly once).
+	stops[2]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	expect(onjump).toHaveBeenCalledWith('2026-09');
+	expect(onjump).toHaveBeenCalledTimes(2);
+	unmount(scrubber);
+	flushSync();
+});
+
 test('no months means no rail', () => {
 	const scrubber = mount(MonthScrubber, {
 		target: document.body,

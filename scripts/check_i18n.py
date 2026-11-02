@@ -115,7 +115,7 @@ NON_ERROR_KEYS = {
     "action_retry",
     "action_select",
     "action_done",
-    "select_asset",
+    "session_expired",
     "batch_selected_count",
     "action_favorite",
     "action_unfavorite",

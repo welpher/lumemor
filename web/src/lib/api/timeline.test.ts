@@ -197,6 +197,17 @@ test('a mid-session 401 page load flips the session store (the interceptor path)
 	forceLogout();
 });
 
+test('a 401 page load maps to the session-expired key (no credential text on the wall)', async () => {
+	const timeline = clientWith(() => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }));
+	await timeline.loadMore();
+
+	const state = get(timeline);
+	expect(state.status).toBe('error');
+	// A 401 here means the session died; the login endpoint's
+	// credential message must never reach the wall's error box.
+	expect(state.errorKey).toBe('session_expired');
+});
+
 describe('SSE convergence', () => {
 	test('asset.trashed and asset.deleted remove loaded tiles', async () => {
 		const timeline = clientWith(() => page(pageOneItems));
@@ -324,6 +335,122 @@ describe('SSE convergence', () => {
 		await timeline.applyEvent({ id: 1, name: 'asset.ready', assetId: 'a1', kind: 'image' });
 		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
 	});
+
+	describe('convergence sequencing (the out-of-order fix)', () => {
+		/** Resolve a held fetch one macrotask later (the loop runs). */
+		async function drain(): Promise<void> {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		test('a superseded detail never applies, even when the newer fetch fails', async () => {
+			const pending: Array<(response: Response) => void> = [];
+			let detailCalls = 0;
+			const timeline = clientWith((url) => {
+				if (url.includes('a2')) {
+					detailCalls += 1;
+					// The newer claim's fetch dies on the network.
+					if (detailCalls === 2) {
+						return Promise.reject(new TypeError('network down'));
+					}
+					return new Promise<Response>((resolve) => pending.push(resolve));
+				}
+				return page(pageOneItems);
+			});
+			await timeline.loadMore();
+
+			// Event 5's fetch is held in flight; event 6 supersedes it.
+			const first = timeline.applyEvent({
+				id: 5,
+				name: 'asset.updated',
+				assetId: 'a2',
+				kind: 'image'
+			});
+			void timeline.applyEvent({ id: 6, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+			expect(pending).toHaveLength(1);
+
+			// The held response carries event 5's stale snapshot (a
+			// refined blurhash and width). It must be discarded under
+			// event 6's claim -- applying it would leave the wall on
+			// state the newer event already moved past.
+			pending[0]?.(detailOf(item('a2', '2026-11-01T09:00:00Z'), { blurhash: 'STALE', width: 1111 }));
+			await drain();
+			expect(detailCalls).toBe(2);
+			// Event 6's fetch fails: nothing applies, the tile keeps
+			// its page-loaded values.
+			await first;
+
+			const kept = get(timeline).items.find((i) => i.id === 'a2');
+			expect(kept?.blurhash).toBe('UHL6aAof00WBWB00ayWB00');
+			expect(kept?.width).toBe(4000);
+			expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+		});
+
+		test('a removal supersedes an in-flight convergence: no resurrection', async () => {
+			const pending: Array<(response: Response) => void> = [];
+			const timeline = clientWith((url) => {
+				if (url.includes('a2')) {
+					return new Promise<Response>((resolve) => pending.push(resolve));
+				}
+				return page(pageOneItems);
+			});
+			await timeline.loadMore();
+
+			// Event 5 starts a convergence that is still in flight
+			// when the trash (event 6) removes the tile.
+			const inFlight = timeline.applyEvent({
+				id: 5,
+				name: 'asset.ready',
+				assetId: 'a2',
+				kind: 'image'
+			});
+			await timeline.applyEvent({ id: 6, name: 'asset.trashed', assetId: 'a2', kind: 'image' });
+			expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a3']);
+
+			// The stale response answers with a LIVE detail; without
+			// the removal's claim the upsert would clear the
+			// tombstone and resurrect the tile.
+			pending[0]?.(detailOf(item('a2', '2026-11-01T09:00:00Z')));
+			await inFlight;
+
+			expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a3']);
+		});
+
+		test('a burst of events for one asset collapses: only the newest claim fetches', async () => {
+			const pending: Array<(response: Response) => void> = [];
+			let detailCalls = 0;
+			const timeline = clientWith((url) => {
+				if (url.includes('a2')) {
+					detailCalls += 1;
+					return new Promise<Response>((resolve) => pending.push(resolve));
+				}
+				return page(pageOneItems);
+			});
+			await timeline.loadMore();
+
+			// Three events in one breath: the first fetch runs, the
+			// newer claims queue (newest wins), and only the newest
+			// claim re-converges when the running fetch lands.
+			const all = Promise.all([
+				timeline.applyEvent({ id: 5, name: 'asset.updated', assetId: 'a2', kind: 'image' }),
+				timeline.applyEvent({ id: 6, name: 'asset.updated', assetId: 'a2', kind: 'image' }),
+				timeline.applyEvent({ id: 7, name: 'asset.updated', assetId: 'a2', kind: 'image' })
+			]);
+			expect(pending).toHaveLength(1);
+
+			pending[0]?.(detailOf(item('a2', '2026-11-01T09:00:00Z'), { isHidden: true }));
+			await drain();
+			// Event 6 never fetches: 7 superseded it while queued.
+			expect(detailCalls).toBe(2);
+			expect(pending).toHaveLength(2);
+
+			pending[1]?.(detailOf(item('a2', '2026-11-01T09:00:00Z'), { isHidden: false }));
+			await all;
+
+			// The newest event's live detail decided: a2 stays.
+			expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+			expect(detailCalls).toBe(2);
+		});
+	});
 });
 
 describe('batch runner', () => {
@@ -421,6 +548,23 @@ describe('batch runner', () => {
 		});
 		const outcome = await timeline.runBatch('trash', []);
 		expect(outcome).toEqual({ ok: false, errorKey: 'internal' });
+	});
+
+	test('a 401 batch failure maps to the session-expired key and rolls back', async () => {
+		const timeline = clientWith((url) => {
+			if (url === '/api/v1/assets/batch') {
+				return jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' });
+			}
+			return page(pageOneItems);
+		});
+		await timeline.loadMore();
+
+		const outcome = await timeline.runBatch('trash', ['a1']);
+		// The dead session shows the session message, never the
+		// login endpoint's credential text.
+		expect(outcome).toEqual({ ok: false, errorKey: 'session_expired' });
+		// The optimistic removal rolled back (the guard redirects).
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
 	});
 
 	test('rollback re-inserts older items at their sorted place after interleaved inserts', async () => {

@@ -16,6 +16,7 @@
 	import { locale } from 'svelte-i18n';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { createTimelineClient, type BatchAction } from '$lib/api/timeline';
+	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
 	import { groupTimelineItems } from '$lib/timeline/grouping';
 	import PhotoTile from '$lib/timeline/PhotoTile.svelte';
@@ -135,6 +136,13 @@
 		});
 	}
 
+	// The shared unknown-code fallback (a code with no i18n entry
+	// renders the generic message, never raw code jargon); the
+	// reactive `$_` keeps the text locale-tracked.
+	function errorText(key: string): string {
+		return resolveErrorText($_, key);
+	}
+
 	$effect(() => {
 		void timeline.loadMore();
 
@@ -191,7 +199,7 @@
 		</div>
 	{:else if $timeline.status === 'error' && $timeline.items.length === 0}
 		<div class="timeline__failure" role="alert">
-			<p>{$_($timeline.errorKey)}</p>
+			<p>{errorText($timeline.errorKey)}</p>
 			<Button variant="primary" onclick={() => void timeline.loadMore()}>{$_('action_retry')}</Button>
 		</div>
 	{:else}
@@ -219,7 +227,7 @@
 
 	{#if $timeline.status === 'error' && $timeline.items.length > 0}
 		<div class="timeline__failure" role="alert">
-			<p>{$_($timeline.errorKey)}</p>
+			<p>{errorText($timeline.errorKey)}</p>
 			<Button variant="primary" onclick={() => void timeline.loadMore()}>{$_('action_retry')}</Button>
 		</div>
 	{/if}
@@ -235,7 +243,7 @@
 
 <MonthScrubber {months} activeKey={activeMonthKey} onjump={jumpToMonth} />
 <BatchBar
-	count={selection.size}
+	count={selectedItems.length}
 	allFavorite={allSelectedFavorite}
 	errorKey={batchErrorKey}
 	busy={batchBusy}
