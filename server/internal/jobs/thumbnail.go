@@ -78,7 +78,8 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 
 	// Image assets get the three AVIF sizes; video assets get the
 	// poster frame instead -- never AVIF thumbnails (the poster IS the
-	// video's thumbnail, served by Task 6).
+	// video's thumbnail, served by the thumbnail endpoint; the
+	// playable stream is the transcode job's product).
 	var hash string
 	if row.MediaKind == dbgen.MediaKindVideo {
 		hash, err = media.GeneratePoster(ctx, path, assetID.String())

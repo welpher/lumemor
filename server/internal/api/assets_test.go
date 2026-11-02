@@ -805,6 +805,11 @@ func (failingEnqueuer) EnqueueThumbnail(context.Context, uuid.UUID) error {
 	return errors.New("queue unavailable")
 }
 
+// EnqueueTranscode implements AssetJobEnqueuer by always failing.
+func (failingEnqueuer) EnqueueTranscode(context.Context, uuid.UUID) error {
+	return errors.New("queue unavailable")
+}
+
 // TestUploadAssetEnqueueFailureStillCreated pins the enqueue seam's
 // failure semantics: the enqueue happens AFTER the upload transaction
 // commits, so a failing queue cannot fail the response -- the upload
@@ -850,6 +855,8 @@ type recordingEnqueuer struct {
 	metadataIDs      []uuid.UUID
 	thumbnailContext context.Context
 	thumbnailID      uuid.UUID
+	transcodeContext context.Context
+	transcodeID      uuid.UUID
 }
 
 // EnqueueMetadata implements AssetJobEnqueuer by recording the call.
@@ -863,6 +870,13 @@ func (r *recordingEnqueuer) EnqueueMetadata(ctx context.Context, id uuid.UUID) e
 func (r *recordingEnqueuer) EnqueueThumbnail(ctx context.Context, id uuid.UUID) error {
 	r.thumbnailContext = ctx
 	r.thumbnailID = id
+	return nil
+}
+
+// EnqueueTranscode implements AssetJobEnqueuer by recording the call.
+func (r *recordingEnqueuer) EnqueueTranscode(ctx context.Context, id uuid.UUID) error {
+	r.transcodeContext = ctx
+	r.transcodeID = id
 	return nil
 }
 
@@ -892,11 +906,30 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	if recorder.thumbnailID != assetID {
 		t.Errorf("thumbnail enqueue id = %s, want %s", recorder.thumbnailID, assetID)
 	}
+	if recorder.transcodeID != uuid.Nil {
+		t.Errorf("transcode enqueued for an image-kind row (%s), want none", recorder.transcodeID)
+	}
 	contexts := append(append([]context.Context(nil), recorder.metadataContexts...), recorder.thumbnailContext)
 	for i, ctx := range contexts {
 		if err := ctx.Err(); err != nil {
 			t.Errorf("enqueue context %d err = %v, want nil: the client disconnect must not cancel the enqueue", i, err)
 		}
+	}
+
+	// A standalone video upload adds the transcode job to the same
+	// disconnect-safe context: its counter counts three jobs.
+	videoRecorder := &recordingEnqueuer{}
+	s.jobs = videoRecorder
+	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID), MediaKind: dbgen.MediaKindVideo})
+	if videoRecorder.transcodeID != assetID {
+		t.Errorf("video transcode enqueue id = %s, want %s", videoRecorder.transcodeID, assetID)
+	}
+	if err := videoRecorder.transcodeContext.Err(); err != nil {
+		t.Errorf("video transcode enqueue context err = %v, want nil: the disconnect must not cancel it", err)
+	}
+	if len(videoRecorder.metadataIDs) != 1 || videoRecorder.thumbnailID != assetID {
+		t.Errorf("video enqueue set = metadata %v thumbnail %s, want one of each for %s",
+			videoRecorder.metadataIDs, videoRecorder.thumbnailID, assetID)
 	}
 }
 
@@ -1303,7 +1336,7 @@ func TestGetAssetByDeviceId(t *testing.T) {
 
 	t.Run("OwnerScoped", func(t *testing.T) {
 		// A second account cannot see the first one's device asset.
-		other := env.createSecondUser(t, "grace@example.com")
+		_, other := env.createSecondUser(t, "grace@example.com")
 		rec := get(other, "device-1")
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want %d (another owner's asset is invisible)", rec.Code, http.StatusNotFound)
@@ -1312,8 +1345,11 @@ func TestGetAssetByDeviceId(t *testing.T) {
 }
 
 // createSecondUser seeds a plain user directly in the database (admin
-// user management is M2c) and returns a session cookie of that user.
-func (e *assetEnv) createSecondUser(t *testing.T, email string) *http.Cookie {
+// user management is M2d) and returns the user's id together with a
+// session cookie of that user. The row carries no sync album: callers
+// that need one insert it (fixtures) or let the upload path's ensure
+// create it, which is exactly the recovery the ensure exists for.
+func (e *assetEnv) createSecondUser(t *testing.T, email string) (uuid.UUID, *http.Cookie) {
 	t.Helper()
 	hash, err := auth.Hash(testPassword)
 	if err != nil {
@@ -1332,12 +1368,12 @@ func (e *assetEnv) createSecondUser(t *testing.T, email string) *http.Cookie {
 	if err != nil {
 		t.Fatalf("generate session id: %v", err)
 	}
-	raw := "second-user-session-token"
+	raw := "second-user-session-token-" + email
 	if _, err := e.pool.Exec(context.Background(),
 		"INSERT INTO sessions (id, user_id, token_hash, kind, expires_at) VALUES ($1, $2, $3, 'mobile', $4)",
 		pgUUID(sessionID), pgUUID(userID), auth.HashSessionToken(raw),
 		time.Now().Add(24*time.Hour)); err != nil {
 		t.Fatalf("insert second user session: %v", err)
 	}
-	return &http.Cookie{Name: sessionCookieName, Value: raw}
+	return userID, &http.Cookie{Name: sessionCookieName, Value: raw}
 }

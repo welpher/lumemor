@@ -21,6 +21,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/jobs"
 	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/storage"
+	"github.com/welpher/lumemor/server/internal/trash"
 )
 
 const (
@@ -136,6 +137,44 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	logger.Info("job queue started")
+
+	// The boot requeue sweep: the recovery of the pipeline assets stuck
+	// by a previous run (an enqueue insert failure, or a crash in the
+	// commit-to-enqueue window). It runs after the queue started -- the
+	// re-enqueued jobs are picked up immediately -- and before the HTTP
+	// server begins listening, so the first client request already sees
+	// the recovered state; the cost on a healthy database is one SELECT
+	// plus the re-inserts of the rare genuinely stuck row. Its failure
+	// does not fail the boot: the sweep is a recovery mechanism, the
+	// server is fully usable without it, and the hourly periodic sweep
+	// retries.
+	sweepCounts, err := jobs.RunRequeueSweep(ctx, pool, queue)
+	if err != nil {
+		// The counts ride along even on the aborted run (partial on a
+		// mid-sweep enqueue failure; zero when the listing itself
+		// failed), mirroring the worker's failure line.
+		logger.Error("requeue sweep failed", "error", err,
+			"stuck", sweepCounts.Stuck, "enqueued", sweepCounts.Enqueued)
+	} else {
+		// The run's single log line; per-asset logs are deliberately
+		// absent.
+		logger.Info("requeue sweep complete",
+			"stuck", sweepCounts.Stuck, "enqueued", sweepCounts.Enqueued)
+	}
+
+	// The boot trash expiry, the same pattern as the sweep: rows whose
+	// retention closed while the process was down leave with the boot
+	// instead of waiting for the first hourly periodic run. It is
+	// bounded (the run caps its own batch) and idempotent, its failure
+	// does not fail the boot, and the hourly periodic job retries.
+	expiryCounts, err := trash.RunExpiry(ctx, pool, cfg.DataDir, bus)
+	if err != nil {
+		logger.Error("trash expiry failed", "error", err,
+			"expired", expiryCounts.Expired, "files", expiryCounts.FilesRemoved)
+	} else {
+		logger.Info("trash expiry complete",
+			"expired", expiryCounts.Expired, "files", expiryCounts.FilesRemoved)
+	}
 
 	srv := &http.Server{
 		Addr: cfg.Listen,

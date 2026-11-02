@@ -1,5 +1,6 @@
 -- Asset queries of the upload endpoint (M2b Task 3), the device
--- idempotency lookup, and the metadata pipeline (M2b Task 4).
+-- idempotency lookup, the metadata pipeline (M2b Task 4), and the
+-- attribute PATCH (M2c Task 5).
 -- CreateAsset pins the server-side column values of a fresh upload:
 -- storage_kind 'blob' (uploaded bytes live in the content-addressed
 -- originals tree), taken_at_source 'import' (the device-reported
@@ -60,6 +61,9 @@ WHERE id = $1 AND owner_id = $2;
 -- (the join only attaches the sidecar of the row that matched).
 -- The LEFT JOIN keeps the detail answering before and after the
 -- metadata job refined the sidecar: hot fields are NULL until then.
+-- description and is_hidden ride along (M2c Task 5): the PATCH
+-- response reuses this read after its writes, so it serves the same
+-- shape the GET endpoint serves, applied values included.
 SELECT a.id,
        a.owner_id,
        a.media_kind,
@@ -77,6 +81,8 @@ SELECT a.id,
        a.live_photo_video_id,
        a.deleted_at,
        a.ready_at,
+       a.description,
+       a.is_hidden,
        e.camera_make,
        e.camera_model,
        e.lens,
@@ -195,3 +201,50 @@ RETURNING (ready_at IS NOT NULL)::boolean AS became_ready, media_kind;
 -- yields the same hash), so the update is idempotent.
 UPDATE assets SET blurhash = $2, updated_at = now()
 WHERE id = $1;
+
+-- name: UpdateAssetDescription :execrows
+-- The owner-scoped description write of PATCH /assets/{id} (M2c
+-- Task 5). The description <> $3 arm is the set-semantics guard:
+-- patching the text the row already carries matches nothing, so the
+-- idempotent repeat is the same success, updated_at stays un-stamped
+-- and the event stays silent -- the rows-affected count is the
+-- handler's change signal. The owner guard IS the permission check
+-- (asset attribute editing is owner-only, no admin override), so a
+-- foreign id matches nothing exactly like an unknown one -- the same
+-- anti-enumeration shape as GetAsset. No state filter: a trashed
+-- asset is editable like it is readable, and the edit resurfaces
+-- with the restore.
+UPDATE assets SET
+    description = sqlc.arg('description'),
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+  AND owner_id = sqlc.arg('owner_id')
+  AND description <> sqlc.arg('description');
+
+-- name: ListStuckAssets :many
+-- The requeue sweep's stuck-row finder (M2c Task 1): assets whose
+-- upload committed -- pending_jobs counted the jobs the uploader
+-- meant to enqueue -- but whose readiness never arrived (ready_at
+-- still NULL). These are the rows an enqueue insert failure or a
+-- crash in the commit-to-enqueue window left with no (or missing)
+-- jobs in the queue; a re-upload answers duplicate without
+-- re-enqueueing, so the sweep is their only recovery. Soft-deleted
+-- assets are deliberately excluded: a trashed asset is headed for
+-- expiry, not recovery. Rows whose jobs are merely in flight (a live
+-- upload mid-pipeline) match too -- the query cannot tell "lost
+-- jobs" from "busy jobs", and it does not need to: the sweep's
+-- re-enqueue inserts carry River unique keys over kind + asset id, so
+-- repeated or overlapping sweeps do not pile up jobs, but the upload
+-- path's enqueues are unkeyed and never join the unique index -- an
+-- in-flight upload row gets one duplicate set from the sweep (two
+-- jobs for an image, three for a video), and all of them run,
+-- converged by the pipeline jobs' own idempotency and
+-- the guarded readiness decrement (the extra completions no-op). The
+-- sweep never resets pending_jobs (the counter already counts the
+-- missing jobs; the re-enqueued completions drive it down). media_kind
+-- rides along because the sweep re-enqueues by the row's kind: two
+-- jobs for an image (metadata + thumbnail), three for a video since
+-- Task 6's transcode job split the video arm (metadata + thumbnail +
+-- transcode, matching the upload's pending_jobs initialization).
+SELECT id, media_kind FROM assets
+WHERE pending_jobs > 0 AND ready_at IS NULL AND deleted_at IS NULL;
