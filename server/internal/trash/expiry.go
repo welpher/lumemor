@@ -62,12 +62,15 @@ type ExpiryCounts struct {
 // lifecycle.
 //
 // Per candidate: the shared-blob reference count is taken first, the
-// guarded delete runs, and only a row the delete actually removed
-// has its files removed -- the guard (still trashed, still past the
-// cutoff, inside the deleting statement itself) is what makes a
-// restore racing the run safe: the restored row matches nothing and
-// its files are never touched. The file removal follows the row
-// delete's commit deliberately: a failure in between is a storage
+// guarded delete runs (the face cluster sweep and it share one
+// transaction -- a cluster's representative face must re-home or
+// dissolve before the cascade removes the row's faces), and only a
+// row the delete actually removed has its files removed -- the guard
+// (still trashed, still past the cutoff, inside the deleting
+// statement itself) is what makes a restore racing the run safe: the
+// restored row matches nothing and its files are never touched, and
+// its sweep rolls back with the delete. The file removal follows the
+// row delete's commit deliberately: a failure in between is a storage
 // leak, never data loss, so it is logged and the run continues.
 //
 // The bus, when wired, receives one asset.deleted event per purged
@@ -115,12 +118,13 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 
 		// The guarded delete: a row restored (or already purged by a
 		// concurrent run) since the listing matches nothing, and the
-		// run skips its files -- the restore-vs-expiry race guard,
-		// in the statement itself.
-		deleted, err := queries.ExpireAsset(ctx, dbgen.ExpireAssetParams{
-			ID:            row.ID,
-			RetentionDays: int32(retention),
-		})
+		// run skips its files -- the restore-vs-expiry race guard, in
+		// the statement itself. The face cluster sweep shares its
+		// transaction (a face of the row can be a cluster's
+		// representative, and the schema's foreign key demands the
+		// re-home or the dissolve before the cascade), so a guard that
+		// matches nothing rolls the sweep back with it.
+		deleted, err := expireAsset(ctx, pool, row, int32(retention))
 		if err != nil {
 			return counts, fmt.Errorf("trash expiry: expire asset %s: %w", uuid.UUID(row.ID.Bytes), err)
 		}
@@ -150,4 +154,50 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 		}
 	}
 	return counts, nil
+}
+
+// expireAsset purges one expired row inside a transaction that also
+// carries the face cluster sweep: the cluster representatives re-home
+// or dissolve before the cascade removes the row's faces (the
+// schema's foreign key holds every representative to a live face --
+// see the db package's faces.sql sweep queries), and the guarded
+// delete keeps the restore-vs-expiry race safe -- a row restored
+// since the listing matches nothing and the whole transaction,
+// sweep included, rolls back.
+func expireAsset(ctx context.Context, pool *pgxpool.Pool, row dbgen.ListExpiredAssetsRow, retentionDays int32) (int64, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin the asset expiry transaction: %w", err)
+	}
+	// The rollback is a no-op after a successful commit.
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := dbgen.New(tx)
+
+	if err := queries.RehomeClusterRepresentatives(ctx, dbgen.RehomeClusterRepresentativesParams{
+		AssetID: row.ID,
+	}); err != nil {
+		return 0, fmt.Errorf("rehome the clusters of the asset's faces: %w", err)
+	}
+	if err := queries.DissolveVacatedClusters(ctx, dbgen.DissolveVacatedClustersParams{
+		AssetID: row.ID,
+	}); err != nil {
+		return 0, fmt.Errorf("dissolve the clusters the asset's faces held: %w", err)
+	}
+
+	deleted, err := queries.ExpireAsset(ctx, dbgen.ExpireAssetParams{
+		ID:            row.ID,
+		RetentionDays: retentionDays,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if deleted == 0 {
+		// Restored or already purged concurrently: nothing happened,
+		// and the rollback undoes the sweep.
+		return 0, nil
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit the asset expiry: %w", err)
+	}
+	return deleted, nil
 }

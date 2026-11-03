@@ -18,13 +18,16 @@
 // the recovery. The ML jobs deliberately never touch pending_jobs:
 // readiness means the serving copies exist.
 //
-// THE CHAINING DECISION (pinned, handed to Task 7): the detection
-// completion enqueues NOTHING. The recognition job's trigger surface
-// is the model rerun plus Task 7's own incremental-trigger decision,
-// which that task owns and must justify on its own evidence. There is
-// no automatic detection-to-recognition chain in this milestone by
-// design: a fresh upload's faces sit detected-but-unrecognized until
-// the user's rerun or Task 7's deliberate trigger.
+// THE CHAINING RESTORE (Task 7, landing Task 6's pinned handover):
+// the detection completion enqueues the recognition job when the
+// recognize slot is active AND this run landed faces on the asset --
+// the one incremental detection-to-recognition link of the milestone
+// (the model rerun surface is the other trigger, wiring its per-slot
+// arms as those land). The chain is the queue's method value wired
+// before the client starts; workers constructed directly (the unit
+// tests) carry none, and their completions chain nothing. Zero faces
+// or an empty recognize slot chains nothing: a faceless asset has
+// nothing to recognize, and an unfilled slot is the degraded mode.
 package jobs
 
 import (
@@ -36,6 +39,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 
@@ -74,7 +78,7 @@ func (FaceDetectArgs) Kind() string { return FaceDetectKind }
 // model's session over the asset's upright decode, the detections
 // persisted as the model's faces rows (the per-mille box and the
 // score only -- the landmarks travel in the Detection value for the
-// recognition job of Task 7, never into the table).
+// recognition job, never into the table).
 type FaceDetectWorker struct {
 	river.WorkerDefaults[FaceDetectArgs]
 
@@ -82,6 +86,12 @@ type FaceDetectWorker struct {
 	dataDir  string
 	registry *ml.Registry
 	logger   *slog.Logger
+
+	// recognizeDispatch enqueues the recognition job at the chaining
+	// site below. The queue wires its EnqueueFaceRecognize method
+	// value before the client starts; a directly constructed worker
+	// carries none, and its completion chains nothing.
+	recognizeDispatch func(ctx context.Context, assetID uuid.UUID) error
 }
 
 // Timeout is the job's execution envelope; see faceDetectTimeout.
@@ -156,12 +166,31 @@ func (w *FaceDetectWorker) Work(ctx context.Context, job *river.Job[FaceDetectAr
 	// The write: this model's faces of the asset replace themselves --
 	// delete then insert, in one transaction, so a re-run converges to
 	// the same rows and every other model's rows survive untouched.
+	// The cluster sweep runs first: a doomed face can be a cluster's
+	// representative, and the schema's foreign key holds every
+	// representative to a live face -- so the representative re-homes
+	// to the cluster's best surviving member, or the cluster
+	// dissolves (its user_face_labels cascading) when no member
+	// survives. See faces.sql's sweep queries.
 	tx, err := w.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin face detect transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := dbgen.New(tx)
+
+	if err := queries.RehomeClusterRepresentatives(ctx, dbgen.RehomeClusterRepresentativesParams{
+		AssetID: pgUUID(assetID),
+		ModelID: pgtype.Text{String: model.ID, Valid: true},
+	}); err != nil {
+		return fmt.Errorf("rehome the clusters of asset %s's replaced faces: %w", assetID, err)
+	}
+	if err := queries.DissolveVacatedClusters(ctx, dbgen.DissolveVacatedClustersParams{
+		AssetID: pgUUID(assetID),
+		ModelID: pgtype.Text{String: model.ID, Valid: true},
+	}); err != nil {
+		return fmt.Errorf("dissolve the clusters vacated by asset %s's replaced faces: %w", assetID, err)
+	}
 
 	if err := queries.DeleteFacesByAsset(ctx, dbgen.DeleteFacesByAssetParams{
 		AssetID: pgUUID(assetID),
@@ -191,9 +220,26 @@ func (w *FaceDetectWorker) Work(ctx context.Context, job *river.Job[FaceDetectAr
 		return fmt.Errorf("commit face detect transaction: %w", err)
 	}
 
-	// No continuation, by the pinned decision in the package comment:
-	// recognition's trigger surface is the rerun plus Task 7's own
-	// incremental decision.
+	// The chaining restore (the package comment's pinned decision):
+	// faces landed and the recognize slot is active, so the
+	// recognition job follows. A dispatch failure logs and moves on --
+	// the detection's rows are committed fact, and the model rerun
+	// surface recovers the missed recognition (a retry of this job
+	// would re-run the whole detection, not just the link).
+	if len(detections) > 0 {
+		if _, err := w.registry.Active(ml.SlotFaceRecognize); err == nil {
+			if w.recognizeDispatch != nil {
+				if err := w.recognizeDispatch(ctx, assetID); err != nil {
+					w.logger.Warn("the recognize continuation dispatch failed; the model rerun surface recovers the work",
+						"asset_id", assetID, "error", err)
+				}
+			}
+		} else if !errors.Is(err, ml.ErrNoActiveModel) {
+			w.logger.Warn("resolve the active face recognize model for the continuation",
+				"asset_id", assetID, "error", err)
+		}
+	}
+
 	w.logger.Info("face detection complete", "asset_id", assetID,
 		"model_id", model.ID, "faces", len(detections))
 	return nil

@@ -38,9 +38,10 @@ const maxWorkers = 4
 // pipeline's largest job envelope -- the transcode job's 150s (whose
 // ffmpeg subprocess carries a 120s cap of its own; the thumbnail
 // job's 90s carries the poster extraction's 60s subprocess cap, the
-// metadata job's exiftool only 30s, and the face detection job's CPU
-// inference 60s) -- so a healthy job always finishes within the
-// drain.
+// metadata job's exiftool only 30s, the face detection job's CPU
+// inference 60s, and the face recognition job's envelope 120s, whose
+// library-wide clustering pass is the largest ML step) -- so a
+// healthy job always finishes within the drain.
 const softStopTimeout = 155 * time.Second
 
 // Config carries the dependencies of the job queue.
@@ -202,10 +203,18 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		dispatch: cfg.MlRerunDispatch,
 		logger:   logger,
 	})
-	river.AddWorker(workers, &FaceDetectWorker{
+	faceDetectWorker := &FaceDetectWorker{
 		pool:     cfg.Pool,
 		dataDir:  cfg.DataDir,
 		registry: registry,
+		logger:   logger,
+	}
+	river.AddWorker(workers, faceDetectWorker)
+	river.AddWorker(workers, &FaceRecognizeWorker{
+		pool:     cfg.Pool,
+		dataDir:  cfg.DataDir,
+		registry: registry,
+		bus:      cfg.Bus,
 		logger:   logger,
 	})
 
@@ -254,9 +263,14 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	// the client starts -- no worker is executing yet, so the wiring
 	// cannot race the first dispatch. Workers constructed directly
 	// (the unit tests) carry no seam and the announce step skips it.
+	// The detection worker's recognize continuation wires the same
+	// way: its completion enqueues the recognition job through the
+	// queue's own enqueue when the recognize slot is active and faces
+	// landed (the chaining restore face_detect.go documents).
 	metadataWorker.mlDispatch = queue.EnqueueMlJobs
 	thumbnailWorker.mlDispatch = queue.EnqueueMlJobs
 	transcodeWorker.mlDispatch = queue.EnqueueMlJobs
+	faceDetectWorker.recognizeDispatch = queue.EnqueueFaceRecognize
 
 	if err := client.Start(context.WithoutCancel(ctx)); err != nil {
 		return nil, fmt.Errorf("jobs: start river client: %w", err)
