@@ -21,13 +21,31 @@
 		errorKey: string;
 		/** Actions run one at a time: buttons disable while in flight. */
 		busy: boolean;
+		/**
+		 * Which of the bar's actions render, keyed like the batch API
+		 * ('favorite' names the favorite/unfavorite toggle). The
+		 * timeline passes nothing and gets every action; the curated
+		 * walls pass the subset that their view makes sense of
+		 * (unfavorite on favorites, unhide on hidden).
+		 */
+		actions?: readonly BatchAction[];
 		/** Run one batch action over the current selection. */
 		onaction: (action: BatchAction) => void;
 		/** Clear the selection. */
 		onclear: () => void;
 	};
 
-	let { count, allFavorite, errorKey, busy, onaction, onclear }: Props = $props();
+	let { count, allFavorite, errorKey, busy, actions, onaction, onclear }: Props = $props();
+
+	// The default is the full set of the bar's buttons; a caller's
+	// subset keeps its order (the toggle, hide, unhide, trash,
+	// restore -- the timeline's order).
+	const shown = $derived(actions ?? ['favorite', 'hide', 'unhide', 'trash', 'restore']);
+
+	/** Whether one action's button renders. */
+	function offers(action: BatchAction): boolean {
+		return shown.includes(action);
+	}
 
 	// The shared unknown-code fallback (see $lib/i18n/errors): an
 	// unknown error code has no i18n key, and svelte-i18n would echo
@@ -42,13 +60,23 @@
 	<div class="batchbar" role="toolbar" aria-label={$_('batch_selected_count', { values: { count } })}>
 		<p class="batchbar__count">{$_('batch_selected_count', { values: { count } })}</p>
 
-		<Button variant="ghost" disabled={busy} onclick={() => onaction(allFavorite ? 'unfavorite' : 'favorite')}>
-			{allFavorite ? $_('action_unfavorite') : $_('action_favorite')}
-		</Button>
-		<Button variant="ghost" disabled={busy} onclick={() => onaction('hide')}>{$_('action_hide')}</Button>
-		<Button variant="ghost" disabled={busy} onclick={() => onaction('unhide')}>{$_('action_unhide')}</Button>
-		<Button variant="danger" disabled={busy} onclick={() => onaction('trash')}>{$_('action_trash')}</Button>
-		<Button variant="ghost" disabled={busy} onclick={() => onaction('restore')}>{$_('action_restore')}</Button>
+		{#if offers('favorite')}
+			<Button variant="ghost" disabled={busy} onclick={() => onaction(allFavorite ? 'unfavorite' : 'favorite')}>
+				{allFavorite ? $_('action_unfavorite') : $_('action_favorite')}
+			</Button>
+		{/if}
+		{#if offers('hide')}
+			<Button variant="ghost" disabled={busy} onclick={() => onaction('hide')}>{$_('action_hide')}</Button>
+		{/if}
+		{#if offers('unhide')}
+			<Button variant="ghost" disabled={busy} onclick={() => onaction('unhide')}>{$_('action_unhide')}</Button>
+		{/if}
+		{#if offers('trash')}
+			<Button variant="danger" disabled={busy} onclick={() => onaction('trash')}>{$_('action_trash')}</Button>
+		{/if}
+		{#if offers('restore')}
+			<Button variant="ghost" disabled={busy} onclick={() => onaction('restore')}>{$_('action_restore')}</Button>
+		{/if}
 
 		<button class="batchbar__clear" type="button" aria-label={$_('action_clear_selection')} onclick={onclear}>
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">

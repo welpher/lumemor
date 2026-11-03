@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 **id** | **String** | UUIDv7 identifier. | 
 **name** | **String** | Display name. | 
 **email** | **String** | Login address. | 
-**role** | **String** | Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin. | 
+**role** | [**UserRole**](UserRole.md) |  | 
 **createdAt** | [**DateTime**](DateTime.md) | Creation time (RFC 3339 UTC). | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

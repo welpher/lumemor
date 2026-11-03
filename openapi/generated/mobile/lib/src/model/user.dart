@@ -3,7 +3,7 @@
 //
 
 // ignore_for_file: unused_element
-import 'package:built_collection/built_collection.dart';
+import 'package:lumemor_api/src/model/user_role.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
@@ -15,7 +15,7 @@ part 'user.g.dart';
 /// * [id] - UUIDv7 identifier.
 /// * [name] - Display name.
 /// * [email] - Login address.
-/// * [role] - Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin.
+/// * [role] 
 /// * [createdAt] - Creation time (RFC 3339 UTC).
 @BuiltValue()
 abstract class User implements Built<User, UserBuilder> {
@@ -31,9 +31,8 @@ abstract class User implements Built<User, UserBuilder> {
   @BuiltValueField(wireName: r'email')
   String get email;
 
-  /// Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin.
   @BuiltValueField(wireName: r'role')
-  UserRoleEnum get role;
+  UserRole get role;
   // enum roleEnum {  admin,  user,  };
 
   /// Creation time (RFC 3339 UTC).
@@ -81,7 +80,7 @@ class _$UserSerializer implements PrimitiveSerializer<User> {
     yield r'role';
     yield serializers.serialize(
       object.role,
-      specifiedType: const FullType(UserRoleEnum),
+      specifiedType: const FullType(UserRole),
     );
     yield r'createdAt';
     yield serializers.serialize(
@@ -135,8 +134,8 @@ class _$UserSerializer implements PrimitiveSerializer<User> {
         case r'role':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType(UserRoleEnum),
-          ) as UserRoleEnum;
+            specifiedType: const FullType(UserRole),
+          ) as UserRole;
           result.role = valueDes;
           break;
         case r'createdAt':
@@ -175,20 +174,4 @@ class _$UserSerializer implements PrimitiveSerializer<User> {
   }
 }
 
-
-/// Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin.
-class UserRoleEnum extends EnumClass {
-
-  @BuiltValueEnumConst(wireName: r'admin')
-  static const UserRoleEnum admin = _$userRoleEnum_admin;
-  @BuiltValueEnumConst(wireName: r'user')
-  static const UserRoleEnum user = _$userRoleEnum_user;
-
-  static Serializer<UserRoleEnum> get serializer => _$userRoleEnumSerializer;
-
-  const UserRoleEnum._(String name): super(name);
-
-  static BuiltSet<UserRoleEnum> get values => _$userRoleEnumValues;
-  static UserRoleEnum valueOf(String name) => _$userRoleEnumValueOf(name);
-}
 

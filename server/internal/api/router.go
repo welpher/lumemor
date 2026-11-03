@@ -247,6 +247,17 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Delete("/assets/{id}", wrapper.DeleteAsset)
 			})
 
+			// Authed admin group (M2d Task 8): the user management
+			// surface sits behind requireSession AND the admin-role
+			// guard, inside the handler timeout like every other
+			// bounded JSON handler (small row reads and writes).
+			r.Group(func(r chi.Router) {
+				r.Use(timeoutMiddleware(timeout), s.requireSession, s.requireAdmin)
+				r.Get("/admin/users", wrapper.ListUsers)
+				r.Post("/admin/users", wrapper.CreateUser)
+				r.Patch("/admin/users/{id}", wrapper.UpdateUser)
+			})
+
 			// Authed streaming group: the SSE activity stream. It
 			// requires a live session like the group above but
 			// deliberately runs OUTSIDE the handler timeout:

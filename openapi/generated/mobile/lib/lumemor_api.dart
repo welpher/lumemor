@@ -10,11 +10,16 @@ export 'package:lumemor_api/src/auth/oauth.dart';
 export 'package:lumemor_api/src/serializers.dart';
 export 'package:lumemor_api/src/model/date.dart';
 
+export 'package:lumemor_api/src/api/admin_api.dart';
 export 'package:lumemor_api/src/api/assets_api.dart';
 export 'package:lumemor_api/src/api/auth_api.dart';
 export 'package:lumemor_api/src/api/events_api.dart';
 export 'package:lumemor_api/src/api/server_api.dart';
 
+export 'package:lumemor_api/src/model/admin_create_user_request.dart';
+export 'package:lumemor_api/src/model/admin_user_list_response.dart';
+export 'package:lumemor_api/src/model/admin_user_patch.dart';
+export 'package:lumemor_api/src/model/admin_user_response.dart';
 export 'package:lumemor_api/src/model/asset_detail.dart';
 export 'package:lumemor_api/src/model/asset_patch.dart';
 export 'package:lumemor_api/src/model/asset_response.dart';
@@ -34,4 +39,5 @@ export 'package:lumemor_api/src/model/timeline_response.dart';
 export 'package:lumemor_api/src/model/trash_item.dart';
 export 'package:lumemor_api/src/model/trash_response.dart';
 export 'package:lumemor_api/src/model/user.dart';
+export 'package:lumemor_api/src/model/user_role.dart';
 

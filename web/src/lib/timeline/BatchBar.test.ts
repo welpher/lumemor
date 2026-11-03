@@ -1,6 +1,7 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { initI18n, setLocale } from '$lib/i18n';
+import type { BatchAction } from '$lib/api/timeline';
 import BatchBar from './BatchBar.svelte';
 
 // The batch bar contract: it renders only with a selection, shows
@@ -9,7 +10,15 @@ import BatchBar from './BatchBar.svelte';
 // runs, shows the mapped failure message inline, and clears through
 // the clear action.
 
-function mountBar(props: { count?: number; allFavorite?: boolean; errorKey?: string; busy?: boolean } = {}) {
+function mountBar(
+	props: {
+		count?: number;
+		allFavorite?: boolean;
+		errorKey?: string;
+		busy?: boolean;
+		actions?: readonly BatchAction[];
+	} = {}
+) {
 	const onaction = vi.fn();
 	const onclear = vi.fn();
 	const bar = mount(BatchBar, {
@@ -19,6 +28,7 @@ function mountBar(props: { count?: number; allFavorite?: boolean; errorKey?: str
 			allFavorite: props.allFavorite ?? false,
 			errorKey: props.errorKey ?? '',
 			busy: props.busy ?? false,
+			actions: props.actions,
 			onaction,
 			onclear
 		}
@@ -45,6 +55,32 @@ test('no selection means no bar', () => {
 	const { bar } = mountBar({ count: 0 });
 	expect(document.body.querySelector('.batchbar')).toBeNull();
 	unmount(bar);
+	flushSync();
+});
+
+test('an action subset renders only the named actions (the curated walls)', () => {
+	// The favorites wall passes the toggle alone; the hidden wall
+	// the unhide action.
+	const { bar: favoriteBar, onaction: favoriteAction } = mountBar({
+		count: 2,
+		allFavorite: true,
+		actions: ['favorite']
+	});
+	const favoriteButtons = Array.from(
+		document.body.querySelectorAll<HTMLButtonElement>('.batchbar button:not(.batchbar__clear)')
+	);
+	expect(favoriteButtons.map((button) => button.textContent?.trim())).toEqual(['Unfavorite']);
+	favoriteButtons[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	expect(favoriteAction).toHaveBeenCalledWith('unfavorite');
+	unmount(favoriteBar);
+	flushSync();
+
+	const { bar: hiddenBar } = mountBar({ count: 2, actions: ['unhide'] });
+	const hiddenButtons = Array.from(
+		document.body.querySelectorAll<HTMLButtonElement>('.batchbar button:not(.batchbar__clear)')
+	);
+	expect(hiddenButtons.map((button) => button.textContent?.trim())).toEqual(['Unhide']);
+	unmount(hiddenBar);
 	flushSync();
 });
 

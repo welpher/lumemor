@@ -119,9 +119,15 @@ block = """          enum:
             - SETUP_ALREADY_COMPLETED
             - VALIDATION_FAILED
             - INTERNAL
+            - AUTH_FORBIDDEN
             - AUTH_INVALID_CREDENTIALS
             - AUTH_RATE_LIMITED
             - PAIRING_TOKEN_INVALID
+            - ASSET_TOO_LARGE
+            - ASSET_NOT_FOUND
+            - ASSET_NOT_READY
+            - USER_EMAIL_TAKEN
+            - USER_NOT_FOUND
 """
 assert block in text
 path.write_text(text.replace(block, ""), encoding="utf-8")

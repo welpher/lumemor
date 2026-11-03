@@ -317,6 +317,7 @@ func TestLogin(t *testing.T) {
 			Name:         "Grace Hopper",
 			Email:        "grace@example.com",
 			PasswordHash: mustHash(t, testPassword),
+			Role:         dbgen.UserRoleUser,
 		})
 		if err != nil {
 			t.Fatalf("seed grace: %v", err)
@@ -594,6 +595,7 @@ func TestLogoutAndRevoke(t *testing.T) {
 			Name:         "Grace Hopper",
 			Email:        "grace@example.com",
 			PasswordHash: "$argon2id$v=19$m=65536,t=3,p=1$placeholder$placeholder",
+			Role:         dbgen.UserRoleUser,
 		})
 		if err != nil {
 			t.Fatalf("create grace: %v", err)
