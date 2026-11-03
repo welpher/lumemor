@@ -1042,6 +1042,46 @@ export interface paths {
         patch: operations["updateUser"];
         trace?: never;
     };
+    "/admin/models/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start the default model group's download.
+         * @description The model download trigger of the admin surface: the default
+         *     group's models -- pinned by the manifest with upstream URLs and
+         *     sha256 digests -- are downloaded, verified and registered, and
+         *     each model activates into its slot when the slot is still
+         *     empty. The request body is deliberately empty: the default
+         *     group is the only group v1 downloads.
+         *
+         *     The endpoint is idempotent. A run that is still in flight
+         *     (state `queued` or `running`) answers 200 with its identifier
+         *     and nothing new is started; so does the most recent finished
+         *     run -- a repeated click neither re-downloads a landed group
+         *     nor piles up jobs, and the recovery of a failed run belongs to
+         *     the job's own retries. Only a first call -- no run of this kind
+         *     at all -- creates one and answers 202.
+         *
+         *     The run's progress is observable two ways: the `job_runs` row
+         *     of the returned identifier (kind `model_download`, `total` and
+         *     `done` carrying the group's pinned byte counts) and the
+         *     `job.started` / `job.progress` / `job.finished` events on the
+         *     activity stream, the progress events throttled to at most one
+         *     per second.
+         */
+        post: operations["downloadModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1260,6 +1300,19 @@ export interface components {
              *     sessions and sign-in; `false` lets it back in.
              */
             isDisabled: boolean;
+        };
+        /**
+         * @description The identifier of one model download run: the `job_runs` row
+         *     the download drives and the `job.*` events announce.
+         */
+        ModelDownloadResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the run's `job_runs` row. `202`
+             *     carries the freshly created run; `200` the existing
+             *     in-flight or most recent one.
+             */
+            jobRunId: string;
         };
         /** @description A lumemor account. */
         User: {
@@ -1902,7 +1955,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -3739,6 +3792,84 @@ export interface operations {
                 };
             };
             /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    downloadModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description A model download run already exists -- one that is still in
+             *     flight (`queued` or `running`), or, when none is, the most
+             *     recent finished one. Its identifier is returned and NO new
+             *     run is created or enqueued.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDownloadResponse"];
+                };
+            };
+            /**
+             * @description The download run was created (state `queued`, `total`
+             *     carrying the group's pinned byte count) and the model
+             *     download job enqueued. The worker flips the run to
+             *     `running` when the download begins.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDownloadResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The download run could not be started: no job queue is
+             *     wired to the API surface, or creating the run failed. The
+             *     run itself, once started, reports its own failures through
+             *     its `job_runs` row (state `failed`) -- this code is the
+             *     start failure, not the download failure.
+             */
             500: {
                 headers: {
                     [name: string]: unknown;

@@ -60,6 +60,13 @@ type Deps struct {
 	// Nil keeps the upload working without a queue (tests, wiring
 	// order); the assets simply stay not-ready until one runs.
 	Jobs AssetJobEnqueuer
+	// ModelDownloads starts the default model group's download runs:
+	// the download endpoint enqueues the model_download job through
+	// this seam. Nil keeps the endpoint answering 500
+	// MODEL_DOWNLOAD_FAILED (no queue wired -- tests, wiring order);
+	// production passes the jobs queue, which implements it
+	// structurally.
+	ModelDownloads ModelDownloadEnqueuer
 }
 
 // AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
@@ -80,6 +87,17 @@ type AssetJobEnqueuer interface {
 	// counts). The upload handler gates the call on the asset's own
 	// family, matching the pending_jobs initialization.
 	EnqueueTranscode(ctx context.Context, assetID uuid.UUID) error
+}
+
+// ModelDownloadEnqueuer starts the default model group's download. It
+// is the seam between the download endpoint and the job queue:
+// production passes the jobs package's Queue, which implements it
+// structurally.
+type ModelDownloadEnqueuer interface {
+	// EnqueueModelDownload creates the download's job_runs row and
+	// enqueues the River job in one transaction, returning the run's
+	// identifier.
+	EnqueueModelDownload(ctx context.Context) (uuid.UUID, error)
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
@@ -127,6 +145,9 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		uploadLimit: deps.UploadLimitBytes,
 		// The job queue seam: nil is a valid (no pipeline) wiring.
 		jobs: deps.Jobs,
+		// The model download seam: nil is a valid (no queue) wiring;
+		// the download endpoint answers its own failure code then.
+		modelDownloads: deps.ModelDownloads,
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
@@ -256,6 +277,11 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/admin/users", wrapper.ListUsers)
 				r.Post("/admin/users", wrapper.CreateUser)
 				r.Patch("/admin/users/{id}", wrapper.UpdateUser)
+				// The model download trigger (M3a Task 3): the
+				// default group's first-boot download. The handler is
+				// one bounded row read plus one enqueue; the heavy
+				// work lives on the queue.
+				r.Post("/admin/models/download", wrapper.DownloadModels)
 			})
 
 			// Authed streaming group: the SSE activity stream. It
@@ -340,6 +366,10 @@ type server struct {
 	// jobs enqueues the pipeline jobs of a committed upload; nil means
 	// no queue is wired and uploads simply stay not-ready.
 	jobs AssetJobEnqueuer
+	// modelDownloads starts the default model group's download runs;
+	// nil means no queue is wired and the download endpoint answers
+	// its own failure code.
+	modelDownloads ModelDownloadEnqueuer
 }
 
 // writeJSON emits v as the JSON response body with the given status.

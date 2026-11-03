@@ -45,6 +45,7 @@
   "auth_forbidden": "You need to be an administrator for this.",
   "user_email_taken": "An account with this email address already exists.",
   "user_not_found": "This account does not exist.",
+  "model_download_failed": "The model download could not be started. Check the server logs and try again.",
   "timeline_loading": "Loading your timeline…",
   "timeline_empty": "Your timeline is empty. Photos you upload appear here.",
   "timeline_load_more": "Load more",
