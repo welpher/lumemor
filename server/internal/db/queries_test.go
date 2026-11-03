@@ -30,8 +30,9 @@ func TestUserQueries(t *testing.T) {
 	queries := gen.New(pool)
 
 	// Seed the instance the way the first-run wizard will: a UUIDv7 id and
-	// an argon2id placeholder hash the query layer never inspects. CreateUser
-	// hardcodes role='admin' and locale='en'.
+	// an argon2id placeholder hash the query layer never inspects. The
+	// wizard pins role='admin'; the parameterized role is the admin
+	// user management surface's ('user' there by default).
 	userID, err := uuid.NewV7()
 	if err != nil {
 		t.Fatalf("generate uuid v7: %v", err)
@@ -41,6 +42,7 @@ func TestUserQueries(t *testing.T) {
 		Name:         "Ada Lovelace",
 		Email:        "ada@example.com",
 		PasswordHash: "$argon2id$v=19$m=65536,t=3,p=4$placeholder$placeholder",
+		Role:         gen.UserRoleAdmin,
 	})
 	if err != nil {
 		t.Fatalf("CreateUser() error = %v, want nil", err)
@@ -143,6 +145,7 @@ func TestSessionQueries(t *testing.T) {
 		Name:         "Ada Lovelace",
 		Email:        "ada@example.com",
 		PasswordHash: "$argon2id$v=19$m=65536,t=3,p=1$placeholder$placeholder",
+		Role:         gen.UserRoleAdmin,
 	})
 	if err != nil {
 		t.Fatalf("create ada: %v", err)
@@ -152,6 +155,7 @@ func TestSessionQueries(t *testing.T) {
 		Name:         "Grace Hopper",
 		Email:        "grace@example.com",
 		PasswordHash: "$argon2id$v=19$m=65536,t=3,p=1$placeholder$placeholder",
+		Role:         gen.UserRoleUser,
 	})
 	if err != nil {
 		t.Fatalf("create grace: %v", err)
@@ -415,6 +419,7 @@ func TestPairingQueries(t *testing.T) {
 		Name:         "Ada Lovelace",
 		Email:        "ada@example.com",
 		PasswordHash: "$argon2id$v=19$m=65536,t=3,p=1$placeholder$placeholder",
+		Role:         gen.UserRoleAdmin,
 	})
 	if err != nil {
 		t.Fatalf("create ada: %v", err)

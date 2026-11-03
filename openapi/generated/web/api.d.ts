@@ -567,10 +567,10 @@ export interface paths {
          *
          *     A trashed asset answers 200 with `isTrashed: true` -- the
          *     trash view reads the detail the same way. The component video
-         *     row of a Live Photo is readable by its id (the detail and the
-         *     original download resolve it through `livePhotoVideoId`; the
-         *     play endpoint answers 404 for it -- the component counts no
-         *     transcode of its own) but never appears in the timeline.
+         *     row of a Live Photo is readable by its id (the detail, the
+         *     original download and the transcoded play stream resolve it
+         *     through `livePhotoVideoId`; it counts a transcode job of its
+         *     own) but never appears in the timeline.
          */
         get: operations["getAsset"];
         put?: never;
@@ -794,22 +794,26 @@ export interface paths {
          *     416 with the total size in `Content-Range`; a malformed Range
          *     header is ignored and the full body answers 200.
          *
-         *     Only client-visible video assets have a playable stream: an
-         *     image asset, and a Live Photo's component video row (linked
-         *     through `livePhotoVideoId` -- it counts no transcode pipeline
-         *     of its own, its pair's visible asset being the image), answer
-         *     404 `ASSET_NOT_FOUND` -- there is nothing to play by that id,
-         *     and the answer is the asset's own not-found envelope, the same
+         *     Only the video family has a playable stream: a standalone
+         *     video and a Live Photo's component video row alike (linked
+         *     through `livePhotoVideoId` -- since the component counts a
+         *     transcode job of its own, its playable copy arrives exactly
+         *     like any video's, and the pair's motion plays through this
+         *     endpoint by the component's id). An image asset answers 404
+         *     `ASSET_NOT_FOUND` -- there is nothing to play by that id, and
+         *     the answer is the asset's own not-found envelope, the same
          *     anti-enumeration shape (byte for byte) as an unknown or a
-         *     foreign id. The component's original stays downloadable by its
-         *     id through `GET /assets/{id}/original`. A video whose
-         *     transcode has not been produced yet -- the pipeline is still
-         *     running, or the transcode job failed and is retrying --
-         *     answers 404 `ASSET_NOT_READY`: the client renders the poster
-         *     frame (the thumbnail endpoint serves it) and waits for the
-         *     `asset.ready` event instead of treating the asset as gone. The
-         *     video pipeline counts three jobs (metadata, thumbnail,
-         *     transcode), so readiness follows all three.
+         *     foreign id. A video whose transcode has not been produced
+         *     yet -- the pipeline is still running, or the transcode job
+         *     failed and is retrying -- answers 404 `ASSET_NOT_READY`: the
+         *     client renders the poster frame (the thumbnail endpoint
+         *     serves it) and waits for the `asset.ready` event instead of
+         *     treating the asset as gone; for a Live Photo component, whose
+         *     readiness the pair's photo announces on its own schedule,
+         *     the client keeps the still photo until the stream appears.
+         *     The standalone video pipeline counts three jobs (metadata,
+         *     thumbnail, transcode), so its readiness follows all three;
+         *     the component's counter counts its transcode alone.
          */
         get: operations["playAsset"];
         put?: never;
@@ -924,6 +928,118 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the instance's accounts.
+         * @description The user management listing of the admin surface: every
+         *     account of the instance with its role and its disabled
+         *     switch, oldest first. The listing selects only the safe
+         *     columns -- a password hash never appears in any admin
+         *     response.
+         *
+         *     The list is small by construction (a family instance holds a
+         *     handful of accounts) and grows only through this surface's
+         *     own create endpoint, so it answers every account in one
+         *     response: there is no pagination, no filtering and no
+         *     ordering parameter. Account rows never disappear (deleting
+         *     an account together with its data is a later milestone's
+         *     disposal flow), so a refetch after any write reconciles the
+         *     list completely.
+         *
+         *     The endpoint is admin-only: the session middleware
+         *     authenticates the caller like every authed route, and a
+         *     caller whose role is not `admin` answers 403 AUTH_FORBIDDEN
+         *     -- a code distinct from the 401 family, because the caller
+         *     is signed in, just not entitled to this surface.
+         */
+        get: operations["listUsers"];
+        put?: never;
+        /**
+         * Create one account.
+         * @description The account creation of the admin surface, the management
+         *     counterpart of the first-run wizard: an administrator
+         *     provisions another account -- a family member's login, or a
+         *     second administrator. The account rules mirror the wizard's
+         *     exactly: the email is parsed and lower-cased as the login
+         *     identity, the password is stored only as an Argon2id hash
+         *     and never appears in any response, the id is a fresh UUIDv7,
+         *     and the account's sync album -- the core backup stream every
+         *     upload lands in and the timeline aggregates -- is created in
+         *     the SAME transaction, so the new account can take uploads
+         *     the moment it exists (a second creation point of the same
+         *     wiring the wizard uses). The wizard's one-time guarantee is
+         *     NOT part of this endpoint; it exists exactly because an
+         *     administrator already does.
+         *
+         *     The role defaults to `user` when omitted; creating another
+         *     administrator is the same request with `role: "admin"`. A
+         *     duplicate email answers 409 USER_EMAIL_TAKEN -- the address
+         *     is the account identity, unique instance-wide, and the login
+         *     lookup depends on that uniqueness.
+         */
+        post: operations["createUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Toggle one account's disabled switch.
+         * @description The enable/disable switch of the admin surface: an
+         *     administrator locks an account out of the instance (or lets
+         *     it back in) without deleting the account or any of its data.
+         *     The switch is enforced by the session middleware on EVERY
+         *     request, which is what pins its observable semantics:
+         *
+         *     - Disabling takes effect with the account's next request: an
+         *       existing session of the account answers 401 from then on
+         *       (byte-identical with any other authentication failure) and
+         *       sign-in is refused the same way. The session rows
+         *       themselves are not deleted -- disabling revokes their
+         *       authority, not their existence.
+         *     - Re-enabling restores the account's unexpired sessions
+         *       without a new sign-in; a session that lapsed its own
+         *       expiry while the account was disabled is gone for good.
+         *
+         *     The write is idempotent -- setting the current value again
+         *     answers 200 with the unchanged account -- and the response
+         *     is the account after the write, so the client adopts it as
+         *     the fresh state without a refetch.
+         *
+         *     An administrator cannot disable their own account: the last
+         *     admin locking themselves out would strand the admin surface,
+         *     so the request answers 400 VALIDATION_FAILED naming the id.
+         *     Nothing stops an admin from disabling ANOTHER administrator;
+         *     the last enabled admin is the instance's line of defense.
+         *
+         *     The id must name an account. Account ids are enumerable
+         *     through this surface's own listing, so there is no
+         *     anti-enumeration pairing here: an unknown id (a stale list
+         *     on the client) answers 404 USER_NOT_FOUND.
+         */
+        patch: operations["updateUser"];
         trace?: never;
     };
 }
@@ -1073,6 +1189,78 @@ export interface components {
              */
             password: string;
         };
+        /**
+         * @description Authorization role of an account: `admin` is granted by the
+         *     first-run wizard or by another administrator, `user` is the
+         *     default of every other creation path.
+         * @enum {string}
+         */
+        UserRole: "admin" | "user";
+        /**
+         * @description One account as the admin surface returns it: the identity and
+         *     role columns together with the disabled switch this surface
+         *     toggles. The password hash is never part of an admin
+         *     response.
+         */
+        AdminUserResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier.
+             */
+            id: string;
+            /** @description Display name. */
+            name: string;
+            /**
+             * Format: email
+             * @description Login address.
+             */
+            email: string;
+            role: components["schemas"]["UserRole"];
+            /**
+             * @description The disabled switch. A disabled account loses the
+             *     authority of its sessions and its sign-in until
+             *     re-enabled; its data stays untouched.
+             */
+            isDisabled: boolean;
+            /**
+             * Format: date-time
+             * @description Creation time (RFC 3339 UTC).
+             */
+            createdAt: string;
+        };
+        /**
+         * @description The user management listing: every account of the instance,
+         *     oldest first, in one bounded response.
+         */
+        AdminUserListResponse: {
+            /** @description Every account of the instance, oldest first. */
+            items: components["schemas"]["AdminUserResponse"][];
+        };
+        /** @description Payload of `POST /admin/users`. */
+        AdminCreateUserRequest: {
+            /** @description Optional display name; defaults to the email address. */
+            name?: string;
+            /**
+             * Format: email
+             * @description Login address of the new account; unique instance-wide.
+             */
+            email: string;
+            /**
+             * Format: password
+             * @description Account password; stored only as an Argon2id hash.
+             * @example correct horse battery staple
+             */
+            password: string;
+            role?: components["schemas"]["UserRole"];
+        };
+        /** @description Payload of `PATCH /admin/users/{id}`. */
+        AdminUserPatch: {
+            /**
+             * @description The switch to write. `true` locks the account out of its
+             *     sessions and sign-in; `false` lets it back in.
+             */
+            isDisabled: boolean;
+        };
         /** @description A lumemor account. */
         User: {
             /**
@@ -1087,11 +1275,7 @@ export interface components {
              * @description Login address.
              */
             email: string;
-            /**
-             * @description Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin.
-             * @enum {string}
-             */
-            role: "admin" | "user";
+            role: components["schemas"]["UserRole"];
             /**
              * Format: date-time
              * @description Creation time (RFC 3339 UTC).
@@ -1268,7 +1452,8 @@ export interface components {
             /**
              * @description True once the whole pipeline of the asset completed -- the
              *     metadata and thumbnail jobs for an image, plus the
-             *     transcode job for a video; the `asset.ready` event fires
+             *     transcode job for a video (for a Live Photo component,
+             *     the transcode job alone); the `asset.ready` event fires
              *     at that moment. Until then the client shows placeholders
              *     and the media endpoints answer `ASSET_NOT_READY` for
              *     missing derived files.
@@ -1299,8 +1484,8 @@ export interface components {
              * Format: uuid
              * @description For a Live Photo image, the id of its linked component
              *     video row (never in the timeline; its original is
-             *     downloadable by that id, the transcoded play stream is
-             *     not); null otherwise.
+             *     downloadable by that id, and its transcoded play stream
+             *     is served there too); null otherwise.
              */
             livePhotoVideoId: string | null;
             /**
@@ -1717,7 +1902,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -2254,7 +2439,9 @@ export interface operations {
                      * Format: binary
                      * @description The Live Photo pairing video; present only together
                      *     with `photo`. The server stores it as a linked
-                     *     component row that never appears in the timeline.
+                     *     component row that never appears in the timeline,
+                     *     and queues its transcode so the pair's motion is
+                     *     playable in the browser.
                      */
                     liveVideo?: string;
                 };
@@ -2348,7 +2535,7 @@ export interface operations {
                  *     page. An unparseable value answers 400
                  *     `VALIDATION_FAILED` (cursors are opaque strings produced
                  *     by this endpoint, never assembled by clients).
-                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 * @example GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
                  */
                 cursor?: string;
                 /**
@@ -2490,7 +2677,7 @@ export interface operations {
                  *     page. An unparseable value answers 400
                  *     `VALIDATION_FAILED` (cursors are opaque strings produced
                  *     by this endpoint, never assembled by clients).
-                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 * @example GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
                  */
                 cursor?: string;
                 /**
@@ -2563,7 +2750,7 @@ export interface operations {
                  *     page. An unparseable value answers 400
                  *     `VALIDATION_FAILED` (cursors are opaque strings produced
                  *     by this endpoint, never assembled by clients).
-                 * @example AAAAAAAAAADvr_8PaGVsbw==
+                 * @example GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
                  */
                 cursor?: string;
                 /**
@@ -3315,6 +3502,234 @@ export interface operations {
              *     is unknown, already purged by the expiry job, or belongs
              *     to another account -- all indistinguishable by design.
              */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Every account of the instance, oldest first (the
+             *     first-run wizard's administrator leads a fresh
+             *     instance's list).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserListResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateUserRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The account exists, its sync album with it. The response
+             *     describes the created account; `isDisabled` is false by
+             *     construction.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserResponse"];
+                };
+            };
+            /**
+             * @description The request body is not a valid account payload: a
+             *     missing or malformed email, a password outside the 8-128
+             *     rune bound, a name past 100 runes, or a `role` outside
+             *     the enum.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description An account with this email already exists; the address is
+             *     the account identity.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the account. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserPatch"];
+            };
+        };
+        responses: {
+            /**
+             * @description The account after the write; the client adopts it as the
+             *     fresh state.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserResponse"];
+                };
+            };
+            /**
+             * @description The request body is not a valid toggle payload, or the id
+             *     names the caller's own account (self-disable).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No account with this id exists. */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -1,7 +1,21 @@
-# The image build consumes only the Go module under server/; every other
-# repository path (git history, docs, generated clients, web sources,
+# The image build consumes the Go module under server/ plus the web
+# app's build inputs (web/ sources, the shared i18n/ table at the
+# repository root, and the generated TypeScript contract types); every
+# other repository path (git history, docs, generated mobile clients,
 # tooling state) stays out of the build context so that context
 # transfers stay small and layer cache invalidation tracks the server
-# sources alone.
+# and web sources alone. The trailing exclusions keep build output and
+# dependency trees out of the re-included paths: the image builds the
+# web app itself in its own stage, so host build output must never
+# ride into the context.
 **
 !server/**
+!web/**
+!i18n/**
+!openapi/generated/web/**
+web/node_modules
+web/build
+web/.svelte-kit
+web/e2e/.auth
+web/test-results
+server/internal/web/dist

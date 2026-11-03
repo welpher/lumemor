@@ -223,7 +223,7 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 		// not-ready, so a failure here is logged, not failed -- the
 		// upload itself succeeded, and failing the response would not
 		// undo the commit.
-		s.enqueueAssetJobs(r, asset)
+		s.enqueueAssetJobs(r, asset, liveVideo)
 		s.publishAssetUploaded(asset)
 		s.writeJSON(w, http.StatusCreated, assetResponseFrom(asset, state))
 		return
@@ -496,18 +496,25 @@ func assetInsertParams(id, owner uuid.UUID, form uploadForm, up committedUpload,
 	}
 	originalFilename := up.partName
 	deviceAssetID := pgtype.Text{}
-	// The pipeline count the uploader enqueues: the photo row's
-	// metadata job plus its thumbnail job (the main asset gets a
+	// The pipeline count the uploader enqueues. A photo row counts
+	// its metadata and thumbnail jobs (the main asset gets a
 	// thumbnail whatever its kind -- an image's three AVIF sizes, a
 	// video's poster frame), plus the transcode job when the photo
 	// row itself is a video (a standalone video upload: three jobs).
-	// The component video row stays at 0: it is refined by the
-	// metadata job but is never the client-visible asset whose
-	// readiness the event announces (and the Live Photo's visible
-	// asset is the image, so no transcode belongs to the pair).
+	// A component video row (M2d) counts ONE job: the transcode that
+	// derives its playable stream -- HEVC Live Photo components need
+	// a web-safe copy for browser playback, and the pair's motion
+	// plays through the component's own id. The metadata job still
+	// runs for it (both rows carry sidecars to refine), but its
+	// completion never consumes the transcode's count. A component
+	// whose part is image-family counts none: no job of any kind can
+	// run for it, so a counted transcode would strand the counter.
 	pendingJobs := int32(2)
 	if isComponent {
 		pendingJobs = 0
+		if kind == dbgen.MediaKindVideo {
+			pendingJobs = 1
+		}
 	} else {
 		originalFilename = form.fileName
 		deviceAssetID = pgtype.Text{String: form.deviceAssetID, Valid: true}
@@ -665,22 +672,28 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 // photo row itself is a video (a standalone video upload), the
 // transcode job that derives its playable web-safe MP4 (three jobs
 // total; the pending_jobs counter was initialized to match). The
-// component video gets no thumbnail and no transcode job: it is never
-// the client-visible asset, and the photo it belongs to already
-// provides the timeline tile (the component also counts no pipeline
-// of its own, and the play endpoint gates on is_component, so its id
-// answers 404 there -- the pair's motion stays reachable through the
-// component's original download). The enqueue runs after the upload
-// transaction committed, so its context must not die with the client
-// connection: a disconnect in the commit-to-enqueue window would fail
-// the enqueue and strand the asset's pipeline counter not-ready
-// forever, with no API path to requeue it. WithoutCancel keeps the
-// request's deadline and values while shedding its cancellation. A
-// failed enqueue logs and moves on: the upload is committed and its
-// idempotent re-upload resolves as duplicate without re-enqueueing,
-// so recovery from a lost job belongs to the requeue sweep, not to
-// the response of this request.
-func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset) {
+// component video gets no thumbnail, but (M2d) it gets the transcode
+// when its own part is video-family: its playable stream is what the
+// pair's motion plays through -- HEVC components re-encode to the
+// web-safe H.264/AAC pair every browser plays. The component's
+// counter counts exactly that one job; the metadata job the component
+// also receives never consumes the count, and the component's
+// transcode completion never announces (the photo row owns the pair's
+// asset.ready). An image-family component part receives no transcode:
+// the job would be a permanent no-op against a counter left stranded
+// -- the enqueue therefore stays symmetric with the pending_jobs
+// initialization in assetInsertParams.
+//
+// The enqueue runs after the upload transaction committed, so its
+// context must not die with the client connection: a disconnect in
+// the commit-to-enqueue window would fail the enqueue and strand the
+// asset's pipeline counter not-ready forever, with no API path to
+// requeue it. WithoutCancel keeps the request's deadline and values
+// while shedding its cancellation. A failed enqueue logs and moves
+// on: the upload is committed and its idempotent re-upload resolves
+// as duplicate without re-enqueueing, so recovery from a lost job
+// belongs to the requeue sweep, not to the response of this request.
+func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset, liveVideo *committedUpload) {
 	if s.jobs == nil {
 		return
 	}
@@ -701,6 +714,16 @@ func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset) {
 	if asset.MediaKind == dbgen.MediaKindVideo {
 		if err := s.jobs.EnqueueTranscode(ctx, assetID); err != nil {
 			s.logger.Error("enqueue transcode job", "error", err, "asset_id", assetID)
+		}
+	}
+	// The Live Photo component's own transcode, when its part belongs
+	// to the video family (the format the row's media kind derived
+	// from -- the same gate assetInsertParams applied to the
+	// component's pending_jobs).
+	if liveVideo != nil && liveVideo.format.Video && asset.LivePhotoVideoID.Valid {
+		componentID := uuid.UUID(asset.LivePhotoVideoID.Bytes)
+		if err := s.jobs.EnqueueTranscode(ctx, componentID); err != nil {
+			s.logger.Error("enqueue transcode job", "error", err, "asset_id", componentID)
 		}
 	}
 }

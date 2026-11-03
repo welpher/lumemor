@@ -99,16 +99,27 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	if err := queries.RefineAssetFromMetadata(ctx, refineParams(pgUUID(assetID), tags, exifTime, ok)); err != nil {
 		return fmt.Errorf("refine asset row: %w", err)
 	}
-	completion, err := queries.CompleteAssetJob(ctx, pgUUID(assetID))
-	if errors.Is(err, pgx.ErrNoRows) {
-		// The guarded decrement found nothing to decrement: either the
-		// pipeline already completed (a re-run: idempotency -- no
-		// double decrement, no second event), or the row counts no
-		// pipeline of its own (a Live Photo component video), or the
-		// asset vanished mid-job. All of these are successful no-ops.
-		completion = dbgen.CompleteAssetJobRow{BecameReady: false}
-	} else if err != nil {
-		return fmt.Errorf("complete pipeline job: %w", err)
+	// A Live Photo component row's counter counts its transcode alone
+	// (M2d): the metadata refinement still runs -- both rows of the
+	// pair carry sidecars -- but its completion must not consume the
+	// count. An un-guarded decrement here would empty the component's
+	// counter before the playable copy exists, stamp ready_at so the
+	// requeue sweep stops looking for the missing transcode, and
+	// publish asset.ready for a row that never announces. Skipping
+	// the guarded decrement keeps the transcode job the counter's
+	// sole owner.
+	completion := dbgen.CompleteAssetJobRow{BecameReady: false}
+	if !row.IsComponent {
+		completion, err = queries.CompleteAssetJob(ctx, pgUUID(assetID))
+		if errors.Is(err, pgx.ErrNoRows) {
+			// The guarded decrement found nothing to decrement: the
+			// pipeline already completed (a re-run: idempotency -- no
+			// double decrement, no second event). A completion against
+			// nothing pending is a successful no-op.
+			completion = dbgen.CompleteAssetJobRow{BecameReady: false}
+		} else if err != nil {
+			return fmt.Errorf("complete pipeline job: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit metadata transaction: %w", err)
