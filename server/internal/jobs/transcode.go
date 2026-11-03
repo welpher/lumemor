@@ -35,16 +35,19 @@ func (TranscodeArgs) Kind() string { return "transcode" }
 // component's playable stream is what the pair's motion plays
 // through, its completion stamps ready_at but never announces). The
 // pipeline completion is recorded through the same guarded decrement
-// the metadata and thumbnail jobs use, so the completion that empties
+// the metadata and thumbnail jobs use, and the completion that empties
 // pending_jobs (three for a standalone video: metadata, thumbnail,
-// transcode) publishes asset.ready exactly once.
+// transcode) publishes asset.ready through the shared completion step
+// (announceAssetReady in face_detect.go), which the ML readiness seam
+// hangs off.
 type TranscodeWorker struct {
 	river.WorkerDefaults[TranscodeArgs]
 
-	pool    *pgxpool.Pool
-	bus     *events.Bus
-	dataDir string
-	logger  *slog.Logger
+	pool       *pgxpool.Pool
+	bus        *events.Bus
+	dataDir    string
+	logger     *slog.Logger
+	mlDispatch mlDispatchFunc
 }
 
 // Timeout raises the job's execution envelope above River's one
@@ -118,21 +121,18 @@ func (w *TranscodeWorker) Work(ctx context.Context, job *river.Job[TranscodeArgs
 		return fmt.Errorf("commit transcode transaction: %w", err)
 	}
 
-	if completion.BecameReady && !row.IsComponent {
-		// Published after the commit so a subscriber that turns around
-		// and reads the database sees the final state. The payload
-		// discipline mirrors asset.uploaded and the metadata and
-		// thumbnail jobs' completions: the resource id and its media
-		// kind, nothing more. A Live Photo component row (M2d) never
-		// announces: its completion drains the one-job counter (the
+	if completion.BecameReady {
+		// The shared completion step (the one site where pending_jobs
+		// empties): the asset.ready announcement and the ML readiness
+		// seam, after the commit so a subscriber that turns around
+		// and reads the database sees the final state. A Live Photo
+		// component row (M2d) never announces and never enters the
+		// seam: its completion drains the one-job counter (the
 		// ready_at stamp is also what lets the requeue sweep stop
 		// matching the row), but the pair's announcement belongs to
 		// the photo row alone -- a component id in the timeline's
 		// event stream would be noise about an asset no view lists.
-		w.bus.Publish("asset.ready", map[string]string{
-			"assetId": assetID.String(),
-			"kind":    string(completion.MediaKind),
-		})
+		announceAssetReady(ctx, w.bus, w.logger, w.mlDispatch, assetID, completion.MediaKind, row.IsComponent)
 	}
 	return nil
 }

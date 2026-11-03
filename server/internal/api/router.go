@@ -20,6 +20,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/buildinfo"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/ml"
 	"github.com/welpher/lumemor/server/internal/web"
 )
 
@@ -60,6 +61,31 @@ type Deps struct {
 	// Nil keeps the upload working without a queue (tests, wiring
 	// order); the assets simply stay not-ready until one runs.
 	Jobs AssetJobEnqueuer
+	// ModelDownloads starts the default model group's download runs:
+	// the download endpoint enqueues the model_download job through
+	// this seam. Nil keeps the endpoint answering 500
+	// MODEL_DOWNLOAD_FAILED (no queue wired -- tests, wiring order);
+	// production passes the jobs queue, which implements it
+	// structurally.
+	ModelDownloads ModelDownloadEnqueuer
+	// Models is the instance's SHARED model registry: the model
+	// management endpoints list, activate and scan through it. Nil
+	// keeps those endpoints answering 500 INTERNAL (no registry wired
+	// -- tests, wiring order); production passes the registry the job
+	// queue already shares.
+	Models *ml.Registry
+	// ModelsDir is the model store root the scan endpoint walks. It
+	// must be the registry's own models dir: a model outside it is
+	// refused by the registry's scan (the registered file_path must
+	// resolve against the registry's root), so a divergence fails
+	// loudly instead of registering unusable rows.
+	ModelsDir string
+	// MlReruns starts the ML rerun runs of a slot: the rerun endpoint
+	// enqueues the rerun driver job through this seam. Nil keeps the
+	// endpoint answering 500 INTERNAL (no queue wired -- tests,
+	// wiring order); production passes the jobs queue, which
+	// implements it structurally.
+	MlReruns MlRerunEnqueuer
 }
 
 // AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
@@ -80,6 +106,27 @@ type AssetJobEnqueuer interface {
 	// counts). The upload handler gates the call on the asset's own
 	// family, matching the pending_jobs initialization.
 	EnqueueTranscode(ctx context.Context, assetID uuid.UUID) error
+}
+
+// ModelDownloadEnqueuer starts the default model group's download. It
+// is the seam between the download endpoint and the job queue:
+// production passes the jobs package's Queue, which implements it
+// structurally.
+type ModelDownloadEnqueuer interface {
+	// EnqueueModelDownload creates the download's job_runs row and
+	// enqueues the River job in one transaction, returning the run's
+	// identifier.
+	EnqueueModelDownload(ctx context.Context) (uuid.UUID, error)
+}
+
+// MlRerunEnqueuer starts one ML rerun of a slot. It is the seam
+// between the rerun endpoint and the job queue: production passes the
+// jobs package's Queue, which implements it structurally.
+type MlRerunEnqueuer interface {
+	// EnqueueMlRerun creates the rerun's job_runs row and enqueues the
+	// River driver job in one transaction, returning the run's
+	// identifier.
+	EnqueueMlRerun(ctx context.Context, slot ml.Slot) (uuid.UUID, error)
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
@@ -127,6 +174,16 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		uploadLimit: deps.UploadLimitBytes,
 		// The job queue seam: nil is a valid (no pipeline) wiring.
 		jobs: deps.Jobs,
+		// The model download seam: nil is a valid (no queue) wiring;
+		// the download endpoint answers its own failure code then.
+		modelDownloads: deps.ModelDownloads,
+		// The shared model registry and its models dir: nil is a
+		// valid (no registry) wiring; the model management endpoints
+		// answer the generic internal error then.
+		models:    deps.Models,
+		modelsDir: deps.ModelsDir,
+		// The rerun enqueue seam: nil is a valid (no queue) wiring.
+		mlReruns: deps.MlReruns,
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
@@ -256,6 +313,24 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/admin/users", wrapper.ListUsers)
 				r.Post("/admin/users", wrapper.CreateUser)
 				r.Patch("/admin/users/{id}", wrapper.UpdateUser)
+				// The model download trigger (M3a Task 3): the
+				// default group's first-boot download. The handler is
+				// one bounded row read plus one enqueue; the heavy
+				// work lives on the queue.
+				r.Post("/admin/models/download", wrapper.DownloadModels)
+				// The model management and job panel surface (M3a
+				// Task 4): the listing, the activation switch, the
+				// rerun trigger and the custom model scan, plus the
+				// job runs listing. All are bounded row reads and
+				// writes (the rerun's heavy work lives on the queue
+				// behind its enqueue); the scan route's static
+				// segment never contends with the {id} routes (a
+				// different method, and two segments for the rerun).
+				r.Get("/admin/models", wrapper.ListModels)
+				r.Patch("/admin/models/{id}", wrapper.ActivateModel)
+				r.Post("/admin/models/{id}/rerun", wrapper.RerunModel)
+				r.Post("/admin/models/scan", wrapper.ScanModels)
+				r.Get("/admin/jobs", wrapper.ListJobs)
 			})
 
 			// Authed streaming group: the SSE activity stream. It
@@ -340,6 +415,20 @@ type server struct {
 	// jobs enqueues the pipeline jobs of a committed upload; nil means
 	// no queue is wired and uploads simply stay not-ready.
 	jobs AssetJobEnqueuer
+	// modelDownloads starts the default model group's download runs;
+	// nil means no queue is wired and the download endpoint answers
+	// its own failure code.
+	modelDownloads ModelDownloadEnqueuer
+	// models is the instance's shared model registry; nil means no
+	// registry is wired and the model management endpoints answer the
+	// generic internal error.
+	models *ml.Registry
+	// modelsDir is the model store root the scan endpoint walks.
+	modelsDir string
+	// mlReruns starts the ML rerun runs of a slot; nil means no queue
+	// is wired and the rerun endpoint answers the generic internal
+	// error.
+	mlReruns MlRerunEnqueuer
 }
 
 // writeJSON emits v as the JSON response body with the given status.

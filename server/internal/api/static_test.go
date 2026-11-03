@@ -20,6 +20,9 @@ func newStaticRouter(initialized bool) http.Handler {
 
 // TestSetupPage pins the embedded wizard page: a HTML document with a
 // title, labels for every input, served without touching the database.
+// The completion handoff carries the model management page as the
+// post-login target (the v1 form of the wizard's model download
+// step), which the login page's redirectTo round-trip lands on.
 func TestSetupPage(t *testing.T) {
 	router := newStaticRouter(false)
 	rec := httptest.NewRecorder()
@@ -36,6 +39,9 @@ func TestSetupPage(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Errorf("GET /setup body does not contain %q", want)
 		}
+	}
+	if !strings.Contains(rec.Body.String(), `"/login?redirectTo=/admin/models"`) {
+		t.Error(`GET /setup body does not carry the wizard completion handoff "/login?redirectTo=/admin/models"`)
 	}
 }
 

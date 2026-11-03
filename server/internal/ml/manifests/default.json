@@ -1,0 +1,89 @@
+{
+  "revision": 1,
+  "models": [
+    {
+      "id": "yunet-2023mar",
+      "slot": "face-detect",
+      "version": "2023mar",
+      "license": "MIT",
+      "sourceUrl": "https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      "fallbackUrl": "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      "notice": "YuNet face detection from OpenCV Zoo (opencv/opencv_zoo); MIT, copyright Shiqi Yu.",
+      "inputSize": { "width": 640, "height": 640 },
+      "dim": 0,
+      "params": { "scoreThreshold": 0.6, "nmsThreshold": 0.3, "topK": 5000 },
+      "files": [
+        {
+          "name": "face_detection_yunet_2023mar.onnx",
+          "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+          "bytes": 232589
+        }
+      ]
+    },
+    {
+      "id": "sface-2021dec",
+      "slot": "face-recognize",
+      "version": "2021dec",
+      "license": "Apache-2.0",
+      "sourceUrl": "https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+      "fallbackUrl": "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+      "notice": "SFace face recognition from OpenCV Zoo (opencv/opencv_zoo); Apache-2.0.",
+      "inputSize": { "width": 112, "height": 112 },
+      "dim": 128,
+      "params": { "eps": 0.55, "minPts": 2 },
+      "files": [
+        {
+          "name": "face_recognition_sface_2021dec.onnx",
+          "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+          "bytes": 38696353
+        }
+      ]
+    },
+    {
+      "id": "cnclip-vit-b16-vision",
+      "slot": "clip-embed",
+      "version": "base-patch16",
+      "license": "unknown",
+      "sourceUrl": "https://huggingface.co/felixdu/chinese-clip-vit-base-patch16-onnx/resolve/main/cn_clip_vision.onnx",
+      "fallbackUrl": null,
+      "notice": "Community ONNX conversion of the Chinese-CLIP ViT-B/16 vision tower (weights: OFA-Sys/chinese-clip-vit-base-patch16, conversion: felixdu). No license declared upstream at either source; pinned by checksum, see tools/models/NOTICES.md.",
+      "inputSize": { "width": 224, "height": 224 },
+      "dim": 512,
+      "params": {
+        "mean": [0.48145466, 0.4578275, 0.40821073],
+        "std": [0.26862954, 0.26130258, 0.27577711]
+      },
+      "files": [
+        {
+          "name": "cn_clip_vision.onnx",
+          "sha256": "980020bf226e528a202de26c6a6186df125b74c612b09cfcd797a082e046b628",
+          "bytes": 345839119
+        }
+      ]
+    },
+    {
+      "id": "ppocr-v4-mobile-ch",
+      "slot": "ocr",
+      "version": "v4-mobile",
+      "license": "Apache-2.0",
+      "sourceUrl": "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx",
+      "fallbackUrl": null,
+      "notice": "PP-OCRv4 mobile Chinese detection and recognition networks from PaddleOCR, hosted as ONNX by RapidOCR (SWHL/RapidOCR); Apache-2.0.",
+      "inputSize": { "width": 960, "height": 960 },
+      "dim": 0,
+      "params": { "recHeight": 48, "detThreshold": 0.3 },
+      "files": [
+        {
+          "name": "ch_PP-OCRv4_det_infer.onnx",
+          "sha256": "d2a7720d45a54257208b1e13e36a8479894cb74155a5efe29462512d42f49da9",
+          "bytes": 4745517
+        },
+        {
+          "name": "ch_PP-OCRv4_rec_infer.onnx",
+          "sha256": "48fc40f24f6d2a207a2b1091d3437eb3cc3eb6b676dc3ef9c37384005483683b",
+          "bytes": 10857958
+        }
+      ]
+    }
+  ]
+}

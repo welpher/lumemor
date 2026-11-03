@@ -69,13 +69,14 @@ import 'package:lumemor_api/lumemor_api.dart';
 
 
 final api = LumemorApi().getAdminApi();
-final AdminCreateUserRequest adminCreateUserRequest = {"name":"Grace Hopper","email":"grace@example.com","password":"correct horse battery staple"}; // AdminCreateUserRequest | 
+final String id = cnclip-vit-b16-vision; // String | The identifier of the model to activate (the models table's slug id, as the listing returns it). 
+final BuiltMap<String, JsonObject?> requestBody = Object; // BuiltMap<String, JsonObject?> | 
 
 try {
-    final response = await api.createUser(adminCreateUserRequest);
+    final response = await api.activateModel(id, requestBody);
     print(response);
 } on DioException catch (e) {
-    print("Exception when calling AdminApi->createUser: $e\n");
+    print("Exception when calling AdminApi->activateModel: $e\n");
 }
 
 ```
@@ -86,8 +87,14 @@ All URIs are relative to */api/v1*
 
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
+[*AdminApi*](doc/AdminApi.md) | [**activateModel**](doc/AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
+[*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
+[*AdminApi*](doc/AdminApi.md) | [**listJobs**](doc/AdminApi.md#listjobs) | **GET** /admin/jobs | List the job runs of the task panel.
+[*AdminApi*](doc/AdminApi.md) | [**listModels**](doc/AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [*AdminApi*](doc/AdminApi.md) | [**listUsers**](doc/AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
+[*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
+[*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
 [*AssetsApi*](doc/AssetsApi.md) | [**batchAssets**](doc/AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
 [*AssetsApi*](doc/AssetsApi.md) | [**deleteAsset**](doc/AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
@@ -129,7 +136,22 @@ Class | Method | HTTP request | Description
  - [CreateAdminRequest](doc/CreateAdminRequest.md)
  - [Error](doc/Error.md)
  - [ExifSummary](doc/ExifSummary.md)
+ - [JobRunKind](doc/JobRunKind.md)
+ - [JobRunListResponse](doc/JobRunListResponse.md)
+ - [JobRunResponse](doc/JobRunResponse.md)
+ - [JobRunState](doc/JobRunState.md)
  - [LoginRequest](doc/LoginRequest.md)
+ - [ModelActivateResponse](doc/ModelActivateResponse.md)
+ - [ModelDimensionChange](doc/ModelDimensionChange.md)
+ - [ModelDownloadResponse](doc/ModelDownloadResponse.md)
+ - [ModelListResponse](doc/ModelListResponse.md)
+ - [ModelRef](doc/ModelRef.md)
+ - [ModelRerunResponse](doc/ModelRerunResponse.md)
+ - [ModelResponse](doc/ModelResponse.md)
+ - [ModelResponseInputSize](doc/ModelResponseInputSize.md)
+ - [ModelScanResponse](doc/ModelScanResponse.md)
+ - [ModelSlot](doc/ModelSlot.md)
+ - [ModelSource](doc/ModelSource.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
  - [PairingTokenResponse](doc/PairingTokenResponse.md)
  - [ServerInfo](doc/ServerInfo.md)

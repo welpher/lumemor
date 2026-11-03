@@ -22,22 +22,45 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
+	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/ml"
 )
 
-// maxWorkers caps the worker pool. The pipeline jobs are subprocess-
-// and IO-bound, not CPU-bound, so one worker per CPU stops paying off
-// quickly and more only adds contention on the shared pool.
+// maxWorkers caps the default queue's worker pool. The pipeline jobs
+// are subprocess- and IO-bound, not CPU-bound, so one worker per CPU
+// stops paying off quickly and more only adds contention on the shared
+// pool.
 const maxWorkers = 4
+
+// MlQueue is the River queue of the per-asset ML jobs (face
+// detection, face recognition, CLIP embedding, OCR -- M3a Tasks 6-8):
+// its worker pool is deliberately SMALL, because the ML jobs are the
+// pipeline's only CPU-heavy work (onnxruntime inference over decoded
+// rasters), and the plan's discipline pins their concurrency
+// conservative so a burst of ML work never starves the media pipeline
+// or the API of worker slots. The separation is also structural for
+// the rerun driver: the driver runs on the default queue and WAITS
+// for the per-asset jobs of its run -- a driver sharing the ml
+// workers with the jobs it waits for could starve them (four
+// concurrent slot reruns holding every default worker while the ml
+// queue sits behind them).
+const MlQueue = "ml"
+
+// mlQueueWorkers is the ml queue's conservative worker count.
+const mlQueueWorkers = 2
 
 // softStopTimeout bounds a graceful drain: once it elapses, in-flight
 // job contexts are cancelled (River escalates the soft stop to a hard
 // one) instead of the drain waiting forever. It sits above the
 // pipeline's largest job envelope -- the transcode job's 150s (whose
 // ffmpeg subprocess carries a 120s cap of its own; the thumbnail
-// job's 90s carries the poster extraction's 60s subprocess cap, and
-// the metadata job's exiftool only 30s) -- so a healthy job always
-// finishes within the drain.
+// job's 90s carries the poster extraction's 60s subprocess cap, the
+// metadata job's exiftool only 30s, the face detection and CLIP
+// embedding jobs' CPU inference 60s each, and the face recognition
+// and OCR jobs' envelopes 120s, the recognition's library-wide
+// clustering pass and the OCR's per-box recognition being the largest
+// ML steps) -- so a healthy job always finishes within the drain.
 const softStopTimeout = 155 * time.Second
 
 // Config carries the dependencies of the job queue.
@@ -47,11 +70,35 @@ type Config struct {
 	// schema, outside the goose-managed schema.
 	Pool *pgxpool.Pool
 	// Bus receives the asset.ready event when an asset's pipeline
-	// completes.
+	// completes, and the job.* events when a model download run
+	// progresses.
 	Bus *events.Bus
 	// DataDir is the photo data root: the jobs resolve the assets'
 	// relative file_path columns against it.
 	DataDir string
+	// ModelsDir is the model store root: the model download job lands
+	// each model in <ModelsDir>/<id>/ and the registry resolves
+	// models.file_path against it.
+	ModelsDir string
+	// ModelsHfMirror is the HF domain mirror host (LUMEMOR_MODELS_HF_MIRROR
+	// in production): the model download rewrites huggingface.co
+	// hostnames to it wholesale. Empty = direct connections.
+	ModelsHfMirror string
+	// Registry registers and activates downloaded models. It is the
+	// instance's SHARED registry -- the admin surface of a later task
+	// consumes the same instance -- so the caller that owns one passes
+	// it; nil builds one over the pool and ModelsDir.
+	Registry *ml.Registry
+	// ModelsManifest overrides the manifest the model download job
+	// lands. Production leaves it nil (the embedded default group,
+	// pure upstream links); tests point it at their local sources.
+	ModelsManifest *ml.Manifest
+	// MlRerunDispatch runs one asset's ML work of a rerun: the seam
+	// whose production wiring is the queue's real dispatcher (Task 8's
+	// rerun closure -- the four slots' per-asset enqueues onto the ml
+	// queue). Production leaves it nil and the queue wires its own
+	// dispatcher; the rerun tests inject fakes of the same contract.
+	MlRerunDispatch MlRerunDispatchFunc
 	// Workers is the size of the worker pool. A non-positive value
 	// falls back to min(GOMAXPROCS, maxWorkers).
 	Workers int
@@ -64,6 +111,15 @@ type Config struct {
 // upload handler uses. Construct with Start; stop with Stop.
 type Queue struct {
 	client *river.Client[pgx.Tx]
+	// pool carries the model download's enqueue transaction (the
+	// job_runs row and the River job land together).
+	pool *pgxpool.Pool
+	// models is the manifest the model download job lands, pinned at
+	// Start: the enqueue computes the run's pinned byte total from it.
+	models *ml.Manifest
+	// registry resolves the ML readiness seam's active models, pinned
+	// at Start: EnqueueMlJobs consults it on every dispatch.
+	registry *ml.Registry
 }
 
 // Start applies River's own migrations (idempotent: applied versions
@@ -82,9 +138,30 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	if cfg.DataDir == "" {
 		return nil, errors.New("jobs: Config.DataDir is required")
 	}
+	if cfg.ModelsDir == "" {
+		return nil, errors.New("jobs: Config.ModelsDir is required")
+	}
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
+	}
+
+	// The shared registry: the caller's instance when it owns one, a
+	// fresh one over the pool otherwise.
+	registry := cfg.Registry
+	if registry == nil {
+		registry = ml.NewRegistry(cfg.Pool, dbgen.New(cfg.Pool), cfg.ModelsDir)
+	}
+
+	// The manifest the download job lands: the caller's override, the
+	// embedded default group otherwise.
+	models := cfg.ModelsManifest
+	if models == nil {
+		var err error
+		models, err = ml.DefaultManifest()
+		if err != nil {
+			return nil, fmt.Errorf("jobs: load the default model manifest: %w", err)
+		}
 	}
 
 	driver := riverpgxv5.New(cfg.Pool)
@@ -98,24 +175,27 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	}
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &MetadataWorker{
+	metadataWorker := &MetadataWorker{
 		pool:    cfg.Pool,
 		bus:     cfg.Bus,
 		dataDir: cfg.DataDir,
 		logger:  logger,
-	})
-	river.AddWorker(workers, &ThumbnailWorker{
+	}
+	river.AddWorker(workers, metadataWorker)
+	thumbnailWorker := &ThumbnailWorker{
 		pool:    cfg.Pool,
 		bus:     cfg.Bus,
 		dataDir: cfg.DataDir,
 		logger:  logger,
-	})
-	river.AddWorker(workers, &TranscodeWorker{
+	}
+	river.AddWorker(workers, thumbnailWorker)
+	transcodeWorker := &TranscodeWorker{
 		pool:    cfg.Pool,
 		bus:     cfg.Bus,
 		dataDir: cfg.DataDir,
 		logger:  logger,
-	})
+	}
+	river.AddWorker(workers, transcodeWorker)
 	river.AddWorker(workers, &SweepWorker{
 		pool:   cfg.Pool,
 		logger: logger,
@@ -126,6 +206,47 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		bus:     cfg.Bus,
 		logger:  logger,
 	})
+	river.AddWorker(workers, &ModelDownloadWorker{
+		pool:      cfg.Pool,
+		bus:       cfg.Bus,
+		registry:  registry,
+		modelsDir: cfg.ModelsDir,
+		hfMirror:  cfg.ModelsHfMirror,
+		manifest:  models,
+		logger:    logger,
+	})
+	mlRerunWorker := &MlRerunWorker{
+		pool:   cfg.Pool,
+		bus:    cfg.Bus,
+		logger: logger,
+	}
+	river.AddWorker(workers, mlRerunWorker)
+	faceDetectWorker := &FaceDetectWorker{
+		pool:     cfg.Pool,
+		dataDir:  cfg.DataDir,
+		registry: registry,
+		logger:   logger,
+	}
+	river.AddWorker(workers, faceDetectWorker)
+	river.AddWorker(workers, &FaceRecognizeWorker{
+		pool:     cfg.Pool,
+		dataDir:  cfg.DataDir,
+		registry: registry,
+		bus:      cfg.Bus,
+		logger:   logger,
+	})
+	river.AddWorker(workers, &ClipEmbedWorker{
+		pool:     cfg.Pool,
+		dataDir:  cfg.DataDir,
+		registry: registry,
+		logger:   logger,
+	})
+	river.AddWorker(workers, &OcrWorker{
+		pool:     cfg.Pool,
+		dataDir:  cfg.DataDir,
+		registry: registry,
+		logger:   logger,
+	})
 
 	workerCount := cfg.Workers
 	if workerCount <= 0 {
@@ -135,6 +256,8 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	client, err := river.NewClient(driver, &river.Config{
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: workerCount},
+			// The ML jobs' own conservative pool; see MlQueue.
+			MlQueue: {MaxWorkers: mlQueueWorkers},
 		},
 		Workers:         workers,
 		Logger:          logger,
@@ -164,11 +287,35 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		return nil, fmt.Errorf("jobs: create river client: %w", err)
 	}
 
+	queue := &Queue{client: client, pool: cfg.Pool, models: models, registry: registry}
+
+	// Wire the ML readiness seam into the three pipeline workers: the
+	// dispatch is the queue's EnqueueMlJobs method value, and the
+	// queue exists only now that the client does. This runs BEFORE
+	// the client starts -- no worker is executing yet, so the wiring
+	// cannot race the first dispatch. Workers constructed directly
+	// (the unit tests) carry no seam and the announce step skips it.
+	// The detection worker's recognize continuation and the rerun
+	// driver's real dispatch wire the same way: the recognition chain
+	// fires when faces land and the recognize slot is active, and the
+	// rerun dispatch (the queue's own dispatcher, unless the config
+	// injected one) is the seam Task 8 closed -- the four slots'
+	// per-asset enqueues the rerun drivers wait on.
+	metadataWorker.mlDispatch = queue.EnqueueMlJobs
+	thumbnailWorker.mlDispatch = queue.EnqueueMlJobs
+	transcodeWorker.mlDispatch = queue.EnqueueMlJobs
+	faceDetectWorker.recognizeDispatch = queue.EnqueueFaceRecognize
+	if cfg.MlRerunDispatch != nil {
+		mlRerunWorker.dispatch = cfg.MlRerunDispatch
+	} else {
+		mlRerunWorker.dispatch = queue.dispatchMlRerun
+	}
+
 	if err := client.Start(context.WithoutCancel(ctx)); err != nil {
 		return nil, fmt.Errorf("jobs: start river client: %w", err)
 	}
 
-	return &Queue{client: client}, nil
+	return queue, nil
 }
 
 // EnqueueMetadata inserts the metadata job for the asset. It must be
