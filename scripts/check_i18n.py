@@ -237,6 +237,9 @@ NON_ERROR_KEYS = {
     "admin_users_field_password",
     "admin_users_field_role",
     "admin_users_create_submit",
+    # Albums placeholder shell (M2d; the domain itself is M3).
+    "albums_title",
+    "albums_coming_later",
 }
 
 KEY_PATTERN = re.compile(r"^[a-z0-9_]+$")
