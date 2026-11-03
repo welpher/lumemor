@@ -125,6 +125,7 @@ test('an empty queue renders nothing', async () => {
 test('rows render their state label, bar, failure text and affordances', async () => {
 	box.items = [
 		item({ id: 'r-up', progress: 0.4 }),
+		item({ id: 'r-processing', state: 'processing', progress: 1 }),
 		item({ id: 'r-done', state: 'done', progress: 1 }),
 		item({ id: 'r-fail', state: 'failed', errorKey: 'asset_too_large', asset: null }),
 		item({ id: 'r-conflict', state: 'conflict' })
@@ -133,23 +134,34 @@ test('rows render their state label, bar, failure text and affordances', async (
 		flushSync();
 
 		const rows = [...document.body.querySelectorAll<HTMLLIElement>('ul.overlay__rows > li')];
-		expect(rows).toHaveLength(4);
+		expect(rows).toHaveLength(5);
 		expect(rows[0]?.textContent).toContain(translate('upload_state_uploading'));
-		expect(rows[1]?.textContent).toContain(translate('upload_state_done'));
-		expect(rows[2]?.textContent).toContain(translate('upload_state_failed'));
+		expect(rows[1]?.textContent).toContain(translate('upload_state_processing'));
+		expect(rows[2]?.textContent).toContain(translate('upload_state_done'));
+		expect(rows[3]?.textContent).toContain(translate('upload_state_failed'));
 		// The failure surfaces the mapped error message and its retry.
-		expect(rows[2]?.textContent).toContain(translate('asset_too_large'));
-		expect(rows[2]?.textContent).toContain(translate('action_retry'));
+		expect(rows[3]?.textContent).toContain(translate('asset_too_large'));
+		expect(rows[3]?.textContent).toContain(translate('action_retry'));
 		// The parked row carries the decide affordance.
-		expect(rows[3]?.textContent).toContain(translate('upload_resolve_conflict'));
+		expect(rows[4]?.textContent).toContain(translate('upload_resolve_conflict'));
 		// The in-flight row carries a determinate bar at 40%.
-		const bar = rows[0]?.querySelector('.row__bar-fill') as HTMLElement;
-		expect(bar?.style.width).toBe('40%');
+		const fill = rows[0]?.querySelector('.row__bar-fill') as HTMLElement;
+		expect(fill?.style.width).toBe('40%');
+		// The determinate bar names its own state and value; the
+		// indeterminate one names the processing state and carries
+		// no value (an unknown-duration wait has no percentage).
+		const bar = rows[0]?.querySelector('.row__bar') as HTMLElement;
+		expect(bar?.getAttribute('aria-label')).toBe(translate('upload_state_uploading'));
+		expect(bar?.getAttribute('aria-valuenow')).toBe('40');
+		const indeterminate = rows[1]?.querySelector('.row__bar') as HTMLElement;
+		expect(indeterminate?.className).toContain('row__bar--indeterminate');
+		expect(indeterminate?.getAttribute('aria-label')).toBe(translate('upload_state_processing'));
+		expect(indeterminate?.hasAttribute('aria-valuenow')).toBe(false);
 		// Every row dismisses by its close affordance.
 		const closes = [...document.body.querySelectorAll<HTMLButtonElement>('button.row__close')];
-		expect(closes).toHaveLength(4);
-		expect(closes[3]?.getAttribute('aria-label')).toBe(translate('upload_dismiss'));
-		closes[3]?.click();
+		expect(closes).toHaveLength(5);
+		expect(closes[4]?.getAttribute('aria-label')).toBe(translate('upload_dismiss'));
+		closes[4]?.click();
 		expect(box.actions.dismiss).toHaveBeenCalledWith('r-conflict');
 	});
 });

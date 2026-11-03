@@ -210,17 +210,28 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 			if (item.asset === null || item.asset.id !== event.assetId) {
 				return [item];
 			}
-			if (event.name === 'asset.ready' || event.name === 'asset.updated') {
-				// The pipeline finished the upload's asset row (or
-				// refined it): the item is done.
+			if (event.name === 'asset.ready') {
+				// The pipeline finished the upload's asset row: the
+				// item is done. (asset.ready is the only readiness
+				// signal; the server never publishes asset.updated
+				// from the pipeline, so a hide/unhide of a row still
+				// processing must not counterfeit completion.)
 				if (item.state === 'processing') {
 					return [{ ...item, state: 'done' as const }];
 				}
 				return [item];
 			}
-			// trashed or deleted: the asset just uploaded is gone (another
-			// device's decision); the row leaves the queue.
-			if (item.state === 'processing' || item.state === 'done') {
+			// asset.deleted / asset.trashed: the just-uploaded asset
+			// is gone (another device's decision); the row leaves the
+			// queue. Every other event name -- uploaded (the queue
+			// row already knows), restored (the queue row already
+			// patched done), updated (visibility, irrelevant here) --
+			// leaves the row exactly where it is: the queue is not a
+			// view of the wall, only readiness and absence matter.
+			if (
+				(event.name === 'asset.deleted' || event.name === 'asset.trashed') &&
+				(item.state === 'processing' || item.state === 'done')
+			) {
 				released = true;
 				return [];
 			}
@@ -235,26 +246,34 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 	async function call(
 		path: string,
 		init: RequestInit
-	): Promise<{ ok: boolean; errorKey: string }> {
+	): Promise<{ ok: boolean; errorKey: string; body: unknown }> {
 		try {
 			const response = await apiFetch(path, init, deps.fetcher);
 			if (response.ok) {
-				return { ok: true, errorKey: '' };
+				let body: unknown = null;
+				try {
+					// 204 answers (the delete) carry no body.
+					body = (await response.json()) as unknown;
+				} catch {
+					// Not JSON: the delete's empty answer.
+				}
+				return { ok: true, errorKey: '', body };
 			}
 			if (response.status === 401) {
 				// The session died mid-decision: the store already
 				// flipped (the interceptor) and the guard redirects;
 				// the dialog shows the session message.
 				deps.onUnauthorized();
-				return { ok: false, errorKey: 'session_expired' };
+				return { ok: false, errorKey: 'session_expired', body: null };
 			}
 			const envelope = await errorEnvelope(response);
 			return {
 				ok: false,
-				errorKey: envelope !== null ? envelope.code.toLowerCase() : 'internal'
+				errorKey: envelope !== null ? envelope.code.toLowerCase() : 'internal',
+				body: null
 			};
 		} catch {
-			return { ok: false, errorKey: 'internal' };
+			return { ok: false, errorKey: 'internal', body: null };
 		}
 	}
 
@@ -443,12 +462,28 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 				body: JSON.stringify({ action: 'restore', ids: [item.asset.id] })
 			});
 			if (outcome.ok) {
+				const report = outcome.body as { missing?: unknown } | null;
+				const missing = Array.isArray(report?.missing) ? (report.missing as unknown[]) : [];
+				if (missing.includes(item.asset.id)) {
+					// Set semantics: the id did not resolve -- the
+					// trashed copy was purged by another device while
+					// the decision was parked. The restore is a dead
+					// end; keep the row parked with the honest report.
+					conflictErrorKey = 'asset_not_found';
+					return;
+				}
 				// The trashed asset is live again: the batch success is
 				// the answer (the SSE restored event only re-inserts the
-				// wall's tile).
+				// wall's tile -- the queue row stays done until
+				// dismissed, like every terminal row).
 				patch(itemId, { state: 'done', errorKey: '', progress: 1 });
 				conflictErrorKey = '';
-				conflictItem = null;
+				// Only the row that holds the dialog releases it: a
+				// late success of row A must not close row B's dialog
+				// that the user opened meanwhile.
+				if (conflictItem === itemId) {
+					conflictItem = null;
+				}
 				return;
 			}
 			// Keep the rows parked; the dialog renders the failure.
@@ -462,14 +497,17 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 			const outcome = await call(`/api/v1/assets/${encodeURIComponent(item.asset.id)}`, {
 				method: 'DELETE'
 			});
-			if (!outcome.ok) {
+			if (!outcome.ok && outcome.errorKey !== 'asset_not_found') {
 				conflictErrorKey = outcome.errorKey;
 				return;
 			}
-			// The old row is permanently gone: its slot on the shared
-			// blob is free (the content-addressed cleanup rule covers
-			// cross-owner references), and the SAME file re-uploads as
-			// a fresh asset.
+			// A 404 answer means the trashed copy was purged by
+			// another device while the decision was parked: the slot
+			// is already free, so the re-upload proceeds the same.
+			// The old row is permanently gone either way (the
+			// content-addressed cleanup rule covers cross-owner
+			// references), and the SAME file re-uploads as a fresh
+			// asset.
 			dismiss(itemId);
 			enqueueFiles([item.file]);
 		},
@@ -510,7 +548,6 @@ const singleton = createUploadQueue({
 });
 
 export const uploadQueueItems = singleton.items;
-export const uploadQueueActiveCount = singleton.activeCount;
 export const uploadQueueConflictId = singleton.conflictItemId;
 export const uploadQueueConflictErrorKey = singleton.conflictErrorKey;
 export const enqueueUploadFiles = singleton.enqueueFiles;

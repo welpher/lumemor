@@ -251,7 +251,7 @@ test('a trashed answer parks the row and its restore resolves through the batch 
 	rig.fetch.mockImplementation(
 		vi.fn(
 			async () =>
-				new Response(JSON.stringify({ updated: 1 }), {
+				new Response(JSON.stringify({ affected: 1, missing: [] }), {
 					status: 200,
 					headers: { 'Content-Type': 'application/json' }
 				})
@@ -265,6 +265,54 @@ test('a trashed answer parks the row and its restore resolves through the batch 
 	expect(rig.queue.items()[0]?.state).toBe('done');
 	// The dialog closed on success.
 	expect(rig.queue.conflictItemId()).toBeNull();
+});
+
+test('a restore the set semantics could not resolve keeps the row parked under asset_not_found', async () => {
+	const rig = buildQueue();
+	rig.queue.enqueueFiles([photoFile()]);
+	const xhr = xhrsOf(rig)[0] as StubXHR;
+	xhr.answer(200, assetBody('asset-trash', 'trashed'));
+	const item = rig.queue.items()[0] as UploadItem;
+
+	rig.fetch.mockImplementation(
+		vi.fn(
+			async () =>
+				new Response(JSON.stringify({ affected: 0, missing: ['asset-trash'] }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' }
+				})
+		)
+	);
+	await rig.queue.resolveByRestore(item.id);
+	expect(rig.queue.items()[0]?.state).toBe('conflict');
+	expect(rig.queue.conflictItemId()).toBe(item.id);
+	expect(rig.queue.conflictErrorKey()).toBe('asset_not_found');
+});
+
+test("a restore success of one row never closes another row's open dialog", async () => {
+	const rig = buildQueue();
+	rig.queue.enqueueFiles([photoFile('one.jpg'), photoFile('two.jpg')]);
+	const [first, second] = xhrsOf(rig) as StubXHR[];
+	(first as StubXHR).answer(200, assetBody('asset-1', 'trashed'));
+	(second as StubXHR).answer(200, assetBody('asset-2', 'trashed'));
+	const [rowOne, rowTwo] = rig.queue.items();
+	expect(rig.queue.conflictItemId()).toBe(rowOne?.id);
+
+	// The user decides row B while row A's decision settles late.
+	rig.queue.openConflict(rowTwo?.id as string);
+	rig.fetch.mockImplementation(
+		vi.fn(
+			async () =>
+				new Response(JSON.stringify({ affected: 1, missing: [] }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' }
+				})
+		)
+	);
+	await rig.queue.resolveByRestore(rowOne?.id as string);
+	expect(rig.queue.items()[0]?.state).toBe('done');
+	// Row B still holds the dialog.
+	expect(rig.queue.conflictItemId()).toBe(rowTwo?.id);
 });
 
 test('save-as permanently deletes the trashed copy and re-uploads the same File', async () => {
@@ -316,6 +364,26 @@ test('a failed conflict action keeps the dialog open with the error key; closing
 	expect(rig.queue.conflictItemId()).toBeNull();
 	rig.queue.openConflict(item.id);
 	expect(rig.queue.conflictItemId()).toBe(item.id);
+});
+
+test('a save-as delete answering 404 proceeds to the re-upload on the freed slot', async () => {
+	const rig = buildQueue();
+	const file = photoFile();
+	rig.queue.enqueueFiles([file]);
+	const first = xhrsOf(rig)[0] as StubXHR;
+	first.answer(200, assetBody('asset-trash', 'trashed'));
+	const item = rig.queue.items()[0] as UploadItem;
+
+	// Another device purged the trashed copy while the decision was
+	// parked: the DELETE 404s, and the re-upload proceeds anyway.
+	rig.fetch.mockImplementation(jsonFetch(404, { code: 'ASSET_NOT_FOUND' }));
+	await rig.queue.resolveBySaveAs(item.id);
+	const rows = rig.queue.items();
+	expect(rows).toHaveLength(1);
+	expect(rows[0]?.id).not.toBe(item.id);
+	const replacement = xhrsOf(rig)[1] as StubXHR;
+	expect((replacement.body as FormData).get('photo')).toBeInstanceOf(File);
+	expect(((replacement.body as FormData).get('photo') as File).name).toBe('photo.jpg');
 });
 
 test('an error envelope parks the upload failed under the lowercased code; retry re-uploads', () => {
@@ -437,6 +505,34 @@ test('an SSE trash/delete event removes the uploaded row and releases the subscr
 	eventBox.emit('asset.trashed', 'asset-gone');
 	expect(rig.queue.items()).toHaveLength(0);
 	expect(eventBox.listeners).toHaveLength(0);
+});
+
+test('SSE events that are neither ready nor removal never touch a queue row', () => {
+	const rig = buildQueue();
+	rig.queue.enqueueFiles([photoFile('one.jpg'), photoFile('two.jpg')]);
+	const [first, second] = xhrsOf(rig) as StubXHR[];
+	(first as StubXHR).answer(200, assetBody('asset-restored', 'duplicate'));
+	(second as StubXHR).answer(201, assetBody('asset-uploaded', 'created'));
+	const [doneRow, processingRow] = rig.queue.items();
+	expect(doneRow?.state).toBe('done');
+	expect(processingRow?.state).toBe('processing');
+
+	// The event names the removal branch must ignore: the batch
+	// restore's own asset.restored (the queue row already patched
+	// done), the commit's asset.uploaded (a stalled or replaying
+	// stream can deliver it after the XHR settle), and the
+	// visibility-only asset.updated (never a pipeline readiness
+	// signal -- a processing row must not flip done early).
+	eventBox.emit('asset.restored', 'asset-restored');
+	eventBox.emit('asset.uploaded', 'asset-uploaded');
+	eventBox.emit('asset.updated', 'asset-uploaded');
+	expect(rig.queue.items()[0]?.state).toBe('done');
+	expect(rig.queue.items()[1]?.state).toBe('processing');
+
+	// The deletion event still removes.
+	eventBox.emit('asset.deleted', 'asset-uploaded');
+	expect(rig.queue.items()).toHaveLength(1);
+	expect(rig.queue.items()[0]?.asset?.id).toBe('asset-restored');
 });
 
 test('a settled response losing the race to a dismiss never resurrects the row', () => {
