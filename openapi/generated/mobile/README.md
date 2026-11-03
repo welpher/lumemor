@@ -68,14 +68,14 @@ Please follow the [installation procedure](#installation--usage) and then run th
 import 'package:lumemor_api/lumemor_api.dart';
 
 
-final api = LumemorApi().getAssetsApi();
-final BatchRequest batchRequest = {"action":"trash","ids":["0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70","0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71"]}; // BatchRequest | 
+final api = LumemorApi().getAdminApi();
+final AdminCreateUserRequest adminCreateUserRequest = {"name":"Grace Hopper","email":"grace@example.com","password":"correct horse battery staple"}; // AdminCreateUserRequest | 
 
 try {
-    final response = await api.batchAssets(batchRequest);
+    final response = await api.createUser(adminCreateUserRequest);
     print(response);
 } on DioException catch (e) {
-    print("Exception when calling AssetsApi->batchAssets: $e\n");
+    print("Exception when calling AdminApi->createUser: $e\n");
 }
 
 ```
@@ -86,6 +86,9 @@ All URIs are relative to */api/v1*
 
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
+[*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
+[*AdminApi*](doc/AdminApi.md) | [**listUsers**](doc/AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
+[*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
 [*AssetsApi*](doc/AssetsApi.md) | [**batchAssets**](doc/AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
 [*AssetsApi*](doc/AssetsApi.md) | [**deleteAsset**](doc/AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
 [*AssetsApi*](doc/AssetsApi.md) | [**getAsset**](doc/AssetsApi.md#getasset) | **GET** /assets/{id} | Fetch the detail of one owned asset.
@@ -113,6 +116,10 @@ Class | Method | HTTP request | Description
 
 ## Documentation For Models
 
+ - [AdminCreateUserRequest](doc/AdminCreateUserRequest.md)
+ - [AdminUserListResponse](doc/AdminUserListResponse.md)
+ - [AdminUserPatch](doc/AdminUserPatch.md)
+ - [AdminUserResponse](doc/AdminUserResponse.md)
  - [AssetDetail](doc/AssetDetail.md)
  - [AssetPatch](doc/AssetPatch.md)
  - [AssetResponse](doc/AssetResponse.md)
@@ -132,6 +139,7 @@ Class | Method | HTTP request | Description
  - [TrashItem](doc/TrashItem.md)
  - [TrashResponse](doc/TrashResponse.md)
  - [User](doc/User.md)
+ - [UserRole](doc/UserRole.md)
 
 
 ## Documentation For Authorization

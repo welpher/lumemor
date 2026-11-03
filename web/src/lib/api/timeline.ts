@@ -50,6 +50,14 @@
 // it is not older than the oldest loaded item; anything below the
 // window belongs to an unloaded page and is skipped (the run walks
 // there eventually).
+//
+// THE CURATED VIEWS: the favorites and hidden walls drive this same
+// client through the `view` option -- the page shape, ordering and
+// pagination are theirs unchanged, and exactly two behaviors shift:
+// the SSE convergence's membership rule (the hidden wall keeps the
+// hidden rows, not the live ones) and the optimistic arm of the one
+// batch action that ends an item's membership (unfavorite on
+// favorites, unhide on hidden removes the tiles).
 
 import { get, writable } from 'svelte/store';
 import { apiFetch, errorEnvelope } from '$lib/auth/api';
@@ -64,6 +72,16 @@ type AssetDetail = components['schemas']['AssetDetail'];
 
 /** The batch endpoint's set actions, exactly the contract's enum. */
 export type BatchAction = components['schemas']['BatchRequest']['action'];
+
+/**
+ * Which wall the client serves: the aggregate timeline, or one of
+ * the two curated membership views that share its shape. The page
+ * shape, ordering and pagination are identical everywhere; the view
+ * parameter carries the only two behavioral differences -- the
+ * membership rule of the SSE convergence and the optimistic arm of
+ * the batch action that ends an item's membership.
+ */
+export type WallView = 'timeline' | 'favorites' | 'hidden';
 
 /** The page-fetch lifecycle of the client. */
 export type TimelineStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -103,6 +121,13 @@ export type TimelineClientOptions = {
 	limit?: number;
 	/** The timeline-shaped endpoint path (the aggregate timeline by default). */
 	path?: string;
+	/**
+	 * Which wall the client serves (see WallView). The default is the
+	 * aggregate timeline; the favorites and hidden pages pass their
+	 * own view so the convergence and the optimistic batch follow
+	 * that view's membership rule.
+	 */
+	view?: WallView;
 };
 
 /** The contract's default page size, pinned by the milestone plan. */
@@ -118,6 +143,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	const fetcher = options.fetcher ?? globalThis.fetch;
 	const limit = options.limit ?? TIMELINE_PAGE_LIMIT;
 	const path = options.path ?? '/api/v1/assets/timeline';
+	const view = options.view ?? 'timeline';
 
 	const store = writable<TimelineState>({
 		items: [],
@@ -339,7 +365,14 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		if (detail === null || detail.id !== assetId) {
 			return;
 		}
-		if (detail.isTrashed || detail.isHidden) {
+		// The view's membership rule, decided by the detail: the
+		// timeline and favorites walls keep live (unhidden, untrashed)
+		// rows; the hidden wall keeps exactly the hidden ones (an
+		// unhidden row returns to the live views and leaves this
+		// one). A trashed row leaves every wall.
+		const member =
+			!detail.isTrashed && (view === 'hidden' ? detail.isHidden : !detail.isHidden);
+		if (!member) {
 			removeIds([assetId]);
 			return;
 		}
@@ -513,6 +546,15 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		switch (action) {
 			case 'favorite':
 			case 'unfavorite': {
+				if (view === 'favorites' && action === 'unfavorite') {
+					// Membership removal: an unfavorited asset leaves
+					// the favorites view. No SSE event follows
+					// (favorites are per-user state and silent by
+					// contract), so the optimistic removal is the
+					// final state.
+					removeIds(ids);
+					break;
+				}
 				const favorite = action === 'favorite';
 				const selected = new Set(ids);
 				store.update((state) => ({
@@ -532,11 +574,27 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 				removeIds(ids);
 				break;
 			}
-			case 'unhide':
+			case 'unhide': {
+				if (view === 'hidden') {
+					// Membership removal: an unhidden asset returns to
+					// the live views and leaves this one. The SSE
+					// asset.updated event of the success converges the
+					// same way (the detail's membership rule removes
+					// the live row again -- a harmless no-op).
+					removeIds(ids);
+					break;
+				}
+				// The timeline wall: nothing visible is hidden, so the
+				// local state is already correct, and the SSE
+				// convergence inserts returning items into the loaded
+				// window if they belong.
+				break;
+			}
 			case 'restore': {
-				// Nothing visible is hidden or trashed: the local state
-				// is already correct, and the SSE convergence inserts
-				// returning items into the loaded window if they belong.
+				// Nothing visible is trashed: the local state is
+				// already correct, and the SSE convergence inserts
+				// returning items into the loaded window if they
+				// belong.
 				break;
 			}
 		}

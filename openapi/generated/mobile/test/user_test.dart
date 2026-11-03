@@ -25,8 +25,7 @@ void main() {
       // TODO
     });
 
-    // Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin.
-    // String role
+    // UserRole role
     test('to test the property `role`', () async {
       // TODO
     });

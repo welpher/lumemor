@@ -25,7 +25,7 @@ func (q *Queries) CountAdmins(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 
 INSERT INTO users (id, name, email, password_hash, role, locale)
-VALUES ($1, $2, $3, $4, 'admin', 'en') RETURNING id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, 'en') RETURNING id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at
 `
 
 type CreateUserParams struct {
@@ -33,17 +33,23 @@ type CreateUserParams struct {
 	Name         string      `json:"name"`
 	Email        string      `json:"email"`
 	PasswordHash string      `json:"password_hash"`
+	Role         UserRole    `json:"role"`
 }
 
-// User queries for the first-run wizard and login. CreateUser hardcodes
-// role='admin' because the M1 wizard only creates the initial admin;
-// parameterizing the role is M2 work.
+// User queries for the first-run wizard, login and the admin user
+// management surface. CreateUser takes the role as a parameter: the
+// wizard pins 'admin' (the one-time first administrator) and the
+// admin surface provisions 'user' or 'admin' accounts. Credentials
+// are stored only as their Argon2id hash; the admin listing selects
+// the safe columns only -- the password hash never leaves the table
+// through that surface.
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRow(ctx, createUser,
 		arg.ID,
 		arg.Name,
 		arg.Email,
 		arg.PasswordHash,
+		arg.Role,
 	)
 	var i User
 	err := row.Scan(
@@ -81,6 +87,91 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.TotpSecret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, name, email, role, is_disabled, created_at
+FROM users
+ORDER BY created_at ASC, id ASC
+`
+
+type ListUsersRow struct {
+	ID         pgtype.UUID        `json:"id"`
+	Name       string             `json:"name"`
+	Email      string             `json:"email"`
+	Role       UserRole           `json:"role"`
+	IsDisabled bool               `json:"is_disabled"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+// The admin user management listing: the safe identity columns of
+// every account, oldest first (the creation order the surface
+// renders). No password_hash, ever.
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUsersRow
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Role,
+			&i.IsDisabled,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setUserDisabled = `-- name: SetUserDisabled :one
+UPDATE users
+SET is_disabled = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, name, email, role, is_disabled, created_at
+`
+
+type SetUserDisabledParams struct {
+	ID         pgtype.UUID `json:"id"`
+	IsDisabled bool        `json:"is_disabled"`
+}
+
+type SetUserDisabledRow struct {
+	ID         pgtype.UUID        `json:"id"`
+	Name       string             `json:"name"`
+	Email      string             `json:"email"`
+	Role       UserRole           `json:"role"`
+	IsDisabled bool               `json:"is_disabled"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+// The admin surface's enable/disable toggle. The WHERE guard makes
+// the write idempotent (re-setting the current value is the plain
+// success); an unknown id matches no row, which the caller answers
+// with its 404. updated_at rides the write like every users-table
+// mutation.
+func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams) (SetUserDisabledRow, error) {
+	row := q.db.QueryRow(ctx, setUserDisabled, arg.ID, arg.IsDisabled)
+	var i SetUserDisabledRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Role,
+		&i.IsDisabled,
+		&i.CreatedAt,
 	)
 	return i, err
 }

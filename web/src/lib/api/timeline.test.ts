@@ -587,3 +587,147 @@ describe('batch runner', () => {
 		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'r1', 'a3']);
 	});
 });
+
+describe('curated view membership (favorites and hidden walls)', () => {
+	// The two curated walls drive the same client through the view
+	// option: the page walk is theirs unchanged, the convergence's
+	// membership rule and the membership-ending batch action follow
+	// the view instead.
+	function viewClient(view: 'favorites' | 'hidden', route: Route): TimelineClient {
+		return createTimelineClient({
+			fetcher: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+				route(String(input), init)
+			),
+			path: `/api/v1/assets/${view}`,
+			view
+		});
+	}
+
+	test('unfavorite on the favorites wall removes the tiles (the membership ends)', async () => {
+		const posts: Array<{ action: string; ids: string[] }> = [];
+		const favorites = viewClient('favorites', (url, init) => {
+			if (url === '/api/v1/assets/batch') {
+				posts.push(JSON.parse(String(init?.body)));
+				return jsonResponse(200, { affected: 2, missing: [] });
+			}
+			if (url === '/api/v1/assets/favorites?limit=100') {
+				return page(pageOneItems.map((i) => item(i.id, i.takenAt, { isFavorite: true })));
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await favorites.loadMore();
+
+		const outcome = await favorites.runBatch('unfavorite', ['a1', 'a2']);
+		expect(outcome).toEqual({ ok: true, affected: 2, missing: [] });
+		expect(posts).toEqual([{ action: 'unfavorite', ids: ['a1', 'a2'] }]);
+		// The unfavorited rows leave the view: no SSE event follows
+		// (favorites are silent), the optimistic removal is final.
+		expect(get(favorites).items.map((i) => i.id)).toEqual(['a3']);
+	});
+
+	test('a failed unfavorite on the favorites wall rolls the rows back', async () => {
+		const favorites = viewClient('favorites', (url) => {
+			if (url === '/api/v1/assets/batch') {
+				return jsonResponse(500, { code: 'INTERNAL' });
+			}
+			if (url === '/api/v1/assets/favorites?limit=100') {
+				return page(pageOneItems.map((i) => item(i.id, i.takenAt, { isFavorite: true })));
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await favorites.loadMore();
+
+		const outcome = await favorites.runBatch('unfavorite', ['a2']);
+		expect(outcome).toEqual({ ok: false, errorKey: 'internal' });
+		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+
+	test('unhide on the hidden wall removes the tiles (the membership ends)', async () => {
+		const hidden = viewClient('hidden', (url, init) => {
+			if (url === '/api/v1/assets/batch') {
+				expect(JSON.parse(String(init?.body))).toEqual({ action: 'unhide', ids: ['a2'] });
+				return jsonResponse(200, { affected: 1, missing: [] });
+			}
+			if (url === '/api/v1/assets/hidden?limit=100') {
+				return page(pageOneItems);
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await hidden.loadMore();
+
+		await hidden.runBatch('unhide', ['a2']);
+		expect(get(hidden).items.map((i) => i.id)).toEqual(['a1', 'a3']);
+	});
+
+	test('the hidden wall convergence keeps hidden rows and removes unhidden ones', async () => {
+		const hidden = viewClient('hidden', (url) => {
+			if (url.includes('a2')) {
+				return detailOf(item('a2', '2026-11-01T09:00:00Z'), { isHidden: false });
+			}
+			if (url.includes('a1')) {
+				// Still hidden: the convergence patches (or keeps) the
+				// row, never removes it.
+				return detailOf(item('a1', '2026-11-02T10:00:00Z', { isFavorite: true }), { isHidden: true });
+			}
+			if (url === '/api/v1/assets/hidden?limit=100') {
+				return page(pageOneItems);
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await hidden.loadMore();
+
+		// asset.updated (the unhide event) converges the now-live row
+		// out of the hidden wall.
+		await hidden.applyEvent({ id: 1, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+		expect(get(hidden).items.map((i) => i.id)).toEqual(['a1', 'a3']);
+
+		// A row that stayed hidden (an edit of its description, say)
+		// keeps its place.
+		await hidden.applyEvent({ id: 2, name: 'asset.updated', assetId: 'a1', kind: 'image' });
+		expect(get(hidden).items.map((i) => i.id)).toEqual(['a1', 'a3']);
+	});
+
+	test('the hidden wall drops a trashed row (the direct removal arm)', async () => {
+		const hidden = viewClient('hidden', (url) => {
+			if (url === '/api/v1/assets/hidden?limit=100') {
+				return page(pageOneItems);
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await hidden.loadMore();
+
+		// A hidden-then-trashed row leaves through the unambiguous
+		// removal arm, exactly like the timeline wall (the listing
+		// answers live rows only).
+		await hidden.applyEvent({ id: 1, name: 'asset.trashed', assetId: 'a1', kind: 'image' });
+		expect(get(hidden).items.map((i) => i.id)).toEqual(['a2', 'a3']);
+	});
+
+	test('the favorites wall convergence removes a hidden favorite and returns it unhidden', async () => {
+		const details = new Map<string, boolean>();
+		const favorites = viewClient('favorites', (url) => {
+			const match = /\/api\/v1\/assets\/(a1)$/.exec(url);
+			if (match !== null) {
+				return detailOf(item('a1', '2026-11-02T10:00:00Z', { isFavorite: true }), {
+					isHidden: details.get('a1') ?? false
+				});
+			}
+			if (url === '/api/v1/assets/favorites?limit=100') {
+				return page(pageOneItems.map((i) => item(i.id, i.takenAt, { isFavorite: true })));
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await favorites.loadMore();
+
+		// Hidden: the favorite row survives, the view filters it out.
+		details.set('a1', true);
+		await favorites.applyEvent({ id: 1, name: 'asset.updated', assetId: 'a1', kind: 'image' });
+		expect(get(favorites).items.map((i) => i.id)).toEqual(['a2', 'a3']);
+
+		// Unhidden again: the favorite returns inside the loaded
+		// window, at its sorted place.
+		details.set('a1', false);
+		await favorites.applyEvent({ id: 2, name: 'asset.updated', assetId: 'a1', kind: 'image' });
+		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+});

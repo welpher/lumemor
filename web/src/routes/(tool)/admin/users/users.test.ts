@@ -1,0 +1,439 @@
+import { flushSync, mount, tick, unmount } from 'svelte';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { initI18n } from '$lib/i18n';
+import Page from './+page.svelte';
+import { sessionStatus } from '$lib/auth/session.svelte';
+
+// The admin user management page: the listing renders the accounts
+// with their role and disabled badges, a non-admin caller sees the
+// mapped auth_forbidden message (the page's own listing is the
+// probe -- the session contract carries no role), the create form
+// maps the 409 duplicate and the 400 validation onto the shared
+// i18n table and appends the created account, and the disable
+// toggle confirms first, adopts the PATCH response, and surfaces
+// the server's self-disable refusal as the mapped message.
+
+const adminDefaults = {
+	name: 'Ada Lovelace',
+	role: 'admin' as const,
+	isDisabled: false,
+	createdAt: '2026-10-29T08:30:00Z'
+};
+
+const grace = {
+	id: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70',
+	email: 'grace@example.com',
+	name: 'Grace Hopper',
+	role: 'user' as const,
+	isDisabled: false,
+	createdAt: '2026-10-30T11:04:05Z'
+};
+
+const adminUser = {
+	id: '0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60',
+	email: 'ada@example.com',
+	...adminDefaults
+};
+
+function jsonResponse(status: number, body: unknown): Response {
+	return new Response(JSON.stringify(body), {
+		status,
+		headers: { 'Content-Type': 'application/json' }
+	});
+}
+
+/** Route table for the fetch stub; every test installs its own. */
+type FetchRoute = Record<string, () => Response>;
+
+function usersRoutes(overrides: FetchRoute = {}): FetchRoute {
+	return {
+		'/api/v1/admin/users': () => jsonResponse(200, { items: [adminUser, grace] }),
+		...overrides
+	};
+}
+
+function stubFetch(route: FetchRoute): ReturnType<typeof vi.fn> {
+	return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		const answer = route[url];
+		if (answer === undefined) {
+			throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+		}
+		return answer();
+	});
+}
+
+async function settle(): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	await new Promise<void>((resolve) => {
+		requestAnimationFrame(() => resolve());
+	}).catch(() => undefined);
+	await tick();
+}
+
+function mountPage(): ReturnType<typeof mount> {
+	const page = mount(Page, { target: document.body, props: {} });
+	flushSync();
+	return page;
+}
+
+function buttonByText(text: string): HTMLButtonElement {
+	const buttons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'));
+	const found = buttons.find((button) => button.textContent?.trim() === text);
+	if (found === undefined) {
+		throw new Error(`missing button ${text}`);
+	}
+	return found;
+}
+
+function fillField(selector: string, value: string): void {
+	const field = document.body.querySelector<HTMLInputElement>(selector);
+	if (field === null) {
+		throw new Error(`missing field ${selector}`);
+	}
+	field.value = value;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function submitForm(): void {
+	const form = document.body.querySelector<HTMLFormElement>('form');
+	if (form === null) {
+		throw new Error('missing form');
+	}
+	form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+}
+
+function rows(): HTMLElement[] {
+	return Array.from(document.body.querySelectorAll<HTMLElement>('.users__table tbody tr'));
+}
+
+/** The single action button of the row naming one account's email. */
+function rowAction(email: string): HTMLButtonElement {
+	const row = rows().find((tr) => (tr.textContent ?? '').includes(email));
+	const button = row?.querySelector<HTMLButtonElement>('button');
+	if (button === null || button === undefined) {
+		throw new Error(`missing action button of the row of ${email}`);
+	}
+	return button;
+}
+
+/** A button of the open modal's panel (the confirm surface). */
+function modalButton(text: string): HTMLButtonElement {
+	const panel = document.body.querySelector<HTMLElement>('.modal__panel');
+	const found = Array.from(panel?.querySelectorAll<HTMLButtonElement>('button') ?? []).find(
+		(button) => button.textContent?.trim() === text
+	);
+	if (found === undefined) {
+		throw new Error(`missing modal button ${text}`);
+	}
+	return found;
+}
+
+beforeEach(async () => {
+	document.body.textContent = '';
+	vi.clearAllMocks();
+	// Boot the session store unauthenticated (the interceptor stays
+	// inert; these routes answer 200s).
+	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
+	expect(sessionStatus()).toBe('unauthenticated');
+	await initI18n();
+});
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
+
+test('the listing renders the accounts with role and status badges', async () => {
+	vi.stubGlobal('fetch', stubFetch(usersRoutes()));
+	const page = mountPage();
+	await settle();
+
+	expect(rows()).toHaveLength(2);
+	const text = document.body.textContent ?? '';
+	// Both accounts render with their identity columns.
+	expect(text).toContain('Ada Lovelace');
+	expect(text).toContain('ada@example.com');
+	expect(text).toContain('Grace Hopper');
+	// The role and status badges.
+	expect(text).toContain('Administrator');
+	expect(text).toContain('User');
+	expect(text).toContain('Active');
+	// Every enabled row carries the disable action.
+	expect(buttonByText('Disable')).toBeTruthy();
+	// The creation date is locale-formatted.
+	expect(text).toContain('Oct 29, 2026');
+
+	unmount(page);
+	flushSync();
+});
+
+test('a non-admin caller sees the mapped auth_forbidden message', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/admin/users': () =>
+				jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' })
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	expect(rows()).toHaveLength(0);
+	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
+		'You need to be an administrator for this.'
+	);
+	// The retry affordance is present (the probe may succeed later).
+	expect(buttonByText('Try again')).toBeTruthy();
+
+	unmount(page);
+	flushSync();
+});
+
+test('the create form posts the payload and appends the created account', async () => {
+	const bodies: unknown[] = [];
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/admin/users' && init?.method === 'POST') {
+			bodies.push(JSON.parse(String(init.body)));
+			return jsonResponse(201, {
+				id: '0192f5b2-6c7d-8e9f-a0b1-2c3d4e5f6070',
+				name: 'Kid Hopper',
+				email: 'kid@example.com',
+				role: 'user',
+				isDisabled: false,
+				createdAt: '2026-10-31T09:15:00Z'
+			});
+		}
+		if (url === '/api/v1/admin/users') {
+			return jsonResponse(200, { items: [adminUser, grace] });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	fillField('#admin-user-name', 'Kid Hopper');
+	fillField('#admin-user-email', 'kid@example.com');
+	fillField('#admin-user-password', 'correct horse battery staple');
+	submitForm();
+	await settle();
+
+	// The posted payload: the optional name, the credentials, and
+	// the default role.
+	expect(bodies).toEqual([
+		{
+			name: 'Kid Hopper',
+			email: 'kid@example.com',
+			password: 'correct horse battery staple',
+			role: 'user'
+		}
+	]);
+	// The created account joins the listing without a refetch.
+	expect(rows()).toHaveLength(3);
+	expect(document.body.textContent).toContain('Kid Hopper');
+	// The form reset.
+	expect(document.body.querySelector<HTMLInputElement>('#admin-user-email')?.value).toBe('');
+
+	unmount(page);
+	flushSync();
+});
+
+test('a duplicate email maps to the user_email_taken message', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url === '/api/v1/admin/users' && init?.method === 'POST') {
+				return jsonResponse(409, { code: 'USER_EMAIL_TAKEN', message: 'duplicate' });
+			}
+			return jsonResponse(200, { items: [adminUser, grace] });
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	fillField('#admin-user-email', 'grace@example.com');
+	fillField('#admin-user-password', 'correct horse battery staple');
+	submitForm();
+	await settle();
+
+	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
+		'An account with this email address already exists.'
+	);
+	// The listing is untouched.
+	expect(rows()).toHaveLength(2);
+
+	unmount(page);
+	flushSync();
+});
+
+test('a validation failure maps to the validation message', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url === '/api/v1/admin/users' && init?.method === 'POST') {
+				return jsonResponse(400, {
+					code: 'VALIDATION_FAILED',
+					message: 'invalid account payload',
+					details: { fields: ['password'] }
+				});
+			}
+			return jsonResponse(200, { items: [adminUser, grace] });
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	fillField('#admin-user-email', 'kid@example.com');
+	fillField('#admin-user-password', 'short');
+	submitForm();
+	await settle();
+
+	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
+		'Please check your entries and try again.'
+	);
+
+	unmount(page);
+	flushSync();
+});
+
+test('the disable toggle confirms, patches, and adopts the fresh state', async () => {
+	const patches: Array<{ id: string; body: unknown }> = [];
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (init?.method === 'PATCH' && url === `/api/v1/admin/users/${grace.id}`) {
+			patches.push({ id: url, body: JSON.parse(String(init.body)) });
+			return jsonResponse(200, { ...grace, isDisabled: true });
+		}
+		if (url === '/api/v1/admin/users') {
+			return jsonResponse(200, { items: [adminUser, grace] });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The confirm-first gate: the disable button opens the modal with
+	// the account's name.
+	rowAction('grace@example.com').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(document.body.textContent).toContain('Disable this account?');
+	expect(document.body.textContent).toContain('Grace Hopper');
+	expect(patches).toEqual([]);
+
+	modalButton('Disable').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(patches).toEqual([
+		{ id: `/api/v1/admin/users/${grace.id}`, body: { isDisabled: true } }
+	]);
+	// The row adopted the response: the disabled badge and the
+	// enable action.
+	expect(document.body.textContent).toContain('Disabled');
+	expect(buttonByText('Enable')).toBeTruthy();
+	expect(rows()).toHaveLength(2);
+
+	unmount(page);
+	flushSync();
+});
+
+test('the enable action patches directly and restores the active badge', async () => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (init?.method === 'PATCH' && url === `/api/v1/admin/users/${grace.id}`) {
+			return jsonResponse(200, { ...grace, isDisabled: false });
+		}
+		if (url === '/api/v1/admin/users') {
+			return jsonResponse(200, { items: [adminUser, { ...grace, isDisabled: true }] });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The already-disabled row carries the enable action (no
+	// confirmation: the action restores access).
+	rowAction('grace@example.com').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(document.body.textContent).toContain('Active');
+	expect(buttonByText('Disable')).toBeTruthy();
+
+	unmount(page);
+	flushSync();
+});
+
+test('the self-disable refusal surfaces the mapped message (the guard is server-side)', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (init?.method === 'PATCH' && url === `/api/v1/admin/users/${adminUser.id}`) {
+				return jsonResponse(400, {
+					code: 'VALIDATION_FAILED',
+					message: 'an administrator cannot disable their own account',
+					details: { fields: ['id'] }
+				});
+			}
+			if (url === '/api/v1/admin/users') {
+				return jsonResponse(200, { items: [adminUser, grace] });
+			}
+			throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	// The web client cannot know its own user id (the listing carries
+	// no caller marker), so the toggle is offered; the server's
+	// refusal is the guard and its mapped message the visible half.
+	rowAction('ada@example.com').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	modalButton('Disable').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
+		'Please check your entries and try again.'
+	);
+	// The listing kept the row's untouched state.
+	expect(document.body.textContent).toContain('Active');
+
+	unmount(page);
+	flushSync();
+});
+
+test('a stale row (404) reconciles through a refetch', async () => {
+	let listed = 0;
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (init?.method === 'PATCH' && url === `/api/v1/admin/users/${grace.id}`) {
+			return jsonResponse(404, { code: 'USER_NOT_FOUND', message: 'no account' });
+		}
+		if (url === '/api/v1/admin/users') {
+			listed += 1;
+			// The first listing carries Grace's row; the refetch (the
+			// 404's reconciliation) answers without it.
+			return jsonResponse(200, { items: listed === 1 ? [adminUser, grace] : [adminUser] });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+	expect(listed).toBe(1);
+
+	rowAction('grace@example.com').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	modalButton('Disable').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The 404 triggered the listing's reconciliation.
+	expect(listed).toBe(2);
+	expect(rows()).toHaveLength(1);
+
+	unmount(page);
+	flushSync();
+});

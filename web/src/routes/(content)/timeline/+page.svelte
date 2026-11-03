@@ -187,8 +187,13 @@
 </svelte:head>
 
 <section class="timeline" aria-busy={$timeline.status === 'loading'}>
-	{#if $timeline.items.length > 0}
-		<div class="timeline__toolbar">
+	<!-- The one toolbar of the wall: the hidden view's entry point
+	     (the IA's timeline-header entry, a lightweight link while the
+	     dropdown pattern it names waits for the settings surface of
+	     M3) and, once tiles exist, the selection-mode toggle. -->
+	<div class="timeline__toolbar">
+		<a class="timeline__hidden-link" href="/hidden">{$_('hidden_title')}</a>
+		{#if $timeline.items.length > 0}
 			<Button
 				variant="ghost"
 				aria-pressed={selectMode}
@@ -196,8 +201,8 @@
 			>
 				{selectMode ? $_('action_done') : $_('action_select')}
 			</Button>
-		</div>
-	{/if}
+		{/if}
+	</div>
 
 	{#if firstLoad}
 		<p class="timeline__status" role="status">{$_('timeline_loading')}</p>
@@ -269,7 +274,27 @@
 	.timeline__toolbar {
 		display: flex;
 		justify-content: flex-end;
+		align-items: center;
+		gap: 12px;
 		margin-bottom: 8px;
+	}
+
+	.timeline__hidden-link {
+		margin-right: auto;
+		padding: 6px 10px;
+		font: 600 14px/1.4 var(--font-body);
+		color: var(--color-text-soft);
+		text-decoration: none;
+		border-radius: var(--radius-control);
+		transition:
+			background-color var(--motion-fast) var(--ease-standard),
+			color var(--motion-fast) var(--ease-standard);
+	}
+
+	.timeline__hidden-link:hover,
+	.timeline__hidden-link:focus-visible {
+		background-color: var(--color-accent-soft);
+		color: var(--color-accent-soft-text);
 	}
 
 	.timeline__status {

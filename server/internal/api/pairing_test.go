@@ -247,6 +247,7 @@ func TestPairingTokenDailyLimit(t *testing.T) {
 		Name:         "Grace Hopper",
 		Email:        "grace@example.com",
 		PasswordHash: mustHash(t, testPassword),
+		Role:         dbgen.UserRoleUser,
 	})
 	if err != nil {
 		t.Fatalf("seed grace: %v", err)

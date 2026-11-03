@@ -20,8 +20,16 @@
 	import { _ } from 'svelte-i18n';
 	import type { TimelineItem } from '$lib/api/timeline';
 
+	// The tile-relevant subset of the timeline item shape: every wall
+	// item (the trash listing's rows included) structurally satisfies
+	// it, so the tile renders wherever the wall's item shape lives.
+	type TileItem = Pick<
+		TimelineItem,
+		'id' | 'kind' | 'originalFilename' | 'isFavorite' | 'isReady' | 'blurhash' | 'livePhotoVideoId'
+	>;
+
 	type Props = {
-		item: TimelineItem;
+		item: TileItem;
 		/** Whether the tile is in the current selection. */
 		selected: boolean;
 		/** Whether checkboxes show and clicks toggle (select mode or an active selection). */
