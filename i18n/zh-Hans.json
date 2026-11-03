@@ -169,5 +169,7 @@
   "admin_users_field_email": "邮箱",
   "admin_users_field_password": "密码",
   "admin_users_field_role": "角色",
-  "admin_users_create_submit": "创建用户"
+  "admin_users_create_submit": "创建用户",
+  "albums_title": "相册",
+  "albums_coming_later": "相册功能将在后续更新中到来。"
 }
