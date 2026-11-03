@@ -1,12 +1,54 @@
 # Multi-stage image for the lumemor server.
 #
-# Builder stage: compile the CGO binary on the official golang image.
-# The media pipeline (govips) links libvips and libheif through cgo,
-# so the stage carries their dev headers and builds with CGO enabled.
-# The runtime stage below runs on the same Debian release as the
-# builder (golang:1.26 is a trixie image), so the shared libraries the
-# binary resolves at load time are the exact versions it was compiled
-# against -- bookworm's libvips/libheif major-minor would differ.
+# Web builder stage: build the SvelteKit SPA the Go binary embeds. A
+# clean checkout carries no staged server/internal/web/dist (it is
+# git-ignored by design), so the image builds the app itself instead
+# of trusting whatever the checkout happens to carry -- `docker
+# compose up --build` on a fresh clone works, and no stale host build
+# can silently ride into the image. The Go builder stage below stages
+# the output into the embed path and compiles the binary on the
+# official golang image. The media pipeline (govips) links libvips and
+# libheif through cgo, so that stage carries their dev headers and
+# builds with CGO enabled. The runtime stage runs on the same Debian
+# release as the Go builder (golang:1.26 is a trixie image), so the
+# shared libraries the binary resolves at load time are the exact
+# versions it was compiled against -- bookworm's libvips/libheif
+# major-minor would differ.
+FROM node:22 AS webbuilder
+
+# Optional npm registry override (a URL such as
+# https://registry.npmmirror.com) for networks where the default
+# registry.npmjs.org is slow or unreachable -- the same pattern as the
+# GOPROXY/APT_MIRROR args of the Go stage below. Empty keeps upstream
+# npm; the value is passed at build time, never baked into the
+# committed image. When set it also points corepack's own pnpm
+# download at the mirror.
+ARG PNPM_REGISTRY=""
+
+# The app pins pnpm through web/package.json's packageManager field
+# (pnpm@9.15.0); the corepack shim that ships with node:22 activates
+# exactly that version, so the image never picks a drifting pnpm.
+WORKDIR /web
+
+# The build's input surface beyond web/ itself: the shared translation
+# table at the repository root (read through the relative
+# import.meta.glob of src/lib/i18n) and the generated TypeScript
+# contract types. Both live one level above web/ in the repository,
+# and the relative paths resolve the same way inside the image.
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN corepack enable \
+    && if [ -n "$PNPM_REGISTRY" ]; then \
+        export COREPACK_NPM_REGISTRY="$PNPM_REGISTRY"; \
+        pnpm install --frozen-lockfile --registry "$PNPM_REGISTRY"; \
+    else \
+        pnpm install --frozen-lockfile; \
+    fi
+
+COPY web/ ./
+COPY i18n/ /i18n/
+COPY openapi/generated/web/ /openapi/generated/web/
+RUN pnpm run build
+
 FROM golang:1.26 AS builder
 
 # Version stamped into the binary through the linker; release builds
@@ -52,6 +94,11 @@ COPY server/go.mod server/go.sum ./
 RUN go mod download
 
 COPY server/ ./
+# The SPA from the web builder stage, staged exactly where the embed
+# directive of server/internal/web picks it up: the staged tree is the
+# image's own build, never the checkout's -- the checkout's copy (if
+# any) was excluded by .dockerignore before COPY server/ ran.
+COPY --from=webbuilder /web/build ./internal/web/dist
 RUN CGO_ENABLED=1 GOOS=linux go build \
         -trimpath \
         -ldflags "-s -w -X github.com/welpher/lumemor/server/internal/buildinfo.Version=${VERSION}" \

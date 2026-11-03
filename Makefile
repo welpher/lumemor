@@ -80,7 +80,13 @@ web-check:
 
 # Build the web app and stage the output for the Go embed. Must run
 # before any step that compiles the server (go build, go test,
-# docker-test, docker-lint, the compose image build).
+# docker-test, docker-lint, the compose image build). The docker-test
+# and docker-lint targets below declare that dependency outright:
+# their containers bind-mount this repository and compile the server
+# inside, so a missing dist would fail them at the embed directive
+# and -- worse -- a stale one would silently pass. The declared
+# dependency keeps both loud and fresh; the compose image build needs
+# no such line because its own Node stage builds the app hermetically.
 .PHONY: web-build
 web-build:
 	cd web && pnpm run build
@@ -123,8 +129,14 @@ TEST_ENV ?=
 # carries no mirror configuration.
 APT_MIRROR ?=
 
+# The containerized test gate: builds the dev image and runs the full
+# Go test suite inside it with the repository bind-mounted at /src.
+# Depends on web-build: the embedded SPA is a compile-time input of
+# the server (the embed directive), so a clean checkout builds the web
+# app first and a stale staged dist can never silently serve the
+# containerized suite.
 .PHONY: docker-test
-docker-test:
+docker-test: web-build
 	docker build -f docker/dev.Dockerfile \
 		--build-arg APT_MIRROR=$(APT_MIRROR) \
 		--build-arg GOPROXY=$(shell go env GOPROXY) \
@@ -145,9 +157,11 @@ docker-test:
 # headers exist -- a host without them cannot even compile the package
 # being linted. The container carries golangci-lint (pinned to the CI
 # version), and the run covers the full Go gate set: gofmt -l (any
-# output fails), go vet, then golangci-lint.
+# output fails), go vet, then golangci-lint. Depends on web-build for
+# the same reason as docker-test (the embed directive is compiled by
+# the linter too).
 .PHONY: docker-lint
-docker-lint:
+docker-lint: web-build
 	docker build -f docker/dev.Dockerfile \
 		--build-arg APT_MIRROR=$(APT_MIRROR) \
 		--build-arg GOPROXY=$(shell go env GOPROXY) \

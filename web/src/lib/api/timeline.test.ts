@@ -304,6 +304,89 @@ describe('SSE convergence', () => {
 		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'r1', 'a3']);
 	});
 
+	test('a restored id the wall previously loaded re-enters below the loaded tail', async () => {
+		// The window rule's exemption for known ids (the e2e-found
+		// bug): the trash event evicts a loaded tile, and the restore
+		// re-converges it BELOW the new loaded tail. The next page's
+		// cursor sits below the evicted position, so pagination will
+		// never deliver the tile again -- the upsert must re-insert
+		// it, or the wall silently loses a photo the server still
+		// serves (the M2d full-chain story caught exactly this on the
+		// trash page's restore).
+		const timeline = clientWith((url) => {
+			if (url.includes('a3')) {
+				return detailOf(item('a3', '2026-10-13T12:30:00Z'));
+			}
+			// A next page waits below the loaded one: the sharper
+			// variant -- the next page's cursor sits BELOW a3's
+			// position, so nothing but this upsert can bring it back.
+			return page(pageOneItems, 'cursor');
+		});
+		await timeline.loadMore();
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+		expect(get(timeline).hasMore).toBe(true);
+
+		// The eviction: a3 (the loaded tail) leaves through its event.
+		await timeline.applyEvent({ id: 1, name: 'asset.trashed', assetId: 'a3', kind: 'image' });
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2']);
+
+		// The restore: a3 is older than the new tail (a2), but it was
+		// loaded before -- it re-enters at its sorted position.
+		await timeline.applyEvent({ id: 2, name: 'asset.restored', assetId: 'a3', kind: 'image' });
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+
+	test('a restored tile re-enters when the page response lands between the racing events', async () => {
+		// The e2e-found race's other order: the replayed trash event
+		// tombstones the id, then the page response -- fresher than
+		// that event, the server had already restored the asset --
+		// lands while the restore event's convergence is still in
+		// flight. The tombstone filters the append, but the response
+		// still placed the id inside the loaded range, so the
+		// restore's upsert must re-insert it (the wall must not lose
+		// a photo the listing still serves).
+		let resolvePage: ((response: Response) => void) | undefined;
+		const resolveDetail: Array<(response: Response) => void> = [];
+		const timeline = clientWith((url) => {
+			if (url.includes('a3')) {
+				return new Promise<Response>((resolve) => resolveDetail.push(resolve));
+			}
+			// The page fetch is held so the events can race it.
+			return new Promise<Response>((resolve) => {
+				resolvePage = resolve;
+			});
+		});
+
+		// The page load starts, held in flight.
+		const loading = timeline.loadMore();
+
+		// The replayed trash event tombstones a3 before the page
+		// lands (the items are still empty -- the removal parks in
+		// the tombstone alone).
+		await timeline.applyEvent({ id: 1, name: 'asset.trashed', assetId: 'a3', kind: 'image' });
+		// The restore event starts its convergence; its detail fetch
+		// is held.
+		const converging = timeline.applyEvent({
+			id: 2,
+			name: 'asset.restored',
+			assetId: 'a3',
+			kind: 'image'
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// The page response lands first: the tombstone filters a3
+		// from the append.
+		resolvePage?.(page(pageOneItems));
+		await loading;
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2']);
+
+		// The restore's detail lands second: a3 is a member, and the
+		// page response vouched for its position -- it re-enters.
+		resolveDetail[0]?.(detailOf(item('a3', '2026-10-13T12:30:00Z')));
+		await converging;
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+
 	test('a 404 detail removes the tile (purged or foreign)', async () => {
 		const timeline = clientWith((url) =>
 			url.includes('a1') ? jsonResponse(404, { code: 'ASSET_NOT_FOUND' }) : page(pageOneItems)

@@ -140,6 +140,11 @@
 		if (user === null || busy) {
 			return;
 		}
+		// A retry starts clean: the modal's error from the previous
+		// attempt clears before the request runs (the trash page's
+		// confirm pattern), so a stale message cannot sit beside the
+		// in-flight state of the next one.
+		disableErrorKey = '';
 		// The modal stays open through the request (the trash page's
 		// confirm pattern): a failed disable recovers in place, with
 		// the mapped error inside the dialog -- closing first would

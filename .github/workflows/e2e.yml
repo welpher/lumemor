@@ -1,0 +1,84 @@
+# Continuous integration for the end-to-end acceptance: the full M2d
+# chain on a real compose stack. The job installs the web toolchain
+# and Playwright's chromium, then runs scripts/acceptance_m2d.sh,
+# which builds the stack itself (the server image builds the web app
+# in its own Node stage), walks the M1/M2a/M2b/M2c acceptance
+# regressions sequentially, and drives the M2 full-chain story of the
+# web app through a real browser. The path filters keep this workflow
+# from running on changes that cannot affect it; the workflow also
+# runs when its own definition changes.
+
+name: e2e
+
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'server/**'
+      - 'openapi/**'
+      - 'i18n/**'
+      - 'scripts/**'
+      - 'docker/**'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/e2e.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'server/**'
+      - 'openapi/**'
+      - 'i18n/**'
+      - 'scripts/**'
+      - 'docker/**'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: acceptance (compose stack and Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # Matches web/package.json's packageManager field; bump both
+          # together.
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      # The web dependencies first (the acceptance script re-checks
+      # them, a cached no-op), then the browser the suite drives.
+      # --with-deps installs the system libraries the runner needs;
+      # the acceptance script's own install step is then a no-op.
+      - name: Install web dependencies
+        run: make web-install
+
+      - name: Install Playwright's chromium
+        run: cd web && pnpm exec playwright install --with-deps chromium
+
+      - name: Run the M2d acceptance
+        run: scripts/acceptance_m2d.sh
+
+      # The suite's failure artifacts (traces, screenshots, videos of
+      # the scenes) land under web/test-results/.
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: web/test-results/
+          retention-days: 7
