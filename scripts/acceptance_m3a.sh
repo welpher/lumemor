@@ -353,7 +353,7 @@ reset_bind_mount_ownership() {
     if [ ! -d lumemor ]; then
         return 0
     fi
-    compose run --rm --no-deps --entrypoint /bin/sh \
+    compose run --rm --no-deps --entrypoint /bin/sh -u 0 \
         -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" lumemor \
         -c 'chown -R "$HOST_UID:$HOST_GID" /var/lib/lumemor' \
         || fail "returning ./lumemor to the host user failed"
