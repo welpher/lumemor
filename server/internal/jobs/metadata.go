@@ -36,14 +36,17 @@ func (MetadataArgs) Kind() string { return "metadata" }
 // content-addressed file, the exif sidecar row filled from the output,
 // the asset row refined (taken-at, dimensions, duration), and the
 // pipeline completion recorded -- the completion that empties the
-// asset's pending-jobs counter publishes asset.ready.
+// asset's pending-jobs counter publishes asset.ready through the
+// shared completion step (announceAssetReady in face_detect.go), which
+// the ML readiness seam hangs off.
 type MetadataWorker struct {
 	river.WorkerDefaults[MetadataArgs]
 
-	pool    *pgxpool.Pool
-	bus     *events.Bus
-	dataDir string
-	logger  *slog.Logger
+	pool       *pgxpool.Pool
+	bus        *events.Bus
+	dataDir    string
+	logger     *slog.Logger
+	mlDispatch mlDispatchFunc
 }
 
 // Work executes one metadata job. Every step runs before the database
@@ -126,14 +129,11 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	}
 
 	if completion.BecameReady {
-		// Published after the commit so a subscriber that turns
-		// around and reads the database sees the final state. The
-		// payload discipline mirrors asset.uploaded: the resource id
-		// and its media kind, nothing more.
-		w.bus.Publish("asset.ready", map[string]string{
-			"assetId": assetID.String(),
-			"kind":    string(completion.MediaKind),
-		})
+		// The shared completion step (the one site where pending_jobs
+		// empties): the asset.ready announcement and the ML readiness
+		// seam, after the commit so a subscriber that turns around and
+		// reads the database sees the final state.
+		announceAssetReady(ctx, w.bus, w.logger, w.mlDispatch, assetID, completion.MediaKind, row.IsComponent)
 	}
 	return nil
 }

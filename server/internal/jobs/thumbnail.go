@@ -32,15 +32,18 @@ func (ThumbnailArgs) Kind() string { return "thumbnail" }
 // asset's content -- three AVIF sizes for an image, a JPEG poster
 // frame for a video -- and the blurhash of the small tile stored on
 // the asset row. The pipeline completion is recorded through the same
-// guarded decrement the metadata job uses, so the completion that
-// empties pending_jobs publishes asset.ready exactly once.
+// guarded decrement the metadata job uses, and the completion that
+// empties pending_jobs publishes asset.ready through the shared
+// completion step (announceAssetReady in face_detect.go), which the
+// ML readiness seam hangs off.
 type ThumbnailWorker struct {
 	river.WorkerDefaults[ThumbnailArgs]
 
-	pool    *pgxpool.Pool
-	bus     *events.Bus
-	dataDir string
-	logger  *slog.Logger
+	pool       *pgxpool.Pool
+	bus        *events.Bus
+	dataDir    string
+	logger     *slog.Logger
+	mlDispatch mlDispatchFunc
 }
 
 // Timeout raises the job's execution envelope above River's one
@@ -126,14 +129,11 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 	}
 
 	if completion.BecameReady {
-		// Published after the commit so a subscriber that turns around
-		// and reads the database sees the final state. The payload
-		// discipline mirrors asset.uploaded and the metadata job's
-		// completion: the resource id and its media kind, nothing more.
-		w.bus.Publish("asset.ready", map[string]string{
-			"assetId": assetID.String(),
-			"kind":    string(completion.MediaKind),
-		})
+		// The shared completion step (the one site where pending_jobs
+		// empties): the asset.ready announcement and the ML readiness
+		// seam, after the commit so a subscriber that turns around
+		// and reads the database sees the final state.
+		announceAssetReady(ctx, w.bus, w.logger, w.mlDispatch, assetID, completion.MediaKind, row.IsComponent)
 	}
 	return nil
 }
