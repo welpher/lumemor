@@ -50,6 +50,7 @@ ARG GOPROXY=""
 #   docker.io, which now ships only the engine; the engine stays on
 #   the host, and the socket mount is how the CLI and testcontainers
 #   reach it.)
+# - curl: the onnxruntime fetch below (the base image ships none).
 RUN if [ -n "$APT_MIRROR" ]; then \
         sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; \
     fi \
@@ -62,8 +63,43 @@ RUN if [ -n "$APT_MIRROR" ]; then \
         exiftool \
         ffmpeg \
         docker-cli \
+        curl \
     && rm -rf /var/lib/apt/lists/* \
     && GOPROXY="${GOPROXY}" GOBIN=/usr/local/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$GOLANGCI_LINT_VERSION
+
+# The onnxruntime shared library for the in-process ML inference: the
+# CGO binding (yalue/onnxruntime_go, pinned in server/go.mod) loads it
+# with dlopen at run time -- nothing links against it at build time,
+# so installing it here is all the tests need. The version pairing is
+# pinned: binding v1.38.0 bundles the onnxruntime 1.31.0 C API headers
+# (ORT_API_VERSION 31), so the library is the 1.31.0 release -- keep
+# the two in lockstep when either is bumped.
+#
+# The tgz from the GitHub release carries only the versioned
+# libonnxruntime.so.1.31.0; it goes to /usr/local/lib and ldconfig,
+# where the ml package's library probe finds it. ONNXRUNTIME_URL
+# overrides the default release URL for restricted networks (a mirror
+# of the same bytes; the per-architecture sha256 stays pinned either
+# way, so anything but the release bytes fails the build). The
+# download itself can go through a proxy by passing the predefined
+# https_proxy build arg; its value must be reachable from the build
+# container -- http://host.docker.internal:7890 on a desktop runtime,
+# not 127.0.0.1 (the Makefile passes it as ONNXRUNTIME_PROXY).
+ARG ONNXRUNTIME_URL=""
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) ort_arch="x64"; ort_sha256="cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57";; \
+        arm64) ort_arch="aarch64"; ort_sha256="c5b8b3cca31f3d643a3b313b8f42e2d0f16a4fcefd02cda343d97bd5306afaab";; \
+        *) echo "unsupported architecture for libonnxruntime: ${TARGETARCH}" >&2; exit 1;; \
+    esac; \
+    ort_url="${ONNXRUNTIME_URL:-https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-linux-${ort_arch}-1.31.0.tgz}"; \
+    curl -fsSL --retry 3 -o /tmp/onnxruntime.tgz "$ort_url"; \
+    echo "${ort_sha256}  /tmp/onnxruntime.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/onnxruntime.tgz -C /tmp; \
+    mv "/tmp/onnxruntime-linux-${ort_arch}-1.31.0/lib/libonnxruntime.so.1.31.0" /usr/local/lib/; \
+    rm -rf /tmp/onnxruntime.tgz "/tmp/onnxruntime-linux-${ort_arch}-1.31.0"; \
+    ldconfig
 
 # The default working directory matches the repository layout mounted
 # at /src by `make docker-test`: the Go module lives in server/.
