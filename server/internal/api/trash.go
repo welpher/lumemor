@@ -15,6 +15,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -195,6 +196,12 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 // swallowed while the row's delete stands. It reports whether THIS
 // call deleted the row; false means a concurrent delete won the race
 // and the row is already gone.
+//
+// The row delete and the face cluster sweep land in one transaction:
+// the cascade removes the asset's faces, and a face that is a
+// cluster's representative must re-home or dissolve BEFORE the
+// cascade touches it (the schema's foreign key holds every
+// representative to a live face -- see faces.sql's sweep queries).
 func (s *server) purgeAssetRow(r *http.Request, row dbgen.Asset) (bool, error) {
 	ctx := r.Context()
 	assetID := uuid.UUID(row.ID.Bytes)
@@ -211,9 +218,35 @@ func (s *server) purgeAssetRow(r *http.Request, row dbgen.Asset) (bool, error) {
 		return false, err
 	}
 
-	deleted, err := s.queries.DeleteAssetPermanently(ctx, row.ID)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin the asset purge transaction: %w", err)
+	}
+	// The rollback is a no-op after a successful commit; arguments are
+	// captured while the request context is still live.
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := dbgen.New(tx)
+
+	// The sweep over the asset's faces (every model): the
+	// representative re-homes to a surviving member, a cluster left
+	// without members dissolves with its user_face_labels.
+	if err := queries.RehomeClusterRepresentatives(ctx, dbgen.RehomeClusterRepresentativesParams{
+		AssetID: row.ID,
+	}); err != nil {
+		return false, fmt.Errorf("rehome the clusters of the asset's faces: %w", err)
+	}
+	if err := queries.DissolveVacatedClusters(ctx, dbgen.DissolveVacatedClustersParams{
+		AssetID: row.ID,
+	}); err != nil {
+		return false, fmt.Errorf("dissolve the clusters the asset's faces held: %w", err)
+	}
+
+	deleted, err := queries.DeleteAssetPermanently(ctx, row.ID)
 	if err != nil {
 		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit the asset purge: %w", err)
 	}
 	if deleted == 0 {
 		return false, nil

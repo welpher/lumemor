@@ -9,7 +9,48 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
+
+const countFaceClusters = `-- name: CountFaceClusters :one
+SELECT count(*) FROM face_clusters
+`
+
+// The library's cluster total: the face.clustered event's honest
+// count, read inside the clustering transaction.
+func (q *Queries) CountFaceClusters(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countFaceClusters)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countLabeledFaceClusters = `-- name: CountLabeledFaceClusters :one
+SELECT count(DISTINCT cluster_id) FROM user_face_labels
+`
+
+// The clusters carrying at least one user label: the face.clustered
+// event's labeled count.
+func (q *Queries) CountLabeledFaceClusters(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countLabeledFaceClusters)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteCluster = `-- name: DeleteCluster :exec
+DELETE FROM face_clusters WHERE id = $1
+`
+
+// Removes one cluster row: the diff-apply's dissolution step for a
+// cluster the new clustering no longer populates (user_face_labels
+// cascade with it -- a person without faces is a person without a
+// name), and the deletion sweep's dissolve for a cluster whose
+// members are all going away.
+func (q *Queries) DeleteCluster(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCluster, id)
+	return err
+}
 
 const deleteFacesByAsset = `-- name: DeleteFacesByAsset :exec
 DELETE FROM faces WHERE asset_id = $1 AND model_id = $2
@@ -25,6 +66,50 @@ type DeleteFacesByAssetParams struct {
 // the coexistence note above.
 func (q *Queries) DeleteFacesByAsset(ctx context.Context, arg DeleteFacesByAssetParams) error {
 	_, err := q.db.Exec(ctx, deleteFacesByAsset, arg.AssetID, arg.ModelID)
+	return err
+}
+
+const dissolveVacatedClusters = `-- name: DissolveVacatedClusters :exec
+DELETE FROM face_clusters fc
+WHERE fc.representative_face_id IN (
+    SELECT f.id FROM faces f
+    WHERE f.asset_id = $1 AND ($2::text IS NULL OR f.model_id = $2)
+)
+AND NOT EXISTS (
+    SELECT 1 FROM faces f
+    WHERE f.cluster_id = fc.id
+      AND NOT (f.asset_id = $1 AND ($2::text IS NULL OR f.model_id = $2))
+)
+`
+
+type DissolveVacatedClustersParams struct {
+	AssetID pgtype.UUID `json:"asset_id"`
+	ModelID pgtype.Text `json:"model_id"`
+}
+
+// The deletion sweep's second half: a cluster whose representative
+// is among the removed faces AND that has no member surviving the
+// removal loses its row (user_face_labels cascade -- the honest
+// person-without-faces semantics, applied where the faces die).
+func (q *Queries) DissolveVacatedClusters(ctx context.Context, arg DissolveVacatedClustersParams) error {
+	_, err := q.db.Exec(ctx, dissolveVacatedClusters, arg.AssetID, arg.ModelID)
+	return err
+}
+
+const insertCluster = `-- name: InsertCluster :exec
+INSERT INTO face_clusters (id, representative_face_id) VALUES ($1, $2)
+`
+
+type InsertClusterParams struct {
+	ID                   pgtype.UUID `json:"id"`
+	RepresentativeFaceID pgtype.UUID `json:"representative_face_id"`
+}
+
+// Creates one cluster row with its representative face: the
+// diff-apply's birth step, the representative being the cluster's
+// highest-score member.
+func (q *Queries) InsertCluster(ctx context.Context, arg InsertClusterParams) error {
+	_, err := q.db.Exec(ctx, insertCluster, arg.ID, arg.RepresentativeFaceID)
 	return err
 }
 
@@ -51,16 +136,16 @@ type InsertFaceParams struct {
 // faces of every other model survive untouched -- the model-switch
 // coexistence policy: products partition by model_id, queries filter
 // by the active model, and switching back revives the old rows
-// without recomputing anything. The recognition job (Task 7) owns the
-// embedding half of the table.
+// without recomputing anything.
 //
-// Reserved query names of Task 7 (face recognition) -- do not claim
-// them elsewhere:
-//
-//	UpdateFaceEmbedding          (embedding + embed_model_id of a face)
-//	ListFacesNeedingEmbedding    (the active detect model's faces of an
-//	                              asset whose embedding is still NULL)
-//
+// Task 7 (face recognition) landed here as the architecture's brief
+// pinned it: the recognition worker re-detects the asset's landmarks
+// with the active detect model and matches them against the asset's
+// FULL row set of that model (ListFacesByAsset), so every matched
+// row is re-embedded idempotently; the reserved name
+// ListFacesNeedingEmbedding went unused -- a needing-embedding
+// pre-filter would silently skip same-model rows whose stored
+// geometry no longer redetects, leaving a stale embedding in place.
 // Stores one detected face of one model. embedding and cluster_id
 // start NULL: the recognition job fills the embedding, the clustering
 // step assigns the cluster. The per-mille CHECK bounds are the table's
@@ -79,42 +164,102 @@ func (q *Queries) InsertFace(ctx context.Context, arg InsertFaceParams) error {
 	return err
 }
 
-const listFacesByAsset = `-- name: ListFacesByAsset :many
-SELECT id, asset_id, cluster_id, bbox_x, bbox_y, bbox_w, bbox_h, score, model_id, embedding, embed_model_id, created_at, updated_at FROM faces WHERE asset_id = $1 AND model_id = $2
-ORDER BY score DESC
+const listClusterFaces = `-- name: ListClusterFaces :many
+SELECT id, score FROM faces WHERE cluster_id = $1
+ORDER BY score DESC, id
 `
 
-type ListFacesByAssetParams struct {
-	AssetID pgtype.UUID `json:"asset_id"`
-	ModelID string      `json:"model_id"`
+type ListClusterFacesRow struct {
+	ID    pgtype.UUID `json:"id"`
+	Score float32     `json:"score"`
 }
 
-// The asset's faces of one model, strongest first. The recognition
-// job walks them for the active detect model; the people surfaces of
-// the next milestone read them through the same filter.
-func (q *Queries) ListFacesByAsset(ctx context.Context, arg ListFacesByAssetParams) ([]Face, error) {
-	rows, err := q.db.Query(ctx, listFacesByAsset, arg.AssetID, arg.ModelID)
+// The member faces of one cluster, strongest first, ties broken by
+// id: the diff-apply's membership read (the identity match's majority
+// rule) and the deletion sweep's survivor selection.
+func (q *Queries) ListClusterFaces(ctx context.Context, clusterID pgtype.UUID) ([]ListClusterFacesRow, error) {
+	rows, err := q.db.Query(ctx, listClusterFaces, clusterID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Face
+	var items []ListClusterFacesRow
 	for rows.Next() {
-		var i Face
+		var i ListClusterFacesRow
+		if err := rows.Scan(&i.ID, &i.Score); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listClusters = `-- name: ListClusters :many
+SELECT id, representative_face_id FROM face_clusters ORDER BY id
+`
+
+type ListClustersRow struct {
+	ID                   pgtype.UUID `json:"id"`
+	RepresentativeFaceID pgtype.UUID `json:"representative_face_id"`
+}
+
+// Every cluster row, in id order: the diff-apply's existing-state
+// read (the deterministic order settles identity-match ties).
+func (q *Queries) ListClusters(ctx context.Context) ([]ListClustersRow, error) {
+	rows, err := q.db.Query(ctx, listClusters)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListClustersRow
+	for rows.Next() {
+		var i ListClustersRow
+		if err := rows.Scan(&i.ID, &i.RepresentativeFaceID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEmbeddedFacesByEmbedModel = `-- name: ListEmbeddedFacesByEmbedModel :many
+SELECT id, cluster_id, score, embedding FROM faces
+WHERE embed_model_id = $1 AND embedding IS NOT NULL
+ORDER BY score DESC, id
+`
+
+type ListEmbeddedFacesByEmbedModelRow struct {
+	ID        pgtype.UUID     `json:"id"`
+	ClusterID pgtype.UUID     `json:"cluster_id"`
+	Score     float32         `json:"score"`
+	Embedding pgvector.Vector `json:"embedding"`
+}
+
+// Every face the given recognize model embedded, strongest first,
+// ties broken deterministically by id: the clustering step's input.
+// Rows of every other recognize model are invisible here -- the
+// model-switch coexistence policy on the embedding side -- and rows
+// without an embedding never enter the clustering.
+func (q *Queries) ListEmbeddedFacesByEmbedModel(ctx context.Context, embedModelID pgtype.Text) ([]ListEmbeddedFacesByEmbedModelRow, error) {
+	rows, err := q.db.Query(ctx, listEmbeddedFacesByEmbedModel, embedModelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEmbeddedFacesByEmbedModelRow
+	for rows.Next() {
+		var i ListEmbeddedFacesByEmbedModelRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.AssetID,
 			&i.ClusterID,
-			&i.BboxX,
-			&i.BboxY,
-			&i.BboxW,
-			&i.BboxH,
 			&i.Score,
-			&i.ModelID,
 			&i.Embedding,
-			&i.EmbedModelID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -124,4 +269,149 @@ func (q *Queries) ListFacesByAsset(ctx context.Context, arg ListFacesByAssetPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const listFacesByAsset = `-- name: ListFacesByAsset :many
+SELECT id, bbox_x, bbox_y, bbox_w, bbox_h, score FROM faces
+WHERE asset_id = $1 AND model_id = $2
+ORDER BY score DESC
+`
+
+type ListFacesByAssetParams struct {
+	AssetID pgtype.UUID `json:"asset_id"`
+	ModelID string      `json:"model_id"`
+}
+
+type ListFacesByAssetRow struct {
+	ID    pgtype.UUID `json:"id"`
+	BboxX int32       `json:"bbox_x"`
+	BboxY int32       `json:"bbox_y"`
+	BboxW int32       `json:"bbox_w"`
+	BboxH int32       `json:"bbox_h"`
+	Score float32     `json:"score"`
+}
+
+// The asset's faces of one model, strongest first. The recognition
+// job walks them for the active detect model: the matching needs the
+// identity, the box and the score. The columns are explicit on
+// purpose -- a bare SELECT * drags the embedding column along, and a
+// NULL vector does not scan into the generated Go type (the
+// embedding's readers select it explicitly, never through the star).
+func (q *Queries) ListFacesByAsset(ctx context.Context, arg ListFacesByAssetParams) ([]ListFacesByAssetRow, error) {
+	rows, err := q.db.Query(ctx, listFacesByAsset, arg.AssetID, arg.ModelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFacesByAssetRow
+	for rows.Next() {
+		var i ListFacesByAssetRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BboxX,
+			&i.BboxY,
+			&i.BboxW,
+			&i.BboxH,
+			&i.Score,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rehomeClusterRepresentatives = `-- name: RehomeClusterRepresentatives :exec
+UPDATE face_clusters fc
+SET representative_face_id = best.id, updated_at = now()
+FROM (
+    SELECT DISTINCT ON (f.cluster_id) f.cluster_id, f.id
+    FROM faces f
+    WHERE f.cluster_id IS NOT NULL
+      AND NOT (f.asset_id = $1 AND ($2::text IS NULL OR f.model_id = $2))
+    ORDER BY f.cluster_id, f.score DESC, f.id
+) AS best
+WHERE fc.id = best.cluster_id
+  AND fc.representative_face_id IN (
+      SELECT f.id FROM faces f
+      WHERE f.asset_id = $1 AND ($2::text IS NULL OR f.model_id = $2)
+  )
+`
+
+type RehomeClusterRepresentativesParams struct {
+	AssetID pgtype.UUID `json:"asset_id"`
+	ModelID pgtype.Text `json:"model_id"`
+}
+
+// The deletion sweep's first half, ahead of any statement that
+// removes the faces (the detection replace, the asset purges): a
+// cluster whose representative face is among the removed ones
+// (asset_id = $1, optionally scoped to model $2 -- NULL = every
+// model of the asset) re-points its representative to the cluster's
+// best surviving member, so the representative foreign key never
+// dangles.
+func (q *Queries) RehomeClusterRepresentatives(ctx context.Context, arg RehomeClusterRepresentativesParams) error {
+	_, err := q.db.Exec(ctx, rehomeClusterRepresentatives, arg.AssetID, arg.ModelID)
+	return err
+}
+
+const updateClusterRepresentative = `-- name: UpdateClusterRepresentative :exec
+UPDATE face_clusters SET representative_face_id = $2, updated_at = now()
+WHERE id = $1
+`
+
+type UpdateClusterRepresentativeParams struct {
+	ID                   pgtype.UUID `json:"id"`
+	RepresentativeFaceID pgtype.UUID `json:"representative_face_id"`
+}
+
+// Points one cluster at its new representative face: the diff-apply's
+// reuse step (a re-homed or re-converged cluster follows its current
+// best member).
+func (q *Queries) UpdateClusterRepresentative(ctx context.Context, arg UpdateClusterRepresentativeParams) error {
+	_, err := q.db.Exec(ctx, updateClusterRepresentative, arg.ID, arg.RepresentativeFaceID)
+	return err
+}
+
+const updateFaceCluster = `-- name: UpdateFaceCluster :exec
+UPDATE faces SET cluster_id = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateFaceClusterParams struct {
+	ID        pgtype.UUID `json:"id"`
+	ClusterID pgtype.UUID `json:"cluster_id"`
+}
+
+// One face's cluster assignment of the clustering step: the cluster
+// it joined, or NULL to release it to noise. The step walks every
+// embedded face inside its own transaction (the batch lands whole;
+// sqlc's analyzer cannot express the unnest form of the same write,
+// and the per-family-scale cost sits inside the clustering run's
+// envelope).
+func (q *Queries) UpdateFaceCluster(ctx context.Context, arg UpdateFaceClusterParams) error {
+	_, err := q.db.Exec(ctx, updateFaceCluster, arg.ID, arg.ClusterID)
+	return err
+}
+
+const updateFaceEmbedding = `-- name: UpdateFaceEmbedding :exec
+UPDATE faces SET embedding = $2, embed_model_id = $3, updated_at = now()
+WHERE id = $1
+`
+
+type UpdateFaceEmbeddingParams struct {
+	ID           pgtype.UUID     `json:"id"`
+	Embedding    pgvector.Vector `json:"embedding"`
+	EmbedModelID pgtype.Text     `json:"embed_model_id"`
+}
+
+// Stamps one face with the recognition model's embedding: the
+// recognition job's per-match write. The clustering step reads the
+// rows back through ListEmbeddedFacesByEmbedModel in the same
+// transaction, so the cluster pass always sees its own writes.
+func (q *Queries) UpdateFaceEmbedding(ctx context.Context, arg UpdateFaceEmbeddingParams) error {
+	_, err := q.db.Exec(ctx, updateFaceEmbedding, arg.ID, arg.Embedding, arg.EmbedModelID)
+	return err
 }
