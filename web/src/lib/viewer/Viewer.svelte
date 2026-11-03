@@ -113,11 +113,22 @@
 	);
 
 	// The per-asset interaction reset: navigating replaces the asset,
-	// so the crossfades, zoom and live playback start over. The
-	// drawer persists (comparing metadata across neighbors is the
-	// drawer-open navigation's point).
+	// so the crossfades, zoom and live playback start over. The gate
+	// compares the id VALUE (a plain marker, not reactive state): the
+	// same-asset detail replacements -- PATCH adoption, the curation
+	// flips, the SSE convergence refetch -- must NOT reset the stage,
+	// or a loaded photo fades back to its placeholder (the img element
+	// survives without a src re-set, so nothing re-fires the load).
+	// The drawer persists across neighbors regardless (comparing
+	// metadata across neighbors is the drawer-open navigation's
+	// point).
+	let resetFor = '';
 	$effect(() => {
-		void detail?.id;
+		const id = detail?.id ?? '';
+		if (id === resetFor) {
+			return;
+		}
+		resetFor = id;
 		zoomed = false;
 		livePlaying = false;
 		livePlayable = false;

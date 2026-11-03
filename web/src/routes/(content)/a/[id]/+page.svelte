@@ -207,6 +207,16 @@
 			return;
 		}
 		detail = outcome.detail;
+		if (status === 'error') {
+			// A successful convergence recovers a failed initial load:
+			// the initial seeding (the favorite flag, which the detail
+			// does not carry) runs here too, from the frozen snapshot's
+			// last known truth. The flag is NOT re-seeded on the normal
+			// path: the toggle's optimistic value must survive there
+			// (favorites publish no SSE events, so a refetch arriving
+			// between flip and settle must not clobber it).
+			favorite = wallItems().find((entry) => entry.id === id)?.isFavorite ?? false;
+		}
 		// A successful convergence also recovers a failed initial
 		// load (the error branch would keep rendering over the fresh
 		// detail).
