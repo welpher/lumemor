@@ -3036,6 +3036,580 @@ paths:
                   value:
                     code: MODEL_DOWNLOAD_FAILED
                     message: the model download could not be started
+  /admin/models:
+    get:
+      operationId: listModels
+      tags:
+        - admin
+      summary: List the registered models and the download run's state.
+      description: |
+        The model management listing of the admin surface: every
+        registered model of the instance with its facts, its
+        activation state and the presence of its files, plus the most
+        recent model download run as the summary the model page's
+        progress bar renders.
+
+        Every model row of the `models` table appears, grouped by slot
+        then id -- including a model whose weights went missing, which
+        lists with `filesPresent: false` so the administrator can see
+        and clean it up. `filesPresent` is a presence probe only (the
+        on-disk manifest is readable and every file it pins exists);
+        the sha256 verification itself is the activation's and the
+        session loader's business, never the listing's. `license` and
+        `inputSize` come from the model's on-disk manifest, `dim` and
+        `params` from the registered row (which the download and the
+        scan keep in step with that manifest); `dim` and `inputSize`
+        are null when the model declares none, `license` is empty when
+        the manifest is unreadable; `isActive` comes from the table.
+
+        `download` is the most recent `model_download` run of whatever
+        state -- the run the download endpoint's idempotence would
+        return -- or null before the first download was ever started.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            Every registered model plus the download summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelListResponse'
+              examples:
+                oneActiveModel:
+                  summary: One active clip model and a finished download.
+                  value:
+                    models:
+                      - id: cnclip-vit-b16-vision
+                        slot: clip_embed
+                        version: base-patch16
+                        source: downloaded
+                        license: Apache-2.0
+                        dim: 512
+                        inputSize:
+                          width: 224
+                          height: 224
+                        isActive: true
+                        filesPresent: true
+                        params: {}
+                    download:
+                      id: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+                      kind: model_download
+                      state: succeeded
+                      total: 400371536
+                      done: 400371536
+                      failed: 0
+                      startedAt: '2026-11-03T09:12:00Z'
+                      finishedAt: '2026-11-03T09:14:30Z'
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+  /admin/models/{id}:
+    patch:
+      operationId: activateModel
+      tags:
+        - admin
+      summary: Activate the model (the model switch).
+      description: |
+        The activation switch of the admin surface: the model becomes
+        the active one of its slot. The request body is an empty JSON
+        object -- the path's model identifier is the whole request.
+
+        A same-slot switch runs in one transaction that only flips
+        the activation flags: the previous model's products stay in
+        the database untouched (multi-generation embeddings and faces
+        coexist by their model columns), queries that filter on the
+        active model stop seeing them, and switching back revives
+        them with zero recompute -- but the newly activated model
+        does nothing until its products are rerun.
+
+        Cross-dimension switches of the clip-embed slot are the one
+        exception, because a vector column cannot hold two dimensions:
+        activating a clip model whose dimension differs from the
+        `clip_embeddings` column's current one (read from the
+        database catalog, never assumed) clears the table and
+        re-types the column to `vector(N)` inside the SAME
+        transaction as the flag flip -- the wipe, the new dimension
+        and the activation land together or not at all, and a failure
+        rolls everything back. The response then reports the switch's
+        facts (`dimensionChanged` with the from and to dimensions,
+        `wipedEmbeddings` with the number of deleted rows) so the
+        admin UI can demand the explicit confirmation a destructive
+        switch deserves. The rerun that fills the new model's
+        embeddings stays manual: nothing is recomputed here.
+
+        The model's files are verified against their pinned sha256
+        digests before anything flips: a model whose files are
+        missing or drifted answers 400 MODEL_INVALID and activates
+        nothing.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            The identifier of the model to activate (the models
+            table's slug id, as the listing returns it).
+          schema:
+            type: string
+          example: cnclip-vit-b16-vision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: |
+                The activation request carries no fields: the path
+                parameter is the whole request. Send an empty JSON
+                object.
+              additionalProperties: false
+      responses:
+        '200':
+          description: |
+            The model is now the active one of its slot. On a
+            cross-dimension switch of the clip-embed slot the
+            response additionally carries `dimensionChanged` and
+            `wipedEmbeddings`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelActivateResponse'
+              examples:
+                sameDimension:
+                  summary: A same-dimension switch -- nothing was deleted.
+                  value:
+                    activated:
+                      id: cnclip-vit-b16-vision
+                      slot: clip_embed
+                crossDimension:
+                  summary: A cross-dimension switch -- the wipe is reported.
+                  value:
+                    activated:
+                      id: clip-large-vision
+                      slot: clip_embed
+                    dimensionChanged:
+                      from: 512
+                      to: 768
+                    wipedEmbeddings: 14002
+        '400':
+          description: |
+            The model's files are missing or do not match their pinned
+            sha256 digests: nothing was activated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidModel:
+                  value:
+                    code: MODEL_INVALID
+                    message: model files are missing or do not match their pinned digests
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '404':
+          description: |
+            No model is registered under this identifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notFound:
+                  value:
+                    code: MODEL_NOT_FOUND
+                    message: no model with this identifier
+  /admin/models/{id}/rerun:
+    post:
+      operationId: rerunModel
+      tags:
+        - admin
+      summary: Start a manual rerun of the active model's slot.
+      description: |
+        The rerun trigger of the admin surface: one run that redoes
+        the slot's ML work over the whole library -- the run that
+        fills the newly activated model's products, the manual step
+        every model switch deliberately leaves to the administrator
+        (a same-dimension switch keeps the old products usable
+        immediately; a cross-dimension switch leaves the table empty
+        until this run refills it).
+
+        Only the ACTIVE model of a slot can be rerun: products attach
+        to the active model, so a rerun of a dormant model would fill
+        rows no active-model query could see. The run's scope is
+        every image asset that finished its pipeline and is not in
+        the trash (ML work belongs after asset readiness, and video
+        assets stay out of ML in this milestone); `total` and `done`
+        of the run's row count those assets and `failed` the ones
+        whose rerun failed -- progress in asset counts, not bytes
+        (the model download's row counts pinned bytes and failed
+        models; each run's units are its own work's).
+
+        The endpoint is idempotent the way the download endpoint is:
+        a rerun of the same slot still in flight (`queued` or
+        `running`) answers 200 with its identifier and starts
+        nothing. Unlike the download, a FINISHED run never blocks a
+        new one -- the rerun is manual, so a second click after a
+        completed (or failed) run starts a fresh run.
+
+        The per-asset ML workers of the slots arrive with the later
+        tasks of this milestone; until a slot's dispatch is wired, a
+        rerun of that slot still creates the run but the run fails
+        (state `failed`, zero progress) instead of pretending to
+        have done work it cannot do.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            The identifier of the active model whose slot is rerun
+            (the models table's slug id, as the listing returns it).
+          schema:
+            type: string
+          example: yunet-2023mar
+      responses:
+        '200':
+          description: |
+            A rerun of the slot is already in flight (`queued` or
+            `running`); its identifier is returned and NO new run is
+            created or enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelRerunResponse'
+              examples:
+                inFlight:
+                  summary: The run currently rerunning the slot.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '202':
+          description: |
+            The rerun run was created (state `queued`, `total`
+            carrying the scope's asset count) and the rerun job
+            enqueued. The driver flips the run to `running` when the
+            dispatch begins.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelRerunResponse'
+              examples:
+                started:
+                  summary: The freshly created run.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '400':
+          description: |
+            The model is registered but is not the active one of its
+            slot, or its slot has no rerun at all.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidModel:
+                  value:
+                    code: MODEL_INVALID
+                    message: only the active model of a slot can be rerun
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '404':
+          description: |
+            No model is registered under this identifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notFound:
+                  value:
+                    code: MODEL_NOT_FOUND
+                    message: no model with this identifier
+        '500':
+          description: |
+            The rerun could not be started: no job queue is wired to
+            the API surface, or creating the run failed. The run
+            itself, once started, reports its own failures through
+            its `job_runs` row (state `failed`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: the rerun could not be started
+  /admin/models/scan:
+    post:
+      operationId: scanModels
+      tags:
+        - admin
+      summary: Register the custom models found in the models dir.
+      description: |
+        The custom model registration of the admin surface: every
+        directory under the instance's models dir that carries a
+        `manifest.json` is verified against the digests the manifest
+        pins and registered in the models table with source
+        `custom`. Directories without a manifest are skipped -- the
+        models dir also holds download staging, not every entry is a
+        model.
+
+        Scanning registers, it never activates: an administrator
+        reviews the registered models and switches them on through
+        the activation endpoint. Re-scanning converges: the
+        registration is an upsert on the descriptive fields and
+        leaves every row's activation state alone. A directory whose
+        files drifted from their pinned digests fails the whole scan
+        with 400 MODEL_INVALID and registers nothing.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            Every model directory the scan verified and registered,
+            in scan order. Nothing is activated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelScanResponse'
+              examples:
+                oneCustomModel:
+                  summary: One verified custom model.
+                  value:
+                    registered:
+                      - id: my-clip-export
+                        slot: clip_embed
+                        version: local
+                        source: custom
+                        license: Apache-2.0
+                        dim: 512
+                        inputSize:
+                          width: 224
+                          height: 224
+                        isActive: false
+                        filesPresent: true
+                        params: {}
+        '400':
+          description: |
+            A scanned model's files are missing or do not match their
+            pinned sha256 digests: the scan failed and registered
+            nothing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidModel:
+                  value:
+                    code: MODEL_INVALID
+                    message: model files are missing or do not match their pinned digests
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+  /admin/jobs:
+    get:
+      operationId: listJobs
+      tags:
+        - admin
+      summary: List the job runs of the task panel.
+      description: |
+        The task panel listing of the admin surface: every job run
+        the instance ever recorded, newest first -- model downloads
+        and ML reruns alike. Each row carries the run's progress as
+        its own work's units: the model download's `total` and `done`
+        count pinned bytes and `failed` counts failed models; a
+        rerun's count the assets of its scope and the assets whose
+        rerun failed. `startedAt` is null while a run sits `queued`,
+        `finishedAt` is null until it closes.
+
+        `limit` bounds the page size: absent means the default of
+        50, a value over 200 is answered with the maximum of 200,
+        and a value below 1 answers 400 `VALIDATION_FAILED`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: |
+            Page size: the number of job runs one response carries at
+            most. Defaults to 50; values over 200 are answered with
+            the maximum of 200, values below 1 answer 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          example: 50
+      responses:
+        '200':
+          description: |
+            The newest runs of the task panel, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobRunListResponse'
+              examples:
+                mixed:
+                  summary: A finished download and an in-flight rerun.
+                  value:
+                    jobs:
+                      - id: 0192f8b2-6c7d-8e9f-a0b1-2c3d4e5f6070
+                        kind: clip_embed_rerun
+                        state: running
+                        total: 12034
+                        done: 4021
+                        failed: 0
+                        startedAt: '2026-11-03T10:00:00Z'
+                        finishedAt: null
+                      - id: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+                        kind: model_download
+                        state: succeeded
+                        total: 400371536
+                        done: 400371536
+                        failed: 0
+                        startedAt: '2026-11-03T09:12:00Z'
+                        finishedAt: '2026-11-03T09:14:30Z'
+        '400':
+          description: |
+            The `limit` parameter is below 1 or not an integer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidLimit:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: limit must be at least 1
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
 components:
   schemas:
     LoginRequest:
@@ -3321,6 +3895,306 @@ components:
             UUIDv7 identifier of the run's `job_runs` row. `202`
             carries the freshly created run; `200` the existing
             in-flight or most recent one.
+    ModelSlot:
+      type: string
+      description: |
+        The functional slot a model fills. `face_detect`,
+        `face_recognize`, `clip_embed` and `ocr` are the machine
+        learning slots of this milestone; a speech slot arrives with
+        a later one.
+      enum:
+        - face_detect
+        - face_recognize
+        - clip_embed
+        - ocr
+    ModelSource:
+      type: string
+      description: |
+        Where a model's registration came from: `downloaded` models
+        landed through the download endpoint's manifest-pinned
+        group; `custom` models were registered by the scan of a
+        directory an administrator placed.
+      enum:
+        - downloaded
+        - custom
+    ModelResponse:
+      type: object
+      description: |
+        One registered model as the admin surface returns it: the
+        database row's identity, source, dimension and params, the
+        on-disk manifest's license and input geometry, the activation
+        flag, and the presence probe of the model's files. The pinned
+        sha256 digests and the file paths are server-side business
+        and never leave the server.
+      required:
+        - id
+        - slot
+        - version
+        - source
+        - license
+        - dim
+        - inputSize
+        - isActive
+        - filesPresent
+        - params
+      properties:
+        id:
+          type: string
+          description: |
+            The model's stable slug identifier -- also the name of
+            its directory under the models dir.
+        slot:
+          $ref: '#/components/schemas/ModelSlot'
+        version:
+          type: string
+          description: |
+            The upstream release tag of the model family, as the
+            manifest declares it.
+        source:
+          $ref: '#/components/schemas/ModelSource'
+        license:
+          type: string
+          description: |
+            The upstream license identifier, as the model's manifest
+            declares it (empty when the manifest is unreadable -- the
+            row still lists so the administrator can clean it up).
+        dim:
+          type:
+            - integer
+            - 'null'
+          description: |
+            The embedding dimension the model emits. Null for models
+            that do not embed (detectors, OCR).
+        inputSize:
+          type:
+            - object
+            - 'null'
+          description: |
+            The model's input geometry. Null when the model's
+            manifest is unreadable.
+          properties:
+            width:
+              type: integer
+              description: Input width in pixels.
+            height:
+              type: integer
+              description: Input height in pixels.
+          required:
+            - width
+            - height
+        isActive:
+          type: boolean
+          description: |
+            True when the model is the active one of its slot. At
+            most one model per slot is active.
+        filesPresent:
+          type: boolean
+          description: |
+            True when the model's on-disk manifest is readable and
+            every file it pins exists -- a presence probe only. The
+            sha256 verification runs at activation and load time,
+            not here.
+        params:
+          type: object
+          description: |
+            The model's inference defaults (thresholds, normalization
+            constants) as its manifest declares them; empty when it
+            declares none.
+          additionalProperties: true
+    JobRunKind:
+      type: string
+      description: |
+        The kinds of job runs the instance records. The model
+        download is one run; each machine learning slot's rerun is
+        its own kind, named after the slot it redoes.
+      enum:
+        - model_download
+        - face_detect_rerun
+        - face_recognize_rerun
+        - clip_embed_rerun
+        - ocr_rerun
+    JobRunState:
+      type: string
+      description: |
+        The lifecycle of a job run: `queued` from creation until the
+        driver picks it up, `running` while it works, then
+        `succeeded` or `failed`.
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+    JobRunResponse:
+      type: object
+      description: |
+        One job run as the task panel and the model page render it.
+        The progress fields carry the run's own work's units: pinned
+        bytes for the model download (with `failed` counting failed
+        models), asset counts for the reruns (with `failed` counting
+        the assets whose rerun failed).
+      required:
+        - id
+        - kind
+        - state
+        - total
+        - done
+        - failed
+        - startedAt
+        - finishedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 identifier of the run's `job_runs` row.
+        kind:
+          $ref: '#/components/schemas/JobRunKind'
+        state:
+          $ref: '#/components/schemas/JobRunState'
+        total:
+          type: integer
+          description: |
+            The run's whole work, in the run's own units: the
+            download group's pinned bytes, or the rerun scope's
+            asset count.
+        done:
+          type: integer
+          description: |
+            The work completed so far, in the same units as
+            `total`.
+        failed:
+          type: integer
+          description: |
+            The failed work count: failed models for the download,
+            assets whose rerun failed for a rerun.
+        startedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: |
+            When the run's driver first picked it up (RFC 3339
+            UTC). Null while the run sits `queued`.
+        finishedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: |
+            When the run closed (RFC 3339 UTC). Null until then.
+    JobRunListResponse:
+      type: object
+      description: |
+        The task panel listing: the instance's job runs, newest
+        first, bounded by the `limit` parameter.
+      required:
+        - jobs
+      properties:
+        jobs:
+          type: array
+          description: The newest job runs, newest first.
+          items:
+            $ref: '#/components/schemas/JobRunResponse'
+    ModelListResponse:
+      type: object
+      description: |
+        The model management listing: every registered model plus
+        the download run summary.
+      required:
+        - models
+        - download
+      properties:
+        models:
+          type: array
+          description: |
+            Every registered model, grouped by slot then id.
+          items:
+            $ref: '#/components/schemas/ModelResponse'
+        download:
+          type:
+            - object
+            - 'null'
+          description: |
+            The most recent `model_download` run of whatever state,
+            or null before the first download was ever started.
+          allOf:
+            - $ref: '#/components/schemas/JobRunResponse'
+    ModelRef:
+      type: object
+      description: |
+        The identity of one model: its slug id and its slot.
+      required:
+        - id
+        - slot
+      properties:
+        id:
+          type: string
+          description: The model's stable slug identifier.
+        slot:
+          $ref: '#/components/schemas/ModelSlot'
+    ModelDimensionChange:
+      type: object
+      description: |
+        The dimension switch of a cross-dimension clip activation:
+        what the embeddings column was and what it became.
+      required:
+        - from
+        - to
+      properties:
+        from:
+          type: integer
+          description: The embeddings column's dimension before the switch.
+        to:
+          type: integer
+          description: The embeddings column's dimension after the switch.
+    ModelActivateResponse:
+      type: object
+      description: |
+        The report of one activation. The optional fields appear
+        exactly on a cross-dimension switch of the clip-embed slot
+        -- the destructive arm -- so their absence IS the
+        same-dimension guarantee that nothing was deleted.
+      required:
+        - activated
+      properties:
+        activated:
+          $ref: '#/components/schemas/ModelRef'
+        dimensionChanged:
+          $ref: '#/components/schemas/ModelDimensionChange'
+        wipedEmbeddings:
+          type: integer
+          description: |
+            The number of clip embedding rows the cross-dimension
+            switch deleted inside its transaction.
+    ModelScanResponse:
+      type: object
+      description: |
+        The custom model scan's report: every model directory the
+        scan verified and registered, in scan order. Nothing is
+        activated.
+      required:
+        - registered
+      properties:
+        registered:
+          type: array
+          description: |
+            The models the scan registered, in scan order.
+          items:
+            $ref: '#/components/schemas/ModelResponse'
+    ModelRerunResponse:
+      type: object
+      description: |
+        The identifier of one rerun run: the `job_runs` row the
+        rerun drives and the `job.*` events announce.
+      required:
+        - jobRunId
+      properties:
+        jobRunId:
+          type: string
+          format: uuid
+          description: |
+            UUIDv7 identifier of the run's `job_runs` row. `202`
+            carries the freshly created run; `200` the in-flight one
+            the click joined instead.
     User:
       type: object
       description: A lumemor account.
@@ -4163,6 +5037,8 @@ components:
             - USER_EMAIL_TAKEN
             - USER_NOT_FOUND
             - MODEL_DOWNLOAD_FAILED
+            - MODEL_NOT_FOUND
+            - MODEL_INVALID
         message:
           type: string
           description: English technical description for debugging.

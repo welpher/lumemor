@@ -132,6 +132,8 @@ const (
 	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
 	INTERNAL               ErrorCode = "INTERNAL"
 	MODELDOWNLOADFAILED    ErrorCode = "MODEL_DOWNLOAD_FAILED"
+	MODELINVALID           ErrorCode = "MODEL_INVALID"
+	MODELNOTFOUND          ErrorCode = "MODEL_NOT_FOUND"
 	PAIRINGTOKENINVALID    ErrorCode = "PAIRING_TOKEN_INVALID"
 	SETUPALREADYCOMPLETED  ErrorCode = "SETUP_ALREADY_COMPLETED"
 	USEREMAILTAKEN         ErrorCode = "USER_EMAIL_TAKEN"
@@ -158,6 +160,10 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case MODELDOWNLOADFAILED:
 		return true
+	case MODELINVALID:
+		return true
+	case MODELNOTFOUND:
+		return true
 	case PAIRINGTOKENINVALID:
 		return true
 	case SETUPALREADYCOMPLETED:
@@ -167,6 +173,99 @@ func (e ErrorCode) Valid() bool {
 	case USERNOTFOUND:
 		return true
 	case VALIDATIONFAILED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for JobRunKind.
+const (
+	ClipEmbedRerun     JobRunKind = "clip_embed_rerun"
+	FaceDetectRerun    JobRunKind = "face_detect_rerun"
+	FaceRecognizeRerun JobRunKind = "face_recognize_rerun"
+	ModelDownload      JobRunKind = "model_download"
+	OcrRerun           JobRunKind = "ocr_rerun"
+)
+
+// Valid indicates whether the value is a known member of the JobRunKind enum.
+func (e JobRunKind) Valid() bool {
+	switch e {
+	case ClipEmbedRerun:
+		return true
+	case FaceDetectRerun:
+		return true
+	case FaceRecognizeRerun:
+		return true
+	case ModelDownload:
+		return true
+	case OcrRerun:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for JobRunState.
+const (
+	Failed    JobRunState = "failed"
+	Queued    JobRunState = "queued"
+	Running   JobRunState = "running"
+	Succeeded JobRunState = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the JobRunState enum.
+func (e JobRunState) Valid() bool {
+	switch e {
+	case Failed:
+		return true
+	case Queued:
+		return true
+	case Running:
+		return true
+	case Succeeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelSlot.
+const (
+	ClipEmbed     ModelSlot = "clip_embed"
+	FaceDetect    ModelSlot = "face_detect"
+	FaceRecognize ModelSlot = "face_recognize"
+	Ocr           ModelSlot = "ocr"
+)
+
+// Valid indicates whether the value is a known member of the ModelSlot enum.
+func (e ModelSlot) Valid() bool {
+	switch e {
+	case ClipEmbed:
+		return true
+	case FaceDetect:
+		return true
+	case FaceRecognize:
+		return true
+	case Ocr:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelSource.
+const (
+	Custom     ModelSource = "custom"
+	Downloaded ModelSource = "downloaded"
+)
+
+// Valid indicates whether the value is a known member of the ModelSource enum.
+func (e ModelSource) Valid() bool {
+	switch e {
+	case Custom:
+		return true
+	case Downloaded:
 		return true
 	default:
 		return false
@@ -729,6 +828,63 @@ type ExifSummary struct {
 	TzOffset *string `json:"tzOffset"`
 }
 
+// JobRunKind The kinds of job runs the instance records. The model
+// download is one run; each machine learning slot's rerun is
+// its own kind, named after the slot it redoes.
+type JobRunKind string
+
+// JobRunListResponse The task panel listing: the instance's job runs, newest
+// first, bounded by the `limit` parameter.
+type JobRunListResponse struct {
+	// Jobs The newest job runs, newest first.
+	Jobs []JobRunResponse `json:"jobs"`
+}
+
+// JobRunResponse One job run as the task panel and the model page render it.
+// The progress fields carry the run's own work's units: pinned
+// bytes for the model download (with `failed` counting failed
+// models), asset counts for the reruns (with `failed` counting
+// the assets whose rerun failed).
+type JobRunResponse struct {
+	// Done The work completed so far, in the same units as
+	// `total`.
+	Done int `json:"done"`
+
+	// Failed The failed work count: failed models for the download,
+	// assets whose rerun failed for a rerun.
+	Failed int `json:"failed"`
+
+	// FinishedAt When the run closed (RFC 3339 UTC). Null until then.
+	FinishedAt *time.Time `json:"finishedAt"`
+
+	// Id UUIDv7 identifier of the run's `job_runs` row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind The kinds of job runs the instance records. The model
+	// download is one run; each machine learning slot's rerun is
+	// its own kind, named after the slot it redoes.
+	Kind JobRunKind `json:"kind"`
+
+	// StartedAt When the run's driver first picked it up (RFC 3339
+	// UTC). Null while the run sits `queued`.
+	StartedAt *time.Time `json:"startedAt"`
+
+	// State The lifecycle of a job run: `queued` from creation until the
+	// driver picks it up, `running` while it works, then
+	// `succeeded` or `failed`.
+	State JobRunState `json:"state"`
+
+	// Total The run's whole work, in the run's own units: the
+	// download group's pinned bytes, or the rerun scope's
+	// asset count.
+	Total int `json:"total"`
+}
+
+// JobRunState The lifecycle of a job run: `queued` from creation until the
+// driver picks it up, `running` while it works, then
+// `succeeded` or `failed`.
+type JobRunState string
+
 // LoginRequest Credentials of `POST /auth/login`.
 type LoginRequest struct {
 	// Email Login address of the account.
@@ -740,6 +896,33 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// ModelActivateResponse The report of one activation. The optional fields appear
+// exactly on a cross-dimension switch of the clip-embed slot
+// -- the destructive arm -- so their absence IS the
+// same-dimension guarantee that nothing was deleted.
+type ModelActivateResponse struct {
+	// Activated The identity of one model: its slug id and its slot.
+	Activated ModelRef `json:"activated"`
+
+	// DimensionChanged The dimension switch of a cross-dimension clip activation:
+	// what the embeddings column was and what it became.
+	DimensionChanged *ModelDimensionChange `json:"dimensionChanged,omitempty"`
+
+	// WipedEmbeddings The number of clip embedding rows the cross-dimension
+	// switch deleted inside its transaction.
+	WipedEmbeddings *int `json:"wipedEmbeddings,omitempty"`
+}
+
+// ModelDimensionChange The dimension switch of a cross-dimension clip activation:
+// what the embeddings column was and what it became.
+type ModelDimensionChange struct {
+	// From The embeddings column's dimension before the switch.
+	From int `json:"from"`
+
+	// To The embeddings column's dimension after the switch.
+	To int `json:"to"`
+}
+
 // ModelDownloadResponse The identifier of one model download run: the `job_runs` row
 // the download drives and the `job.*` events announce.
 type ModelDownloadResponse struct {
@@ -748,6 +931,120 @@ type ModelDownloadResponse struct {
 	// in-flight or most recent one.
 	JobRunId openapi_types.UUID `json:"jobRunId"`
 }
+
+// ModelListResponse The model management listing: every registered model plus
+// the download run summary.
+type ModelListResponse struct {
+	// Download The most recent `model_download` run of whatever state,
+	// or null before the first download was ever started.
+	Download *JobRunResponse `json:"download"`
+
+	// Models Every registered model, grouped by slot then id.
+	Models []ModelResponse `json:"models"`
+}
+
+// ModelRef The identity of one model: its slug id and its slot.
+type ModelRef struct {
+	// Id The model's stable slug identifier.
+	Id string `json:"id"`
+
+	// Slot The functional slot a model fills. `face_detect`,
+	// `face_recognize`, `clip_embed` and `ocr` are the machine
+	// learning slots of this milestone; a speech slot arrives with
+	// a later one.
+	Slot ModelSlot `json:"slot"`
+}
+
+// ModelRerunResponse The identifier of one rerun run: the `job_runs` row the
+// rerun drives and the `job.*` events announce.
+type ModelRerunResponse struct {
+	// JobRunId UUIDv7 identifier of the run's `job_runs` row. `202`
+	// carries the freshly created run; `200` the in-flight one
+	// the click joined instead.
+	JobRunId openapi_types.UUID `json:"jobRunId"`
+}
+
+// ModelResponse One registered model as the admin surface returns it: the
+// database row's identity, source, dimension and params, the
+// on-disk manifest's license and input geometry, the activation
+// flag, and the presence probe of the model's files. The pinned
+// sha256 digests and the file paths are server-side business
+// and never leave the server.
+type ModelResponse struct {
+	// Dim The embedding dimension the model emits. Null for models
+	// that do not embed (detectors, OCR).
+	Dim *int `json:"dim"`
+
+	// FilesPresent True when the model's on-disk manifest is readable and
+	// every file it pins exists -- a presence probe only. The
+	// sha256 verification runs at activation and load time,
+	// not here.
+	FilesPresent bool `json:"filesPresent"`
+
+	// Id The model's stable slug identifier -- also the name of
+	// its directory under the models dir.
+	Id string `json:"id"`
+
+	// InputSize The model's input geometry. Null when the model's
+	// manifest is unreadable.
+	InputSize *struct {
+		// Height Input height in pixels.
+		Height int `json:"height"`
+
+		// Width Input width in pixels.
+		Width int `json:"width"`
+	} `json:"inputSize"`
+
+	// IsActive True when the model is the active one of its slot. At
+	// most one model per slot is active.
+	IsActive bool `json:"isActive"`
+
+	// License The upstream license identifier, as the model's manifest
+	// declares it (empty when the manifest is unreadable -- the
+	// row still lists so the administrator can clean it up).
+	License string `json:"license"`
+
+	// Params The model's inference defaults (thresholds, normalization
+	// constants) as its manifest declares them; empty when it
+	// declares none.
+	Params map[string]interface{} `json:"params"`
+
+	// Slot The functional slot a model fills. `face_detect`,
+	// `face_recognize`, `clip_embed` and `ocr` are the machine
+	// learning slots of this milestone; a speech slot arrives with
+	// a later one.
+	Slot ModelSlot `json:"slot"`
+
+	// Source Where a model's registration came from: `downloaded` models
+	// landed through the download endpoint's manifest-pinned
+	// group; `custom` models were registered by the scan of a
+	// directory an administrator placed.
+	Source ModelSource `json:"source"`
+
+	// Version The upstream release tag of the model family, as the
+	// manifest declares it.
+	Version string `json:"version"`
+}
+
+// ModelScanResponse The custom model scan's report: every model directory the
+// scan verified and registered, in scan order. Nothing is
+// activated.
+type ModelScanResponse struct {
+	// Registered The models the scan registered, in scan order.
+	Registered []ModelResponse `json:"registered"`
+}
+
+// ModelSlot The functional slot a model fills. `face_detect`,
+// `face_recognize`, `clip_embed` and `ocr` are the machine
+// learning slots of this milestone; a speech slot arrives with
+// a later one.
+type ModelSlot string
+
+// ModelSource Where a model's registration came from: `downloaded` models
+// landed through the download endpoint's manifest-pinned
+// group; `custom` models were registered by the scan of a
+// directory an administrator placed.
+type ModelSource string
 
 // PairingConsumeRequest Payload of `POST /auth/pairing/consume`.
 type PairingConsumeRequest struct {
@@ -1086,6 +1383,17 @@ type User struct {
 // default of every other creation path.
 type UserRole string
 
+// ListJobsParams defines parameters for ListJobs.
+type ListJobsParams struct {
+	// Limit Page size: the number of job runs one response carries at
+	// most. Defaults to 50; values over 200 are answered with
+	// the maximum of 200, values below 1 answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ActivateModelJSONBody defines parameters for ActivateModel.
+type ActivateModelJSONBody = map[string]interface{}
+
 // UploadAssetMultipartBody defines parameters for UploadAsset.
 type UploadAssetMultipartBody struct {
 	// DeviceAssetId Stable device-side identity of the uploaded file.
@@ -1196,6 +1504,9 @@ type GetEventsParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
+// ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
+type ActivateModelJSONRequestBody = ActivateModelJSONBody
+
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = AdminCreateUserRequest
 
@@ -1222,9 +1533,24 @@ type CreateAdminJSONRequestBody = CreateAdminRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListJobs List the job runs of the task panel.
+	// (GET /admin/jobs)
+	ListJobs(w http.ResponseWriter, r *http.Request, params ListJobsParams)
+	// ListModels List the registered models and the download run's state.
+	// (GET /admin/models)
+	ListModels(w http.ResponseWriter, r *http.Request)
 	// DownloadModels Start the default model group's download.
 	// (POST /admin/models/download)
 	DownloadModels(w http.ResponseWriter, r *http.Request)
+	// ScanModels Register the custom models found in the models dir.
+	// (POST /admin/models/scan)
+	ScanModels(w http.ResponseWriter, r *http.Request)
+	// ActivateModel Activate the model (the model switch).
+	// (PATCH /admin/models/{id})
+	ActivateModel(w http.ResponseWriter, r *http.Request, id string)
+	// RerunModel Start a manual rerun of the active model's slot.
+	// (POST /admin/models/{id}/rerun)
+	RerunModel(w http.ResponseWriter, r *http.Request, id string)
 	// ListUsers List the instance's accounts.
 	// (GET /admin/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -1309,9 +1635,39 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// ListJobs List the job runs of the task panel.
+// (GET /admin/jobs)
+func (_ Unimplemented) ListJobs(w http.ResponseWriter, r *http.Request, params ListJobsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListModels List the registered models and the download run's state.
+// (GET /admin/models)
+func (_ Unimplemented) ListModels(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // DownloadModels Start the default model group's download.
 // (POST /admin/models/download)
 func (_ Unimplemented) DownloadModels(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ScanModels Register the custom models found in the models dir.
+// (POST /admin/models/scan)
+func (_ Unimplemented) ScanModels(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ActivateModel Activate the model (the model switch).
+// (PATCH /admin/models/{id})
+func (_ Unimplemented) ActivateModel(w http.ResponseWriter, r *http.Request, id string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RerunModel Start a manual rerun of the active model's slot.
+// (POST /admin/models/{id}/rerun)
+func (_ Unimplemented) RerunModel(w http.ResponseWriter, r *http.Request, id string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1480,11 +1836,124 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// ListJobs operation middleware
+func (siw *ServerInterfaceWrapper) ListJobs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListJobsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListJobs(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListModels operation middleware
+func (siw *ServerInterfaceWrapper) ListModels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListModels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DownloadModels operation middleware
 func (siw *ServerInterfaceWrapper) DownloadModels(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DownloadModels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ScanModels operation middleware
+func (siw *ServerInterfaceWrapper) ScanModels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ScanModels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ActivateModel operation middleware
+func (siw *ServerInterfaceWrapper) ActivateModel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ActivateModel(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RerunModel operation middleware
+func (siw *ServerInterfaceWrapper) RerunModel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RerunModel(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2323,6 +2792,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/models/download", wrapper.DownloadModels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/models", wrapper.ListModels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/models/{id}", wrapper.ActivateModel)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/models/{id}/rerun", wrapper.RerunModel)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/models/scan", wrapper.ScanModels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/jobs", wrapper.ListJobs)
 	})
 
 	return r

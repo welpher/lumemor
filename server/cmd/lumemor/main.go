@@ -215,6 +215,12 @@ func run(logger *slog.Logger) error {
 			// The download endpoint enqueues the default model group's
 			// download through the same queue.
 			ModelDownloads: queue,
+			// The model management endpoints share the registry and
+			// its models dir with the job queue, and the rerun
+			// endpoint enqueues through the same queue.
+			Models:    registry,
+			ModelsDir: modelsDir,
+			MlReruns:  queue,
 			Initialized: func(ctx context.Context) bool {
 				admins, err := queries.CountAdmins(ctx)
 				if err != nil {

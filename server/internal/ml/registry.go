@@ -73,9 +73,10 @@ const manifestFileName = "manifest.json"
 // Model is a registered model as the consumers see it: the database
 // row's facts (identity, slot, source, dimension, params) plus the
 // resolved path of the primary weights file and, when the on-disk
-// manifest is readable, the pinned digest and the input geometry. It
-// carries no activation flag on purpose: activation state is a fact of
-// the models table, and listing it is the admin surface's business.
+// manifest is readable, the pinned digest, the input geometry and the
+// upstream license. It carries no activation flag on purpose:
+// activation state is a fact of the models table, and listing it is
+// the admin surface's business.
 type Model struct {
 	ID      string
 	Version string
@@ -83,6 +84,7 @@ type Model struct {
 	Source  string
 	Path    string
 	SHA256  string
+	License string
 	Width   int
 	Height  int
 	Dim     int
@@ -152,6 +154,24 @@ func (r *Registry) List() ([]Model, error) {
 	return models, nil
 }
 
+// ActivationReport is what one activation did. The zero value is the
+// same-dimension switch's report: nothing but the flag flip -- the
+// old model's products survive untouched. A cross-dimension switch of
+// the clip-embed slot fills in the dimension change and the wipe, so
+// the admin surface can report the destructive arm exactly.
+type ActivationReport struct {
+	// DimensionChanged is true when the switch re-typed the
+	// clip_embeddings column.
+	DimensionChanged bool
+	// FromDim and ToDim are the column's dimensions around the
+	// change.
+	FromDim int
+	ToDim   int
+	// WipedEmbeddings is the number of embedding rows the change
+	// deleted inside its transaction.
+	WipedEmbeddings int
+}
+
 // Activate makes the model fill its slot. The switch runs in one
 // transaction: the slot's previous active model is deactivated, the
 // new one activated, and -- only for the clip-embed slot, only when
@@ -167,26 +187,27 @@ func (r *Registry) List() ([]Model, error) {
 // loadable files into the active one. The wipe and the ALTER are
 // executed directly over the transaction (never through sqlc: DDL and
 // the pg_attribute read are beyond the schema-driven generator).
-func (r *Registry) Activate(slot Slot, id string) error {
+func (r *Registry) Activate(slot Slot, id string) (ActivationReport, error) {
 	ctx := context.Background()
+	var report ActivationReport
 
 	row, err := r.queries.ModelByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("%w: %s", ErrModelNotFound, id)
+		return report, fmt.Errorf("%w: %s", ErrModelNotFound, id)
 	}
 	if err != nil {
-		return fmt.Errorf("ml: load model %s: %w", id, err)
+		return report, fmt.Errorf("ml: load model %s: %w", id, err)
 	}
 	if Slot(row.Slot) != slot {
-		return fmt.Errorf("%w: %s fills slot %s, not %s", ErrInvalidModel, id, row.Slot, slot)
+		return report, fmt.Errorf("%w: %s fills slot %s, not %s", ErrInvalidModel, id, row.Slot, slot)
 	}
 	if err := r.verifyModelFiles(&row); err != nil {
-		return err
+		return report, err
 	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("ml: begin activation of %s: %w", id, err)
+		return report, fmt.Errorf("ml: begin activation of %s: %w", id, err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // no-op once committed
 
@@ -195,32 +216,37 @@ func (r *Registry) Activate(slot Slot, id string) error {
 	if Slot(row.Slot) == SlotClipEmbed && row.Dim.Valid && row.Dim.Int32 > 0 {
 		current, err := embeddingColumnDim(ctx, tx)
 		if err != nil {
-			return err
+			return report, err
 		}
 		if current != int(row.Dim.Int32) {
-			if _, err := tx.Exec(ctx, "DELETE FROM clip_embeddings"); err != nil {
-				return fmt.Errorf("ml: clear clip_embeddings for the dimension switch: %w", err)
+			tag, err := tx.Exec(ctx, "DELETE FROM clip_embeddings")
+			if err != nil {
+				return report, fmt.Errorf("ml: clear clip_embeddings for the dimension switch: %w", err)
 			}
 			alter := r.alterEmbeddingDim
 			if alter == nil {
 				alter = alterEmbeddingColumn
 			}
 			if err := alter(ctx, tx, int(row.Dim.Int32)); err != nil {
-				return fmt.Errorf("ml: re-dimension clip_embeddings to vector(%d): %w", row.Dim.Int32, err)
+				return report, fmt.Errorf("ml: re-dimension clip_embeddings to vector(%d): %w", row.Dim.Int32, err)
 			}
+			report.DimensionChanged = true
+			report.FromDim = current
+			report.ToDim = int(row.Dim.Int32)
+			report.WipedEmbeddings = int(tag.RowsAffected())
 		}
 	}
 
 	if err := qtx.DeactivateSlot(ctx, dbgen.ModelSlot(slot)); err != nil {
-		return fmt.Errorf("ml: deactivate previous %s model: %w", slot, err)
+		return report, fmt.Errorf("ml: deactivate previous %s model: %w", slot, err)
 	}
 	if err := qtx.ActivateModel(ctx, id); err != nil {
-		return fmt.Errorf("ml: activate %s: %w", id, err)
+		return report, fmt.Errorf("ml: activate %s: %w", id, err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("ml: commit activation of %s: %w", id, err)
+		return report, fmt.Errorf("ml: commit activation of %s: %w", id, err)
 	}
-	return nil
+	return report, nil
 }
 
 // Scan registers the custom models found under dir: every
@@ -231,18 +257,20 @@ func (r *Registry) Activate(slot Slot, id string) error {
 // the models dir also holds download staging, not every entry is a
 // model. Scanning registers, it never activates. Re-scanning
 // converges: the insert is an upsert on the descriptive fields and
-// leaves every row's activation state alone.
+// leaves every row's activation state alone. The returned models are
+// the ones the scan verified and registered, in scan order.
 //
 // The scanned models must live under the registry's models dir: the
 // registered file_path is relative to it, and a model outside it is
 // refused with ErrInvalidModel.
-func (r *Registry) Scan(dir string) error {
+func (r *Registry) Scan(dir string) ([]Model, error) {
 	ctx := context.Background()
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return fmt.Errorf("ml: scan %s: %w", dir, err)
+		return nil, fmt.Errorf("ml: scan %s: %w", dir, err)
 	}
+	var models []Model
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -253,34 +281,37 @@ func (r *Registry) Scan(dir string) error {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
-			return fmt.Errorf("ml: stat %s: %w", manifestPath, err)
+			return nil, fmt.Errorf("ml: stat %s: %w", manifestPath, err)
 		}
-		if err := r.scanModelDir(ctx, modelDir, entry.Name()); err != nil {
-			return err
+		model, err := r.scanModelDir(ctx, modelDir, entry.Name())
+		if err != nil {
+			return nil, err
 		}
+		models = append(models, *model)
 	}
-	return nil
+	return models, nil
 }
 
-// scanModelDir verifies and registers one model directory.
-func (r *Registry) scanModelDir(ctx context.Context, modelDir, id string) error {
+// scanModelDir verifies and registers one model directory, returning
+// the registered model.
+func (r *Registry) scanModelDir(ctx context.Context, modelDir, id string) (*Model, error) {
 	manifest, err := loadManifestModel(modelDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if manifest.ID != id {
-		return fmt.Errorf("%w: %s declares id %q, want the directory name %q",
+		return nil, fmt.Errorf("%w: %s declares id %q, want the directory name %q",
 			ErrInvalidModel, filepath.Join(modelDir, manifestFileName), manifest.ID, id)
 	}
 	slot, ok := manifestSlotValues[manifest.Slot]
 	if !ok {
-		return fmt.Errorf("%w: %s fills unknown slot %q", ErrInvalidModel, id, manifest.Slot)
+		return nil, fmt.Errorf("%w: %s fills unknown slot %q", ErrInvalidModel, id, manifest.Slot)
 	}
 	if len(manifest.Files) == 0 {
-		return fmt.Errorf("%w: %s lists no files", ErrInvalidModel, id)
+		return nil, fmt.Errorf("%w: %s lists no files", ErrInvalidModel, id)
 	}
 	if err := verifyManifestFiles(modelDir, manifest); err != nil {
-		return err
+		return nil, err
 	}
 
 	// The registered path is the primary file, relative to the models
@@ -289,14 +320,14 @@ func (r *Registry) scanModelDir(ctx context.Context, modelDir, id string) error 
 	weights := filepath.Join(modelDir, primary)
 	rel, err := filepath.Rel(r.modelsDir, weights)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("%w: %s is outside the models dir", ErrInvalidModel, weights)
+		return nil, fmt.Errorf("%w: %s is outside the models dir", ErrInvalidModel, weights)
 	}
 
 	params := []byte("{}")
 	if manifest.Params != nil {
 		params, err = json.Marshal(manifest.Params)
 		if err != nil {
-			return fmt.Errorf("%w: marshal params of %s: %w", ErrInvalidModel, id, err)
+			return nil, fmt.Errorf("%w: marshal params of %s: %w", ErrInvalidModel, id, err)
 		}
 	}
 
@@ -316,9 +347,30 @@ func (r *Registry) scanModelDir(ctx context.Context, modelDir, id string) error 
 		},
 		Params: params,
 	}); err != nil {
-		return fmt.Errorf("ml: register %s: %w", id, err)
+		return nil, fmt.Errorf("ml: register %s: %w", id, err)
 	}
-	return nil
+
+	model := &Model{
+		ID:      id,
+		Version: manifest.Version,
+		Slot:    slot,
+		Source:  string(dbgen.ModelSourceCustom),
+		Path:    weights,
+		License: manifest.License,
+		Width:   manifest.InputSize.Width,
+		Height:  manifest.InputSize.Height,
+		Params:  manifest.Params,
+	}
+	if manifest.Dim > 0 {
+		model.Dim = manifest.Dim
+	}
+	for _, file := range manifest.Files {
+		if file.Name == primary {
+			model.SHA256 = file.SHA256
+			break
+		}
+	}
+	return model, nil
 }
 
 // modelFromRow builds the Model value from a database row. The
@@ -353,6 +405,7 @@ func (r *Registry) modelFromRow(row *dbgen.Model, strict bool) (*Model, error) {
 	}
 	model.Width = manifest.InputSize.Width
 	model.Height = manifest.InputSize.Height
+	model.License = manifest.License
 	for _, file := range manifest.Files {
 		if file.Name == filepath.Base(model.Path) {
 			model.SHA256 = file.SHA256
@@ -419,6 +472,28 @@ func loadManifestModel(dir string) (*ManifestModel, error) {
 		return nil, fmt.Errorf("%w: parse %s: %w", ErrInvalidModel, path, err)
 	}
 	return &manifest, nil
+}
+
+// FilesPresent probes a model's files: true when the model's on-disk
+// manifest is readable and every file it pins exists. It is a
+// PRESENCE probe only -- deliberately cheap for listings -- while the
+// sha256 verification itself stays the activation's and the session
+// loader's business: a drifted file shows present here and still
+// fails to activate. A model whose manifest is unreadable answers
+// false: without the manifest the file set is unknowable and the
+// model is not usable.
+func FilesPresent(model Model) bool {
+	dir := filepath.Dir(model.Path)
+	manifest, err := loadManifestModel(dir)
+	if err != nil {
+		return false
+	}
+	for _, file := range manifest.Files {
+		if _, err := os.Stat(filepath.Join(dir, file.Name)); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // resolvePath resolves a models.file_path value: absolute paths are

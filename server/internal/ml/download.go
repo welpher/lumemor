@@ -255,7 +255,7 @@ func runDownloadModel(ctx context.Context, dst RunDownloadDeps, client *http.Cli
 	// active model has gone bad -- keeps its model: switching is the
 	// admin surface's business, not the download's.
 	if _, err := dst.Registry.Active(slot); errors.Is(err, ErrNoActiveModel) {
-		if err := dst.Registry.Activate(slot, model.ID); err != nil {
+		if _, err := dst.Registry.Activate(slot, model.ID); err != nil {
 			return fmt.Errorf("activate %s into slot %s: %w", model.ID, slot, err)
 		}
 	}

@@ -98,13 +98,22 @@ func newEnv(t *testing.T) *env {
 // default group, which those tests never download.
 func newEnvManifest(t *testing.T, manifest *ml.Manifest) *env {
 	t.Helper()
-	return newEnvLogger(t, manifest, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return newEnvLogger(t, manifest, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 }
 
-// newEnvLogger is newEnv with the manifest and the queue's logger
-// injected: the sweep tests capture the queue's log output to pin the
-// one-log-line-per-run discipline of the requeue sweep.
-func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger) *env {
+// newEnvRerun is newEnv with the ML rerun dispatch seam injected: the
+// rerun tests drive the framework through a fake dispatcher standing
+// in for the per-asset ML workers of the milestone's later tasks.
+func newEnvRerun(t *testing.T, dispatch MlRerunDispatchFunc) *env {
+	t.Helper()
+	return newEnvLogger(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), dispatch)
+}
+
+// newEnvLogger is newEnv with the manifest, the queue's logger and the
+// ML rerun dispatch seam injected: the sweep tests capture the queue's
+// log output to pin the one-log-line-per-run discipline of the requeue
+// sweep; the rerun tests inject their fake per-asset dispatch.
+func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, rerunDispatch MlRerunDispatchFunc) *env {
 	t.Helper()
 
 	pool := dbtest.New(t)
@@ -122,14 +131,15 @@ func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger) *env
 
 	bus := events.NewBus(5*time.Minute, time.Now)
 	queue, err := Start(t.Context(), Config{
-		Pool:           pool,
-		Bus:            bus,
-		DataDir:        dataDir,
-		Workers:        1,
-		Logger:         logger,
-		ModelsDir:      modelsDir,
-		Registry:       registry,
-		ModelsManifest: manifest,
+		Pool:            pool,
+		Bus:             bus,
+		DataDir:         dataDir,
+		Workers:         1,
+		Logger:          logger,
+		ModelsDir:       modelsDir,
+		Registry:        registry,
+		ModelsManifest:  manifest,
+		MlRerunDispatch: rerunDispatch,
 	})
 	if err != nil {
 		t.Fatalf("start queue: %v", err)
@@ -150,6 +160,11 @@ func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger) *env
 		UploadLimitBytes: 32 << 20,
 		Jobs:             queue,
 		ModelDownloads:   queue,
+		// The model management surface: the shared registry, its models
+		// dir, and the rerun enqueue through the same queue.
+		Models:    registry,
+		ModelsDir: modelsDir,
+		MlReruns:  queue,
 	})
 
 	e := &env{

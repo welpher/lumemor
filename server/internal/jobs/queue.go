@@ -72,6 +72,13 @@ type Config struct {
 	// lands. Production leaves it nil (the embedded default group,
 	// pure upstream links); tests point it at their local sources.
 	ModelsManifest *ml.Manifest
+	// MlRerunDispatch runs one asset's ML work of a rerun: the seam
+	// the milestone's later tasks wire their per-asset ML workers
+	// into. Production leaves it nil in this task -- the per-asset
+	// workers do not exist yet, so a rerun of a non-empty scope fails
+	// its run honestly (see ml_rerun.go's boundary note); the rerun
+	// tests inject a fake.
+	MlRerunDispatch MlRerunDispatchFunc
 	// Workers is the size of the worker pool. A non-positive value
 	// falls back to min(GOMAXPROCS, maxWorkers).
 	Workers int
@@ -181,6 +188,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		hfMirror:  cfg.ModelsHfMirror,
 		manifest:  models,
 		logger:    logger,
+	})
+	river.AddWorker(workers, &MlRerunWorker{
+		pool:     cfg.Pool,
+		bus:      cfg.Bus,
+		dispatch: cfg.MlRerunDispatch,
+		logger:   logger,
 	})
 
 	workerCount := cfg.Workers

@@ -84,7 +84,7 @@ func (w *ModelDownloadWorker) Work(ctx context.Context, job *river.Job[ModelDown
 		return fmt.Errorf("mark the model download run %s running: %w", jobRunID, err)
 	}
 	total := w.manifest.PinnedBytes()
-	w.bus.Publish("job.started", jobEventPayload(jobRunID, total, 0, 0, dbgen.JobStateRunning))
+	w.bus.Publish("job.started", jobEventPayload(jobRunID, ModelDownloadKind, total, 0, 0, dbgen.JobStateRunning))
 
 	// One row update and one job.progress event per progress report;
 	// the download service throttles the reports themselves, so the
@@ -99,7 +99,7 @@ func (w *ModelDownloadWorker) Work(ctx context.Context, job *river.Job[ModelDown
 			w.logger.Warn("update the model download progress", "error", err, "job_run_id", jobRunID)
 			return
 		}
-		w.bus.Publish("job.progress", jobEventPayload(jobRunID, total, done, 0, dbgen.JobStateRunning))
+		w.bus.Publish("job.progress", jobEventPayload(jobRunID, ModelDownloadKind, total, done, 0, dbgen.JobStateRunning))
 	}
 
 	report, runErr := ml.RunDownload(ctx, ml.RunDownloadDeps{
@@ -140,7 +140,7 @@ func (w *ModelDownloadWorker) Work(ctx context.Context, job *river.Job[ModelDown
 		return fmt.Errorf("finish the model download run %s: %w", jobRunID, err)
 	}
 	w.bus.Publish("job.finished",
-		jobEventPayload(jobRunID, report.BytesTotal, report.BytesDone, failed, state))
+		jobEventPayload(jobRunID, ModelDownloadKind, report.BytesTotal, report.BytesDone, failed, state))
 
 	if runErr != nil {
 		// The returned error makes River retry: verified files are
@@ -154,13 +154,14 @@ func (w *ModelDownloadWorker) Work(ctx context.Context, job *river.Job[ModelDown
 }
 
 // jobEventPayload renders the shared payload of the job.* events: the
-// run's identifier and progress, nothing more -- the event audience
-// discipline the asset events pin (camelCase field names, string
-// values).
-func jobEventPayload(jobRunID uuid.UUID, total, done, failed int, state dbgen.JobState) map[string]string {
+// run's identifier, kind and progress, nothing more -- the event
+// audience discipline the asset events pin (camelCase field names,
+// string values). The kind is the run's job_runs kind (the model
+// download's, or the slot's pinned rerun name).
+func jobEventPayload(jobRunID uuid.UUID, kind string, total, done, failed int, state dbgen.JobState) map[string]string {
 	return map[string]string{
 		"jobRunId": jobRunID.String(),
-		"kind":     ModelDownloadKind,
+		"kind":     kind,
 		"total":    strconv.Itoa(total),
 		"done":     strconv.Itoa(done),
 		"failed":   strconv.Itoa(failed),

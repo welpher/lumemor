@@ -49,6 +49,23 @@ func (q *Queries) CompleteAssetJob(ctx context.Context, id pgtype.UUID) (Complet
 	return i, err
 }
 
+const countAssetIDsByKind = `-- name: CountAssetIDsByKind :one
+SELECT count(*) FROM assets
+WHERE media_kind = $1 AND ready_at IS NOT NULL AND deleted_at IS NULL
+`
+
+// The rerun scope of one media kind: the assets whose ML work a
+// rerun redoes -- finished their pipeline (ready_at, the ML jobs
+// belong after readiness) and not in the trash (a trashed asset's
+// products serve nothing; the permanent purge deletes them with the
+// row). The count becomes the rerun run's total at enqueue time.
+func (q *Queries) CountAssetIDsByKind(ctx context.Context, mediaKind MediaKind) (int64, error) {
+	row := q.db.QueryRow(ctx, countAssetIDsByKind, mediaKind)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAsset = `-- name: CreateAsset :one
 
 INSERT INTO assets (
@@ -489,6 +506,44 @@ func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetA
 		&i.Exif,
 	)
 	return i, err
+}
+
+const listAssetIDsByKind = `-- name: ListAssetIDsByKind :many
+SELECT id FROM assets
+WHERE media_kind = $1 AND ready_at IS NOT NULL AND deleted_at IS NULL
+ORDER BY id ASC
+LIMIT $2 OFFSET $3
+`
+
+type ListAssetIDsByKindParams struct {
+	MediaKind MediaKind `json:"media_kind"`
+	Limit     int32     `json:"limit"`
+	Offset    int32     `json:"offset"`
+}
+
+// The rerun scope's asset ids, paged in id order: the rerun driver
+// walks them one page at a time and dispatches each asset's work.
+// id order keeps the paging stable; assets becoming ready DURING a
+// run may join the tail (done can pass the enqueue-time total) --
+// they would otherwise miss both the seam and the rerun.
+func (q *Queries) ListAssetIDsByKind(ctx context.Context, arg ListAssetIDsByKindParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listAssetIDsByKind, arg.MediaKind, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listStuckAssets = `-- name: ListStuckAssets :many
