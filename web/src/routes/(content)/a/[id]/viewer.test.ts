@@ -724,6 +724,85 @@ test('a failed detail load shows the mapped error with a working retry', async (
 	flushSync();
 });
 
+test('the stage keeps its loaded and zoomed state across same-id detail replacements', async () => {
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!)))
+	]);
+	await settle();
+
+	// Both serving layers report their load (the crossfade target),
+	// and the zoom is on.
+	const images = Array.from(document.body.querySelectorAll<HTMLImageElement>('img.viewer__image'));
+	images[0]?.dispatchEvent(new Event('load'));
+	images[1]?.dispatchEvent(new Event('load'));
+	flushSync();
+	click(element('[aria-label="Zoom in"]'));
+	flushSync();
+	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(true);
+	expect(images[0]?.classList.contains('viewer__image--loaded')).toBe(true);
+
+	// The same-id replacement (the SSE convergence refetch, the PATCH
+	// adoption's shape): the stage must survive -- the img element
+	// persists with its loaded class, the zoom holds, and the serving
+	// copies are never re-requested (nothing re-fires a load the
+	// browser would not send).
+	const detailCalls = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2');
+	handlers[0]?.({ id: 21, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+	await settle();
+	const survived = Array.from(document.body.querySelectorAll<HTMLImageElement>('img.viewer__image'));
+	expect(survived[0]).toBe(images[0]);
+	expect(survived[0]?.classList.contains('viewer__image--loaded')).toBe(true);
+	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(true);
+	expect(
+		fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2')
+	).toHaveLength(detailCalls.length + 1);
+	unmount(app);
+	flushSync();
+
+	// The navigation half: a neighbor mounts fresh (the plain-page
+	// mock cannot mutate route params in place, so the in-instance
+	// reset is approximated by the neighbor's mount -- the same
+	// approximation the drawer's reset test uses). The new asset
+	// starts unloaded and unzoomed: the crossfade begins over.
+	const neighbor = mountViewer('a3', [
+		get('/api/v1/assets/a3', () => jsonResponse(200, detailBodyOf(sequence[2]!)))
+	]);
+	await settle();
+	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(false);
+	expect(
+		Array.from(document.body.querySelectorAll('img.viewer__image')).every(
+			(image) => !image.classList.contains('viewer__image--loaded')
+		)
+	).toBe(true);
+	unmount(neighbor.app);
+	flushSync();
+});
+
+test('a failed initial load re-seeds the favorite flag when the convergence refetch recovers', async () => {
+	let failing = true;
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () =>
+			failing ? jsonResponse(500, { code: 'PROXY_TEAPOT' }) : jsonResponse(200, detailBodyOf(sequence[1]!))
+		)
+	]);
+	// The wall snapshot says the asset IS a favorite; the initial
+	// load fails before the seeding can run.
+	publishWallItems([item('a2', '2026-11-01T09:00:00Z', { isFavorite: true })]);
+	await settle();
+	expect(element('.viewer__failure')).not.toBeNull();
+
+	failing = false;
+	handlers[0]?.({ id: 22, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+	await settle();
+
+	// The recovered drawer shows the favorite state (the Unfavorite
+	// action), not the default.
+	openDrawer();
+	expect(() => buttonByText('Unfavorite')).not.toThrow();
+	unmount(app);
+	flushSync();
+});
+
 test('a deleted-from-under-the-viewer asset leaves through SSE', async () => {
 	const { app } = mountViewer('a2', viewerRoutes('a2'));
 	await settle();
