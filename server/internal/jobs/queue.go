@@ -37,9 +37,10 @@ const maxWorkers = 4
 // one) instead of the drain waiting forever. It sits above the
 // pipeline's largest job envelope -- the transcode job's 150s (whose
 // ffmpeg subprocess carries a 120s cap of its own; the thumbnail
-// job's 90s carries the poster extraction's 60s subprocess cap, and
-// the metadata job's exiftool only 30s) -- so a healthy job always
-// finishes within the drain.
+// job's 90s carries the poster extraction's 60s subprocess cap, the
+// metadata job's exiftool only 30s, and the face detection job's CPU
+// inference 60s) -- so a healthy job always finishes within the
+// drain.
 const softStopTimeout = 155 * time.Second
 
 // Config carries the dependencies of the job queue.
@@ -97,6 +98,9 @@ type Queue struct {
 	// models is the manifest the model download job lands, pinned at
 	// Start: the enqueue computes the run's pinned byte total from it.
 	models *ml.Manifest
+	// registry resolves the ML readiness seam's active models, pinned
+	// at Start: EnqueueMlJobs consults it on every dispatch.
+	registry *ml.Registry
 }
 
 // Start applies River's own migrations (idempotent: applied versions
@@ -152,24 +156,27 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	}
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, &MetadataWorker{
+	metadataWorker := &MetadataWorker{
 		pool:    cfg.Pool,
 		bus:     cfg.Bus,
 		dataDir: cfg.DataDir,
 		logger:  logger,
-	})
-	river.AddWorker(workers, &ThumbnailWorker{
+	}
+	river.AddWorker(workers, metadataWorker)
+	thumbnailWorker := &ThumbnailWorker{
 		pool:    cfg.Pool,
 		bus:     cfg.Bus,
 		dataDir: cfg.DataDir,
 		logger:  logger,
-	})
-	river.AddWorker(workers, &TranscodeWorker{
+	}
+	river.AddWorker(workers, thumbnailWorker)
+	transcodeWorker := &TranscodeWorker{
 		pool:    cfg.Pool,
 		bus:     cfg.Bus,
 		dataDir: cfg.DataDir,
 		logger:  logger,
-	})
+	}
+	river.AddWorker(workers, transcodeWorker)
 	river.AddWorker(workers, &SweepWorker{
 		pool:   cfg.Pool,
 		logger: logger,
@@ -193,6 +200,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		pool:     cfg.Pool,
 		bus:      cfg.Bus,
 		dispatch: cfg.MlRerunDispatch,
+		logger:   logger,
+	})
+	river.AddWorker(workers, &FaceDetectWorker{
+		pool:     cfg.Pool,
+		dataDir:  cfg.DataDir,
+		registry: registry,
 		logger:   logger,
 	})
 
@@ -233,11 +246,23 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		return nil, fmt.Errorf("jobs: create river client: %w", err)
 	}
 
+	queue := &Queue{client: client, pool: cfg.Pool, models: models, registry: registry}
+
+	// Wire the ML readiness seam into the three pipeline workers: the
+	// dispatch is the queue's EnqueueMlJobs method value, and the
+	// queue exists only now that the client does. This runs BEFORE
+	// the client starts -- no worker is executing yet, so the wiring
+	// cannot race the first dispatch. Workers constructed directly
+	// (the unit tests) carry no seam and the announce step skips it.
+	metadataWorker.mlDispatch = queue.EnqueueMlJobs
+	thumbnailWorker.mlDispatch = queue.EnqueueMlJobs
+	transcodeWorker.mlDispatch = queue.EnqueueMlJobs
+
 	if err := client.Start(context.WithoutCancel(ctx)); err != nil {
 		return nil, fmt.Errorf("jobs: start river client: %w", err)
 	}
 
-	return &Queue{client: client, pool: cfg.Pool, models: models}, nil
+	return queue, nil
 }
 
 // EnqueueMetadata inserts the metadata job for the asset. It must be

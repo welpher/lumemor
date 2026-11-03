@@ -174,6 +174,25 @@ func TestDefaultManifestURLsAreHTTPS(t *testing.T) {
 	}
 }
 
+// TestDefaultManifestPinsYunetInputGeometry pins the correction Task 6
+// landed: the 2023mar detector graph measures its input at 640x640
+// (the session metadata Task 2 read off the real weights), and the
+// manifest's declared inputSize now states that fact -- the 320x320
+// declaration the manifest shipped with was the upstream demo's
+// default input, not the graph's. The declaration is display truth
+// (the admin surface renders it); the detection wrapper always reads
+// the geometry from the session itself.
+func TestDefaultManifestPinsYunetInputGeometry(t *testing.T) {
+	manifest, err := LoadManifest(defaultManifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest(%q) = %v, want no error", defaultManifestPath, err)
+	}
+	yunet := modelByID(t, manifest, "yunet-2023mar")
+	if yunet.InputSize.Width != 640 || yunet.InputSize.Height != 640 {
+		t.Errorf("yunet inputSize = %dx%d, want the measured 640x640", yunet.InputSize.Width, yunet.InputSize.Height)
+	}
+}
+
 // TestLoadManifestRoundTripsDefaultJSON pins the JSON tags: the
 // default manifest re-marshaled from the parsed struct loads back
 // into an equal value, so no schema field can silently drop out of

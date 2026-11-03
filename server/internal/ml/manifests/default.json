@@ -9,7 +9,7 @@
       "sourceUrl": "https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
       "fallbackUrl": "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
       "notice": "YuNet face detection from OpenCV Zoo (opencv/opencv_zoo); MIT, copyright Shiqi Yu.",
-      "inputSize": { "width": 320, "height": 320 },
+      "inputSize": { "width": 640, "height": 640 },
       "dim": 0,
       "params": { "scoreThreshold": 0.6, "nmsThreshold": 0.3, "topK": 5000 },
       "files": [
