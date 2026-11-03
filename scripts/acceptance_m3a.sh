@@ -340,6 +340,25 @@ prepare_bind_mount() {
         || fail "chown of ./lumemor to 10001:10001 through the image failed"
 }
 
+# reset_bind_mount_ownership returns the storage bind mount's tree to
+# the HOST user. prepare_bind_mount leaves ./lumemor owned by the
+# image's fixed uid 10001 (the container contract); a later phase that
+# stages files from the host side (the phase 3 fixture models) must
+# write into that tree again first -- on a permissive runtime (the
+# macOS desktop mapping) the write happens to work, but the uid
+# discipline of a Linux CI runner denies it. The reverse chown rides
+# the same image-as-root trick, so it needs the built image (a cached
+# no-op after any phase's prepare_bind_mount).
+reset_bind_mount_ownership() {
+    if [ ! -d lumemor ]; then
+        return 0
+    fi
+    compose run --rm --no-deps --entrypoint /bin/sh \
+        -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" lumemor \
+        -c 'chown -R "$HOST_UID:$HOST_GID" /var/lib/lumemor' \
+        || fail "returning ./lumemor to the host user failed"
+}
+
 start_stack() {
     echo "==> building and starting the stack"
     compose up -d --build || fail "docker compose up -d --build failed"
@@ -714,6 +733,11 @@ EOF
 
 echo "==> phase 3/3: the e2e stack (the M3 model management story)"
 reset_stack_state
+# Phases 1-2 left ./lumemor chowned to the image uid; the fixture
+# staging below writes into it as the host user, so the tree comes
+# back to us first (prepare_bind_mount re-applies the container uid
+# after the staging).
+reset_bind_mount_ownership
 echo "==> staging the self-made clip fixture models for the dialog scenes"
 stage_fixture_model clip-fixture-512 512 "$repo_root/server/internal/ml/testdata/const512.onnx"
 stage_fixture_model clip-fixture-768 768 "$repo_root/server/internal/ml/testdata/const768.onnx"
