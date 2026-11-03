@@ -249,7 +249,7 @@ func TestScanRegistersCustomModels(t *testing.T) {
 		t.Fatalf("create manifest-less dir: %v", err)
 	}
 
-	if err := registry.Scan(modelsDir); err != nil {
+	if _, err := registry.Scan(modelsDir); err != nil {
 		t.Fatalf("Scan(modelsDir) error = %v, want nil", err)
 	}
 
@@ -305,7 +305,7 @@ func TestScanRegistersCustomModels(t *testing.T) {
 	}
 
 	// A re-scan converges: the upsert refreshes the same rows.
-	if err := registry.Scan(modelsDir); err != nil {
+	if _, err := registry.Scan(modelsDir); err != nil {
 		t.Fatalf("re-scan error = %v, want nil", err)
 	}
 	var n int
@@ -337,7 +337,7 @@ func TestScanRejectsChecksumMismatch(t *testing.T) {
 		t.Fatalf("write tampered weights: %v", err)
 	}
 
-	if err := registry.Scan(modelsDir); !errors.Is(err, ErrInvalidModel) {
+	if _, err := registry.Scan(modelsDir); !errors.Is(err, ErrInvalidModel) {
 		t.Errorf("Scan with drifted weights error = %v, want ErrInvalidModel", err)
 	}
 	var n int
@@ -359,11 +359,11 @@ func TestActivateSwitchesActiveModel(t *testing.T) {
 		fixtureModel{id: "face-a", slot: "face-recognize", file: "const128.onnx", sha: const128FixtureSHA256, dim: 128},
 		fixtureModel{id: "face-b", slot: "face-recognize", file: "const128.onnx", sha: const128FixtureSHA256, dim: 128},
 	)
-	if err := registry.Scan(modelsDir); err != nil {
+	if _, err := registry.Scan(modelsDir); err != nil {
 		t.Fatalf("Scan(modelsDir) error = %v, want nil", err)
 	}
 
-	if err := registry.Activate(SlotFaceRecognize, "face-a"); err != nil {
+	if _, err := registry.Activate(SlotFaceRecognize, "face-a"); err != nil {
 		t.Fatalf("Activate(face-a) error = %v, want nil", err)
 	}
 	active, err := registry.Active(SlotFaceRecognize)
@@ -374,7 +374,7 @@ func TestActivateSwitchesActiveModel(t *testing.T) {
 		t.Errorf("Active() id = %q, want face-a", active.ID)
 	}
 
-	if err := registry.Activate(SlotFaceRecognize, "face-b"); err != nil {
+	if _, err := registry.Activate(SlotFaceRecognize, "face-b"); err != nil {
 		t.Fatalf("Activate(face-b) error = %v, want nil", err)
 	}
 	active, err = registry.Active(SlotFaceRecognize)
@@ -416,7 +416,7 @@ func TestActivateSwitchesActiveModel(t *testing.T) {
 func TestActivateRejectsUnknownModel(t *testing.T) {
 	registry, _, _ := newRegistryEnv(t)
 
-	if err := registry.Activate(SlotFaceRecognize, "no-such-model"); !errors.Is(err, ErrModelNotFound) {
+	if _, err := registry.Activate(SlotFaceRecognize, "no-such-model"); !errors.Is(err, ErrModelNotFound) {
 		t.Errorf("Activate(unknown id) error = %v, want ErrModelNotFound", err)
 	}
 }
@@ -428,11 +428,11 @@ func TestActivateRejectsSlotMismatch(t *testing.T) {
 	registry, _, modelsDir := newRegistryEnv(t,
 		fixtureModel{id: "face-a", slot: "face-recognize", file: "const128.onnx", sha: const128FixtureSHA256, dim: 128},
 	)
-	if err := registry.Scan(modelsDir); err != nil {
+	if _, err := registry.Scan(modelsDir); err != nil {
 		t.Fatalf("Scan(modelsDir) error = %v, want nil", err)
 	}
 
-	if err := registry.Activate(SlotClipEmbed, "face-a"); !errors.Is(err, ErrInvalidModel) {
+	if _, err := registry.Activate(SlotClipEmbed, "face-a"); !errors.Is(err, ErrInvalidModel) {
 		t.Errorf("Activate(slot mismatch) error = %v, want ErrInvalidModel", err)
 	}
 }
@@ -458,7 +458,7 @@ func TestActivateRejectsMissingFile(t *testing.T) {
 		t.Fatalf("InsertModel(ghost) error = %v, want nil", err)
 	}
 
-	if err := registry.Activate(SlotFaceRecognize, "ghost"); !errors.Is(err, ErrInvalidModel) {
+	if _, err := registry.Activate(SlotFaceRecognize, "ghost"); !errors.Is(err, ErrInvalidModel) {
 		t.Errorf("Activate(missing file) error = %v, want ErrInvalidModel", err)
 	}
 }
@@ -473,15 +473,15 @@ func TestSameDimensionActivationCoexists(t *testing.T) {
 		fixtureModel{id: "clip-512a", slot: "clip-embed", file: "const512.onnx", sha: const512FixtureSHA256, dim: 512},
 		fixtureModel{id: "clip-512b", slot: "clip-embed", file: "const512.onnx", sha: const512FixtureSHA256, dim: 512},
 	)
-	if err := registry.Scan(modelsDir); err != nil {
+	if _, err := registry.Scan(modelsDir); err != nil {
 		t.Fatalf("Scan(modelsDir) error = %v, want nil", err)
 	}
-	if err := registry.Activate(SlotClipEmbed, "clip-512a"); err != nil {
+	if _, err := registry.Activate(SlotClipEmbed, "clip-512a"); err != nil {
 		t.Fatalf("Activate(clip-512a) error = %v, want nil", err)
 	}
 	seedClipEmbedding(t, pool, "clip-512a", 512)
 
-	if err := registry.Activate(SlotClipEmbed, "clip-512b"); err != nil {
+	if _, err := registry.Activate(SlotClipEmbed, "clip-512b"); err != nil {
 		t.Fatalf("Activate(clip-512b) error = %v, want nil", err)
 	}
 
@@ -517,16 +517,16 @@ func TestCrossDimensionActivationWipesAndAlters(t *testing.T) {
 		fixtureModel{id: "clip-512a", slot: "clip-embed", file: "const512.onnx", sha: const512FixtureSHA256, dim: 512},
 		fixtureModel{id: "clip-768", slot: "clip-embed", file: "const768.onnx", sha: const768FixtureSHA256, dim: 768},
 	)
-	if err := registry.Scan(modelsDir); err != nil {
+	if _, err := registry.Scan(modelsDir); err != nil {
 		t.Fatalf("Scan(modelsDir) error = %v, want nil", err)
 	}
-	if err := registry.Activate(SlotClipEmbed, "clip-512a"); err != nil {
+	if _, err := registry.Activate(SlotClipEmbed, "clip-512a"); err != nil {
 		t.Fatalf("Activate(clip-512a) error = %v, want nil", err)
 	}
 	seedClipEmbedding(t, pool, "clip-512a", 512)
 	seedClipEmbedding(t, pool, "clip-512a", 512)
 
-	if err := registry.Activate(SlotClipEmbed, "clip-768"); err != nil {
+	if _, err := registry.Activate(SlotClipEmbed, "clip-768"); err != nil {
 		t.Fatalf("Activate(clip-768) error = %v, want nil", err)
 	}
 
@@ -573,10 +573,10 @@ func TestCrossDimensionActivationRollsBack(t *testing.T) {
 		fixtureModel{id: "clip-512a", slot: "clip-embed", file: "const512.onnx", sha: const512FixtureSHA256, dim: 512},
 		fixtureModel{id: "clip-768", slot: "clip-embed", file: "const768.onnx", sha: const768FixtureSHA256, dim: 768},
 	)
-	if err := registry.Scan(modelsDir); err != nil {
+	if _, err := registry.Scan(modelsDir); err != nil {
 		t.Fatalf("Scan(modelsDir) error = %v, want nil", err)
 	}
-	if err := registry.Activate(SlotClipEmbed, "clip-512a"); err != nil {
+	if _, err := registry.Activate(SlotClipEmbed, "clip-512a"); err != nil {
 		t.Fatalf("Activate(clip-512a) error = %v, want nil", err)
 	}
 	seedClipEmbedding(t, pool, "clip-512a", 512)
@@ -588,7 +588,7 @@ func TestCrossDimensionActivationRollsBack(t *testing.T) {
 		return fmt.Errorf("injected ALTER failure for vector(%d)", dim)
 	}
 
-	if err := registry.Activate(SlotClipEmbed, "clip-768"); err == nil {
+	if _, err := registry.Activate(SlotClipEmbed, "clip-768"); err == nil {
 		t.Fatal("Activate with injected ALTER failure returned nil, want an error")
 	}
 

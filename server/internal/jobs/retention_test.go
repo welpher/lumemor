@@ -75,7 +75,7 @@ func TestRetentionPeriodicRegistration(t *testing.T) {
 // announcement, and emits exactly one log line for the run.
 func TestRetentionWorkerJobRunsExpiry(t *testing.T) {
 	var logs bytes.Buffer
-	e := newEnvLogger(t, nil, slog.New(slog.NewTextHandler(&logs, nil)))
+	e := newEnvLogger(t, nil, slog.New(slog.NewTextHandler(&logs, nil)), nil)
 
 	deviceTakenAt := time.Date(2021, 8, 9, 10, 11, 12, 0, time.UTC).Truncate(time.Microsecond)
 	id := e.insertAssetKind(t, "originals/retention/worker.jpg", jpegBytes(t), deviceTakenAt,

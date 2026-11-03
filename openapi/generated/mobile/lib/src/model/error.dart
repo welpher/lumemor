@@ -21,7 +21,7 @@ abstract class Error implements Built<Error, ErrorBuilder> {
   /// Stable error code. The i18n translation key is the lowercase form of this value. 
   @BuiltValueField(wireName: r'code')
   ErrorCodeEnum get code;
-  // enum codeEnum {  SETUP_ALREADY_COMPLETED,  VALIDATION_FAILED,  INTERNAL,  AUTH_FORBIDDEN,  AUTH_INVALID_CREDENTIALS,  AUTH_RATE_LIMITED,  PAIRING_TOKEN_INVALID,  ASSET_TOO_LARGE,  ASSET_NOT_FOUND,  ASSET_NOT_READY,  USER_EMAIL_TAKEN,  USER_NOT_FOUND,  MODEL_DOWNLOAD_FAILED,  };
+  // enum codeEnum {  SETUP_ALREADY_COMPLETED,  VALIDATION_FAILED,  INTERNAL,  AUTH_FORBIDDEN,  AUTH_INVALID_CREDENTIALS,  AUTH_RATE_LIMITED,  PAIRING_TOKEN_INVALID,  ASSET_TOO_LARGE,  ASSET_NOT_FOUND,  ASSET_NOT_READY,  USER_EMAIL_TAKEN,  USER_NOT_FOUND,  MODEL_DOWNLOAD_FAILED,  MODEL_NOT_FOUND,  MODEL_INVALID,  };
 
   /// English technical description for debugging.
   @BuiltValueField(wireName: r'message')
@@ -178,6 +178,10 @@ class ErrorCodeEnum extends EnumClass {
   static const ErrorCodeEnum USER_NOT_FOUND = _$errorCodeEnum_USER_NOT_FOUND;
   @BuiltValueEnumConst(wireName: r'MODEL_DOWNLOAD_FAILED')
   static const ErrorCodeEnum MODEL_DOWNLOAD_FAILED = _$errorCodeEnum_MODEL_DOWNLOAD_FAILED;
+  @BuiltValueEnumConst(wireName: r'MODEL_NOT_FOUND')
+  static const ErrorCodeEnum MODEL_NOT_FOUND = _$errorCodeEnum_MODEL_NOT_FOUND;
+  @BuiltValueEnumConst(wireName: r'MODEL_INVALID')
+  static const ErrorCodeEnum MODEL_INVALID = _$errorCodeEnum_MODEL_INVALID;
 
   static Serializer<ErrorCodeEnum> get serializer => _$errorCodeEnumSerializer;
 

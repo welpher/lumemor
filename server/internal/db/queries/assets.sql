@@ -265,3 +265,23 @@ WHERE id = sqlc.arg('id')
 -- rides the upload path and never touches the counter).
 SELECT id, media_kind, is_component FROM assets
 WHERE pending_jobs > 0 AND ready_at IS NULL AND deleted_at IS NULL;
+
+-- name: CountAssetIDsByKind :one
+-- The rerun scope of one media kind: the assets whose ML work a
+-- rerun redoes -- finished their pipeline (ready_at, the ML jobs
+-- belong after readiness) and not in the trash (a trashed asset's
+-- products serve nothing; the permanent purge deletes them with the
+-- row). The count becomes the rerun run's total at enqueue time.
+SELECT count(*) FROM assets
+WHERE media_kind = $1 AND ready_at IS NOT NULL AND deleted_at IS NULL;
+
+-- name: ListAssetIDsByKind :many
+-- The rerun scope's asset ids, paged in id order: the rerun driver
+-- walks them one page at a time and dispatches each asset's work.
+-- id order keeps the paging stable; assets becoming ready DURING a
+-- run may join the tail (done can pass the enqueue-time total) --
+-- they would otherwise miss both the seam and the rerun.
+SELECT id FROM assets
+WHERE media_kind = $1 AND ready_at IS NOT NULL AND deleted_at IS NULL
+ORDER BY id ASC
+LIMIT $2 OFFSET $3;

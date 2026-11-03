@@ -66,6 +66,33 @@ func (q *Queries) FinishJobRun(ctx context.Context, arg FinishJobRunParams) erro
 	return err
 }
 
+const getJobRun = `-- name: GetJobRun :one
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at
+FROM job_runs
+WHERE id = $1
+`
+
+// One run's row: the driver reads its total at pick-up (the started
+// event echoes the enqueue-time scope, the durable truth, not a
+// recount).
+func (q *Queries) GetJobRun(ctx context.Context, id pgtype.UUID) (JobRun, error) {
+	row := q.db.QueryRow(ctx, getJobRun, id)
+	var i JobRun
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Total,
+		&i.Done,
+		&i.Failed,
+		&i.State,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertJobRun = `-- name: InsertJobRun :exec
 
 INSERT INTO job_runs (id, kind, total)
@@ -128,6 +155,47 @@ func (q *Queries) LatestJobRunByKind(ctx context.Context, kind string) (JobRun, 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listJobRuns = `-- name: ListJobRuns :many
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at
+FROM job_runs
+ORDER BY created_at DESC, id DESC
+LIMIT $1
+`
+
+// The task panel's listing: the newest runs across every kind, in
+// creation order (the uuidv7 id as the tiebreak). The limit is the
+// page bound the admin surface pins (default 50, maximum 200).
+func (q *Queries) ListJobRuns(ctx context.Context, limit int32) ([]JobRun, error) {
+	rows, err := q.db.Query(ctx, listJobRuns, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []JobRun
+	for rows.Next() {
+		var i JobRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Total,
+			&i.Done,
+			&i.Failed,
+			&i.State,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markJobRunRunning = `-- name: MarkJobRunRunning :exec

@@ -64,3 +64,20 @@ WHERE id = $1;
 UPDATE job_runs
 SET state = $2, done = $3, failed = $4, finished_at = now(), updated_at = now()
 WHERE id = $1;
+
+-- name: ListJobRuns :many
+-- The task panel's listing: the newest runs across every kind, in
+-- creation order (the uuidv7 id as the tiebreak). The limit is the
+-- page bound the admin surface pins (default 50, maximum 200).
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at
+FROM job_runs
+ORDER BY created_at DESC, id DESC
+LIMIT $1;
+
+-- name: GetJobRun :one
+-- One run's row: the driver reads its total at pick-up (the started
+-- event echoes the enqueue-time scope, the durable truth, not a
+-- recount).
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at
+FROM job_runs
+WHERE id = $1;
