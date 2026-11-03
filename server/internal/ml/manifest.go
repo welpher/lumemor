@@ -1,15 +1,17 @@
 // Package ml holds the machine-learning foundation of the lumemor
-// server. M3a Task 1 delivers the default model manifest: the pinned
-// description of the default model group (face detection, face
-// recognition, CLIP embedding, OCR). Later tasks add the onnxruntime
-// session wrapper, the model registry and the first-boot download
-// service on top of it.
+// server: the default model manifest (Task 1), the onnxruntime session
+// wrapper and the model registry (Task 2), and later the first-boot
+// download service and the inference wrappers (face detection, face
+// recognition, CLIP embedding, OCR).
 //
 // The manifest is pure links: every artifact is an upstream URL plus
 // a sha256 digest and a byte count, and the repository commits no
 // weights. That keeps the licensing surface minimal (nothing is
 // re-distributed) while the pinned digests make any upstream drift
-// detectable at download and load time.
+// detectable at download and load time. The registry doubles the
+// verification: the digests are checked again whenever a model is
+// activated or loaded, so a file that drifted after download never
+// reaches inference.
 package ml
 
 import (

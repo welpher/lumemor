@@ -7,12 +7,15 @@ weights are involved:
 - identity.onnx: echoes a rank-1 float tensor ("input" -> "output").
   The session round-trip fixture: load it, run it on any float vector,
   get the same vector back.
-- const128.onnx / const512.onnx: map any NCHW float image tensor
-  (1x3xHxW, dynamic H and W) to a constant vector of ones with the
-  given dimension ("input" -> "output"). They stand in for the face
-  recognition (dim 128) and CLIP embedding (dim 512) models in wiring
-  tests; the raw output is deliberately NOT unit-length (L2 norm
-  sqrt(dim)), so the embedding wrappers' normalization is observable.
+- const128.onnx / const512.onnx / const768.onnx: map any NCHW float
+  image tensor (1x3xHxW, dynamic H and W) to a constant vector of ones
+  with the given dimension ("input" -> "output"). They stand in for the
+  face recognition (dim 128) and CLIP embedding (dim 512) models in
+  wiring tests; const768 additionally drives the heterogeneous-dimension
+  model switch test (activating a 768-dim clip model must clear and
+  re-dimension the embeddings column). The raw output is deliberately
+  NOT unit-length (L2 norm sqrt(dim)), so the embedding wrappers'
+  normalization is observable.
 
 Outputs land in tools/models/cache/fixtures/ (git-ignored). They are
 NOT committed by the generating task: a later task copies them into
@@ -88,6 +91,7 @@ def main() -> None:
         "identity.onnx": identity_graph(),
         "const128.onnx": const_graph(128),
         "const512.onnx": const_graph(512),
+        "const768.onnx": const_graph(768),
     }
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for name, model in fixtures.items():

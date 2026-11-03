@@ -76,7 +76,8 @@ ARG APT_MIRROR=""
 # carries: libvips-dev for the thumbnail pipeline, libheif-dev for the
 # HEIC decode and AVIF encode, and pkg-config to locate them (the
 # golang image already ships pkg-config; naming it keeps the line
-# correct even if the base image ever drops it).
+# correct even if the base image ever drops it). curl joins the list
+# for the onnxruntime fetch below.
 RUN if [ -n "$APT_MIRROR" ]; then \
         sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; \
     fi \
@@ -84,6 +85,7 @@ RUN if [ -n "$APT_MIRROR" ]; then \
         libvips-dev \
         libheif-dev \
         pkg-config \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -104,6 +106,35 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
         -ldflags "-s -w -X github.com/welpher/lumemor/server/internal/buildinfo.Version=${VERSION}" \
         -o /out/lumemor \
         ./cmd/lumemor
+
+# The onnxruntime shared library, fetched and verified here so the
+# runtime stage below receives exactly the bytes this build checked.
+# The version pairing is pinned: the CGO binding (yalue/onnxruntime_go,
+# pinned in server/go.mod) v1.38.0 bundles the onnxruntime 1.31.0 C API
+# headers (ORT_API_VERSION 31), so the library is the 1.31.0 release --
+# keep the two in lockstep when either is bumped. Nothing links against
+# it at build time (the binding dlopens it at run time); the fetch rides
+# the builder stage only because it already carries curl.
+#
+# ONNXRUNTIME_URL overrides the default GitHub release URL for
+# restricted networks (a mirror of the same bytes; the
+# per-architecture sha256 stays pinned either way, so anything but the
+# release bytes fails the build). The download can go through a proxy
+# via the predefined https_proxy build arg.
+ARG ONNXRUNTIME_URL=""
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+        amd64) ort_arch="x64"; ort_sha256="cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57";; \
+        arm64) ort_arch="aarch64"; ort_sha256="c5b8b3cca31f3d643a3b313b8f42e2d0f16a4fcefd02cda343d97bd5306afaab";; \
+        *) echo "unsupported architecture for libonnxruntime: ${TARGETARCH}" >&2; exit 1;; \
+    esac; \
+    ort_url="${ONNXRUNTIME_URL:-https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-linux-${ort_arch}-1.31.0.tgz}"; \
+    curl -fsSL --retry 3 -o /tmp/onnxruntime.tgz "$ort_url"; \
+    echo "${ort_sha256}  /tmp/onnxruntime.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/onnxruntime.tgz -C /tmp; \
+    mv "/tmp/onnxruntime-linux-${ort_arch}-1.31.0/lib/libonnxruntime.so.1.31.0" /out/; \
+    rm -rf /tmp/onnxruntime.tgz "/tmp/onnxruntime-linux-${ort_arch}-1.31.0"
 
 # Runtime stage: Debian slim of the same release as the builder,
 # carrying the full media toolchain the server drives:
@@ -148,6 +179,14 @@ RUN if [ -n "$APT_MIRROR" ]; then \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/lumemor /lumemor
+
+# The onnxruntime shared library from the builder stage: the exact
+# bytes the builder verified (same release version as the binding's
+# pinned headers -- see the builder stage's fetch block). The ml
+# package's library probe finds it under /usr/local/lib after
+# ldconfig.
+COPY --from=builder /out/libonnxruntime.so.1.31.0 /usr/local/lib/libonnxruntime.so.1.31.0
+RUN ldconfig
 
 # Fixed unprivileged uid/gid 10001. The fixed (not auto-allocated) id
 # is what makes the documented host-side preparation of the bind
