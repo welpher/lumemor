@@ -126,3 +126,43 @@ test('Modal opens as a dialog, and Escape and the backdrop close it', async () =
 	unmount(modal);
 	flushSync();
 });
+
+test('the focus trap keeps Tab inside the panel and pulls a strayed focus back', async () => {
+	// Real focusable buttons (a footer row), not a raw snippet.
+	const modal = mount(Modal, {
+		target: document.body,
+		props: {
+			open: true,
+			title: 'Decide',
+			footer: createRawSnippet(() => ({
+				render: () =>
+					'<footer><button type="button" id="a">One</button><button type="button" id="b">Two</button></footer>'
+			}))
+		}
+	});
+	flushSync();
+	const panel = document.body.querySelector<HTMLElement>('[role="dialog"]');
+	// Focus the last footer button: Tab wraps back into the panel's
+	// first focusable (the header's close mark precedes the footer).
+	const [, second] = [
+		...document.body.querySelectorAll<HTMLButtonElement>('[role="dialog"] footer button')
+	];
+	second.focus();
+	flushSync();
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+	await tick();
+	expect(document.activeElement).not.toBe(document.body);
+	expect(panel?.contains(document.activeElement)).toBe(true);
+
+	// The escape the trap must catch: focus fell to the body (a
+	// focused button disabled mid-action); Tab must come back INTO
+	// the panel instead of escaping behind the backdrop.
+	(document.activeElement as HTMLElement).blur();
+	expect(document.activeElement).toBe(document.body);
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+	await tick();
+	expect(panel?.contains(document.activeElement)).toBe(true);
+
+	unmount(modal);
+	flushSync();
+});

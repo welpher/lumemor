@@ -154,14 +154,20 @@
 						<span class="row__state">{stateLabel(item)}</span>
 					</div>
 					{#if item.state === 'uploading' || item.state === 'processing'}
+						<!-- The determinate bar of an uploading row carries its
+						     live percentage; the processing row's bar is
+						     indeterminate, so it names its own state and
+						     reports no value (an aria-valuenow of a settled
+						     100% would misstate an unknown-duration wait). -->
+						{@const indeterminate = item.state === 'processing'}
 						<div
 							class="row__bar"
-							class:row__bar--indeterminate={item.state === 'processing'}
+							class:row__bar--indeterminate={indeterminate}
 							role="progressbar"
-							aria-label={$_('upload_state_uploading')}
-							aria-valuemin="0"
-							aria-valuemax="100"
-							aria-valuenow={Math.round(item.progress * 100)}
+							aria-label={stateLabel(item)}
+							aria-valuemin={indeterminate ? undefined : 0}
+							aria-valuemax={indeterminate ? undefined : 100}
+							aria-valuenow={indeterminate ? undefined : Math.round(item.progress * 100)}
 						>
 							<div class="row__bar-fill" style={`width:${Math.round(item.progress * 100)}%`}></div>
 						</div>

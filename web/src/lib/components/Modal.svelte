@@ -62,6 +62,16 @@
 		const first = candidates[0];
 		const last = candidates[candidates.length - 1];
 		const active = document.activeElement;
+		const inside = panel !== undefined && active !== null && panel.contains(active);
+		if (!inside) {
+			// Focus fell outside the panel while the dialog is open (a
+			// focused button disabled mid-action blurs to the body):
+			// pull the next Tab back inside instead of letting it
+			// escape behind the backdrop.
+			event.preventDefault();
+			(event.shiftKey ? last : first)?.focus();
+			return;
+		}
 		if (event.shiftKey) {
 			if (active === first || active === panel) {
 				event.preventDefault();
