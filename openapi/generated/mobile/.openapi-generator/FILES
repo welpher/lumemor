@@ -20,6 +20,7 @@ doc/Error.md
 doc/EventsApi.md
 doc/ExifSummary.md
 doc/LoginRequest.md
+doc/ModelDownloadResponse.md
 doc/PairingConsumeRequest.md
 doc/PairingTokenResponse.md
 doc/ServerApi.md
@@ -60,6 +61,7 @@ lib/src/model/date.dart
 lib/src/model/error.dart
 lib/src/model/exif_summary.dart
 lib/src/model/login_request.dart
+lib/src/model/model_download_response.dart
 lib/src/model/pairing_consume_request.dart
 lib/src/model/pairing_token_response.dart
 lib/src/model/server_info.dart
@@ -90,6 +92,7 @@ test/error_test.dart
 test/events_api_test.dart
 test/exif_summary_test.dart
 test/login_request_test.dart
+test/model_download_response_test.dart
 test/pairing_consume_request_test.dart
 test/pairing_token_response_test.dart
 test/server_api_test.dart

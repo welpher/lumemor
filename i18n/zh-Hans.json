@@ -45,6 +45,7 @@
   "auth_forbidden": "此操作需要管理员权限。",
   "user_email_taken": "该邮箱地址已注册账号。",
   "user_not_found": "该账号不存在。",
+  "model_download_failed": "模型下载无法启动。请查看服务器日志后重试。",
   "timeline_loading": "正在加载时间线…",
   "timeline_empty": "时间线还没有照片。上传后会出现在这里。",
   "timeline_load_more": "加载更多",

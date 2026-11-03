@@ -131,6 +131,7 @@ const (
 	AUTHINVALIDCREDENTIALS ErrorCode = "AUTH_INVALID_CREDENTIALS"
 	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
 	INTERNAL               ErrorCode = "INTERNAL"
+	MODELDOWNLOADFAILED    ErrorCode = "MODEL_DOWNLOAD_FAILED"
 	PAIRINGTOKENINVALID    ErrorCode = "PAIRING_TOKEN_INVALID"
 	SETUPALREADYCOMPLETED  ErrorCode = "SETUP_ALREADY_COMPLETED"
 	USEREMAILTAKEN         ErrorCode = "USER_EMAIL_TAKEN"
@@ -154,6 +155,8 @@ func (e ErrorCode) Valid() bool {
 	case AUTHRATELIMITED:
 		return true
 	case INTERNAL:
+		return true
+	case MODELDOWNLOADFAILED:
 		return true
 	case PAIRINGTOKENINVALID:
 		return true
@@ -737,6 +740,15 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// ModelDownloadResponse The identifier of one model download run: the `job_runs` row
+// the download drives and the `job.*` events announce.
+type ModelDownloadResponse struct {
+	// JobRunId UUIDv7 identifier of the run's `job_runs` row. `202`
+	// carries the freshly created run; `200` the existing
+	// in-flight or most recent one.
+	JobRunId openapi_types.UUID `json:"jobRunId"`
+}
+
 // PairingConsumeRequest Payload of `POST /auth/pairing/consume`.
 type PairingConsumeRequest struct {
 	// DeviceId Stable client-generated identifier of the physical device,
@@ -1210,6 +1222,9 @@ type CreateAdminJSONRequestBody = CreateAdminRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// DownloadModels Start the default model group's download.
+	// (POST /admin/models/download)
+	DownloadModels(w http.ResponseWriter, r *http.Request)
 	// ListUsers List the instance's accounts.
 	// (GET /admin/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -1293,6 +1308,12 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// DownloadModels Start the default model group's download.
+// (POST /admin/models/download)
+func (_ Unimplemented) DownloadModels(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // ListUsers List the instance's accounts.
 // (GET /admin/users)
@@ -1458,6 +1479,20 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// DownloadModels operation middleware
+func (siw *ServerInterfaceWrapper) DownloadModels(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadModels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
@@ -2285,6 +2320,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/users/{id}", wrapper.UpdateUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/models/download", wrapper.DownloadModels)
 	})
 
 	return r

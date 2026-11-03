@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/jobs"
 	"github.com/welpher/lumemor/server/internal/media"
+	"github.com/welpher/lumemor/server/internal/ml"
 	"github.com/welpher/lumemor/server/internal/storage"
 	"github.com/welpher/lumemor/server/internal/trash"
 )
@@ -46,6 +48,12 @@ const (
 	// finishes; anything wedged beyond it is dropped back to the queue
 	// and retried on the next start.
 	queueStopTimeout = 110 * time.Second
+
+	// envModelsHfMirror overrides the HF domain mirror the model
+	// download rewrites huggingface.co hostnames to (restricted
+	// networks; e.g. "hf-mirror.com"). Empty or unset = direct
+	// connections.
+	envModelsHfMirror = "LUMEMOR_MODELS_HF_MIRROR"
 )
 
 func main() {
@@ -122,21 +130,35 @@ func run(logger *slog.Logger) error {
 	// in M2a) and every connected stream follows them.
 	bus := events.NewBus(eventRetention, time.Now)
 
+	// The model store: the ML models live under the instance
+	// configuration root, each model in its own directory. The registry
+	// over it is the instance's SHARED registry -- the job queue's
+	// download job registers and activates through it, and the later
+	// admin surface consumes the same instance.
+	modelsDir := filepath.Join(cfg.ConfigDir, "models")
+	if err := os.MkdirAll(modelsDir, 0o755); err != nil {
+		return fmt.Errorf("prepare the models dir: %w", err)
+	}
+	registry := ml.NewRegistry(pool, queries, modelsDir)
+
 	// The job queue starts only after the schema exists: River applies
 	// its own table migrations here (river_job and friends live outside
 	// the goose schema by design), then the workers begin consuming.
 	// Its lifecycle is owned by the explicit Stop below, not by this
 	// context -- a cancelled context would be a hard stop.
 	queue, err := jobs.Start(ctx, jobs.Config{
-		Pool:    pool,
-		Bus:     bus,
-		DataDir: cfg.DataDir,
-		Logger:  logger,
+		Pool:           pool,
+		Bus:            bus,
+		DataDir:        cfg.DataDir,
+		Logger:         logger,
+		ModelsDir:      modelsDir,
+		ModelsHfMirror: os.Getenv(envModelsHfMirror),
+		Registry:       registry,
 	})
 	if err != nil {
 		return err
 	}
-	logger.Info("job queue started")
+	logger.Info("job queue started", "models_dir", modelsDir, "models_hf_mirror", os.Getenv(envModelsHfMirror))
 
 	// The boot requeue sweep: the recovery of the pipeline assets stuck
 	// by a previous run (an enqueue insert failure, or a crash in the
@@ -190,6 +212,9 @@ func run(logger *slog.Logger) error {
 			// The upload handler enqueues the metadata job of every
 			// committed asset through the queue.
 			Jobs: queue,
+			// The download endpoint enqueues the default model group's
+			// download through the same queue.
+			ModelDownloads: queue,
 			Initialized: func(ctx context.Context) bool {
 				admins, err := queries.CountAdmins(ctx)
 				if err != nil {

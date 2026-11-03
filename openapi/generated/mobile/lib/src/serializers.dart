@@ -28,6 +28,7 @@ import 'package:lumemor_api/src/model/create_admin_request.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/exif_summary.dart';
 import 'package:lumemor_api/src/model/login_request.dart';
+import 'package:lumemor_api/src/model/model_download_response.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
 import 'package:lumemor_api/src/model/pairing_token_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
@@ -56,6 +57,7 @@ part 'serializers.g.dart';
   Error,
   ExifSummary,
   LoginRequest,
+  ModelDownloadResponse,
   PairingConsumeRequest,
   PairingTokenResponse,
   ServerInfo,

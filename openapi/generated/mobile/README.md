@@ -87,6 +87,7 @@ All URIs are relative to */api/v1*
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
+[*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
 [*AdminApi*](doc/AdminApi.md) | [**listUsers**](doc/AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
 [*AssetsApi*](doc/AssetsApi.md) | [**batchAssets**](doc/AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
@@ -130,6 +131,7 @@ Class | Method | HTTP request | Description
  - [Error](doc/Error.md)
  - [ExifSummary](doc/ExifSummary.md)
  - [LoginRequest](doc/LoginRequest.md)
+ - [ModelDownloadResponse](doc/ModelDownloadResponse.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
  - [PairingTokenResponse](doc/PairingTokenResponse.md)
  - [ServerInfo](doc/ServerInfo.md)

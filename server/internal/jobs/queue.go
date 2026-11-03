@@ -22,7 +22,9 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
+	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/ml"
 )
 
 // maxWorkers caps the worker pool. The pipeline jobs are subprocess-
@@ -47,11 +49,29 @@ type Config struct {
 	// schema, outside the goose-managed schema.
 	Pool *pgxpool.Pool
 	// Bus receives the asset.ready event when an asset's pipeline
-	// completes.
+	// completes, and the job.* events when a model download run
+	// progresses.
 	Bus *events.Bus
 	// DataDir is the photo data root: the jobs resolve the assets'
 	// relative file_path columns against it.
 	DataDir string
+	// ModelsDir is the model store root: the model download job lands
+	// each model in <ModelsDir>/<id>/ and the registry resolves
+	// models.file_path against it.
+	ModelsDir string
+	// ModelsHfMirror is the HF domain mirror host (LUMEMOR_MODELS_HF_MIRROR
+	// in production): the model download rewrites huggingface.co
+	// hostnames to it wholesale. Empty = direct connections.
+	ModelsHfMirror string
+	// Registry registers and activates downloaded models. It is the
+	// instance's SHARED registry -- the admin surface of a later task
+	// consumes the same instance -- so the caller that owns one passes
+	// it; nil builds one over the pool and ModelsDir.
+	Registry *ml.Registry
+	// ModelsManifest overrides the manifest the model download job
+	// lands. Production leaves it nil (the embedded default group,
+	// pure upstream links); tests point it at their local sources.
+	ModelsManifest *ml.Manifest
 	// Workers is the size of the worker pool. A non-positive value
 	// falls back to min(GOMAXPROCS, maxWorkers).
 	Workers int
@@ -64,6 +84,12 @@ type Config struct {
 // upload handler uses. Construct with Start; stop with Stop.
 type Queue struct {
 	client *river.Client[pgx.Tx]
+	// pool carries the model download's enqueue transaction (the
+	// job_runs row and the River job land together).
+	pool *pgxpool.Pool
+	// models is the manifest the model download job lands, pinned at
+	// Start: the enqueue computes the run's pinned byte total from it.
+	models *ml.Manifest
 }
 
 // Start applies River's own migrations (idempotent: applied versions
@@ -82,9 +108,30 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	if cfg.DataDir == "" {
 		return nil, errors.New("jobs: Config.DataDir is required")
 	}
+	if cfg.ModelsDir == "" {
+		return nil, errors.New("jobs: Config.ModelsDir is required")
+	}
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
+	}
+
+	// The shared registry: the caller's instance when it owns one, a
+	// fresh one over the pool otherwise.
+	registry := cfg.Registry
+	if registry == nil {
+		registry = ml.NewRegistry(cfg.Pool, dbgen.New(cfg.Pool), cfg.ModelsDir)
+	}
+
+	// The manifest the download job lands: the caller's override, the
+	// embedded default group otherwise.
+	models := cfg.ModelsManifest
+	if models == nil {
+		var err error
+		models, err = ml.DefaultManifest()
+		if err != nil {
+			return nil, fmt.Errorf("jobs: load the default model manifest: %w", err)
+		}
 	}
 
 	driver := riverpgxv5.New(cfg.Pool)
@@ -125,6 +172,15 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		dataDir: cfg.DataDir,
 		bus:     cfg.Bus,
 		logger:  logger,
+	})
+	river.AddWorker(workers, &ModelDownloadWorker{
+		pool:      cfg.Pool,
+		bus:       cfg.Bus,
+		registry:  registry,
+		modelsDir: cfg.ModelsDir,
+		hfMirror:  cfg.ModelsHfMirror,
+		manifest:  models,
+		logger:    logger,
 	})
 
 	workerCount := cfg.Workers
@@ -168,7 +224,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		return nil, fmt.Errorf("jobs: start river client: %w", err)
 	}
 
-	return &Queue{client: client}, nil
+	return &Queue{client: client, pool: cfg.Pool, models: models}, nil
 }
 
 // EnqueueMetadata inserts the metadata job for the asset. It must be
