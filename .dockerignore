@@ -16,4 +16,6 @@
 web/node_modules
 web/build
 web/.svelte-kit
+web/e2e/.auth
+web/test-results
 server/internal/web/dist

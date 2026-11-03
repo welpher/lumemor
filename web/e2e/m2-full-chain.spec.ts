@@ -399,12 +399,18 @@ test.describe('the signed-in scenes', () => {
 		// drained.
 		const componentPlayUrl = `/api/v1/assets/${liveVideoId}/play`;
 		await expect
-			.poll(async () => {
-				const probe = await page.request.get(componentPlayUrl, {
-					headers: { Range: 'bytes=0-0' }
-				});
-				return probe.status();
-			})
+			.poll(
+				async () => {
+					const probe = await page.request.get(componentPlayUrl, {
+						headers: { Range: 'bytes=0-0' }
+					});
+					return probe.status();
+				},
+				// The scene's other pipeline waits allow a cold runner a
+				// full minute; the transcode drain this probes is the
+				// same class of wait.
+				{ timeout: 60_000 }
+			)
 			.toBe(206);
 
 		// Pressing swaps the still for the component's video: the element
