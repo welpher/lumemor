@@ -19,6 +19,7 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
 	import { groupTimelineItems } from '$lib/timeline/grouping';
+	import { publishWallItems } from '$lib/timeline/wall.svelte';
 	import PhotoTile from '$lib/timeline/PhotoTile.svelte';
 	import MonthScrubber from '$lib/timeline/MonthScrubber.svelte';
 	import BatchBar from '$lib/timeline/BatchBar.svelte';
@@ -142,6 +143,14 @@
 	function errorText(key: string): string {
 		return resolveErrorText($_, key);
 	}
+
+	// Publish the loaded page items as the viewer's navigation
+	// sequence (see $lib/timeline/wall.svelte): the copy outlives
+	// this route, so the /a/{id} viewer walks exactly the items this
+	// wall rendered.
+	$effect(() => {
+		publishWallItems($timeline.items);
+	});
 
 	$effect(() => {
 		void timeline.loadMore();

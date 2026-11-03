@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
+import { clearWallItems, wallItems } from '$lib/timeline/wall.svelte';
 
 // The timeline wall page: first page renders grouped tiles, the
 // empty and error states carry their affordances, the infinite
@@ -131,6 +132,7 @@ beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
 	vi.clearAllMocks();
+	clearWallItems();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
 	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
@@ -468,6 +470,23 @@ test('leaving the page unsubscribes from the event stream', async () => {
 	unmount(page);
 	flushSync();
 	expect(handlers).toHaveLength(0);
+});
+
+test('the wall publishes its loaded page items as the viewer sequence', async () => {
+	// The /a/{id} viewer walks the wall's published snapshot (see
+	// $lib/timeline/wall.svelte): the page publishes while mounted,
+	// and the snapshot outlives the route so the viewer reads it
+	// after the navigation.
+	clearWallItems();
+	vi.stubGlobal('fetch', stubFetch(timelineRoutes()));
+	const page = mountPage();
+	await settle();
+	expect(wallItems().map((wallItem) => wallItem.id)).toEqual(['a1', 'a2', 'a3']);
+
+	unmount(page);
+	flushSync();
+	expect(wallItems().map((wallItem) => wallItem.id)).toEqual(['a1', 'a2', 'a3']);
+	clearWallItems();
 });
 
 test('the scrubber jumps to a month group', async () => {
