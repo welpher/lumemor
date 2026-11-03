@@ -93,6 +93,37 @@ func (q *Queries) GetJobRun(ctx context.Context, id pgtype.UUID) (JobRun, error)
 	return i, err
 }
 
+const incrementJobRunDone = `-- name: IncrementJobRunDone :exec
+UPDATE job_runs
+SET done = done + 1, updated_at = now()
+WHERE id = $1
+`
+
+// Counts one per-asset ML job's SUCCESS into its rerun run's row
+// (M3a Task 8's rerun closure): the per-asset workers report their own
+// completions through this atomic increment while the rerun driver
+// waits for the counts to converge. The increment is atomic because
+// the jobs of one run complete concurrently on the ml queue.
+func (q *Queries) IncrementJobRunDone(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, incrementJobRunDone, id)
+	return err
+}
+
+const incrementJobRunFailed = `-- name: IncrementJobRunFailed :exec
+UPDATE job_runs
+SET failed = failed + 1, updated_at = now()
+WHERE id = $1
+`
+
+// Counts one per-asset ML job's FAILURE into its rerun run's row:
+// the failure report of the per-asset jobs (one attempt each -- a
+// failed asset counts once) and the direct count of a dispatch whose
+// enqueue itself failed (the asset's work never started).
+func (q *Queries) IncrementJobRunFailed(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, incrementJobRunFailed, id)
+	return err
+}
+
 const insertJobRun = `-- name: InsertJobRun :exec
 
 INSERT INTO job_runs (id, kind, total)

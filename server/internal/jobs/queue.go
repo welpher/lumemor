@@ -27,10 +27,28 @@ import (
 	"github.com/welpher/lumemor/server/internal/ml"
 )
 
-// maxWorkers caps the worker pool. The pipeline jobs are subprocess-
-// and IO-bound, not CPU-bound, so one worker per CPU stops paying off
-// quickly and more only adds contention on the shared pool.
+// maxWorkers caps the default queue's worker pool. The pipeline jobs
+// are subprocess- and IO-bound, not CPU-bound, so one worker per CPU
+// stops paying off quickly and more only adds contention on the shared
+// pool.
 const maxWorkers = 4
+
+// MlQueue is the River queue of the per-asset ML jobs (face
+// detection, face recognition, CLIP embedding, OCR -- M3a Tasks 6-8):
+// its worker pool is deliberately SMALL, because the ML jobs are the
+// pipeline's only CPU-heavy work (onnxruntime inference over decoded
+// rasters), and the plan's discipline pins their concurrency
+// conservative so a burst of ML work never starves the media pipeline
+// or the API of worker slots. The separation is also structural for
+// the rerun driver: the driver runs on the default queue and WAITS
+// for the per-asset jobs of its run -- a driver sharing the ml
+// workers with the jobs it waits for could starve them (four
+// concurrent slot reruns holding every default worker while the ml
+// queue sits behind them).
+const MlQueue = "ml"
+
+// mlQueueWorkers is the ml queue's conservative worker count.
+const mlQueueWorkers = 2
 
 // softStopTimeout bounds a graceful drain: once it elapses, in-flight
 // job contexts are cancelled (River escalates the soft stop to a hard
@@ -38,10 +56,11 @@ const maxWorkers = 4
 // pipeline's largest job envelope -- the transcode job's 150s (whose
 // ffmpeg subprocess carries a 120s cap of its own; the thumbnail
 // job's 90s carries the poster extraction's 60s subprocess cap, the
-// metadata job's exiftool only 30s, the face detection job's CPU
-// inference 60s, and the face recognition job's envelope 120s, whose
-// library-wide clustering pass is the largest ML step) -- so a
-// healthy job always finishes within the drain.
+// metadata job's exiftool only 30s, the face detection and CLIP
+// embedding jobs' CPU inference 60s each, and the face recognition
+// and OCR jobs' envelopes 120s, the recognition's library-wide
+// clustering pass and the OCR's per-box recognition being the largest
+// ML steps) -- so a healthy job always finishes within the drain.
 const softStopTimeout = 155 * time.Second
 
 // Config carries the dependencies of the job queue.
@@ -75,11 +94,10 @@ type Config struct {
 	// pure upstream links); tests point it at their local sources.
 	ModelsManifest *ml.Manifest
 	// MlRerunDispatch runs one asset's ML work of a rerun: the seam
-	// the milestone's later tasks wire their per-asset ML workers
-	// into. Production leaves it nil in this task -- the per-asset
-	// workers do not exist yet, so a rerun of a non-empty scope fails
-	// its run honestly (see ml_rerun.go's boundary note); the rerun
-	// tests inject a fake.
+	// whose production wiring is the queue's real dispatcher (Task 8's
+	// rerun closure -- the four slots' per-asset enqueues onto the ml
+	// queue). Production leaves it nil and the queue wires its own
+	// dispatcher; the rerun tests inject fakes of the same contract.
 	MlRerunDispatch MlRerunDispatchFunc
 	// Workers is the size of the worker pool. A non-positive value
 	// falls back to min(GOMAXPROCS, maxWorkers).
@@ -197,12 +215,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		manifest:  models,
 		logger:    logger,
 	})
-	river.AddWorker(workers, &MlRerunWorker{
-		pool:     cfg.Pool,
-		bus:      cfg.Bus,
-		dispatch: cfg.MlRerunDispatch,
-		logger:   logger,
-	})
+	mlRerunWorker := &MlRerunWorker{
+		pool:   cfg.Pool,
+		bus:    cfg.Bus,
+		logger: logger,
+	}
+	river.AddWorker(workers, mlRerunWorker)
 	faceDetectWorker := &FaceDetectWorker{
 		pool:     cfg.Pool,
 		dataDir:  cfg.DataDir,
@@ -217,6 +235,18 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		bus:      cfg.Bus,
 		logger:   logger,
 	})
+	river.AddWorker(workers, &ClipEmbedWorker{
+		pool:     cfg.Pool,
+		dataDir:  cfg.DataDir,
+		registry: registry,
+		logger:   logger,
+	})
+	river.AddWorker(workers, &OcrWorker{
+		pool:     cfg.Pool,
+		dataDir:  cfg.DataDir,
+		registry: registry,
+		logger:   logger,
+	})
 
 	workerCount := cfg.Workers
 	if workerCount <= 0 {
@@ -226,6 +256,8 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	client, err := river.NewClient(driver, &river.Config{
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: workerCount},
+			// The ML jobs' own conservative pool; see MlQueue.
+			MlQueue: {MaxWorkers: mlQueueWorkers},
 		},
 		Workers:         workers,
 		Logger:          logger,
@@ -263,14 +295,21 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	// the client starts -- no worker is executing yet, so the wiring
 	// cannot race the first dispatch. Workers constructed directly
 	// (the unit tests) carry no seam and the announce step skips it.
-	// The detection worker's recognize continuation wires the same
-	// way: its completion enqueues the recognition job through the
-	// queue's own enqueue when the recognize slot is active and faces
-	// landed (the chaining restore face_detect.go documents).
+	// The detection worker's recognize continuation and the rerun
+	// driver's real dispatch wire the same way: the recognition chain
+	// fires when faces land and the recognize slot is active, and the
+	// rerun dispatch (the queue's own dispatcher, unless the config
+	// injected one) is the seam Task 8 closed -- the four slots'
+	// per-asset enqueues the rerun drivers wait on.
 	metadataWorker.mlDispatch = queue.EnqueueMlJobs
 	thumbnailWorker.mlDispatch = queue.EnqueueMlJobs
 	transcodeWorker.mlDispatch = queue.EnqueueMlJobs
 	faceDetectWorker.recognizeDispatch = queue.EnqueueFaceRecognize
+	if cfg.MlRerunDispatch != nil {
+		mlRerunWorker.dispatch = cfg.MlRerunDispatch
+	} else {
+		mlRerunWorker.dispatch = queue.dispatchMlRerun
+	}
 
 	if err := client.Start(context.WithoutCancel(ctx)); err != nil {
 		return nil, fmt.Errorf("jobs: start river client: %w", err)

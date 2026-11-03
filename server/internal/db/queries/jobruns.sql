@@ -58,6 +58,25 @@ UPDATE job_runs
 SET done = $2, updated_at = now()
 WHERE id = $1;
 
+-- name: IncrementJobRunDone :exec
+-- Counts one per-asset ML job's SUCCESS into its rerun run's row
+-- (M3a Task 8's rerun closure): the per-asset workers report their own
+-- completions through this atomic increment while the rerun driver
+-- waits for the counts to converge. The increment is atomic because
+-- the jobs of one run complete concurrently on the ml queue.
+UPDATE job_runs
+SET done = done + 1, updated_at = now()
+WHERE id = $1;
+
+-- name: IncrementJobRunFailed :exec
+-- Counts one per-asset ML job's FAILURE into its rerun run's row:
+-- the failure report of the per-asset jobs (one attempt each -- a
+-- failed asset counts once) and the direct count of a dispatch whose
+-- enqueue itself failed (the asset's work never started).
+UPDATE job_runs
+SET failed = failed + 1, updated_at = now()
+WHERE id = $1;
+
 -- name: FinishJobRun :exec
 -- Closes the run: the final state with its converged counts and the
 -- finish time.

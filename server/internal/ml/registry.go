@@ -218,7 +218,7 @@ func (r *Registry) Activate(slot Slot, id string) (ActivationReport, error) {
 	qtx := r.queries.WithTx(tx)
 
 	if Slot(row.Slot) == SlotClipEmbed && row.Dim.Valid && row.Dim.Int32 > 0 {
-		current, err := embeddingColumnDim(ctx, tx)
+		current, err := EmbeddingColumnDim(ctx, tx)
 		if err != nil {
 			return report, err
 		}
@@ -504,6 +504,44 @@ func FilesPresent(model Model) bool {
 	return true
 }
 
+// ModelFile is one file of a registered model, resolved from its
+// on-disk manifest: the pinned name, the absolute path and the pinned
+// sha256 digest.
+type ModelFile struct {
+	Name   string
+	Path   string
+	SHA256 string
+}
+
+// ModelFiles answers a registered model's pinned files in the
+// manifest's order (the primary first -- the file the models row's
+// file_path registers), with resolved paths and digests. The
+// multi-file consumers resolve their graphs this way: the OCR model's
+// directory pins the detection and recognition pair, and the OCR job
+// opens one session over each (M3a Task 8).
+func ModelFiles(model *Model) ([]ModelFile, error) {
+	dir := filepath.Dir(model.Path)
+	manifest, err := loadManifestModel(dir)
+	if err != nil {
+		return nil, err
+	}
+	if len(manifest.Files) == 0 {
+		return nil, fmt.Errorf("%w: %s lists no files", ErrInvalidModel, model.ID)
+	}
+	files := make([]ModelFile, 0, len(manifest.Files))
+	for _, file := range manifest.Files {
+		if file.Name == "" {
+			return nil, fmt.Errorf("%w: the manifest of %s lists a file with an empty name", ErrInvalidModel, model.ID)
+		}
+		files = append(files, ModelFile{
+			Name:   file.Name,
+			Path:   filepath.Join(dir, file.Name),
+			SHA256: file.SHA256,
+		})
+	}
+	return files, nil
+}
+
 // resolvePath resolves a models.file_path value: absolute paths are
 // taken as they are, anything else is relative to the models dir.
 func (r *Registry) resolvePath(filePath string) string {
@@ -513,14 +551,23 @@ func (r *Registry) resolvePath(filePath string) string {
 	return filepath.Join(r.modelsDir, filePath)
 }
 
-// embeddingColumnDim reads the clip_embeddings embedding column's
-// current dimension from the database catalog -- pgvector stores the
-// dimension in the attribute's typmod -- over the activation
-// transaction, so the switch compares against exactly what the
-// database carries, never an assumption.
-func embeddingColumnDim(ctx context.Context, tx pgx.Tx) (int, error) {
+// rowQuerier is the one method the catalog read needs; the pool, every
+// pool transaction and every explicit transaction carry it.
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// EmbeddingColumnDim reads the clip_embeddings embedding column's
+// current dimension from the database catalog (pgvector stores the
+// dimension in the attribute's typmod). Two consumers share it: the
+// activation transaction's dimension switch (the cross-dimension
+// clear-and-ALTER of the registry) and the CLIP embedding job's INSERT
+// GUARD (M3a Task 8) -- the column's current dimension is the
+// database's truth, never an assumption, so an embedding whose length
+// disagrees with it is refused before any insert.
+func EmbeddingColumnDim(ctx context.Context, db rowQuerier) (int, error) {
 	var dim int
-	err := tx.QueryRow(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT atttypmod FROM pg_attribute
 		WHERE attrelid = 'clip_embeddings'::regclass AND attname = 'embedding'`).Scan(&dim)
 	if err != nil {
