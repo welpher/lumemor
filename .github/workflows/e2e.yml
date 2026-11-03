@@ -1,9 +1,13 @@
-# Continuous integration for the end-to-end acceptance: the full M2d
+# Continuous integration for the end-to-end acceptance: the full M3a
 # chain on a real compose stack. The job installs the web toolchain
-# and Playwright's chromium, then runs scripts/acceptance_m2d.sh,
+# and Playwright's chromium, then runs scripts/acceptance_m3a.sh,
 # which builds the stack itself (the server image builds the web app
-# in its own Node stage), walks the M1/M2a/M2b/M2c acceptance
-# regressions sequentially, and drives the M2 full-chain story of the
+# in its own Node stage), walks the M1/M2a/M2b/M2c/M2d acceptance
+# regressions sequentially (the M2d chain, including the M2 web story
+# through a real browser), then the M3a acceptance's own phases: the
+# degraded no-models stack, the real-model full chain (the default
+# group downloads from the pinned upstreams -- the CI default) with
+# its database assertions, and the M3 model management story of the
 # web app through a real browser. The path filters keep this workflow
 # from running on changes that cannot affect it; the workflow also
 # runs when its own definition changes.
@@ -70,8 +74,8 @@ jobs:
       - name: Install Playwright's chromium
         run: cd web && pnpm exec playwright install --with-deps chromium
 
-      - name: Run the M2d acceptance
-        run: scripts/acceptance_m2d.sh
+      - name: Run the M3a acceptance
+        run: scripts/acceptance_m3a.sh
 
       # The suite's failure artifacts (traces, screenshots, videos of
       # the scenes) land under web/test-results/.

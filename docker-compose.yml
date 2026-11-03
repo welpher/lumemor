@@ -68,6 +68,13 @@ services:
       LUMEMOR_DATABASE_URL: "postgres://lumemor:lumemor@db:5432/lumemor?sslmode=disable"
       LUMEMOR_DATA_DIR: "/var/lib/lumemor/data"
       LUMEMOR_CONFIG_DIR: "/var/lib/lumemor/config"
+      # Optional passthrough: restricted networks point the first-boot
+      # model downloads at an HF domain mirror (a host name, optionally
+      # with a port, e.g. hf-mirror.com) -- the download service
+      # rewrites huggingface.co hostnames wholesale and leaves every
+      # other host untouched. Empty keeps the manifest's pinned
+      # upstreams.
+      LUMEMOR_MODELS_HF_MIRROR: ${LUMEMOR_MODELS_HF_MIRROR:-}
     # No app healthcheck in M1: /healthz exists, but compose-level
     # dependency gating on the server is deferred until the container
     # gains something meaningful to probe beyond liveness.
