@@ -192,9 +192,8 @@ export interface paths {
          *     - `album.created`, `album.updated`, `album.deleted`,
          *       `album.items-changed`, `album.shared`, `album.unshared`
          *     - `auth.login_failed`
-         *     - `face.cluster-updated`
-         *     - `job.progress`, `job.finished`
-         *     - `model.changed`
+         *     - `face.clustered`
+         *     - `job.started`, `job.progress`, `job.finished`
          *     - `pairing.token_created`
          *     - `session.started`, `session.revoked`
          *     - `server.settings-changed`
