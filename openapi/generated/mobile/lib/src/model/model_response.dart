@@ -13,7 +13,7 @@ import 'package:built_value/serializer.dart';
 
 part 'model_response.g.dart';
 
-/// One registered model as the admin surface returns it: the database row's identity, source, dimension and params, the on-disk manifest's license and input geometry, the activation flag, and the presence probe of the model's files. The pinned sha256 digests and the file paths are server-side business and never leave the server. 
+/// One registered model as the admin surface returns it: the database row's identity, source, dimension and params, the on-disk manifest's license, provenance notice and input geometry, the activation flag, and the presence probe of the model's files. The pinned sha256 digests and the file paths are server-side business and never leave the server. 
 ///
 /// Properties:
 /// * [id] - The model's stable slug identifier -- also the name of its directory under the models dir. 
@@ -21,6 +21,7 @@ part 'model_response.g.dart';
 /// * [version] - The upstream release tag of the model family, as the manifest declares it. 
 /// * [source_] 
 /// * [license] - The upstream license identifier, as the model's manifest declares it (empty when the manifest is unreadable -- the row still lists so the administrator can clean it up). 
+/// * [notice] - The model's provenance notice line, as the manifest declares it (null when the manifest is unreadable -- the fact is unknowable; empty when the manifest declares no notice). The admin surface displays it beside the license so the attribution stays honest. 
 /// * [dim] - The embedding dimension the model emits. Null for models that do not embed (detectors, OCR). 
 /// * [inputSize] 
 /// * [isActive] - True when the model is the active one of its slot. At most one model per slot is active. 
@@ -47,6 +48,10 @@ abstract class ModelResponse implements Built<ModelResponse, ModelResponseBuilde
   /// The upstream license identifier, as the model's manifest declares it (empty when the manifest is unreadable -- the row still lists so the administrator can clean it up). 
   @BuiltValueField(wireName: r'license')
   String get license;
+
+  /// The model's provenance notice line, as the manifest declares it (null when the manifest is unreadable -- the fact is unknowable; empty when the manifest declares no notice). The admin surface displays it beside the license so the attribution stays honest. 
+  @BuiltValueField(wireName: r'notice')
+  String? get notice;
 
   /// The embedding dimension the model emits. Null for models that do not embed (detectors, OCR). 
   @BuiltValueField(wireName: r'dim')
@@ -114,6 +119,11 @@ class _$ModelResponseSerializer implements PrimitiveSerializer<ModelResponse> {
     yield serializers.serialize(
       object.license,
       specifiedType: const FullType(String),
+    );
+    yield r'notice';
+    yield object.notice == null ? null : serializers.serialize(
+      object.notice,
+      specifiedType: const FullType.nullable(String),
     );
     yield r'dim';
     yield object.dim == null ? null : serializers.serialize(
@@ -197,6 +207,14 @@ class _$ModelResponseSerializer implements PrimitiveSerializer<ModelResponse> {
             specifiedType: const FullType(String),
           ) as String;
           result.license = valueDes;
+          break;
+        case r'notice':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(String),
+          ) as String?;
+          if (valueDes == null) continue;
+          result.notice = valueDes;
           break;
         case r'dim':
           final valueDes = serializers.deserialize(

@@ -234,11 +234,15 @@ button:disabled { opacity: 0.6; cursor: default; }
     els.done.textContent = t.done;
     els.done.hidden = false;
     els.done.focus();
-    // Land the fresh administrator back in the app: the root now
-    // serves the web app, whose session guard leads to the sign-in
-    // page. The short pause keeps the completion message readable
-    // before the navigation swaps the document.
-    setTimeout(function () { window.location.assign("/"); }, 1500);
+    // Land the fresh administrator back in the app: the login page
+    // with the model management page as the post-login target -- the
+    // v1 form of the wizard's model download step (the models page's
+    // empty state is the download CTA). The root also leads there,
+    // but the explicit target keeps the deep link from being eaten
+    // by the root-versus-timeline redirect. The short pause keeps
+    // the completion message readable before the navigation swaps
+    // the document.
+    setTimeout(function () { window.location.assign("/login?redirectTo=/admin/models"); }, 1500);
   }
 
   async function submit(event) {

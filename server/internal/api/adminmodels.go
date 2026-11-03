@@ -320,9 +320,9 @@ func (s *server) modelActivationMap(ctx context.Context) (map[string]bool, error
 }
 
 // modelResponseFrom maps one registry model and its activation flag
-// onto the API shape. dim and inputSize are null when the model
-// declares none (or its manifest is unreadable); filesPresent is the
-// presence probe, never the digest verification.
+// onto the API shape. dim, inputSize and the provenance notice are
+// null when the model declares none (or its manifest is unreadable);
+// filesPresent is the presence probe, never the digest verification.
 func modelResponseFrom(model ml.Model, isActive bool) apigen.ModelResponse {
 	response := apigen.ModelResponse{
 		Id:           model.ID,
@@ -333,6 +333,9 @@ func modelResponseFrom(model ml.Model, isActive bool) apigen.ModelResponse {
 		IsActive:     isActive,
 		FilesPresent: ml.FilesPresent(model),
 		Params:       model.Params,
+	}
+	if model.Notice != nil {
+		response.Notice = model.Notice
 	}
 	if response.Params == nil {
 		response.Params = map[string]interface{}{}

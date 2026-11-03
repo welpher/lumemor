@@ -966,10 +966,10 @@ type ModelRerunResponse struct {
 
 // ModelResponse One registered model as the admin surface returns it: the
 // database row's identity, source, dimension and params, the
-// on-disk manifest's license and input geometry, the activation
-// flag, and the presence probe of the model's files. The pinned
-// sha256 digests and the file paths are server-side business
-// and never leave the server.
+// on-disk manifest's license, provenance notice and input
+// geometry, the activation flag, and the presence probe of the
+// model's files. The pinned sha256 digests and the file paths
+// are server-side business and never leave the server.
 type ModelResponse struct {
 	// Dim The embedding dimension the model emits. Null for models
 	// that do not embed (detectors, OCR).
@@ -1003,6 +1003,13 @@ type ModelResponse struct {
 	// declares it (empty when the manifest is unreadable -- the
 	// row still lists so the administrator can clean it up).
 	License string `json:"license"`
+
+	// Notice The model's provenance notice line, as the manifest
+	// declares it (null when the manifest is unreadable -- the
+	// fact is unknowable; empty when the manifest declares no
+	// notice). The admin surface displays it beside the license
+	// so the attribution stays honest.
+	Notice *string `json:"notice"`
 
 	// Params The model's inference defaults (thresholds, normalization
 	// constants) as its manifest declares them; empty when it
