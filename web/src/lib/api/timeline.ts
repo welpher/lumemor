@@ -57,7 +57,12 @@
 // the SSE convergence's membership rule (the hidden wall keeps the
 // hidden rows, not the live ones) and the optimistic arm of the one
 // batch action that ends an item's membership (unfavorite on
-// favorites, unhide on hidden removes the tiles).
+// favorites, unhide on hidden removes the tiles). The favorites wall
+// cannot evaluate its membership from the convergence detail alone
+// (favoriteness is not part of AssetDetail), so its ended
+// memberships are STICKY: the unfavorite arm parks the ids in a
+// removal set the convergence must respect, and only a rollback (the
+// unfavorite failed) or a reset clears it.
 
 import { get, writable } from 'svelte/store';
 import { apiFetch, errorEnvelope } from '$lib/auth/api';
@@ -157,6 +162,17 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	// racing an event must not resurrect either.
 	let nextCursor: string | null = null;
 	const tombstones = new Set<string>();
+	// The favorites wall's ended memberships: the ids the unfavorite
+	// arm removed. Favoriteness is NOT evaluable from the detail the
+	// SSE convergence refetches (AssetDetail carries no isFavorite),
+	// so without this set any later non-removal event for the asset
+	// (a description edit's asset.updated, asset.ready,
+	// asset.restored) would count it as a member again and resurrect
+	// the tile. The set is sticky by design: only rollback() (the
+	// failed unfavorite puts the tile back) and reset() (a fresh
+	// wall) clear it -- a refavorite reaches this wall through a new
+	// route mount, which resets the client.
+	const removedMembers = new Set<string>();
 
 	// Convergence sequencing (the out-of-order fix): SSE event ids
 	// are server-monotonic, so each asset's convergence is OWNED by
@@ -263,6 +279,12 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 
 	/** Insert one item at its sorted position, or patch the loaded one. */
 	function upsertLiveItem(candidate: TimelineItem): void {
+		if (removedMembers.has(candidate.id)) {
+			// The favorites wall's ended membership: no re-insertion,
+			// and the tombstone survives (this is the path that
+			// clears one -- see the sticky set's comment).
+			return;
+		}
 		tombstones.delete(candidate.id);
 		const state = get(store);
 		const index = state.items.findIndex((existing) => existing.id === candidate.id);
@@ -369,9 +391,14 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		// timeline and favorites walls keep live (unhidden, untrashed)
 		// rows; the hidden wall keeps exactly the hidden ones (an
 		// unhidden row returns to the live views and leaves this
-		// one). A trashed row leaves every wall.
+		// one). A trashed row leaves every wall. The favorites wall
+		// adds one rule the detail cannot decide by itself: an id
+		// whose membership the unfavorite arm ended (the sticky set)
+		// is not a member, whatever the detail says.
 		const member =
-			!detail.isTrashed && (view === 'hidden' ? detail.isHidden : !detail.isHidden);
+			!detail.isTrashed &&
+			(view === 'hidden' ? detail.isHidden : !detail.isHidden) &&
+			!(view === 'favorites' && removedMembers.has(assetId));
 		if (!member) {
 			removeIds([assetId]);
 			return;
@@ -423,6 +450,12 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 
 	/** Restore pre-action items after a failed batch, by id. */
 	function rollback(ids: string[], snapshot: TimelineItem[]): void {
+		// A failed membership-ending action ends its stickiness too:
+		// the tile is back, and a later convergence may keep it (the
+		// unfavorite never landed, so the membership never ended).
+		for (const id of ids) {
+			removedMembers.delete(id);
+		}
 		const doomed = new Set(ids);
 		const before = snapshot.filter((timelineItem) => doomed.has(timelineItem.id));
 		store.update((state) => {
@@ -509,6 +542,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	function reset(): void {
 		nextCursor = null;
 		tombstones.clear();
+		removedMembers.clear();
 		// A reset invalidates every convergence claim: an in-flight
 		// detail fetch lands to a cleared claim and is discarded (a
 		// fresh event for the same asset starts a new, clean loop).
@@ -548,10 +582,19 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			case 'unfavorite': {
 				if (view === 'favorites' && action === 'unfavorite') {
 					// Membership removal: an unfavorited asset leaves
-					// the favorites view. No SSE event follows
-					// (favorites are per-user state and silent by
-					// contract), so the optimistic removal is the
-					// final state.
+					// the favorites view. No SSE event follows (favorites
+					// are per-user state and silent by contract), so the
+					// optimistic removal is the last word -- but NOT a
+					// final state the client can forget: any later
+					// non-removal event for the asset converges on a
+					// detail that cannot evaluate favoriteness, so the
+					// ids park in the sticky set (see removedMembers) to
+					// keep the convergence from counting them back in. A
+					// failed batch rolls the rows back and ends the
+					// stickiness; a reset drops the whole wall.
+					for (const id of ids) {
+						removedMembers.add(id);
+					}
 					removeIds(ids);
 					break;
 				}

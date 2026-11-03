@@ -5,7 +5,10 @@
 	// the login form's failure surface (one mapped error line); the
 	// toggle adopts the PATCH response as the row's fresh state and
 	// confirms before a disable, because the write signs the account
-	// out of every session at once.
+	// out of every session at once. A failed disable keeps the
+	// confirm dialog open with the mapped error (the trash page's
+	// confirm pattern); a 404 is the already-gone reading -- the
+	// listing's refetch reconciles the row and the dialog closes.
 	//
 	// THE 403 PAGE: a signed-in non-admin landing on this route sees
 	// the mapped auth_forbidden message -- the tool shell has no
@@ -137,17 +140,33 @@
 		if (user === null || busy) {
 			return;
 		}
+		// The modal stays open through the request (the trash page's
+		// confirm pattern): a failed disable recovers in place, with
+		// the mapped error inside the dialog -- closing first would
+		// park the failure under the table, away from the account it
+		// names. Success (and the already-gone 404 reconciliation)
+		// closes it below.
+		const failureKey = await toggle(user, true);
+		if (failureKey !== '') {
+			disableErrorKey = failureKey;
+			return;
+		}
 		pendingDisable = null;
-		await toggle(user, true);
 	}
 
 	async function enable(user: AdminUser): Promise<void> {
-		await toggle(user, false);
+		// The enable is a direct row action (no confirm dialog), so
+		// its mapped failure lands under the table.
+		const failureKey = await toggle(user, false);
+		if (failureKey !== '') {
+			actionErrorKey = failureKey;
+		}
 	}
 
-	async function toggle(user: AdminUser, isDisabled: boolean): Promise<void> {
+	/** Run one toggle; answer the failure's error key ('' when the write landed). */
+	async function toggle(user: AdminUser, isDisabled: boolean): Promise<string> {
 		if (busy) {
-			return;
+			return '';
 		}
 		busy = true;
 		actionErrorKey = '';
@@ -156,18 +175,20 @@
 		if (outcome.ok) {
 			// The response is the account after the write: adopt it.
 			users = users.map((entry) => (entry.id === user.id ? outcome.user : entry));
-			return;
+			return '';
 		}
 		if (outcome.errorKey === 'user_not_found') {
 			// The row is stale (the account left the instance through
-			// another session): reconcile the whole listing.
+			// another session): reconcile the whole listing. The row
+			// is already gone from the listing's answer, so this is
+			// the already-gone success path, not a failure to show.
 			retry();
-			return;
+			return '';
 		}
 		// The self-disable guard's 400 lands here too: the web client
 		// cannot know its own user id, so the server's refusal and
 		// its mapped message are the guard's visible half.
-		actionErrorKey = outcome.errorKey;
+		return outcome.errorKey;
 	}
 </script>
 

@@ -2,15 +2,19 @@
 // guard of the surface (403 for a signed-in plain user, 401 without
 // a session), the listing's shape and ordering, the transactional
 // account creation (user row and sync album together, the wizard's
-// wiring reused), the duplicate-email 409, the payload validation,
-// and the disabled toggle's pinned semantics -- next-request 401s of
-// the account's sessions, sign-in refused, session rows surviving,
-// re-enable reviving them -- plus the self-disable footgun guard.
+// wiring reused) with its atomicity pin (a sync-album failure inside
+// the transaction rolls the account row back), the duplicate-email
+// 409, the payload validation, and the disabled toggle's pinned
+// semantics -- next-request 401s of the account's sessions, sign-in
+// refused, session rows surviving, re-enable reviving them -- plus
+// the self-disable footgun guard and the PATCH's required-field
+// refusal.
 package api
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	oapitypes "github.com/oapi-codegen/runtime/types"
 
@@ -468,6 +473,50 @@ func TestCreateUser(t *testing.T) {
 	})
 }
 
+// TestCreateUserSyncAlbumFailureRollsBack pins the creation's
+// atomicity: the account row and its sync album land in ONE
+// transaction, so a failure between the two writes must roll the
+// account back -- a two-transaction regression (the user row
+// committed before EnsureSyncAlbum) leaves the row behind and fails
+// this test. The sync album's id is generated inside the handler (a
+// fresh UUIDv7, not the user id), so a pre-inserted conflicting row
+// cannot target the primary key; the injection is instead a
+// test-scoped unique constraint on albums (title): in this fresh
+// environment the wizard's own sync album is the only row, so the
+// constraint installs cleanly and the new account's EnsureSyncAlbum
+// insert (the same fixed title 'Sync') raises a unique violation
+// inside the transaction. The statement's ON CONFLICT arbiter is the
+// owner's partial index, so this constraint's violation propagates
+// as a plain error.
+func TestCreateUserSyncAlbumFailureRollsBack(t *testing.T) {
+	env := newAdminUserEnv(t)
+
+	if _, err := env.pool.Exec(context.Background(),
+		"ALTER TABLE albums ADD CONSTRAINT pin_albums_title_uq UNIQUE (title)"); err != nil {
+		t.Fatalf("inject albums title constraint: %v", err)
+	}
+
+	rec := env.postUser(t, env.cookie,
+		adminCreateUserBody(t, "rollback@example.com", testPassword, nil, nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d (the sync album insert must fail; body %q)",
+			rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+
+	// The account row was rolled back: no row with the email...
+	if _, err := env.queries.GetUserByEmail(t.Context(), "rollback@example.com"); !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("GetUserByEmail(rollback@example.com) error = %v, want no row (the user row rolled back)", err)
+	}
+	// ...and the listing count is unchanged (the admin alone).
+	users, err := env.queries.ListUsers(t.Context())
+	if err != nil {
+		t.Fatalf("ListUsers() error = %v", err)
+	}
+	if len(users) != 1 {
+		t.Errorf("accounts = %d after the rolled-back create, want 1 (the admin alone)", len(users))
+	}
+}
+
 // TestUpdateUser pins the disabled toggle: the guard, the footgun
 // refusal, the unknown id, and the middleware's observable
 // semantics of a disabled account.
@@ -531,6 +580,45 @@ func TestUpdateUser(t *testing.T) {
 		apiErr, _ := decodeError(t, rec)
 		if apiErr.Code != apigen.VALIDATIONFAILED {
 			t.Errorf("code = %q, want %q", apiErr.Code, apigen.VALIDATIONFAILED)
+		}
+	})
+
+	t.Run("RejectsMissingIsDisabled", func(t *testing.T) {
+		// The contract marks isDisabled required: the generated
+		// struct's plain bool decodes an absent field as a silent
+		// false (an enable nobody asked for), so the handler refuses
+		// the payload itself. A JSON null counts as absent -- the
+		// pointer decode reads both shapes the same way.
+		cases := []struct {
+			name string
+			body string
+		}{
+			{name: "FieldAbsent", body: `{}`},
+			{name: "FieldNull", body: `{"isDisabled":null}`},
+		}
+		for _, testCase := range cases {
+			t.Run(testCase.name, func(t *testing.T) {
+				rec := env.patchUser(t, env.cookie, graceID, testCase.body)
+				if rec.Code != http.StatusBadRequest {
+					t.Fatalf("status = %d, want %d (body %q)", rec.Code, http.StatusBadRequest, rec.Body.String())
+				}
+				apiErr, fields := decodeError(t, rec)
+				if apiErr.Code != apigen.VALIDATIONFAILED {
+					t.Errorf("code = %q, want %q", apiErr.Code, apigen.VALIDATIONFAILED)
+				}
+				if !contains(fields, "isDisabled") {
+					t.Errorf("details.fields = %v, want it to contain %q", fields, "isDisabled")
+				}
+			})
+		}
+
+		// The refusal wrote nothing: Grace stays enabled.
+		stored, err := env.queries.GetUserByEmail(t.Context(), "grace@example.com")
+		if err != nil {
+			t.Fatalf("load grace: %v", err)
+		}
+		if stored.IsDisabled {
+			t.Error("grace isDisabled = true after the refused payloads, want false")
 		}
 	})
 
