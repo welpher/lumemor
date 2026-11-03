@@ -1103,12 +1103,13 @@ export interface paths {
          *     and clean it up. `filesPresent` is a presence probe only (the
          *     on-disk manifest is readable and every file it pins exists);
          *     the sha256 verification itself is the activation's and the
-         *     session loader's business, never the listing's. `license` and
-         *     `inputSize` come from the model's on-disk manifest, `dim` and
-         *     `params` from the registered row (which the download and the
-         *     scan keep in step with that manifest); `dim` and `inputSize`
-         *     are null when the model declares none, `license` is empty when
-         *     the manifest is unreadable; `isActive` comes from the table.
+         *     session loader's business, never the listing's. `license`,
+         *     `notice` and `inputSize` come from the model's on-disk
+         *     manifest, `dim` and `params` from the registered row (which
+         *     the download and the scan keep in step with that manifest);
+         *     `dim` and `inputSize` are null when the model declares none,
+         *     `license` is empty and `notice` null when the manifest is
+         *     unreadable; `isActive` comes from the table.
          *
          *     `download` is the most recent `model_download` run of whatever
          *     state -- the run the download endpoint's idempotence would
@@ -1539,10 +1540,10 @@ export interface components {
         /**
          * @description One registered model as the admin surface returns it: the
          *     database row's identity, source, dimension and params, the
-         *     on-disk manifest's license and input geometry, the activation
-         *     flag, and the presence probe of the model's files. The pinned
-         *     sha256 digests and the file paths are server-side business
-         *     and never leave the server.
+         *     on-disk manifest's license, provenance notice and input
+         *     geometry, the activation flag, and the presence probe of the
+         *     model's files. The pinned sha256 digests and the file paths
+         *     are server-side business and never leave the server.
          */
         ModelResponse: {
             /**
@@ -1563,6 +1564,14 @@ export interface components {
              *     row still lists so the administrator can clean it up).
              */
             license: string;
+            /**
+             * @description The model's provenance notice line, as the manifest
+             *     declares it (null when the manifest is unreadable -- the
+             *     fact is unknowable; empty when the manifest declares no
+             *     notice). The admin surface displays it beside the license
+             *     so the attribution stays honest.
+             */
+            notice: string | null;
             /**
              * @description The embedding dimension the model emits. Null for models
              *     that do not embed (detectors, OCR).

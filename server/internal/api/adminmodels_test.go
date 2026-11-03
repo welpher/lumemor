@@ -53,6 +53,7 @@ type adminFixtureModel struct {
 	sha     string
 	dim     int
 	license string
+	notice  string // the manifest's provenance notice line
 }
 
 // writeAdminFixtureModel lays out one model directory under modelsDir:
@@ -77,6 +78,7 @@ func writeAdminFixtureModel(t *testing.T, modelsDir string, fm adminFixtureModel
 		Slot:      fm.slot,
 		Version:   "fixture",
 		License:   fm.license,
+		Notice:    fm.notice,
 		InputSize: ml.ManifestSize{Width: 8, Height: 8},
 		Dim:       fm.dim,
 		Params:    map[string]any{"scoreThreshold": 0.6},
@@ -95,7 +97,7 @@ func writeAdminFixtureModel(t *testing.T, modelsDir string, fm adminFixtureModel
 // clip models, one clip model of a different dimension, a face detect
 // model and a face recognize model (the faces rows reference both).
 var (
-	fixtureClipA = adminFixtureModel{id: "clip-a", slot: "clip-embed", file: "const512.onnx", sha: adminConst512SHA256, dim: 512, license: "MIT"}
+	fixtureClipA = adminFixtureModel{id: "clip-a", slot: "clip-embed", file: "const512.onnx", sha: adminConst512SHA256, dim: 512, license: "MIT", notice: "Fixture provenance notice."}
 	fixtureClipB = adminFixtureModel{id: "clip-b", slot: "clip-embed", file: "const512.onnx", sha: adminConst512SHA256, dim: 512, license: "Apache-2.0"}
 	fixtureClip7 = adminFixtureModel{id: "clip-7", slot: "clip-embed", file: "const768.onnx", sha: adminConst768SHA256, dim: 768, license: "Apache-2.0"}
 	// clip-huge carries a dimension beyond what a vector column can
@@ -451,6 +453,11 @@ func TestListModelsMapsTheRegistryRows(t *testing.T) {
 	if clipA.Params == nil || clipA.Params["scoreThreshold"] != 0.6 {
 		t.Errorf("clip-a params = %v, want the manifest's scoreThreshold 0.6", clipA.Params)
 	}
+	// The provenance notice: the manifest's notice line, null when the
+	// manifest is unreadable (the fact is unknowable).
+	if clipA.Notice == nil || *clipA.Notice != "Fixture provenance notice." {
+		t.Errorf("clip-a notice = %v, want the manifest's provenance notice", clipA.Notice)
+	}
 	// A detector carries no embedding dimension.
 	if detect.Dim != nil {
 		t.Errorf("detect-fx dim = %v, want null (detectors do not embed)", detect.Dim)
@@ -465,6 +472,21 @@ func TestListModelsMapsTheRegistryRows(t *testing.T) {
 	clipB = modelOf(t, body, "clip-b")
 	if clipB.FilesPresent {
 		t.Error("clip-b filesPresent = true after the weights went missing, want false")
+	}
+
+	// The manifest going missing takes the unknowable facts with it:
+	// notice turns null (license empty, geometry null) while the row
+	// and its database facts still list.
+	if err := os.Remove(filepath.Join(e.modelsDir, "clip-b", "manifest.json")); err != nil {
+		t.Fatalf("remove clip-b manifest: %v", err)
+	}
+	body = decodeModelList(t, e.do(t, http.MethodGet, "/api/v1/admin/models", e.cookie))
+	clipB = modelOf(t, body, "clip-b")
+	if clipB.Notice != nil {
+		t.Errorf("clip-b notice = %v, want null (the manifest is unreadable)", *clipB.Notice)
+	}
+	if clipB.License != "" {
+		t.Errorf("clip-b license = %q, want empty (the manifest is unreadable)", clipB.License)
 	}
 
 	// The download summary: the most recent model_download row.

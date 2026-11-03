@@ -35,6 +35,12 @@ void main() {
       // TODO
     });
 
+    // The model's provenance notice line, as the manifest declares it (null when the manifest is unreadable -- the fact is unknowable; empty when the manifest declares no notice). The admin surface displays it beside the license so the attribution stays honest. 
+    // String notice
+    test('to test the property `notice`', () async {
+      // TODO
+    });
+
     // The embedding dimension the model emits. Null for models that do not embed (detectors, OCR). 
     // int dim
     test('to test the property `dim`', () async {

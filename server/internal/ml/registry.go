@@ -73,10 +73,10 @@ const manifestFileName = "manifest.json"
 // Model is a registered model as the consumers see it: the database
 // row's facts (identity, slot, source, dimension, params) plus the
 // resolved path of the primary weights file and, when the on-disk
-// manifest is readable, the pinned digest, the input geometry and the
-// upstream license. It carries no activation flag on purpose:
-// activation state is a fact of the models table, and listing it is
-// the admin surface's business.
+// manifest is readable, the pinned digest, the input geometry, the
+// upstream license and the provenance notice. It carries no
+// activation flag on purpose: activation state is a fact of the
+// models table, and listing it is the admin surface's business.
 type Model struct {
 	ID      string
 	Version string
@@ -85,10 +85,14 @@ type Model struct {
 	Path    string
 	SHA256  string
 	License string
-	Width   int
-	Height  int
-	Dim     int
-	Params  map[string]any
+	// Notice is the manifest's provenance notice line, or nil when
+	// the manifest is unreadable (the fact is unknowable). The empty
+	// string is a readable manifest that declares no notice.
+	Notice *string
+	Width  int
+	Height int
+	Dim    int
+	Params map[string]any
 }
 
 // Registry resolves and activates models. The pinned interface carries
@@ -361,6 +365,8 @@ func (r *Registry) scanModelDir(ctx context.Context, modelDir, id string) (*Mode
 		Height:  manifest.InputSize.Height,
 		Params:  manifest.Params,
 	}
+	notice := manifest.Notice
+	model.Notice = &notice
 	if manifest.Dim > 0 {
 		model.Dim = manifest.Dim
 	}
@@ -406,6 +412,8 @@ func (r *Registry) modelFromRow(row *dbgen.Model, strict bool) (*Model, error) {
 	model.Width = manifest.InputSize.Width
 	model.Height = manifest.InputSize.Height
 	model.License = manifest.License
+	notice := manifest.Notice
+	model.Notice = &notice
 	for _, file := range manifest.Files {
 		if file.Name == filepath.Base(model.Path) {
 			model.SHA256 = file.SHA256
