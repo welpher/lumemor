@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { fileURLToPath } from 'node:url';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { configDefaults } from 'vitest/config';
 import { defineConfig } from 'vite';
 
 // The repository root, one level above this web/ project. The shared
@@ -26,6 +27,10 @@ export default defineConfig({
 	test: {
 		// jsdom gives the smoke test a DOM to mount components into; the
 		// SvelteKit plugin above compiles the components under test.
-		environment: 'jsdom'
+		environment: 'jsdom',
+		// The e2e specs under e2e/ match vitest's default *.spec.ts glob
+		// but belong to Playwright (its own runner, a real server, no
+		// jsdom) -- keep them out of the unit suite.
+		exclude: [...configDefaults.exclude, 'e2e/**']
 	}
 });

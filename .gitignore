@@ -21,6 +21,10 @@ dist/
 web/build/
 web/node_modules/
 server/internal/web/dist/
+# Playwright e2e artifacts: the story's saved session state and the
+# failure outputs (traces, screenshots, videos).
+web/e2e/.auth/
+web/test-results/
 
 # Flutter / Dart
 mobile/.dart_tool/

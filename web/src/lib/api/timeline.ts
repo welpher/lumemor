@@ -162,6 +162,16 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	// racing an event must not resurrect either.
 	let nextCursor: string | null = null;
 	const tombstones = new Set<string>();
+	// The ids this wall has evidence for inside the loaded range: the
+	// page responses delivered them, or a convergence placed them in
+	// items. A removal event evicts a tile but ends no membership:
+	// when a later event re-converges a KNOWN id as a member, it
+	// re-enters even below the loaded tail -- the next page's cursor
+	// sits below the evicted position, so pagination will never
+	// deliver it again, and the window rule's "unloaded page's
+	// territory" premise is false for it. The set is cleared by
+	// reset() with the rest of the client's memory.
+	const knownIds = new Set<string>();
 	// The favorites wall's ended memberships: the ids the unfavorite
 	// arm removed. Favoriteness is NOT evaluable from the detail the
 	// SSE convergence refetches (AssetDetail carries no isFavorite),
@@ -291,6 +301,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		if (index !== -1) {
 			const items = [...state.items];
 			items[index] = candidate;
+			knownIds.add(candidate.id);
 			store.update((current) => ({ ...current, items }));
 			return;
 		}
@@ -298,13 +309,18 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			// An empty and settled timeline receives its first item; an
 			// idle or still-loading one skips (the in-flight page owns it).
 			if (state.status === 'ready' && !state.hasMore) {
+				knownIds.add(candidate.id);
 				store.update((current) => ({ ...current, items: [candidate] }));
 			}
 			return;
 		}
 		const oldest = state.items[state.items.length - 1];
-		if (oldest !== undefined && newerFirst(candidate, oldest) > 0) {
-			// Older than the loaded prefix: an unloaded page's territory.
+		if (oldest !== undefined && newerFirst(candidate, oldest) > 0 && !knownIds.has(candidate.id)) {
+			// Older than the loaded prefix AND no evidence places it
+			// inside the loaded range: an unloaded page's territory. A
+			// known id is exempt (see knownIds) -- a page response or a
+			// convergence placed it there, and nothing but this upsert
+			// will bring it back.
 			return;
 		}
 		const items = [...state.items];
@@ -314,6 +330,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		} else {
 			items.splice(insertAt, 0, candidate);
 		}
+		knownIds.add(candidate.id);
 		store.update((current) => ({ ...current, items }));
 	}
 
@@ -530,6 +547,16 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		const appended = page.items.filter(
 			(timelineItem) => !loaded.has(timelineItem.id) && !tombstones.has(timelineItem.id)
 		);
+		// Every id the response delivered becomes known: the wall
+		// rendered it, or an event racing the response filtered it from
+		// the render while the response still placed it inside the
+		// loaded range (a response fresher than the event -- the
+		// server had already restored the asset). Either way the
+		// window rule's "unloaded page's territory" premise is false
+		// for the id, so a later member convergence re-enters it.
+		for (const delivered of page.items) {
+			knownIds.add(delivered.id);
+		}
 		nextCursor = page.nextCursor;
 		store.set({
 			items: [...state.items, ...appended],
@@ -542,6 +569,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	function reset(): void {
 		nextCursor = null;
 		tombstones.clear();
+		knownIds.clear();
 		removedMembers.clear();
 		// A reset invalidates every convergence claim: an in-flight
 		// detail fetch lands to a cleared claim and is discarded (a
