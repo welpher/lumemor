@@ -2,7 +2,9 @@
 	// The information drawer of the asset viewer: the owner-level
 	// editing surfaces of one asset -- the description editor (the
 	// PATCH endpoint; the drawer keeps the draft on failure so a
-	// retry never retypes anything), the curation action bar
+	// retry never retypes anything, and through the same-id detail
+	// replacements of the optimistic curation flips and the SSE
+	// convergence), the curation action bar
 	// (favorite / hide / trash, the batch endpoint, optimistic on
 	// the page's local state), and the permanent delete's confirm
 	// dialog trigger -- plus the read-only panels: the file facts,
@@ -48,10 +50,24 @@
 	let saving = $state(false);
 	let editErrorKey = $state('');
 
-	// Leaving the asset (arrow navigation) drops the edit mode: the
-	// draft belonged to the previous asset's description.
+	// The asset id the current edit state belongs to. The page
+	// replaces the detail REFERENCE for the SAME asset (the
+	// optimistic curation flip, the SSE convergence refetch, the
+	// PATCH adoption), and only an actual asset change -- the
+	// navigation to a neighbor -- drops the edit mode: the id VALUE
+	// decides, never the object identity. resetFor is deliberately a
+	// plain (non-reactive) let -- the reset must not observe its own
+	// writes.
+	let resetFor = '';
+
 	$effect(() => {
-		void detail.id;
+		const id = detail.id;
+		if (id === resetFor) {
+			// The same asset behind a new object: an in-progress
+			// draft survives the replacement.
+			return;
+		}
+		resetFor = id;
 		editing = false;
 		editErrorKey = '';
 	});

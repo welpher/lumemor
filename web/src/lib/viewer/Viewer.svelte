@@ -99,6 +99,8 @@
 	let livePlayable = $state(false);
 	let viewLoaded = $state(false);
 	let fullLoaded = $state(false);
+	/** The poster frame dropped after its request failed (the placeholder carries the stage). */
+	let posterFailed = $state(false);
 	let canvas: HTMLCanvasElement | undefined = $state();
 	let filmstrip: HTMLElement | undefined = $state();
 
@@ -121,6 +123,7 @@
 		livePlayable = false;
 		viewLoaded = false;
 		fullLoaded = false;
+		posterFailed = false;
 		deleteErrorKey = '';
 	});
 
@@ -327,14 +330,27 @@
 						poster={assetThumbnailUrl(detail.id, 'view')}
 					></video>
 				{:else}
-					<!-- The transcoded stream is not there yet: the poster
-					     frame carries the stage until the asset's own
-					     ready event lands the refetch and the re-probe. -->
-					<img
-						class="viewer__poster"
-						src={assetThumbnailUrl(detail.id, 'view')}
-						alt={detail.originalFilename}
-					/>
+					<!-- The transcoded stream is not there yet: the
+					     placeholder layer carries the stage behind the
+					     poster frame until the asset's own ready event
+					     lands the refetch and the re-probe. Before the
+					     thumbnail job runs the poster request answers
+					     ASSET_NOT_READY; the error drops the poster so
+					     the placeholder (never a broken image) holds the
+					     stage (the image branch's pattern). -->
+					{#if detail.blurhash !== null}
+						<canvas class="viewer__placeholder" width="32" height="32" bind:this={canvas} aria-hidden="true"></canvas>
+					{:else}
+						<div class="viewer__placeholder viewer__placeholder--empty" aria-hidden="true"></div>
+					{/if}
+					{#if !posterFailed}
+						<img
+							class="viewer__poster"
+							src={assetThumbnailUrl(detail.id, 'view')}
+							alt={detail.originalFilename}
+							onerror={() => (posterFailed = true)}
+						/>
+					{/if}
 					<p class="viewer__processing" role="status">{$_('viewer_processing')}</p>
 				{/if}
 			{:else}
@@ -412,12 +428,18 @@
 								aria-current={entry.id === detail?.id ? 'true' : undefined}
 								onclick={() => onnavigate(entry.id)}
 							>
-								<img
-									src={assetThumbnailUrl(entry.id, 'tile')}
-									alt=""
-									loading="lazy"
-									draggable="false"
-								/>
+								<!-- The tile's pinned gate: a thumbnail
+								     request only fires once the entry is ready
+								     (the wall snapshot's flag, with the page's
+								     session overlay of the SSE ready events). -->
+								{#if entry.isReady}
+									<img
+										src={assetThumbnailUrl(entry.id, 'tile')}
+										alt=""
+										loading="lazy"
+										draggable="false"
+									/>
+								{/if}
 							</button>
 						</li>
 					{/each}
@@ -610,7 +632,8 @@
 	}
 
 	.viewer__stage--zoomed .viewer__image,
-	.viewer__stage--zoomed .viewer__placeholder {
+	.viewer__stage--zoomed .viewer__placeholder,
+	.viewer__stage--zoomed .viewer__live {
 		transform: scale(2);
 	}
 

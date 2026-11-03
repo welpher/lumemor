@@ -16,15 +16,29 @@ import Page from './+page.svelte';
 // Escape. $app/state and $app/navigation are mocked because the
 // real router needs a running SvelteKit app; the events module is
 // mocked with a captured handler registry (the timeline page's
-// pattern).
+// pattern). The navigation mock captures afterNavigate callbacks
+// and delivers the MOUNTING navigation's type per test ('link' for
+// a wall click by default, 'enter' for a fresh-document deep link);
+// later completed navigations fire through the captured callbacks.
 
-const { pageState, handlers } = vi.hoisted(() => ({
+const { pageState, handlers, navigationState, navigationCallbacks } = vi.hoisted(() => ({
 	pageState: { params: { id: 'a1' } as { id: string } },
-	handlers: [] as Array<(event: unknown) => void>
+	handlers: [] as Array<(event: unknown) => void>,
+	navigationState: { mountType: 'link' as 'link' | 'enter' },
+	navigationCallbacks: [] as Array<(navigation: { type: string }) => void>
 }));
 
 vi.mock('$app/state', () => ({ page: pageState }));
-vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({
+	goto: vi.fn(),
+	afterNavigate: (callback: (navigation: { type: string }) => void) => {
+		// SvelteKit delivers the navigation that mounted the route to
+		// the freshly registered callback (the route mounts, then the
+		// navigation completes); tests pick the mounting type.
+		navigationCallbacks.push(callback);
+		callback({ type: navigationState.mountType });
+	}
+}));
 vi.mock('$lib/events', () => ({
 	subscribeAssetEvents: (listener: (event: unknown) => void) => {
 		handlers.push(listener);
@@ -189,6 +203,14 @@ function click(control: HTMLElement): void {
 	flushSync();
 }
 
+/** Fire one completed navigation to the mounted route (the router's afterNavigate delivery). */
+function navigate(type: string): void {
+	for (const callback of [...navigationCallbacks]) {
+		callback({ type });
+	}
+	flushSync();
+}
+
 /** Open the info drawer through the top-bar toggle. */
 function openDrawer(): void {
 	click(element('[aria-label="Photo information"]'));
@@ -215,6 +237,8 @@ function requestOf(fetchMock: ReturnType<typeof vi.fn>, method: string, url: str
 beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
+	navigationState.mountType = 'link';
+	navigationCallbacks.length = 0;
 	vi.clearAllMocks();
 	clearWallItems();
 	// Boot the session store unauthenticated (the interceptor stays
@@ -720,6 +744,242 @@ test('SSE events of other assets are ignored (the wall converges on remount)', a
 	// No refetch of the open asset, no navigation.
 	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2')).toHaveLength(1);
 	expect(goto).not.toHaveBeenCalled();
+	unmount(app);
+	flushSync();
+});
+
+test('leaving the viewer unsubscribes from the event stream', async () => {
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+	expect(handlers).toHaveLength(1);
+
+	unmount(app);
+	flushSync();
+	expect(handlers).toHaveLength(0);
+});
+
+test('a not-ready video carries the stage on the placeholder when the poster request fails', async () => {
+	const { app } = mountViewer('v1', [
+		get('/api/v1/assets/v1', () => jsonResponse(200, detailBodyOf(videoSource, { isReady: false }))),
+		get('/api/v1/assets/v1/play', () => jsonResponse(404, { code: 'ASSET_NOT_READY' }))
+	]);
+	await settle();
+
+	// The placeholder layer renders behind the poster frame (the
+	// image branch's pattern), so a failed request never leaves a
+	// broken image alone on the stage.
+	const poster = element('img.viewer__poster');
+	expect(poster.getAttribute('src')).toBe('/api/v1/assets/v1/thumbnail?size=view');
+	expect(document.body.querySelector('.viewer__placeholder--empty')).not.toBeNull();
+
+	// The thumbnail job has not run: the request answers
+	// ASSET_NOT_READY and the error drops the poster img; the
+	// skeleton placeholder carries the stage with the note.
+	poster.dispatchEvent(new Event('error'));
+	flushSync();
+	expect(document.body.querySelector('img.viewer__poster')).toBeNull();
+	expect(document.body.querySelector('.viewer__placeholder--empty')).not.toBeNull();
+	expect(element('.viewer__processing').getAttribute('role')).toBe('status');
+	unmount(app);
+	flushSync();
+});
+
+test('filmstrip thumbnails only fire for ready entries; the session ready event recovers one', async () => {
+	// The wall snapshot lands with a3 still processing (the snapshot
+	// is frozen while the viewer has the wall unmounted).
+	publishWallItems([
+		sequence[0]!,
+		sequence[1]!,
+		item('a3', '2026-10-13T12:30:00Z', { isReady: false })
+	]);
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+
+	// No thumbnail request for the not-ready entry; the ready ones
+	// fire (the tile's pinned gate).
+	expect(document.body.querySelector('[data-filmstrip-id="a3"] img')).toBeNull();
+	expect(document.body.querySelector('[data-filmstrip-id="a1"] img')?.getAttribute('src')).toBe(
+		'/api/v1/assets/a1/thumbnail?size=tile'
+	);
+	expect(document.body.querySelector('[data-filmstrip-id="a2"] img')?.getAttribute('src')).toBe(
+		'/api/v1/assets/a2/thumbnail?size=tile'
+	);
+
+	// The session's ready event overlays the frozen snapshot: the
+	// tile's request fires without leaving the viewer (and the other
+	// assets' events still never refetch the open one).
+	handlers[0]?.({ id: 13, name: 'asset.ready', assetId: 'a3', kind: 'image' });
+	await settle();
+	const recovered = document.body.querySelector<HTMLImageElement>('[data-filmstrip-id="a3"] img');
+	expect(recovered?.getAttribute('src')).toBe('/api/v1/assets/a3/thumbnail?size=tile');
+	unmount(app);
+	flushSync();
+});
+
+test('an in-progress description draft survives same-id detail replacements', async () => {
+	// The batch hangs until the test releases it, so the optimistic
+	// window is observable.
+	let release: ((response: Response) => void) | undefined;
+	const batchAnswer = new Promise<Response>((resolve) => {
+		release = resolve;
+	});
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
+		post('/api/v1/assets/batch', () => batchAnswer)
+	]);
+	await settle();
+
+	openDrawer();
+	click(buttonByText('Edit'));
+	fillTextarea('textarea.info__editor', 'My work in progress.');
+
+	// The optimistic hide flip replaces the detail object (same id):
+	// the flip is observable (the hidden banner) and the draft and
+	// the edit mode survive the replacement.
+	click(buttonByText('Hide'));
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	expect(element('.info').textContent).toContain('This photo is hidden from the timeline.');
+	expect(document.body.querySelector<HTMLTextAreaElement>('textarea.info__editor')?.value).toBe(
+		'My work in progress.'
+	);
+
+	// The SSE convergence refetch replaces it again (same id): the
+	// draft survives that replacement too.
+	handlers[0]?.({ id: 14, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+	await settle();
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2')).toHaveLength(2);
+	expect(document.body.querySelector<HTMLTextAreaElement>('textarea.info__editor')?.value).toBe(
+		'My work in progress.'
+	);
+
+	release?.(jsonResponse(200, { affected: 1, missing: [] }));
+	await settle();
+	unmount(app);
+	flushSync();
+
+	// An actual asset change (the drawer-open navigation to the
+	// neighbor) resets the edit mode: the neighbor's drawer opens in
+	// the read view and the draft never leaks across assets.
+	const neighbor = mountViewer('a1', [
+		get('/api/v1/assets/a1', () =>
+			jsonResponse(200, detailBodyOf(sequence[0]!, { description: 'The neighbor caption.' }))
+		)
+	]);
+	await settle();
+	openDrawer();
+	expect(document.body.querySelector('textarea.info__editor')).toBeNull();
+	expect(element('.info__description').textContent).toBe('The neighbor caption.');
+	unmount(neighbor.app);
+	flushSync();
+});
+
+test('concurrent convergence refetches apply newest-wins: a stale response never lands', async () => {
+	const pending: Array<(response: Response) => void> = [];
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => new Promise<Response>((resolve) => pending.push(resolve)))
+	]);
+	await settle();
+
+	// The initial load lands first.
+	pending[0]?.(jsonResponse(200, detailBodyOf(sequence[1]!)));
+	await settle();
+
+	// Two events in quick succession fire two concurrent refetches.
+	handlers[0]?.({ id: 20, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+	handlers[0]?.({ id: 21, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	expect(pending).toHaveLength(3);
+
+	// The newer trigger's response lands first and applies...
+	pending[2]?.(jsonResponse(200, detailBodyOf(sequence[1]!, { description: 'The newer state.' })));
+	await settle();
+	openDrawer();
+	expect(element('.info__description').textContent).toBe('The newer state.');
+
+	// ...then the slower stale one resolves: it must not overwrite
+	// the newer state.
+	pending[1]?.(jsonResponse(200, detailBodyOf(sequence[1]!, { description: 'The stale state.' })));
+	await settle();
+	expect(element('.info__description').textContent).toBe('The newer state.');
+	unmount(app);
+	flushSync();
+});
+
+test('a successful convergence refetch recovers a failed initial load', async () => {
+	let failing = true;
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () =>
+			failing ? jsonResponse(500, { code: 'PROXY_TEAPOT' }) : jsonResponse(200, detailBodyOf(sequence[1]!))
+		)
+	]);
+	await settle();
+	// The initial load failed: the error branch renders.
+	expect(element('.viewer__failure').getAttribute('role')).toBe('alert');
+
+	// The open asset's ready event lands the convergence refetch:
+	// the success flips the route out of the error branch and the
+	// stage renders.
+	failing = false;
+	handlers[0]?.({ id: 22, name: 'asset.ready', assetId: 'a2', kind: 'image' });
+	await settle();
+	expect(document.body.querySelector('.viewer__failure')).toBeNull();
+	expect(element('img.viewer__image').getAttribute('src')).toBe('/api/v1/assets/a2/thumbnail?size=view');
+	unmount(app);
+	flushSync();
+});
+
+test('Esc falls back to the timeline when no in-app history sits behind a deep link', async () => {
+	const back = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+	// A fresh-document deep link: the mounting navigation is 'enter'.
+	navigationState.mountType = 'enter';
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+
+	// A replaceState walk (the arrows / the filmstrip) adds no
+	// history entry: the deep link still has nothing of the app
+	// behind it, so back would exit the site.
+	navigate('goto');
+	pressKey('Escape');
+	expect(goto).toHaveBeenCalledWith('/timeline');
+	expect(back).not.toHaveBeenCalled();
+	unmount(app);
+	flushSync();
+	vi.mocked(goto).mockClear();
+
+	// From the wall (a link push) the in-app history exists, and a
+	// replaceState walk does not consume it: Esc stays history.back.
+	navigationState.mountType = 'link';
+	const wall = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+	navigate('goto');
+	pressKey('Escape');
+	expect(back).toHaveBeenCalledTimes(1);
+	expect(goto).not.toHaveBeenCalledWith('/timeline');
+	unmount(wall.app);
+	flushSync();
+});
+
+test('a zoomed Live Photo press keeps the motion layer inside the zoomed stage', async () => {
+	const liveDetail = () => jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', liveDetail),
+		get('/api/v1/assets/c2/play', () => rangeResponse())
+	]);
+	await settle();
+
+	// Zoom in, then press the Live Photo: the motion layer mounts as
+	// a child of the zoomed stage (the transform selector's DOM
+	// contract -- .viewer__stage--zoomed .viewer__live -- so the
+	// motion scales with the still, never pops unscaled).
+	click(element('[aria-label="Zoom in"]'));
+	click(element('.viewer__press'));
+	await settle();
+
+	const stage = element('.viewer__stage');
+	expect(stage.classList.contains('viewer__stage--zoomed')).toBe(true);
+	const live = document.body.querySelector<HTMLVideoElement>('video.viewer__live');
+	expect(live).not.toBeNull();
+	expect(stage.contains(live!)).toBe(true);
 	unmount(app);
 	flushSync();
 });
