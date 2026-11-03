@@ -1,8 +1,9 @@
 <script lang="ts">
 	// The admin section's sidebar: the IA's five management sections
-	// with Users live (this milestone) and the other four visible
-	// but disabled until their domains arrive -- the same
-	// placeholder discipline as the content shell's drawer.
+	// with Users, Models and the Jobs task panel live (this milestone
+	// delivers the last two), and the remaining two visible but
+	// disabled until their domains arrive -- the same placeholder
+	// discipline as the content shell's drawer.
 	import { _ } from 'svelte-i18n';
 	import { page } from '$app/state';
 	import type { LayoutProps } from './$types';
@@ -19,8 +20,8 @@
 	const items: readonly AdminNavItem[] = [
 		{ labelKey: 'admin_nav_users', href: '/admin/users', disabled: false },
 		{ labelKey: 'admin_nav_settings', href: '/admin/settings', disabled: true },
-		{ labelKey: 'admin_nav_models', href: '/admin/models', disabled: true },
-		{ labelKey: 'admin_nav_jobs', href: '/admin/jobs', disabled: true },
+		{ labelKey: 'admin_nav_models', href: '/admin/models', disabled: false },
+		{ labelKey: 'admin_nav_jobs', href: '/admin/jobs', disabled: false },
 		{ labelKey: 'admin_nav_backup', href: '/admin/backup', disabled: true }
 	];
 </script>

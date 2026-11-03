@@ -128,6 +128,18 @@ TEST_ENV ?=
 # Like GOPROXY, it is passed in at build time; the committed image
 # carries no mirror configuration.
 APT_MIRROR ?=
+# Optional override of the onnxruntime release URL the dev image build
+# fetches the pinned shared library from (restricted networks can
+# point it at a mirror of the same bytes). The per-architecture sha256
+# stays pinned in the Dockerfile either way, so anything but the
+# release bytes fails the build. Empty keeps the GitHub release URL.
+ONNXRUNTIME_URL ?=
+# Optional proxy for that download, passed as the predefined
+# https_proxy build arg. The value must be reachable from the build
+# container -- on a desktop runtime that is
+# http://host.docker.internal:7890, not 127.0.0.1. Empty keeps direct
+# downloads.
+ONNXRUNTIME_PROXY ?=
 
 # The containerized test gate: builds the dev image and runs the full
 # Go test suite inside it with the repository bind-mounted at /src.
@@ -140,6 +152,8 @@ docker-test: web-build
 	docker build -f docker/dev.Dockerfile \
 		--build-arg APT_MIRROR=$(APT_MIRROR) \
 		--build-arg GOPROXY=$(shell go env GOPROXY) \
+		--build-arg ONNXRUNTIME_URL=$(ONNXRUNTIME_URL) \
+		--build-arg https_proxy=$(ONNXRUNTIME_PROXY) \
 		-t $(DEV_IMAGE) .
 	docker run --rm \
 		-v $(CURDIR):/src \
@@ -165,6 +179,8 @@ docker-lint: web-build
 	docker build -f docker/dev.Dockerfile \
 		--build-arg APT_MIRROR=$(APT_MIRROR) \
 		--build-arg GOPROXY=$(shell go env GOPROXY) \
+		--build-arg ONNXRUNTIME_URL=$(ONNXRUNTIME_URL) \
+		--build-arg https_proxy=$(ONNXRUNTIME_PROXY) \
 		-t $(DEV_IMAGE) .
 	docker run --rm \
 		-v $(CURDIR):/src \

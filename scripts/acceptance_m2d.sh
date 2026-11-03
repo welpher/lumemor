@@ -116,7 +116,11 @@ done
 echo "    server healthy after $(elapsed)s"
 
 echo "==> running the Playwright suite (web/e2e, the M2 full-chain story)"
-if ! (cd web && pnpm e2e); then
+# The spec file is named: the suite grew a second spec with the M3a
+# milestone (m3-models.spec.ts), which runs against the M3a
+# acceptance's own stack -- the m2d chain pins its story here so both
+# suites stay deterministic against the stacks built for them.
+if ! (cd web && pnpm e2e e2e/m2-full-chain.spec.ts); then
     echo "==> server logs at the time of the failure:"
     docker compose logs --no-color --tail 200 lumemor || true
     fail "the Playwright suite failed (see the report above; artifacts under web/test-results/)"

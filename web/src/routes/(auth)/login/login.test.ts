@@ -278,6 +278,31 @@ test('a successful sign-in navigates to the redirectTo target', async () => {
 	flushSync();
 });
 
+test('the wizard handoff sign-in lands on the model download step', async () => {
+	// The first-run wizard completes the administrator and hands the
+	// browser to this page with the model management page as the
+	// post-login target (the v1 form of the wizard's model download
+	// step: the models page's empty state is the download CTA). The
+	// round-trip is the login page's own redirectTo mechanism.
+	const page = mountLogin({ setupRequired: false, redirectTo: '/admin/models' });
+	flushSync();
+
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, { id: 's1', kind: 'WEB', createdAt: 'x', lastSeenAt: 'x' }))
+	);
+	fillField('#login-email', 'ada@example.test');
+	fillField('#login-password', 'correct horse');
+	submitForm();
+	await settle();
+
+	expect(goto).toHaveBeenCalledTimes(1);
+	expect(goto).toHaveBeenCalledWith('/admin/models');
+	unmount(page);
+	flushSync();
+});
+
+
 test('a deep-link default target is /timeline', async () => {
 	const page = mountLogin();
 	flushSync();

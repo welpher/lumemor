@@ -44,3 +44,4 @@ data/
 # Bind-mount target created by docker compose up (see docker-compose.yml).
 /lumemor/
 *.log
+tools/models/cache/
