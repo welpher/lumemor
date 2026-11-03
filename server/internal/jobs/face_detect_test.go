@@ -631,14 +631,13 @@ func TestEnqueueMlJobsMatrix(t *testing.T) {
 	}
 }
 
-// TestEnqueueMlJobsUnwiredSlots pins the seam's honest boundary: the
-// clip-embed and ocr slots are GATED (their active models are visible
-// to the seam) but dispatch NOTHING in this task -- Task 8 wires their
-// workers. Until then an active clip or OCR model changes nothing at
-// readiness, and that is exactly what this test pins: when Task 8
-// lands the wiring, this test's expected counts flip and the test is
-// the wiring's first failure (the deliberate tripwire).
-func TestEnqueueMlJobsUnwiredSlots(t *testing.T) {
+// TestEnqueueMlJobsWiredSlots pins the seam's closed matrix: the
+// clip-embed and ocr arms are WIRED (Task 8 -- this test is the Task 6
+// tripwire flipped green: its former self asserted zero dispatches
+// while the arms waited for this task's workers). With their slots
+// active, an image asset gains exactly one clip_embed and one ocr job;
+// the face-detect arm stays silent with its own slot unfilled.
+func TestEnqueueMlJobsWiredSlots(t *testing.T) {
 	e := newEnv(t)
 	e.activateFixtureModel(t, fixtureModelSpec{
 		id:        "clip-fixture",
@@ -661,10 +660,14 @@ func TestEnqueueMlJobsUnwiredSlots(t *testing.T) {
 	takenAt := time.Date(2020, 3, 1, 12, 0, 0, 0, time.UTC).Truncate(time.Microsecond)
 	id := e.insertAsset(t, "originals/face/portrait.jpg", portraitFixture(t, "face-portrait.jpg"), takenAt, `{}`)
 	if err := e.queue.EnqueueMlJobs(context.Background(), id, dbgen.MediaKindImage); err != nil {
-		t.Fatalf("EnqueueMlJobs error = %v, want nil (unwired slots are silent)", err)
+		t.Fatalf("EnqueueMlJobs error = %v, want nil", err)
 	}
-	if total := e.riverJobTotal(t, id); total != 0 {
-		t.Errorf("river jobs = %d, want 0 (clip and ocr dispatch nothing until Task 8 wires them)", total)
+	kinds := e.riverJobsOf(t, id)
+	if kinds["clip_embed"] != 1 || kinds["ocr"] != 1 {
+		t.Errorf("river jobs = %v, want exactly one clip_embed and one ocr job (the wired arms)", kinds)
+	}
+	if got := e.riverJobTotal(t, id); got != 2 {
+		t.Errorf("river jobs = %d, want 2 (the face-detect slot is unfilled and dispatches nothing)", got)
 	}
 }
 

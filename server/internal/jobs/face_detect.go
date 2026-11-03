@@ -66,9 +66,12 @@ const faceDetectTimeout = 60 * time.Second
 // full-resolution raster ever crossing the libvips boundary.
 const detectWorkingLongEdge = 1280
 
-// FaceDetectArgs identifies the asset whose faces the job detects.
+// FaceDetectArgs identifies the asset whose faces the job detects,
+// and -- when the rerun driver dispatched it -- the run the completion
+// reports into (uuid.Nil for a seam-dispatched or chained job).
 type FaceDetectArgs struct {
-	AssetID uuid.UUID `json:"assetId"`
+	AssetID  uuid.UUID `json:"assetId"`
+	JobRunID uuid.UUID `json:"jobRunId"`
 }
 
 // Kind is River's stable job kind identifier.
@@ -99,10 +102,24 @@ func (w *FaceDetectWorker) Timeout(job *river.Job[FaceDetectArgs]) time.Duration
 	return faceDetectTimeout
 }
 
-// Work executes one face detection job. The decode and the inference
-// run before the database transaction opens: no connection is held
-// while pixels are processed.
+// Work executes one face detection job and, when the rerun driver
+// dispatched it, reports the outcome into its run's row -- the rerun
+// completion counting (see ml_rerun.go). The report runs detached
+// from the job context so it lands even when the envelope consumed
+// the context's last moments.
 func (w *FaceDetectWorker) Work(ctx context.Context, job *river.Job[FaceDetectArgs]) error {
+	err := w.work(ctx, job)
+	if runID := job.Args.JobRunID; runID != uuid.Nil {
+		reportMlRunCompletion(ctx, w.pool, w.logger, runID, err != nil)
+	}
+	return err
+}
+
+// work is the job's core: the gates, the inference, and the
+// transactional replace. The decode and the inference run before the
+// database transaction opens: no connection is held while pixels are
+// processed.
+func (w *FaceDetectWorker) work(ctx context.Context, job *river.Job[FaceDetectArgs]) error {
 	assetID := job.Args.AssetID
 
 	row, err := dbgen.New(w.pool).GetAssetForMetadata(ctx, pgUUID(assetID))
@@ -294,16 +311,15 @@ func announceAssetReady(ctx context.Context, bus *events.Bus, logger *slog.Logge
 // asset's pending-jobs counter empties. Only image assets enter --
 // video ML belongs to a later milestone. Within the image family the
 // slot-activation matrix decides: a slot with an active model
-// dispatches its per-asset job, an unfilled slot is a silent no-op --
-// the degraded mode that keeps uploads flowing and the admin surface
-// honest about the empty state.
+// dispatches its per-asset job onto the ml queue, an unfilled slot is
+// a silent no-op -- the degraded mode that keeps uploads flowing and
+// the admin surface honest about the empty state.
 //
-// THE HONEST BOUNDARY of this task: only the face-detect arm is
-// wired. The clip-embed and ocr slots are gated (their active models
-// are resolved here) but dispatch NOTHING yet -- Task 8 wires their
-// workers, and until then an active clip or OCR model changes nothing
-// at readiness. The seam tests pin this as the deliberate tripwire:
-// Task 8's wiring flips their expected counts.
+// Task 8 closed the matrix: all three arms (face-detect, clip-embed,
+// ocr) dispatch through their real workers -- the clip and ocr arms
+// landed with this task, flipping Task 6's tripwire test (its
+// TestEnqueueMlJobsUnwiredSlots expected zero dispatches while the
+// arms waited) into the wired expectation TestEnqueueMlJobsWiredSlots.
 func (q *Queue) EnqueueMlJobs(ctx context.Context, assetID uuid.UUID, kind dbgen.MediaKind) error {
 	if kind != dbgen.MediaKindImage {
 		return nil
@@ -317,17 +333,31 @@ func (q *Queue) EnqueueMlJobs(ctx context.Context, assetID uuid.UUID, kind dbgen
 		return fmt.Errorf("resolve the active face-detect model: %w", err)
 	}
 
-	// clip-embed and ocr: Task 8's wiring -- see the boundary note
-	// above.
+	if _, err := q.registry.Active(ml.SlotClipEmbed); err == nil {
+		if err := q.EnqueueClipEmbed(ctx, assetID); err != nil {
+			return fmt.Errorf("enqueue the clip embedding job of asset %s: %w", assetID, err)
+		}
+	} else if !errors.Is(err, ml.ErrNoActiveModel) {
+		return fmt.Errorf("resolve the active clip-embed model: %w", err)
+	}
+
+	if _, err := q.registry.Active(ml.SlotOcr); err == nil {
+		if err := q.EnqueueOcr(ctx, assetID); err != nil {
+			return fmt.Errorf("enqueue the ocr job of asset %s: %w", assetID, err)
+		}
+	} else if !errors.Is(err, ml.ErrNoActiveModel) {
+		return fmt.Errorf("resolve the active ocr model: %w", err)
+	}
 	return nil
 }
 
-// EnqueueFaceDetect inserts the face detection job for the asset. It
-// must be called after the pipeline completed (the job reads the
-// asset's stored original); re-enqueueing runs the job again
-// idempotently -- the model's faces of the asset replace themselves.
+// EnqueueFaceDetect inserts the face detection job for the asset on
+// the ml queue (the ML jobs' conservative worker pool). It must be
+// called after the pipeline completed (the job reads the asset's
+// stored original); re-enqueueing runs the job again idempotently --
+// the model's faces of the asset replace themselves.
 func (q *Queue) EnqueueFaceDetect(ctx context.Context, assetID uuid.UUID) error {
-	if _, err := q.client.Insert(ctx, FaceDetectArgs{AssetID: assetID}, nil); err != nil {
+	if _, err := q.client.Insert(ctx, FaceDetectArgs{AssetID: assetID}, &river.InsertOpts{Queue: MlQueue}); err != nil {
 		return fmt.Errorf("insert face detect job: %w", err)
 	}
 	return nil

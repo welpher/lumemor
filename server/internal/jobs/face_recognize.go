@@ -99,9 +99,12 @@ const faceRecognizeTimeout = 120 * time.Second
 const faceClusteringLockKey int64 = 0x66616365
 
 // FaceRecognizeArgs identifies the asset whose faces the job
-// recognizes.
+// recognizes, and -- when the rerun driver dispatched it -- the run
+// the completion reports into (uuid.Nil for a chained or
+// seam-dispatched job).
 type FaceRecognizeArgs struct {
-	AssetID uuid.UUID `json:"assetId"`
+	AssetID  uuid.UUID `json:"assetId"`
+	JobRunID uuid.UUID `json:"jobRunId"`
 }
 
 // Kind is River's stable job kind identifier.
@@ -126,10 +129,23 @@ func (w *FaceRecognizeWorker) Timeout(job *river.Job[FaceRecognizeArgs]) time.Du
 	return faceRecognizeTimeout
 }
 
-// Work executes one face recognition job. All the inference runs
-// before the transaction opens; the embedding updates and the
-// cluster diff-apply land together inside it.
+// Work executes one face recognition job and, when the rerun driver
+// dispatched it, reports the outcome into its run's row -- the rerun
+// completion counting (see ml_rerun.go). The report runs detached
+// from the job context so it lands even when the envelope consumed
+// the context's last moments.
 func (w *FaceRecognizeWorker) Work(ctx context.Context, job *river.Job[FaceRecognizeArgs]) error {
+	err := w.work(ctx, job)
+	if runID := job.Args.JobRunID; runID != uuid.Nil {
+		reportMlRunCompletion(ctx, w.pool, w.logger, runID, err != nil)
+	}
+	return err
+}
+
+// work is the job's core. All the inference runs before the
+// transaction opens; the embedding updates and the cluster diff-apply
+// land together inside it.
+func (w *FaceRecognizeWorker) work(ctx context.Context, job *river.Job[FaceRecognizeArgs]) error {
 	assetID := job.Args.AssetID
 
 	row, err := dbgen.New(w.pool).GetAssetForMetadata(ctx, pgUUID(assetID))
@@ -549,13 +565,14 @@ func listExistingClusters(ctx context.Context, queries *dbgen.Queries) ([]existi
 	return existing, nil
 }
 
-// EnqueueFaceRecognize inserts the face recognition job for the
-// asset. The detection job's chaining site calls it after its own
-// commit (the job reads the asset's stored faces); re-enqueueing
-// runs the job again idempotently -- the matching re-embeds the same
-// rows and the clustering converges onto the same clusters.
+// EnqueueFaceRecognize inserts the face recognition job for the asset
+// on the ml queue (the ML jobs' conservative worker pool). The
+// detection job's chaining site calls it after its own commit (the
+// job reads the asset's stored faces); re-enqueueing runs the job
+// again idempotently -- the matching re-embeds the same rows and the
+// clustering converges onto the same clusters.
 func (q *Queue) EnqueueFaceRecognize(ctx context.Context, assetID uuid.UUID) error {
-	if _, err := q.client.Insert(ctx, FaceRecognizeArgs{AssetID: assetID}, nil); err != nil {
+	if _, err := q.client.Insert(ctx, FaceRecognizeArgs{AssetID: assetID}, &river.InsertOpts{Queue: MlQueue}); err != nil {
 		return fmt.Errorf("insert face recognize job: %w", err)
 	}
 	return nil
