@@ -14,6 +14,10 @@ import 'package:built_value/iso_8601_date_time_serializer.dart';
 import 'package:lumemor_api/src/date_serializer.dart';
 import 'package:lumemor_api/src/model/date.dart';
 
+import 'package:lumemor_api/src/model/admin_create_user_request.dart';
+import 'package:lumemor_api/src/model/admin_user_list_response.dart';
+import 'package:lumemor_api/src/model/admin_user_patch.dart';
+import 'package:lumemor_api/src/model/admin_user_response.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_patch.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
@@ -33,10 +37,15 @@ import 'package:lumemor_api/src/model/timeline_response.dart';
 import 'package:lumemor_api/src/model/trash_item.dart';
 import 'package:lumemor_api/src/model/trash_response.dart';
 import 'package:lumemor_api/src/model/user.dart';
+import 'package:lumemor_api/src/model/user_role.dart';
 
 part 'serializers.g.dart';
 
 @SerializersFor([
+  AdminCreateUserRequest,
+  AdminUserListResponse,
+  AdminUserPatch,
+  AdminUserResponse,
   AssetDetail,
   AssetPatch,
   AssetResponse,
@@ -56,11 +65,16 @@ part 'serializers.g.dart';
   TrashItem,
   TrashResponse,
   User,
+  UserRole,
 ])
 Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(TimelineItem)]),
         () => ListBuilder<TimelineItem>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AdminUserResponse)]),
+        () => ListBuilder<AdminUserResponse>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(SessionInfo)]),

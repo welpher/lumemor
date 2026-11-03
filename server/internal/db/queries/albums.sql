@@ -25,8 +25,12 @@ RETURNING id;
 -- name: AddAssetToAlbum :exec
 -- The materialized membership insert. ON CONFLICT DO NOTHING keeps
 -- re-adding an asset that already sits in the album a no-op: album
--- membership is a set, and the callers (the upload path, later the
--- trash-restore path) converge to the same row instead of failing.
+-- membership is a set, and the callers converge to the same row
+-- instead of failing. (The upload path is the only caller: the
+-- trash-restore path needs no re-insertion -- soft delete never
+-- removed the membership rows, and the live views' deleted_at filter
+-- is the only thing that hid the asset while it sat in the trash, so
+-- clearing the mark restores the timeline presence wholesale.)
 INSERT INTO album_items (album_id, asset_id, added_by)
 VALUES ($1, $2, $3)
 ON CONFLICT DO NOTHING;

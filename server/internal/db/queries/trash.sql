@@ -106,8 +106,11 @@ WHERE (assets.id = $1
 -- file_path rides along because the blob reference check below
 -- needs it before the row goes away; media_kind rides along for the
 -- asset.deleted event the run publishes per purged row (the same
--- id-plus-kind payload every asset event carries).
-SELECT id, file_path, media_kind FROM assets
+-- id-plus-kind payload every asset event carries); is_component
+-- rides along (M2d) so the run can keep the component rows' purges
+-- SILENT -- the trash view never lists components (the pair is
+-- represented by its photo), so their expiry events would be noise.
+SELECT id, file_path, media_kind, is_component FROM assets
 WHERE deleted_at IS NOT NULL
   AND deleted_at < now() - make_interval(days => sqlc.arg('retention_days')::int)
 ORDER BY deleted_at

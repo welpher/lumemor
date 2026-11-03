@@ -54,6 +54,45 @@ api-check: api-gen
 		exit 1; \
 	fi
 
+# --- Web app (SvelteKit) ----------------------------------------------------
+#
+# The web client is a pure SvelteKit single-page app under web/:
+# adapter-static builds it into web/build (the index.html app shell
+# plus the content-hashed _app/ assets), and web-build then stages that
+# output into server/internal/web/dist, where the Go embed directive
+# picks it up. The staged tree is never committed: a Go build without a
+# prior web-build fails at the embed directive ("no matching files
+# found") -- that loud failure is intentional and pins the build order,
+# so CI runs the web build before the Go build.
+
+# Install the web toolchain and its dependencies with pnpm. The
+# lockfile is committed; pnpm freezes it automatically in CI.
+.PHONY: web-install
+web-install:
+	cd web && pnpm install
+
+# Type-check and unit-test the web app: svelte-check plus vitest. The
+# CI gate for web changes.
+.PHONY: web-check
+web-check:
+	cd web && pnpm run check
+	cd web && pnpm run test
+
+# Build the web app and stage the output for the Go embed. Must run
+# before any step that compiles the server (go build, go test,
+# docker-test, docker-lint, the compose image build). The docker-test
+# and docker-lint targets below declare that dependency outright:
+# their containers bind-mount this repository and compile the server
+# inside, so a missing dist would fail them at the embed directive
+# and -- worse -- a stale one would silently pass. The declared
+# dependency keeps both loud and fresh; the compose image build needs
+# no such line because its own Node stage builds the app hermetically.
+.PHONY: web-build
+web-build:
+	cd web && pnpm run build
+	rm -rf server/internal/web/dist
+	cp -R web/build server/internal/web/dist
+
 # --- Development/test container --------------------------------------------
 #
 # The media toolchain (libvips, exiftool, ffmpeg) lives in the dev
@@ -90,8 +129,14 @@ TEST_ENV ?=
 # carries no mirror configuration.
 APT_MIRROR ?=
 
+# The containerized test gate: builds the dev image and runs the full
+# Go test suite inside it with the repository bind-mounted at /src.
+# Depends on web-build: the embedded SPA is a compile-time input of
+# the server (the embed directive), so a clean checkout builds the web
+# app first and a stale staged dist can never silently serve the
+# containerized suite.
 .PHONY: docker-test
-docker-test:
+docker-test: web-build
 	docker build -f docker/dev.Dockerfile \
 		--build-arg APT_MIRROR=$(APT_MIRROR) \
 		--build-arg GOPROXY=$(shell go env GOPROXY) \
@@ -112,9 +157,11 @@ docker-test:
 # headers exist -- a host without them cannot even compile the package
 # being linted. The container carries golangci-lint (pinned to the CI
 # version), and the run covers the full Go gate set: gofmt -l (any
-# output fails), go vet, then golangci-lint.
+# output fails), go vet, then golangci-lint. Depends on web-build for
+# the same reason as docker-test (the embed directive is compiled by
+# the linter too).
 .PHONY: docker-lint
-docker-lint:
+docker-lint: web-build
 	docker build -f docker/dev.Dockerfile \
 		--build-arg APT_MIRROR=$(APT_MIRROR) \
 		--build-arg GOPROXY=$(shell go env GOPROXY) \

@@ -1,14 +1,18 @@
-// Middleware of the /api/v1 tree: the shared request pipeline (security
-// headers, origin check, JSON body limit for the JSON surface), the
-// per-request handler timeout wrapping the non-streaming route groups,
-// and the session middleware that turns a cookie or bearer credential
-// into request-scoped user identity. Order matters and is pinned in
-// NewRouter: security headers and the origin check run on every API
+// Middleware of the server: the security headers (root-level, every
+// response), the /api/v1 request pipeline (origin check, JSON body
+// limit for the JSON surface), the per-request handler timeout
+// wrapping the non-streaming route groups, the session
+// middleware that turns a cookie or bearer credential into
+// request-scoped user identity, and the admin-role guard stacked
+// behind it for the admin surface. Order matters and is pinned in
+// NewRouter: the security headers run on every request of the
+// server; inside the /api/v1 tree the origin check runs on every
 // request; limitJSONBody wraps the JSON route groups only (uploads
 // stream their own multipart bodies and are capped by the receiver's
 // size limit instead); every non-streaming group sits inside
 // timeoutMiddleware; the SSE stream group and the upload group run
-// outside it; the authed groups sit behind requireSession.
+// outside it; the authed groups sit behind requireSession, and the
+// admin group behind requireSession plus requireAdmin.
 package api
 
 import (
@@ -88,11 +92,15 @@ func limitJSONBody(next http.Handler) http.Handler {
 	})
 }
 
-// setSecurityHeaders stamps the two response headers every API response
-// carries. HSTS and the dynamic CSP arrive with the web milestone (the
-// CSP must know the tile origins first); CORS stays closed by design --
-// the SPA is same-origin inside the single binary and external tools
-// authenticate as bearers, which CORS never constrains.
+// setSecurityHeaders stamps the two response headers every response
+// of the server carries: API, pages, static assets and the SPA shell
+// alike (NewRouter mounts it at the router root, so every route --
+// hand-mounted or catch-all -- passes through it). HSTS and the
+// dynamic CSP arrive with the map milestone (the CSP must know the
+// tile origins first, and the app shell's pre-paint script needs a
+// hash); CORS stays closed by design -- the SPA is same-origin
+// inside the single binary and external tools authenticate as
+// bearers, which CORS never constrains.
 func setSecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -245,4 +253,28 @@ func sessionCredential(r *http.Request) string {
 // rejectUnauthenticated answers the uniform 401 envelope.
 func (s *server) rejectUnauthenticated(w http.ResponseWriter) {
 	s.writeError(w, http.StatusUnauthorized, apigen.AUTHINVALIDCREDENTIALS, "authentication required", nil)
+}
+
+// requireAdmin guards the admin route group: it runs behind
+// requireSession (the caller is authenticated), and a caller whose
+// role is not admin answers 403 AUTH_FORBIDDEN -- a code distinct
+// from the 401 family, because the caller is signed in, just not
+// entitled to the admin surface.
+func (s *server) requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requester, ok := authFrom(r.Context())
+		if !ok {
+			// requireSession sits ahead of this middleware in every
+			// mounted group; this arm only keeps the guard
+			// self-sufficient if a future wiring drops that order.
+			s.rejectUnauthenticated(w)
+			return
+		}
+		if requester.role != dbgen.UserRoleAdmin {
+			s.writeError(w, http.StatusForbidden, apigen.AUTHFORBIDDEN,
+				"administrator role required", nil)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(r.Context()))
+	})
 }

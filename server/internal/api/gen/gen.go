@@ -127,11 +127,14 @@ const (
 	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
 	ASSETNOTREADY          ErrorCode = "ASSET_NOT_READY"
 	ASSETTOOLARGE          ErrorCode = "ASSET_TOO_LARGE"
+	AUTHFORBIDDEN          ErrorCode = "AUTH_FORBIDDEN"
 	AUTHINVALIDCREDENTIALS ErrorCode = "AUTH_INVALID_CREDENTIALS"
 	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
 	INTERNAL               ErrorCode = "INTERNAL"
 	PAIRINGTOKENINVALID    ErrorCode = "PAIRING_TOKEN_INVALID"
 	SETUPALREADYCOMPLETED  ErrorCode = "SETUP_ALREADY_COMPLETED"
+	USEREMAILTAKEN         ErrorCode = "USER_EMAIL_TAKEN"
+	USERNOTFOUND           ErrorCode = "USER_NOT_FOUND"
 	VALIDATIONFAILED       ErrorCode = "VALIDATION_FAILED"
 )
 
@@ -144,6 +147,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ASSETTOOLARGE:
 		return true
+	case AUTHFORBIDDEN:
+		return true
 	case AUTHINVALIDCREDENTIALS:
 		return true
 	case AUTHRATELIMITED:
@@ -153,6 +158,10 @@ func (e ErrorCode) Valid() bool {
 	case PAIRINGTOKENINVALID:
 		return true
 	case SETUPALREADYCOMPLETED:
+		return true
+	case USEREMAILTAKEN:
+		return true
+	case USERNOTFOUND:
 		return true
 	case VALIDATIONFAILED:
 		return true
@@ -296,6 +305,67 @@ func (e GetAssetThumbnailParamsSize) Valid() bool {
 	}
 }
 
+// AdminCreateUserRequest Payload of `POST /admin/users`.
+type AdminCreateUserRequest struct {
+	// Email Login address of the new account; unique instance-wide.
+	Email openapi_types.Email `json:"email"`
+
+	// Name Optional display name; defaults to the email address.
+	Name *string `json:"name,omitempty"`
+
+	// Password Account password; stored only as an Argon2id hash.
+	//
+	// Examples: correct horse battery staple
+	Password string `json:"password"`
+
+	// Role Authorization role of an account: `admin` is granted by the
+	// first-run wizard or by another administrator, `user` is the
+	// default of every other creation path.
+	Role *UserRole `json:"role,omitempty"`
+}
+
+// AdminUserListResponse The user management listing: every account of the instance,
+// oldest first, in one bounded response.
+type AdminUserListResponse struct {
+	// Items Every account of the instance, oldest first.
+	Items []AdminUserResponse `json:"items"`
+}
+
+// AdminUserPatch Payload of `PATCH /admin/users/{id}`.
+type AdminUserPatch struct {
+	// IsDisabled The switch to write. `true` locks the account out of its
+	// sessions and sign-in; `false` lets it back in.
+	IsDisabled bool `json:"isDisabled"`
+}
+
+// AdminUserResponse One account as the admin surface returns it: the identity and
+// role columns together with the disabled switch this surface
+// toggles. The password hash is never part of an admin
+// response.
+type AdminUserResponse struct {
+	// CreatedAt Creation time (RFC 3339 UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Email Login address.
+	Email openapi_types.Email `json:"email"`
+
+	// Id UUIDv7 identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsDisabled The disabled switch. A disabled account loses the
+	// authority of its sessions and its sign-in until
+	// re-enabled; its data stays untouched.
+	IsDisabled bool `json:"isDisabled"`
+
+	// Name Display name.
+	Name string `json:"name"`
+
+	// Role Authorization role of an account: `admin` is granted by the
+	// first-run wizard or by another administrator, `user` is the
+	// default of every other creation path.
+	Role UserRole `json:"role"`
+}
+
 // AssetDetail One asset as the detail endpoint returns it: the upload
 // response's identity and storage fields, the pipeline's
 // refinements, and the two owner-level attributes the PATCH
@@ -354,7 +424,8 @@ type AssetDetail struct {
 
 	// IsReady True once the whole pipeline of the asset completed -- the
 	// metadata and thumbnail jobs for an image, plus the
-	// transcode job for a video; the `asset.ready` event fires
+	// transcode job for a video (for a Live Photo component,
+	// the transcode job alone); the `asset.ready` event fires
 	// at that moment. Until then the client shows placeholders
 	// and the media endpoints answer `ASSET_NOT_READY` for
 	// missing derived files.
@@ -370,8 +441,8 @@ type AssetDetail struct {
 
 	// LivePhotoVideoId For a Live Photo image, the id of its linked component
 	// video row (never in the timeline; its original is
-	// downloadable by that id, the transcoded play stream is
-	// not); null otherwise.
+	// downloadable by that id, and its transcoded play stream
+	// is served there too); null otherwise.
 	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
 
 	// MimeType Canonical content type of the stored format, for example
@@ -992,11 +1063,15 @@ type User struct {
 	// Name Display name.
 	Name string `json:"name"`
 
-	// Role Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin.
+	// Role Authorization role of an account: `admin` is granted by the
+	// first-run wizard or by another administrator, `user` is the
+	// default of every other creation path.
 	Role UserRole `json:"role"`
 }
 
-// UserRole Authorization role; `admin` is granted by the first-run wizard, later accounts are created by an admin.
+// UserRole Authorization role of an account: `admin` is granted by the
+// first-run wizard or by another administrator, `user` is the
+// default of every other creation path.
 type UserRole string
 
 // UploadAssetMultipartBody defines parameters for UploadAsset.
@@ -1030,7 +1105,9 @@ type UploadAssetMultipartBody struct {
 
 	// LiveVideo The Live Photo pairing video; present only together
 	// with `photo`. The server stores it as a linked
-	// component row that never appears in the timeline.
+	// component row that never appears in the timeline,
+	// and queues its transcode so the pair's motion is
+	// playable in the browser.
 	LiveVideo *openapi_types.File `json:"liveVideo,omitempty"`
 
 	// Photo The photo bytes; their file part name carries the extension.
@@ -1107,6 +1184,12 @@ type GetEventsParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
+// CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
+type CreateUserJSONRequestBody = AdminCreateUserRequest
+
+// UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
+type UpdateUserJSONRequestBody = AdminUserPatch
+
 // UploadAssetMultipartRequestBody defines body for UploadAsset for multipart/form-data ContentType.
 type UploadAssetMultipartRequestBody UploadAssetMultipartBody
 
@@ -1127,6 +1210,15 @@ type CreateAdminJSONRequestBody = CreateAdminRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListUsers List the instance's accounts.
+	// (GET /admin/users)
+	ListUsers(w http.ResponseWriter, r *http.Request)
+	// CreateUser Create one account.
+	// (POST /admin/users)
+	CreateUser(w http.ResponseWriter, r *http.Request)
+	// UpdateUser Toggle one account's disabled switch.
+	// (PATCH /admin/users/{id})
+	UpdateUser(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// UploadAsset Upload one photo, optionally with its Live Photo video.
 	// (POST /assets)
 	UploadAsset(w http.ResponseWriter, r *http.Request)
@@ -1201,6 +1293,24 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// ListUsers List the instance's accounts.
+// (GET /admin/users)
+func (_ Unimplemented) ListUsers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateUser Create one account.
+// (POST /admin/users)
+func (_ Unimplemented) CreateUser(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateUser Toggle one account's disabled switch.
+// (PATCH /admin/users/{id})
+func (_ Unimplemented) UpdateUser(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // UploadAsset Upload one photo, optionally with its Live Photo video.
 // (POST /assets)
@@ -1348,6 +1458,60 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUsers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateUser operation middleware
+func (siw *ServerInterfaceWrapper) CreateUser(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateUser operation middleware
+func (siw *ServerInterfaceWrapper) UpdateUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateUser(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // UploadAsset operation middleware
 func (siw *ServerInterfaceWrapper) UploadAsset(w http.ResponseWriter, r *http.Request) {
@@ -2112,6 +2276,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/trash/{id}/restore", wrapper.RestoreAsset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/users", wrapper.ListUsers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/users", wrapper.CreateUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/users/{id}", wrapper.UpdateUser)
 	})
 
 	return r

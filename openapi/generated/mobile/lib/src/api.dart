@@ -9,6 +9,7 @@ import 'package:lumemor_api/src/auth/api_key_auth.dart';
 import 'package:lumemor_api/src/auth/basic_auth.dart';
 import 'package:lumemor_api/src/auth/bearer_auth.dart';
 import 'package:lumemor_api/src/auth/oauth.dart';
+import 'package:lumemor_api/src/api/admin_api.dart';
 import 'package:lumemor_api/src/api/assets_api.dart';
 import 'package:lumemor_api/src/api/auth_api.dart';
 import 'package:lumemor_api/src/api/events_api.dart';
@@ -106,6 +107,12 @@ class LumemorApi {
     if (this.dio.interceptors.any((i) => i is ApiKeyAuthInterceptor)) {
       (this.dio.interceptors.firstWhere((element) => element is ApiKeyAuthInterceptor) as ApiKeyAuthInterceptor).apiKeys.remove(name);
     }
+  }
+
+  /// Get AdminApi instance, base route and serializer can be overridden by a given but be careful,
+  /// by doing that all interceptors will not be executed
+  AdminApi getAdminApi() {
+    return AdminApi(dio, serializers);
   }
 
   /// Get AssetsApi instance, base route and serializer can be overridden by a given but be careful,

@@ -133,6 +133,7 @@ func (s *server) CreateAdmin(w http.ResponseWriter, r *http.Request) {
 		Name:         in.name,
 		Email:        in.email,
 		PasswordHash: hash,
+		Role:         dbgen.UserRoleAdmin,
 	})
 	if err != nil {
 		// Belt and suspenders for writers that bypass the setup lock
