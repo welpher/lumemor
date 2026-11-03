@@ -187,8 +187,16 @@ func (s *server) UpdateUser(w http.ResponseWriter, r *http.Request, id oapitypes
 		return
 	}
 
-	var req apigen.AdminUserPatch
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// The contract marks isDisabled required, but the generated
+	// struct's plain bool cannot tell an explicit false from an
+	// absent field -- a body of {} (or a JSON null) would decode as
+	// a silent enable nobody asked for. The body therefore decodes
+	// through a pointer shape solely to pin the field's presence;
+	// the wire name is the generated type's own.
+	var decoded struct {
+		IsDisabled *bool `json:"isDisabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&decoded); err != nil {
 		message := "request body must be valid JSON"
 		var fields []interface{}
 		var maxBytesErr *http.MaxBytesError
@@ -203,6 +211,11 @@ func (s *server) UpdateUser(w http.ResponseWriter, r *http.Request, id oapitypes
 		s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, details)
 		return
 	}
+	if decoded.IsDisabled == nil {
+		s.writeValidationError(w, "isDisabled is required", []string{"isDisabled"})
+		return
+	}
+	isDisabled := *decoded.IsDisabled
 
 	// The self-disable footgun: the last admin locking themselves out
 	// would strand this surface, so the caller's own id is refused
@@ -210,7 +223,7 @@ func (s *server) UpdateUser(w http.ResponseWriter, r *http.Request, id oapitypes
 	// plain idempotent write). The web client cannot know its own
 	// user id through this surface (the listing carries no caller
 	// marker), so this guard is the authoritative one.
-	if req.IsDisabled && uuid.UUID(id) == requester.userID {
+	if isDisabled && uuid.UUID(id) == requester.userID {
 		details := map[string]interface{}{"fields": []interface{}{"id"}}
 		s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED,
 			"an administrator cannot disable their own account", &details)
@@ -222,7 +235,7 @@ func (s *server) UpdateUser(w http.ResponseWriter, r *http.Request, id oapitypes
 	// listing, so there is no anti-enumeration pairing to keep).
 	row, err := s.queries.SetUserDisabled(r.Context(), dbgen.SetUserDisabledParams{
 		ID:         pgUUID(id),
-		IsDisabled: req.IsDisabled,
+		IsDisabled: isDisabled,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.writeError(w, http.StatusNotFound, apigen.USERNOTFOUND,

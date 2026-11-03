@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	oapitypes "github.com/oapi-codegen/runtime/types"
 
@@ -271,6 +272,60 @@ func TestCreateAdmin(t *testing.T) {
 			t.Error("initialized = false after restart, want true (derived from the database)")
 		}
 	})
+}
+
+// TestCreateAdminSyncAlbumFailureRollsBack mirrors the admin create's
+// atomicity pin (adminusers_test.go) on the wizard's own transaction:
+// the first administrator row and its sync album land together, so a
+// failure between the two writes must roll the account back. The
+// injection is the same test-scoped unique constraint on albums
+// (title); the conflicting row is a seeded plain account's sync album
+// -- a fresh instance has no albums of its own, so the seed provides
+// the fixed 'Sync' title the wizard's insert collides with (the
+// seeded account is not an admin, so the wizard still runs).
+func TestCreateAdminSyncAlbumFailureRollsBack(t *testing.T) {
+	pool := newSetupEnv(t)
+	router := NewRouter(&Deps{Pool: pool, Version: testVersion})
+	queries := dbgen.New(pool)
+
+	graceID, _ := seedPlainUser(t, pool, "grace@example.com")
+	albumID, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate album id: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(),
+		"INSERT INTO albums (id, owner_id, title, type) VALUES ($1, $2, 'Sync', 'sync')",
+		pgUUID(albumID), pgUUID(graceID)); err != nil {
+		t.Fatalf("seed sync album: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(),
+		"ALTER TABLE albums ADD CONSTRAINT pin_albums_title_uq UNIQUE (title)"); err != nil {
+		t.Fatalf("inject albums title constraint: %v", err)
+	}
+
+	rec := postAdmin(t, router, createAdminBody(t, "ada@example.com", testPassword, nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d (the sync album insert must fail; body %q)",
+			rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+
+	// The administrator row was rolled back: the instance still has
+	// no admin...
+	admins, err := queries.CountAdmins(t.Context())
+	if err != nil {
+		t.Fatalf("CountAdmins() error = %v", err)
+	}
+	if admins != 0 {
+		t.Errorf("admins = %d after the rolled-back wizard, want 0", admins)
+	}
+	// ...and only the seeded account remains.
+	users, err := queries.ListUsers(t.Context())
+	if err != nil {
+		t.Fatalf("ListUsers() error = %v", err)
+	}
+	if len(users) != 1 || uuid.UUID(users[0].ID.Bytes) != graceID {
+		t.Errorf("accounts after the rolled-back wizard = %d, want only the seeded account", len(users))
+	}
 }
 
 // TestCreateAdminConcurrent verifies the one-time guarantee under

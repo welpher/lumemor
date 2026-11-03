@@ -405,6 +405,43 @@ test('the self-disable refusal surfaces the mapped message (the guard is server-
 	flushSync();
 });
 
+test('a failed disable keeps the confirm dialog open with the mapped error', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (init?.method === 'PATCH' && url === `/api/v1/admin/users/${grace.id}`) {
+				return jsonResponse(500, { code: 'INTERNAL', message: 'boom' });
+			}
+			if (url === '/api/v1/admin/users') {
+				return jsonResponse(200, { items: [adminUser, grace] });
+			}
+			throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	rowAction('grace@example.com').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	modalButton('Disable').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The confirm dialog stays open with the mapped error inside it
+	// (the trash page's confirm pattern: a failed confirm-able write
+	// recovers in place, not under the table).
+	expect(document.body.querySelector('.modal__panel')).not.toBeNull();
+	expect(document.body.querySelector('.modal__panel [role="alert"]')?.textContent).toContain(
+		'Something went wrong'
+	);
+	// The row is untouched: still active, still offered the toggle.
+	expect(document.body.textContent).toContain('Active');
+	expect(buttonByText('Disable')).toBeTruthy();
+
+	unmount(page);
+	flushSync();
+});
+
 test('a stale row (404) reconciles through a refetch', async () => {
 	let listed = 0;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -433,6 +470,11 @@ test('a stale row (404) reconciles through a refetch', async () => {
 	// The 404 triggered the listing's reconciliation.
 	expect(listed).toBe(2);
 	expect(rows()).toHaveLength(1);
+	// The already-gone reading (the trash page's 404 precedent): the
+	// confirm dialog closed with the reconciliation -- there is
+	// nothing left to confirm against a row the listing no longer
+	// carries.
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
 
 	unmount(page);
 	flushSync();

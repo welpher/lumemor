@@ -625,6 +625,45 @@ describe('curated view membership (favorites and hidden walls)', () => {
 		expect(get(favorites).items.map((i) => i.id)).toEqual(['a3']);
 	});
 
+	test('an unfavorited row stays gone through later convergence events (sticky membership)', async () => {
+		let pages = 0;
+		const favorites = viewClient('favorites', (url) => {
+			if (url === '/api/v1/assets/batch') {
+				return jsonResponse(200, { affected: 1, missing: [] });
+			}
+			if (/\/api\/v1\/assets\/a2$/.test(url)) {
+				return detailOf(item('a2', '2026-11-01T09:00:00Z'));
+			}
+			if (url === '/api/v1/assets/favorites?limit=100') {
+				pages += 1;
+				// The second page's server snapshot predates the
+				// unfavorite (a racing response).
+				return pages === 1
+					? page(pageOneItems.map((i) => item(i.id, i.takenAt, { isFavorite: true })), 'CURSOR-1')
+					: page([item('a2', '2026-11-01T09:00:00Z', { isFavorite: true })]);
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await favorites.loadMore();
+
+		const outcome = await favorites.runBatch('unfavorite', ['a2']);
+		expect(outcome).toEqual({ ok: true, affected: 1, missing: [] });
+		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a3']);
+
+		// A later non-removal SSE event for the same asset (a
+		// description PATCH publishes asset.updated) converges on a
+		// live detail -- but favoriteness is not evaluable from the
+		// detail, so the wall must keep the ended membership: the
+		// tile stays gone.
+		await favorites.applyEvent({ id: 1, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a3']);
+
+		// The tombstone survived the event: a racing page response
+		// that still lists the asset cannot resurrect it either.
+		await favorites.loadMore();
+		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a3']);
+	});
+
 	test('a failed unfavorite on the favorites wall rolls the rows back', async () => {
 		const favorites = viewClient('favorites', (url) => {
 			if (url === '/api/v1/assets/batch') {
@@ -640,6 +679,33 @@ describe('curated view membership (favorites and hidden walls)', () => {
 		const outcome = await favorites.runBatch('unfavorite', ['a2']);
 		expect(outcome).toEqual({ ok: false, errorKey: 'internal' });
 		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+
+	test('a failed unfavorite clears the stickiness, so later events converge normally', async () => {
+		const favorites = viewClient('favorites', (url) => {
+			if (url === '/api/v1/assets/batch') {
+				return jsonResponse(500, { code: 'INTERNAL' });
+			}
+			if (/\/api\/v1\/assets\/a2$/.test(url)) {
+				return detailOf(item('a2', '2026-11-01T09:00:00Z', { isFavorite: true }));
+			}
+			if (url === '/api/v1/assets/favorites?limit=100') {
+				return page(pageOneItems.map((i) => item(i.id, i.takenAt, { isFavorite: true })));
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await favorites.loadMore();
+
+		const outcome = await favorites.runBatch('unfavorite', ['a2']);
+		expect(outcome).toEqual({ ok: false, errorKey: 'internal' });
+		// The rollback restored the tile...
+		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+
+		// ...and ended the stickiness: a later asset.updated event
+		// converges the row normally (the favorite stays a member).
+		await favorites.applyEvent({ id: 1, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+		expect(get(favorites).items.find((i) => i.id === 'a2')?.isFavorite).toBe(true);
 	});
 
 	test('unhide on the hidden wall removes the tiles (the membership ends)', async () => {
