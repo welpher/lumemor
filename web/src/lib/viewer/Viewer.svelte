@@ -283,18 +283,24 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<div class="viewer" aria-busy={status === 'loading'}>
-	<header class="viewer__bar">
-		<button class="viewer__icon" type="button" aria-label={$_('viewer_close')} onclick={onexit}>
+<!-- The viewer's scrim: the brand night tone in both themes. -->
+<div class="viewer fixed inset-0 z-[40] flex flex-col bg-[rgb(20_26_46/0.92)] backdrop-blur-[6px]" aria-busy={status === 'loading'}>
+	<header class="viewer__bar flex items-center gap-3 px-4 py-2.5 text-cream-text">
+		<button
+			class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+			type="button"
+			aria-label={$_('viewer_close')}
+			onclick={onexit}
+		>
 			<svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
 				<path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
 			</svg>
 		</button>
-		<p class="viewer__title">{detail?.originalFilename ?? ''}</p>
-		<div class="viewer__bar-actions">
+		<p class="viewer__title flex-1 font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail?.originalFilename ?? ''}</p>
+		<div class="viewer__bar-actions flex gap-1">
 			{#if isImage && detail !== null}
 				<button
-					class="viewer__icon"
+					class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 					type="button"
 					aria-label={zoomed ? $_('viewer_zoom_out') : $_('viewer_zoom_in')}
 					aria-pressed={zoomed}
@@ -307,7 +313,7 @@
 				</button>
 			{/if}
 			<button
-				class="viewer__icon"
+				class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 				type="button"
 				aria-label={$_('viewer_info_open')}
 				aria-pressed={drawerOpen}
@@ -322,20 +328,27 @@
 		</div>
 	</header>
 
-	<div class="viewer__stage-wrap">
-		<div class="viewer__stage" class:viewer__stage--zoomed={zoomed}>
+	<div class="viewer__stage-wrap relative flex-1 min-h-0 flex flex-col">
+		<!-- Basic zoom: the stage's media doubles around its center (the
+		     zoomed children carry the transform in the residual styles
+		     below). -->
+		<div
+			class="viewer__stage relative flex-1 min-h-0 flex items-center justify-center overflow-hidden"
+			class:viewer__stage--zoomed={zoomed}
+			class:cursor-zoom-out={zoomed}
+		>
 			{#if status === 'error'}
-				<div class="viewer__failure" role="alert">
-					<p>{errorText(errorKey)}</p>
+				<div class="viewer__failure flex flex-col items-center gap-3 p-5 text-center" role="alert">
+					<p class="font-body font-medium text-[15px] leading-[1.4] text-cream-text">{errorText(errorKey)}</p>
 					<Button variant="primary" onclick={onretry}>{$_('action_retry')}</Button>
 				</div>
 			{:else if detail === null}
-				<p class="viewer__status" role="status">{$_('viewer_loading')}</p>
+				<p class="viewer__status relative z-[3] px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px]" role="status">{$_('viewer_loading')}</p>
 			{:else if detail.kind === 'video'}
 				<!-- svelte-ignore a11y_media_has_caption -->
 				{#if videoPlayable}
 					<video
-						class="viewer__video"
+						class="viewer__video relative z-[1] max-w-full max-h-full"
 						controls
 						src={assetPlayUrl(detail.id)}
 						poster={assetThumbnailUrl(detail.id, 'view')}
@@ -350,30 +363,37 @@
 					     the placeholder (never a broken image) holds the
 					     stage (the image branch's pattern). -->
 					{#if detail.blurhash !== null}
-						<canvas class="viewer__placeholder" width="32" height="32" bind:this={canvas} aria-hidden="true"></canvas>
+						<canvas class="viewer__placeholder absolute w-full h-full object-contain" width="32" height="32" bind:this={canvas} aria-hidden="true"></canvas>
 					{:else}
-						<div class="viewer__placeholder viewer__placeholder--empty" aria-hidden="true"></div>
+						<div
+							class="viewer__placeholder viewer__placeholder--empty absolute w-full h-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-night-surface)_70%,var(--color-night)),var(--color-night-surface))]"
+							aria-hidden="true"
+						></div>
 					{/if}
 					{#if !posterFailed}
 						<img
-							class="viewer__poster"
+							class="viewer__poster relative z-[1] max-w-full max-h-full"
 							src={assetThumbnailUrl(detail.id, 'view')}
 							alt={detail.originalFilename}
 							onerror={() => (posterFailed = true)}
 						/>
 					{/if}
-					<p class="viewer__processing" role="status">{$_('viewer_processing')}</p>
+					<p class="viewer__processing absolute bottom-6 z-[3] px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px]" role="status">{$_('viewer_processing')}</p>
 				{/if}
 			{:else}
 				{#if detail.blurhash !== null}
-					<canvas class="viewer__placeholder" width="32" height="32" bind:this={canvas} aria-hidden="true"></canvas>
+					<canvas class="viewer__placeholder absolute w-full h-full object-contain" width="32" height="32" bind:this={canvas} aria-hidden="true"></canvas>
 				{:else}
-					<div class="viewer__placeholder viewer__placeholder--empty" aria-hidden="true"></div>
+					<div
+						class="viewer__placeholder viewer__placeholder--empty absolute w-full h-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-night-surface)_70%,var(--color-night)),var(--color-night-surface))]"
+						aria-hidden="true"
+					></div>
 				{/if}
 
 				{#if detail.isReady}
 					<img
-						class="viewer__image"
+						class="viewer__image absolute inset-0 m-auto max-w-full max-h-full object-contain transition-[opacity,transform] duration-(--motion-base) ease-standard"
+						class:opacity-0={!viewLoaded}
 						class:viewer__image--loaded={viewLoaded}
 						src={assetThumbnailUrl(detail.id, 'view')}
 						alt={detail.originalFilename}
@@ -381,8 +401,10 @@
 						onerror={() => (viewLoaded = false)}
 						draggable="false"
 					/>
+					<!-- The full-resolution layer rides above the view-size copy. -->
 					<img
-						class="viewer__image viewer__image--full"
+						class="viewer__image viewer__image--full absolute inset-0 m-auto z-[1] max-w-full max-h-full object-contain transition-[opacity,transform] duration-(--motion-base) ease-standard"
+						class:opacity-0={!fullLoaded}
 						class:viewer__image--loaded={fullLoaded}
 						src={assetThumbnailUrl(detail.id, 'original')}
 						alt=""
@@ -398,7 +420,7 @@
 					     capture; the end returns to the still. -->
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
-						class="viewer__live"
+						class="viewer__live relative z-[2] max-w-full max-h-full object-contain"
 						autoplay
 						muted
 						loop
@@ -415,7 +437,7 @@
 					     still; pressing swaps the still for the component
 					     video's motion and pressing again swaps back. -->
 					<button
-						class="viewer__press"
+						class="viewer__press absolute inset-0 z-[3] block p-0 bg-transparent cursor-pointer focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 						type="button"
 						aria-label={livePlaying ? $_('viewer_live_stop') : $_('viewer_live_play')}
 						aria-pressed={livePlaying}
@@ -426,13 +448,15 @@
 		</div>
 
 		{#if sequence.length > 1}
-			<nav class="viewer__filmstrip" aria-label={$_('viewer_filmstrip_label')} bind:this={filmstrip}>
-				<ul class="viewer__filmstrip-list">
+			<nav class="viewer__filmstrip shrink-0 pt-2 px-3 pb-3 overflow-x-auto" aria-label={$_('viewer_filmstrip_label')} bind:this={filmstrip}>
+				<ul class="viewer__filmstrip-list flex gap-1.5 list-none">
 					{#each sequence as entry (entry.id)}
 						<li>
 							<button
-								class="viewer__thumb"
+								class="viewer__thumb w-[52px] h-[52px] p-0 overflow-hidden border-2 rounded-control bg-transparent cursor-pointer shrink-0"
 								class:viewer__thumb--current={entry.id === detail?.id}
+								class:border-accent={entry.id === detail?.id}
+								class:border-transparent={entry.id !== detail?.id}
 								data-filmstrip-id={entry.id}
 								type="button"
 								aria-label={entry.originalFilename}
@@ -445,6 +469,7 @@
 								     session overlay of the SSE ready events). -->
 								{#if entry.isReady}
 									<img
+										class="w-full h-full object-cover"
 										src={assetThumbnailUrl(entry.id, 'tile')}
 										alt=""
 										loading="lazy"
@@ -460,7 +485,7 @@
 
 		{#if detail !== null && position !== -1 && position > 0}
 			<button
-				class="viewer__arrow viewer__arrow--left"
+				class="viewer__arrow viewer__arrow--left absolute left-4 top-1/2 -translate-y-1/2 z-[4] inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
 				type="button"
 				aria-label={$_('viewer_previous')}
 				onclick={() => navigate(-1)}
@@ -472,7 +497,7 @@
 		{/if}
 		{#if detail !== null && position !== -1 && position < sequence.length - 1}
 			<button
-				class="viewer__arrow viewer__arrow--right"
+				class="viewer__arrow viewer__arrow--right absolute right-4 top-1/2 -translate-y-1/2 z-[4] inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
 				type="button"
 				aria-label={$_('viewer_next')}
 				onclick={() => navigate(1)}
@@ -503,11 +528,11 @@
 
 <Modal open={confirmOpen} title={$_('viewer_delete_title')} onclose={() => (confirmOpen = false)}>
 	{#snippet children()}
-		<p class="viewer__confirm-body">
+		<p class="viewer__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
 			{$_('viewer_delete_body', { values: { name: detail?.originalFilename ?? '' } })}
 		</p>
 		{#if deleteErrorKey !== ''}
-			<p class="viewer__confirm-error" role="alert">{errorText(deleteErrorKey)}</p>
+			<p class="viewer__confirm-error mt-3 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(deleteErrorKey)}</p>
 		{/if}
 	{/snippet}
 	{#snippet footer()}
@@ -521,272 +546,17 @@
 </Modal>
 
 <style>
+	/* Residual styles (verbatim): the entrance keyframes and the
+	 * zoomed stage's transform on its media children (a parent state
+	 * class reaching three different elements). */
 	.viewer {
-		position: fixed;
-		inset: 0;
-		z-index: 40;
-		display: flex;
-		flex-direction: column;
-		/* The stage's scrim: the brand night tone in both themes. */
-		background-color: rgb(20 26 46 / 0.92);
-		backdrop-filter: blur(6px);
 		animation: viewer-in var(--motion-fast) var(--ease-standard);
-	}
-
-	.viewer__bar {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 10px 16px;
-		color: var(--color-cream-text);
-	}
-
-	.viewer__icon {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 38px;
-		height: 38px;
-		border: none;
-		border-radius: var(--radius-control);
-		background: none;
-		color: var(--color-cream-text);
-		cursor: pointer;
-		transition: background-color var(--motion-fast) var(--ease-standard);
-	}
-
-	.viewer__icon:hover {
-		background-color: rgb(255 255 255 / 0.12);
-	}
-
-	.viewer__icon:focus-visible {
-		outline: 2px solid var(--color-blue-300);
-		outline-offset: -2px;
-	}
-
-	.viewer__title {
-		flex: 1;
-		margin: 0;
-		font: 600 15px/1.4 var(--font-body);
-		overflow-wrap: anywhere;
-	}
-
-	.viewer__bar-actions {
-		display: flex;
-		gap: 4px;
-	}
-
-	.viewer__stage-wrap {
-		position: relative;
-		flex: 1;
-		min-height: 0;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.viewer__stage {
-		position: relative;
-		flex: 1;
-		min-height: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		overflow: hidden;
-	}
-
-	.viewer__stage--zoomed {
-		/* Basic zoom: the stage's media doubles around its center. */
-		cursor: zoom-out;
-	}
-
-	.viewer__placeholder {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		object-fit: contain;
-	}
-
-	.viewer__placeholder--empty {
-		background: linear-gradient(
-			135deg,
-			color-mix(in srgb, var(--color-night-surface) 70%, var(--color-night)),
-			var(--color-night-surface)
-		);
-	}
-
-	.viewer__image,
-	.viewer__video,
-	.viewer__live,
-	.viewer__poster {
-		max-width: 100%;
-		max-height: 100%;
-	}
-
-	.viewer__image {
-		position: absolute;
-		inset: 0;
-		margin: auto;
-		object-fit: contain;
-		opacity: 0;
-		transition:
-			opacity var(--motion-base) var(--ease-standard),
-			transform var(--motion-base) var(--ease-standard);
-	}
-
-	.viewer__image--loaded {
-		opacity: 1;
-	}
-
-	/* The full-resolution layer rides above the view-size copy. */
-	.viewer__image--full {
-		z-index: 1;
 	}
 
 	.viewer__stage--zoomed .viewer__image,
 	.viewer__stage--zoomed .viewer__placeholder,
 	.viewer__stage--zoomed .viewer__live {
 		transform: scale(2);
-	}
-
-	.viewer__video,
-	.viewer__poster {
-		position: relative;
-		z-index: 1;
-	}
-
-	.viewer__live {
-		position: relative;
-		z-index: 2;
-		object-fit: contain;
-	}
-
-	.viewer__status,
-	.viewer__processing {
-		position: relative;
-		z-index: 3;
-		margin: 0;
-		padding: 12px 20px;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-cream-text);
-		text-align: center;
-		border-radius: var(--radius-control);
-		background-color: rgb(20 26 46 / 0.55);
-		backdrop-filter: blur(2px);
-	}
-
-	.viewer__processing {
-		position: absolute;
-		bottom: 24px;
-	}
-
-	.viewer__failure {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		padding: 20px;
-		text-align: center;
-	}
-
-	.viewer__failure p {
-		margin: 0;
-		font: 500 15px/1.4 var(--font-body);
-		color: var(--color-cream-text);
-	}
-
-	.viewer__press {
-		position: absolute;
-		inset: 0;
-		z-index: 3;
-		display: block;
-		padding: 0;
-		border: none;
-		background: none;
-		cursor: pointer;
-	}
-
-	.viewer__press:focus-visible {
-		outline: 2px solid var(--color-blue-300);
-		outline-offset: -2px;
-	}
-
-	.viewer__filmstrip {
-		flex-shrink: 0;
-		padding: 8px 12px 12px;
-		overflow-x: auto;
-	}
-
-	.viewer__filmstrip-list {
-		display: flex;
-		gap: 6px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	.viewer__thumb {
-		width: 52px;
-		height: 52px;
-		padding: 0;
-		overflow: hidden;
-		border: 2px solid transparent;
-		border-radius: var(--radius-control);
-		background: none;
-		cursor: pointer;
-		flex-shrink: 0;
-	}
-
-	.viewer__thumb img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
-
-	.viewer__thumb--current {
-		border-color: var(--color-accent);
-	}
-
-	.viewer__arrow {
-		position: absolute;
-		top: 50%;
-		transform: translateY(-50%);
-		z-index: 4;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 44px;
-		height: 44px;
-		border: none;
-		border-radius: 50%;
-		color: var(--color-cream-text);
-		background-color: rgb(20 26 46 / 0.55);
-		backdrop-filter: blur(2px);
-		cursor: pointer;
-		transition: background-color var(--motion-fast) var(--ease-standard);
-	}
-
-	.viewer__arrow:hover {
-		background-color: var(--color-accent);
-		color: var(--color-accent-on);
-	}
-
-	.viewer__arrow--left {
-		left: 16px;
-	}
-
-	.viewer__arrow--right {
-		right: 16px;
-	}
-
-	.viewer__confirm-body {
-		margin: 0;
-		font: 400 15px/1.5 var(--font-body);
-	}
-
-	.viewer__confirm-error {
-		margin: 12px 0 0;
-		font: 500 13px/1.4 var(--font-body);
-		color: var(--color-danger-text);
 	}
 
 	@keyframes viewer-in {

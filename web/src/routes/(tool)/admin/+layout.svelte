@@ -26,14 +26,15 @@
 	];
 </script>
 
-<div class="admin">
-	<nav class="admin-nav" aria-label={$_('admin_nav_label')}>
-		<ul class="admin-nav__list">
+<div class="admin flex gap-6 items-start">
+	<nav class="admin-nav sticky top-4 flex flex-col gap-2 w-[200px] box-content shrink-0 px-2 py-3 bg-card border border-border rounded-card shadow-card" aria-label={$_('admin_nav_label')}>
+		<ul class="admin-nav__list flex flex-col gap-0.5 list-none">
 			{#each items as item (item.labelKey)}
 				<li>
 					{#if item.disabled}
+						<!-- The future-domain placeholders: visible but inert. -->
 						<button
-							class="admin-nav__item admin-nav__item--disabled"
+							class="admin-nav__item admin-nav__item--disabled block w-full px-3 py-[9px] font-body font-semibold text-[15px] leading-[1.4] text-text text-left rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard disabled:text-text-faint disabled:cursor-not-allowed"
 							type="button"
 							disabled
 							title={$_('nav_coming_later')}
@@ -42,9 +43,15 @@
 						</button>
 					{:else}
 						<a
-							class="admin-nav__item"
+							class="admin-nav__item block w-full px-3 py-[9px] font-body text-[15px] leading-[1.4] text-left no-underline rounded-control cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
 							href={item.href}
 							class:admin-nav__item--active={page.url.pathname === item.href}
+							class:bg-accent-soft={page.url.pathname === item.href}
+							class:bg-transparent={page.url.pathname !== item.href}
+							class:text-accent-soft-text={page.url.pathname === item.href}
+							class:text-text={page.url.pathname !== item.href}
+							class:font-bold={page.url.pathname === item.href}
+							class:font-semibold={page.url.pathname !== item.href}
 						>
 							{$_(item.labelKey)}
 						</a>
@@ -52,87 +59,9 @@
 				</li>
 			{/each}
 		</ul>
-		<p class="admin-nav__footnote">{$_('nav_coming_later')}</p>
+		<p class="admin-nav__footnote mt-2 mx-2 pt-2.5 border-t border-border font-body font-normal text-[12px] leading-[1.4] text-text-faint">{$_('nav_coming_later')}</p>
 	</nav>
-	<div class="admin-body">
+	<div class="admin-body flex-1 min-w-0">
 		{@render children()}
 	</div>
 </div>
-
-<style>
-	.admin {
-		display: flex;
-		gap: 24px;
-		align-items: flex-start;
-	}
-
-	.admin-nav {
-		position: sticky;
-		top: 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		width: 200px;
-		flex-shrink: 0;
-		padding: 12px 8px;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-	}
-
-	.admin-nav__list {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	.admin-nav__item {
-		display: block;
-		width: 100%;
-		padding: 9px 12px;
-		font: 600 15px/1.4 var(--font-body);
-		color: var(--color-text);
-		text-align: left;
-		text-decoration: none;
-		border: none;
-		border-radius: var(--radius-control);
-		background: none;
-		cursor: pointer;
-		transition: background-color var(--motion-fast) var(--ease-standard);
-	}
-
-	a.admin-nav__item:hover,
-	a.admin-nav__item:focus-visible {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
-	.admin-nav__item--active {
-		font-weight: 700;
-		color: var(--color-accent-soft-text);
-		background-color: var(--color-accent-soft);
-	}
-
-	/* The future-domain placeholders: visible but inert. */
-	.admin-nav__item--disabled {
-		color: var(--color-text-faint);
-		cursor: not-allowed;
-	}
-
-	.admin-nav__footnote {
-		margin: 8px 8px 0;
-		padding-top: 10px;
-		border-top: 1px solid var(--color-border);
-		font: 400 12px/1.4 var(--font-body);
-		color: var(--color-text-faint);
-	}
-
-	.admin-body {
-		flex: 1;
-		min-width: 0;
-	}
-</style>

@@ -133,25 +133,33 @@
 />
 
 {#if dragDepth > 0}
-	<div class="drophint" aria-hidden="true">
-		<p>{$_('upload_drop_hint')}</p>
+	<!-- The hint is visual only: the drag events stay on the window,
+	     and a drop landing on the hint must still reach the page. -->
+	<div
+		class="drophint fixed inset-0 z-[90] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-accent-soft)_40%,transparent)] border-3 border-dashed border-accent pointer-events-none"
+		aria-hidden="true"
+	>
+		<p class="py-4 px-7 rounded-overlay bg-card font-body font-bold text-[18px] leading-[1.4] text-accent-on shadow-overlay">{$_('upload_drop_hint')}</p>
 	</div>
 {/if}
 
 {#if items.length > 0}
-	<section class="overlay" aria-label={$_('upload_queue_title')}>
-		<header class="overlay__head">
-			<h2 class="overlay__title">{$_('upload_queue_title')}</h2>
+	<section
+		class="overlay fixed right-4 bottom-4 z-[70] w-[min(360px,calc(100vw-32px))] max-h-[min(60vh,480px)] box-content flex flex-col p-3 bg-card border border-border rounded-overlay shadow-overlay"
+		aria-label={$_('upload_queue_title')}
+	>
+		<header class="overlay__head flex items-baseline gap-2 pb-2">
+			<h2 class="overlay__title font-body font-bold text-[14px] leading-[1.4] text-text">{$_('upload_queue_title')}</h2>
 			{#if activeCount > 0}
-				<span class="overlay__count">{$_('upload_active_count', { values: { count: activeCount } })}</span>
+				<span class="overlay__count font-body font-normal text-[12px] leading-[1.4] text-text-soft">{$_('upload_active_count', { values: { count: activeCount } })}</span>
 			{/if}
 		</header>
-		<ul class="overlay__rows">
+		<ul class="overlay__rows flex flex-col gap-2 overflow-y-auto list-none">
 			{#each items as item (item.id)}
-				<li class="row row--{item.state}">
-					<div class="row__main">
-						<span class="row__name" title={item.fileName}>{item.fileName}</span>
-						<span class="row__state">{stateLabel(item)}</span>
+				<li class="row row--{item.state} grid grid-cols-[1fr_auto] [grid-template-areas:'main_close''bar_close''error_close''actions_close'] items-center gap-x-2 p-2 border border-border rounded-control">
+					<div class="row__main flex flex-col min-w-0 [grid-area:main]">
+						<span class="row__name font-body font-semibold text-[13px] leading-[1.4] text-text truncate" title={item.fileName}>{item.fileName}</span>
+						<span class="row__state font-body font-normal text-[11px] leading-[1.4] text-text-soft">{stateLabel(item)}</span>
 					</div>
 					{#if item.state === 'uploading' || item.state === 'processing'}
 						<!-- The determinate bar of an uploading row carries its
@@ -161,7 +169,7 @@
 						     100% would misstate an unknown-duration wait). -->
 						{@const indeterminate = item.state === 'processing'}
 						<div
-							class="row__bar"
+							class="row__bar [grid-area:bar] mt-1.5 h-1 rounded-[2px] bg-border overflow-hidden"
 							class:row__bar--indeterminate={indeterminate}
 							role="progressbar"
 							aria-label={stateLabel(item)}
@@ -169,25 +177,33 @@
 							aria-valuemax={indeterminate ? undefined : 100}
 							aria-valuenow={indeterminate ? undefined : Math.round(item.progress * 100)}
 						>
-							<div class="row__bar-fill" style={`width:${Math.round(item.progress * 100)}%`}></div>
+							<div class="row__bar-fill h-full bg-accent transition-[width] duration-(--motion-fast) ease-standard" style={`width:${Math.round(item.progress * 100)}%`}></div>
 						</div>
 					{/if}
 					{#if item.state === 'failed' && item.errorKey !== ''}
-						<p class="row__error" role="alert">{errorText(item.errorKey)}</p>
+						<p class="row__error [grid-area:error] mt-1.5 font-body font-normal text-[12px] leading-[1.45] text-danger-text" role="alert">{errorText(item.errorKey)}</p>
 					{/if}
-					<div class="row__actions">
+					<div class="row__actions [grid-area:actions] flex items-center gap-1.5 mt-1.5">
 						{#if item.state === 'failed' && uploadFormatSupported(item.fileName)}
-							<button class="row__action" type="button" onclick={() => retryUpload(item.id)}>
+							<button
+								class="row__action py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
+								type="button"
+								onclick={() => retryUpload(item.id)}
+							>
 								{$_('action_retry')}
 							</button>
 						{/if}
 						{#if item.state === 'conflict'}
-							<button class="row__action" type="button" onclick={() => openUploadConflict(item.id)}>
+							<button
+								class="row__action py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
+								type="button"
+								onclick={() => openUploadConflict(item.id)}
+							>
 								{$_('upload_resolve_conflict')}
 							</button>
 						{/if}
 						<button
-							class="row__close"
+							class="row__close [grid-area:close] inline-flex items-center justify-center w-[26px] h-[26px] rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
 							type="button"
 							aria-label={$_('upload_dismiss')}
 							onclick={() => dismissUpload(item.id)}
@@ -217,11 +233,11 @@
 >
 	{#snippet children()}
 		{#if conflictItem !== null && conflictItem.asset !== null}
-			<p class="conflict__body">
+			<p class="conflict__body font-body font-normal text-[15px] leading-[1.5] text-text whitespace-pre-line">
 				{$_('upload_conflict_body', { values: { name: conflictItem.fileName } })}
 			</p>
 			{#if conflictError !== ''}
-				<p class="conflict__error" role="alert">{errorText(conflictError)}</p>
+				<p class="conflict__error mt-2.5 font-body font-normal text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(conflictError)}</p>
 			{/if}
 		{/if}
 	{/snippet}
@@ -245,109 +261,9 @@
 </Modal>
 
 <style>
-	.drophint {
-		position: fixed;
-		inset: 0;
-		z-index: 90;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background-color: color-mix(in srgb, var(--color-accent-soft) 40%, transparent);
-		border: 3px dashed var(--color-accent);
-		/* The hint is visual only: the drag events stay on the window,
-		 * and a drop landing on the hint must still reach the page. */
-		pointer-events: none;
-	}
-
-	.drophint p {
-		margin: 0;
-		padding: 16px 28px;
-		border-radius: var(--radius-overlay);
-		background-color: var(--color-card);
-		font: 700 18px/1.4 var(--font-body);
-		color: var(--color-accent-on);
-		box-shadow: var(--shadow-overlay);
-	}
-
-	.overlay {
-		position: fixed;
-		right: 16px;
-		bottom: 16px;
-		z-index: 70;
-		width: min(360px, calc(100vw - 32px));
-		max-height: min(60vh, 480px);
-		display: flex;
-		flex-direction: column;
-		padding: 12px;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-overlay);
-		box-shadow: var(--shadow-overlay);
-	}
-
-	.overlay__head {
-		display: flex;
-		align-items: baseline;
-		gap: 8px;
-		padding-bottom: 8px;
-	}
-
-	.overlay__title {
-		margin: 0;
-		font: 700 14px/1.4 var(--font-body);
-		color: var(--color-text);
-	}
-
-	.overlay__count {
-		font: 400 12px/1.4 var(--font-body);
-		color: var(--color-text-soft);
-	}
-
-	.overlay__rows {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		overflow-y: auto;
-	}
-
-	.row {
-		display: grid;
-		grid-template-columns: 1fr auto;
-		grid-template-areas:
-			'main close'
-			'bar close'
-			'error close'
-			'actions close';
-		align-items: center;
-		column-gap: 8px;
-		padding: 8px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-control);
-	}
-
-	.row__main {
-		grid-area: main;
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-	}
-
-	.row__name {
-		font: 600 13px/1.4 var(--font-body);
-		color: var(--color-text);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.row__state {
-		font: 400 11px/1.4 var(--font-body);
-		color: var(--color-text-soft);
-	}
-
+	/* Residual styles (verbatim): the row-state compounds whose class
+	 * names are dynamic (row--{state}), the indeterminate bar's fill
+	 * rule, and its keyframes. */
 	.row--done .row__state,
 	.row--processing .row__state {
 		color: var(--color-teal, var(--color-text-soft));
@@ -357,89 +273,18 @@
 		color: var(--color-danger-text);
 	}
 
-	.row__bar {
-		grid-area: bar;
-		margin-top: 6px;
-		height: 4px;
-		border-radius: 2px;
-		background-color: var(--color-border);
-		overflow: hidden;
-	}
-
-	.row__bar-fill {
-		height: 100%;
-		background-color: var(--color-accent);
-		transition: width var(--motion-fast) var(--ease-standard);
-	}
-
 	.row__bar--indeterminate .row__bar-fill {
 		width: 40%;
 		animation: indeterminate 1.1s var(--ease-standard) infinite;
 	}
 
-	.row__error {
-		grid-area: error;
-		margin: 6px 0 0;
-		font: 400 12px/1.45 var(--font-body);
-		color: var(--color-danger-text);
-	}
-
-	.row__actions {
-		grid-area: actions;
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin-top: 6px;
-	}
-
-	.row__action {
-		padding: 3px 8px;
-		border: 1px solid var(--color-border-strong);
-		border-radius: var(--radius-control);
-		background: none;
-		font: 600 12px/1.4 var(--font-body);
-		color: var(--color-text);
-		cursor: pointer;
-		transition: background-color var(--motion-fast) var(--ease-standard);
-	}
-
-	.row__action:hover {
-		background-color: var(--color-accent-soft);
-	}
-
-	.row__close {
-		grid-area: close;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		border: none;
-		border-radius: var(--radius-control);
-		background: none;
-		color: var(--color-text-soft);
-		cursor: pointer;
-		transition:
-			background-color var(--motion-fast) var(--ease-standard),
-			color var(--motion-fast) var(--ease-standard);
-	}
-
-	.row__close:hover {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
-	.conflict__body {
-		margin: 0;
-		font: 400 15px/1.5 var(--font-body);
-		color: var(--color-text);
-		white-space: pre-line;
-	}
-
-	.conflict__error {
-		margin: 10px 0 0;
-		font: 400 13px/1.4 var(--font-body);
-		color: var(--color-danger-text);
+	@keyframes indeterminate {
+		from {
+			transform: translateX(-100%);
+		}
+		to {
+			transform: translateX(250%);
+		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -449,15 +294,6 @@
 		.overlay {
 			animation: none;
 			transition: none;
-		}
-	}
-
-	@keyframes indeterminate {
-		from {
-			transform: translateX(-100%);
-		}
-		to {
-			transform: translateX(250%);
 		}
 	}
 </style>

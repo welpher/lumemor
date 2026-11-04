@@ -154,9 +154,9 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<section class="wall" aria-busy={$wall.status === 'loading'}>
+<section class="wall max-w-[1200px] mx-auto" aria-busy={$wall.status === 'loading'}>
 	{#if $wall.items.length > 0}
-		<div class="wall__toolbar">
+		<div class="wall__toolbar flex justify-end mb-2">
 			<Button
 				variant="ghost"
 				aria-pressed={selectMode}
@@ -168,25 +168,29 @@
 	{/if}
 
 	{#if firstLoad}
-		<p class="wall__status" role="status">{$_(loadingKey)}</p>
+		<p class="wall__status my-12 text-center text-text-soft" role="status">{$_(loadingKey)}</p>
 	{:else if settledEmpty}
-		<div class="wall__empty">
-			<h1>{$_(titleKey)}</h1>
-			<p>{$_(emptyKey)}</p>
+		<div class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+			<h1 class="text-[22px] mb-2">{$_(titleKey)}</h1>
+			<p class="text-text-soft">{$_(emptyKey)}</p>
 		</div>
 	{:else if $wall.status === 'error' && $wall.items.length === 0}
-		<div class="wall__failure" role="alert">
+		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($wall.errorKey)}</p>
 			<Button variant="primary" onclick={() => void wall.loadMore()}>{$_('action_retry')}</Button>
 		</div>
 	{:else}
 		{#each groups as group (group.key)}
-			<section class="wall__month" data-month-key={group.key}>
-				<h2 class="wall__month-header">{group.label}</h2>
+			<!-- Both sticky headers ride above the tiles; the section's
+			     scroll margin leaves room for them under the scrubber's
+			     jumps. -->
+			<section class="wall__month scroll-mt-[92px]" data-month-key={group.key}>
+				<h2 class="wall__month-header sticky top-0 z-[10] mt-6 mb-3 py-2.5 px-3 text-[20px] bg-[color-mix(in_srgb,var(--color-page)_88%,transparent)] backdrop-blur-[6px] rounded-control">{group.label}</h2>
 				{#each group.days as day (day.key)}
 					<div class="wall__day" data-day-key={day.key}>
-						<h3 class="wall__day-header">{day.label}</h3>
-						<div class="wall__grid">
+						<!-- Stacks under the month header (44px + its margins). -->
+						<h3 class="wall__day-header sticky top-[44px] z-[9] mt-4 mb-2 py-1 px-2 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-[color-mix(in_srgb,var(--color-page)_88%,transparent)] backdrop-blur-[6px] rounded-control">{day.label}</h3>
+						<div class="wall__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3">
 							{#each day.items as tileItem (tileItem.id)}
 								<PhotoTile
 									item={tileItem}
@@ -203,19 +207,19 @@
 	{/if}
 
 	{#if $wall.status === 'error' && $wall.items.length > 0}
-		<div class="wall__failure" role="alert">
+		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($wall.errorKey)}</p>
 			<Button variant="primary" onclick={() => void wall.loadMore()}>{$_('action_retry')}</Button>
 		</div>
 	{/if}
 
 	{#if !observerAvailable && $wall.hasMore && $wall.status === 'ready'}
-		<div class="wall__pager">
+		<div class="wall__pager flex justify-center my-5">
 			<Button variant="ghost" onclick={() => void wall.loadMore()}>{$_('timeline_load_more')}</Button>
 		</div>
 	{/if}
 
-	<div class="wall__sentinel" bind:this={sentinel} aria-hidden="true"></div>
+	<div class="wall__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
 </section>
 
 <BatchBar
@@ -227,110 +231,3 @@
 	onaction={runAction}
 	onclear={exitSelection}
 />
-
-<style>
-	.wall {
-		max-width: 1200px;
-		margin: 0 auto;
-	}
-
-	.wall__toolbar {
-		display: flex;
-		justify-content: flex-end;
-		margin-bottom: 8px;
-	}
-
-	.wall__status {
-		margin: 48px 0;
-		text-align: center;
-		color: var(--color-text-soft);
-	}
-
-	.wall__empty {
-		max-width: 420px;
-		margin: 48px auto;
-		padding: 32px 24px;
-		text-align: center;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-	}
-
-	.wall__empty h1 {
-		font-size: 22px;
-		margin-bottom: 8px;
-	}
-
-	.wall__empty p {
-		margin: 0;
-		color: var(--color-text-soft);
-	}
-
-	.wall__failure {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		max-width: 420px;
-		margin: 48px auto;
-		padding: 20px;
-		text-align: center;
-		border: 1px solid var(--color-danger);
-		border-radius: var(--radius-card);
-		color: var(--color-danger-text);
-	}
-
-	.wall__failure p {
-		margin: 0;
-	}
-
-	.wall__month {
-		scroll-margin-top: 92px;
-	}
-
-	.wall__month-header {
-		position: sticky;
-		top: 0;
-		z-index: 10;
-		margin: 24px 0 12px;
-		padding: 10px 12px;
-		font-size: 20px;
-		background-color: color-mix(in srgb, var(--color-page) 88%, transparent);
-		backdrop-filter: blur(6px);
-		border-radius: var(--radius-control);
-	}
-
-	.wall__day-header {
-		position: sticky;
-		/* Stacks under the month header (44px + its margins). */
-		top: 44px;
-		z-index: 9;
-		margin: 16px 0 8px;
-		padding: 4px 8px;
-		font-family: var(--font-body);
-		font-weight: 600;
-		font-size: 13px;
-		letter-spacing: 0.02em;
-		color: var(--color-text-soft);
-		background-color: color-mix(in srgb, var(--color-page) 88%, transparent);
-		backdrop-filter: blur(6px);
-		border-radius: var(--radius-control);
-	}
-
-	.wall__grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
-		gap: 12px;
-	}
-
-	.wall__pager {
-		display: flex;
-		justify-content: center;
-		margin: 20px 0;
-	}
-
-	.wall__sentinel {
-		height: 1px;
-	}
-</style>
