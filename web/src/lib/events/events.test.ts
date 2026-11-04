@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { subscribeAssetEvents, subscribeJobEvents } from './index';
+import { subscribeAssetEvents, subscribeFaceEvents, subscribeJobEvents, subscribePersonEvents } from './index';
 
 // The shared SSE subscription module: one EventSource per app, opened
 // by the first subscriber and closed by the last unsubscribe, parsing
-// the server's asset.* blocks and the job.* blocks and ignoring
-// everything that is not the published payload shape. EventSource is
-// a browser global jsdom does not implement, so the tests inject a
-// mock through vi.stubGlobal and drive it by hand.
+// the server's asset.* blocks, the job.* blocks and the people
+// surface's person.* / face.clustered blocks and ignoring everything
+// that is not the published payload shape. EventSource is a browser
+// global jsdom does not implement, so the tests inject a mock through
+// vi.stubGlobal and drive it by hand.
 
 type Listener = (event: MessageEvent) => void;
 
@@ -260,3 +261,120 @@ function jobPayload(overrides: Record<string, unknown> = {}): Record<string, str
 		...overrides
 	};
 }
+
+// --- person.* events (the people surface's convergence) ----------------------
+
+test('every person event name the people pages react to is subscribed', () => {
+	const unsubscribe = subscribePersonEvents(() => undefined);
+	const stream = MockEventSource.instances[0];
+	for (const name of [
+		'person.labeled',
+		'person.unlabeled',
+		'person.hidden',
+		'person.merged',
+		'person.face_moved'
+	]) {
+		expect(stream?.listeners, name).toBeTruthy();
+	}
+	unsubscribe();
+});
+
+test('person subscribers receive the parsed person events, one shape per name', () => {
+	const seen: unknown[] = [];
+	const unsubscribe = subscribePersonEvents((event) => seen.push(event));
+
+	// The wire payloads are all-strings maps (the server publishes
+	// map[string]string); the labeled name lands in `label` because
+	// `name` is the event name, and the hidden switch parses to a
+	// boolean, the merged sources split on the comma.
+	const stream = MockEventSource.instances[0];
+	const userId = '0192f9a1-1a2b-3c4d-5e6f-7a8b9c0d1e2f';
+	stream?.emit('person.labeled', { clusterId: 'c1', name: 'Ada', userId }, 1);
+	stream?.emit('person.unlabeled', { clusterId: 'c1', userId }, 2);
+	stream?.emit('person.hidden', { clusterId: 'c1', isHidden: 'false', userId }, 3);
+	stream?.emit('person.merged', { survivingClusterId: 't1', mergedClusterIds: 's1,s2', userId }, 4);
+	stream?.emit('person.face_moved', { faceId: 'f1', clusterId: 't1', userId }, 5);
+
+	expect(seen).toEqual([
+		{ id: 1, name: 'person.labeled', clusterId: 'c1', label: 'Ada', userId },
+		{ id: 2, name: 'person.unlabeled', clusterId: 'c1', userId },
+		{ id: 3, name: 'person.hidden', clusterId: 'c1', isHidden: false, userId },
+		{ id: 4, name: 'person.merged', survivingClusterId: 't1', mergedClusterIds: ['s1', 's2'], userId },
+		{ id: 5, name: 'person.face_moved', faceId: 'f1', clusterId: 't1', userId }
+	]);
+	unsubscribe();
+});
+
+test('malformed person blocks are ignored, not dispatched', () => {
+	const seen: unknown[] = [];
+	const unsubscribe = subscribePersonEvents((event) => seen.push(event));
+
+	const stream = MockEventSource.instances[0];
+	const userId = 'u1';
+	// A payload that is not the published shape.
+	stream?.emit('person.labeled', { something: 'else' }, 1);
+	// A missing cluster id.
+	stream?.emit('person.unlabeled', { userId }, 2);
+	// A labeled name that is not a string.
+	stream?.emit('person.labeled', { clusterId: 'c1', name: 42, userId }, 3);
+	// A hidden switch outside true/false.
+	stream?.emit('person.hidden', { clusterId: 'c1', isHidden: 'maybe', userId }, 4);
+	// Merged sources that do not split into non-empty ids.
+	stream?.emit('person.merged', { survivingClusterId: 't1', mergedClusterIds: '', userId }, 5);
+	// A face move without a face id.
+	stream?.emit('person.face_moved', { clusterId: 't1', userId }, 6);
+	// A missing acting user id.
+	stream?.emit('person.hidden', { clusterId: 'c1', isHidden: 'true' }, 7);
+	// A missing id line (lastEventId empty).
+	stream?.emit('person.labeled', { clusterId: 'c1', name: 'Ada', userId }, Number.NaN);
+
+	expect(seen).toEqual([]);
+	unsubscribe();
+});
+
+test('person subscribers ride the shared stream; the last unsubscribe closes it', () => {
+	const assetUnsubscribe = subscribeAssetEvents(() => undefined);
+	const personUnsubscribe = subscribePersonEvents(() => undefined);
+	expect(MockEventSource.instances).toHaveLength(1);
+
+	// The asset subscriber leaving does not close the stream the
+	// person subscriber still uses.
+	assetUnsubscribe();
+	expect(MockEventSource.instances[0]?.closed).toBe(false);
+	personUnsubscribe();
+	expect(MockEventSource.instances[0]?.closed).toBe(true);
+});
+
+// --- face.clustered (the recognition run's cluster totals) --------------------
+
+test('face.clustered is subscribed and parses the all-strings counts into numbers', () => {
+	const seen: unknown[] = [];
+	const unsubscribe = subscribeFaceEvents((event) => seen.push(event));
+
+	// The payload is map[string]string on the wire: both totals are
+	// JSON strings, and the consumer needs numbers.
+	MockEventSource.instances[0]?.emit('face.clustered', { totalClusters: '4', labeledClusters: '1' }, 9);
+
+	expect(seen).toEqual([{ id: 9, name: 'face.clustered', totalClusters: 4, labeledClusters: 1 }]);
+	unsubscribe();
+});
+
+test('malformed face.clustered blocks are ignored, not dispatched', () => {
+	const seen: unknown[] = [];
+	const unsubscribe = subscribeFaceEvents((event) => seen.push(event));
+
+	const stream = MockEventSource.instances[0];
+	// A payload that is not the published shape.
+	stream?.emit('face.clustered', { something: 'else' }, 1);
+	// A count that is not a number.
+	stream?.emit('face.clustered', { totalClusters: 'lots', labeledClusters: '1' }, 2);
+	// A negative count.
+	stream?.emit('face.clustered', { totalClusters: '-1', labeledClusters: '1' }, 3);
+	// A missing labeled total.
+	stream?.emit('face.clustered', { totalClusters: '4' }, 4);
+	// A missing id line (lastEventId empty).
+	stream?.emit('face.clustered', { totalClusters: '4', labeledClusters: '1' }, Number.NaN);
+
+	expect(seen).toEqual([]);
+	unsubscribe();
+});

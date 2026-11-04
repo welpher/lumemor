@@ -4,7 +4,7 @@ import { initI18n } from '$lib/i18n';
 import Drawer from './Drawer.svelte';
 
 // The drawer contract from the web IA: seven content sections,
-// three of them live links (their real views are later tasks), four
+// four of them live links (their real views are later tasks), three
 // disabled M3 placeholders, Escape and an outside click closing it.
 
 beforeEach(async () => {
@@ -31,15 +31,15 @@ test('closed renders nothing; open renders the seven sections in IA order', () =
 	);
 	expect(labels).toEqual(['Timeline', 'Albums', 'People', 'Places', 'Memories', 'Favorites', 'Trash']);
 
-	// The live links: the timeline, favorites and trash routes.
+	// The live links: the timeline, people, favorites and trash routes.
 	const links = [...document.body.querySelectorAll<HTMLAnchorElement>('a.drawer__item')].map(
 		(link) => link.getAttribute('href')
 	);
-	expect(links).toEqual(['/timeline', '/favorites', '/trash']);
+	expect(links).toEqual(['/timeline', '/people', '/favorites', '/trash']);
 
 	// The M3 placeholders: present, visible, disabled.
 	const disabled = [...document.body.querySelectorAll<HTMLButtonElement>('button.drawer__item--disabled')];
-	expect(disabled.map((button) => button.textContent)).toEqual(['Albums', 'People', 'Places', 'Memories']);
+	expect(disabled.map((button) => button.textContent)).toEqual(['Albums', 'Places', 'Memories']);
 	expect(disabled.every((button) => button.disabled)).toBe(true);
 	expect(disabled.every((button) => button.title !== '')).toBe(true);
 

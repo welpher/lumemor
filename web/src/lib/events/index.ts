@@ -2,9 +2,11 @@
 //
 // One refcounted EventSource on GET /api/v1/events feeds every
 // consumer of the instance activity stream: the timeline wall and
-// the upload queue overlay (asset.* through `subscribeAssetEvents`)
-// and the admin surfaces' live progress (job.* through
-// `subscribeJobEvents`) all subscribe and unsubscribe on unmount;
+// the upload queue overlay (asset.* through `subscribeAssetEvents`),
+// the admin surfaces' live progress (job.* through
+// `subscribeJobEvents`) and the people surface's convergence
+// (person.* and face.clustered through `subscribePersonEvents` /
+// `subscribeFaceEvents`) all subscribe and unsubscribe on unmount;
 // the first subscriber of any kind opens the stream, the last one
 // closes it.
 //
@@ -20,11 +22,16 @@
 // Event names arrive as SSE `event:` lines, so only
 // addEventListener(name) receives them (the default `onmessage`
 // handler never fires for named events). The asset.* payloads the
-// server publishes are `{assetId, kind}` objects and the job.*
-// payloads are `{jobRunId, kind, total, done, failed, state}` maps
-// with every value a string (the counts parse through Number());
-// anything else on the wire is ignored defensively rather than
-// crashing subscribers.
+// server publishes are `{assetId, kind}` objects, the job.* payloads
+// are `{jobRunId, kind, total, done, failed, state}` maps, the
+// person.* payloads carry the cluster (or face) id beside the acting
+// user's id (label and hidden state are private per user, so the
+// subscriber filters by what it renders, never by another account's
+// change), and face.clustered carries the library's cluster totals
+// -- every value a string on the wire (the server publishes
+// map[string]string), the counts parsing through Number(); anything
+// else on the wire is ignored defensively rather than crashing
+// subscribers.
 
 export type AssetKind = 'image' | 'video';
 
@@ -80,6 +87,92 @@ export type JobEventListener = (event: JobEvent) => void;
 /** The job run lifecycle states, the JobRunResponse contract's enum. */
 export type JobRunState = 'queued' | 'running' | 'succeeded' | 'failed';
 
+/**
+ * The people surface's person.* events: the label, hidden, merge and
+ * face-move writes. Every payload carries the acting user's id
+ * beside the cluster (or face) id, because label and hidden state
+ * are private per user -- a subscriber filters by the ids it
+ * renders, never by another account's change; the SERVER's answer
+ * decides what actually moved (B4).
+ *
+ * The wire payload of `person.labeled` carries the label under the
+ * key `name`; the parsed event carries it as `label` because `name`
+ * is the event name. `person.hidden` carries the switch as a string
+ * ('true'/'false') on the wire and as a boolean here;
+ * `person.merged` carries the dissolved sources comma-joined and
+ * split here.
+ */
+export type PersonEventName =
+	| 'person.labeled'
+	| 'person.unlabeled'
+	| 'person.hidden'
+	| 'person.merged'
+	| 'person.face_moved';
+
+export type PersonEvent =
+	| {
+			/** The server's monotonically increasing event id (the resumption cursor). */
+			id: number;
+			name: 'person.labeled';
+			clusterId: string;
+			/** The acting user's own label for the cluster. */
+			label: string;
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.unlabeled';
+			clusterId: string;
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.hidden';
+			clusterId: string;
+			isHidden: boolean;
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.merged';
+			/** The surviving cluster that absorbed the sources. */
+			survivingClusterId: string;
+			/** The dissolved source clusters. */
+			mergedClusterIds: string[];
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.face_moved';
+			faceId: string;
+			/** The cluster the face occupies after the move. */
+			clusterId: string;
+			userId: string;
+	  };
+
+export type PersonEventListener = (event: PersonEvent) => void;
+
+/** The face clustering events the server publishes after a recognition run. */
+export type FaceEventName = 'face.clustered';
+
+/**
+ * One parsed face.clustered event: the library's cluster totals
+ * after a recognition run (all strings on the wire, parsed to
+ * non-negative integers here). The payload carries no ids -- the
+ * unnamed region converges by refetching, not by patching.
+ */
+export type FaceEvent = {
+	/** The server's monotonically increasing event id (the resumption cursor). */
+	id: number;
+	name: FaceEventName;
+	/** The library's whole face cluster count. */
+	totalClusters: number;
+	/** The clusters carrying at least one user label. */
+	labeledClusters: number;
+};
+
+export type FaceEventListener = (event: FaceEvent) => void;
+
 const EVENTS_PATH = '/api/v1/events';
 
 const ASSET_EVENT_NAMES: readonly AssetEventName[] = [
@@ -99,9 +192,38 @@ const JOB_EVENT_NAMES: readonly JobEventName[] = [
 
 const JOB_RUN_STATES: readonly JobRunState[] = ['queued', 'running', 'succeeded', 'failed'];
 
+const PERSON_EVENT_NAMES: readonly PersonEventName[] = [
+	'person.labeled',
+	'person.unlabeled',
+	'person.hidden',
+	'person.merged',
+	'person.face_moved'
+];
+
+const FACE_EVENT_NAMES: readonly FaceEventName[] = ['face.clustered'];
+
 const assetListeners = new Set<AssetEventListener>();
 const jobListeners = new Set<JobEventListener>();
+const personListeners = new Set<PersonEventListener>();
+const faceListeners = new Set<FaceEventListener>();
 let source: EventSource | null = null;
+
+/** Parse the shared id + JSON payload half of one SSE block; null when malformed. */
+function baseEvent(message: MessageEvent): { id: number; payload: unknown } | null {
+	const id = Number.parseInt(message.lastEventId, 10);
+	if (!Number.isFinite(id) || id < 0) {
+		return null;
+	}
+	try {
+		const payload = JSON.parse(String(message.data));
+		if (payload !== null && typeof payload === 'object') {
+			return { id, payload };
+		}
+	} catch {
+		// Not JSON: the block is not for us.
+	}
+	return null;
+}
 
 /**
  * Parse one SSE block into an AssetEvent; null when the block is not
@@ -191,6 +313,107 @@ function parseJobEvent(name: JobEventName, message: MessageEvent): JobEvent | nu
 }
 
 /**
+ * Parse one SSE block into a PersonEvent; null when the block is not
+ * the payload shape this module subscribes to. The wire payload is
+ * all strings (the server publishes map[string]string), so the
+ * hidden switch parses from 'true'/'false' and the merged sources
+ * split on the comma -- anything else means the block is not for us.
+ */
+function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonEvent | null {
+	const base = baseEvent(message);
+	if (base === null) {
+		return null;
+	}
+	const payload = base.payload as {
+		clusterId?: unknown;
+		name?: unknown;
+		userId?: unknown;
+		isHidden?: unknown;
+		survivingClusterId?: unknown;
+		mergedClusterIds?: unknown;
+		faceId?: unknown;
+	};
+	const { clusterId, userId } = payload;
+	if (typeof userId !== 'string' || userId === '') {
+		return null;
+	}
+	switch (name) {
+		case 'person.labeled': {
+			if (typeof clusterId !== 'string' || clusterId === '') {
+				return null;
+			}
+			if (typeof payload.name !== 'string' || payload.name === '') {
+				return null;
+			}
+			return { id: base.id, name, clusterId, label: payload.name, userId };
+		}
+		case 'person.unlabeled': {
+			if (typeof clusterId !== 'string' || clusterId === '') {
+				return null;
+			}
+			return { id: base.id, name, clusterId, userId };
+		}
+		case 'person.hidden': {
+			if (typeof clusterId !== 'string' || clusterId === '') {
+				return null;
+			}
+			if (payload.isHidden !== 'true' && payload.isHidden !== 'false') {
+				return null;
+			}
+			return { id: base.id, name, clusterId, isHidden: payload.isHidden === 'true', userId };
+		}
+		case 'person.merged': {
+			if (typeof payload.survivingClusterId !== 'string' || payload.survivingClusterId === '') {
+				return null;
+			}
+			if (typeof payload.mergedClusterIds !== 'string' || payload.mergedClusterIds === '') {
+				return null;
+			}
+			const mergedClusterIds = payload.mergedClusterIds.split(',');
+			if (mergedClusterIds.some((merged) => merged === '')) {
+				return null;
+			}
+			return { id: base.id, name, survivingClusterId: payload.survivingClusterId, mergedClusterIds, userId };
+		}
+		case 'person.face_moved': {
+			if (typeof payload.faceId !== 'string' || payload.faceId === '') {
+				return null;
+			}
+			if (typeof clusterId !== 'string' || clusterId === '') {
+				return null;
+			}
+			return { id: base.id, name, faceId: payload.faceId, clusterId, userId };
+		}
+	}
+}
+
+/**
+ * Parse one SSE block into a FaceEvent; null when the block is not
+ * the payload shape this module subscribes to. The totals are
+ * all-strings on the wire and must parse to non-negative integers.
+ */
+function parseFaceEvent(name: FaceEventName, message: MessageEvent): FaceEvent | null {
+	const base = baseEvent(message);
+	if (base === null) {
+		return null;
+	}
+	const { totalClusters, labeledClusters } = base.payload as {
+		totalClusters?: unknown;
+		labeledClusters?: unknown;
+	};
+	if (typeof totalClusters !== 'string' || typeof labeledClusters !== 'string') {
+		return null;
+	}
+	const totals = [Number(totalClusters), Number(labeledClusters)];
+	for (const total of totals) {
+		if (!Number.isInteger(total) || total < 0) {
+			return null;
+		}
+	}
+	return { id: base.id, name, totalClusters: totals[0], labeledClusters: totals[1] };
+}
+
+/**
  * Open the shared stream when the first listener arrives. The
  * EventSource constructor is read at call time (never at import
  * time) so test environments without one keep every subscriber inert
@@ -227,6 +450,28 @@ function connect(): void {
 			}
 		});
 	}
+	for (const name of PERSON_EVENT_NAMES) {
+		source.addEventListener(name, (message: MessageEvent) => {
+			const event = parsePersonEvent(name, message);
+			if (event === null) {
+				return;
+			}
+			for (const listener of personListeners) {
+				listener(event);
+			}
+		});
+	}
+	for (const name of FACE_EVENT_NAMES) {
+		source.addEventListener(name, (message: MessageEvent) => {
+			const event = parseFaceEvent(name, message);
+			if (event === null) {
+				return;
+			}
+			for (const listener of faceListeners) {
+				listener(event);
+			}
+		});
+	}
 }
 
 /** Close the shared stream (the last listener left, or the app reset). */
@@ -235,9 +480,9 @@ function disconnect(): void {
 	source = null;
 }
 
-/** The number of subscribers across both event kinds. */
+/** The number of subscribers across all event kinds. */
 function subscriberCount(): number {
-	return assetListeners.size + jobListeners.size;
+	return assetListeners.size + jobListeners.size + personListeners.size + faceListeners.size;
 }
 
 /**
@@ -268,6 +513,42 @@ export function subscribeJobEvents(listener: JobEventListener): () => void {
 	connect();
 	return () => {
 		jobListeners.delete(listener);
+		if (subscriberCount() === 0) {
+			disconnect();
+		}
+	};
+}
+
+/**
+ * Subscribe to the parsed person.* events of the activity stream --
+ * the people surface's label, hidden, merge and face-move writes,
+ * riding the SAME refcounted EventSource as every other subscriber.
+ * Returns the unsubscribe function; the stream closes when the last
+ * subscriber of any kind unsubscribes.
+ */
+export function subscribePersonEvents(listener: PersonEventListener): () => void {
+	personListeners.add(listener);
+	connect();
+	return () => {
+		personListeners.delete(listener);
+		if (subscriberCount() === 0) {
+			disconnect();
+		}
+	};
+}
+
+/**
+ * Subscribe to the parsed face.clustered events of the activity
+ * stream -- the recognition runs' cluster totals, riding the SAME
+ * refcounted EventSource as every other subscriber. Returns the
+ * unsubscribe function; the stream closes when the last subscriber
+ * of any kind unsubscribes.
+ */
+export function subscribeFaceEvents(listener: FaceEventListener): () => void {
+	faceListeners.add(listener);
+	connect();
+	return () => {
+		faceListeners.delete(listener);
 		if (subscriberCount() === 0) {
 			disconnect();
 		}
