@@ -290,3 +290,27 @@ WHERE f.id = sqlc.arg('face_id')
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false;
+
+-- name: ListAssetFacesForCaller :many
+-- The asset detail's faces (M3b Task 5): every face of one asset
+-- with the CALLER's label state of its cluster -- the B4 discipline's
+-- read: clusters are global, labels are private, so the LEFT JOIN
+-- picks the caller's row and another account's label never surfaces.
+-- The asset itself was already read owner-scoped by the detail
+-- endpoint (a miss answered its own 404 before this query runs), so
+-- the faces need no visibility predicate of their own: a trashed or
+-- hidden asset's detail answers 200 and its faces ride along. The
+-- cluster_id crosses as NULL for a face the clustering has not
+-- assigned yet (label null with it -- nothing to label); the caller's
+-- unnamed clusters read as null label columns. Ordered score
+-- descending, the face id ascending as the tiebreak.
+SELECT f.id,
+       f.score,
+       f.cluster_id,
+       l.name AS label_name,
+       l.is_hidden AS label_hidden
+FROM faces f
+LEFT JOIN user_face_labels l
+       ON l.cluster_id = f.cluster_id AND l.user_id = sqlc.arg('user_id')
+WHERE f.asset_id = sqlc.arg('asset_id')
+ORDER BY f.score DESC, f.id;

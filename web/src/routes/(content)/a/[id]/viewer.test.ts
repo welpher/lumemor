@@ -21,9 +21,10 @@ import Page from './+page.svelte';
 // a wall click by default, 'enter' for a fresh-document deep link);
 // later completed navigations fire through the captured callbacks.
 
-const { pageState, handlers, navigationState, navigationCallbacks } = vi.hoisted(() => ({
+const { pageState, handlers, personHandlers, navigationState, navigationCallbacks } = vi.hoisted(() => ({
 	pageState: { params: { id: 'a1' } as { id: string } },
 	handlers: [] as Array<(event: unknown) => void>,
+	personHandlers: [] as Array<(event: unknown) => void>,
 	navigationState: { mountType: 'link' as 'link' | 'enter' },
 	navigationCallbacks: [] as Array<(navigation: { type: string }) => void>
 }));
@@ -46,6 +47,15 @@ vi.mock('$lib/events', () => ({
 			const index = handlers.indexOf(listener);
 			if (index !== -1) {
 				handlers.splice(index, 1);
+			}
+		};
+	},
+	subscribePersonEvents: (listener: (event: unknown) => void) => {
+		personHandlers.push(listener);
+		return () => {
+			const index = personHandlers.indexOf(listener);
+			if (index !== -1) {
+				personHandlers.splice(index, 1);
 			}
 		};
 	}
@@ -94,8 +104,43 @@ function detailBodyOf(
 		description: 'Original caption.',
 		isHidden: false,
 		exif: {},
+		faces: [],
 		...source,
 		...overrides
+	};
+}
+
+/** One face summary of the detail's faces array (the contract shape). */
+function faceSummary(id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		id,
+		score: 0.9,
+		thumbnail: `/api/v1/faces/${id}/thumbnail`,
+		clusterId: `c-${id}`,
+		label: null,
+		...overrides
+	};
+}
+
+/** One named person of the assign dialog's target list. */
+function personTarget(clusterId: string, name: string): Record<string, unknown> {
+	return {
+		clusterId,
+		name,
+		faceCount: 12,
+		representativeFaceId: `f-${clusterId}`,
+		thumbnail: `/api/v1/faces/f-${clusterId}/thumbnail`,
+		isHidden: false
+	};
+}
+
+/** One unnamed cluster of the assign dialog's target list. */
+function unnamedTarget(clusterId: string, faceCount: number): Record<string, unknown> {
+	return {
+		clusterId,
+		faceCount,
+		representativeFaceId: `f-${clusterId}`,
+		thumbnail: `/api/v1/faces/f-${clusterId}/thumbnail`
 	};
 }
 
@@ -135,6 +180,10 @@ function patch(url: string, respond: () => Response | Promise<Response>): RouteR
 
 function post(url: string, respond: () => Response | Promise<Response>): RouteRule {
 	return { method: 'POST', url, respond };
+}
+
+function put(url: string, respond: () => Response | Promise<Response>): RouteRule {
+	return { method: 'PUT', url, respond };
 }
 
 function del(url: string, respond: () => Response | Promise<Response>): RouteRule {
@@ -226,6 +275,20 @@ function fillTextarea(selector: string, value: string): void {
 	flushSync();
 }
 
+function fillInput(field: HTMLInputElement, value: string): void {
+	field.value = value;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+}
+
+/** Fire one parsed person event to every live subscriber. */
+function firePersonEvent(event: Record<string, unknown>): void {
+	for (const handler of [...personHandlers]) {
+		handler(event);
+	}
+	flushSync();
+}
+
 /** The request a recorded fetch mock call made (method, url, body). */
 function requestOf(fetchMock: ReturnType<typeof vi.fn>, method: string, url: string): RequestInit | undefined {
 	const call = fetchMock.mock.calls.find(
@@ -237,6 +300,7 @@ function requestOf(fetchMock: ReturnType<typeof vi.fn>, method: string, url: str
 beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
+	personHandlers.length = 0;
 	navigationState.mountType = 'link';
 	navigationCallbacks.length = 0;
 	vi.clearAllMocks();
@@ -1061,4 +1125,222 @@ test('a zoomed Live Photo press keeps the motion layer inside the zoomed stage',
 	expect(stage.contains(live!)).toBe(true);
 	unmount(app);
 	flushSync();
+});
+
+test('the drawer renders one chip per face with the caller-visible label states', async () => {
+	const faces = [
+		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		faceSummary('f2'),
+		faceSummary('f3', { clusterId: null })
+	];
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces })))
+	]);
+	await settle();
+	openDrawer();
+
+	const chips = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.info__face'));
+	expect(chips).toHaveLength(3);
+	expect(chips[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/faces/f1/thumbnail');
+	// The caller's label, the unnamed state, the not-grouped state.
+	expect(chips.map((chip) => chip.querySelector('.info__face-name')?.textContent)).toEqual([
+		'Ada',
+		'Unnamed',
+		'Not grouped yet'
+	]);
+	unmount(app);
+	flushSync();
+
+	// A faceless asset: the honest empty line, never a bare heading.
+	const empty = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: [] })))
+	]);
+	await settle();
+	openDrawer();
+	expect(document.body.querySelector('.info__face')).toBeNull();
+	expect(element('.info__faces-empty').textContent).toBe('No people recognized in this photo.');
+	unmount(empty.app);
+	flushSync();
+});
+
+test('the assign flow moves a face onto an existing person and the chip converges', async () => {
+	// The server's current answer: f2 sits on an unnamed cluster; the
+	// move lands it on Ada's cluster and the refetch carries the label.
+	let moved = false;
+	const facesNow = () => [
+		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		moved
+			? faceSummary('f2', { clusterId: 'c1', label: { name: 'Ada', isHidden: false } })
+			: faceSummary('f2')
+	];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
+		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
+		get('/api/v1/people/unnamed?limit=60', () =>
+			jsonResponse(200, { items: [unnamedTarget('c9', 4)] })
+		),
+		post('/api/v1/faces/f2/move', () => {
+			moved = true;
+			return jsonResponse(200, { faceId: 'f2', clusterId: 'c1' });
+		})
+	]);
+	await settle();
+	openDrawer();
+	click(element('[data-face-id="f2"]'));
+	await settle();
+
+	// The assign dialog opened and fetched both target lists.
+	expect(element('[role="dialog"]').getAttribute('aria-label')).toBe('Assign person');
+	const select = document.body.querySelector<HTMLSelectElement>('#cluster-picker-target');
+	expect(select).not.toBeNull();
+	// The face's own cluster (c-f2) is never a target; the named
+	// people and the unnamed clusters are.
+	expect(Array.from(select!.options).map((option) => option.value)).toEqual(['c1', 'c9']);
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people')).toHaveLength(1);
+
+	click(buttonByText('Assign'));
+	await settle();
+
+	// The exact move body of the contract.
+	const init = requestOf(fetchMock, 'POST', '/api/v1/faces/f2/move');
+	expect(JSON.parse(String(init?.body))).toEqual({ targetClusterId: 'c1' });
+	// The dialog closed and the chip reflects the target cluster's label.
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+	expect(
+		Array.from(document.body.querySelectorAll('.info__face-name')).map((node) => node.textContent)
+	).toEqual(['Ada', 'Ada']);
+	unmount(app);
+	flushSync();
+});
+
+test('a move on a not-yet-grouped face surfaces the not-grouped message', async () => {
+	const faces = [faceSummary('f3', { clusterId: null })];
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
+		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
+		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], nextCursor: null })),
+		post('/api/v1/faces/f3/move', () => jsonResponse(404, { code: 'PERSON_NOT_FOUND' }))
+	]);
+	await settle();
+	openDrawer();
+	click(element('[data-face-id="f3"]'));
+	await settle();
+	// The clusterless chip offers no new-person path (there is no
+	// cluster to name).
+	expect(document.body.querySelector('input[name="cluster-picker-mode"]')).toBeNull();
+	click(buttonByText('Assign'));
+	await settle();
+
+	// The 404 stays the dialog's honest not-grouped message, never
+	// the raw code's person-missing text.
+	expect(element('[role="dialog"]')).not.toBeNull();
+	const error = element('.cluster-picker__failure');
+	expect(error.getAttribute('role')).toBe('alert');
+	expect(error.textContent).toContain('has not been grouped yet');
+	expect(error.textContent).not.toContain('person_not_found');
+	unmount(app);
+	flushSync();
+});
+
+test('an unnamed-cluster chip names its cluster as a new person; labeled chips are not offered', async () => {
+	let named = false;
+	const facesNow = () => [
+		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		named ? faceSummary('f2', { label: { name: 'Grace', isHidden: false } }) : faceSummary('f2')
+	];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
+		get('/api/v1/people', () => jsonResponse(200, [])),
+		get('/api/v1/people/unnamed?limit=60', () =>
+			jsonResponse(200, { items: [unnamedTarget('c9', 4)] })
+		),
+		put('/api/v1/people/c-f2/label', () => {
+			named = true;
+			return jsonResponse(200, { clusterId: 'c-f2', name: 'Grace', isHidden: false });
+		})
+	]);
+	await settle();
+	openDrawer();
+
+	// The labeled chip: no new-person mode (renaming an existing
+	// person belongs to the people page) -- the picker only.
+	click(element('[data-face-id="f1"]'));
+	await settle();
+	expect(document.body.querySelector('input[name="cluster-picker-mode"]')).toBeNull();
+	click(buttonByText('Cancel'));
+	await settle();
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+
+	// The unnamed chip: the new-person path with the family note.
+	click(element('[data-face-id="f2"]'));
+	await settle();
+	const radios = Array.from(
+		document.body.querySelectorAll<HTMLInputElement>('input[name="cluster-picker-mode"]')
+	);
+	expect(radios.map((radio) => radio.value)).toEqual(['existing', 'new']);
+	click(radios[1]!);
+	radios[1]!.dispatchEvent(new Event('change', { bubbles: true }));
+	flushSync();
+	const field = document.body.querySelector<HTMLInputElement>('input[name="new-person-name"]');
+	expect(field).not.toBeNull();
+	expect(element('.cluster-picker__note').textContent).toContain('shares the name');
+	fillInput(field!, 'Grace');
+	click(buttonByText('Save name'));
+	await settle();
+
+	// The exact label body on the face's CURRENT cluster (naming it,
+	// not moving the face).
+	const init = requestOf(fetchMock, 'PUT', '/api/v1/people/c-f2/label');
+	expect(JSON.parse(String(init?.body))).toEqual({ name: 'Grace' });
+	// The dialog closed and both chips carry their names.
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+	expect(
+		Array.from(document.body.querySelectorAll('.info__face-name')).map((node) => node.textContent)
+	).toEqual(['Ada', 'Grace']);
+	unmount(app);
+	flushSync();
+});
+
+test('person events converge the chips through the refetch; unrelated events add no fetch', async () => {
+	let labeled = false;
+	const facesNow = () => [faceSummary('f2', labeled ? { label: { name: 'Ada', isHidden: false } } : {})];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() })))
+	]);
+	await settle();
+	openDrawer();
+	expect(element('.info__face-name').textContent).toBe('Unnamed');
+	const detailCalls = () =>
+		fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2').length;
+	const before = detailCalls();
+
+	// A person event off every rendered cluster and face: no refetch.
+	firePersonEvent({ id: 30, name: 'person.labeled', clusterId: 'c-other', label: 'X', userId: 'u1' });
+	await settle();
+	expect(detailCalls()).toBe(before);
+
+	// A label on a rendered cluster: the refetched answer decides the
+	// chip (the event itself is only the trigger).
+	labeled = true;
+	firePersonEvent({ id: 31, name: 'person.labeled', clusterId: 'c-f2', label: 'Ada', userId: 'u1' });
+	await settle();
+	expect(element('.info__face-name').textContent).toBe('Ada');
+	expect(detailCalls()).toBe(before + 1);
+
+	// A face move touching a rendered face converges the same way.
+	firePersonEvent({ id: 32, name: 'person.face_moved', faceId: 'f2', clusterId: 'c-f2', userId: 'u1' });
+	await settle();
+	expect(detailCalls()).toBe(before + 2);
+	unmount(app);
+	flushSync();
+});
+
+test('leaving the viewer unsubscribes from the person event stream', async () => {
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+	expect(personHandlers).toHaveLength(1);
+
+	unmount(app);
+	flushSync();
+	expect(personHandlers).toHaveLength(0);
 });

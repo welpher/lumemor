@@ -28,6 +28,7 @@ Name | Type | Description | Notes
 **blurhash** | **String** | The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it.  | 
 **livePhotoVideoId** | **String** | For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, and its transcoded play stream is served there too); null otherwise.  | 
 **exif** | [**ExifSummary**](ExifSummary.md) | The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction.  | 
+**faces** | [**BuiltList&lt;AssetFaceSummary&gt;**](AssetFaceSummary.md) | The asset's faces as the calling user sees them, strongest score first with the face id as the tiebreak. The array is caller-scoped (B4): the asset being visible to the caller is the gate -- the faces ride on the detail's own permission -- and each entry's `label` is the caller's own label of the face's cluster, never another account's. Always present, empty when the asset carries no faces (none detected, or detection has not run yet). The PATCH response serves the same array, exactly as the GET serves it.  | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

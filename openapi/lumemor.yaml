@@ -1499,9 +1499,12 @@ paths:
         The asset detail: the identity and storage fields of the upload
         response plus the refinements the pipeline produced afterwards
         -- dimensions, duration, blurhash, the EXIF hot fields, and
-        readiness -- and the two owner-level editable attributes
+        readiness -- the two owner-level editable attributes
         (`description`, `isHidden`), which the asset detail view
-        renders and the `PATCH` endpoint edits.
+        renders and the `PATCH` endpoint edits, and the asset's faces
+        with the caller's own label of each face's cluster (`faces`),
+        which the detail view's people section renders and the people
+        write endpoints maintain.
 
         Access is owner-only: an id that belongs to another account
         answers the same 404 `ASSET_NOT_FOUND` as an id that does not
@@ -1535,7 +1538,10 @@ paths:
             pipeline-dependent fields stay null and the client waits
             for the `asset.ready` event. `exif` is always present; its
             fields are null until the metadata job wrote the
-            extraction.
+            extraction. `faces` is always present, ordered by score
+            descending with the face id as the tiebreak, each entry
+            carrying the caller's own label state of the face's
+            cluster; the `person.*` events on the stream converge it.
           content:
             application/json:
               schema:
@@ -1575,6 +1581,19 @@ paths:
                       lon: 2.2945
                       alt: 35
                       tzOffset: '+05:30'
+                    faces:
+                      - id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+                        score: 0.97
+                        thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+                        clusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f80
+                        label:
+                          name: Ada
+                          isHidden: false
+                      - id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72
+                        score: 0.82
+                        thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72/thumbnail
+                        clusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f81
+                        label: null
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -1690,7 +1709,8 @@ paths:
         '200':
           description: |
             The asset detail after the edit -- the same shape `GET
-            /assets/{id}` serves, with the applied values. The
+            /assets/{id}` serves, with the applied values (the
+            `faces` array included, unchanged by the edit). The
             idempotent no-op answers it too, with the row's current
             state unchanged.
           content:
@@ -1732,6 +1752,7 @@ paths:
                       lon: 2.2945
                       alt: 35
                       tzOffset: '+05:30'
+                    faces: []
         '400':
           description: |
             The patch is not well-formed: the body is not valid JSON
@@ -5339,8 +5360,9 @@ components:
       description: |
         One asset as the detail endpoint returns it: the upload
         response's identity and storage fields, the pipeline's
-        refinements, and the two owner-level attributes the PATCH
-        endpoint edits (`description`, `isHidden`). The shape is
+        refinements, the two owner-level attributes the PATCH
+        endpoint edits (`description`, `isHidden`), and the asset's
+        faces as the calling user sees them (`faces`). The shape is
         fixed -- every property is always present -- and the
         pipeline-dependent values (`width`, `height`, `durationMs`,
         `blurhash` and the fields inside `exif`) are null until the
@@ -5368,6 +5390,7 @@ components:
         - blurhash
         - livePhotoVideoId
         - exif
+        - faces
       properties:
         id:
           type: string
@@ -5505,6 +5528,73 @@ components:
             The EXIF hot fields. Always present as an object; every
             field inside it is null until the metadata job wrote the
             extraction.
+        faces:
+          type: array
+          description: |
+            The asset's faces as the calling user sees them, strongest
+            score first with the face id as the tiebreak. The array is
+            caller-scoped (B4): the asset being visible to the caller
+            is the gate -- the faces ride on the detail's own
+            permission -- and each entry's `label` is the caller's own
+            label of the face's cluster, never another account's.
+            Always present, empty when the asset carries no faces
+            (none detected, or detection has not run yet). The PATCH
+            response serves the same array, exactly as the GET serves
+            it.
+          items:
+            $ref: '#/components/schemas/AssetFaceSummary'
+    AssetFaceSummary:
+      type: object
+      description: |
+        One face of the asset detail's `faces` array: the crop's
+        identity, the detection score, the face's cluster and the
+        CALLER's label of that cluster. The label is per-user state
+        (B4): another account's label of the same global cluster never
+        shows here. `clusterId` is null while the face waits for its
+        first clustering assignment; such a face has no person yet and
+        every assignment write on it answers the people surface's 404.
+      required:
+        - id
+        - score
+        - thumbnail
+        - clusterId
+        - label
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the face row.
+        score:
+          type: number
+          format: float
+          description: The detector's confidence for this face.
+        thumbnail:
+          type: string
+          description: |
+            URL of the face's crop: the face crop endpoint
+            `GET /api/v1/faces/{faceId}/thumbnail` with this face's
+            id, serving the bounding-box crop of the asset's
+            view-size derivative.
+          examples:
+            - /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+        clusterId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+          description: |
+            Identifier of the face's cluster, or null before the
+            clustering assigned one (a face the recognition run has
+            not grouped yet).
+        label:
+          description: |
+            The caller's own label of the face's cluster, or null when
+            the caller has not labeled it (the unnamed state) -- and
+            null for a clusterless face, which has no cluster to
+            label.
+          anyOf:
+            - $ref: '#/components/schemas/PersonLabel'
+            - type: 'null'
     ExifSummary:
       type: object
       description: |

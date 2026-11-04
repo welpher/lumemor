@@ -223,6 +223,70 @@ func (q *Queries) GetFaceForCaller(ctx context.Context, arg GetFaceForCallerPara
 	return i, err
 }
 
+const listAssetFacesForCaller = `-- name: ListAssetFacesForCaller :many
+SELECT f.id,
+       f.score,
+       f.cluster_id,
+       l.name AS label_name,
+       l.is_hidden AS label_hidden
+FROM faces f
+LEFT JOIN user_face_labels l
+       ON l.cluster_id = f.cluster_id AND l.user_id = $1
+WHERE f.asset_id = $2
+ORDER BY f.score DESC, f.id
+`
+
+type ListAssetFacesForCallerParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AssetID pgtype.UUID `json:"asset_id"`
+}
+
+type ListAssetFacesForCallerRow struct {
+	ID          pgtype.UUID `json:"id"`
+	Score       float32     `json:"score"`
+	ClusterID   pgtype.UUID `json:"cluster_id"`
+	LabelName   pgtype.Text `json:"label_name"`
+	LabelHidden pgtype.Bool `json:"label_hidden"`
+}
+
+// The asset detail's faces (M3b Task 5): every face of one asset
+// with the CALLER's label state of its cluster -- the B4 discipline's
+// read: clusters are global, labels are private, so the LEFT JOIN
+// picks the caller's row and another account's label never surfaces.
+// The asset itself was already read owner-scoped by the detail
+// endpoint (a miss answered its own 404 before this query runs), so
+// the faces need no visibility predicate of their own: a trashed or
+// hidden asset's detail answers 200 and its faces ride along. The
+// cluster_id crosses as NULL for a face the clustering has not
+// assigned yet (label null with it -- nothing to label); the caller's
+// unnamed clusters read as null label columns. Ordered score
+// descending, the face id ascending as the tiebreak.
+func (q *Queries) ListAssetFacesForCaller(ctx context.Context, arg ListAssetFacesForCallerParams) ([]ListAssetFacesForCallerRow, error) {
+	rows, err := q.db.Query(ctx, listAssetFacesForCaller, arg.UserID, arg.AssetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAssetFacesForCallerRow
+	for rows.Next() {
+		var i ListAssetFacesForCallerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Score,
+			&i.ClusterID,
+			&i.LabelName,
+			&i.LabelHidden,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listClusterFacesForCaller = `-- name: ListClusterFacesForCaller :many
 SELECT f.id,
        f.asset_id,

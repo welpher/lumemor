@@ -8,18 +8,21 @@
 	// (favorite / hide / trash, the batch endpoint, optimistic on
 	// the page's local state), and the permanent delete's confirm
 	// dialog trigger -- plus the read-only panels: the file facts,
-	// the EXIF hot fields folded into collapsible groups, and the
-	// faces / places placeholders pinned to their M3 domains.
+	// the EXIF hot fields folded into collapsible groups, the
+	// People section (one face chip per face of the detail's faces
+	// array, the caller's label state per cluster, the click
+	// delegating to the page's assign dialog), and the places
+	// placeholder pinned to its M3 domain.
 	//
 	// The drawer is presentation and edit-mode state only: the page
 	// owns the detail, the optimistic state and every network call,
-	// through the onedit / onaction / onrequestdelete callbacks.
-	// Escape does not close it from here -- the viewer owns the
-	// layered Escape rule (modal first, then this drawer, then the
-	// route) so the layers cannot race.
+	// through the onedit / onaction / onrequestdelete / onassignface
+	// callbacks. Escape does not close it from here -- the viewer
+	// owns the layered Escape rule (modal first, then this drawer,
+	// then the route) so the layers cannot race.
 	import { locale, _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
-	import { assetOriginalUrl, type AssetDetail } from '$lib/api/assets';
+	import { assetOriginalUrl, type AssetDetail, type AssetFaceSummary } from '$lib/api/assets';
 	import type { BatchAction } from '$lib/api/timeline';
 	import { resolveErrorText } from '$lib/i18n/errors';
 
@@ -40,10 +43,24 @@
 		onaction: (action: BatchAction) => Promise<boolean>;
 		/** Open the permanent-delete confirm dialog (the viewer owns it). */
 		onrequestdelete: () => void;
+		/**
+		 * Open the assign dialog for one face of the People section (the
+		 * page owns the dialog and the writes).
+		 */
+		onassignface: (face: AssetFaceSummary) => void;
 	};
 
-	let { detail, favorite, busy, errorKey, onclose, onedit, onaction, onrequestdelete }: Props =
-		$props();
+	let {
+		detail,
+		favorite,
+		busy,
+		errorKey,
+		onclose,
+		onedit,
+		onaction,
+		onrequestdelete,
+		onassignface
+	}: Props = $props();
 
 	let editing = $state(false);
 	let draft = $state('');
@@ -197,6 +214,20 @@
 			{ label: $_('viewer_file_duration'), value: durationLabel }
 		])
 	);
+
+	/**
+	 * The chip label of one face: the caller's own label of the face's
+	 * cluster, the unnamed state of a cluster the caller has not
+	 * labeled, or the not-grouped state of a face the clustering has
+	 * not assigned yet (the state the assign flow's honest 404 also
+	 * explains).
+	 */
+	function faceLabel(face: AssetFaceSummary): string {
+		if (face.label !== null) {
+			return face.label.name;
+		}
+		return face.clusterId !== null ? $_('viewer_faces_unnamed') : $_('viewer_faces_unclustered');
+	}
 </script>
 
 <aside class="info fixed top-0 right-0 bottom-0 z-[80] flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay" aria-label={$_('viewer_info_title')}>
@@ -356,7 +387,36 @@
 
 		<section class="info__section mt-5">
 			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_people')}</h3>
-			<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_faces_placeholder')}</p>
+			{#if detail.faces.length === 0}
+				<p class="info__faces-empty info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_faces_placeholder')}</p>
+			{:else}
+				<!-- One chip per face of the detail's faces array: the crop,
+				     the caller's label state of the face's cluster, and the
+				     assign affordance -- the click opens the page's assign
+				     dialog. -->
+				<ul class="info__faces flex flex-wrap gap-2 m-0 p-0 list-none">
+					{#each detail.faces as face (face.id)}
+						<li>
+							<button
+								class="info__face flex items-center gap-2 py-1 pl-1 pr-2.5 rounded-control bg-transparent border border-border cursor-pointer transition-[background-color,border-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text focus-visible:bg-accent-soft focus-visible:border-accent-soft-text"
+								type="button"
+								data-face-id={face.id}
+								onclick={() => onassignface(face)}
+							>
+								<img
+									class="info__face-crop w-9 h-9 rounded-control object-cover bg-accent-soft"
+									src={face.thumbnail}
+									alt=""
+									loading="lazy"
+									decoding="async"
+									draggable="false"
+								/>
+								<span class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate">{faceLabel(face)}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 		</section>
 
 		<section class="info__section mt-5">

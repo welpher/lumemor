@@ -137,6 +137,7 @@ Class | Method | HTTP request | Description
  - [AdminUserPatch](doc/AdminUserPatch.md)
  - [AdminUserResponse](doc/AdminUserResponse.md)
  - [AssetDetail](doc/AssetDetail.md)
+ - [AssetFaceSummary](doc/AssetFaceSummary.md)
  - [AssetPatch](doc/AssetPatch.md)
  - [AssetResponse](doc/AssetResponse.md)
  - [BatchRequest](doc/BatchRequest.md)

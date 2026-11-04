@@ -473,8 +473,9 @@ type AdminUserResponse struct {
 
 // AssetDetail One asset as the detail endpoint returns it: the upload
 // response's identity and storage fields, the pipeline's
-// refinements, and the two owner-level attributes the PATCH
-// endpoint edits (`description`, `isHidden`). The shape is
+// refinements, the two owner-level attributes the PATCH
+// endpoint edits (`description`, `isHidden`), and the asset's
+// faces as the calling user sees them (`faces`). The shape is
 // fixed -- every property is always present -- and the
 // pipeline-dependent values (`width`, `height`, `durationMs`,
 // `blurhash` and the fields inside `exif`) are null until the
@@ -508,6 +509,18 @@ type AssetDetail struct {
 	// field inside it is null until the metadata job wrote the
 	// extraction.
 	Exif ExifSummary `json:"exif"`
+
+	// Faces The asset's faces as the calling user sees them, strongest
+	// score first with the face id as the tiebreak. The array is
+	// caller-scoped (B4): the asset being visible to the caller
+	// is the gate -- the faces ride on the detail's own
+	// permission -- and each entry's `label` is the caller's own
+	// label of the face's cluster, never another account's.
+	// Always present, empty when the asset carries no faces
+	// (none detected, or detection has not run yet). The PATCH
+	// response serves the same array, exactly as the GET serves
+	// it.
+	Faces []AssetFaceSummary `json:"faces"`
 
 	// FileSize Size of the stored file in bytes.
 	FileSize int64 `json:"fileSize"`
@@ -591,6 +604,41 @@ type AssetDetailKind string
 // offset, `file` a file timestamp (reserved for the future
 // directory-album importer).
 type AssetDetailTakenAtSource string
+
+// AssetFaceSummary One face of the asset detail's `faces` array: the crop's
+// identity, the detection score, the face's cluster and the
+// CALLER's label of that cluster. The label is per-user state
+// (B4): another account's label of the same global cluster never
+// shows here. `clusterId` is null while the face waits for its
+// first clustering assignment; such a face has no person yet and
+// every assignment write on it answers the people surface's 404.
+type AssetFaceSummary struct {
+	// ClusterId Identifier of the face's cluster, or null before the
+	// clustering assigned one (a face the recognition run has
+	// not grouped yet).
+	ClusterId *openapi_types.UUID `json:"clusterId"`
+
+	// Id Identifier of the face row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Label The caller's own label of the face's cluster, or null when
+	// the caller has not labeled it (the unnamed state) -- and
+	// null for a clusterless face, which has no cluster to
+	// label.
+	Label *PersonLabel `json:"label"`
+
+	// Score The detector's confidence for this face.
+	Score float32 `json:"score"`
+
+	// Thumbnail URL of the face's crop: the face crop endpoint
+	// `GET /api/v1/faces/{faceId}/thumbnail` with this face's
+	// id, serving the bounding-box crop of the asset's
+	// view-size derivative.
+	//
+	//
+	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+	Thumbnail string `json:"thumbnail"`
+}
 
 // AssetPatch The partial edit of one asset: every field is optional, at
 // least one must be present (a body that carries neither -- null

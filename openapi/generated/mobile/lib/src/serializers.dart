@@ -19,6 +19,7 @@ import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
+import 'package:lumemor_api/src/model/asset_face_summary.dart';
 import 'package:lumemor_api/src/model/asset_patch.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
 import 'package:lumemor_api/src/model/batch_request.dart';
@@ -76,6 +77,7 @@ part 'serializers.g.dart';
   AdminUserPatch,
   AdminUserResponse,
   AssetDetail,
+  AssetFaceSummary,
   AssetPatch,
   AssetResponse,
   BatchRequest,
@@ -127,8 +129,28 @@ part 'serializers.g.dart';
 ])
 Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AssetFaceSummary)]),
+        () => ListBuilder<AssetFaceSummary>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(TimelineItem)]),
         () => ListBuilder<TimelineItem>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(TrashItem)]),
+        () => ListBuilder<TrashItem>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(UnnamedClusterSummary)]),
+        () => ListBuilder<UnnamedClusterSummary>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(PersonSummary)]),
+        () => ListBuilder<PersonSummary>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(ModelResponse)]),
+        () => ListBuilder<ModelResponse>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AdminUserResponse)]),
@@ -143,14 +165,6 @@ Serializers serializers = (_$serializers.toBuilder()
         () => MapBuilder<String, JsonObject?>(),
       )
       ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(TrashItem)]),
-        () => ListBuilder<TrashItem>(),
-      )
-      ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(UnnamedClusterSummary)]),
-        () => ListBuilder<UnnamedClusterSummary>(),
-      )
-      ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType(bool)]),
         () => MapBuilder<String, bool>(),
       )
@@ -161,14 +175,6 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(String)]),
         () => ListBuilder<String>(),
-      )
-      ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(PersonSummary)]),
-        () => ListBuilder<PersonSummary>(),
-      )
-      ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(ModelResponse)]),
-        () => ListBuilder<ModelResponse>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(FaceDetail)]),

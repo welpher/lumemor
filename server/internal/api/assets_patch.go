@@ -154,7 +154,9 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 	// The response: the detail after the edit, fetched fresh so it
 	// reflects the applied values. A row deleted between the commit
 	// and this read answers the 404 of a gone asset, exactly like
-	// the delete endpoint's repeat.
+	// the delete endpoint's repeat. The faces ride along through the
+	// shared read: the PATCH answer is the detail the GET serves,
+	// people section included.
 	detail, err := s.queries.GetAssetDetail(r.Context(), dbgen.GetAssetDetailParams{
 		ID:      pgUUID(id),
 		OwnerID: pgUUID(requester.userID),
@@ -167,5 +169,10 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		s.internalError(w, r, "load patched asset detail", err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail))
+	faces, err := s.assetFacesForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
+	if err != nil {
+		s.internalError(w, r, "load patched asset faces", err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces))
 }
