@@ -284,21 +284,21 @@ test('person subscribers receive the parsed person events, one shape per name', 
 	const unsubscribe = subscribePersonEvents((event) => seen.push(event));
 
 	// The wire payloads are all-strings maps (the server publishes
-	// map[string]string); the labeled name lands in `label` because
-	// `name` is the event name, and the hidden switch parses to a
-	// boolean, the merged sources split on the comma.
+	// map[string]string) -- ids only, the label text and hidden
+	// switch are one account's private state and never ride the
+	// stream; the merged sources split on the comma.
 	const stream = MockEventSource.instances[0];
 	const userId = '0192f9a1-1a2b-3c4d-5e6f-7a8b9c0d1e2f';
-	stream?.emit('person.labeled', { clusterId: 'c1', name: 'Ada', userId }, 1);
+	stream?.emit('person.labeled', { clusterId: 'c1', userId }, 1);
 	stream?.emit('person.unlabeled', { clusterId: 'c1', userId }, 2);
-	stream?.emit('person.hidden', { clusterId: 'c1', isHidden: 'false', userId }, 3);
+	stream?.emit('person.hidden', { clusterId: 'c1', userId }, 3);
 	stream?.emit('person.merged', { survivingClusterId: 't1', mergedClusterIds: 's1,s2', userId }, 4);
 	stream?.emit('person.face_moved', { faceId: 'f1', clusterId: 't1', userId }, 5);
 
 	expect(seen).toEqual([
-		{ id: 1, name: 'person.labeled', clusterId: 'c1', label: 'Ada', userId },
+		{ id: 1, name: 'person.labeled', clusterId: 'c1', userId },
 		{ id: 2, name: 'person.unlabeled', clusterId: 'c1', userId },
-		{ id: 3, name: 'person.hidden', clusterId: 'c1', isHidden: false, userId },
+		{ id: 3, name: 'person.hidden', clusterId: 'c1', userId },
 		{ id: 4, name: 'person.merged', survivingClusterId: 't1', mergedClusterIds: ['s1', 's2'], userId },
 		{ id: 5, name: 'person.face_moved', faceId: 'f1', clusterId: 't1', userId }
 	]);
@@ -315,10 +315,10 @@ test('malformed person blocks are ignored, not dispatched', () => {
 	stream?.emit('person.labeled', { something: 'else' }, 1);
 	// A missing cluster id.
 	stream?.emit('person.unlabeled', { userId }, 2);
-	// A labeled name that is not a string.
-	stream?.emit('person.labeled', { clusterId: 'c1', name: 42, userId }, 3);
-	// A hidden switch outside true/false.
-	stream?.emit('person.hidden', { clusterId: 'c1', isHidden: 'maybe', userId }, 4);
+	// An acting user id that is not a string.
+	stream?.emit('person.labeled', { clusterId: 'c1', userId: 42 }, 3);
+	// A cluster id that is only whitespace.
+	stream?.emit('person.hidden', { clusterId: '', userId }, 4);
 	// Merged sources that do not split into non-empty ids.
 	stream?.emit('person.merged', { survivingClusterId: 't1', mergedClusterIds: '', userId }, 5);
 	// A face move without a face id.

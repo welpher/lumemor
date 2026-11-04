@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -145,7 +144,6 @@ func (s *server) LabelPerson(w http.ResponseWriter, r *http.Request, clusterId o
 
 	s.publishPersonEvent("person.labeled", map[string]string{
 		"clusterId": uuid.UUID(clusterId).String(),
-		"name":      labelRow.Name,
 		"userId":    requester.userID.String(),
 	})
 
@@ -259,7 +257,6 @@ func (s *server) SetPersonHidden(w http.ResponseWriter, r *http.Request, cluster
 
 	s.publishPersonEvent("person.hidden", map[string]string{
 		"clusterId": uuid.UUID(clusterId).String(),
-		"isHidden":  strconv.FormatBool(labelRow.IsHidden),
 		"userId":    requester.userID.String(),
 	})
 
@@ -361,11 +358,24 @@ func (s *server) MergePeople(w http.ResponseWriter, r *http.Request) {
 		SourceClusterIds: pgUUIDs(sources),
 		TargetClusterID:  targetID,
 	}); err != nil {
+		if personFKViolation(err) {
+			// A gate-passed cluster vanished in the race against
+			// the statement: no such person to the merger.
+			s.writePersonNotFound(w)
+			return
+		}
 		s.internalError(w, r, "move the merged faces", err)
 		return
 	}
 	if err := queries.RepointClusterRepresentative(ctx, targetID); err != nil {
 		s.internalError(w, r, "repoint the surviving cluster's representative", err)
+		return
+	}
+	// The move path repoints the vacated side; the merge owes its
+	// sources the same care when a concurrent insert keeps one alive
+	// past the NOT EXISTS guard.
+	if err := queries.RepointVacatedClusterRepresentatives(ctx, pgUUIDs(sources)); err != nil {
+		s.internalError(w, r, "repoint the merged clusters' vacated representatives", err)
 		return
 	}
 	if err := queries.DissolveVacatedClustersByID(ctx, pgUUIDs(sources)); err != nil {
@@ -492,6 +502,12 @@ func (s *server) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi
 		FaceID:          faceID,
 		TargetClusterID: pgUUID(target),
 	}); err != nil {
+		if personFKViolation(err) {
+			// The target dissolved in the race against the
+			// statement: no such person to the mover.
+			s.writePersonNotFound(w)
+			return
+		}
 		s.internalError(w, r, "move the face", err)
 		return
 	}

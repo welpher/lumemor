@@ -90,17 +90,14 @@ export type JobRunState = 'queued' | 'running' | 'succeeded' | 'failed';
 /**
  * The people surface's person.* events: the label, hidden, merge and
  * face-move writes. Every payload carries the acting user's id
- * beside the cluster (or face) id, because label and hidden state
- * are private per user -- a subscriber filters by the ids it
- * renders, never by another account's change; the SERVER's answer
- * decides what actually moved (B4).
+ * beside the cluster (or face) id ONLY: the label text and the
+ * hidden switch are one account's private state (B4), so they never
+ * ride the shared stream -- a subscriber filters by the ids it
+ * renders, never by another account's change, and the SERVER's
+ * answer decides what actually moved.
  *
- * The wire payload of `person.labeled` carries the label under the
- * key `name`; the parsed event carries it as `label` because `name`
- * is the event name. `person.hidden` carries the switch as a string
- * ('true'/'false') on the wire and as a boolean here;
- * `person.merged` carries the dissolved sources comma-joined and
- * split here.
+ * `person.merged` carries the dissolved sources comma-joined on the
+ * wire and split here.
  */
 export type PersonEventName =
 	| 'person.labeled'
@@ -115,8 +112,6 @@ export type PersonEvent =
 			id: number;
 			name: 'person.labeled';
 			clusterId: string;
-			/** The acting user's own label for the cluster. */
-			label: string;
 			userId: string;
 	  }
 	| {
@@ -129,7 +124,6 @@ export type PersonEvent =
 			id: number;
 			name: 'person.hidden';
 			clusterId: string;
-			isHidden: boolean;
 			userId: string;
 	  }
 	| {
@@ -326,9 +320,7 @@ function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonE
 	}
 	const payload = base.payload as {
 		clusterId?: unknown;
-		name?: unknown;
 		userId?: unknown;
-		isHidden?: unknown;
 		survivingClusterId?: unknown;
 		mergedClusterIds?: unknown;
 		faceId?: unknown;
@@ -342,10 +334,7 @@ function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonE
 			if (typeof clusterId !== 'string' || clusterId === '') {
 				return null;
 			}
-			if (typeof payload.name !== 'string' || payload.name === '') {
-				return null;
-			}
-			return { id: base.id, name, clusterId, label: payload.name, userId };
+			return { id: base.id, name, clusterId, userId };
 		}
 		case 'person.unlabeled': {
 			if (typeof clusterId !== 'string' || clusterId === '') {
@@ -357,10 +346,7 @@ function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonE
 			if (typeof clusterId !== 'string' || clusterId === '') {
 				return null;
 			}
-			if (payload.isHidden !== 'true' && payload.isHidden !== 'false') {
-				return null;
-			}
-			return { id: base.id, name, clusterId, isHidden: payload.isHidden === 'true', userId };
+			return { id: base.id, name, clusterId, userId };
 		}
 		case 'person.merged': {
 			if (typeof payload.survivingClusterId !== 'string' || payload.survivingClusterId === '') {
