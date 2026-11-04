@@ -201,9 +201,10 @@ export interface paths {
          *     - `server.settings-changed`
          *
          *     The `person.*` events report the people surface's label,
-         *     hidden, merge and face-move writes. Every payload carries the
-         *     acting user's `userId` beside the cluster (or face) id,
-         *     because label and hidden state are private per user: a
+         *     hidden, merge and face-move writes. Every payload carries ONLY
+         *     the acting user's `userId` beside the cluster (or face) id:
+         *     the label text and the hidden switch are one account's
+         *     private state and never ride the shared stream. A
          *     subscriber filters by the ids it renders, never by another
          *     account's change. `person.merged` carries the dissolved
          *     source cluster ids comma-joined as `mergedClusterIds`, and

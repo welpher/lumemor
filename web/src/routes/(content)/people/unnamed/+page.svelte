@@ -130,7 +130,6 @@
 		}
 		converging = true;
 		try {
-			const depth = items.length;
 			const seen = new Set<string>();
 			let collected: UnnamedClusterSummary[] = [];
 			let cursor: string | null = null;
@@ -146,7 +145,10 @@
 					}
 				}
 				cursor = outcome.page.nextCursor;
-				if (cursor === null || collected.length >= depth) {
+				// The live window's depth, re-read every lap: a
+				// loadMore that appends mid-replay must be covered by
+				// the same replay, not truncated by a stale prefix.
+				if (cursor === null || collected.length >= items.length) {
 					break;
 				}
 			}

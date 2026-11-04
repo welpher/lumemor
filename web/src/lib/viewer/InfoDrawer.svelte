@@ -387,7 +387,11 @@
 
 		<section class="info__section mt-5">
 			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_people')}</h3>
-			{#if detail.faces.length === 0}
+			{#if detail.isTrashed || detail.isHidden || detail.faces.length === 0}
+				<!-- A trashed or hidden asset keeps its faces in the
+				     detail but every crop endpoint answers 404 for it
+				     -- the placeholder stands in rather than broken
+				     chips. -->
 				<p class="info__faces-empty info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_faces_placeholder')}</p>
 			{:else}
 				<!-- One chip per face of the detail's faces array: the crop,

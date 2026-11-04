@@ -430,7 +430,7 @@ export async function setPersonHidden(
 }
 
 /**
- * POST /api/v1/people/merge: fold 2-50 source clusters into one
+ * POST /api/v1/people/merge: fold 1-50 source clusters into one
  * target. The whole merge is one server transaction; the sources
  * dissolve WITH their label rows (a source's name dies -- the
  * honest documented cost), the target's label persists.

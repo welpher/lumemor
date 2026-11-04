@@ -581,18 +581,26 @@ func TestPeopleMergeThreeStates(t *testing.T) {
 			t.Errorf("userId = %q, want the caller %s", payload["userId"], adminID)
 		}
 
-		// The three label writes published their pinned event.
+		// The three label writes published their pinned event —
+		// ids only: the label text is the caller's private state
+		// and never rides the shared stream (B4).
 		labeledEvents := busEventsOf(t, env.bus, "person.labeled")
 		if len(labeledEvents) != 3 {
 			t.Fatalf("person.labeled events = %d, want 3 (one per label write)", len(labeledEvents))
 		}
-		byName := map[string]string{}
+		byCluster := map[string]bool{}
 		for _, labeled := range labeledEvents {
-			byName[labeled["name"]] = labeled["clusterId"]
+			if labeled["name"] != "" {
+				t.Errorf("person.labeled payload carries the private label name %q — it must not leave the account", labeled["name"])
+			}
+			if labeled["userId"] == "" {
+				t.Error("person.labeled payload missing the acting user id")
+			}
+			byCluster[labeled["clusterId"]] = true
 		}
 		for _, labeling := range labelings {
-			if got, ok := byName[labeling.name]; !ok || got != labeling.cluster.String() {
-				t.Errorf("person.labeled for %q = (%q, %v), want cluster %s", labeling.name, got, ok, labeling.cluster)
+			if !byCluster[labeling.cluster.String()] {
+				t.Errorf("person.labeled for cluster %s missing from the bus", labeling.cluster)
 			}
 		}
 	})
@@ -961,13 +969,16 @@ func TestPeopleHide(t *testing.T) {
 			t.Errorf("unhide state = %+v, want isHidden false", state)
 		}
 
-		// The pinned event carries the new value beside the ids.
+		// The pinned event carries ids only: the switch value is the
+		// caller's private state and never rides the shared stream.
 		hiddenEvents := busEventsOf(t, env.bus, "person.hidden")
 		if len(hiddenEvents) != 2 {
 			t.Fatalf("person.hidden events = %d, want 2 (hide and unhide)", len(hiddenEvents))
 		}
-		if hiddenEvents[0]["isHidden"] != "true" || hiddenEvents[1]["isHidden"] != "false" {
-			t.Errorf("hidden payloads = %v and %v, want true then false", hiddenEvents[0], hiddenEvents[1])
+		for _, payload := range hiddenEvents {
+			if payload["isHidden"] != "" {
+				t.Errorf("person.hidden payload carries the private switch %q -- it must not leave the account", payload["isHidden"])
+			}
 		}
 		if hiddenEvents[0]["clusterId"] != c1.String() || hiddenEvents[0]["userId"] != adminID.String() {
 			t.Errorf("hide payload ids = %v, want cluster %s by %s", hiddenEvents[0], c1, adminID)
