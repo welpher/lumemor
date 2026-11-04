@@ -232,6 +232,18 @@ NON_ERROR_KEYS = {
     "viewer_exif_none",
     "viewer_faces_placeholder",
     "viewer_places_placeholder",
+    # Viewer face chips and the assign dialog (M3b Task 5): the
+    # people section of the asset detail drawer.
+    "viewer_faces_unnamed",
+    "viewer_faces_unclustered",
+    "viewer_assign_title",
+    "viewer_assign_body",
+    "viewer_assign_target_label",
+    "viewer_assign_submit",
+    "viewer_assign_mode_existing",
+    "viewer_assign_mode_new",
+    "viewer_assign_note",
+    "viewer_face_not_grouped",
     # Trash, favorites, hidden and admin user management UI strings
     # (M2d Task 8).
     "trash_note",

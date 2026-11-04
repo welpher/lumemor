@@ -38,6 +38,22 @@ const detailBody = {
 	durationMs: null,
 	blurhash: 'UHL6aAof00WBWB00ayWB00',
 	livePhotoVideoId: null,
+	faces: [
+		{
+			id: 'f1',
+			score: 0.95,
+			thumbnail: '/api/v1/faces/f1/thumbnail',
+			clusterId: 'c1',
+			label: { name: 'Ada', isHidden: false }
+		},
+		{
+			id: 'f2',
+			score: 0.8,
+			thumbnail: '/api/v1/faces/f2/thumbnail',
+			clusterId: null,
+			label: null
+		}
+	],
 	exif: {
 		cameraMake: 'Lumemor',
 		cameraModel: 'Golden Camera',
@@ -87,8 +103,41 @@ test('the detail fetch returns the parsed detail on 200', async () => {
 	if (outcome.ok) {
 		expect(outcome.detail.description).toBe('Sunset over the lake.');
 		expect(outcome.detail.exif.iso).toBe(200);
+		// The faces array adopts with its caller-scoped label states.
+		expect(outcome.detail.faces).toHaveLength(2);
+		expect(outcome.detail.faces[0]?.label?.name).toBe('Ada');
+		expect(outcome.detail.faces[1]?.clusterId).toBeNull();
+		expect(outcome.detail.faces[1]?.label).toBeNull();
 	}
 	expect(fetcher).toHaveBeenCalledWith('/api/v1/assets/a1', undefined);
+});
+
+test('the detail validator rejects broken faces arrays', async () => {
+	// The array is part of the fixed shape: absent, null, non-array or
+	// a malformed entry is not a detail.
+	expect(
+		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, faces: undefined })))
+	).toEqual({ ok: false, errorKey: 'internal' });
+	expect(
+		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, faces: null })))
+	).toEqual({ ok: false, errorKey: 'internal' });
+	expect(
+		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, faces: 'no' })))
+	).toEqual({ ok: false, errorKey: 'internal' });
+	const brokenLabel = [
+		{ id: 'f1', score: 0.9, thumbnail: '/api/v1/faces/f1/thumbnail', clusterId: 'c1', label: { name: 7 } }
+	];
+	const outcome = await fetchAssetDetail(
+		'a1',
+		vi.fn(async () => jsonResponse(200, { ...detailBody, faces: brokenLabel }))
+	);
+	expect(outcome).toEqual({ ok: false, errorKey: 'internal' });
+	// The empty array is valid (a faceless asset).
+	const empty = await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, faces: [] })));
+	expect(empty.ok).toBe(true);
+	if (empty.ok) {
+		expect(empty.detail.faces).toEqual([]);
+	}
 });
 
 test('the detail fetch maps 404, 401, unknown codes and broken bodies', async () => {

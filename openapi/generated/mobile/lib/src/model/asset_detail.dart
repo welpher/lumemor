@@ -5,12 +5,13 @@
 // ignore_for_file: unused_element
 import 'package:lumemor_api/src/model/exif_summary.dart';
 import 'package:built_collection/built_collection.dart';
+import 'package:lumemor_api/src/model/asset_face_summary.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
 part 'asset_detail.g.dart';
 
-/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, and the two owner-level attributes the PATCH endpoint edits (`description`, `isHidden`). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
+/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, the two owner-level attributes the PATCH endpoint edits (`description`, `isHidden`), and the asset's faces as the calling user sees them (`faces`). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the asset.
@@ -33,6 +34,7 @@ part 'asset_detail.g.dart';
 /// * [blurhash] - The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it. 
 /// * [livePhotoVideoId] - For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, and its transcoded play stream is served there too); null otherwise. 
 /// * [exif] - The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
+/// * [faces] - The asset's faces as the calling user sees them, strongest score first with the face id as the tiebreak. The array is caller-scoped (B4): the asset being visible to the caller is the gate -- the faces ride on the detail's own permission -- and each entry's `label` is the caller's own label of the face's cluster, never another account's. Always present, empty when the asset carries no faces (none detected, or detection has not run yet). The PATCH response serves the same array, exactly as the GET serves it. 
 @BuiltValue()
 abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   /// UUIDv7 identifier of the asset.
@@ -116,6 +118,10 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   /// The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
   @BuiltValueField(wireName: r'exif')
   ExifSummary get exif;
+
+  /// The asset's faces as the calling user sees them, strongest score first with the face id as the tiebreak. The array is caller-scoped (B4): the asset being visible to the caller is the gate -- the faces ride on the detail's own permission -- and each entry's `label` is the caller's own label of the face's cluster, never another account's. Always present, empty when the asset carries no faces (none detected, or detection has not run yet). The PATCH response serves the same array, exactly as the GET serves it. 
+  @BuiltValueField(wireName: r'faces')
+  BuiltList<AssetFaceSummary> get faces;
 
   AssetDetail._();
 
@@ -239,6 +245,11 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
     yield serializers.serialize(
       object.exif,
       specifiedType: const FullType(ExifSummary),
+    );
+    yield r'faces';
+    yield serializers.serialize(
+      object.faces,
+      specifiedType: const FullType(BuiltList, [FullType(AssetFaceSummary)]),
     );
   }
 
@@ -407,6 +418,13 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
             specifiedType: const FullType(ExifSummary),
           ) as ExifSummary;
           result.exif.replace(valueDes);
+          break;
+        case r'faces':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(AssetFaceSummary)]),
+          ) as BuiltList<AssetFaceSummary>;
+          result.faces.replace(valueDes);
           break;
         default:
           unhandled.add(key);

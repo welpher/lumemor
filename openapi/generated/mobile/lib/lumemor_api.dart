@@ -22,6 +22,7 @@ export 'package:lumemor_api/src/model/admin_user_list_response.dart';
 export 'package:lumemor_api/src/model/admin_user_patch.dart';
 export 'package:lumemor_api/src/model/admin_user_response.dart';
 export 'package:lumemor_api/src/model/asset_detail.dart';
+export 'package:lumemor_api/src/model/asset_face_summary.dart';
 export 'package:lumemor_api/src/model/asset_patch.dart';
 export 'package:lumemor_api/src/model/asset_response.dart';
 export 'package:lumemor_api/src/model/batch_request.dart';

@@ -244,6 +244,152 @@ func TestGetAssetDetail(t *testing.T) {
 	}
 }
 
+// TestGetAssetDetailFaces pins the detail's faces array (M3b Task 5):
+// the caller-scoped label state (B4 -- another account's label on the
+// same global cluster never shows here), the score ordering with the
+// face id as the tiebreak, the pre-clustering face (clusterId and
+// label both null), the empty array of a faceless asset, and the PATCH
+// response carrying the same faces (the shared serializer's shape
+// promise -- the PATCH answer is the detail the GET serves).
+func TestGetAssetDetailFaces(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	withFaces := decodeAsset(t, env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-faces-1",
+		"fileName":      "IMG_faces.jpg",
+	}, []assetUploadFile{{field: "photo", name: "IMG_faces.jpg", content: jpegFixture(t)}}))
+	// A distinct color: a distinct checksum, a second content-addressed
+	// blob -- not a duplicate of the first upload.
+	faceless := decodeAsset(t, env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-faces-2",
+		"fileName":      "IMG_none.jpg",
+	}, []assetUploadFile{{
+		field:   "photo",
+		name:    "IMG_none.jpg",
+		content: jpegColorFixture(t, color.RGBA{R: 0x11, G: 0x22, B: 0x33, A: 0xff}),
+	}}))
+	env.insertPeopleModel(t)
+
+	adminID := env.sessionUserID(t)
+	graceID, _ := env.createSecondUser(t, "faces-grace@example.com")
+
+	// Four faces on one asset: a strong one on the labeled cluster, a
+	// score tie pair (the face id breaks the tie), and one the
+	// clustering has not grouped yet.
+	fStrong := fixturePeopleFaceID("11")  // 0.95, cluster 1 (labeled)
+	fTieLow := fixturePeopleFaceID("12")  // 0.90, cluster 1
+	fTieHigh := fixturePeopleFaceID("13") // 0.90, unnamed cluster 2
+	fLoose := fixturePeopleFaceID("14")   // 0.80, no cluster yet
+	cluster1 := fixturePeopleClusterID("11")
+	cluster2 := fixturePeopleClusterID("12")
+	env.insertFace(t, fStrong, withFaces.Id, 0.95)
+	env.insertFace(t, fTieLow, withFaces.Id, 0.90)
+	env.insertFace(t, fTieHigh, withFaces.Id, 0.90)
+	env.insertFace(t, fLoose, withFaces.Id, 0.80)
+	env.seedPersonCluster(t, cluster1, fStrong, fTieLow)
+	env.seedPersonCluster(t, cluster2, fTieHigh)
+	// fLoose stays clusterless: the recognition run has not assigned it.
+	env.labelPersonCluster(t, adminID, cluster1, "Ada", false)
+	// Grace's own label of the same global cluster: private to her
+	// (B4) -- the admin's detail must keep showing the admin's label.
+	env.labelPersonCluster(t, graceID, cluster1, "Grace Ada", true)
+
+	t.Run("FacesAreCallerScopedAndOrdered", func(t *testing.T) {
+		rec := env.serveGet(t, "/api/v1/assets/"+withFaces.Id.String(), env.cookie, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("detail status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var detail apigen.AssetDetail
+		if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+			t.Fatalf("decode detail %q: %v", rec.Body.String(), err)
+		}
+		// The fixed shape: the array is always present, empty when the
+		// asset carries no faces -- never null, never absent.
+		if detail.Faces == nil {
+			t.Fatal("faces = null, want an array (the fixed-shape contract)")
+		}
+		wantOrder := []uuid.UUID{fStrong, fTieLow, fTieHigh, fLoose}
+		if len(detail.Faces) != len(wantOrder) {
+			t.Fatalf("faces = %d entries, want %d", len(detail.Faces), len(wantOrder))
+		}
+		for i, want := range wantOrder {
+			if uuid.UUID(detail.Faces[i].Id) != want {
+				t.Errorf("faces[%d].id = %s, want %s (score DESC, id tiebreak)", i, detail.Faces[i].Id, want)
+			}
+		}
+
+		strong := detail.Faces[0]
+		if strong.Score != 0.95 {
+			t.Errorf("faces[0].score = %v, want 0.95", strong.Score)
+		}
+		if strong.ClusterId == nil || uuid.UUID(*strong.ClusterId) != cluster1 {
+			t.Errorf("faces[0].clusterId = %v, want the labeled cluster %s", strong.ClusterId, cluster1)
+		}
+		if strong.Label == nil || strong.Label.Name != "Ada" || strong.Label.IsHidden {
+			t.Errorf("faces[0].label = %+v, want the CALLER's {Ada, false} (B4: Grace's label never shows)",
+				strong.Label)
+		}
+		if want := "/api/v1/faces/" + fStrong.String() + "/thumbnail"; strong.Thumbnail != want {
+			t.Errorf("faces[0].thumbnail = %q, want %q", strong.Thumbnail, want)
+		}
+
+		// The 0.90 tie pair: the lower face id first, both carrying
+		// their cluster's caller label state.
+		tieLow, tieHigh := detail.Faces[1], detail.Faces[2]
+		if uuid.UUID(tieLow.Id) != fTieLow || uuid.UUID(tieHigh.Id) != fTieHigh {
+			t.Fatalf("tie pair order = %s, %s, want %s, %s",
+				tieLow.Id, tieHigh.Id, fTieLow, fTieHigh)
+		}
+		if tieLow.Label == nil || tieLow.Label.Name != "Ada" {
+			t.Errorf("faces[1].label = %+v, want {Ada} -- the same cluster's caller label", tieLow.Label)
+		}
+		if tieHigh.ClusterId == nil || uuid.UUID(*tieHigh.ClusterId) != cluster2 {
+			t.Errorf("faces[2].clusterId = %v, want the unnamed cluster %s", tieHigh.ClusterId, cluster2)
+		}
+		if tieHigh.Label != nil {
+			t.Errorf("faces[2].label = %+v, want null (the unnamed state for the caller)", tieHigh.Label)
+		}
+
+		// The pre-clustering face: no cluster, no label -- the honest
+		// state the assign flow surfaces as "not grouped yet".
+		loose := detail.Faces[3]
+		if loose.ClusterId != nil {
+			t.Errorf("faces[3].clusterId = %v, want null before the clustering assigns one", loose.ClusterId)
+		}
+		if loose.Label != nil {
+			t.Errorf("faces[3].label = %+v, want null (no cluster means no label)", loose.Label)
+		}
+	})
+
+	t.Run("FacelessAssetAnswersEmptyArray", func(t *testing.T) {
+		rec := env.serveGet(t, "/api/v1/assets/"+faceless.Id.String(), env.cookie, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("faceless detail status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var detail apigen.AssetDetail
+		if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+			t.Fatalf("decode faceless detail %q: %v", rec.Body.String(), err)
+		}
+		if detail.Faces == nil || len(detail.Faces) != 0 {
+			t.Errorf("faces = %v, want the empty array (never null)", detail.Faces)
+		}
+	})
+
+	t.Run("PatchResponseCarriesFaces", func(t *testing.T) {
+		detail := env.patchAsset(t, env.cookie, withFaces.Id, map[string]any{"description": "captioned"})
+		if len(detail.Faces) != 4 {
+			t.Fatalf("patched detail faces = %d, want 4 (the same serializer as the GET)", len(detail.Faces))
+		}
+		strong := detail.Faces[0]
+		if uuid.UUID(strong.Id) != fStrong || strong.Label == nil || strong.Label.Name != "Ada" {
+			t.Errorf("patched faces[0] = %+v, want the strong face carrying the caller's label", strong)
+		}
+		loose := detail.Faces[3]
+		if loose.ClusterId != nil || loose.Label != nil {
+			t.Errorf("patched faces[3] = %+v, want the clusterless face's null state", loose)
+		}
+	})
+}
+
 // TestAssetEndpointsOwnerScope pins the anti-enumeration discipline of
 // every asset endpoint: a foreign id and an unknown id answer the same
 // 404, byte for byte, and unauthenticated requests answer 401. The

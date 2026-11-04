@@ -35,7 +35,12 @@
 	import Button from '$lib/components/Button.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import InfoDrawer from './InfoDrawer.svelte';
-	import { assetThumbnailUrl, assetPlayUrl, type AssetDetail } from '$lib/api/assets';
+	import {
+		assetThumbnailUrl,
+		assetPlayUrl,
+		type AssetDetail,
+		type AssetFaceSummary
+	} from '$lib/api/assets';
 	import type { BatchAction, TimelineItem } from '$lib/api/timeline';
 	import { resolveErrorText } from '$lib/i18n/errors';
 
@@ -56,6 +61,8 @@
 		busy: boolean;
 		/** The error-code i18n key of the last failed action ('' when none). */
 		actionErrorKey: string;
+		/** A page-level modal (the face assign dialog) is open: the layered Escape defers to it. */
+		modalOpen: boolean;
 		/** Navigate to another asset of the sequence. */
 		onnavigate: (id: string) => void;
 		/** Leave the viewer (Escape and the back affordance). */
@@ -70,6 +77,8 @@
 		onaction: (action: BatchAction) => Promise<boolean>;
 		/** Run the permanent delete; ok means the page left the viewer. */
 		ondelete: () => Promise<{ ok: boolean; errorKey: string }>;
+		/** Open the page's assign dialog for one face (the drawer's People section). */
+		onassignface: (face: AssetFaceSummary) => void;
 	};
 
 	let {
@@ -81,13 +90,15 @@
 		videoPlayable,
 		busy,
 		actionErrorKey,
+		modalOpen,
 		onnavigate,
 		onexit,
 		onretry,
 		onprobe,
 		onedit,
 		onaction,
-		ondelete
+		ondelete,
+		onassignface
 	}: Props = $props();
 
 	let drawerOpen = $state(false);
@@ -226,11 +237,16 @@
 			return;
 		}
 		if (event.key === 'Escape') {
-			// The layered dismissal: the dialog, then the drawer, then
-			// the route. The modal's own Escape handling coexists --
-			// its close is idempotent and it no-ops once closed.
+			// The layered dismissal: the dialogs, then the drawer, then
+			// the route. The modals' own Escape handling coexists --
+			// their close is idempotent and it no-ops once closed. The
+			// page's assign dialog (modalOpen) owns its own Escape; this
+			// handler defers to it so the drawer underneath stays open.
 			if (confirmOpen) {
 				confirmOpen = false;
+				return;
+			}
+			if (modalOpen) {
 				return;
 			}
 			if (drawerOpen) {
@@ -240,8 +256,8 @@
 			onexit();
 			return;
 		}
-		if (confirmOpen) {
-			// The destructive confirm owns every other key.
+		if (confirmOpen || modalOpen) {
+			// The open dialog owns every other key.
 			return;
 		}
 		if (event.key === 'ArrowLeft') {
@@ -523,6 +539,7 @@
 			deleteErrorKey = '';
 			confirmOpen = true;
 		}}
+		{onassignface}
 	/>
 {/if}
 

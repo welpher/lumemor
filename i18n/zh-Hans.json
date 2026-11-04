@@ -129,7 +129,7 @@
   "viewer_exif_longitude": "经度",
   "viewer_exif_altitude": "海拔",
   "viewer_exif_none": "暂无详细信息。",
-  "viewer_faces_placeholder": "人物识别将随后续更新到来。",
+  "viewer_faces_placeholder": "这张照片中未识别到人物。",
   "viewer_places_placeholder": "地点功能将随后续更新到来。",
   "trash_note": "删除的照片会在这里保留至保留期结束，之后将被永久清除。",
   "trash_loading": "正在加载回收站…",
@@ -267,5 +267,15 @@
   "people_detail_unnamed": "未命名人物",
   "people_detail_faces_heading": "人脸",
   "people_face_alt": "{file} 中的人脸",
-  "people_hidden_notice": "已隐藏。该人物仍会保留在人物列表中并带有标记。"
+  "people_hidden_notice": "已隐藏。该人物仍会保留在人物列表中并带有标记。",
+  "viewer_faces_unnamed": "未命名",
+  "viewer_faces_unclustered": "尚未分组",
+  "viewer_assign_title": "指派人物",
+  "viewer_assign_body": "选择这张人脸所属的人物。",
+  "viewer_assign_target_label": "指派给",
+  "viewer_assign_submit": "指派",
+  "viewer_assign_mode_existing": "现有人物",
+  "viewer_assign_mode_new": "新人物",
+  "viewer_assign_note": "这将为整组命名：与这张人脸分在同一组的所有面孔都共享这个名字。",
+  "viewer_face_not_grouped": "这张人脸尚未分组，暂时无法指派。请在分组完成后重试。"
 }

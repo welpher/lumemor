@@ -8,6 +8,7 @@ doc/AdminUserListResponse.md
 doc/AdminUserPatch.md
 doc/AdminUserResponse.md
 doc/AssetDetail.md
+doc/AssetFaceSummary.md
 doc/AssetPatch.md
 doc/AssetResponse.md
 doc/AssetsApi.md
@@ -81,6 +82,7 @@ lib/src/model/admin_user_list_response.dart
 lib/src/model/admin_user_patch.dart
 lib/src/model/admin_user_response.dart
 lib/src/model/asset_detail.dart
+lib/src/model/asset_face_summary.dart
 lib/src/model/asset_patch.dart
 lib/src/model/asset_response.dart
 lib/src/model/batch_request.dart
@@ -138,6 +140,7 @@ test/admin_user_list_response_test.dart
 test/admin_user_patch_test.dart
 test/admin_user_response_test.dart
 test/asset_detail_test.dart
+test/asset_face_summary_test.dart
 test/asset_patch_test.dart
 test/asset_response_test.dart
 test/assets_api_test.dart

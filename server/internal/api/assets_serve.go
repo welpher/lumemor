@@ -4,13 +4,16 @@
 // support. M2c Task 6 adds the video play stream: the transcoded
 // web-safe MP4 served inline with the same static-asset discipline;
 // M2d extends it to the Live Photo component video, whose playable
-// copy arrives through its own transcode job.
+// copy arrives through its own transcode job. M3b Task 5 extends the
+// detail with the asset's faces (caller-scoped label state, the
+// people section's read).
 // The permission model is owner-only: every read funnels through the
 // owner-scoped sqlc query, and a miss answers the anti-enumeration
 // 404 -- byte-identical for unknown and foreign ids.
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -39,7 +42,8 @@ const mediaCacheControl = "private, max-age=31536000, immutable"
 // GetAsset implements GET /api/v1/assets/{id}: the asset detail -- the
 // identity and storage fields of the upload response plus the
 // pipeline's refinements (dimensions, duration, blurhash, the EXIF hot
-// fields, readiness).
+// fields, readiness) and the asset's faces with the caller's label
+// state of each face's cluster (the people section's read).
 func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -65,7 +69,16 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 		return
 	}
 
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(row))
+	// The faces ride on the detail's own permission: the row above
+	// proved the caller owns the asset, so its faces (each joined with
+	// the caller's label state) need no gate of their own.
+	faces, err := s.assetFacesForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
+	if err != nil {
+		s.internalError(w, r, "load asset faces", err)
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(row, faces))
 }
 
 // GetAssetThumbnail implements GET /api/v1/assets/{id}/thumbnail: the
@@ -352,6 +365,44 @@ func (s *server) writeAssetNotFound(w http.ResponseWriter) {
 		"no asset with this identifier", nil)
 }
 
+// assetFacesForCaller reads one asset's faces joined with the CALLER's
+// label state of each face's cluster -- the read both detail-serving
+// endpoints (GET and PATCH) share, so the PATCH response carries the
+// faces exactly as the GET serves them. The caller scoping is the
+// query's LEFT JOIN (B4): another account's label of the same global
+// cluster never surfaces. Callers must have proven the asset readable
+// owner-scoped first; the faces carry no gate of their own.
+func (s *server) assetFacesForCaller(ctx context.Context, assetID, callerID pgtype.UUID) ([]apigen.AssetFaceSummary, error) {
+	rows, err := s.queries.ListAssetFacesForCaller(ctx, dbgen.ListAssetFacesForCallerParams{
+		UserID:  callerID,
+		AssetID: assetID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// A non-nil empty slice: the fixed-shape contract wants an array,
+	// never JSON null, for a faceless asset.
+	faces := make([]apigen.AssetFaceSummary, 0, len(rows))
+	for _, row := range rows {
+		faceID := uuid.UUID(row.ID.Bytes)
+		face := apigen.AssetFaceSummary{
+			Id:        faceID,
+			Score:     row.Score,
+			ClusterId: uuidValue(row.ClusterID),
+			Thumbnail: faceThumbnailPath(faceID),
+			Label:     nil,
+		}
+		if row.LabelName.Valid {
+			face.Label = &apigen.PersonLabel{
+				Name:     row.LabelName.String,
+				IsHidden: row.LabelHidden.Bool,
+			}
+		}
+		faces = append(faces, face)
+	}
+	return faces, nil
+}
+
 // assetDetailFrom maps the detail read onto the API shape. The
 // pipeline-dependent values cross as null while the jobs have not
 // produced them: width/height stay 0 in the row until the metadata
@@ -360,8 +411,9 @@ func (s *server) writeAssetNotFound(w http.ResponseWriter) {
 // until the sidecar carries the extraction. The two owner-level
 // editable attributes (description, isHidden) cross as the row
 // carries them -- the PATCH response reuses this mapper, so the
-// applied values surface exactly as the GET endpoint serves them.
-func assetDetailFrom(row dbgen.GetAssetDetailRow) apigen.AssetDetail {
+// applied values surface exactly as the GET endpoint serves them,
+// faces included (the caller passes the same read's answer).
+func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary) apigen.AssetDetail {
 	return apigen.AssetDetail{
 		Id:               uuid.UUID(row.ID.Bytes),
 		OwnerId:          uuid.UUID(row.OwnerID.Bytes),
@@ -383,6 +435,7 @@ func assetDetailFrom(row dbgen.GetAssetDetailRow) apigen.AssetDetail {
 		Blurhash:         textValue(row.Blurhash),
 		LivePhotoVideoId: uuidValue(row.LivePhotoVideoID),
 		Exif:             exifSummaryFrom(row),
+		Faces:            faces,
 	}
 }
 

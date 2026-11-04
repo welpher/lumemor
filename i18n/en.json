@@ -129,7 +129,7 @@
   "viewer_exif_longitude": "Longitude",
   "viewer_exif_altitude": "Altitude",
   "viewer_exif_none": "No details yet.",
-  "viewer_faces_placeholder": "Recognizing people arrives in a later update.",
+  "viewer_faces_placeholder": "No people recognized in this photo.",
   "viewer_places_placeholder": "Places arrive in a later update.",
   "trash_note": "Deleted photos stay here until their retention runs out, then they are removed for good.",
   "trash_loading": "Loading your trash…",
@@ -267,5 +267,15 @@
   "people_detail_unnamed": "Unnamed person",
   "people_detail_faces_heading": "Faces",
   "people_face_alt": "Face in {file}",
-  "people_hidden_notice": "Hidden. They stay in your people list with a badge."
+  "people_hidden_notice": "Hidden. They stay in your people list with a badge.",
+  "viewer_faces_unnamed": "Unnamed",
+  "viewer_faces_unclustered": "Not grouped yet",
+  "viewer_assign_title": "Assign person",
+  "viewer_assign_body": "Pick the person this face belongs to.",
+  "viewer_assign_target_label": "Assign to",
+  "viewer_assign_submit": "Assign",
+  "viewer_assign_mode_existing": "Existing person",
+  "viewer_assign_mode_new": "New person",
+  "viewer_assign_note": "This names the whole group: every face grouped with this one shares the name.",
+  "viewer_face_not_grouped": "This face has not been grouped yet, so it cannot be assigned. Try again once grouping finishes."
 }
