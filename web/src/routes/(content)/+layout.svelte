@@ -134,7 +134,7 @@
 		<!-- Push the search box away from the brand; the upload and
 		     account marks stay pinned to the right end. -->
 		<input
-			class="topbar-search flex-1 max-w-[420px] ml-auto px-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+			class="topbar-search flex-1 max-w-[420px] box-content ml-auto px-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 			type="search"
 			placeholder={$_('nav_search')}
 			aria-label={$_('nav_search')}
@@ -171,7 +171,7 @@
 				</svg>
 			</button>
 			{#if accountMenuOpen}
-				<div class="account-menu absolute top-[calc(100%_+_8px)] right-0 z-[50] min-w-[180px] p-2 bg-card border border-border rounded-overlay shadow-overlay">
+				<div class="account-menu absolute top-[calc(100%_+_8px)] right-0 z-[50] min-w-[180px] box-content p-2 bg-card border border-border rounded-overlay shadow-overlay">
 					<p class="account-menu__heading mt-1 mx-2 mb-0.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('theme_label')}</p>
 					<div class="account-menu__options flex flex-col" role="group" aria-label={$_('theme_label')}>
 						{#each themeOptions as option (option.value)}

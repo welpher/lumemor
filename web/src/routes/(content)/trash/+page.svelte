@@ -170,11 +170,11 @@
 	{#if firstLoad}
 		<p class="trash__status my-12 text-center text-text-soft" role="status">{$_('trash_loading')}</p>
 	{:else if settledEmpty}
-		<div class="trash__empty max-w-[420px] mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+		<div class="trash__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 			<p class="text-text-soft">{$_('trash_empty')}</p>
 		</div>
 	{:else if status === 'error'}
-		<div class="trash__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div class="trash__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
 			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
 		</div>

@@ -106,7 +106,7 @@
 		>
 			{#each months as month (month.key)}
 				<button
-					class="scrubber__stop px-2 py-[3px] font-body font-semibold text-[11px] leading-[1.4] whitespace-nowrap rounded-control bg-transparent cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+					class="scrubber__stop px-2 py-[3px] font-body font-semibold text-[11px] leading-[1.4] whitespace-nowrap rounded-control cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
 					class:scrubber__stop--active={activeKey === month.key}
 					class:bg-accent-soft={activeKey === month.key}
 					class:bg-transparent={activeKey !== month.key}

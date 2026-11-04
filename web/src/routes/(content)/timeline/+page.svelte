@@ -210,12 +210,12 @@
 	{#if firstLoad}
 		<p class="timeline__status my-12 text-center text-text-soft" role="status">{$_('timeline_loading')}</p>
 	{:else if settledEmpty}
-		<div class="timeline__empty max-w-[420px] mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+		<div class="timeline__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 			<h1 class="text-[22px] mb-2">{$_('nav_timeline')}</h1>
 			<p class="text-text-soft">{$_('timeline_empty')}</p>
 		</div>
 	{:else if $timeline.status === 'error' && $timeline.items.length === 0}
-		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($timeline.errorKey)}</p>
 			<Button variant="primary" onclick={() => void timeline.loadMore()}>{$_('action_retry')}</Button>
 		</div>
@@ -247,7 +247,7 @@
 	{/if}
 
 	{#if $timeline.status === 'error' && $timeline.items.length > 0}
-		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($timeline.errorKey)}</p>
 			<Button variant="primary" onclick={() => void timeline.loadMore()}>{$_('action_retry')}</Button>
 		</div>

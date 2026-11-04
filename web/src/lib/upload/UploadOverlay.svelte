@@ -145,7 +145,7 @@
 
 {#if items.length > 0}
 	<section
-		class="overlay fixed right-4 bottom-4 z-[70] w-[min(360px,calc(100vw-32px))] max-h-[min(60vh,480px)] flex flex-col p-3 bg-card border border-border rounded-overlay shadow-overlay"
+		class="overlay fixed right-4 bottom-4 z-[70] w-[min(360px,calc(100vw-32px))] max-h-[min(60vh,480px)] box-content flex flex-col p-3 bg-card border border-border rounded-overlay shadow-overlay"
 		aria-label={$_('upload_queue_title')}
 	>
 		<header class="overlay__head flex items-baseline gap-2 pb-2">

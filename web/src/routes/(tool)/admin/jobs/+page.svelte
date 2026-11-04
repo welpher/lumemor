@@ -174,7 +174,7 @@
 	{#if status === 'loading'}
 		<p class="jobs__status my-12 text-center text-text-soft" role="status">{$_('admin_jobs_loading')}</p>
 	{:else if status === 'error'}
-		<div class="jobs__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div class="jobs__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
 			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
 		</div>
@@ -185,7 +185,7 @@
 		</header>
 
 		{#if jobs.length === 0}
-			<p class="jobs__empty py-8 px-6 text-center font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card shadow-card">{$_('admin_jobs_empty')}</p>
+			<p class="jobs__empty box-content py-8 px-6 text-center font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card shadow-card">{$_('admin_jobs_empty')}</p>
 		{:else}
 			<div class="jobs__rows flex flex-col gap-2.5">
 				{#each jobs as job (job.id)}

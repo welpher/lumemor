@@ -55,7 +55,7 @@
 		role="presentation"
 		onclick={close}
 	></div>
-	<nav class="drawer__panel fixed top-0 bottom-0 left-0 z-[100] flex flex-col gap-2 w-[min(320px,85vw)] px-3 py-4 bg-card border-r border-border shadow-overlay" aria-label={$_('nav_label')}>
+	<nav class="drawer__panel fixed top-0 bottom-0 left-0 z-[100] flex flex-col gap-2 w-[min(320px,85vw)] px-3 py-4 box-content bg-card border-r border-border shadow-overlay" aria-label={$_('nav_label')}>
 		<ul class="drawer__list flex flex-col gap-0.5 list-none">
 			{#each items as item (item.labelKey)}
 				<li>
