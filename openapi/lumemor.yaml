@@ -3239,13 +3239,16 @@ paths:
       operationId: mergePeople
       tags:
         - people
-      summary: Fold 2-50 face clusters into one surviving cluster.
+      summary: Fold 1-50 face clusters into one surviving cluster.
       description: |
         One structural merge: every source cluster's faces re-home
         onto the target cluster, the target's representative face
         recomputes to the strongest-scoring member of the merged
         set, and every source cluster dissolves -- with its label
-        rows cascading.
+        rows cascading. A single source is the pairwise fold the
+        cluster detail's "merge into" action drives (that person
+        merges into the picked one); more sources are the batch
+        organize path of the unnamed region.
 
         THE HONEST COST, by design: a source cluster's user-given
         name DIES with the cluster, whatever account gave it. A
@@ -3265,8 +3268,9 @@ paths:
         caller (at least one face on an asset visible to them), and
         the target must not be among the sources -- any violation
         answers the same byte-identical 404 `PERSON_NOT_FOUND`
-        (anti-enumeration). Fewer than 2 or more than 50 source ids
-        (duplicates collapse first) answer 400 `VALIDATION_FAILED`.
+        (anti-enumeration). An empty source list or more than 50
+        source ids (duplicates collapse first) answer 400
+        `VALIDATION_FAILED`.
 
         The write publishes one `person.merged` event with the
         surviving cluster id, the dissolved ids comma-joined as
@@ -3281,6 +3285,12 @@ paths:
             schema:
               $ref: '#/components/schemas/MergePeopleRequest'
             examples:
+              oneSource:
+                summary: The pairwise fold of the cluster detail's "merge into".
+                value:
+                  sourceClusterIds:
+                    - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f76
+                  targetClusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
               twoSources:
                 summary: Two unnamed clusters folded into a named one.
                 value:
@@ -3304,18 +3314,18 @@ paths:
                       - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f78
         '400':
           description: |
-            The body is not valid JSON, or the source list holds
-            fewer than 2 or more than 50 distinct clusters.
+            The body is not valid JSON, or the source list is empty
+            or holds more than 50 distinct clusters.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
                 validationFailed:
-                  summary: A single-source merge.
+                  summary: A source list over the cap.
                   value:
                     code: VALIDATION_FAILED
-                    message: merge needs at least 2 source clusters
+                    message: merge exceeds the 50 source cluster limit
                     details:
                       fields:
                         - sourceClusterIds
@@ -6378,7 +6388,7 @@ components:
     MergePeopleRequest:
       type: object
       description: |
-        One merge: 2-50 source clusters folded into one target
+        One merge: 1-50 source clusters folded into one target
         cluster. The source clusters dissolve with their labels (the
         honest documented cost -- a source cluster's user-given name
         dies); the target's label persists.
@@ -6389,9 +6399,11 @@ components:
         sourceClusterIds:
           type: array
           description: |
-            The clusters to fold into the target: at least 2 and at
+            The clusters to fold into the target: at least 1 and at
             most 50 after duplicates collapse, every one visible to
-            the caller. Each dissolves with its label rows.
+            the caller. Each dissolves with its label rows. A single
+            id is the pairwise fold of the cluster detail's
+            "merge into" action.
           minItems: 2
           maxItems: 50
           items:

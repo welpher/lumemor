@@ -626,9 +626,36 @@ func TestPeopleMergeValidation(t *testing.T) {
 		return `{"sourceClusterIds":[` + strings.Join(ids, ",") + `],"targetClusterId":"` + target.String() + `"}`
 	}
 
-	t.Run("SingleSourceRejected", func(t *testing.T) {
-		rec := env.postPeopleMerge(t, env.cookie, mergeBody(c2, c1))
-		_, _ = requireValidationError(t, rec, "single-source merge")
+	t.Run("SingleSourceMerges", func(t *testing.T) {
+		// One source is the pairwise fold the cluster detail's
+		// "merge into" action posts: that person merges into the
+		// picked one, the source cluster dissolves.
+		c4 := fixtureWriteClusterID("34")
+		c5 := fixtureWriteClusterID("35")
+		env.seedWriteCluster(t, fixtureWriteAssetID("34"), adminID, time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC), c4,
+			writeFaceSpec{fixtureWriteFaceID("34"), 0.60})
+		env.seedWriteCluster(t, fixtureWriteAssetID("35"), adminID, time.Date(2026, 6, 5, 10, 0, 0, 0, time.UTC), c5,
+			writeFaceSpec{fixtureWriteFaceID("35"), 0.50})
+		rec := env.postPeopleMerge(t, env.cookie, mergeBody(c5, c4))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("single-source merge status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var merged apigen.MergePeopleResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &merged); err != nil {
+			t.Fatalf("decode single-source merge response: %v", err)
+		}
+		if uuid.UUID(merged.SurvivingClusterId) != c5 {
+			t.Errorf("single-source merge surviving = %s, want %s", merged.SurvivingClusterId, c5)
+		}
+		if len(merged.MergedClusterIds) != 1 || uuid.UUID(merged.MergedClusterIds[0]) != c4 {
+			t.Errorf("single-source merge merged ids = %v, want [%s]", merged.MergedClusterIds, c4)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(c4)); got != 0 {
+			t.Errorf("dissolved source cluster rows = %d, want 0", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM faces WHERE cluster_id = $1", pgUUID(c5)); got != 2 {
+			t.Errorf("target cluster faces = %d, want 2", got)
+		}
 	})
 
 	t.Run("EmptySourceListRejected", func(t *testing.T) {

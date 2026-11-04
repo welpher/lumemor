@@ -1183,12 +1183,15 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Fold 2-50 face clusters into one surviving cluster.
+         * Fold 1-50 face clusters into one surviving cluster.
          * @description One structural merge: every source cluster's faces re-home
          *     onto the target cluster, the target's representative face
          *     recomputes to the strongest-scoring member of the merged
          *     set, and every source cluster dissolves -- with its label
-         *     rows cascading.
+         *     rows cascading. A single source is the pairwise fold the
+         *     cluster detail's "merge into" action drives (that person
+         *     merges into the picked one); more sources are the batch
+         *     organize path of the unnamed region.
          *
          *     THE HONEST COST, by design: a source cluster's user-given
          *     name DIES with the cluster, whatever account gave it. A
@@ -1208,8 +1211,9 @@ export interface paths {
          *     caller (at least one face on an asset visible to them), and
          *     the target must not be among the sources -- any violation
          *     answers the same byte-identical 404 `PERSON_NOT_FOUND`
-         *     (anti-enumeration). Fewer than 2 or more than 50 source ids
-         *     (duplicates collapse first) answer 400 `VALIDATION_FAILED`.
+         *     (anti-enumeration). An empty source list or more than 50
+         *     source ids (duplicates collapse first) answer 400
+         *     `VALIDATION_FAILED`.
          *
          *     The write publishes one `person.merged` event with the
          *     surviving cluster id, the dissolved ids comma-joined as
@@ -3023,16 +3027,18 @@ export interface components {
             isHidden: boolean;
         };
         /**
-         * @description One merge: 2-50 source clusters folded into one target
+         * @description One merge: 1-50 source clusters folded into one target
          *     cluster. The source clusters dissolve with their labels (the
          *     honest documented cost -- a source cluster's user-given name
          *     dies); the target's label persists.
          */
         MergePeopleRequest: {
             /**
-             * @description The clusters to fold into the target: at least 2 and at
+             * @description The clusters to fold into the target: at least 1 and at
              *     most 50 after duplicates collapse, every one visible to
-             *     the caller. Each dissolves with its label rows.
+             *     the caller. Each dissolves with its label rows. A single
+             *     id is the pairwise fold of the cluster detail's
+             *     "merge into" action.
              */
             sourceClusterIds: string[];
             /**
@@ -5130,8 +5136,8 @@ export interface operations {
                 };
             };
             /**
-             * @description The body is not valid JSON, or the source list holds
-             *     fewer than 2 or more than 50 distinct clusters.
+             * @description The body is not valid JSON, or the source list is empty
+             *     or holds more than 50 distinct clusters.
              */
             400: {
                 headers: {

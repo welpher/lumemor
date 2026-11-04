@@ -411,8 +411,10 @@
 
 {#if selection.size > 0}
 	<!-- The floating merge bar: the batch organize entry, the batch
-	     bar's look. The merge needs at least two clusters, so a lone
-	     selection keeps the button disabled. -->
+	     bar's look. The bar keeps its two-cluster floor (the batch
+	     shape needs sources beside the target; the one-source
+	     pairwise fold is the cluster detail's "merge into" path), so
+	     a lone selection keeps the button disabled. -->
 	<div
 		class="mergebar fixed left-1/2 bottom-5 z-[60] box-content flex flex-wrap items-center justify-center gap-2 max-w-[min(92vw,720px)] px-3.5 py-2.5 border border-border rounded-overlay bg-card shadow-overlay [transform:translateX(-50%)]"
 		role="toolbar"

@@ -50,7 +50,9 @@
 	const selectedIds = $derived(selected.map((cluster) => cluster.clusterId));
 	// A selected cluster may host the merge only when the selection
 	// holds at least three: the other selected ones are the sources,
-	// and the contract needs at least two of them.
+	// and this dialog's batch shape keeps at least two of them (the
+	// one-source pairwise fold is the cluster detail's "merge into"
+	// path, not this batch bar).
 	const offerSelected = $derived(selected.length >= 3);
 	const optionIds = $derived([
 		...(offerSelected ? selectedIds : []),

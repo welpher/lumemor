@@ -9,14 +9,14 @@ import 'package:built_value/serializer.dart';
 
 part 'merge_people_request.g.dart';
 
-/// One merge: 2-50 source clusters folded into one target cluster. The source clusters dissolve with their labels (the honest documented cost -- a source cluster's user-given name dies); the target's label persists. 
+/// One merge: 1-50 source clusters folded into one target cluster. The source clusters dissolve with their labels (the honest documented cost -- a source cluster's user-given name dies); the target's label persists. 
 ///
 /// Properties:
-/// * [sourceClusterIds] - The clusters to fold into the target: at least 2 and at most 50 after duplicates collapse, every one visible to the caller. Each dissolves with its label rows. 
+/// * [sourceClusterIds] - The clusters to fold into the target: at least 1 and at most 50 after duplicates collapse, every one visible to the caller. Each dissolves with its label rows. A single id is the pairwise fold of the cluster detail's \"merge into\" action. 
 /// * [targetClusterId] - The surviving cluster: every source face re-homes here and its representative recomputes to the strongest member of the merged set. It must be visible to the caller and must not sit among the sources. 
 @BuiltValue()
 abstract class MergePeopleRequest implements Built<MergePeopleRequest, MergePeopleRequestBuilder> {
-  /// The clusters to fold into the target: at least 2 and at most 50 after duplicates collapse, every one visible to the caller. Each dissolves with its label rows. 
+  /// The clusters to fold into the target: at least 1 and at most 50 after duplicates collapse, every one visible to the caller. Each dissolves with its label rows. A single id is the pairwise fold of the cluster detail's \"merge into\" action. 
   @BuiltValueField(wireName: r'sourceClusterIds')
   BuiltList<String> get sourceClusterIds;
 

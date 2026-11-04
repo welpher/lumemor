@@ -41,8 +41,11 @@ const (
 	personNameMaxRunes = 64
 
 	// personMergeMinSources and personMergeMaxSources bound the
-	// merge's source list, counted after duplicates collapse.
-	personMergeMinSources = 2
+	// merge's source list, counted after duplicates collapse: one
+	// source is the pairwise fold the cluster detail's "merge into"
+	// action posts (that person merges into the picked one), the
+	// batch organize path sends more.
+	personMergeMinSources = 1
 	personMergeMaxSources = 50
 )
 
@@ -300,7 +303,7 @@ func (s *server) MergePeople(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(sources) < personMergeMinSources {
-		s.writeValidationError(w, fmt.Sprintf("merge needs at least %d source clusters", personMergeMinSources), []string{"sourceClusterIds"})
+		s.writeValidationError(w, "merge needs at least one source cluster", []string{"sourceClusterIds"})
 		return
 	}
 	if len(sources) > personMergeMaxSources {
