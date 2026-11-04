@@ -1,0 +1,60 @@
+# Release: build and publish the multi-arch server image to ghcr.io.
+# Tags cut from main (which every merge has already gated through the
+# five CI workflows) trigger this build; it runs no test suites of its
+# own -- the tag is the release act, main is the gate.
+#
+# The image is private by default (it belongs to a private repository):
+# the dogfood circle pulls it with a personal access token that carries
+# read:packages, see docs/deploy-docker.md.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ghcr:
+    name: build and push the image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      # arm64 runs emulated: the CGO toolchain (libvips, onnxruntime,
+      # Go with cgo enabled) under QEMU is slow but one-time per tag;
+      # the buildx layer cache softens repeat releases.
+      - name: Set up QEMU for the arm64 leg
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/server.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # The tag name is both the image tag and the version stamped
+          # into the binary's buildinfo; :latest rides along so compose
+          # defaults can track the newest preview.
+          tags: |
+            ghcr.io/welpher/lumemor:${{ github.ref_name }}
+            ghcr.io/welpher/lumemor:latest
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

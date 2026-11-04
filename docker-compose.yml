@@ -29,6 +29,11 @@ services:
       start_period: 5s
 
   lumemor:
+    # The published image (ghcr, private until the repository goes
+    # public): compose pulls it by default; `docker compose up --build`
+    # builds from source instead (the zero-registry path). LUMEMOR_IMAGE_TAG
+    # pins a specific release for the pull path.
+    image: ghcr.io/welpher/lumemor:${LUMEMOR_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: docker/server.Dockerfile
