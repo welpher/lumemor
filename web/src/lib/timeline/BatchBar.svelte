@@ -58,7 +58,7 @@
 
 {#if count > 0}
 	<div
-		class="batchbar fixed left-1/2 bottom-5 z-[60] flex flex-wrap items-center justify-center gap-2 max-w-[min(92vw,720px)] px-3.5 py-2.5 border border-border rounded-overlay bg-card shadow-overlay [transform:translateX(-50%)]"
+		class="batchbar fixed left-1/2 bottom-5 z-[60] box-content flex flex-wrap items-center justify-center gap-2 max-w-[min(92vw,720px)] px-3.5 py-2.5 border border-border rounded-overlay bg-card shadow-overlay [transform:translateX(-50%)]"
 		role="toolbar"
 		aria-label={$_('batch_selected_count', { values: { count } })}
 	>

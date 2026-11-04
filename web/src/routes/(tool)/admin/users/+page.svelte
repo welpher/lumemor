@@ -205,7 +205,7 @@
 	{#if status === 'loading'}
 		<p class="users__status my-12 text-center text-text-soft" role="status">{$_('admin_users_loading')}</p>
 	{:else if status === 'error'}
-		<div class="users__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div class="users__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
 			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
 		</div>
@@ -253,7 +253,7 @@
 								</span>
 							</td>
 							<td class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft border-b border-border group-last:border-b-0">{createdLabel(user)}</td>
-							<td class="users__actions px-3.5 py-2.5 text-right">
+							<td class="users__actions px-3.5 py-2.5 text-right font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">
 								{#if user.isDisabled}
 									<Button variant="ghost" disabled={busy} onclick={() => void enable(user)}>
 										{$_('admin_users_enable')}

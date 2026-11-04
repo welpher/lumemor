@@ -27,7 +27,7 @@
 </script>
 
 <div class="admin flex gap-6 items-start">
-	<nav class="admin-nav sticky top-4 flex flex-col gap-2 w-[200px] shrink-0 px-2 py-3 bg-card border border-border rounded-card shadow-card" aria-label={$_('admin_nav_label')}>
+	<nav class="admin-nav sticky top-4 flex flex-col gap-2 w-[200px] box-content shrink-0 px-2 py-3 bg-card border border-border rounded-card shadow-card" aria-label={$_('admin_nav_label')}>
 		<ul class="admin-nav__list flex flex-col gap-0.5 list-none">
 			{#each items as item (item.labelKey)}
 				<li>
@@ -43,11 +43,13 @@
 						</button>
 					{:else}
 						<a
-							class="admin-nav__item block w-full px-3 py-[9px] font-body font-semibold text-[15px] leading-[1.4] text-text text-left no-underline rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
+							class="admin-nav__item block w-full px-3 py-[9px] font-body text-[15px] leading-[1.4] text-left no-underline rounded-control cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
 							href={item.href}
 							class:admin-nav__item--active={page.url.pathname === item.href}
 							class:bg-accent-soft={page.url.pathname === item.href}
+							class:bg-transparent={page.url.pathname !== item.href}
 							class:text-accent-soft-text={page.url.pathname === item.href}
+							class:text-text={page.url.pathname !== item.href}
 							class:font-bold={page.url.pathname === item.href}
 							class:font-semibold={page.url.pathname !== item.href}
 						>

@@ -170,12 +170,12 @@
 	{#if firstLoad}
 		<p class="wall__status my-12 text-center text-text-soft" role="status">{$_(loadingKey)}</p>
 	{:else if settledEmpty}
-		<div class="wall__empty max-w-[420px] mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+		<div class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 			<h1 class="text-[22px] mb-2">{$_(titleKey)}</h1>
 			<p class="text-text-soft">{$_(emptyKey)}</p>
 		</div>
 	{:else if $wall.status === 'error' && $wall.items.length === 0}
-		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($wall.errorKey)}</p>
 			<Button variant="primary" onclick={() => void wall.loadMore()}>{$_('action_retry')}</Button>
 		</div>
@@ -207,7 +207,7 @@
 	{/if}
 
 	{#if $wall.status === 'error' && $wall.items.length > 0}
-		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($wall.errorKey)}</p>
 			<Button variant="primary" onclick={() => void wall.loadMore()}>{$_('action_retry')}</Button>
 		</div>

@@ -308,7 +308,7 @@
 	{#if status === 'loading'}
 		<p class="models__status my-12 text-center text-text-soft" role="status">{$_('admin_models_loading')}</p>
 	{:else if status === 'error'}
-		<div class="models__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div class="models__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
 			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
 		</div>
@@ -332,7 +332,7 @@
 		     run failed, or the trigger failed), the progress region
 		     below carries the action instead. -->
 		{#if settledEmpty && !downloadActive && !downloadFailed && downloadErrorKey === ''}
-			<section class="models__empty flex flex-col items-center gap-3 max-w-[480px] mx-auto mt-6 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+			<section class="models__empty flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 				<h2 class="models__empty-title font-display font-bold text-[22px] tracking-[0.01em] text-text">{$_('admin_models_empty_title')}</h2>
 				<p class="models__empty-body font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_models_empty_body')}</p>
 				<Button
@@ -346,7 +346,7 @@
 		{/if}
 
 		{#if downloadErrorKey !== ''}
-			<div class="models__download-error flex flex-col items-center gap-3 max-w-[480px] mx-auto mt-6 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+			<div class="models__download-error flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 				<p>{errorText(downloadErrorKey)}</p>
 				<Button variant="primary" disabled={downloading} onclick={() => void startDownload()}>
 					{$_('action_retry')}
