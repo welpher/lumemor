@@ -2,8 +2,9 @@
 
 // Package media derives the serving copies of an asset: the three
 // AVIF thumbnail sizes of an image (tile, view, original) through
-// libvips, the poster frame of a video through ffmpeg, and the
-// blurhash of the small tile.
+// libvips, the poster frame of a video through ffmpeg, the blurhash
+// of the small tile, and the query-time face crop of a face row's
+// bounding box out of the view derivative.
 //
 // This file carries the libvips half; it builds only with CGO enabled
 // (the govips binding is a cgo wrapper around libvips). A build
@@ -207,6 +208,87 @@ func ImageDimensions(path string) (int, int, error) {
 	}
 	defer ref.Close()
 	return ref.Width(), ref.Height(), nil
+}
+
+// FaceCropThumbnail derives the 256x256 AVIF face crop of one face
+// from the serving copy at viewPath -- the asset's view derivative,
+// never the original -- for a bounding box in per-mille units of the
+// full image (the faces row's bbox_x/y/w/h). The bytes are computed
+// at query time and never stored: they are a pure function of the
+// derivative's pixels and the face row, which is what lets the
+// endpoint answer with immutable caching.
+//
+// The window is FaceCropWindow's pinned square; the output renders to
+// exactly faceCropEdge pixels -- upscaled when the window is smaller,
+// because a face crop is a zoom, not a fit (the serving sizes' no-
+// upscale rule does not apply here).
+func FaceCropThumbnail(viewPath string, bboxX, bboxY, bboxW, bboxH int) ([]byte, error) {
+	// libvips initializes lazily here when the process has not started
+	// it explicitly (main.go does at boot); Startup is idempotent.
+	if err := vips.Startup(nil); err != nil {
+		return nil, fmt.Errorf("start libvips: %w", err)
+	}
+
+	image, err := vips.NewImageFromFile(viewPath)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", viewPath, err)
+	}
+	defer image.Close()
+
+	left, top, side := FaceCropWindow(image.Width(), image.Height(), bboxX, bboxY, bboxW, bboxH)
+	if err := image.ExtractArea(left, top, side, side); err != nil {
+		return nil, fmt.Errorf("crop face window of %s: %w", viewPath, err)
+	}
+	if err := image.ThumbnailWithSize(faceCropEdge, faceCropEdge, vips.InterestingCentre, vips.SizeBoth); err != nil {
+		return nil, fmt.Errorf("resize face crop of %s: %w", viewPath, err)
+	}
+
+	buf, _, err := image.ExportAvif(&vips.AvifExportParams{
+		Quality:       avifQuality,
+		StripMetadata: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode AVIF face crop of %s: %w", viewPath, err)
+	}
+	return buf, nil
+}
+
+// ImageAverageColor decodes the image at path and answers the mean
+// of its red, green and blue channels (0-255 scale) over all pixels,
+// in sRGB. It exists for the pipeline's and the endpoint's tests,
+// which verify a crop's pixel REGION by averaging the encoded output
+// -- solid-color regions survive the lossy encode nearly exactly, so
+// a quadrant's mean identifies the region the window covered (the
+// same role ImageDimensions plays for size assertions).
+func ImageAverageColor(path string) (float64, float64, float64, error) {
+	if err := vips.Startup(nil); err != nil {
+		return 0, 0, 0, fmt.Errorf("start libvips: %w", err)
+	}
+	ref, err := vips.NewImageFromFile(path)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("decode %s: %w", path, err)
+	}
+	defer ref.Close()
+	goImage, err := ref.ToGoImage()
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("read pixels of %s: %w", path, err)
+	}
+
+	var sumR, sumG, sumB, pixels float64
+	bounds := goImage.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, _ := goImage.At(x, y).RGBA()
+			sumR += float64(r) / 65535
+			sumG += float64(g) / 65535
+			sumB += float64(b) / 65535
+			pixels++
+		}
+	}
+	if pixels == 0 {
+		return 0, 0, 0, fmt.Errorf("average an empty image %s", path)
+	}
+	return sumR / pixels * 255, sumG / pixels * 255, sumB / pixels * 255, nil
 }
 
 // thumbDir returns the thumbnail directory of an asset.

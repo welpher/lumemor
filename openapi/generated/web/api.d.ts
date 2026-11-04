@@ -195,8 +195,20 @@ export interface paths {
          *     - `face.clustered`
          *     - `job.started`, `job.progress`, `job.finished`
          *     - `pairing.token_created`
+         *     - `person.labeled`, `person.unlabeled`, `person.hidden`,
+         *       `person.merged`, `person.face_moved`
          *     - `session.started`, `session.revoked`
          *     - `server.settings-changed`
+         *
+         *     The `person.*` events report the people surface's label,
+         *     hidden, merge and face-move writes. Every payload carries ONLY
+         *     the acting user's `userId` beside the cluster (or face) id:
+         *     the label text and the hidden switch are one account's
+         *     private state and never ride the shared stream. A
+         *     subscriber filters by the ids it renders, never by another
+         *     account's change. `person.merged` carries the dissolved
+         *     source cluster ids comma-joined as `mergedClusterIds`, and
+         *     `person.face_moved` carries the face's new `clusterId`.
          *
          *     The server keeps the last five minutes of events in a ring
          *     buffer. Browser EventSource clients reconnect automatically and
@@ -553,9 +565,12 @@ export interface paths {
          * @description The asset detail: the identity and storage fields of the upload
          *     response plus the refinements the pipeline produced afterwards
          *     -- dimensions, duration, blurhash, the EXIF hot fields, and
-         *     readiness -- and the two owner-level editable attributes
+         *     readiness -- the two owner-level editable attributes
          *     (`description`, `isHidden`), which the asset detail view
-         *     renders and the `PATCH` endpoint edits.
+         *     renders and the `PATCH` endpoint edits, and the asset's faces
+         *     with the caller's own label of each face's cluster (`faces`),
+         *     which the detail view's people section renders and the people
+         *     write endpoints maintain.
          *
          *     Access is owner-only: an id that belongs to another account
          *     answers the same 404 `ASSET_NOT_FOUND` as an id that does not
@@ -923,6 +938,386 @@ export interface paths {
          *     upload idempotency answers as a fresh asset).
          */
         post: operations["restoreAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's named people.
+         * @description The named region of the people surface: every face cluster
+         *     the caller sees that carries one of the caller's own labels.
+         *     A cluster is listed here when both hold:
+         *
+         *     - it contains at least one face on an asset visible to the
+         *       caller (before library sharing exists: an asset the caller
+         *       owns that is live -- not trashed, not hidden, no Live Photo
+         *       component row), and
+         *     - the caller has labeled it with a `user_face_labels` row of
+         *       their own.
+         *
+         *     The B4 semantics of the people domain: face clusters are
+         *     GLOBAL structures of the instance (the same person's faces
+         *     land in one cluster whatever account uploaded the photos),
+         *     while names and the hidden switch are PRIVATE per user --
+         *     two accounts label the same cluster independently and
+         *     neither sees the other's label. `faceCount` is honest per
+         *     caller: it counts only the cluster's faces on caller-visible
+         *     assets, so the same cluster can show different counts to
+         *     different accounts.
+         *
+         *     Hidden people STAY in this list carrying `isHidden` true:
+         *     the switch is a badge for the web UI, not a filter -- the
+         *     caller labeled the person and keeps seeing them, flagged.
+         *
+         *     The list is sorted by name, case-insensitively, with the
+         *     cluster id as the tiebreak.
+         */
+        get: operations["listPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/unnamed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's unnamed face clusters, one keyset page at a time.
+         * @description The unnamed region of the people surface: every face cluster
+         *     that contains at least one face on an asset visible to the
+         *     caller (before library sharing exists: an asset the caller
+         *     owns that is live -- not trashed, not hidden, no Live Photo
+         *     component row) and carries NO `user_face_labels` row of the
+         *     caller. The moment the caller labels a cluster it moves to
+         *     `GET /people` and out of this list; another account's label
+         *     never moves it for this caller (B4: clusters are global,
+         *     labels are private per user).
+         *
+         *     Pages are keyset-paginated with an opaque cursor over the
+         *     ordering `faceCount` descending, `clusterId` descending as
+         *     the tiebreak. The continuation key is the (faceCount,
+         *     clusterId) pair of a page's last row -- the same row-value
+         *     predicate pattern the timeline endpoint applies to its
+         *     (takenAt, id) pair, which keeps pages stable while clusters
+         *     gain or lose faces. The response carries `nextCursor` exactly
+         *     when another page exists; the first page omits the `cursor`
+         *     parameter.
+         *
+         *     `limit` bounds the page size: absent means the default of
+         *     60; a value below 1 or over 200 answers 400
+         *     `VALIDATION_FAILED`.
+         */
+        get: operations["listUnnamedPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/{clusterId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One face cluster's detail as the caller sees it.
+         * @description The detail view of one face cluster: the caller's own label
+         *     state and the cluster's faces on assets visible to the
+         *     caller, strongest score first with the face id as the
+         *     tiebreak.
+         *
+         *     `label` is null when the caller has not labeled the cluster
+         *     (the unnamed state). It is the CALLING user's label or no
+         *     label at all: another account's label never shows here
+         *     (B4 -- clusters are global, labels are private per user).
+         *
+         *     404 has a double meaning by design: the cluster id is
+         *     unknown, or the cluster exists but none of its faces sits on
+         *     an asset visible to the caller (before library sharing: the
+         *     cluster's assets all belong to other accounts). Both answer
+         *     the same `PERSON_NOT_FOUND`, byte for byte, so cluster ids
+         *     cannot be probed for existence -- the same anti-enumeration
+         *     shape as `ASSET_NOT_FOUND`.
+         *
+         *     Every `thumbnail` points at the face crop endpoint
+         *     `GET /api/v1/faces/{faceId}/thumbnail`, which serves the
+         *     face's bounding-box crop of the asset's view-size
+         *     derivative.
+         */
+        get: operations["getPersonCluster"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/{clusterId}/label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Name one face cluster (the caller's private label).
+         * @description Upserts the calling user's label of one face cluster: the
+         *     `user_face_labels` row keyed (userId, clusterId) -- the B4
+         *     write. The cluster must be visible to the caller (at least
+         *     one of its faces sits on an asset visible to them); an
+         *     unknown or invisible cluster id answers the same
+         *     byte-identical 404 `PERSON_NOT_FOUND` as every people read
+         *     (anti-enumeration -- cluster ids cannot be probed).
+         *
+         *     The name is trimmed and must span 1-64 characters; anything
+         *     else answers 400 `VALIDATION_FAILED` naming the `name`
+         *     field.
+         *
+         *     Duplicate names are ALLOWED, server-side and on purpose: no
+         *     `NAME_TAKEN` error exists. Families have real duplicates
+         *     (two grandparents named Grace), so a de-duplication hint is
+         *     a web-UI suggestion, never a server rule.
+         *
+         *     Re-labeling an already labeled cluster renames it in place:
+         *     the hidden switch keeps its state (a rename is not an
+         *     unhide). The label is the caller's private state -- another
+         *     account labeling the same cluster writes its own row and
+         *     neither sees the other's (B4).
+         *
+         *     The write publishes `person.labeled` on the activity stream
+         *     with the acting user's id in the payload.
+         */
+        put: operations["labelPerson"];
+        post?: never;
+        /**
+         * Remove the caller's label of one face cluster.
+         * @description Deletes the calling user's `user_face_labels` row of one
+         *     cluster: the person returns to the caller's unnamed region
+         *     (`GET /people/unnamed`) and out of the caller's named list.
+         *     The cluster itself and every other account's label survive
+         *     (B4 -- labels are private per user; only the caller's own
+         *     row dies).
+         *
+         *     The write is idempotent once the cluster is visible: naming
+         *     no label still answers 204. The cluster must be visible to
+         *     the caller -- an unknown or invisible cluster id answers the
+         *     same byte-identical 404 `PERSON_NOT_FOUND` as every people
+         *     read (anti-enumeration).
+         *
+         *     The write publishes `person.unlabeled` on the activity
+         *     stream with the acting user's id in the payload.
+         */
+        delete: operations["unlabelPerson"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/{clusterId}/hidden": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Flip the caller's hidden switch of one face cluster.
+         * @description Sets the hidden switch on the calling user's label row of one
+         *     cluster. The switch rides on the label row (`user_face_labels`
+         *     carries `name NOT NULL`), so hiding requires the caller to
+         *     have named the cluster first: hiding an UNLABELED cluster
+         *     answers 400 `VALIDATION_FAILED` whose `details` carry the
+         *     message key `person_hide_requires_label` -- the web UI offers
+         *     the naming dialog instead.
+         *
+         *     Hidden people STAY in the caller's `GET /people` list
+         *     carrying `isHidden` true (badge semantics, not a filter).
+         *     The switch is the caller's private state: hiding a cluster
+         *     never touches another account's label row (B4).
+         *
+         *     The cluster must be visible to the caller -- an unknown or
+         *     invisible cluster id answers the same byte-identical 404
+         *     `PERSON_NOT_FOUND` as every people read (anti-enumeration).
+         *
+         *     The write publishes `person.hidden` on the activity stream
+         *     in both directions (the payload carries the new `isHidden`
+         *     value beside the acting user's id).
+         */
+        put: operations["setPersonHidden"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fold 1-50 face clusters into one surviving cluster.
+         * @description One structural merge: every source cluster's faces re-home
+         *     onto the target cluster, the target's representative face
+         *     recomputes to the strongest-scoring member of the merged
+         *     set, and every source cluster dissolves -- with its label
+         *     rows cascading. A single source is the pairwise fold the
+         *     cluster detail's "merge into" action drives (that person
+         *     merges into the picked one); more sources are the batch
+         *     organize path of the unnamed region.
+         *
+         *     THE HONEST COST, by design: a source cluster's user-given
+         *     name DIES with the cluster, whatever account gave it. A
+         *     person merged away cannot keep the name a caller gave the
+         *     cluster they merged; the target cluster's label persists.
+         *     The web UI names the target before merging when the caller
+         *     wants the merged person called something.
+         *
+         *     The whole merge runs as ONE transaction through the cluster
+         *     maintenance discipline (representative re-pointing plus
+         *     dissolution of the vacated clusters -- the same primitives
+         *     the asset deletion sweep applies), never as bare member
+         *     moves that would strand a stale representative or an empty
+         *     cluster.
+         *
+         *     Rules: every source and the target must be visible to the
+         *     caller (at least one face on an asset visible to them), and
+         *     the target must not be among the sources -- any violation
+         *     answers the same byte-identical 404 `PERSON_NOT_FOUND`
+         *     (anti-enumeration). An empty source list or more than 50
+         *     source ids (duplicates collapse first) answer 400
+         *     `VALIDATION_FAILED`.
+         *
+         *     The write publishes one `person.merged` event with the
+         *     surviving cluster id, the dissolved ids comma-joined as
+         *     `mergedClusterIds`, and the acting user's id.
+         */
+        post: operations["mergePeople"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/faces/{faceId}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move one face onto an existing face cluster.
+         * @description One face's move onto an existing target cluster: the tidy-up
+         *     primitive behind the viewer's face chips. The face must sit
+         *     on an asset visible to the caller and the target must be
+         *     visible too -- any other state (unknown face, foreign asset,
+         *     invisible or unknown target) answers the same byte-identical
+         *     404 `PERSON_NOT_FOUND` (anti-enumeration). A face the
+         *     clustering has not yet assigned to any cluster is not part
+         *     of any person and answers the same 404.
+         *
+         *     The move runs as ONE transaction through the cluster
+         *     maintenance discipline: the target's representative face
+         *     recomputes to its strongest member, and the vacated source
+         *     cluster re-homes its representative to the best surviving
+         *     member -- or dissolves with its label rows cascading when
+         *     the move empties it (a source cluster's user-given name dies
+         *     with the cluster, the same honest cost as a merge).
+         *
+         *     Moving a face onto the cluster it already occupies is an
+         *     accepted no-op. The write publishes `person.face_moved` with
+         *     the face id, the cluster it now occupies and the acting
+         *     user's id.
+         */
+        post: operations["moveFace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/faces/{faceId}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve one face's 256x256 crop thumbnail.
+         * @description The face crop pixels of the people surface: a 256x256
+         *     `image/avif` crop of one detected face, derived at query time
+         *     and never stored on disk. The source pixels are the face's
+         *     asset's `view` derivative -- the inline serving size of
+         *     `GET /assets/{id}/thumbnail` -- never the original; the face
+         *     row's bounding box is in per-mille units of the full image,
+         *     and the view derivative preserves the original's framing
+         *     exactly, so the same per-mille values address the
+         *     derivative's own pixels.
+         *
+         *     The crop window is pinned: a square whose side is 1.25x the
+         *     larger of the box's pixel width and height (a 25% margin
+         *     around the face), centered on the box and clamped to the
+         *     image bounds (a face larger than the image yields the
+         *     image's smaller edge); the window then renders to exactly
+         *     256x256 pixels -- upscaled when the window is smaller,
+         *     a zoom rather than a fit.
+         *
+         *     The permission gate is the face's asset: the caller must own
+         *     a live, visible, non-component asset. Every other state
+         *     answers the SAME byte-identical 404 PERSON_NOT_FOUND -- an
+         *     unknown face id, a face on another account's (or a trashed,
+         *     or hidden) asset, and an asset whose view derivative has not
+         *     been derived yet (the thumbnail job has not run). Face ids
+         *     cannot be probed for existence; the web renders its skeleton
+         *     placeholder until the pixels exist, which is why there is
+         *     deliberately no separate not-ready code here, unlike the
+         *     asset thumbnail endpoint.
+         *
+         *     The response is a private immutable derived asset:
+         *     `Cache-Control: private, max-age=31536000, immutable`, and a
+         *     strong `ETag` of `"face-{faceId}-{updatedAt}"`, where
+         *     updatedAt is the face row's change signal in unix seconds --
+         *     cluster moves bump it, and re-detection replaces the face row
+         *     outright. A matching `If-None-Match` answers 304 with the
+         *     same validators and no body. Conditional requests and byte
+         *     ranges otherwise follow the Go standard library's
+         *     `ServeContent` semantics.
+         */
+        get: operations["getFaceThumbnail"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1838,8 +2233,9 @@ export interface components {
         /**
          * @description One asset as the detail endpoint returns it: the upload
          *     response's identity and storage fields, the pipeline's
-         *     refinements, and the two owner-level attributes the PATCH
-         *     endpoint edits (`description`, `isHidden`). The shape is
+         *     refinements, the two owner-level attributes the PATCH
+         *     endpoint edits (`description`, `isHidden`), and the asset's
+         *     faces as the calling user sees them (`faces`). The shape is
          *     fixed -- every property is always present -- and the
          *     pipeline-dependent values (`width`, `height`, `durationMs`,
          *     `blurhash` and the fields inside `exif`) are null until the
@@ -1971,6 +2367,62 @@ export interface components {
              *     extraction.
              */
             exif: components["schemas"]["ExifSummary"];
+            /**
+             * @description The asset's faces as the calling user sees them, strongest
+             *     score first with the face id as the tiebreak. The array is
+             *     caller-scoped (B4): the asset being visible to the caller
+             *     is the gate -- the faces ride on the detail's own
+             *     permission -- and each entry's `label` is the caller's own
+             *     label of the face's cluster, never another account's.
+             *     Always present, empty when the asset carries no faces
+             *     (none detected, or detection has not run yet). The PATCH
+             *     response serves the same array, exactly as the GET serves
+             *     it.
+             */
+            faces: components["schemas"]["AssetFaceSummary"][];
+        };
+        /**
+         * @description One face of the asset detail's `faces` array: the crop's
+         *     identity, the detection score, the face's cluster and the
+         *     CALLER's label of that cluster. The label is per-user state
+         *     (B4): another account's label of the same global cluster never
+         *     shows here. `clusterId` is null while the face waits for its
+         *     first clustering assignment; such a face has no person yet and
+         *     every assignment write on it answers the people surface's 404.
+         */
+        AssetFaceSummary: {
+            /**
+             * Format: uuid
+             * @description Identifier of the face row.
+             */
+            id: string;
+            /**
+             * Format: float
+             * @description The detector's confidence for this face.
+             */
+            score: number;
+            /**
+             * @description URL of the face's crop: the face crop endpoint
+             *     `GET /api/v1/faces/{faceId}/thumbnail` with this face's
+             *     id, serving the bounding-box crop of the asset's
+             *     view-size derivative.
+             * @example /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+             */
+            thumbnail: string;
+            /**
+             * Format: uuid
+             * @description Identifier of the face's cluster, or null before the
+             *     clustering assigned one (a face the recognition run has
+             *     not grouped yet).
+             */
+            clusterId: string | null;
+            /**
+             * @description The caller's own label of the face's cluster, or null when
+             *     the caller has not labeled it (the unnamed state) -- and
+             *     null for a clusterless face, which has no cluster to
+             *     label.
+             */
+            label: components["schemas"]["PersonLabel"] | null;
         };
         /**
          * @description The EXIF hot fields of an asset, flattened from the raw
@@ -2370,6 +2822,273 @@ export interface components {
             isHidden?: boolean;
         };
         /**
+         * @description One named person of the caller's people list: a global face
+         *     cluster carrying the caller's own label. The name and the
+         *     hidden switch are the caller's private label state (B4) --
+         *     another account labeling or hiding the same cluster never
+         *     changes this view.
+         */
+        PersonSummary: {
+            /**
+             * Format: uuid
+             * @description Identifier of the face cluster.
+             */
+            clusterId: string;
+            /** @description The caller's own label of the cluster. */
+            name: string;
+            /**
+             * @description The cluster's faces on assets visible to the caller --
+             *     the honest per-caller count, not the global member count.
+             */
+            faceCount: number;
+            /**
+             * Format: uuid
+             * @description The cluster's representative face (its strongest-scoring
+             *     member); the face the person card renders.
+             */
+            representativeFaceId: string;
+            /**
+             * @description URL of the representative face's crop: the face crop
+             *     endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
+             *     representative face's id.
+             * @example /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+             */
+            thumbnail: string;
+            /**
+             * @description The caller's hidden switch for this person. Hidden people
+             *     stay listed carrying this flag (badge semantics); they
+             *     are not filtered out.
+             */
+            isHidden: boolean;
+        };
+        /**
+         * @description One unnamed face cluster of the caller's unnamed region: a
+         *     global cluster the caller sees through at least one visible
+         *     asset and has not labeled themselves. Unlabeled for THIS
+         *     caller says nothing about another account's labels (B4 --
+         *     labels are private per user).
+         */
+        UnnamedClusterSummary: {
+            /**
+             * Format: uuid
+             * @description Identifier of the face cluster.
+             */
+            clusterId: string;
+            /**
+             * @description The cluster's faces on assets visible to the caller --
+             *     the honest per-caller count, not the global member count.
+             */
+            faceCount: number;
+            /**
+             * Format: uuid
+             * @description The cluster's representative face (its strongest-scoring
+             *     member); the face the cluster tile renders.
+             */
+            representativeFaceId: string;
+            /**
+             * @description URL of the representative face's crop: the face crop
+             *     endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
+             *     representative face's id.
+             * @example /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+             */
+            thumbnail: string;
+        };
+        /** @description One keyset page of the caller's unnamed clusters. */
+        UnnamedClustersResponse: {
+            /**
+             * @description The page's clusters, ordered by `faceCount` descending
+             *     with the cluster id as the tiebreak.
+             */
+            items: components["schemas"]["UnnamedClusterSummary"][];
+            /**
+             * @description The opaque continuation cursor: pass it back as the
+             *     `cursor` query parameter to fetch the next page. Absent
+             *     exactly when this is the last page.
+             */
+            nextCursor?: string;
+        };
+        /**
+         * @description One face cluster's detail as the calling user sees it: the
+         *     caller's own label state and the cluster's faces on
+         *     caller-visible assets, strongest score first.
+         */
+        ClusterDetail: {
+            /**
+             * Format: uuid
+             * @description Identifier of the face cluster.
+             */
+            clusterId: string;
+            /**
+             * @description The caller's label of the cluster, or null when the
+             *     caller has not labeled it (the unnamed state). It is the
+             *     calling user's label or no label at all: another
+             *     account's label never shows here (B4).
+             */
+            label: components["schemas"]["PersonLabel"] | null;
+            /**
+             * @description The cluster's faces on assets visible to the caller,
+             *     strongest score first with the face id as the tiebreak.
+             *     Faces on other accounts' assets never appear.
+             */
+            faces: components["schemas"]["FaceDetail"][];
+        };
+        /** @description The calling user's private label of one face cluster. */
+        PersonLabel: {
+            /** @description The caller's name for the person. */
+            name: string;
+            /**
+             * @description The caller's hidden switch. Hidden people stay listed in
+             *     `GET /people` carrying this flag (badge semantics).
+             */
+            isHidden: boolean;
+        };
+        /**
+         * @description One face of the cluster on an asset visible to the caller:
+         *     the crop's identity, the detection score and the minimal
+         *     asset context the detail grid renders.
+         */
+        FaceDetail: {
+            /**
+             * Format: uuid
+             * @description Identifier of the face row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Identifier of the asset the face sits on.
+             */
+            assetId: string;
+            /**
+             * Format: float
+             * @description The detector's confidence for this face.
+             */
+            score: number;
+            /**
+             * @description URL of the face's crop: the face crop endpoint
+             *     `GET /api/v1/faces/{faceId}/thumbnail` with this face's
+             *     id, serving the bounding-box crop of the asset's
+             *     view-size derivative.
+             */
+            thumbnail: string;
+            /**
+             * @description The minimal context of the asset the face sits on: when
+             *     it was taken and under what file name -- the two lines
+             *     the cluster detail renders under each crop.
+             */
+            asset: {
+                /**
+                 * Format: date-time
+                 * @description When the asset was taken (RFC 3339 UTC).
+                 */
+                takenAt: string;
+                /** @description The file name the asset was uploaded under. */
+                originalFilename: string;
+            };
+        };
+        /**
+         * @description The caller's name for one face cluster. The server trims the
+         *     value and requires 1-64 characters; duplicate names are
+         *     allowed (no NAME_TAKEN -- families have real duplicates).
+         */
+        LabelPersonRequest: {
+            /**
+             * @description The caller's name for the person, trimmed.
+             * @example Ada
+             */
+            name: string;
+        };
+        /**
+         * @description The caller's hidden switch for one face cluster. The switch
+         *     rides on the caller's label row, so hiding requires the
+         *     caller to have named the cluster first
+         *     (`person_hide_requires_label` otherwise).
+         */
+        SetPersonHiddenRequest: {
+            /**
+             * @description true hides the person for the caller (a badge on their
+             *     people list, not a filter); false unhides.
+             * @example true
+             */
+            isHidden: boolean;
+        };
+        /**
+         * @description The calling user's label state of one face cluster after a
+         *     label or hidden write: the caller's own row only (B4 --
+         *     another account's label never shows here).
+         */
+        PersonLabelResponse: {
+            /**
+             * Format: uuid
+             * @description Identifier of the face cluster.
+             */
+            clusterId: string;
+            /** @description The caller's (trimmed) name for the person. */
+            name: string;
+            /** @description The caller's hidden switch for this person. */
+            isHidden: boolean;
+        };
+        /**
+         * @description One merge: 1-50 source clusters folded into one target
+         *     cluster. The source clusters dissolve with their labels (the
+         *     honest documented cost -- a source cluster's user-given name
+         *     dies); the target's label persists.
+         */
+        MergePeopleRequest: {
+            /**
+             * @description The clusters to fold into the target: at least 1 and at
+             *     most 50 after duplicates collapse, every one visible to
+             *     the caller. Each dissolves with its label rows. A single
+             *     id is the pairwise fold of the cluster detail's
+             *     "merge into" action.
+             */
+            sourceClusterIds: string[];
+            /**
+             * Format: uuid
+             * @description The surviving cluster: every source face re-homes here
+             *     and its representative recomputes to the strongest
+             *     member of the merged set. It must be visible to the
+             *     caller and must not sit among the sources.
+             */
+            targetClusterId: string;
+        };
+        /** @description One committed merge. */
+        MergePeopleResponse: {
+            /**
+             * Format: uuid
+             * @description The target cluster that absorbed the sources.
+             */
+            survivingClusterId: string;
+            /**
+             * @description The source clusters that dissolved into the target, in
+             *     request order. Their rows -- and every label on them --
+             *     are gone.
+             */
+            mergedClusterIds: string[];
+        };
+        /** @description One face's move onto an existing face cluster. */
+        MoveFaceRequest: {
+            /**
+             * Format: uuid
+             * @description The cluster the face joins. It must be visible to the
+             *     caller; its representative recomputes when the move
+             *     changes the strongest member.
+             */
+            targetClusterId: string;
+        };
+        /** @description One committed face move. */
+        MoveFaceResponse: {
+            /**
+             * Format: uuid
+             * @description Identifier of the moved face.
+             */
+            faceId: string;
+            /**
+             * Format: uuid
+             * @description The cluster the face occupies after the move.
+             */
+            clusterId: string;
+        };
+        /**
          * @description Error envelope shared by all endpoints. `code` is the authoritative
          *     registry of stable error codes; clients must not parse `message`.
          */
@@ -2379,7 +3098,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -3310,7 +4029,10 @@ export interface operations {
              *     pipeline-dependent fields stay null and the client waits
              *     for the `asset.ready` event. `exif` is always present; its
              *     fields are null until the metadata job wrote the
-             *     extraction.
+             *     extraction. `faces` is always present, ordered by score
+             *     descending with the face id as the tiebreak, each entry
+             *     carrying the caller's own label state of the face's
+             *     cluster; the `person.*` events on the stream converge it.
              */
             200: {
                 headers: {
@@ -3434,7 +4156,8 @@ export interface operations {
         responses: {
             /**
              * @description The asset detail after the edit -- the same shape `GET
-             *     /assets/{id}` serves, with the applied values. The
+             *     /assets/{id}` serves, with the applied values (the
+             *     `faces` array included, unchanged by the edit). The
              *     idempotent no-op answers it too, with the row's current
              *     state unchanged.
              */
@@ -3978,6 +4701,629 @@ export interface operations {
              * @description No asset with this id is restorable by the caller: the id
              *     is unknown, already purged by the expiry job, or belongs
              *     to another account -- all indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listPeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The caller's named people, sorted by name (case-
+             *     insensitive, cluster id as the tiebreak). The array is
+             *     empty when the caller has labeled no cluster they can
+             *     see.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonSummary"][];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listUnnamedPeople: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The `nextCursor` of the previous page; absent on the
+                 *     first page. An unparseable value answers 400
+                 *     `VALIDATION_FAILED` (cursors are opaque strings produced
+                 *     by this endpoint, never assembled by clients).
+                 */
+                cursor?: string;
+                /**
+                 * @description Page size: the number of cluster summaries one response
+                 *     carries at most. Defaults to 60; values below 1 or over
+                 *     200 answer 400.
+                 * @example 60
+                 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description One page of unnamed clusters, largest face count first.
+             *     `nextCursor` is present exactly when another page
+             *     follows; the last page carries none.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnnamedClustersResponse"];
+                };
+            };
+            /**
+             * @description The pagination parameters are invalid: `cursor` is not a
+             *     value this endpoint produced, or `limit` is below 1 or
+             *     over 200.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPersonCluster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face cluster. */
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The cluster's detail as the caller sees it. `label` is
+             *     null in the unnamed state; `faces` holds exactly the
+             *     faces on caller-visible assets.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterDetail"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such cluster for this caller: the id is unknown, or
+             *     the cluster exists but none of its faces sits on an asset
+             *     visible to the caller -- indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    labelPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face cluster. */
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabelPersonRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The caller's label state of the cluster after the write:
+             *     the trimmed name and the current hidden switch.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonLabelResponse"];
+                };
+            };
+            /**
+             * @description The body is not valid JSON, or the name is missing,
+             *     empty after trimming or longer than 64 characters.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such cluster for this caller: the id is unknown, or
+             *     the cluster exists but none of its faces sits on an
+             *     asset visible to the caller -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    unlabelPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face cluster. */
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The caller's label row is gone (or was never there); the
+             *     person sits in the caller's unnamed region.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such cluster for this caller: the id is unknown, or
+             *     the cluster exists but none of its faces sits on an
+             *     asset visible to the caller -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setPersonHidden: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face cluster. */
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPersonHiddenRequest"];
+            };
+        };
+        responses: {
+            /** @description The caller's label state of the cluster after the flip. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonLabelResponse"];
+                };
+            };
+            /**
+             * @description The body is not valid JSON or lacks `isHidden` -- or the
+             *     caller has not labeled the cluster: hiding rides on the
+             *     label row, so an unlabeled cluster answers
+             *     `VALIDATION_FAILED` with the message key
+             *     `person_hide_requires_label` in `details.key`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such cluster for this caller: the id is unknown, or
+             *     the cluster exists but none of its faces sits on an
+             *     asset visible to the caller -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    mergePeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergePeopleRequest"];
+            };
+        };
+        responses: {
+            /** @description The merge committed as one transaction. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergePeopleResponse"];
+                };
+            };
+            /**
+             * @description The body is not valid JSON, or the source list is empty
+             *     or holds more than 50 distinct clusters.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such merge for this caller: a source or the target is
+             *     unknown or invisible to the caller, or the target sits
+             *     among the sources -- indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    moveFace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face to move. */
+                faceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveFaceRequest"];
+            };
+        };
+        responses: {
+            /** @description The move committed as one transaction. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveFaceResponse"];
+                };
+            };
+            /**
+             * @description The body is not valid JSON or lacks a usable
+             *     `targetClusterId`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such movable face for this caller: the face id is
+             *     unknown, its asset (or the target cluster) is invisible
+             *     to the caller, or the face belongs to no cluster yet --
+             *     indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getFaceThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face to crop. */
+                faceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The 256x256 AVIF face crop. */
+            200: {
+                headers: {
+                    /**
+                     * @description Strong entity tag: `face-{faceId}-{updatedAt}` -- the
+                     *     face row's id with its change signal (unix seconds),
+                     *     quoted. The derivation is deterministic, so one signal
+                     *     always renders the same bytes.
+                     * @example "face-0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71-1777636800"
+                     */
+                    ETag?: string;
+                    /**
+                     * @description The crop is private to the caller and a pure function
+                     *     of the face row and its asset's view derivative, so
+                     *     clients may cache it for a year.
+                     * @example private, max-age=31536000, immutable
+                     */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/avif": string;
+                };
+            };
+            /**
+             * @description The `If-None-Match` value matched the entity tag; the
+             *     cached copy is current. The response carries the same
+             *     `ETag` and `Cache-Control` validators and no body.
+             */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie or
+             *     bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such face for this caller: the face id is unknown, its
+             *     asset is not visible to the caller (another account's,
+             *     trashed, hidden, or a Live Photo component), or the
+             *     asset's view derivative does not exist yet -- all
+             *     indistinguishable by design; the web renders a skeleton
+             *     placeholder until the pixels exist.
              */
             404: {
                 headers: {

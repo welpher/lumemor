@@ -31,6 +31,9 @@ import type { components } from '../../../../openapi/generated/web/api';
 /** The detail endpoint's body, exactly the contract's AssetDetail. */
 export type AssetDetail = components['schemas']['AssetDetail'];
 
+/** One face of the detail's faces array, the contract's AssetFaceSummary. */
+export type AssetFaceSummary = components['schemas']['AssetFaceSummary'];
+
 /** The PATCH body: either owner-level attribute, at least one. */
 export type AssetPatch = components['schemas']['AssetPatch'];
 
@@ -79,6 +82,40 @@ export function assetPlayUrl(id: string): string {
 	return `/api/v1/assets/${encodeURIComponent(id)}/play`;
 }
 
+/** Structurally validate one face summary; null when it is not one. */
+function faceSummaryFrom(body: unknown): AssetFaceSummary | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<AssetFaceSummary>;
+	if (typeof candidate.id !== 'string' || typeof candidate.thumbnail !== 'string') {
+		return null;
+	}
+	if (typeof candidate.score !== 'number' || !Number.isFinite(candidate.score)) {
+		return null;
+	}
+	// clusterId is null before the clustering assigns one; absent or
+	// non-string is not a summary.
+	if (typeof candidate.clusterId !== 'string' && candidate.clusterId !== null) {
+		return null;
+	}
+	// label is the caller's label state or null (always present); a
+	// present label must carry its two fields.
+	if (candidate.label !== null) {
+		if (typeof candidate.label !== 'object') {
+			return null;
+		}
+		const label = candidate.label as Partial<NonNullable<AssetFaceSummary['label']>>;
+		if (typeof label.name !== 'string') {
+			return null;
+		}
+		if (label.isHidden !== true && label.isHidden !== false) {
+			return null;
+		}
+	}
+	return body as AssetFaceSummary;
+}
+
 /** Structurally validate a detail body; null when it is not a detail. */
 function detailFrom(body: unknown): AssetDetail | null {
 	if (body === null || typeof body !== 'object') {
@@ -93,6 +130,16 @@ function detailFrom(body: unknown): AssetDetail | null {
 	}
 	if (candidate.isHidden !== true && candidate.isHidden !== false) {
 		return null;
+	}
+	// The faces array is part of the fixed shape: absent, null or a
+	// malformed entry is not a detail.
+	if (!Array.isArray(candidate.faces)) {
+		return null;
+	}
+	for (const entry of candidate.faces) {
+		if (faceSummaryFrom(entry) === null) {
+			return null;
+		}
 	}
 	return body as AssetDetail;
 }
