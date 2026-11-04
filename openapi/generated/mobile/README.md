@@ -117,6 +117,7 @@ Class | Method | HTTP request | Description
 [*AuthApi*](doc/AuthApi.md) | [**logout**](doc/AuthApi.md#logout) | **POST** /auth/logout | Revoke the current session.
 [*AuthApi*](doc/AuthApi.md) | [**revokeSession**](doc/AuthApi.md#revokesession) | **DELETE** /auth/sessions/{id} | Revoke one of the caller&#39;s sessions.
 [*EventsApi*](doc/EventsApi.md) | [**getEvents**](doc/EventsApi.md#getevents) | **GET** /events | Stream instance activity over server-sent events.
+[*PeopleApi*](doc/PeopleApi.md) | [**getFaceThumbnail**](doc/PeopleApi.md#getfacethumbnail) | **GET** /faces/{faceId}/thumbnail | Serve one face&#39;s 256x256 crop thumbnail.
 [*PeopleApi*](doc/PeopleApi.md) | [**getPersonCluster**](doc/PeopleApi.md#getpersoncluster) | **GET** /people/{clusterId} | One face cluster&#39;s detail as the caller sees it.
 [*PeopleApi*](doc/PeopleApi.md) | [**labelPerson**](doc/PeopleApi.md#labelperson) | **PUT** /people/{clusterId}/label | Name one face cluster (the caller&#39;s private label).
 [*PeopleApi*](doc/PeopleApi.md) | [**listPeople**](doc/PeopleApi.md#listpeople) | **GET** /people | The caller&#39;s named people.

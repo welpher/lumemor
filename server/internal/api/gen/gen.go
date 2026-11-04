@@ -1865,6 +1865,9 @@ type ServerInterface interface {
 	// MoveFace Move one face onto an existing face cluster.
 	// (POST /faces/{faceId}/move)
 	MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
+	// GetFaceThumbnail Serve one face's 256x256 crop thumbnail.
+	// (GET /faces/{faceId}/thumbnail)
+	GetFaceThumbnail(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
 	// ListPeople The caller's named people.
 	// (GET /people)
 	ListPeople(w http.ResponseWriter, r *http.Request)
@@ -2075,6 +2078,12 @@ func (_ Unimplemented) GetEvents(w http.ResponseWriter, r *http.Request, params 
 // MoveFace Move one face onto an existing face cluster.
 // (POST /faces/{faceId}/move)
 func (_ Unimplemented) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFaceThumbnail Serve one face's 256x256 crop thumbnail.
+// (GET /faces/{faceId}/thumbnail)
+func (_ Unimplemented) GetFaceThumbnail(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2874,6 +2883,32 @@ func (siw *ServerInterfaceWrapper) MoveFace(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// GetFaceThumbnail operation middleware
+func (siw *ServerInterfaceWrapper) GetFaceThumbnail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "faceId" -------------
+	var faceId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "faceId", chi.URLParam(r, "faceId"), &faceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "faceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFaceThumbnail(w, r, faceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPeople operation middleware
 func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Request) {
 
@@ -3325,6 +3360,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/faces/{faceId}/move", wrapper.MoveFace)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/faces/{faceId}/thumbnail", wrapper.GetFaceThumbnail)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/users", wrapper.ListUsers)

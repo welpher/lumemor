@@ -8,6 +8,7 @@ import 'package:built_value/json_object.dart';
 import 'package:built_value/serializer.dart';
 import 'package:dio/dio.dart';
 
+import 'dart:typed_data';
 import 'package:built_collection/built_collection.dart';
 import 'package:lumemor_api/src/api_util.dart';
 import 'package:lumemor_api/src/model/cluster_detail.dart';
@@ -29,6 +30,90 @@ class PeopleApi {
   final Serializers _serializers;
 
   const PeopleApi(this._dio, this._serializers);
+
+  /// Serve one face&#39;s 256x256 crop thumbnail.
+  /// The face crop pixels of the people surface: a 256x256 &#x60;image/avif&#x60; crop of one detected face, derived at query time and never stored on disk. The source pixels are the face&#39;s asset&#39;s &#x60;view&#x60; derivative -- the inline serving size of &#x60;GET /assets/{id}/thumbnail&#x60; -- never the original; the face row&#39;s bounding box is in per-mille units of the full image, and the view derivative preserves the original&#39;s framing exactly, so the same per-mille values address the derivative&#39;s own pixels.  The crop window is pinned: a square whose side is 1.25x the larger of the box&#39;s pixel width and height (a 25% margin around the face), centered on the box and clamped to the image bounds (a face larger than the image yields the image&#39;s smaller edge); the window then renders to exactly 256x256 pixels -- upscaled when the window is smaller, a zoom rather than a fit.  The permission gate is the face&#39;s asset: the caller must own a live, visible, non-component asset. Every other state answers the SAME byte-identical 404 PERSON_NOT_FOUND -- an unknown face id, a face on another account&#39;s (or a trashed, or hidden) asset, and an asset whose view derivative has not been derived yet (the thumbnail job has not run). Face ids cannot be probed for existence; the web renders its skeleton placeholder until the pixels exist, which is why there is deliberately no separate not-ready code here, unlike the asset thumbnail endpoint.  The response is a private immutable derived asset: &#x60;Cache-Control: private, max-age&#x3D;31536000, immutable&#x60;, and a strong &#x60;ETag&#x60; of &#x60;\&quot;face-{faceId}-{updatedAt}\&quot;&#x60;, where updatedAt is the face row&#39;s change signal in unix seconds -- cluster moves bump it, and re-detection replaces the face row outright. A matching &#x60;If-None-Match&#x60; answers 304 with the same validators and no body. Conditional requests and byte ranges otherwise follow the Go standard library&#39;s &#x60;ServeContent&#x60; semantics. 
+  ///
+  /// Parameters:
+  /// * [faceId] - Identifier of the face to crop.
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [Uint8List] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<Uint8List>> getFaceThumbnail({ 
+    required String faceId,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/faces/{faceId}/thumbnail'.replaceAll('{' r'faceId' '}', encodeQueryParameter(_serializers, faceId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'GET',
+      responseType: ResponseType.bytes,
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    Uint8List? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : rawResponse as Uint8List;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<Uint8List>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
 
   /// One face cluster&#39;s detail as the caller sees it.
   /// The detail view of one face cluster: the caller&#39;s own label state and the cluster&#39;s faces on assets visible to the caller, strongest score first with the face id as the tiebreak.  &#x60;label&#x60; is null when the caller has not labeled the cluster (the unnamed state). It is the CALLING user&#39;s label or no label at all: another account&#39;s label never shows here (B4 -- clusters are global, labels are private per user).  404 has a double meaning by design: the cluster id is unknown, or the cluster exists but none of its faces sits on an asset visible to the caller (before library sharing: the cluster&#39;s assets all belong to other accounts). Both answer the same &#x60;PERSON_NOT_FOUND&#x60;, byte for byte, so cluster ids cannot be probed for existence -- the same anti-enumeration shape as &#x60;ASSET_NOT_FOUND&#x60;.  Every &#x60;thumbnail&#x60; points at the face crop endpoint &#x60;GET /api/v1/faces/{faceId}/thumbnail&#x60;, which serves the face&#39;s bounding-box crop of the asset&#39;s view-size derivative. 

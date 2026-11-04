@@ -267,3 +267,26 @@ WHERE f.id = sqlc.arg('face_id')
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false;
+
+-- name: GetFaceCropForCaller :one
+-- The face crop endpoint's read and gate in one: the face's
+-- bounding box (per-mille of the full image, addressing the view
+-- derivative's own pixels) and its change signal (updated_at, the
+-- ETag's input), over a caller-visible asset only. A miss covers an
+-- unknown id and a face on an invisible asset alike -- the same 404
+-- the people surface answers everywhere; the handler folds the
+-- derivative's absence into that same shape (anti-enumeration).
+SELECT f.id,
+       f.asset_id,
+       f.bbox_x,
+       f.bbox_y,
+       f.bbox_w,
+       f.bbox_h,
+       f.updated_at
+FROM faces f
+JOIN assets a ON a.id = f.asset_id
+WHERE f.id = sqlc.arg('face_id')
+  AND a.owner_id = sqlc.arg('user_id')
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false;

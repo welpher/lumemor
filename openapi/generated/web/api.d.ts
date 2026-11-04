@@ -1259,6 +1259,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/faces/{faceId}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve one face's 256x256 crop thumbnail.
+         * @description The face crop pixels of the people surface: a 256x256
+         *     `image/avif` crop of one detected face, derived at query time
+         *     and never stored on disk. The source pixels are the face's
+         *     asset's `view` derivative -- the inline serving size of
+         *     `GET /assets/{id}/thumbnail` -- never the original; the face
+         *     row's bounding box is in per-mille units of the full image,
+         *     and the view derivative preserves the original's framing
+         *     exactly, so the same per-mille values address the
+         *     derivative's own pixels.
+         *
+         *     The crop window is pinned: a square whose side is 1.25x the
+         *     larger of the box's pixel width and height (a 25% margin
+         *     around the face), centered on the box and clamped to the
+         *     image bounds (a face larger than the image yields the
+         *     image's smaller edge); the window then renders to exactly
+         *     256x256 pixels -- upscaled when the window is smaller,
+         *     a zoom rather than a fit.
+         *
+         *     The permission gate is the face's asset: the caller must own
+         *     a live, visible, non-component asset. Every other state
+         *     answers the SAME byte-identical 404 PERSON_NOT_FOUND -- an
+         *     unknown face id, a face on another account's (or a trashed,
+         *     or hidden) asset, and an asset whose view derivative has not
+         *     been derived yet (the thumbnail job has not run). Face ids
+         *     cannot be probed for existence; the web renders its skeleton
+         *     placeholder until the pixels exist, which is why there is
+         *     deliberately no separate not-ready code here, unlike the
+         *     asset thumbnail endpoint.
+         *
+         *     The response is a private immutable derived asset:
+         *     `Cache-Control: private, max-age=31536000, immutable`, and a
+         *     strong `ETag` of `"face-{faceId}-{updatedAt}"`, where
+         *     updatedAt is the face row's change signal in unix seconds --
+         *     cluster moves bump it, and re-detection replaces the face row
+         *     outright. A matching `If-None-Match` answers 304 with the
+         *     same validators and no body. Conditional requests and byte
+         *     ranges otherwise follow the Go standard library's
+         *     `ServeContent` semantics.
+         */
+        get: operations["getFaceThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/users": {
         parameters: {
             query?: never;
@@ -5110,6 +5167,92 @@ export interface operations {
              *     unknown, its asset (or the target cluster) is invisible
              *     to the caller, or the face belongs to no cluster yet --
              *     indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getFaceThumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face to crop. */
+                faceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The 256x256 AVIF face crop. */
+            200: {
+                headers: {
+                    /**
+                     * @description Strong entity tag: `face-{faceId}-{updatedAt}` -- the
+                     *     face row's id with its change signal (unix seconds),
+                     *     quoted. The derivation is deterministic, so one signal
+                     *     always renders the same bytes.
+                     * @example "face-0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71-1777636800"
+                     */
+                    ETag?: string;
+                    /**
+                     * @description The crop is private to the caller and a pure function
+                     *     of the face row and its asset's view derivative, so
+                     *     clients may cache it for a year.
+                     * @example private, max-age=31536000, immutable
+                     */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/avif": string;
+                };
+            };
+            /**
+             * @description The `If-None-Match` value matched the entity tag; the
+             *     cached copy is current. The response carries the same
+             *     `ETag` and `Cache-Control` validators and no body.
+             */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie or
+             *     bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such face for this caller: the face id is unknown, its
+             *     asset is not visible to the caller (another account's,
+             *     trashed, hidden, or a Live Photo component), or the
+             *     asset's view derivative does not exist yet -- all
+             *     indistinguishable by design; the web renders a skeleton
+             *     placeholder until the pixels exist.
              */
             404: {
                 headers: {

@@ -63,3 +63,15 @@ func HEICDecodeSupported() bool {
 func ImageDimensions(path string) (int, int, error) {
 	return 0, 0, errNoThumbnails
 }
+
+// FaceCropThumbnail is the CGO-less stub: the query-time face crop
+// derivation is unavailable without libvips.
+func FaceCropThumbnail(viewPath string, bboxX, bboxY, bboxW, bboxH int) ([]byte, error) {
+	return nil, errNoThumbnails
+}
+
+// ImageAverageColor is the CGO-less stub: pixels cannot be read
+// without libvips.
+func ImageAverageColor(path string) (float64, float64, float64, error) {
+	return 0, 0, 0, errNoThumbnails
+}

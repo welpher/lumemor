@@ -9,6 +9,7 @@ All URIs are relative to */api/v1*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**getFaceThumbnail**](PeopleApi.md#getfacethumbnail) | **GET** /faces/{faceId}/thumbnail | Serve one face&#39;s 256x256 crop thumbnail.
 [**getPersonCluster**](PeopleApi.md#getpersoncluster) | **GET** /people/{clusterId} | One face cluster&#39;s detail as the caller sees it.
 [**labelPerson**](PeopleApi.md#labelperson) | **PUT** /people/{clusterId}/label | Name one face cluster (the caller&#39;s private label).
 [**listPeople**](PeopleApi.md#listpeople) | **GET** /people | The caller&#39;s named people.
@@ -18,6 +19,53 @@ Method | HTTP request | Description
 [**setPersonHidden**](PeopleApi.md#setpersonhidden) | **PUT** /people/{clusterId}/hidden | Flip the caller&#39;s hidden switch of one face cluster.
 [**unlabelPerson**](PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
 
+
+# **getFaceThumbnail**
+> Uint8List getFaceThumbnail(faceId)
+
+Serve one face's 256x256 crop thumbnail.
+
+The face crop pixels of the people surface: a 256x256 `image/avif` crop of one detected face, derived at query time and never stored on disk. The source pixels are the face's asset's `view` derivative -- the inline serving size of `GET /assets/{id}/thumbnail` -- never the original; the face row's bounding box is in per-mille units of the full image, and the view derivative preserves the original's framing exactly, so the same per-mille values address the derivative's own pixels.  The crop window is pinned: a square whose side is 1.25x the larger of the box's pixel width and height (a 25% margin around the face), centered on the box and clamped to the image bounds (a face larger than the image yields the image's smaller edge); the window then renders to exactly 256x256 pixels -- upscaled when the window is smaller, a zoom rather than a fit.  The permission gate is the face's asset: the caller must own a live, visible, non-component asset. Every other state answers the SAME byte-identical 404 PERSON_NOT_FOUND -- an unknown face id, a face on another account's (or a trashed, or hidden) asset, and an asset whose view derivative has not been derived yet (the thumbnail job has not run). Face ids cannot be probed for existence; the web renders its skeleton placeholder until the pixels exist, which is why there is deliberately no separate not-ready code here, unlike the asset thumbnail endpoint.  The response is a private immutable derived asset: `Cache-Control: private, max-age=31536000, immutable`, and a strong `ETag` of `\"face-{faceId}-{updatedAt}\"`, where updatedAt is the face row's change signal in unix seconds -- cluster moves bump it, and re-detection replaces the face row outright. A matching `If-None-Match` answers 304 with the same validators and no body. Conditional requests and byte ranges otherwise follow the Go standard library's `ServeContent` semantics. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getPeopleApi();
+final String faceId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the face to crop.
+
+try {
+    final response = api.getFaceThumbnail(faceId);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling PeopleApi->getFaceThumbnail: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **faceId** | **String**| Identifier of the face to crop. | 
+
+### Return type
+
+[**Uint8List**](Uint8List.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: image/avif, application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **getPersonCluster**
 > ClusterDetail getPersonCluster(clusterId)

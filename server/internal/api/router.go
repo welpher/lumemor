@@ -323,6 +323,14 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/people/{clusterId}/hidden", wrapper.SetPersonHidden)
 				r.Post("/people/merge", wrapper.MergePeople)
 				r.Post("/faces/{faceId}/move", wrapper.MoveFace)
+				// The face crop pixels (M3b Task 3): the 256x256 AVIF
+				// crop of one face, derived at query time from its
+				// asset's view derivative -- one bounded decode of a
+				// serving copy plus one AVIF encode, the same cost
+				// class as the thumbnail job's single-file
+				// derivations, and cached on the client by the
+				// response's immutable ETag.
+				r.Get("/faces/{faceId}/thumbnail", wrapper.GetFaceThumbnail)
 			})
 
 			// Authed admin group (M2d Task 8): the user management
