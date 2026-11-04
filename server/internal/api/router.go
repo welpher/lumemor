@@ -311,6 +311,18 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/people", wrapper.ListPeople)
 				r.Get("/people/unnamed", wrapper.ListUnnamedPeople)
 				r.Get("/people/{clusterId}", wrapper.GetPersonCluster)
+				// The people surface writes (M3b Task 2): the caller's
+				// label and hidden switches, the cluster merge and the
+				// single face move. All are bounded row reads and
+				// writes (the merge touches at most 50 source
+				// clusters); the static /people/merge segment never
+				// contends with the /people/{clusterId} routes (a
+				// different method and path shape).
+				r.Put("/people/{clusterId}/label", wrapper.LabelPerson)
+				r.Delete("/people/{clusterId}/label", wrapper.UnlabelPerson)
+				r.Put("/people/{clusterId}/hidden", wrapper.SetPersonHidden)
+				r.Post("/people/merge", wrapper.MergePeople)
+				r.Post("/faces/{faceId}/move", wrapper.MoveFace)
 			})
 
 			// Authed admin group (M2d Task 8): the user management

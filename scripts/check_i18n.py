@@ -116,6 +116,9 @@ NON_ERROR_KEYS = {
     "action_select",
     "action_done",
     "session_expired",
+    # People surface message keys (M3b): message keys carried in a
+    # VALIDATION_FAILED details, not error codes of their own.
+    "person_hide_requires_label",
     "batch_selected_count",
     "action_favorite",
     "action_unfavorite",

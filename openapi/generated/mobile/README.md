@@ -118,8 +118,13 @@ Class | Method | HTTP request | Description
 [*AuthApi*](doc/AuthApi.md) | [**revokeSession**](doc/AuthApi.md#revokesession) | **DELETE** /auth/sessions/{id} | Revoke one of the caller&#39;s sessions.
 [*EventsApi*](doc/EventsApi.md) | [**getEvents**](doc/EventsApi.md#getevents) | **GET** /events | Stream instance activity over server-sent events.
 [*PeopleApi*](doc/PeopleApi.md) | [**getPersonCluster**](doc/PeopleApi.md#getpersoncluster) | **GET** /people/{clusterId} | One face cluster&#39;s detail as the caller sees it.
+[*PeopleApi*](doc/PeopleApi.md) | [**labelPerson**](doc/PeopleApi.md#labelperson) | **PUT** /people/{clusterId}/label | Name one face cluster (the caller&#39;s private label).
 [*PeopleApi*](doc/PeopleApi.md) | [**listPeople**](doc/PeopleApi.md#listpeople) | **GET** /people | The caller&#39;s named people.
 [*PeopleApi*](doc/PeopleApi.md) | [**listUnnamedPeople**](doc/PeopleApi.md#listunnamedpeople) | **GET** /people/unnamed | The caller&#39;s unnamed face clusters, one keyset page at a time.
+[*PeopleApi*](doc/PeopleApi.md) | [**mergePeople**](doc/PeopleApi.md#mergepeople) | **POST** /people/merge | Fold 2-50 face clusters into one surviving cluster.
+[*PeopleApi*](doc/PeopleApi.md) | [**moveFace**](doc/PeopleApi.md#moveface) | **POST** /faces/{faceId}/move | Move one face onto an existing face cluster.
+[*PeopleApi*](doc/PeopleApi.md) | [**setPersonHidden**](doc/PeopleApi.md#setpersonhidden) | **PUT** /people/{clusterId}/hidden | Flip the caller&#39;s hidden switch of one face cluster.
+[*PeopleApi*](doc/PeopleApi.md) | [**unlabelPerson**](doc/PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
 [*ServerApi*](doc/ServerApi.md) | [**createAdmin**](doc/ServerApi.md#createadmin) | **POST** /server/setup/admin | Create the first administrator account.
 [*ServerApi*](doc/ServerApi.md) | [**getServerInfo**](doc/ServerApi.md#getserverinfo) | **GET** /server/info | Report instance version and feature switches.
 
@@ -146,7 +151,10 @@ Class | Method | HTTP request | Description
  - [JobRunListResponse](doc/JobRunListResponse.md)
  - [JobRunResponse](doc/JobRunResponse.md)
  - [JobRunState](doc/JobRunState.md)
+ - [LabelPersonRequest](doc/LabelPersonRequest.md)
  - [LoginRequest](doc/LoginRequest.md)
+ - [MergePeopleRequest](doc/MergePeopleRequest.md)
+ - [MergePeopleResponse](doc/MergePeopleResponse.md)
  - [ModelActivateResponse](doc/ModelActivateResponse.md)
  - [ModelDimensionChange](doc/ModelDimensionChange.md)
  - [ModelDownloadResponse](doc/ModelDownloadResponse.md)
@@ -158,12 +166,16 @@ Class | Method | HTTP request | Description
  - [ModelScanResponse](doc/ModelScanResponse.md)
  - [ModelSlot](doc/ModelSlot.md)
  - [ModelSource](doc/ModelSource.md)
+ - [MoveFaceRequest](doc/MoveFaceRequest.md)
+ - [MoveFaceResponse](doc/MoveFaceResponse.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
  - [PairingTokenResponse](doc/PairingTokenResponse.md)
  - [PersonLabel](doc/PersonLabel.md)
+ - [PersonLabelResponse](doc/PersonLabelResponse.md)
  - [PersonSummary](doc/PersonSummary.md)
  - [ServerInfo](doc/ServerInfo.md)
  - [SessionInfo](doc/SessionInfo.md)
+ - [SetPersonHiddenRequest](doc/SetPersonHiddenRequest.md)
  - [TimelineItem](doc/TimelineItem.md)
  - [TimelineResponse](doc/TimelineResponse.md)
  - [TrashItem](doc/TrashItem.md)

@@ -49,6 +49,7 @@
   "model_not_found": "该模型尚未注册。",
   "model_invalid": "该模型无法用于此操作，请检查模型文件与激活状态。",
   "person_not_found": "该人物不存在或对您不可见。",
+  "person_hide_requires_label": "请先为该人物命名，然后再隐藏。",
   "timeline_loading": "正在加载时间线…",
   "timeline_empty": "时间线还没有照片。上传后会出现在这里。",
   "timeline_load_more": "加载更多",

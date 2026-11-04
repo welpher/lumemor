@@ -938,6 +938,14 @@ type JobRunResponse struct {
 // `succeeded` or `failed`.
 type JobRunState string
 
+// LabelPersonRequest The caller's name for one face cluster. The server trims the
+// value and requires 1-64 characters; duplicate names are
+// allowed (no NAME_TAKEN -- families have real duplicates).
+type LabelPersonRequest struct {
+	// Name The caller's name for the person, trimmed.
+	Name string `json:"name"`
+}
+
 // LoginRequest Credentials of `POST /auth/login`.
 type LoginRequest struct {
 	// Email Login address of the account.
@@ -947,6 +955,34 @@ type LoginRequest struct {
 	//
 	// Examples: correct horse battery staple
 	Password string `json:"password"`
+}
+
+// MergePeopleRequest One merge: 2-50 source clusters folded into one target
+// cluster. The source clusters dissolve with their labels (the
+// honest documented cost -- a source cluster's user-given name
+// dies); the target's label persists.
+type MergePeopleRequest struct {
+	// SourceClusterIds The clusters to fold into the target: at least 2 and at
+	// most 50 after duplicates collapse, every one visible to
+	// the caller. Each dissolves with its label rows.
+	SourceClusterIds []openapi_types.UUID `json:"sourceClusterIds"`
+
+	// TargetClusterId The surviving cluster: every source face re-homes here
+	// and its representative recomputes to the strongest
+	// member of the merged set. It must be visible to the
+	// caller and must not sit among the sources.
+	TargetClusterId openapi_types.UUID `json:"targetClusterId"`
+}
+
+// MergePeopleResponse One committed merge.
+type MergePeopleResponse struct {
+	// MergedClusterIds The source clusters that dissolved into the target, in
+	// request order. Their rows -- and every label on them --
+	// are gone.
+	MergedClusterIds []openapi_types.UUID `json:"mergedClusterIds"`
+
+	// SurvivingClusterId The target cluster that absorbed the sources.
+	SurvivingClusterId openapi_types.UUID `json:"survivingClusterId"`
 }
 
 // ModelActivateResponse The report of one activation. The optional fields appear
@@ -1106,6 +1142,23 @@ type ModelSlot string
 // directory an administrator placed.
 type ModelSource string
 
+// MoveFaceRequest One face's move onto an existing face cluster.
+type MoveFaceRequest struct {
+	// TargetClusterId The cluster the face joins. It must be visible to the
+	// caller; its representative recomputes when the move
+	// changes the strongest member.
+	TargetClusterId openapi_types.UUID `json:"targetClusterId"`
+}
+
+// MoveFaceResponse One committed face move.
+type MoveFaceResponse struct {
+	// ClusterId The cluster the face occupies after the move.
+	ClusterId openapi_types.UUID `json:"clusterId"`
+
+	// FaceId Identifier of the moved face.
+	FaceId openapi_types.UUID `json:"faceId"`
+}
+
 // PairingConsumeRequest Payload of `POST /auth/pairing/consume`.
 type PairingConsumeRequest struct {
 	// DeviceId Stable client-generated identifier of the physical device,
@@ -1140,6 +1193,20 @@ type PersonLabel struct {
 	IsHidden bool `json:"isHidden"`
 
 	// Name The caller's name for the person.
+	Name string `json:"name"`
+}
+
+// PersonLabelResponse The calling user's label state of one face cluster after a
+// label or hidden write: the caller's own row only (B4 --
+// another account's label never shows here).
+type PersonLabelResponse struct {
+	// ClusterId Identifier of the face cluster.
+	ClusterId openapi_types.UUID `json:"clusterId"`
+
+	// IsHidden The caller's hidden switch for this person.
+	IsHidden bool `json:"isHidden"`
+
+	// Name The caller's (trimmed) name for the person.
 	Name string `json:"name"`
 }
 
@@ -1232,6 +1299,16 @@ type SessionInfo struct {
 // days on use; `mobile` sessions ride a bearer token and are
 // revoked explicitly.
 type SessionInfoKind string
+
+// SetPersonHiddenRequest The caller's hidden switch for one face cluster. The switch
+// rides on the caller's label row, so hiding requires the
+// caller to have named the cluster first
+// (`person_hide_requires_label` otherwise).
+type SetPersonHiddenRequest struct {
+	// IsHidden true hides the person for the caller (a badge on their
+	// people list, not a filter); false unhides.
+	IsHidden bool `json:"isHidden"`
+}
 
 // TimelineItem One asset of the timeline: the asset detail's fields minus the
 // `exif` object and the two detail-panel edit attributes
@@ -1684,6 +1761,18 @@ type LoginJSONRequestBody = LoginRequest
 // ConsumePairingTokenJSONRequestBody defines body for ConsumePairingToken for application/json ContentType.
 type ConsumePairingTokenJSONRequestBody = PairingConsumeRequest
 
+// MoveFaceJSONRequestBody defines body for MoveFace for application/json ContentType.
+type MoveFaceJSONRequestBody = MoveFaceRequest
+
+// MergePeopleJSONRequestBody defines body for MergePeople for application/json ContentType.
+type MergePeopleJSONRequestBody = MergePeopleRequest
+
+// SetPersonHiddenJSONRequestBody defines body for SetPersonHidden for application/json ContentType.
+type SetPersonHiddenJSONRequestBody = SetPersonHiddenRequest
+
+// LabelPersonJSONRequestBody defines body for LabelPerson for application/json ContentType.
+type LabelPersonJSONRequestBody = LabelPersonRequest
+
 // CreateAdminJSONRequestBody defines body for CreateAdmin for application/json ContentType.
 type CreateAdminJSONRequestBody = CreateAdminRequest
 
@@ -1773,15 +1862,30 @@ type ServerInterface interface {
 	// GetEvents Stream instance activity over server-sent events.
 	// (GET /events)
 	GetEvents(w http.ResponseWriter, r *http.Request, params GetEventsParams)
+	// MoveFace Move one face onto an existing face cluster.
+	// (POST /faces/{faceId}/move)
+	MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
 	// ListPeople The caller's named people.
 	// (GET /people)
 	ListPeople(w http.ResponseWriter, r *http.Request)
+	// MergePeople Fold 2-50 face clusters into one surviving cluster.
+	// (POST /people/merge)
+	MergePeople(w http.ResponseWriter, r *http.Request)
 	// ListUnnamedPeople The caller's unnamed face clusters, one keyset page at a time.
 	// (GET /people/unnamed)
 	ListUnnamedPeople(w http.ResponseWriter, r *http.Request, params ListUnnamedPeopleParams)
 	// GetPersonCluster One face cluster's detail as the caller sees it.
 	// (GET /people/{clusterId})
 	GetPersonCluster(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
+	// SetPersonHidden Flip the caller's hidden switch of one face cluster.
+	// (PUT /people/{clusterId}/hidden)
+	SetPersonHidden(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
+	// UnlabelPerson Remove the caller's label of one face cluster.
+	// (DELETE /people/{clusterId}/label)
+	UnlabelPerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
+	// LabelPerson Name one face cluster (the caller's private label).
+	// (PUT /people/{clusterId}/label)
+	LabelPerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
 	// GetServerInfo Report instance version and feature switches.
 	// (GET /server/info)
 	GetServerInfo(w http.ResponseWriter, r *http.Request)
@@ -1968,9 +2072,21 @@ func (_ Unimplemented) GetEvents(w http.ResponseWriter, r *http.Request, params 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// MoveFace Move one face onto an existing face cluster.
+// (POST /faces/{faceId}/move)
+func (_ Unimplemented) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListPeople The caller's named people.
 // (GET /people)
 func (_ Unimplemented) ListPeople(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MergePeople Fold 2-50 face clusters into one surviving cluster.
+// (POST /people/merge)
+func (_ Unimplemented) MergePeople(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1983,6 +2099,24 @@ func (_ Unimplemented) ListUnnamedPeople(w http.ResponseWriter, r *http.Request,
 // GetPersonCluster One face cluster's detail as the caller sees it.
 // (GET /people/{clusterId})
 func (_ Unimplemented) GetPersonCluster(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetPersonHidden Flip the caller's hidden switch of one face cluster.
+// (PUT /people/{clusterId}/hidden)
+func (_ Unimplemented) SetPersonHidden(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UnlabelPerson Remove the caller's label of one face cluster.
+// (DELETE /people/{clusterId}/label)
+func (_ Unimplemented) UnlabelPerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// LabelPerson Name one face cluster (the caller's private label).
+// (PUT /people/{clusterId}/label)
+func (_ Unimplemented) LabelPerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2714,11 +2848,51 @@ func (siw *ServerInterfaceWrapper) GetEvents(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// MoveFace operation middleware
+func (siw *ServerInterfaceWrapper) MoveFace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "faceId" -------------
+	var faceId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "faceId", chi.URLParam(r, "faceId"), &faceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "faceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveFace(w, r, faceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPeople operation middleware
 func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListPeople(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MergePeople operation middleware
+func (siw *ServerInterfaceWrapper) MergePeople(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergePeople(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2791,6 +2965,84 @@ func (siw *ServerInterfaceWrapper) GetPersonCluster(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPersonCluster(w, r, clusterId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPersonHidden operation middleware
+func (siw *ServerInterfaceWrapper) SetPersonHidden(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterId" -------------
+	var clusterId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterId", chi.URLParam(r, "clusterId"), &clusterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "clusterId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPersonHidden(w, r, clusterId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnlabelPerson operation middleware
+func (siw *ServerInterfaceWrapper) UnlabelPerson(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterId" -------------
+	var clusterId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterId", chi.URLParam(r, "clusterId"), &clusterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "clusterId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnlabelPerson(w, r, clusterId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LabelPerson operation middleware
+func (siw *ServerInterfaceWrapper) LabelPerson(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterId" -------------
+	var clusterId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterId", chi.URLParam(r, "clusterId"), &clusterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "clusterId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LabelPerson(w, r, clusterId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3058,6 +3310,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/people/{clusterId}", wrapper.GetPersonCluster)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/people/{clusterId}/label", wrapper.UnlabelPerson)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/people/{clusterId}/label", wrapper.LabelPerson)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/people/{clusterId}/hidden", wrapper.SetPersonHidden)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/people/merge", wrapper.MergePeople)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/faces/{faceId}/move", wrapper.MoveFace)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/users", wrapper.ListUsers)
