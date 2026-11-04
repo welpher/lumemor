@@ -135,6 +135,7 @@ const (
 	MODELINVALID           ErrorCode = "MODEL_INVALID"
 	MODELNOTFOUND          ErrorCode = "MODEL_NOT_FOUND"
 	PAIRINGTOKENINVALID    ErrorCode = "PAIRING_TOKEN_INVALID"
+	PERSONNOTFOUND         ErrorCode = "PERSON_NOT_FOUND"
 	SETUPALREADYCOMPLETED  ErrorCode = "SETUP_ALREADY_COMPLETED"
 	USEREMAILTAKEN         ErrorCode = "USER_EMAIL_TAKEN"
 	USERNOTFOUND           ErrorCode = "USER_NOT_FOUND"
@@ -165,6 +166,8 @@ func (e ErrorCode) Valid() bool {
 	case MODELNOTFOUND:
 		return true
 	case PAIRINGTOKENINVALID:
+		return true
+	case PERSONNOTFOUND:
 		return true
 	case SETUPALREADYCOMPLETED:
 		return true
@@ -749,6 +752,25 @@ type BearerSession struct {
 	Token string `json:"token"`
 }
 
+// ClusterDetail One face cluster's detail as the calling user sees it: the
+// caller's own label state and the cluster's faces on
+// caller-visible assets, strongest score first.
+type ClusterDetail struct {
+	// ClusterId Identifier of the face cluster.
+	ClusterId openapi_types.UUID `json:"clusterId"`
+
+	// Faces The cluster's faces on assets visible to the caller,
+	// strongest score first with the face id as the tiebreak.
+	// Faces on other accounts' assets never appear.
+	Faces []FaceDetail `json:"faces"`
+
+	// Label The caller's label of the cluster, or null when the
+	// caller has not labeled it (the unnamed state). It is the
+	// calling user's label or no label at all: another
+	// account's label never shows here (B4).
+	Label *PersonLabel `json:"label"`
+}
+
 // CreateAdminRequest Payload of the first-run wizard (`POST /server/setup/admin`).
 type CreateAdminRequest struct {
 	// Email Login address of the administrator.
@@ -826,6 +848,37 @@ type ExifSummary struct {
 	// notation (`+05:30`); null when the capture time did not
 	// resolve through EXIF.
 	TzOffset *string `json:"tzOffset"`
+}
+
+// FaceDetail One face of the cluster on an asset visible to the caller:
+// the crop's identity, the detection score and the minimal
+// asset context the detail grid renders.
+type FaceDetail struct {
+	// Asset The minimal context of the asset the face sits on: when
+	// it was taken and under what file name -- the two lines
+	// the cluster detail renders under each crop.
+	Asset struct {
+		// OriginalFilename The file name the asset was uploaded under.
+		OriginalFilename string `json:"originalFilename"`
+
+		// TakenAt When the asset was taken (RFC 3339 UTC).
+		TakenAt time.Time `json:"takenAt"`
+	} `json:"asset"`
+
+	// AssetId Identifier of the asset the face sits on.
+	AssetId openapi_types.UUID `json:"assetId"`
+
+	// Id Identifier of the face row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Score The detector's confidence for this face.
+	Score float32 `json:"score"`
+
+	// Thumbnail URL of the face's crop: the face crop endpoint
+	// `GET /api/v1/faces/{faceId}/thumbnail` with this face's
+	// id, serving the bounding-box crop of the asset's
+	// view-size derivative.
+	Thumbnail string `json:"thumbnail"`
 }
 
 // JobRunKind The kinds of job runs the instance records. The model
@@ -1078,6 +1131,50 @@ type PairingTokenResponse struct {
 	// string. Render it as a QR code and never store or log it;
 	// the server keeps only its hash.
 	Token string `json:"token"`
+}
+
+// PersonLabel The calling user's private label of one face cluster.
+type PersonLabel struct {
+	// IsHidden The caller's hidden switch. Hidden people stay listed in
+	// `GET /people` carrying this flag (badge semantics).
+	IsHidden bool `json:"isHidden"`
+
+	// Name The caller's name for the person.
+	Name string `json:"name"`
+}
+
+// PersonSummary One named person of the caller's people list: a global face
+// cluster carrying the caller's own label. The name and the
+// hidden switch are the caller's private label state (B4) --
+// another account labeling or hiding the same cluster never
+// changes this view.
+type PersonSummary struct {
+	// ClusterId Identifier of the face cluster.
+	ClusterId openapi_types.UUID `json:"clusterId"`
+
+	// FaceCount The cluster's faces on assets visible to the caller --
+	// the honest per-caller count, not the global member count.
+	FaceCount int `json:"faceCount"`
+
+	// IsHidden The caller's hidden switch for this person. Hidden people
+	// stay listed carrying this flag (badge semantics); they
+	// are not filtered out.
+	IsHidden bool `json:"isHidden"`
+
+	// Name The caller's own label of the cluster.
+	Name string `json:"name"`
+
+	// RepresentativeFaceId The cluster's representative face (its strongest-scoring
+	// member); the face the person card renders.
+	RepresentativeFaceId openapi_types.UUID `json:"representativeFaceId"`
+
+	// Thumbnail URL of the representative face's crop: the face crop
+	// endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
+	// representative face's id.
+	//
+	//
+	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+	Thumbnail string `json:"thumbnail"`
 }
 
 // ServerInfo Instance capability report served by `GET /server/info`.
@@ -1365,6 +1462,44 @@ type TrashResponse struct {
 	Items []TrashItem `json:"items"`
 }
 
+// UnnamedClusterSummary One unnamed face cluster of the caller's unnamed region: a
+// global cluster the caller sees through at least one visible
+// asset and has not labeled themselves. Unlabeled for THIS
+// caller says nothing about another account's labels (B4 --
+// labels are private per user).
+type UnnamedClusterSummary struct {
+	// ClusterId Identifier of the face cluster.
+	ClusterId openapi_types.UUID `json:"clusterId"`
+
+	// FaceCount The cluster's faces on assets visible to the caller --
+	// the honest per-caller count, not the global member count.
+	FaceCount int `json:"faceCount"`
+
+	// RepresentativeFaceId The cluster's representative face (its strongest-scoring
+	// member); the face the cluster tile renders.
+	RepresentativeFaceId openapi_types.UUID `json:"representativeFaceId"`
+
+	// Thumbnail URL of the representative face's crop: the face crop
+	// endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
+	// representative face's id.
+	//
+	//
+	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+	Thumbnail string `json:"thumbnail"`
+}
+
+// UnnamedClustersResponse One keyset page of the caller's unnamed clusters.
+type UnnamedClustersResponse struct {
+	// Items The page's clusters, ordered by `faceCount` descending
+	// with the cluster id as the tiebreak.
+	Items []UnnamedClusterSummary `json:"items"`
+
+	// NextCursor The opaque continuation cursor: pass it back as the
+	// `cursor` query parameter to fetch the next page. Absent
+	// exactly when this is the last page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // User A lumemor account.
 type User struct {
 	// CreatedAt Creation time (RFC 3339 UTC).
@@ -1511,6 +1646,20 @@ type GetEventsParams struct {
 	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
+// ListUnnamedPeopleParams defines parameters for ListUnnamedPeople.
+type ListUnnamedPeopleParams struct {
+	// Cursor The `nextCursor` of the previous page; absent on the
+	// first page. An unparseable value answers 400
+	// `VALIDATION_FAILED` (cursors are opaque strings produced
+	// by this endpoint, never assembled by clients).
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size: the number of cluster summaries one response
+	// carries at most. Defaults to 60; values below 1 or over
+	// 200 answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
 type ActivateModelJSONRequestBody = ActivateModelJSONBody
 
@@ -1624,6 +1773,15 @@ type ServerInterface interface {
 	// GetEvents Stream instance activity over server-sent events.
 	// (GET /events)
 	GetEvents(w http.ResponseWriter, r *http.Request, params GetEventsParams)
+	// ListPeople The caller's named people.
+	// (GET /people)
+	ListPeople(w http.ResponseWriter, r *http.Request)
+	// ListUnnamedPeople The caller's unnamed face clusters, one keyset page at a time.
+	// (GET /people/unnamed)
+	ListUnnamedPeople(w http.ResponseWriter, r *http.Request, params ListUnnamedPeopleParams)
+	// GetPersonCluster One face cluster's detail as the caller sees it.
+	// (GET /people/{clusterId})
+	GetPersonCluster(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
 	// GetServerInfo Report instance version and feature switches.
 	// (GET /server/info)
 	GetServerInfo(w http.ResponseWriter, r *http.Request)
@@ -1807,6 +1965,24 @@ func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id 
 // GetEvents Stream instance activity over server-sent events.
 // (GET /events)
 func (_ Unimplemented) GetEvents(w http.ResponseWriter, r *http.Request, params GetEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListPeople The caller's named people.
+// (GET /people)
+func (_ Unimplemented) ListPeople(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListUnnamedPeople The caller's unnamed face clusters, one keyset page at a time.
+// (GET /people/unnamed)
+func (_ Unimplemented) ListUnnamedPeople(w http.ResponseWriter, r *http.Request, params ListUnnamedPeopleParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetPersonCluster One face cluster's detail as the caller sees it.
+// (GET /people/{clusterId})
+func (_ Unimplemented) GetPersonCluster(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2538,6 +2714,92 @@ func (siw *ServerInterfaceWrapper) GetEvents(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListPeople operation middleware
+func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPeople(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListUnnamedPeople operation middleware
+func (siw *ServerInterfaceWrapper) ListUnnamedPeople(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListUnnamedPeopleParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUnnamedPeople(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPersonCluster operation middleware
+func (siw *ServerInterfaceWrapper) GetPersonCluster(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterId" -------------
+	var clusterId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterId", chi.URLParam(r, "clusterId"), &clusterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "clusterId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPersonCluster(w, r, clusterId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetServerInfo operation middleware
 func (siw *ServerInterfaceWrapper) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 
@@ -2787,6 +3049,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/trash/{id}/restore", wrapper.RestoreAsset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/people", wrapper.ListPeople)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/people/unnamed", wrapper.ListUnnamedPeople)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/people/{clusterId}", wrapper.GetPersonCluster)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/users", wrapper.ListUsers)

@@ -117,6 +117,9 @@ Class | Method | HTTP request | Description
 [*AuthApi*](doc/AuthApi.md) | [**logout**](doc/AuthApi.md#logout) | **POST** /auth/logout | Revoke the current session.
 [*AuthApi*](doc/AuthApi.md) | [**revokeSession**](doc/AuthApi.md#revokesession) | **DELETE** /auth/sessions/{id} | Revoke one of the caller&#39;s sessions.
 [*EventsApi*](doc/EventsApi.md) | [**getEvents**](doc/EventsApi.md#getevents) | **GET** /events | Stream instance activity over server-sent events.
+[*PeopleApi*](doc/PeopleApi.md) | [**getPersonCluster**](doc/PeopleApi.md#getpersoncluster) | **GET** /people/{clusterId} | One face cluster&#39;s detail as the caller sees it.
+[*PeopleApi*](doc/PeopleApi.md) | [**listPeople**](doc/PeopleApi.md#listpeople) | **GET** /people | The caller&#39;s named people.
+[*PeopleApi*](doc/PeopleApi.md) | [**listUnnamedPeople**](doc/PeopleApi.md#listunnamedpeople) | **GET** /people/unnamed | The caller&#39;s unnamed face clusters, one keyset page at a time.
 [*ServerApi*](doc/ServerApi.md) | [**createAdmin**](doc/ServerApi.md#createadmin) | **POST** /server/setup/admin | Create the first administrator account.
 [*ServerApi*](doc/ServerApi.md) | [**getServerInfo**](doc/ServerApi.md#getserverinfo) | **GET** /server/info | Report instance version and feature switches.
 
@@ -133,9 +136,12 @@ Class | Method | HTTP request | Description
  - [BatchRequest](doc/BatchRequest.md)
  - [BatchResponse](doc/BatchResponse.md)
  - [BearerSession](doc/BearerSession.md)
+ - [ClusterDetail](doc/ClusterDetail.md)
  - [CreateAdminRequest](doc/CreateAdminRequest.md)
  - [Error](doc/Error.md)
  - [ExifSummary](doc/ExifSummary.md)
+ - [FaceDetail](doc/FaceDetail.md)
+ - [FaceDetailAsset](doc/FaceDetailAsset.md)
  - [JobRunKind](doc/JobRunKind.md)
  - [JobRunListResponse](doc/JobRunListResponse.md)
  - [JobRunResponse](doc/JobRunResponse.md)
@@ -154,12 +160,16 @@ Class | Method | HTTP request | Description
  - [ModelSource](doc/ModelSource.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
  - [PairingTokenResponse](doc/PairingTokenResponse.md)
+ - [PersonLabel](doc/PersonLabel.md)
+ - [PersonSummary](doc/PersonSummary.md)
  - [ServerInfo](doc/ServerInfo.md)
  - [SessionInfo](doc/SessionInfo.md)
  - [TimelineItem](doc/TimelineItem.md)
  - [TimelineResponse](doc/TimelineResponse.md)
  - [TrashItem](doc/TrashItem.md)
  - [TrashResponse](doc/TrashResponse.md)
+ - [UnnamedClusterSummary](doc/UnnamedClusterSummary.md)
+ - [UnnamedClustersResponse](doc/UnnamedClustersResponse.md)
  - [User](doc/User.md)
  - [UserRole](doc/UserRole.md)
 

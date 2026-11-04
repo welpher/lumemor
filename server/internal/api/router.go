@@ -302,6 +302,15 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/trash", wrapper.GetTrash)
 				r.Post("/trash/{id}/restore", wrapper.RestoreAsset)
 				r.Delete("/assets/{id}", wrapper.DeleteAsset)
+				// The people surface reads (M3b Task 1): the named
+				// region, the unnamed region's keyset pages and one
+				// cluster's detail. All are bounded row reads (the
+				// unnamed page size is capped by the contract); the
+				// static /people/unnamed segment wins over the
+				// /people/{clusterId} parameter below.
+				r.Get("/people", wrapper.ListPeople)
+				r.Get("/people/unnamed", wrapper.ListUnnamedPeople)
+				r.Get("/people/{clusterId}", wrapper.GetPersonCluster)
 			})
 
 			// Authed admin group (M2d Task 8): the user management

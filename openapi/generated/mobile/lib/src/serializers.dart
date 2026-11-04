@@ -24,9 +24,12 @@ import 'package:lumemor_api/src/model/asset_response.dart';
 import 'package:lumemor_api/src/model/batch_request.dart';
 import 'package:lumemor_api/src/model/batch_response.dart';
 import 'package:lumemor_api/src/model/bearer_session.dart';
+import 'package:lumemor_api/src/model/cluster_detail.dart';
 import 'package:lumemor_api/src/model/create_admin_request.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/exif_summary.dart';
+import 'package:lumemor_api/src/model/face_detail.dart';
+import 'package:lumemor_api/src/model/face_detail_asset.dart';
 import 'package:lumemor_api/src/model/job_run_kind.dart';
 import 'package:lumemor_api/src/model/job_run_list_response.dart';
 import 'package:lumemor_api/src/model/job_run_response.dart';
@@ -45,12 +48,16 @@ import 'package:lumemor_api/src/model/model_slot.dart';
 import 'package:lumemor_api/src/model/model_source.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
 import 'package:lumemor_api/src/model/pairing_token_response.dart';
+import 'package:lumemor_api/src/model/person_label.dart';
+import 'package:lumemor_api/src/model/person_summary.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
 import 'package:lumemor_api/src/model/timeline_item.dart';
 import 'package:lumemor_api/src/model/timeline_response.dart';
 import 'package:lumemor_api/src/model/trash_item.dart';
 import 'package:lumemor_api/src/model/trash_response.dart';
+import 'package:lumemor_api/src/model/unnamed_cluster_summary.dart';
+import 'package:lumemor_api/src/model/unnamed_clusters_response.dart';
 import 'package:lumemor_api/src/model/user.dart';
 import 'package:lumemor_api/src/model/user_role.dart';
 
@@ -67,9 +74,12 @@ part 'serializers.g.dart';
   BatchRequest,
   BatchResponse,
   BearerSession,
+  ClusterDetail,
   CreateAdminRequest,
   Error,
   ExifSummary,
+  FaceDetail,
+  FaceDetailAsset,
   JobRunKind,
   JobRunListResponse,
   JobRunResponse,
@@ -88,12 +98,16 @@ part 'serializers.g.dart';
   ModelSource,
   PairingConsumeRequest,
   PairingTokenResponse,
+  PersonLabel,
+  PersonSummary,
   ServerInfo,
   SessionInfo,
   TimelineItem,
   TimelineResponse,
   TrashItem,
   TrashResponse,
+  UnnamedClusterSummary,
+  UnnamedClustersResponse,
   User,
   UserRole,
 ])
@@ -119,6 +133,10 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<TrashItem>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(UnnamedClusterSummary)]),
+        () => ListBuilder<UnnamedClusterSummary>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType(bool)]),
         () => MapBuilder<String, bool>(),
       )
@@ -131,8 +149,16 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<String>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(PersonSummary)]),
+        () => ListBuilder<PersonSummary>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(ModelResponse)]),
         () => ListBuilder<ModelResponse>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(FaceDetail)]),
+        () => ListBuilder<FaceDetail>(),
       )
       ..add(const OneOfSerializer())
       ..add(const AnyOfSerializer())
