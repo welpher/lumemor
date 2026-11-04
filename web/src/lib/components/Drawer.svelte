@@ -2,10 +2,10 @@
 	// The navigation drawer of the content shell (web IA: the
 	// hamburger opens it; Escape and a click outside close it). It
 	// carries the IA's seven content sections in route-table order:
-	// Timeline, Favorites and Trash link to their routes now (their
-	// real views are later tasks of this milestone), while Albums,
-	// People, Places and Memories stay visible-but-disabled
-	// placeholders until their M3 domains arrive.
+	// Timeline, People, Favorites and Trash link to their routes now
+	// (the people surface is the M3b domain), while Albums, Places
+	// and Memories stay visible-but-disabled placeholders until
+	// their M3 domains arrive.
 	import { _ } from 'svelte-i18n';
 
 	type DrawerItem = {
@@ -19,7 +19,7 @@
 	const items: readonly DrawerItem[] = [
 		{ labelKey: 'nav_timeline', href: '/timeline', disabled: false },
 		{ labelKey: 'nav_albums', href: '/albums', disabled: true },
-		{ labelKey: 'nav_people', href: '/people', disabled: true },
+		{ labelKey: 'nav_people', href: '/people', disabled: false },
 		{ labelKey: 'nav_places', href: '/places', disabled: true },
 		{ labelKey: 'nav_memories', href: '/memories', disabled: true },
 		{ labelKey: 'nav_favorites', href: '/favorites', disabled: false },

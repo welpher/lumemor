@@ -1,16 +1,16 @@
-# Continuous integration for the end-to-end acceptance: the full M3a
+# Continuous integration for the end-to-end acceptance: the full M3b
 # chain on a real compose stack. The job installs the web toolchain
-# and Playwright's chromium, then runs scripts/acceptance_m3a.sh,
-# which builds the stack itself (the server image builds the web app
-# in its own Node stage), walks the M1/M2a/M2b/M2c/M2d acceptance
-# regressions sequentially (the M2d chain, including the M2 web story
-# through a real browser), then the M3a acceptance's own phases: the
-# degraded no-models stack, the real-model full chain (the default
-# group downloads from the pinned upstreams -- the CI default) with
-# its database assertions, and the M3 model management story of the
-# web app through a real browser. The path filters keep this workflow
-# from running on changes that cannot affect it; the workflow also
-# runs when its own definition changes.
+# and Playwright's chromium, then runs scripts/acceptance_m3b.sh,
+# which chains the entire M1/M2/M3a acceptance line (the M2d chain,
+# including the M2 web story through a real browser, and the M3a
+# model pipeline acceptance) and then walks the M3b people story
+# itself: the people surface's API walkthrough on a fresh stack (the
+# two-person cluster structure proven inside the database, the
+# label/merge/hide flows, the asset-delete dissolution with the
+# label cascade) and the M3b people story of the web app through a
+# real browser. The path filters keep this workflow from running on
+# changes that cannot affect it; the workflow also runs when its own
+# definition changes.
 
 name: e2e
 
@@ -74,8 +74,8 @@ jobs:
       - name: Install Playwright's chromium
         run: cd web && pnpm exec playwright install --with-deps chromium
 
-      - name: Run the M3a acceptance
-        run: scripts/acceptance_m3a.sh
+      - name: Run the M3b acceptance
+        run: scripts/acceptance_m3b.sh
 
       # The suite's failure artifacts (traces, screenshots, videos of
       # the scenes) land under web/test-results/.

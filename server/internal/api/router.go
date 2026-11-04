@@ -302,6 +302,35 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/trash", wrapper.GetTrash)
 				r.Post("/trash/{id}/restore", wrapper.RestoreAsset)
 				r.Delete("/assets/{id}", wrapper.DeleteAsset)
+				// The people surface reads (M3b Task 1): the named
+				// region, the unnamed region's keyset pages and one
+				// cluster's detail. All are bounded row reads (the
+				// unnamed page size is capped by the contract); the
+				// static /people/unnamed segment wins over the
+				// /people/{clusterId} parameter below.
+				r.Get("/people", wrapper.ListPeople)
+				r.Get("/people/unnamed", wrapper.ListUnnamedPeople)
+				r.Get("/people/{clusterId}", wrapper.GetPersonCluster)
+				// The people surface writes (M3b Task 2): the caller's
+				// label and hidden switches, the cluster merge and the
+				// single face move. All are bounded row reads and
+				// writes (the merge touches at most 50 source
+				// clusters); the static /people/merge segment never
+				// contends with the /people/{clusterId} routes (a
+				// different method and path shape).
+				r.Put("/people/{clusterId}/label", wrapper.LabelPerson)
+				r.Delete("/people/{clusterId}/label", wrapper.UnlabelPerson)
+				r.Put("/people/{clusterId}/hidden", wrapper.SetPersonHidden)
+				r.Post("/people/merge", wrapper.MergePeople)
+				r.Post("/faces/{faceId}/move", wrapper.MoveFace)
+				// The face crop pixels (M3b Task 3): the 256x256 AVIF
+				// crop of one face, derived at query time from its
+				// asset's view derivative -- one bounded decode of a
+				// serving copy plus one AVIF encode, the same cost
+				// class as the thumbnail job's single-file
+				// derivations, and cached on the client by the
+				// response's immutable ETag.
+				r.Get("/faces/{faceId}/thumbnail", wrapper.GetFaceThumbnail)
 			})
 
 			// Authed admin group (M2d Task 8): the user management

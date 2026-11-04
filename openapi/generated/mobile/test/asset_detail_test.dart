@@ -127,5 +127,11 @@ void main() {
       // TODO
     });
 
+    // The asset's faces as the calling user sees them, strongest score first with the face id as the tiebreak. The array is caller-scoped (B4): the asset being visible to the caller is the gate -- the faces ride on the detail's own permission -- and each entry's `label` is the caller's own label of the face's cluster, never another account's. Always present, empty when the asset carries no faces (none detected, or detection has not run yet). The PATCH response serves the same array, exactly as the GET serves it. 
+    // BuiltList<AssetFaceSummary> faces
+    test('to test the property `faces`', () async {
+      // TODO
+    });
+
   });
 }

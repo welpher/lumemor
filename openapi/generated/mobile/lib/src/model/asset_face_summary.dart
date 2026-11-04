@@ -1,0 +1,179 @@
+//
+// AUTO-GENERATED FILE, DO NOT MODIFY!
+//
+
+// ignore_for_file: unused_element
+import 'package:lumemor_api/src/model/person_label.dart';
+import 'package:built_value/built_value.dart';
+import 'package:built_value/serializer.dart';
+
+part 'asset_face_summary.g.dart';
+
+/// One face of the asset detail's `faces` array: the crop's identity, the detection score, the face's cluster and the CALLER's label of that cluster. The label is per-user state (B4): another account's label of the same global cluster never shows here. `clusterId` is null while the face waits for its first clustering assignment; such a face has no person yet and every assignment write on it answers the people surface's 404. 
+///
+/// Properties:
+/// * [id] - Identifier of the face row.
+/// * [score] - The detector's confidence for this face.
+/// * [thumbnail] - URL of the face's crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with this face's id, serving the bounding-box crop of the asset's view-size derivative. 
+/// * [clusterId] - Identifier of the face's cluster, or null before the clustering assigned one (a face the recognition run has not grouped yet). 
+/// * [label] - The caller's own label of the face's cluster, or null when the caller has not labeled it (the unnamed state) -- and null for a clusterless face, which has no cluster to label. 
+@BuiltValue()
+abstract class AssetFaceSummary implements Built<AssetFaceSummary, AssetFaceSummaryBuilder> {
+  /// Identifier of the face row.
+  @BuiltValueField(wireName: r'id')
+  String get id;
+
+  /// The detector's confidence for this face.
+  @BuiltValueField(wireName: r'score')
+  double get score;
+
+  /// URL of the face's crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with this face's id, serving the bounding-box crop of the asset's view-size derivative. 
+  @BuiltValueField(wireName: r'thumbnail')
+  String get thumbnail;
+
+  /// Identifier of the face's cluster, or null before the clustering assigned one (a face the recognition run has not grouped yet). 
+  @BuiltValueField(wireName: r'clusterId')
+  String? get clusterId;
+
+  /// The caller's own label of the face's cluster, or null when the caller has not labeled it (the unnamed state) -- and null for a clusterless face, which has no cluster to label. 
+  @BuiltValueField(wireName: r'label')
+  PersonLabel? get label;
+
+  AssetFaceSummary._();
+
+  factory AssetFaceSummary([void updates(AssetFaceSummaryBuilder b)]) = _$AssetFaceSummary;
+
+  @BuiltValueHook(initializeBuilder: true)
+  static void _defaults(AssetFaceSummaryBuilder b) => b;
+
+  @BuiltValueSerializer(custom: true)
+  static Serializer<AssetFaceSummary> get serializer => _$AssetFaceSummarySerializer();
+}
+
+class _$AssetFaceSummarySerializer implements PrimitiveSerializer<AssetFaceSummary> {
+  @override
+  final Iterable<Type> types = const [AssetFaceSummary, _$AssetFaceSummary];
+
+  @override
+  final String wireName = r'AssetFaceSummary';
+
+  Iterable<Object?> _serializeProperties(
+    Serializers serializers,
+    AssetFaceSummary object, {
+    FullType specifiedType = FullType.unspecified,
+  }) sync* {
+    yield r'id';
+    yield serializers.serialize(
+      object.id,
+      specifiedType: const FullType(String),
+    );
+    yield r'score';
+    yield serializers.serialize(
+      object.score,
+      specifiedType: const FullType(double),
+    );
+    yield r'thumbnail';
+    yield serializers.serialize(
+      object.thumbnail,
+      specifiedType: const FullType(String),
+    );
+    yield r'clusterId';
+    yield object.clusterId == null ? null : serializers.serialize(
+      object.clusterId,
+      specifiedType: const FullType.nullable(String),
+    );
+    yield r'label';
+    yield object.label == null ? null : serializers.serialize(
+      object.label,
+      specifiedType: const FullType.nullable(PersonLabel),
+    );
+  }
+
+  @override
+  Object serialize(
+    Serializers serializers,
+    AssetFaceSummary object, {
+    FullType specifiedType = FullType.unspecified,
+  }) {
+    return _serializeProperties(serializers, object, specifiedType: specifiedType).toList();
+  }
+
+  void _deserializeProperties(
+    Serializers serializers,
+    Object serialized, {
+    FullType specifiedType = FullType.unspecified,
+    required List<Object?> serializedList,
+    required AssetFaceSummaryBuilder result,
+    required List<Object?> unhandled,
+  }) {
+    for (var i = 0; i < serializedList.length; i += 2) {
+      final key = serializedList[i] as String;
+      final value = serializedList[i + 1];
+      switch (key) {
+        case r'id':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.id = valueDes;
+          break;
+        case r'score':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(double),
+          ) as double;
+          result.score = valueDes;
+          break;
+        case r'thumbnail':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.thumbnail = valueDes;
+          break;
+        case r'clusterId':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(String),
+          ) as String?;
+          if (valueDes == null) continue;
+          result.clusterId = valueDes;
+          break;
+        case r'label':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(PersonLabel),
+          ) as PersonLabel?;
+          if (valueDes == null) continue;
+          result.label.replace(valueDes);
+          break;
+        default:
+          unhandled.add(key);
+          unhandled.add(value);
+          break;
+      }
+    }
+  }
+
+  @override
+  AssetFaceSummary deserialize(
+    Serializers serializers,
+    Object serialized, {
+    FullType specifiedType = FullType.unspecified,
+  }) {
+    final result = AssetFaceSummaryBuilder();
+    final serializedList = (serialized as Iterable<Object?>).toList();
+    final unhandled = <Object?>[];
+    _deserializeProperties(
+      serializers,
+      serialized,
+      specifiedType: specifiedType,
+      serializedList: serializedList,
+      unhandled: unhandled,
+      result: result,
+    );
+    return result.build();
+  }
+}
+
+
