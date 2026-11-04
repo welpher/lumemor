@@ -1005,14 +1005,16 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-// MergePeopleRequest One merge: 2-50 source clusters folded into one target
+// MergePeopleRequest One merge: 1-50 source clusters folded into one target
 // cluster. The source clusters dissolve with their labels (the
 // honest documented cost -- a source cluster's user-given name
 // dies); the target's label persists.
 type MergePeopleRequest struct {
-	// SourceClusterIds The clusters to fold into the target: at least 2 and at
+	// SourceClusterIds The clusters to fold into the target: at least 1 and at
 	// most 50 after duplicates collapse, every one visible to
-	// the caller. Each dissolves with its label rows.
+	// the caller. Each dissolves with its label rows. A single
+	// id is the pairwise fold of the cluster detail's
+	// "merge into" action.
 	SourceClusterIds []openapi_types.UUID `json:"sourceClusterIds"`
 
 	// TargetClusterId The surviving cluster: every source face re-homes here
@@ -1919,7 +1921,7 @@ type ServerInterface interface {
 	// ListPeople The caller's named people.
 	// (GET /people)
 	ListPeople(w http.ResponseWriter, r *http.Request)
-	// MergePeople Fold 2-50 face clusters into one surviving cluster.
+	// MergePeople Fold 1-50 face clusters into one surviving cluster.
 	// (POST /people/merge)
 	MergePeople(w http.ResponseWriter, r *http.Request)
 	// ListUnnamedPeople The caller's unnamed face clusters, one keyset page at a time.
@@ -2141,7 +2143,7 @@ func (_ Unimplemented) ListPeople(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// MergePeople Fold 2-50 face clusters into one surviving cluster.
+// MergePeople Fold 1-50 face clusters into one surviving cluster.
 // (POST /people/merge)
 func (_ Unimplemented) MergePeople(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)

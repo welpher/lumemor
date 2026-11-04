@@ -122,7 +122,7 @@ Class | Method | HTTP request | Description
 [*PeopleApi*](doc/PeopleApi.md) | [**labelPerson**](doc/PeopleApi.md#labelperson) | **PUT** /people/{clusterId}/label | Name one face cluster (the caller&#39;s private label).
 [*PeopleApi*](doc/PeopleApi.md) | [**listPeople**](doc/PeopleApi.md#listpeople) | **GET** /people | The caller&#39;s named people.
 [*PeopleApi*](doc/PeopleApi.md) | [**listUnnamedPeople**](doc/PeopleApi.md#listunnamedpeople) | **GET** /people/unnamed | The caller&#39;s unnamed face clusters, one keyset page at a time.
-[*PeopleApi*](doc/PeopleApi.md) | [**mergePeople**](doc/PeopleApi.md#mergepeople) | **POST** /people/merge | Fold 2-50 face clusters into one surviving cluster.
+[*PeopleApi*](doc/PeopleApi.md) | [**mergePeople**](doc/PeopleApi.md#mergepeople) | **POST** /people/merge | Fold 1-50 face clusters into one surviving cluster.
 [*PeopleApi*](doc/PeopleApi.md) | [**moveFace**](doc/PeopleApi.md#moveface) | **POST** /faces/{faceId}/move | Move one face onto an existing face cluster.
 [*PeopleApi*](doc/PeopleApi.md) | [**setPersonHidden**](doc/PeopleApi.md#setpersonhidden) | **PUT** /people/{clusterId}/hidden | Flip the caller&#39;s hidden switch of one face cluster.
 [*PeopleApi*](doc/PeopleApi.md) | [**unlabelPerson**](doc/PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.

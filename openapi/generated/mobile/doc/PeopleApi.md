@@ -14,7 +14,7 @@ Method | HTTP request | Description
 [**labelPerson**](PeopleApi.md#labelperson) | **PUT** /people/{clusterId}/label | Name one face cluster (the caller&#39;s private label).
 [**listPeople**](PeopleApi.md#listpeople) | **GET** /people | The caller&#39;s named people.
 [**listUnnamedPeople**](PeopleApi.md#listunnamedpeople) | **GET** /people/unnamed | The caller&#39;s unnamed face clusters, one keyset page at a time.
-[**mergePeople**](PeopleApi.md#mergepeople) | **POST** /people/merge | Fold 2-50 face clusters into one surviving cluster.
+[**mergePeople**](PeopleApi.md#mergepeople) | **POST** /people/merge | Fold 1-50 face clusters into one surviving cluster.
 [**moveFace**](PeopleApi.md#moveface) | **POST** /faces/{faceId}/move | Move one face onto an existing face cluster.
 [**setPersonHidden**](PeopleApi.md#setpersonhidden) | **PUT** /people/{clusterId}/hidden | Flip the caller&#39;s hidden switch of one face cluster.
 [**unlabelPerson**](PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
@@ -258,9 +258,9 @@ Name | Type | Description  | Notes
 # **mergePeople**
 > MergePeopleResponse mergePeople(mergePeopleRequest)
 
-Fold 2-50 face clusters into one surviving cluster.
+Fold 1-50 face clusters into one surviving cluster.
 
-One structural merge: every source cluster's faces re-home onto the target cluster, the target's representative face recomputes to the strongest-scoring member of the merged set, and every source cluster dissolves -- with its label rows cascading.  THE HONEST COST, by design: a source cluster's user-given name DIES with the cluster, whatever account gave it. A person merged away cannot keep the name a caller gave the cluster they merged; the target cluster's label persists. The web UI names the target before merging when the caller wants the merged person called something.  The whole merge runs as ONE transaction through the cluster maintenance discipline (representative re-pointing plus dissolution of the vacated clusters -- the same primitives the asset deletion sweep applies), never as bare member moves that would strand a stale representative or an empty cluster.  Rules: every source and the target must be visible to the caller (at least one face on an asset visible to them), and the target must not be among the sources -- any violation answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). Fewer than 2 or more than 50 source ids (duplicates collapse first) answer 400 `VALIDATION_FAILED`.  The write publishes one `person.merged` event with the surviving cluster id, the dissolved ids comma-joined as `mergedClusterIds`, and the acting user's id. 
+One structural merge: every source cluster's faces re-home onto the target cluster, the target's representative face recomputes to the strongest-scoring member of the merged set, and every source cluster dissolves -- with its label rows cascading. A single source is the pairwise fold the cluster detail's \"merge into\" action drives (that person merges into the picked one); more sources are the batch organize path of the unnamed region.  THE HONEST COST, by design: a source cluster's user-given name DIES with the cluster, whatever account gave it. A person merged away cannot keep the name a caller gave the cluster they merged; the target cluster's label persists. The web UI names the target before merging when the caller wants the merged person called something.  The whole merge runs as ONE transaction through the cluster maintenance discipline (representative re-pointing plus dissolution of the vacated clusters -- the same primitives the asset deletion sweep applies), never as bare member moves that would strand a stale representative or an empty cluster.  Rules: every source and the target must be visible to the caller (at least one face on an asset visible to them), and the target must not be among the sources -- any violation answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). An empty source list or more than 50 source ids (duplicates collapse first) answer 400 `VALIDATION_FAILED`.  The write publishes one `person.merged` event with the surviving cluster id, the dissolved ids comma-joined as `mergedClusterIds`, and the acting user's id. 
 
 ### Example
 ```dart
@@ -271,7 +271,7 @@ import 'package:lumemor_api/api.dart';
 //defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
 
 final api = LumemorApi().getPeopleApi();
-final MergePeopleRequest mergePeopleRequest = {"sourceClusterIds":["0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f76","0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f78"],"targetClusterId":"0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70"}; // MergePeopleRequest | 
+final MergePeopleRequest mergePeopleRequest = {"sourceClusterIds":["0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f76"],"targetClusterId":"0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70"}; // MergePeopleRequest | 
 
 try {
     final response = api.mergePeople(mergePeopleRequest);
