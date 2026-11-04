@@ -201,45 +201,59 @@
 	<title>Users · lumemor</title>
 </svelte:head>
 
-<div class="users">
+<div class="users max-w-[920px] mx-auto flex flex-col gap-6">
 	{#if status === 'loading'}
-		<p class="users__status" role="status">{$_('admin_users_loading')}</p>
+		<p class="users__status my-12 text-center text-text-soft" role="status">{$_('admin_users_loading')}</p>
 	{:else if status === 'error'}
-		<div class="users__failure" role="alert">
+		<div class="users__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
 			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready'}
 		<section class="users__list" aria-label={$_('admin_users_title')}>
-			<h1 class="users__title">{$_('admin_users_title')}</h1>
-			<table class="users__table">
+			<h1 class="users__title mb-3 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('admin_users_title')}</h1>
+			<table class="users__table w-full border-collapse bg-card border border-border rounded-card shadow-card overflow-hidden">
 				<thead>
 					<tr>
-						<th scope="col">{$_('admin_users_name')}</th>
-						<th scope="col">{$_('admin_users_email')}</th>
-						<th scope="col">{$_('admin_users_role')}</th>
-						<th scope="col">{$_('admin_users_status')}</th>
-						<th scope="col">{$_('admin_users_created')}</th>
-						<th scope="col"><span class="users__actions-heading">{$_('admin_users_actions')}</span></th>
+						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_name')}</th>
+						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_email')}</th>
+						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_role')}</th>
+						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_status')}</th>
+						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_created')}</th>
+						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">
+							<!-- The actions column's heading is for screen readers; the
+							     buttons' own labels name the actions. -->
+							<span class="users__actions-heading absolute w-px h-px overflow-hidden [clip-path:inset(50%)] whitespace-nowrap">{$_('admin_users_actions')}</span>
+						</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each users as user (user.id)}
-						<tr class:users__row--disabled={user.isDisabled}>
-							<td class="users__name">{user.name}</td>
-							<td class="users__email">{user.email}</td>
-							<td>
-								<span class="users__badge" class:users__badge--admin={user.role === 'admin'}>
+						<!-- The group class feeds the last-row border removal
+						     (group-last) on the cells below. -->
+						<tr class="group" class:users__row--disabled={user.isDisabled}>
+							<td class="px-3.5 py-2.5 font-body font-semibold text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">{user.name}</td>
+							<td class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft border-b border-border group-last:border-b-0">{user.email}</td>
+							<td class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">
+								<span
+									class="users__badge inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] bg-accent-soft rounded-control"
+									class:users__badge--admin={user.role === 'admin'}
+									class:text-accent-soft-text={user.role === 'admin'}
+									class:text-text-soft={user.role !== 'admin'}
+								>
 									{user.role === 'admin' ? $_('admin_role_admin') : $_('admin_role_user')}
 								</span>
 							</td>
-							<td>
-								<span class="users__badge" class:users__badge--disabled={user.isDisabled}>
+							<td class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">
+								<span
+									class="users__badge inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] rounded-control {user.isDisabled ? 'text-danger-text bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]' : 'text-text-soft bg-accent-soft'}"
+									class:users__badge--disabled={user.isDisabled}
+								>
 									{user.isDisabled ? $_('admin_user_disabled') : $_('admin_user_active')}
 								</span>
 							</td>
-							<td class="users__created">{createdLabel(user)}</td>
-							<td class="users__actions">
+							<td class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft border-b border-border group-last:border-b-0">{createdLabel(user)}</td>
+							<td class="users__actions px-3.5 py-2.5 text-right font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">
 								{#if user.isDisabled}
 									<Button variant="ghost" disabled={busy} onclick={() => void enable(user)}>
 										{$_('admin_users_enable')}
@@ -255,16 +269,16 @@
 				</tbody>
 			</table>
 			{#if actionErrorKey !== ''}
-				<p class="users__error" role="alert">{errorText(actionErrorKey)}</p>
+				<p class="users__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(actionErrorKey)}</p>
 			{/if}
 		</section>
 
 		<section class="users__create">
-			<div class="users__create-card">
+			<div class="users__create-card w-[min(400px,100%)]">
 				<Card>
-					<h2 class="users__create-title">{$_('admin_users_create_heading')}</h2>
-					<p class="users__create-note">{$_('admin_users_create_note')}</p>
-					<form class="users__form" onsubmit={handleSubmit}>
+					<h2 class="users__create-title mb-1 font-display font-bold text-[22px] tracking-[0.01em] text-text">{$_('admin_users_create_heading')}</h2>
+					<p class="users__create-note mb-5 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_users_create_note')}</p>
+					<form class="users__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
 						<Input
 							id="admin-user-name"
 							label={$_('admin_users_field_name')}
@@ -286,17 +300,21 @@
 							autocomplete="new-password"
 							bind:value={formPassword}
 						/>
-						<div class="users__field">
-							<label class="users__label" for="admin-user-role">{$_('admin_users_field_role')}</label>
-							<select class="users__select" id="admin-user-role" bind:value={formRole}>
+						<div class="users__field flex flex-col gap-1.5">
+							<label class="users__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="admin-user-role">{$_('admin_users_field_role')}</label>
+							<select
+								class="users__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+								id="admin-user-role"
+								bind:value={formRole}
+							>
 								<option value="user">{$_('admin_role_user')}</option>
 								<option value="admin">{$_('admin_role_admin')}</option>
 							</select>
 						</div>
 						{#if createErrorKey !== ''}
-							<p class="users__error" role="alert">{errorText(createErrorKey)}</p>
+							<p class="users__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(createErrorKey)}</p>
 						{/if}
-						<div class="users__form-actions">
+						<div class="users__form-actions flex justify-end mt-1">
 							<Button type="submit" disabled={creating}>{$_('admin_users_create_submit')}</Button>
 						</div>
 					</form>
@@ -308,11 +326,11 @@
 
 <Modal open={pendingDisable !== null} title={$_('admin_users_disable_title')} onclose={cancelDisable}>
 	{#snippet children()}
-		<p class="users__confirm-body">
+		<p class="users__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
 			{$_('admin_users_disable_body', { values: { name: pendingDisable?.name ?? '' } })}
 		</p>
 		{#if disableErrorKey !== ''}
-			<p class="users__confirm-error" role="alert">{errorText(disableErrorKey)}</p>
+			<p class="users__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(disableErrorKey)}</p>
 		{/if}
 	{/snippet}
 	{#snippet footer()}
@@ -324,195 +342,9 @@
 </Modal>
 
 <style>
-	.users {
-		max-width: 920px;
-		margin: 0 auto;
-		display: flex;
-		flex-direction: column;
-		gap: 24px;
-	}
-
-	.users__status {
-		margin: 48px 0;
-		text-align: center;
-		color: var(--color-text-soft);
-	}
-
-	.users__failure {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		max-width: 420px;
-		margin: 48px auto;
-		padding: 20px;
-		text-align: center;
-		border: 1px solid var(--color-danger);
-		border-radius: var(--radius-card);
-		color: var(--color-danger-text);
-	}
-
-	.users__failure p {
-		margin: 0;
-	}
-
-	.users__title {
-		margin: 0 0 12px;
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: 26px;
-		letter-spacing: 0.01em;
-		color: var(--color-text);
-	}
-
-	.users__table {
-		width: 100%;
-		border-collapse: collapse;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-		overflow: hidden;
-	}
-
-	.users__table th {
-		padding: 10px 14px;
-		font: 600 12px/1.4 var(--font-body);
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		text-align: left;
-		color: var(--color-text-faint);
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.users__table td {
-		padding: 10px 14px;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text);
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.users__table tbody tr:last-child td {
-		border-bottom: none;
-	}
-
+	/* Residual style (verbatim): a disabled row's state class reaches
+	 * its table cells. */
 	.users__row--disabled td {
 		color: var(--color-text-faint);
-	}
-
-	.users__name {
-		font-weight: 600;
-	}
-
-	.users__email,
-	.users__created {
-		color: var(--color-text-soft);
-	}
-
-	.users__actions-heading {
-		/* The actions column's heading is for screen readers; the
-		 * buttons' own labels name the actions. */
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
-
-	.users__badge {
-		display: inline-block;
-		padding: 2px 10px;
-		font: 600 12px/1.6 var(--font-body);
-		color: var(--color-text-soft);
-		background-color: var(--color-accent-soft);
-		border-radius: var(--radius-control);
-	}
-
-	.users__badge--admin {
-		color: var(--color-accent-soft-text);
-	}
-
-	.users__badge--disabled {
-		color: var(--color-danger-text);
-		background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
-	}
-
-	.users__actions {
-		text-align: right;
-	}
-
-	.users__create-card {
-		width: min(400px, 100%);
-	}
-
-	.users__create-title {
-		margin: 0 0 4px;
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: 22px;
-		letter-spacing: 0.01em;
-		color: var(--color-text);
-	}
-
-	.users__create-note {
-		margin: 0 0 20px;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text-soft);
-	}
-
-	.users__form {
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-
-	.users__field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.users__label {
-		font: 600 14px/1.4 var(--font-body);
-		color: var(--color-text);
-	}
-
-	.users__select {
-		padding: 9px 12px;
-		font: 400 15px/1.4 var(--font-body);
-		color: var(--color-text);
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border-strong);
-		border-radius: var(--radius-control);
-		transition: border-color var(--motion-fast) var(--ease-standard);
-	}
-
-	.users__select:focus {
-		border-color: var(--color-accent);
-	}
-
-	.users__error {
-		margin: 0;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-danger-text);
-	}
-
-	.users__form-actions {
-		display: flex;
-		justify-content: flex-end;
-		margin-top: 4px;
-	}
-
-	.users__confirm-body {
-		margin: 0;
-		font: 400 15px/1.5 var(--font-body);
-		color: var(--color-text);
-	}
-
-	.users__confirm-error {
-		margin: 12px 0 0;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-danger-text);
 	}
 </style>

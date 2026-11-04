@@ -304,22 +304,25 @@
 	<title>Models · lumemor</title>
 </svelte:head>
 
-<div class="models">
+<div class="models max-w-[760px] mx-auto flex flex-col gap-6">
 	{#if status === 'loading'}
-		<p class="models__status" role="status">{$_('admin_models_loading')}</p>
+		<p class="models__status my-12 text-center text-text-soft" role="status">{$_('admin_models_loading')}</p>
 	{:else if status === 'error'}
-		<div class="models__failure" role="alert">
+		<div class="models__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
 			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready'}
 		<header class="models__header">
-			<h1 class="models__title">{$_('admin_models_title')}</h1>
-			<p class="models__note">{$_('admin_models_note')}</p>
+			<h1 class="models__title mb-1 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('admin_models_title')}</h1>
+			<p class="models__note font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_models_note')}</p>
 		</header>
 
 		{#if wipedNotice !== null}
-			<p class="models__wiped" role="status">
+			<p
+				class="models__wiped px-4 py-3 font-body font-medium text-[14px] leading-[1.5] text-danger-text bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)] border border-danger rounded-card"
+				role="status"
+			>
 				{$_('admin_models_wiped_notice', { values: wipedNotice })}
 			</p>
 		{/if}
@@ -329,9 +332,9 @@
 		     run failed, or the trigger failed), the progress region
 		     below carries the action instead. -->
 		{#if settledEmpty && !downloadActive && !downloadFailed && downloadErrorKey === ''}
-			<section class="models__empty">
-				<h2 class="models__empty-title">{$_('admin_models_empty_title')}</h2>
-				<p class="models__empty-body">{$_('admin_models_empty_body')}</p>
+			<section class="models__empty flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+				<h2 class="models__empty-title font-display font-bold text-[22px] tracking-[0.01em] text-text">{$_('admin_models_empty_title')}</h2>
+				<p class="models__empty-body font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_models_empty_body')}</p>
 				<Button
 					variant="primary"
 					disabled={downloading}
@@ -343,7 +346,7 @@
 		{/if}
 
 		{#if downloadErrorKey !== ''}
-			<div class="models__download-error" role="alert">
+			<div class="models__download-error flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 				<p>{errorText(downloadErrorKey)}</p>
 				<Button variant="primary" disabled={downloading} onclick={() => void startDownload()}>
 					{$_('action_retry')}
@@ -352,24 +355,24 @@
 		{/if}
 
 		{#if downloadActive || downloadFailed}
-			<section class="models__progress-region" aria-live="polite">
+			<section class="models__progress-region flex flex-col gap-2.5 p-5 bg-card border border-border rounded-card shadow-card" aria-live="polite">
 				{#if downloadActive}
-					<p class="models__progress-state">
+					<p class="models__progress-state font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums">
 						{download?.state === 'queued'
 							? $_('admin_models_download_queued')
 							: downloadProgressText()}
 					</p>
 					<div
-						class="models__progress"
+						class="models__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden"
 						role="progressbar"
 						aria-valuemin="0"
 						aria-valuemax="100"
 						aria-valuenow={downloadPercent()}
 					>
-						<div class="models__progress-fill" style="width: {downloadPercent()}%"></div>
+						<div class="models__progress-fill h-full bg-accent transition-[width] duration-(--motion-base) ease-standard" style="width: {downloadPercent()}%"></div>
 					</div>
 				{:else if downloadFailed}
-					<p class="models__download-failed" role="alert">
+					<p class="models__download-failed font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">
 						{$_('admin_models_download_failed_run', {
 							values: { count: download?.failed ?? 0 }
 						})}
@@ -382,37 +385,44 @@
 		{/if}
 
 		{#if rerunStartedFor !== ''}
-			<p class="models__rerun-started">
+			<p class="models__rerun-started px-4 py-3 font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card">
 				{$_('admin_models_rerun_started')}
-				<a href="/admin/jobs">{$_('admin_models_rerun_panel')}</a>
+				<a class="text-accent-soft-text ml-1.5" href="/admin/jobs">{$_('admin_models_rerun_panel')}</a>
 			</p>
 		{/if}
 
 		{#each slots as group (group.slot)}
-			<section class="models__slot" aria-label={$_(group.labelKey)}>
-				<h2 class="models__slot-title">{$_(group.labelKey)}</h2>
+			<section class="models__slot flex flex-col gap-2.5" aria-label={$_(group.labelKey)}>
+				<h2 class="models__slot-title font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_(group.labelKey)}</h2>
 				{#if group.entries.length === 0}
-					<p class="models__slot-empty">{$_('admin_models_slot_empty')}</p>
+					<p class="models__slot-empty px-4 py-3.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-dashed border-border rounded-card">{$_('admin_models_slot_empty')}</p>
 				{:else}
-					<div class="models__rows">
+					<div class="models__rows flex flex-col gap-2.5">
 						{#each group.entries as model (model.id)}
-							<article class="models__row" data-model-id={model.id}>
-								<header class="models__row-head">
-									<h3 class="models__row-id">{model.id}</h3>
-									<span class="models__badge" class:models__badge--active={model.isActive}>
+							<article class="models__row flex flex-col gap-1.5 py-4 px-4.5 bg-card border border-border rounded-card shadow-card" data-model-id={model.id}>
+								<header class="models__row-head flex items-center gap-2.5">
+									<h3 class="models__row-id font-body font-semibold text-[16px] leading-[1.4] text-text">{model.id}</h3>
+									<!-- An empty badge still reserves no space (empty:hidden);
+									     the active marker is the only state a row carries. -->
+									<span
+										class="models__badge inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] bg-accent-soft rounded-control empty:hidden"
+										class:models__badge--active={model.isActive}
+										class:text-accent-soft-text={model.isActive}
+										class:text-text-soft={!model.isActive}
+									>
 										{model.isActive ? $_('admin_models_active') : ''}
 									</span>
 									{#if !model.filesPresent}
-										<span class="models__badge models__badge--missing">
+										<span class="models__badge models__badge--missing inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] text-danger-text bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)] rounded-control empty:hidden">
 											{$_('admin_models_files_missing')}
 										</span>
 									{/if}
 								</header>
-								<p class="models__facts">
+								<p class="models__facts font-body font-normal text-[14px] leading-[1.6] text-text-soft">
 									{$_('admin_models_version', { values: { version: model.version } })}
 									·
 									{$_('admin_models_license')}
-									<span class="models__license">{model.license}</span>
+									<span class="models__license font-semibold">{model.license}</span>
 									·
 									{model.source === 'downloaded'
 										? $_('admin_models_source_downloaded')
@@ -431,11 +441,11 @@
 									{/if}
 								</p>
 								{#if model.notice !== null && model.notice !== ''}
-									<p class="models__notice">
+									<p class="models__notice font-body font-normal text-[13px] leading-[1.5] text-text-faint">
 										{$_('admin_models_notice', { values: { notice: model.notice } })}
 									</p>
 								{/if}
-								<div class="models__row-actions">
+								<div class="models__row-actions flex justify-end">
 									{#if !model.isActive}
 										<Button
 											variant="ghost"
@@ -465,7 +475,7 @@
 
 <Modal open={pendingActivate !== null} title={$_('admin_models_activate_title')} onclose={cancelActivate}>
 	{#snippet children()}
-		<p class="models__confirm-body">
+		<p class="models__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
 			{#if pendingActivate !== null && needsDimWarning(pendingActivate)}
 				{$_('admin_models_activate_body_cross', {
 					values: { name: pendingActivate.id, slot: slotLabel(pendingActivate.slot) }
@@ -477,7 +487,7 @@
 			{/if}
 		</p>
 		{#if activateErrorKey !== ''}
-			<p class="models__confirm-error" role="alert">{errorText(activateErrorKey)}</p>
+			<p class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(activateErrorKey)}</p>
 		{/if}
 	{/snippet}
 	{#snippet footer()}
@@ -496,13 +506,13 @@
 
 <Modal open={pendingRerun !== null} title={$_('admin_models_rerun_title')} onclose={cancelRerun}>
 	{#snippet children()}
-		<p class="models__confirm-body">
+		<p class="models__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
 			{#if pendingRerun !== null}
 				{$_('admin_models_rerun_body', { values: { slot: slotLabel(pendingRerun.slot) } })}
 			{/if}
 		</p>
 		{#if rerunErrorKey !== ''}
-			<p class="models__confirm-error" role="alert">{errorText(rerunErrorKey)}</p>
+			<p class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(rerunErrorKey)}</p>
 		{/if}
 	{/snippet}
 	{#snippet footer()}
@@ -512,273 +522,3 @@
 		</Button>
 	{/snippet}
 </Modal>
-
-<style>
-	.models {
-		max-width: 760px;
-		margin: 0 auto;
-		display: flex;
-		flex-direction: column;
-		gap: 24px;
-	}
-
-	.models__status {
-		margin: 48px 0;
-		text-align: center;
-		color: var(--color-text-soft);
-	}
-
-	.models__failure {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		max-width: 420px;
-		margin: 48px auto;
-		padding: 20px;
-		text-align: center;
-		border: 1px solid var(--color-danger);
-		border-radius: var(--radius-card);
-		color: var(--color-danger-text);
-	}
-
-	.models__failure p {
-		margin: 0;
-	}
-
-	.models__header h1 {
-		margin: 0 0 4px;
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: 26px;
-		letter-spacing: 0.01em;
-		color: var(--color-text);
-	}
-
-	.models__note {
-		margin: 0;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text-soft);
-	}
-
-	.models__wiped {
-		margin: 0;
-		padding: 12px 16px;
-		font: 500 14px/1.5 var(--font-body);
-		color: var(--color-danger-text);
-		background-color: color-mix(in srgb, var(--color-danger) 10%, transparent);
-		border: 1px solid var(--color-danger);
-		border-radius: var(--radius-card);
-	}
-
-	.models__empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		max-width: 480px;
-		margin: 24px auto 0;
-		padding: 32px 24px;
-		text-align: center;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-	}
-
-	.models__empty-title {
-		margin: 0;
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: 22px;
-		letter-spacing: 0.01em;
-		color: var(--color-text);
-	}
-
-	.models__empty-body {
-		margin: 0;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text-soft);
-	}
-
-	.models__download-error {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		max-width: 480px;
-		margin: 24px auto 0;
-		padding: 20px;
-		text-align: center;
-		border: 1px solid var(--color-danger);
-		border-radius: var(--radius-card);
-		color: var(--color-danger-text);
-	}
-
-	.models__download-error p {
-		margin: 0;
-	}
-
-	.models__progress-region {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		padding: 20px;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-	}
-
-	.models__progress-state {
-		margin: 0;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-text);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.models__progress {
-		width: 100%;
-		height: 8px;
-		background-color: var(--color-accent-soft);
-		border-radius: var(--radius-control);
-		overflow: hidden;
-	}
-
-	.models__progress-fill {
-		height: 100%;
-		background-color: var(--color-accent);
-		transition: width var(--motion-base) var(--ease-standard);
-	}
-
-	.models__download-failed {
-		margin: 0;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-danger-text);
-	}
-
-	.models__rerun-started {
-		margin: 0;
-		padding: 12px 16px;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text-soft);
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-	}
-
-	.models__rerun-started a {
-		color: var(--color-accent-soft-text);
-		margin-left: 6px;
-	}
-
-	.models__slot {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.models__slot-title {
-		margin: 0;
-		font: 600 12px/1.4 var(--font-body);
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		color: var(--color-text-faint);
-	}
-
-	.models__slot-empty {
-		margin: 0;
-		padding: 14px 16px;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text-soft);
-		background-color: var(--color-card);
-		border: 1px dashed var(--color-border);
-		border-radius: var(--radius-card);
-	}
-
-	.models__rows {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.models__row {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 16px 18px;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-	}
-
-	.models__row-head {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-	}
-
-	.models__row-id {
-		margin: 0;
-		font: 600 16px/1.4 var(--font-body);
-		color: var(--color-text);
-	}
-
-	.models__badge {
-		display: inline-block;
-		padding: 2px 10px;
-		font: 600 12px/1.6 var(--font-body);
-		color: var(--color-text-soft);
-		background-color: var(--color-accent-soft);
-		border-radius: var(--radius-control);
-	}
-
-	/* An empty badge still reserves no space; the active marker is
-	 * the only state a row carries. */
-	.models__badge:empty {
-		display: none;
-	}
-
-	.models__badge--active {
-		color: var(--color-accent-soft-text);
-	}
-
-	.models__badge--missing {
-		color: var(--color-danger-text);
-		background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
-	}
-
-	.models__facts {
-		margin: 0;
-		font: 400 14px/1.6 var(--font-body);
-		color: var(--color-text-soft);
-	}
-
-	.models__license {
-		font-weight: 600;
-	}
-
-	.models__notice {
-		margin: 0;
-		font: 400 13px/1.5 var(--font-body);
-		color: var(--color-text-faint);
-	}
-
-	.models__row-actions {
-		display: flex;
-		justify-content: flex-end;
-	}
-
-	.models__confirm-body {
-		margin: 0;
-		font: 400 15px/1.5 var(--font-body);
-		color: var(--color-text);
-	}
-
-	.models__confirm-error {
-		margin: 12px 0 0;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-danger-text);
-	}
-</style>

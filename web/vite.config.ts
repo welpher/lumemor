@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { fileURLToPath } from 'node:url';
 import { sveltekit } from '@sveltejs/kit/vite';
+import tailwindcss from '@tailwindcss/vite';
 import { configDefaults } from 'vitest/config';
 import { defineConfig } from 'vite';
 
@@ -14,7 +15,11 @@ const projectRoot = fileURLToPath(new URL('.', import.meta.url));
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 
 export default defineConfig({
-	plugins: [sveltekit()],
+	// The Tailwind v4 plugin must run before the SvelteKit plugin: it
+	// compiles the utilities of src/lib/theme/theme.css (the brand
+	// token @theme mapping) and scans the Svelte templates for the
+	// class names to generate.
+	plugins: [tailwindcss(), sveltekit()],
 	server: {
 		fs: {
 			allow: [projectRoot, repositoryRoot]

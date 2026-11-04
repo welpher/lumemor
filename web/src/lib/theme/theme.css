@@ -2,6 +2,15 @@
  * lumemor design tokens and base styles — the single central
  * stylesheet for the visual language.
  *
+ * Tailwind v4 (CSS-first) consumes the same tokens: the @theme block
+ * below maps every brand token to a theme variable so utilities can
+ * reference them (bg-card, text-text-soft, rounded-control, ...).
+ * The values are verbatim from the brand specification §3 table and
+ * the Layer 1/Layer 2 custom properties further down, which remain
+ * the single source of truth: @theme duplicates the mapping for
+ * utility generation, the unlayered layers below win the cascade for
+ * every token, and the .dark flip keeps working through them.
+ *
  * Layer 1 (raw palette) holds every color token of the brand
  * specification §3 verbatim, as `--color-<token>` custom properties
  * named exactly after the token table. Raw values never change with
@@ -21,6 +30,82 @@
  * 16-20px, overlay radii 20-24px, very light shadows, 150-250ms
  * ease-out transitions, and `prefers-reduced-motion` always honored.
  */
+
+@import "tailwindcss";
+
+/* The dark theme is the .dark class on <html> (flipping the semantic
+ * variables below), not the OS media query — the variant wiring must
+ * match that mechanism for any dark: utility. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ */
+/* Tailwind v4 theme: the brand token mapping (utilities consume it)  */
+/* ------------------------------------------------------------------ */
+
+@theme {
+	/* Raw palette — brand spec §3, verbatim (mirrors Layer 1 below). */
+	--color-navy-900: #1b2a5b;
+	--color-navy-700: #2a3c75;
+	--color-blue-800: #164a96;
+	--color-blue-700: #1d5fbf;
+	--color-blue-600: #2f7de1;
+	--color-blue-300: #9dc3ff;
+	--color-blue-100: #dcebff;
+	--color-blue-900: #1c4f9c;
+	--color-sun: #f6c15b;
+	--color-gold-600: #c9974f;
+	--color-teal: #2e7d74;
+	--color-ember: #e8694a;
+	--color-paper: #fff9f0;
+	--color-surface: #fffdf8;
+	--color-night: #141a2e;
+	--color-night-surface: #1b2238;
+	--color-text-secondary: #5b4e3f;
+	--color-muted: #8b7e6a;
+	--color-cream-text: #f5efe2;
+
+	/* Semantic roles — light-theme values (mirrors Layer 2 below);
+	 * the html.dark block further down flips the same variables, so
+	 * every utility that references them follows the theme. */
+	--color-page: var(--color-paper);
+	--color-card: var(--color-surface);
+	--color-text: var(--color-navy-900);
+	--color-text-soft: var(--color-text-secondary);
+	--color-text-faint: var(--color-muted);
+	--color-accent: var(--color-blue-700);
+	--color-accent-strong: var(--color-blue-800);
+	--color-accent-soft: var(--color-blue-100);
+	--color-accent-soft-text: var(--color-blue-900);
+	--color-accent-on: #ffffff;
+	--color-link: var(--color-blue-700);
+	--color-link-hover: var(--color-blue-800);
+	--color-success: var(--color-teal);
+	--color-danger: var(--color-ember);
+	--color-danger-text: color-mix(in srgb, var(--color-ember) 70%, var(--color-navy-900));
+	--color-notice: var(--color-sun);
+	--color-star: var(--color-gold-600);
+	--color-border: color-mix(in srgb, var(--color-navy-900) 14%, transparent);
+	--color-border-strong: color-mix(in srgb, var(--color-navy-900) 28%, transparent);
+
+	/* Typography (spec §4) — mirrors Layer 2 below. */
+	--font-display: 'Nunito',
+		system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
+	--font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC',
+		'Noto Sans SC', 'Helvetica Neue', Arial, sans-serif;
+
+	/* Radii (spec §5) — mirrors Layer 2 below. */
+	--radius-control: 12px;
+	--radius-card: 16px;
+	--radius-overlay: 20px;
+
+	/* Shadows — the light-theme pair (the html.dark flip below
+	 * overrides the same variables for the dark theme). */
+	--shadow-card: 0 1px 2px rgb(27 42 91 / 0.05), 0 2px 12px rgb(27 42 91 / 0.07);
+	--shadow-overlay: 0 12px 40px rgb(20 26 46 / 0.18), 0 2px 8px rgb(20 26 46 / 0.12);
+
+	/* Motion (spec §5) — mirrors Layer 2 below. */
+	--ease-standard: ease-out;
+}
 
 /* ------------------------------------------------------------------ */
 /* Layer 1: raw palette (brand spec §3, verbatim, theme-independent)  */
@@ -139,55 +224,63 @@ html.dark {
 
 /* ------------------------------------------------------------------ */
 /* Base element styles                                                 */
+/*                                                                     */
+/* Inside @layer base so Tailwind's utilities layer (declared after   */
+/* base by the import above) can override these exactly like the      */
+/* scoped component styles used to override them by specificity.      */
+/* This block sits after the import, so within the layer it also      */
+/* wins over Tailwind's preflight resets.                             */
 /* ------------------------------------------------------------------ */
 
-html {
-	background-color: var(--color-page);
-}
+@layer base {
+	html {
+		background-color: var(--color-page);
+	}
 
-body {
-	margin: 0;
-	font: 400 16px/1.6 var(--font-body);
-	color: var(--color-text);
-	background-color: var(--color-page);
-	/* Times, counts and other numerals align in tables and timelines. */
-	font-variant-numeric: tabular-nums;
-	-webkit-font-smoothing: antialiased;
-}
+	body {
+		margin: 0;
+		font: 400 16px/1.6 var(--font-body);
+		color: var(--color-text);
+		background-color: var(--color-page);
+		/* Times, counts and other numerals align in tables and timelines. */
+		font-variant-numeric: tabular-nums;
+		-webkit-font-smoothing: antialiased;
+	}
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-	margin: 0;
-	font-family: var(--font-display);
-	font-weight: 700;
-	line-height: 1.3;
-	color: var(--color-text);
-}
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		margin: 0;
+		font-family: var(--font-display);
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--color-text);
+	}
 
-a {
-	color: var(--color-link);
-	text-decoration: underline;
-	text-underline-offset: 2px;
-	transition: color var(--motion-fast) var(--ease-standard);
-}
+	a {
+		color: var(--color-link);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		transition: color var(--motion-fast) var(--ease-standard);
+	}
 
-a:hover {
-	color: var(--color-link-hover);
-}
+	a:hover {
+		color: var(--color-link-hover);
+	}
 
-::placeholder {
-	color: var(--color-text-faint);
-	opacity: 1;
-}
+	::placeholder {
+		color: var(--color-text-faint);
+		opacity: 1;
+	}
 
-/* A clearly visible keyboard focus everywhere (IA §6). */
-:focus-visible {
-	outline: 2px solid var(--color-accent);
-	outline-offset: 2px;
+	/* A clearly visible keyboard focus everywhere (IA §6). */
+	:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
+	}
 }
 
 /*

@@ -161,36 +161,39 @@
 	<title>Trash · lumemor</title>
 </svelte:head>
 
-<section class="trash" aria-busy={status === 'loading'}>
-	<header class="trash__header">
-		<h1>{$_('nav_trash')}</h1>
-		<p class="trash__note">{$_('trash_note')}</p>
+<section class="trash max-w-[1200px] mx-auto" aria-busy={status === 'loading'}>
+	<header class="trash__header mb-4">
+		<h1 class="mb-1 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('nav_trash')}</h1>
+		<p class="trash__note font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('trash_note')}</p>
 	</header>
 
 	{#if firstLoad}
-		<p class="trash__status" role="status">{$_('trash_loading')}</p>
+		<p class="trash__status my-12 text-center text-text-soft" role="status">{$_('trash_loading')}</p>
 	{:else if settledEmpty}
-		<div class="trash__empty">
-			<p>{$_('trash_empty')}</p>
+		<div class="trash__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+			<p class="text-text-soft">{$_('trash_empty')}</p>
 		</div>
 	{:else if status === 'error'}
-		<div class="trash__failure" role="alert">
+		<div class="trash__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
 			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
 		</div>
 	{:else}
-		<div class="trash__grid">
+		<div class="trash__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3">
 			{#each items as entry (entry.id)}
-				<div class="trash__cell">
-					<div class="trash__tile">
+				<div class="trash__cell flex flex-col gap-2">
+					<!-- The recovery tile stacks the countdown over the tile and
+					     the row's actions under it: the trash styling carries the
+					     de-emphasized tone of a row on its way out. -->
+					<div class="trash__tile relative rounded-control [outline:1px_solid_var(--color-border)] outline-offset-[-1px] opacity-85">
 						<PhotoTile item={tileItem(entry)} selected={false} selectable={false} onselect={noopSelect} />
-						<p class="trash__days">{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}</p>
+						<p class="trash__days absolute bottom-1.5 left-1.5 z-[2] py-0.5 px-2 font-body font-semibold text-[12px] leading-[1.5] text-accent-on bg-[rgb(20_26_46/0.65)] backdrop-blur-[2px] rounded-control">{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}</p>
 					</div>
-					<div class="trash__actions">
-						<Button variant="ghost" disabled={busy} onclick={() => void restore(entry)}>
+					<div class="trash__actions flex gap-2">
+						<Button class="flex-1" variant="ghost" disabled={busy} onclick={() => void restore(entry)}>
 							{$_('action_restore')}
 						</Button>
-						<Button variant="danger" disabled={busy} onclick={() => askDelete(entry)}>
+						<Button class="flex-1" variant="danger" disabled={busy} onclick={() => askDelete(entry)}>
 							{$_('trash_delete_permanently')}
 						</Button>
 					</div>
@@ -200,17 +203,17 @@
 	{/if}
 
 	{#if actionErrorKey !== ''}
-		<p class="trash__error" role="alert">{errorText(actionErrorKey)}</p>
+		<p class="trash__error max-w-[420px] mx-auto mt-4 text-center font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(actionErrorKey)}</p>
 	{/if}
 </section>
 
 <Modal open={pendingDelete !== null} title={$_('trash_delete_title')} onclose={cancelDelete}>
 	{#snippet children()}
-		<p class="trash__confirm-body">
+		<p class="trash__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
 			{$_('trash_delete_body', { values: { name: pendingDelete?.originalFilename ?? '' } })}
 		</p>
 		{#if deleteErrorKey !== ''}
-			<p class="trash__confirm-error" role="alert">{errorText(deleteErrorKey)}</p>
+			<p class="trash__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(deleteErrorKey)}</p>
 		{/if}
 	{/snippet}
 	{#snippet footer()}
@@ -220,135 +223,3 @@
 		</Button>
 	{/snippet}
 </Modal>
-
-<style>
-	.trash {
-		max-width: 1200px;
-		margin: 0 auto;
-	}
-
-	.trash__header {
-		margin-bottom: 16px;
-	}
-
-	.trash__header h1 {
-		margin: 0 0 4px;
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: 26px;
-		letter-spacing: 0.01em;
-		color: var(--color-text);
-	}
-
-	.trash__note {
-		margin: 0;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text-soft);
-	}
-
-	.trash__status {
-		margin: 48px 0;
-		text-align: center;
-		color: var(--color-text-soft);
-	}
-
-	.trash__empty {
-		max-width: 420px;
-		margin: 48px auto;
-		padding: 32px 24px;
-		text-align: center;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-	}
-
-	.trash__empty p {
-		margin: 0;
-		color: var(--color-text-soft);
-	}
-
-	.trash__failure {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		max-width: 420px;
-		margin: 48px auto;
-		padding: 20px;
-		text-align: center;
-		border: 1px solid var(--color-danger);
-		border-radius: var(--radius-card);
-		color: var(--color-danger-text);
-	}
-
-	.trash__failure p {
-		margin: 0;
-	}
-
-	.trash__grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
-		gap: 12px;
-	}
-
-	.trash__cell {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	/* The recovery tile stacks the countdown over the tile and the
-	 * row's actions under it: the trash styling carries the
-	 * de-emphasized tone of a row on its way out. */
-	.trash__tile {
-		position: relative;
-		border-radius: var(--radius-control);
-		outline: 1px solid var(--color-border);
-		outline-offset: -1px;
-		opacity: 0.85;
-	}
-
-	.trash__days {
-		position: absolute;
-		bottom: 6px;
-		left: 6px;
-		z-index: 2;
-		margin: 0;
-		padding: 2px 8px;
-		font: 600 12px/1.5 var(--font-body);
-		color: var(--color-accent-on);
-		background-color: rgb(20 26 46 / 0.65);
-		backdrop-filter: blur(2px);
-		border-radius: var(--radius-control);
-	}
-
-	.trash__actions {
-		display: flex;
-		gap: 8px;
-	}
-
-	.trash__actions :global(button) {
-		flex: 1;
-	}
-
-	.trash__error {
-		max-width: 420px;
-		margin: 16px auto 0;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-danger-text);
-		text-align: center;
-	}
-
-	.trash__confirm-body {
-		margin: 0;
-		font: 400 15px/1.5 var(--font-body);
-		color: var(--color-text);
-	}
-
-	.trash__confirm-error {
-		margin: 12px 0 0;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-danger-text);
-	}
-</style>

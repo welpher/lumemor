@@ -170,49 +170,49 @@
 	<title>Jobs · lumemor</title>
 </svelte:head>
 
-<div class="jobs">
+<div class="jobs max-w-[680px] mx-auto flex flex-col gap-5">
 	{#if status === 'loading'}
-		<p class="jobs__status" role="status">{$_('admin_jobs_loading')}</p>
+		<p class="jobs__status my-12 text-center text-text-soft" role="status">{$_('admin_jobs_loading')}</p>
 	{:else if status === 'error'}
-		<div class="jobs__failure" role="alert">
+		<div class="jobs__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
 			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready'}
 		<header class="jobs__header">
-			<h1 class="jobs__title">{$_('admin_jobs_title')}</h1>
-			<p class="jobs__note">{$_('admin_jobs_note')}</p>
+			<h1 class="jobs__title mb-1 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('admin_jobs_title')}</h1>
+			<p class="jobs__note font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_jobs_note')}</p>
 		</header>
 
 		{#if jobs.length === 0}
-			<p class="jobs__empty">{$_('admin_jobs_empty')}</p>
+			<p class="jobs__empty box-content py-8 px-6 text-center font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card shadow-card">{$_('admin_jobs_empty')}</p>
 		{:else}
-			<div class="jobs__rows">
+			<div class="jobs__rows flex flex-col gap-2.5">
 				{#each jobs as job (job.id)}
-					<article class="jobs__row" data-job-run-id={job.id}>
-						<header class="jobs__row-head">
-							<h2 class="jobs__kind">{kindLabel(job)}</h2>
-							<span class="jobs__badge jobs__badge--{job.state}">{stateLabel(job)}</span>
+					<article class="jobs__row flex flex-col gap-2 py-4 px-4.5 bg-card border border-border rounded-card shadow-card" data-job-run-id={job.id}>
+						<header class="jobs__row-head flex items-center justify-between gap-2.5">
+							<h2 class="jobs__kind font-body font-semibold text-[16px] leading-[1.4] text-text">{kindLabel(job)}</h2>
+							<span class="jobs__badge jobs__badge--{job.state} inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] text-text-soft bg-accent-soft rounded-control">{stateLabel(job)}</span>
 						</header>
 						<div
-							class="jobs__progress"
+							class="jobs__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden"
 							role="progressbar"
 							aria-valuemin="0"
 							aria-valuemax="100"
 							aria-valuenow={percent(job)}
 						>
 							<div
-								class="jobs__progress-fill jobs__progress-fill--{job.state}"
+								class="jobs__progress-fill jobs__progress-fill--{job.state} h-full bg-accent transition-[width] duration-(--motion-base) ease-standard"
 								style="width: {percent(job)}%"
 							></div>
 						</div>
-						<p class="jobs__counts">
+						<p class="jobs__counts font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums">
 							{progressText(job)}
 							{#if job.failed > 0}
-								<span class="jobs__failed">{$_('admin_jobs_failed_count', { values: { count: job.failed } })}</span>
+								<span class="jobs__failed ml-2.5 text-danger-text">{$_('admin_jobs_failed_count', { values: { count: job.failed } })}</span>
 							{/if}
 						</p>
-						<p class="jobs__times">
+						<p class="jobs__times font-body font-normal text-[13px] leading-[1.5] text-text-faint">
 							{#if job.startedAt !== null}
 								{$_('admin_jobs_started', { values: { time: timeLabel(job.startedAt) } })}
 							{:else}
@@ -231,108 +231,10 @@
 </div>
 
 <style>
-	.jobs {
-		max-width: 680px;
-		margin: 0 auto;
-		display: flex;
-		flex-direction: column;
-		gap: 20px;
-	}
-
-	.jobs__status {
-		margin: 48px 0;
-		text-align: center;
-		color: var(--color-text-soft);
-	}
-
-	.jobs__failure {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		max-width: 420px;
-		margin: 48px auto;
-		padding: 20px;
-		text-align: center;
-		border: 1px solid var(--color-danger);
-		border-radius: var(--radius-card);
-		color: var(--color-danger-text);
-	}
-
-	.jobs__failure p {
-		margin: 0;
-	}
-
-	.jobs__header h1 {
-		margin: 0 0 4px;
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: 26px;
-		letter-spacing: 0.01em;
-		color: var(--color-text);
-	}
-
-	.jobs__note {
-		margin: 0;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text-soft);
-	}
-
-	.jobs__empty {
-		margin: 0;
-		padding: 32px 24px;
-		text-align: center;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text-soft);
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-	}
-
-	.jobs__rows {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-
-	.jobs__row {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 16px 18px;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-	}
-
-	.jobs__row-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
-	}
-
-	.jobs__kind {
-		margin: 0;
-		font: 600 16px/1.4 var(--font-body);
-		color: var(--color-text);
-	}
-
-	.jobs__badge {
-		display: inline-block;
-		padding: 2px 10px;
-		font: 600 12px/1.6 var(--font-body);
-		color: var(--color-text-soft);
-		background-color: var(--color-accent-soft);
-		border-radius: var(--radius-control);
-	}
-
-	.jobs__badge--running {
-		color: var(--color-accent-soft-text);
-	}
-
+	/* Residual styles (verbatim): the state badges' colors — the
+	 * modifier class names are dynamic (jobs__badge--{state}) — and
+	 * the failed progress fill's background. */
+	.jobs__badge--running,
 	.jobs__badge--succeeded {
 		color: var(--color-accent-soft-text);
 	}
@@ -342,39 +244,7 @@
 		background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
 	}
 
-	.jobs__progress {
-		width: 100%;
-		height: 8px;
-		background-color: var(--color-accent-soft);
-		border-radius: var(--radius-control);
-		overflow: hidden;
-	}
-
-	.jobs__progress-fill {
-		height: 100%;
-		background-color: var(--color-accent);
-		transition: width var(--motion-base) var(--ease-standard);
-	}
-
 	.jobs__progress-fill--failed {
 		background-color: var(--color-danger);
-	}
-
-	.jobs__counts {
-		margin: 0;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-text);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.jobs__failed {
-		margin-left: 10px;
-		color: var(--color-danger-text);
-	}
-
-	.jobs__times {
-		margin: 0;
-		font: 400 13px/1.5 var(--font-body);
-		color: var(--color-text-faint);
 	}
 </style>

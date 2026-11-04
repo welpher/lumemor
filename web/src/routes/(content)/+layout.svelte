@@ -110,10 +110,10 @@
 
 <svelte:window onpointerdown={handleWindowPointerdown} onkeydown={handleWindowKeydown} />
 
-<div class="shell">
-	<header class="shell-topbar">
+<div class="shell min-h-screen flex flex-col">
+	<header class="shell-topbar flex items-center gap-3 px-4 py-2 border-b border-border bg-card">
 		<button
-			class="topbar-icon"
+			class="topbar-icon inline-flex items-center justify-center w-9 h-9 rounded-control bg-transparent text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
 			type="button"
 			aria-label={$_('nav_open_menu')}
 			aria-expanded={drawerOpen}
@@ -128,19 +128,23 @@
 				/>
 			</svg>
 		</button>
-		<span class="topbar-brand">{$_('app_name')}</span>
+		<!-- Wordmark: Nunito 700 in the text color (Navy 900 light,
+		     Cream dark), per the brand spec. -->
+		<span class="topbar-brand font-display font-bold text-[20px] tracking-[0.01em] text-text">{$_('app_name')}</span>
+		<!-- Push the search box away from the brand; the upload and
+		     account marks stay pinned to the right end. -->
 		<input
-			class="topbar-search"
+			class="topbar-search flex-1 max-w-[420px] box-content ml-auto px-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 			type="search"
 			placeholder={$_('nav_search')}
 			aria-label={$_('nav_search')}
 		/>
-		<span
-			class="topbar-upload-wrap"
-		>
+		<span class="topbar-upload-wrap">
+			<!-- The hidden input of the top bar's Upload button; picked
+			     files join the upload queue through enqueueUploadFiles. -->
 			<input
 				bind:this={picker}
-				class="topbar-picker"
+				class="topbar-picker hidden"
 				type="file"
 				multiple
 				accept={PICKER_ACCEPT}
@@ -148,9 +152,9 @@
 			/>
 			<Button class="topbar-upload" onclick={pickFiles}>{$_('action_upload')}</Button>
 		</span>
-		<div class="topbar-account" bind:this={accountWrap}>
+		<div class="topbar-account relative" bind:this={accountWrap}>
 			<button
-				class="topbar-avatar"
+				class="topbar-avatar inline-flex items-center justify-center w-9 h-9 border border-border-strong rounded-full bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
 				type="button"
 				aria-label={$_('account_menu')}
 				aria-expanded={accountMenuOpen}
@@ -167,12 +171,12 @@
 				</svg>
 			</button>
 			{#if accountMenuOpen}
-				<div class="account-menu">
-					<p class="account-menu__heading">{$_('theme_label')}</p>
-					<div class="account-menu__options" role="group" aria-label={$_('theme_label')}>
+				<div class="account-menu absolute top-[calc(100%_+_8px)] right-0 z-[50] min-w-[180px] box-content p-2 bg-card border border-border rounded-overlay shadow-overlay">
+					<p class="account-menu__heading mt-1 mx-2 mb-0.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('theme_label')}</p>
+					<div class="account-menu__options flex flex-col" role="group" aria-label={$_('theme_label')}>
 						{#each themeOptions as option (option.value)}
 							<button
-								class="account-menu__option"
+								class="account-menu__option px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft aria-pressed:font-bold aria-pressed:text-accent-soft-text aria-pressed:bg-accent-soft"
 								type="button"
 								aria-pressed={themePreference() === option.value}
 								onclick={() => setThemePreference(option.value)}
@@ -181,11 +185,11 @@
 							</button>
 						{/each}
 					</div>
-					<p class="account-menu__heading">{$_('language_label')}</p>
-					<div class="account-menu__options" role="group" aria-label={$_('language_label')}>
+					<p class="account-menu__heading mt-1 mx-2 mb-0.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('language_label')}</p>
+					<div class="account-menu__options flex flex-col" role="group" aria-label={$_('language_label')}>
 						{#each languageOptions as option (option.value)}
 							<button
-								class="account-menu__option"
+								class="account-menu__option px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft aria-pressed:font-bold aria-pressed:text-accent-soft-text aria-pressed:bg-accent-soft"
 								type="button"
 								aria-pressed={($locale ?? 'en') === option.value}
 								onclick={() => setLocale(option.value)}
@@ -194,9 +198,12 @@
 							</button>
 						{/each}
 					</div>
-					<div class="account-menu__divider"></div>
+					<div class="account-menu__divider h-px my-2 mx-1 bg-border"></div>
+					<!-- The sign-out action closes the account section: the divider
+					     separates it from the appearance toggles, and the label keeps
+					     the regular text color for AA contrast. -->
 					<button
-						class="account-menu__option account-menu__signout"
+						class="account-menu__option account-menu__signout px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft disabled:opacity-55 disabled:cursor-not-allowed"
 						type="button"
 						disabled={signingOut}
 						onclick={handleSignOut}
@@ -208,172 +215,17 @@
 		</div>
 	</header>
 	<Drawer bind:open={drawerOpen} />
-	<main class="shell-main">
+	<main class="shell-main flex-1 p-6">
 		{@render children()}
 	</main>
 </div>
 <UploadOverlay />
 
 <style>
-	.shell {
-		min-height: 100vh;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.shell-topbar {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 8px 16px;
-		border-bottom: 1px solid var(--color-border);
-		background-color: var(--color-card);
-	}
-
-	.topbar-icon {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 36px;
-		height: 36px;
-		border: none;
-		border-radius: var(--radius-control);
-		background: none;
-		color: var(--color-text);
-		cursor: pointer;
-		transition: background-color var(--motion-fast) var(--ease-standard);
-	}
-
-	.topbar-icon:hover {
-		background-color: var(--color-accent-soft);
-	}
-
-	.topbar-brand {
-		/* Wordmark: Nunito 700 in the text color (Navy 900 light,
-		 * Cream dark), per the brand spec. */
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: 20px;
-		letter-spacing: 0.01em;
-		color: var(--color-text);
-	}
-
-	.topbar-search {
-		/* Push the search box away from the brand; the upload and
-		 * account marks stay pinned to the right end. */
-		flex: 1;
-		max-width: 420px;
-		margin-left: auto;
-		padding: 8px 12px;
-		font: 400 15px/1.4 var(--font-body);
-		color: var(--color-text);
-		background-color: var(--color-page);
-		border: 1px solid var(--color-border-strong);
-		border-radius: var(--radius-control);
-		transition: border-color var(--motion-fast) var(--ease-standard);
-	}
-
-	.topbar-search:focus {
-		border-color: var(--color-accent);
-	}
-
-	.topbar-picker {
-		/* The hidden input of the top bar's Upload button; picked
-		 * files join the upload queue through enqueueUploadFiles. */
-		display: none;
-	}
-
-	.topbar-account {
-		position: relative;
-	}
-
-	.topbar-avatar {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 36px;
-		height: 36px;
-		border: 1px solid var(--color-border-strong);
-		border-radius: 50%;
-		background: none;
-		color: var(--color-text-soft);
-		cursor: pointer;
-		transition:
-			background-color var(--motion-fast) var(--ease-standard),
-			color var(--motion-fast) var(--ease-standard);
-	}
-
-	.topbar-avatar:hover {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
+	/* Residual styles (verbatim): the account menu's pop-in keyframes
+	 * and its animation declaration. */
 	.account-menu {
-		position: absolute;
-		top: calc(100% + 8px);
-		right: 0;
-		z-index: 50;
-		min-width: 180px;
-		padding: 8px;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-overlay);
-		box-shadow: var(--shadow-overlay);
 		animation: menu-in var(--motion-fast) var(--ease-standard);
-	}
-
-	.account-menu__heading {
-		margin: 4px 8px 2px;
-		font: 600 12px/1.4 var(--font-body);
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		color: var(--color-text-faint);
-	}
-
-	.account-menu__options {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.account-menu__option {
-		padding: 7px 8px;
-		border: none;
-		border-radius: var(--radius-control);
-		background: none;
-		font: 400 15px/1.4 var(--font-body);
-		color: var(--color-text);
-		text-align: left;
-		cursor: pointer;
-		transition: background-color var(--motion-fast) var(--ease-standard);
-	}
-
-	.account-menu__option:hover {
-		background-color: var(--color-accent-soft);
-	}
-
-	.account-menu__option[aria-pressed='true'] {
-		font-weight: 700;
-		color: var(--color-accent-soft-text);
-		background-color: var(--color-accent-soft);
-	}
-
-	.account-menu__divider {
-		height: 1px;
-		margin: 8px 4px;
-		background-color: var(--color-border);
-	}
-
-	/* The sign-out action closes the account section: the divider
-	 * separates it from the appearance toggles, and the label keeps
-	 * the regular text color for AA contrast. */
-	.account-menu__signout:disabled {
-		opacity: 0.55;
-		cursor: not-allowed;
-	}
-
-	.shell-main {
-		flex: 1;
-		padding: 24px;
 	}
 
 	@keyframes menu-in {
