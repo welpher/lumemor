@@ -45,9 +45,9 @@ tags:
   - name: events
     description: Server-sent activity stream.
   - name: people
-    description: 'The people surface: named people, unnamed face clusters
-      and per-cluster detail, every view scoped to the calling user''s
-      visible assets and private labels.'
+    description: 'The people surface: named people, unnamed face clusters,
+      per-cluster detail and face crop thumbnails, every view scoped to
+      the calling user''s visible assets and private labels.'
   - name: server
     description: Instance discovery and first-run setup.
 paths:
@@ -3428,6 +3428,129 @@ paths:
             unknown, its asset (or the target cluster) is invisible
             to the caller, or the face belongs to no cluster yet --
             indistinguishable by design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                personNotFound:
+                  value:
+                    code: PERSON_NOT_FOUND
+                    message: no such person for this caller
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /faces/{faceId}/thumbnail:
+    get:
+      operationId: getFaceThumbnail
+      tags:
+        - people
+      summary: Serve one face's 256x256 crop thumbnail.
+      description: |
+        The face crop pixels of the people surface: a 256x256
+        `image/avif` crop of one detected face, derived at query time
+        and never stored on disk. The source pixels are the face's
+        asset's `view` derivative -- the inline serving size of
+        `GET /assets/{id}/thumbnail` -- never the original; the face
+        row's bounding box is in per-mille units of the full image,
+        and the view derivative preserves the original's framing
+        exactly, so the same per-mille values address the
+        derivative's own pixels.
+
+        The crop window is pinned: a square whose side is 1.25x the
+        larger of the box's pixel width and height (a 25% margin
+        around the face), centered on the box and clamped to the
+        image bounds (a face larger than the image yields the
+        image's smaller edge); the window then renders to exactly
+        256x256 pixels -- upscaled when the window is smaller,
+        a zoom rather than a fit.
+
+        The permission gate is the face's asset: the caller must own
+        a live, visible, non-component asset. Every other state
+        answers the SAME byte-identical 404 PERSON_NOT_FOUND -- an
+        unknown face id, a face on another account's (or a trashed,
+        or hidden) asset, and an asset whose view derivative has not
+        been derived yet (the thumbnail job has not run). Face ids
+        cannot be probed for existence; the web renders its skeleton
+        placeholder until the pixels exist, which is why there is
+        deliberately no separate not-ready code here, unlike the
+        asset thumbnail endpoint.
+
+        The response is a private immutable derived asset:
+        `Cache-Control: private, max-age=31536000, immutable`, and a
+        strong `ETag` of `"face-{faceId}-{updatedAt}"`, where
+        updatedAt is the face row's change signal in unix seconds --
+        cluster moves bump it, and re-detection replaces the face row
+        outright. A matching `If-None-Match` answers 304 with the
+        same validators and no body. Conditional requests and byte
+        ranges otherwise follow the Go standard library's
+        `ServeContent` semantics.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: faceId
+          in: path
+          required: true
+          description: Identifier of the face to crop.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The 256x256 AVIF face crop.
+          headers:
+            ETag:
+              description: |
+                Strong entity tag: `face-{faceId}-{updatedAt}` -- the
+                face row's id with its change signal (unix seconds),
+                quoted. The derivation is deterministic, so one signal
+                always renders the same bytes.
+              schema:
+                type: string
+              example: '"face-0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71-1777636800"'
+            Cache-Control:
+              description: |
+                The crop is private to the caller and a pure function
+                of the face row and its asset's view derivative, so
+                clients may cache it for a year.
+              schema:
+                type: string
+              example: private, max-age=31536000, immutable
+          content:
+            image/avif:
+              schema:
+                type: string
+                format: binary
+        '304':
+          description: |
+            The `If-None-Match` value matched the entity tag; the
+            cached copy is current. The response carries the same
+            `ETag` and `Cache-Control` validators and no body.
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie or
+            bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '404':
+          description: |
+            No such face for this caller: the face id is unknown, its
+            asset is not visible to the caller (another account's,
+            trashed, hidden, or a Live Photo component), or the
+            asset's view derivative does not exist yet -- all
+            indistinguishable by design; the web renders a skeleton
+            placeholder until the pixels exist.
           content:
             application/json:
               schema:

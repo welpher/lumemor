@@ -181,6 +181,7 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"PUT /api/v1/people/{clusterId}/hidden",
 		"POST /api/v1/people/merge",
 		"POST /api/v1/faces/{faceId}/move",
+		"GET /api/v1/faces/{faceId}/thumbnail",
 		"GET /api/v1/admin/users",
 		"POST /api/v1/admin/users",
 		"PATCH /api/v1/admin/users/{id}",

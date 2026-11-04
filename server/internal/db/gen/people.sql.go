@@ -134,6 +134,60 @@ func (q *Queries) GetClusterForCaller(ctx context.Context, arg GetClusterForCall
 	return i, err
 }
 
+const getFaceCropForCaller = `-- name: GetFaceCropForCaller :one
+SELECT f.id,
+       f.asset_id,
+       f.bbox_x,
+       f.bbox_y,
+       f.bbox_w,
+       f.bbox_h,
+       f.updated_at
+FROM faces f
+JOIN assets a ON a.id = f.asset_id
+WHERE f.id = $1
+  AND a.owner_id = $2
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+`
+
+type GetFaceCropForCallerParams struct {
+	FaceID pgtype.UUID `json:"face_id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+type GetFaceCropForCallerRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	AssetID   pgtype.UUID        `json:"asset_id"`
+	BboxX     int32              `json:"bbox_x"`
+	BboxY     int32              `json:"bbox_y"`
+	BboxW     int32              `json:"bbox_w"`
+	BboxH     int32              `json:"bbox_h"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+// The face crop endpoint's read and gate in one: the face's
+// bounding box (per-mille of the full image, addressing the view
+// derivative's own pixels) and its change signal (updated_at, the
+// ETag's input), over a caller-visible asset only. A miss covers an
+// unknown id and a face on an invisible asset alike -- the same 404
+// the people surface answers everywhere; the handler folds the
+// derivative's absence into that same shape (anti-enumeration).
+func (q *Queries) GetFaceCropForCaller(ctx context.Context, arg GetFaceCropForCallerParams) (GetFaceCropForCallerRow, error) {
+	row := q.db.QueryRow(ctx, getFaceCropForCaller, arg.FaceID, arg.UserID)
+	var i GetFaceCropForCallerRow
+	err := row.Scan(
+		&i.ID,
+		&i.AssetID,
+		&i.BboxX,
+		&i.BboxY,
+		&i.BboxW,
+		&i.BboxH,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getFaceForCaller = `-- name: GetFaceForCaller :one
 SELECT f.id,
        f.cluster_id
