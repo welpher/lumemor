@@ -34,7 +34,10 @@ import 'package:lumemor_api/src/model/job_run_kind.dart';
 import 'package:lumemor_api/src/model/job_run_list_response.dart';
 import 'package:lumemor_api/src/model/job_run_response.dart';
 import 'package:lumemor_api/src/model/job_run_state.dart';
+import 'package:lumemor_api/src/model/label_person_request.dart';
 import 'package:lumemor_api/src/model/login_request.dart';
+import 'package:lumemor_api/src/model/merge_people_request.dart';
+import 'package:lumemor_api/src/model/merge_people_response.dart';
 import 'package:lumemor_api/src/model/model_activate_response.dart';
 import 'package:lumemor_api/src/model/model_dimension_change.dart';
 import 'package:lumemor_api/src/model/model_download_response.dart';
@@ -46,12 +49,16 @@ import 'package:lumemor_api/src/model/model_response_input_size.dart';
 import 'package:lumemor_api/src/model/model_scan_response.dart';
 import 'package:lumemor_api/src/model/model_slot.dart';
 import 'package:lumemor_api/src/model/model_source.dart';
+import 'package:lumemor_api/src/model/move_face_request.dart';
+import 'package:lumemor_api/src/model/move_face_response.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
 import 'package:lumemor_api/src/model/pairing_token_response.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
+import 'package:lumemor_api/src/model/person_label_response.dart';
 import 'package:lumemor_api/src/model/person_summary.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
+import 'package:lumemor_api/src/model/set_person_hidden_request.dart';
 import 'package:lumemor_api/src/model/timeline_item.dart';
 import 'package:lumemor_api/src/model/timeline_response.dart';
 import 'package:lumemor_api/src/model/trash_item.dart';
@@ -84,7 +91,10 @@ part 'serializers.g.dart';
   JobRunListResponse,
   JobRunResponse,
   JobRunState,
+  LabelPersonRequest,
   LoginRequest,
+  MergePeopleRequest,
+  MergePeopleResponse,
   ModelActivateResponse,
   ModelDimensionChange,
   ModelDownloadResponse,
@@ -96,12 +106,16 @@ part 'serializers.g.dart';
   ModelScanResponse,
   ModelSlot,
   ModelSource,
+  MoveFaceRequest,
+  MoveFaceResponse,
   PairingConsumeRequest,
   PairingTokenResponse,
   PersonLabel,
+  PersonLabelResponse,
   PersonSummary,
   ServerInfo,
   SessionInfo,
+  SetPersonHiddenRequest,
   TimelineItem,
   TimelineResponse,
   TrashItem,

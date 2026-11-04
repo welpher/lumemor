@@ -38,6 +38,71 @@ func (q *Queries) CountClusterFaces(ctx context.Context, arg CountClusterFacesPa
 	return face_count, err
 }
 
+const countVisibleClusters = `-- name: CountVisibleClusters :one
+SELECT count(DISTINCT f.cluster_id)
+FROM faces f
+JOIN assets a ON a.id = f.asset_id
+WHERE f.cluster_id = ANY($1::uuid[])
+  AND a.owner_id = $2
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+`
+
+type CountVisibleClustersParams struct {
+	ClusterIds []pgtype.UUID `json:"cluster_ids"`
+	UserID     pgtype.UUID   `json:"user_id"`
+}
+
+// How many of the given clusters the caller sees (at least one face
+// on a caller-visible asset -- ListUnnamedClusters' predicate,
+// applied to a set). The merge endpoint's visibility gate: one read
+// settles every source plus the target, and a count below the input
+// length names no id (anti-enumeration).
+func (q *Queries) CountVisibleClusters(ctx context.Context, arg CountVisibleClustersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countVisibleClusters, arg.ClusterIds, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteUserFaceLabel = `-- name: DeleteUserFaceLabel :exec
+DELETE FROM user_face_labels
+WHERE user_id = $1 AND cluster_id = $2
+`
+
+type DeleteUserFaceLabelParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	ClusterID pgtype.UUID `json:"cluster_id"`
+}
+
+// Removes the caller's label row: the person returns to the
+// caller's unnamed region. Deleting without a label is a zero-row
+// no-op, not an error -- the unlabel is idempotent.
+func (q *Queries) DeleteUserFaceLabel(ctx context.Context, arg DeleteUserFaceLabelParams) error {
+	_, err := q.db.Exec(ctx, deleteUserFaceLabel, arg.UserID, arg.ClusterID)
+	return err
+}
+
+const dissolveVacatedClustersByID = `-- name: DissolveVacatedClustersByID :exec
+DELETE FROM face_clusters fc
+WHERE fc.id = ANY($1::uuid[])
+  AND NOT EXISTS (
+      SELECT 1 FROM faces f WHERE f.cluster_id = fc.id
+  )
+`
+
+// The dissolution of vacated clusters: a cluster of the given set
+// that holds no member loses its row (user_face_labels cascade
+// with the foreign key -- the honest person-without-faces
+// semantics, applied where the faces left). The NOT EXISTS guard
+// keeps only truly vacated clusters dying, whatever raced the
+// caller's gates.
+func (q *Queries) DissolveVacatedClustersByID(ctx context.Context, clusterIds []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, dissolveVacatedClustersByID, clusterIds)
+	return err
+}
+
 const getClusterForCaller = `-- name: GetClusterForCaller :one
 SELECT fc.id AS cluster_id,
        l.name AS label_name,
@@ -66,6 +131,41 @@ func (q *Queries) GetClusterForCaller(ctx context.Context, arg GetClusterForCall
 	row := q.db.QueryRow(ctx, getClusterForCaller, arg.UserID, arg.ClusterID)
 	var i GetClusterForCallerRow
 	err := row.Scan(&i.ClusterID, &i.LabelName, &i.LabelHidden)
+	return i, err
+}
+
+const getFaceForCaller = `-- name: GetFaceForCaller :one
+SELECT f.id,
+       f.cluster_id
+FROM faces f
+JOIN assets a ON a.id = f.asset_id
+WHERE f.id = $1
+  AND a.owner_id = $2
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+`
+
+type GetFaceForCallerParams struct {
+	FaceID pgtype.UUID `json:"face_id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+type GetFaceForCallerRow struct {
+	ID        pgtype.UUID `json:"id"`
+	ClusterID pgtype.UUID `json:"cluster_id"`
+}
+
+// The face-move endpoint's face-side read and gate in one: the
+// face's current cluster, over a caller-visible asset only. A miss
+// (unknown id, foreign or non-live asset) and a face the clustering
+// has not assigned to any cluster (cluster_id NULL) are both "no
+// such movable person face" -- the same 404 every people write
+// keeps indistinguishable.
+func (q *Queries) GetFaceForCaller(ctx context.Context, arg GetFaceForCallerParams) (GetFaceForCallerRow, error) {
+	row := q.db.QueryRow(ctx, getFaceForCaller, arg.FaceID, arg.UserID)
+	var i GetFaceForCallerRow
+	err := row.Scan(&i.ID, &i.ClusterID)
 	return i, err
 }
 
@@ -284,4 +384,165 @@ func (q *Queries) ListUnnamedClusters(ctx context.Context, arg ListUnnamedCluste
 		return nil, err
 	}
 	return items, nil
+}
+
+const moveFaceToCluster = `-- name: MoveFaceToCluster :exec
+UPDATE faces
+SET cluster_id = $1, updated_at = now()
+WHERE id = $2
+`
+
+type MoveFaceToClusterParams struct {
+	TargetClusterID pgtype.UUID `json:"target_cluster_id"`
+	FaceID          pgtype.UUID `json:"face_id"`
+}
+
+// The single face's move onto one cluster: the face-move
+// endpoint's member write, wrapped in the same transaction
+// discipline as the merge.
+func (q *Queries) MoveFaceToCluster(ctx context.Context, arg MoveFaceToClusterParams) error {
+	_, err := q.db.Exec(ctx, moveFaceToCluster, arg.TargetClusterID, arg.FaceID)
+	return err
+}
+
+const moveFacesToCluster = `-- name: MoveFacesToCluster :exec
+UPDATE faces
+SET cluster_id = $1, updated_at = now()
+WHERE cluster_id = ANY($2::uuid[])
+`
+
+type MoveFacesToClusterParams struct {
+	TargetClusterID  pgtype.UUID   `json:"target_cluster_id"`
+	SourceClusterIds []pgtype.UUID `json:"source_cluster_ids"`
+}
+
+// The merge's member move: every face of the source clusters
+// re-homes onto the target cluster. It runs INSIDE the merge
+// transaction between the representative maintenance and the
+// vacated-cluster dissolution (see the discipline note above) --
+// never alone.
+func (q *Queries) MoveFacesToCluster(ctx context.Context, arg MoveFacesToClusterParams) error {
+	_, err := q.db.Exec(ctx, moveFacesToCluster, arg.TargetClusterID, arg.SourceClusterIds)
+	return err
+}
+
+const repointClusterRepresentative = `-- name: RepointClusterRepresentative :exec
+UPDATE face_clusters fc
+SET representative_face_id = best.id, updated_at = now()
+FROM (
+    SELECT f.id FROM faces f
+    WHERE f.cluster_id = $1
+    ORDER BY f.score DESC, f.id
+    LIMIT 1
+) AS best
+WHERE fc.id = $1
+`
+
+// Points one cluster at its best member (score DESC, face id ASC --
+// the deterministic ordering faces.sql's sweep applies): the
+// merge's and the face move's target maintenance, run after the
+// member writes in the same transaction so the representative
+// always carries the strongest member of the current membership.
+func (q *Queries) RepointClusterRepresentative(ctx context.Context, clusterID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, repointClusterRepresentative, clusterID)
+	return err
+}
+
+const repointVacatedClusterRepresentatives = `-- name: RepointVacatedClusterRepresentatives :exec
+UPDATE face_clusters fc
+SET representative_face_id = best.id, updated_at = now()
+FROM (
+    SELECT DISTINCT ON (f.cluster_id) f.cluster_id, f.id
+    FROM faces f
+    WHERE f.cluster_id = ANY($1::uuid[])
+    ORDER BY f.cluster_id, f.score DESC, f.id
+) AS best
+WHERE fc.id = best.cluster_id
+  AND NOT EXISTS (
+      SELECT 1 FROM faces f
+      WHERE f.cluster_id = fc.id AND f.id = fc.representative_face_id
+  )
+`
+
+// The vacated side of a face move: a cluster whose representative
+// is no longer among its members follows its best SURVIVING member
+// (faces.sql's RehomeClusterRepresentatives discipline, scoped by
+// cluster ids instead of assets -- a moved face is still a live
+// row, so what moved away is the membership, not the face). A
+// cluster with no member at all matches nothing here; the
+// dissolution below removes it.
+func (q *Queries) RepointVacatedClusterRepresentatives(ctx context.Context, clusterIds []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, repointVacatedClusterRepresentatives, clusterIds)
+	return err
+}
+
+const setUserFaceLabelHidden = `-- name: SetUserFaceLabelHidden :one
+UPDATE user_face_labels
+SET is_hidden = $1, updated_at = now()
+WHERE user_id = $2 AND cluster_id = $3
+RETURNING name, is_hidden
+`
+
+type SetUserFaceLabelHiddenParams struct {
+	IsHidden  bool        `json:"is_hidden"`
+	UserID    pgtype.UUID `json:"user_id"`
+	ClusterID pgtype.UUID `json:"cluster_id"`
+}
+
+type SetUserFaceLabelHiddenRow struct {
+	Name     string `json:"name"`
+	IsHidden bool   `json:"is_hidden"`
+}
+
+// Flips the hidden switch on the caller's label row. The label row
+// IS the hidden state's home (name NOT NULL), so zero rows here
+// mean the caller has not named the cluster yet -- the
+// person_hide_requires_label case the handler maps to a 400.
+func (q *Queries) SetUserFaceLabelHidden(ctx context.Context, arg SetUserFaceLabelHiddenParams) (SetUserFaceLabelHiddenRow, error) {
+	row := q.db.QueryRow(ctx, setUserFaceLabelHidden, arg.IsHidden, arg.UserID, arg.ClusterID)
+	var i SetUserFaceLabelHiddenRow
+	err := row.Scan(&i.Name, &i.IsHidden)
+	return i, err
+}
+
+const upsertUserFaceLabel = `-- name: UpsertUserFaceLabel :one
+
+INSERT INTO user_face_labels (user_id, cluster_id, name)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id, cluster_id)
+DO UPDATE SET name = EXCLUDED.name, updated_at = now()
+RETURNING name, is_hidden
+`
+
+type UpsertUserFaceLabelParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	ClusterID pgtype.UUID `json:"cluster_id"`
+	Name      string      `json:"name"`
+}
+
+type UpsertUserFaceLabelRow struct {
+	Name     string `json:"name"`
+	IsHidden bool   `json:"is_hidden"`
+}
+
+// The write side (M3b Task 2). The label and hidden writes are
+// per-caller upserts on the (user_id, cluster_id) pair -- the B4
+// discipline's writes: they never read or touch another account's
+// row. The structural writes (merge, face move) stick to the
+// cluster-maintenance discipline M3a pinned for every
+// faces.cluster_id change: the member moves land inside ONE
+// transaction together with the representative maintenance and the
+// dissolution of the vacated clusters (whose labels cascade with
+// the row), never as bare member moves that would strand a stale
+// representative or an empty cluster.
+// The caller's label write: an insert for a first naming, a rename
+// for a repeat (the upsert arm updates ONLY the name, so the hidden
+// switch keeps its state -- a rename is not an unhide). The row is
+// the caller's own: the (user_id, cluster_id) primary key scopes
+// every read to it.
+func (q *Queries) UpsertUserFaceLabel(ctx context.Context, arg UpsertUserFaceLabelParams) (UpsertUserFaceLabelRow, error) {
+	row := q.db.QueryRow(ctx, upsertUserFaceLabel, arg.UserID, arg.ClusterID, arg.Name)
+	var i UpsertUserFaceLabelRow
+	err := row.Scan(&i.Name, &i.IsHidden)
+	return i, err
 }
