@@ -186,13 +186,16 @@
 	<title>Timeline · lumemor</title>
 </svelte:head>
 
-<section class="timeline" aria-busy={$timeline.status === 'loading'}>
+<section class="timeline max-w-[1200px] mx-auto" aria-busy={$timeline.status === 'loading'}>
 	<!-- The one toolbar of the wall: the hidden view's entry point
 	     (the IA's timeline-header entry, a lightweight link while the
 	     dropdown pattern it names waits for the settings surface of
 	     M3) and, once tiles exist, the selection-mode toggle. -->
-	<div class="timeline__toolbar">
-		<a class="timeline__hidden-link" href="/hidden">{$_('hidden_title')}</a>
+	<div class="timeline__toolbar flex justify-end items-center gap-3 mb-2">
+		<a
+			class="timeline__hidden-link mr-auto px-2.5 py-1.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft no-underline rounded-control transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
+			href="/hidden"
+		>{$_('hidden_title')}</a>
 		{#if $timeline.items.length > 0}
 			<Button
 				variant="ghost"
@@ -205,25 +208,29 @@
 	</div>
 
 	{#if firstLoad}
-		<p class="timeline__status" role="status">{$_('timeline_loading')}</p>
+		<p class="timeline__status my-12 text-center text-text-soft" role="status">{$_('timeline_loading')}</p>
 	{:else if settledEmpty}
-		<div class="timeline__empty">
-			<h1>{$_('nav_timeline')}</h1>
-			<p>{$_('timeline_empty')}</p>
+		<div class="timeline__empty max-w-[420px] mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+			<h1 class="text-[22px] mb-2">{$_('nav_timeline')}</h1>
+			<p class="text-text-soft">{$_('timeline_empty')}</p>
 		</div>
 	{:else if $timeline.status === 'error' && $timeline.items.length === 0}
-		<div class="timeline__failure" role="alert">
+		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($timeline.errorKey)}</p>
 			<Button variant="primary" onclick={() => void timeline.loadMore()}>{$_('action_retry')}</Button>
 		</div>
 	{:else}
 		{#each groups as group (group.key)}
-			<section class="timeline__month" data-month-key={group.key}>
-				<h2 class="timeline__month-header">{group.label}</h2>
+			<!-- Both sticky headers ride above the tiles; the section's
+			     scroll margin leaves room for them under the scrubber's
+			     jumps. -->
+			<section class="timeline__month scroll-mt-[92px]" data-month-key={group.key}>
+				<h2 class="timeline__month-header sticky top-0 z-[10] mt-6 mb-3 py-2.5 px-3 text-[20px] bg-[color-mix(in_srgb,var(--color-page)_88%,transparent)] backdrop-blur-[6px] rounded-control">{group.label}</h2>
 				{#each group.days as day (day.key)}
 					<div class="timeline__day" data-day-key={day.key}>
-						<h3 class="timeline__day-header">{day.label}</h3>
-						<div class="timeline__wall">
+						<!-- Stacks under the month header (44px + its margins). -->
+						<h3 class="timeline__day-header sticky top-[44px] z-[9] mt-4 mb-2 py-1 px-2 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-[color-mix(in_srgb,var(--color-page)_88%,transparent)] backdrop-blur-[6px] rounded-control">{day.label}</h3>
+						<div class="timeline__wall grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3">
 							{#each day.items as tileItem (tileItem.id)}
 								<PhotoTile
 									item={tileItem}
@@ -240,19 +247,19 @@
 	{/if}
 
 	{#if $timeline.status === 'error' && $timeline.items.length > 0}
-		<div class="timeline__failure" role="alert">
+		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($timeline.errorKey)}</p>
 			<Button variant="primary" onclick={() => void timeline.loadMore()}>{$_('action_retry')}</Button>
 		</div>
 	{/if}
 
 	{#if !observerAvailable && $timeline.hasMore && $timeline.status === 'ready'}
-		<div class="timeline__pager">
+		<div class="timeline__pager flex justify-center my-5">
 			<Button variant="ghost" onclick={() => void timeline.loadMore()}>{$_('timeline_load_more')}</Button>
 		</div>
 	{/if}
 
-	<div class="timeline__sentinel" bind:this={sentinel} aria-hidden="true"></div>
+	<div class="timeline__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
 </section>
 
 <MonthScrubber {months} activeKey={activeMonthKey} onjump={jumpToMonth} />
@@ -264,133 +271,3 @@
 	onaction={runAction}
 	onclear={exitSelection}
 />
-
-<style>
-	.timeline {
-		max-width: 1200px;
-		margin: 0 auto;
-	}
-
-	.timeline__toolbar {
-		display: flex;
-		justify-content: flex-end;
-		align-items: center;
-		gap: 12px;
-		margin-bottom: 8px;
-	}
-
-	.timeline__hidden-link {
-		margin-right: auto;
-		padding: 6px 10px;
-		font: 600 14px/1.4 var(--font-body);
-		color: var(--color-text-soft);
-		text-decoration: none;
-		border-radius: var(--radius-control);
-		transition:
-			background-color var(--motion-fast) var(--ease-standard),
-			color var(--motion-fast) var(--ease-standard);
-	}
-
-	.timeline__hidden-link:hover,
-	.timeline__hidden-link:focus-visible {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
-	.timeline__status {
-		margin: 48px 0;
-		text-align: center;
-		color: var(--color-text-soft);
-	}
-
-	.timeline__empty {
-		max-width: 420px;
-		margin: 48px auto;
-		padding: 32px 24px;
-		text-align: center;
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-card);
-		box-shadow: var(--shadow-card);
-	}
-
-	.timeline__empty h1 {
-		font-size: 22px;
-		margin-bottom: 8px;
-	}
-
-	.timeline__empty p {
-		margin: 0;
-		color: var(--color-text-soft);
-	}
-
-	.timeline__failure {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		max-width: 420px;
-		margin: 48px auto;
-		padding: 20px;
-		text-align: center;
-		border: 1px solid var(--color-danger);
-		border-radius: var(--radius-card);
-		color: var(--color-danger-text);
-	}
-
-	.timeline__failure p {
-		margin: 0;
-	}
-
-	.timeline__month {
-		/* Both sticky headers ride above the tiles; the section's
-		 * scroll margin leaves room for them under the scrubber's
-		 * jumps. */
-		scroll-margin-top: 92px;
-	}
-
-	.timeline__month-header {
-		position: sticky;
-		top: 0;
-		z-index: 10;
-		margin: 24px 0 12px;
-		padding: 10px 12px;
-		font-size: 20px;
-		background-color: color-mix(in srgb, var(--color-page) 88%, transparent);
-		backdrop-filter: blur(6px);
-		border-radius: var(--radius-control);
-	}
-
-	.timeline__day-header {
-		position: sticky;
-		/* Stacks under the month header (44px + its margins). */
-		top: 44px;
-		z-index: 9;
-		margin: 16px 0 8px;
-		padding: 4px 8px;
-		font-family: var(--font-body);
-		font-weight: 600;
-		font-size: 13px;
-		letter-spacing: 0.02em;
-		color: var(--color-text-soft);
-		background-color: color-mix(in srgb, var(--color-page) 88%, transparent);
-		backdrop-filter: blur(6px);
-		border-radius: var(--radius-control);
-	}
-
-	.timeline__wall {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
-		gap: 12px;
-	}
-
-	.timeline__pager {
-		display: flex;
-		justify-content: center;
-		margin: 20px 0;
-	}
-
-	.timeline__sentinel {
-		height: 1px;
-	}
-</style>

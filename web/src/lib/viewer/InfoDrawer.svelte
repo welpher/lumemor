@@ -199,38 +199,43 @@
 	);
 </script>
 
-<aside class="info" aria-label={$_('viewer_info_title')}>
-	<header class="info__header">
-		<h2 class="info__filename">{detail.originalFilename}</h2>
-		<button class="info__close" type="button" aria-label={$_('common_close')} onclick={onclose}>
+<aside class="info fixed top-0 right-0 bottom-0 z-[80] flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay" aria-label={$_('viewer_info_title')}>
+	<header class="info__header flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border">
+		<h2 class="info__filename font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail.originalFilename}</h2>
+		<button
+			class="info__close inline-flex items-center justify-center shrink-0 w-8 h-8 rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+			type="button"
+			aria-label={$_('common_close')}
+			onclick={onclose}
+		>
 			<svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
 				<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
 			</svg>
 		</button>
 	</header>
 
-	<div class="info__scroll">
+	<div class="info__scroll flex-1 overflow-y-auto pt-1 px-4 pb-5">
 		{#if detail.isTrashed}
-			<p class="info__notice" role="status">{$_('viewer_trashed_notice')}</p>
+			<p class="info__notice mt-3 py-2 px-3 font-body font-medium text-[13px] leading-[1.4] text-text-soft border border-notice rounded-control" role="status">{$_('viewer_trashed_notice')}</p>
 		{/if}
 		{#if detail.isHidden}
-			<p class="info__notice" role="status">{$_('viewer_hidden_notice')}</p>
+			<p class="info__notice mt-3 py-2 px-3 font-body font-medium text-[13px] leading-[1.4] text-text-soft border border-notice rounded-control" role="status">{$_('viewer_hidden_notice')}</p>
 		{/if}
 
-		<section class="info__section">
-			<h3 class="info__heading">{$_('viewer_description_label')}</h3>
+		<section class="info__section mt-5">
+			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_description_label')}</h3>
 			{#if editing}
 				<textarea
-					class="info__editor"
+					class="info__editor w-full mb-2 px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-page border border-border-strong rounded-control resize-y focus:border-accent"
 					bind:value={draft}
 					aria-label={$_('viewer_description_label')}
 					rows="4"
 					disabled={saving}
 				></textarea>
 				{#if editErrorKey !== ''}
-					<p class="info__error" role="alert">{errorText(editErrorKey)}</p>
+					<p class="info__error mb-2 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(editErrorKey)}</p>
 				{/if}
-				<div class="info__row">
+				<div class="info__row flex flex-wrap gap-2 mb-2">
 					<Button variant="primary" disabled={saving} onclick={() => void saveEdit()}>
 						{$_('viewer_description_save')}
 					</Button>
@@ -239,16 +244,16 @@
 					</Button>
 				</div>
 			{:else}
-				<p class="info__description">
+				<p class="info__description mb-2 font-body font-normal text-[14px] leading-[1.5] text-text whitespace-pre-wrap [overflow-wrap:anywhere]">
 					{detail.description !== '' ? detail.description : $_('viewer_description_empty')}
 				</p>
 				<Button variant="ghost" onclick={startEdit}>{$_('viewer_description_edit')}</Button>
 			{/if}
 		</section>
 
-		<section class="info__section">
-			<h3 class="info__heading">{$_('viewer_actions_label')}</h3>
-			<div class="info__row">
+		<section class="info__section mt-5">
+			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_actions_label')}</h3>
+			<div class="info__row flex flex-wrap gap-2 mb-2">
 				<Button
 					variant="ghost"
 					disabled={busy}
@@ -275,271 +280,97 @@
 				{$_('viewer_delete_permanently')}
 			</Button>
 			{#if errorKey !== ''}
-				<p class="info__error" role="alert">{errorText(errorKey)}</p>
+				<p class="info__error mb-2 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(errorKey)}</p>
 			{/if}
 		</section>
 
-		<section class="info__section">
-			<h3 class="info__heading">{$_('viewer_file_section')}</h3>
+		<section class="info__section mt-5">
+			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_file_section')}</h3>
 			<dl class="info__facts">
 				{#each fileRows as entry (entry.label)}
-					<div class="info__fact">
-						<dt>{entry.label}</dt>
-						<dd>{entry.value}</dd>
+					<div class="info__fact flex justify-between gap-3 py-[5px]">
+						<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
+						<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
 					</div>
 				{/each}
 			</dl>
-			<a class="info__download" href={assetOriginalUrl(detail.id)} download>
+			<a
+				class="info__download inline-block mt-1 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-link no-underline border border-border-strong rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+				href={assetOriginalUrl(detail.id)}
+				download
+			>
 				{$_('viewer_download')}
 			</a>
 		</section>
 
-		<section class="info__section">
-			<h3 class="info__heading">{$_('viewer_exif_heading')}</h3>
-			<details class="info__group" open>
-				<summary>{$_('viewer_exif_camera')}</summary>
+		<section class="info__section mt-5">
+			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_exif_heading')}</h3>
+			<!-- The EXIF groups: the group class feeds the open-summary
+			     border (group-open) and the facts padding below. -->
+			<details class="info__group group border border-border rounded-control" open>
+				<summary class="px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer group-open:border-b group-open:border-border">{$_('viewer_exif_camera')}</summary>
 				{#if cameraRows.length > 0}
-					<dl class="info__facts">
+					<dl class="info__facts pt-1 px-3">
 						{#each cameraRows as entry (entry.label)}
-							<div class="info__fact">
-								<dt>{entry.label}</dt>
-								<dd>{entry.value}</dd>
+							<div class="info__fact flex justify-between gap-3 py-[5px]">
+								<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
+								<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
 							</div>
 						{/each}
 					</dl>
 				{:else}
-					<p class="info__placeholder">{$_('viewer_exif_none')}</p>
+					<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
 				{/if}
 			</details>
-			<details class="info__group">
-				<summary>{$_('viewer_exif_exposure')}</summary>
+			<details class="info__group group border border-border rounded-control">
+				<summary class="px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer group-open:border-b group-open:border-border">{$_('viewer_exif_exposure')}</summary>
 				{#if exposureRows.length > 0}
-					<dl class="info__facts">
+					<dl class="info__facts pt-1 px-3">
 						{#each exposureRows as entry (entry.label)}
-							<div class="info__fact">
-								<dt>{entry.label}</dt>
-								<dd>{entry.value}</dd>
+							<div class="info__fact flex justify-between gap-3 py-[5px]">
+								<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
+								<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
 							</div>
 						{/each}
 					</dl>
 				{:else}
-					<p class="info__placeholder">{$_('viewer_exif_none')}</p>
+					<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
 				{/if}
 			</details>
-			<details class="info__group">
-				<summary>{$_('viewer_exif_location')}</summary>
+			<details class="info__group group border border-border rounded-control">
+				<summary class="px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer group-open:border-b group-open:border-border">{$_('viewer_exif_location')}</summary>
 				{#if locationRows.length > 0}
-					<dl class="info__facts">
+					<dl class="info__facts pt-1 px-3">
 						{#each locationRows as entry (entry.label)}
-							<div class="info__fact">
-								<dt>{entry.label}</dt>
-								<dd>{entry.value}</dd>
+							<div class="info__fact flex justify-between gap-3 py-[5px]">
+								<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
+								<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
 							</div>
 						{/each}
 					</dl>
 				{:else}
-					<p class="info__placeholder">{$_('viewer_exif_none')}</p>
+					<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
 				{/if}
 			</details>
 		</section>
 
-		<section class="info__section">
-			<h3 class="info__heading">{$_('nav_people')}</h3>
-			<p class="info__placeholder">{$_('viewer_faces_placeholder')}</p>
+		<section class="info__section mt-5">
+			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_people')}</h3>
+			<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_faces_placeholder')}</p>
 		</section>
 
-		<section class="info__section">
-			<h3 class="info__heading">{$_('nav_places')}</h3>
-			<p class="info__placeholder">{$_('viewer_places_placeholder')}</p>
+		<section class="info__section mt-5">
+			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_places')}</h3>
+			<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_places_placeholder')}</p>
 		</section>
 	</div>
 </aside>
 
 <style>
+	/* Residual styles (verbatim): the slide-in keyframes and the
+	 * drawer's animation declaration. */
 	.info {
-		position: fixed;
-		top: 0;
-		right: 0;
-		bottom: 0;
-		z-index: 80;
-		display: flex;
-		flex-direction: column;
-		width: min(360px, 92vw);
-		background-color: var(--color-card);
-		border-left: 1px solid var(--color-border);
-		box-shadow: var(--shadow-overlay);
 		animation: info-in var(--motion-base) var(--ease-standard);
-	}
-
-	.info__header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		padding: 14px 16px;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.info__filename {
-		margin: 0;
-		font: 600 15px/1.4 var(--font-body);
-		/* Long names wrap instead of pushing the close mark out. */
-		overflow-wrap: anywhere;
-	}
-
-	.info__close {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		width: 32px;
-		height: 32px;
-		border: none;
-		border-radius: var(--radius-control);
-		background: none;
-		color: var(--color-text-soft);
-		cursor: pointer;
-		transition:
-			background-color var(--motion-fast) var(--ease-standard),
-			color var(--motion-fast) var(--ease-standard);
-	}
-
-	.info__close:hover {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
-	.info__scroll {
-		flex: 1;
-		overflow-y: auto;
-		padding: 4px 16px 20px;
-	}
-
-	.info__notice {
-		margin: 12px 0 0;
-		padding: 8px 12px;
-		font: 500 13px/1.4 var(--font-body);
-		color: var(--color-text-soft);
-		border: 1px solid var(--color-notice);
-		border-radius: var(--radius-control);
-	}
-
-	.info__section {
-		margin-top: 20px;
-	}
-
-	.info__heading {
-		margin: 0 0 8px;
-		font: 600 12px/1.4 var(--font-body);
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		color: var(--color-text-faint);
-	}
-
-	.info__description {
-		margin: 0 0 8px;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text);
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
-	}
-
-	.info__editor {
-		width: 100%;
-		box-sizing: border-box;
-		margin-bottom: 8px;
-		padding: 9px 12px;
-		font: 400 14px/1.5 var(--font-body);
-		color: var(--color-text);
-		background-color: var(--color-page);
-		border: 1px solid var(--color-border-strong);
-		border-radius: var(--radius-control);
-		resize: vertical;
-	}
-
-	.info__editor:focus {
-		border-color: var(--color-accent);
-	}
-
-	.info__row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-		margin-bottom: 8px;
-	}
-
-	.info__error {
-		margin: 0 0 8px;
-		font: 500 13px/1.4 var(--font-body);
-		color: var(--color-danger-text);
-	}
-
-	.info__facts {
-		margin: 0;
-	}
-
-	.info__fact {
-		display: flex;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 5px 0;
-	}
-
-	.info__fact dt {
-		font: 400 13px/1.4 var(--font-body);
-		color: var(--color-text-faint);
-		white-space: nowrap;
-	}
-
-	.info__fact dd {
-		margin: 0;
-		font: 500 13px/1.4 var(--font-body);
-		color: var(--color-text);
-		text-align: right;
-		overflow-wrap: anywhere;
-	}
-
-	.info__group {
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-control);
-	}
-
-	.info__group summary {
-		padding: 8px 12px;
-		font: 600 13px/1.4 var(--font-body);
-		color: var(--color-text);
-		cursor: pointer;
-	}
-
-	.info__group[open] summary {
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.info__group .info__facts {
-		padding: 4px 12px;
-	}
-
-	.info__download {
-		display: inline-block;
-		margin-top: 4px;
-		padding: 8px 12px;
-		font: 600 13px/1.4 var(--font-body);
-		color: var(--color-link);
-		text-decoration: none;
-		border: 1px solid var(--color-border-strong);
-		border-radius: var(--radius-control);
-		transition: background-color var(--motion-fast) var(--ease-standard);
-	}
-
-	.info__download:hover {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
-	.info__placeholder {
-		margin: 0;
-		font: 400 13px/1.4 var(--font-body);
-		color: var(--color-text-faint);
 	}
 
 	@keyframes info-in {

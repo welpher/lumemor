@@ -98,12 +98,20 @@
 </script>
 
 {#if months.length > 0}
-	<nav class="scrubber" aria-label={$_('timeline_scrubber_label')}>
-		<div class="scrubber__rail" bind:this={rail}>
+	<nav class="scrubber fixed top-1/2 right-1 -translate-y-1/2 z-[40]" aria-label={$_('timeline_scrubber_label')}>
+		<!-- The drag owns the pointer: no touch scrolling fights it. -->
+		<div
+			class="scrubber__rail flex flex-col gap-0.5 px-1 py-1.5 rounded-control bg-[color-mix(in_srgb,var(--color-card)_85%,transparent)] shadow-card touch-none"
+			bind:this={rail}
+		>
 			{#each months as month (month.key)}
 				<button
-					class="scrubber__stop"
+					class="scrubber__stop px-2 py-[3px] font-body font-semibold text-[11px] leading-[1.4] whitespace-nowrap rounded-control bg-transparent cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
 					class:scrubber__stop--active={activeKey === month.key}
+					class:bg-accent-soft={activeKey === month.key}
+					class:bg-transparent={activeKey !== month.key}
+					class:text-accent-soft-text={activeKey === month.key}
+					class:text-text-soft={activeKey !== month.key}
 					type="button"
 					aria-current={activeKey === month.key ? 'true' : undefined}
 					onpointerdown={(event) => handlePointerDown(event, month.key)}
@@ -118,49 +126,3 @@
 		</div>
 	</nav>
 {/if}
-
-<style>
-	.scrubber {
-		position: fixed;
-		top: 50%;
-		right: 4px;
-		transform: translateY(-50%);
-		z-index: 40;
-	}
-
-	.scrubber__rail {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		padding: 6px 4px;
-		border-radius: var(--radius-control);
-		background-color: color-mix(in srgb, var(--color-card) 85%, transparent);
-		box-shadow: var(--shadow-card);
-		/* The drag owns the pointer: no touch scrolling fights it. */
-		touch-action: none;
-	}
-
-	.scrubber__stop {
-		padding: 3px 8px;
-		font: 600 11px/1.4 var(--font-body);
-		white-space: nowrap;
-		color: var(--color-text-soft);
-		background: none;
-		border: none;
-		border-radius: var(--radius-control);
-		cursor: pointer;
-		transition:
-			background-color var(--motion-fast) var(--ease-standard),
-			color var(--motion-fast) var(--ease-standard);
-	}
-
-	.scrubber__stop:hover {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
-	.scrubber__stop--active {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-</style>

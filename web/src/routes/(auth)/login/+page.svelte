@@ -86,14 +86,14 @@
 </svelte:head>
 
 {#if !data.setupRequired}
-	<main class="login">
+	<main class="login flex flex-col items-center gap-3 pt-[12vh] px-4 pb-12">
 		<!-- The wrapper owns the width: the Card's own element belongs to
 		     another component, so styling it from here is scoped out. -->
-		<div class="login__card">
+		<div class="login__card w-[min(400px,100%)]">
 			<Card>
-				<h1 class="login__title">{$_('login_title')}</h1>
-				<p class="login__description">{$_('login_description')}</p>
-				<form class="login__form" onsubmit={handleSubmit}>
+				<h1 class="login__title mb-1 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('login_title')}</h1>
+				<p class="login__description mb-5 font-body font-normal text-[15px] leading-[1.5] text-text-soft">{$_('login_description')}</p>
+				<form class="login__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
 					<Input
 						id="login-email"
 						label={$_('login_email')}
@@ -109,16 +109,16 @@
 						bind:value={password}
 					/>
 					{#if errorKey !== ''}
-						<p class="login__error" role="alert">{errorText(errorKey)}</p>
+						<p class="login__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(errorKey)}</p>
 					{/if}
 					{#if retryAfterSeconds !== null && countdownRemaining > 0}
 						<!-- The hint's lifetime is retryAfterSeconds (the response's
 						     authoritative rate-limit state): a resubmit nulls it, so a
 						     credential-failure outcome can never leave a frozen
 						     countdown next to its own message. -->
-						<p class="login__hint">{$_('login_retry_in', { values: { seconds: countdownRemaining } })}</p>
+						<p class="login__hint font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums">{$_('login_retry_in', { values: { seconds: countdownRemaining } })}</p>
 					{/if}
-					<div class="login__actions">
+					<div class="login__actions flex justify-end mt-1">
 						<Button type="submit" disabled={submitting}>{$_('login_submit')}</Button>
 					</div>
 				</form>
@@ -126,69 +126,7 @@
 		</div>
 		<!-- Placeholder notes for the mobile pairing entry (the web IA's
 		     bottom note); the QR flow is a later milestone's scope. -->
-		<p class="login__note">{$_('login_pairing_qr_note')}</p>
-		<p class="login__note">{$_('login_pairing_url_note')}</p>
+		<p class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center">{$_('login_pairing_qr_note')}</p>
+		<p class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center">{$_('login_pairing_url_note')}</p>
 	</main>
 {/if}
-
-<style>
-	.login {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 12px;
-		padding: 12vh 16px 48px;
-	}
-
-	.login__card {
-		width: min(400px, 100%);
-	}
-
-	.login__title {
-		margin: 0 0 4px;
-		font-family: var(--font-display);
-		font-weight: 700;
-		font-size: 26px;
-		letter-spacing: 0.01em;
-		color: var(--color-text);
-	}
-
-	.login__description {
-		margin: 0 0 20px;
-		font: 400 15px/1.5 var(--font-body);
-		color: var(--color-text-soft);
-	}
-
-	.login__form {
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-
-	.login__error {
-		margin: 0;
-		font: 500 14px/1.4 var(--font-body);
-		color: var(--color-danger-text);
-	}
-
-	.login__hint {
-		margin: 0;
-		font: 400 14px/1.4 var(--font-body);
-		color: var(--color-text-soft);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.login__actions {
-		display: flex;
-		justify-content: flex-end;
-		margin-top: 4px;
-	}
-
-	.login__note {
-		max-width: min(400px, 100%);
-		margin: 0;
-		font: 400 13px/1.5 var(--font-body);
-		color: var(--color-text-faint);
-		text-align: center;
-	}
-</style>
