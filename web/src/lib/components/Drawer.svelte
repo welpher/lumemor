@@ -50,14 +50,21 @@
 	<!-- The scrim is the click-outside dismissal: it covers everything
 	     except the panel, so a click on the page content, the top bar
 	     or the hamburger closes the drawer. -->
-	<div class="drawer__scrim" role="presentation" onclick={close}></div>
-	<nav class="drawer__panel" aria-label={$_('nav_label')}>
-		<ul class="drawer__list">
+	<div
+		class="drawer__scrim fixed inset-0 z-[90] bg-[color-mix(in_srgb,var(--color-night)_48%,transparent)]"
+		role="presentation"
+		onclick={close}
+	></div>
+	<nav class="drawer__panel fixed top-0 bottom-0 left-0 z-[100] flex flex-col gap-2 w-[min(320px,85vw)] px-3 py-4 bg-card border-r border-border shadow-overlay" aria-label={$_('nav_label')}>
+		<ul class="drawer__list flex flex-col gap-0.5 list-none">
 			{#each items as item (item.labelKey)}
 				<li>
 					{#if item.disabled}
+						<!-- The M3 placeholders: present and visible, but inert
+						     until their domains arrive; the title carries the
+						     coming-later note. -->
 						<button
-							class="drawer__item drawer__item--disabled"
+							class="drawer__item drawer__item--disabled block w-full px-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard disabled:text-text-faint disabled:cursor-not-allowed"
 							type="button"
 							disabled
 							title={$_('nav_coming_later')}
@@ -68,89 +75,26 @@
 						<!-- Navigating closes the drawer; the SvelteKit router
 						     owns the click's default action, so the handler must
 						     not prevent it. -->
-						<a class="drawer__item" href={item.href} onclick={close}>
+						<a
+							class="drawer__item block w-full px-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left no-underline rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]"
+							href={item.href}
+							onclick={close}
+						>
 							{$_(item.labelKey)}
 						</a>
 					{/if}
 				</li>
 			{/each}
 		</ul>
-		<p class="drawer__footnote">{$_('nav_coming_later')}</p>
+		<p class="drawer__footnote mt-auto mx-2 pt-3 border-t border-border font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('nav_coming_later')}</p>
 	</nav>
 {/if}
 
 <style>
-	.drawer__scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 90;
-		background-color: color-mix(in srgb, var(--color-night) 48%, transparent);
-	}
-
+	/* The entrance motion (verbatim): the keyframes and the panel's
+	 * animation declaration are the drawer's residual styles. */
 	.drawer__panel {
-		position: fixed;
-		top: 0;
-		bottom: 0;
-		left: 0;
-		z-index: 100;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		width: min(320px, 85vw);
-		padding: 16px 12px;
-		background-color: var(--color-card);
-		border-right: 1px solid var(--color-border);
-		box-shadow: var(--shadow-overlay);
 		animation: drawer-in var(--motion-base) var(--ease-standard);
-	}
-
-	.drawer__list {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		margin: 0;
-		padding: 0;
-		list-style: none;
-	}
-
-	.drawer__item {
-		display: block;
-		width: 100%;
-		padding: 10px 12px;
-		font: 600 15px/1.4 var(--font-body);
-		color: var(--color-text);
-		text-align: left;
-		text-decoration: none;
-		border: none;
-		border-radius: var(--radius-control);
-		background: none;
-		cursor: pointer;
-		transition: background-color var(--motion-fast) var(--ease-standard);
-	}
-
-	a.drawer__item:hover,
-	a.drawer__item:focus-visible {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
-	a.drawer__item:active {
-		background-color: color-mix(in srgb, var(--color-accent-soft) 60%, transparent);
-	}
-
-	/* The M3 placeholders: present and visible, but inert until their
-	 * domains arrive; the title carries the coming-later note. */
-	.drawer__item--disabled {
-		color: var(--color-text-faint);
-		cursor: not-allowed;
-	}
-
-	.drawer__footnote {
-		margin: auto 8px 0;
-		padding-top: 12px;
-		border-top: 1px solid var(--color-border);
-		font: 400 13px/1.4 var(--font-body);
-		color: var(--color-text-faint);
 	}
 
 	@keyframes drawer-in {

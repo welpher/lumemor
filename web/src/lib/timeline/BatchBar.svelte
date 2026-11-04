@@ -57,8 +57,12 @@
 </script>
 
 {#if count > 0}
-	<div class="batchbar" role="toolbar" aria-label={$_('batch_selected_count', { values: { count } })}>
-		<p class="batchbar__count">{$_('batch_selected_count', { values: { count } })}</p>
+	<div
+		class="batchbar fixed left-1/2 bottom-5 z-[60] flex flex-wrap items-center justify-center gap-2 max-w-[min(92vw,720px)] px-3.5 py-2.5 border border-border rounded-overlay bg-card shadow-overlay [transform:translateX(-50%)]"
+		role="toolbar"
+		aria-label={$_('batch_selected_count', { values: { count } })}
+	>
+		<p class="batchbar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap">{$_('batch_selected_count', { values: { count } })}</p>
 
 		{#if offers('favorite')}
 			<Button variant="ghost" disabled={busy} onclick={() => onaction(allFavorite ? 'unfavorite' : 'favorite')}>
@@ -78,73 +82,30 @@
 			<Button variant="ghost" disabled={busy} onclick={() => onaction('restore')}>{$_('action_restore')}</Button>
 		{/if}
 
-		<button class="batchbar__clear" type="button" aria-label={$_('action_clear_selection')} onclick={onclear}>
+		<button
+			class="batchbar__clear inline-flex items-center justify-center w-[34px] h-[34px] rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+			type="button"
+			aria-label={$_('action_clear_selection')}
+			onclick={onclear}
+		>
 			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
 				<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
 			</svg>
 		</button>
 
 		{#if errorKey !== ''}
-			<p class="batchbar__error" role="alert">{errorText(errorKey)}</p>
+			<p class="batchbar__error basis-full font-body font-normal text-[13px] leading-[1.4] text-danger-text text-center" role="alert">{errorText(errorKey)}</p>
 		{/if}
 	</div>
 {/if}
 
 <style>
+	/* The rise-in motion (verbatim): the keyframes and the bar's
+	 * animation declaration are the residual styles. The keyframes
+	 * animate `transform` over the element's [transform:translateX]
+	 * utility, exactly like the previous rule pair. */
 	.batchbar {
-		position: fixed;
-		left: 50%;
-		bottom: 20px;
-		transform: translateX(-50%);
-		z-index: 60;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		max-width: min(92vw, 720px);
-		padding: 10px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-overlay);
-		background-color: var(--color-card);
-		box-shadow: var(--shadow-overlay);
 		animation: batchbar-in var(--motion-base) var(--ease-standard);
-		flex-wrap: wrap;
-		justify-content: center;
-	}
-
-	.batchbar__count {
-		margin: 0 6px 0 0;
-		font: 700 15px/1.4 var(--font-body);
-		color: var(--color-text);
-		white-space: nowrap;
-	}
-
-	.batchbar__clear {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 34px;
-		height: 34px;
-		border: none;
-		border-radius: var(--radius-control);
-		color: var(--color-text-soft);
-		background: none;
-		cursor: pointer;
-		transition:
-			background-color var(--motion-fast) var(--ease-standard),
-			color var(--motion-fast) var(--ease-standard);
-	}
-
-	.batchbar__clear:hover {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
-	.batchbar__error {
-		flex-basis: 100%;
-		margin: 0;
-		font: 400 13px/1.4 var(--font-body);
-		color: var(--color-danger-text);
-		text-align: center;
 	}
 
 	@keyframes batchbar-in {

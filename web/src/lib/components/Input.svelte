@@ -18,10 +18,10 @@
 	}: Props = $props();
 </script>
 
-<div class="field" class:field--error={error !== ''}>
-	<label class="field__label" for={id}>{label}</label>
+<div class="field flex flex-col gap-1.5" class:field--error={error !== ''}>
+	<label class="field__label font-body font-semibold text-[14px] leading-[1.4] text-text" for={id}>{label}</label>
 	<input
-		class="field__input {className}"
+		class="field__input {className} px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border rounded-control transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard {error === '' ? 'border-border-strong focus:border-accent' : 'border-danger'}"
 		{id}
 		bind:value
 		aria-invalid={error !== '' ? 'true' : undefined}
@@ -29,45 +29,6 @@
 		{...rest}
 	/>
 	{#if error !== ''}
-		<p class="field__error" id="{id}-error">{error}</p>
+		<p class="field__error font-body font-medium text-[13px] leading-[1.4] text-danger-text" id="{id}-error">{error}</p>
 	{/if}
 </div>
-
-<style>
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.field__label {
-		font: 600 14px/1.4 var(--font-body);
-		color: var(--color-text);
-	}
-
-	.field__input {
-		padding: 9px 12px;
-		font: 400 15px/1.4 var(--font-body);
-		color: var(--color-text);
-		background-color: var(--color-card);
-		border: 1px solid var(--color-border-strong);
-		border-radius: var(--radius-control);
-		transition:
-			border-color var(--motion-fast) var(--ease-standard),
-			box-shadow var(--motion-fast) var(--ease-standard);
-	}
-
-	.field__input:focus {
-		border-color: var(--color-accent);
-	}
-
-	.field--error .field__input {
-		border-color: var(--color-danger);
-	}
-
-	.field__error {
-		margin: 0;
-		font: 500 13px/1.4 var(--font-body);
-		color: var(--color-danger-text);
-	}
-</style>

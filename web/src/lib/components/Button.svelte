@@ -16,67 +16,26 @@
 	};
 
 	let { variant = 'primary', type = 'button', class: className = '', children, ...rest }: Props = $props();
+
+	// The visual half of each variant; the btn--<variant> class name
+	// stays as the identity/state hook. Hovers sit behind
+	// :not(:disabled) exactly like the previous :hover:not(:disabled)
+	// rules, and the border color is variant-owned so no two plain
+	// border-color utilities ever land on the same element.
+	const variantUtilities: Record<ButtonVariant, string> = {
+		primary: 'bg-accent text-accent-on border-transparent hover:not-disabled:bg-accent-strong',
+		ghost:
+			'bg-transparent text-text border-border-strong hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text',
+		danger:
+			'bg-transparent text-text border-danger hover:not-disabled:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
+	};
 </script>
 
-<button class="btn btn--{variant} {className}" {type} {...rest}>
+<button
+	class="btn btn--{variant} {className} inline-flex items-center justify-center gap-2 px-4 py-2 font-body font-semibold text-[15px] leading-[1.2] rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard disabled:opacity-55 disabled:cursor-not-allowed {variantUtilities[variant]}"
+	{type}
+	{...rest}
+>
 	{@render children?.()}
 </button>
 
-<style>
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		padding: 8px 16px;
-		font: 600 15px/1.2 var(--font-body);
-		border-radius: var(--radius-control);
-		border: 1px solid transparent;
-		cursor: pointer;
-		transition:
-			background-color var(--motion-fast) var(--ease-standard),
-			border-color var(--motion-fast) var(--ease-standard),
-			color var(--motion-fast) var(--ease-standard);
-	}
-
-	.btn:disabled {
-		opacity: 0.55;
-		cursor: not-allowed;
-	}
-
-	/* Primary: the accent fill (Blue 700 + white in light, Blue 300 +
-	 * Navy 900 in dark, per the brand contrast rules). */
-	.btn--primary {
-		background-color: var(--color-accent);
-		color: var(--color-accent-on);
-	}
-
-	.btn--primary:hover:not(:disabled) {
-		background-color: var(--color-accent-strong);
-	}
-
-	/* Ghost: quiet outline for secondary actions. */
-	.btn--ghost {
-		background-color: transparent;
-		color: var(--color-text);
-		border-color: var(--color-border-strong);
-	}
-
-	.btn--ghost:hover:not(:disabled) {
-		background-color: var(--color-accent-soft);
-		color: var(--color-accent-soft-text);
-	}
-
-	/* Danger: destructive actions, marked by the Ember border. The
-	 * label keeps the regular text color for AA contrast; Ember text
-	 * on light backgrounds stays below 4.5:1. */
-	.btn--danger {
-		background-color: transparent;
-		color: var(--color-text);
-		border-color: var(--color-danger);
-	}
-
-	.btn--danger:hover:not(:disabled) {
-		background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
-	}
-</style>
