@@ -48,6 +48,7 @@
   "model_download_failed": "The model download could not be started. Check the server logs and try again.",
   "model_not_found": "This model is not registered.",
   "model_invalid": "This model cannot be used for the requested action. Check its files and activation state.",
+  "person_not_found": "This person does not exist or is not visible to you.",
   "timeline_loading": "Loading your timeline…",
   "timeline_empty": "Your timeline is empty. Photos you upload appear here.",
   "timeline_load_more": "Load more",

@@ -44,6 +44,10 @@ tags:
     description: Login, session management and device pairing.
   - name: events
     description: Server-sent activity stream.
+  - name: people
+    description: 'The people surface: named people, unnamed face clusters
+      and per-cluster detail, every view scoped to the calling user''s
+      visible assets and private labels.'
   - name: server
     description: Instance discovery and first-run setup.
 paths:
@@ -2561,6 +2565,336 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /people:
+    get:
+      operationId: listPeople
+      tags:
+        - people
+      summary: The caller's named people.
+      description: |
+        The named region of the people surface: every face cluster
+        the caller sees that carries one of the caller's own labels.
+        A cluster is listed here when both hold:
+
+        - it contains at least one face on an asset visible to the
+          caller (before library sharing exists: an asset the caller
+          owns that is live -- not trashed, not hidden, no Live Photo
+          component row), and
+        - the caller has labeled it with a `user_face_labels` row of
+          their own.
+
+        The B4 semantics of the people domain: face clusters are
+        GLOBAL structures of the instance (the same person's faces
+        land in one cluster whatever account uploaded the photos),
+        while names and the hidden switch are PRIVATE per user --
+        two accounts label the same cluster independently and
+        neither sees the other's label. `faceCount` is honest per
+        caller: it counts only the cluster's faces on caller-visible
+        assets, so the same cluster can show different counts to
+        different accounts.
+
+        Hidden people STAY in this list carrying `isHidden` true:
+        the switch is a badge for the web UI, not a filter -- the
+        caller labeled the person and keeps seeing them, flagged.
+
+        The list is sorted by name, case-insensitively, with the
+        cluster id as the tiebreak.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            The caller's named people, sorted by name (case-
+            insensitive, cluster id as the tiebreak). The array is
+            empty when the caller has labeled no cluster they can
+            see.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PersonSummary'
+              examples:
+                twoPeople:
+                  summary: Two labeled clusters, one hidden.
+                  value:
+                    - clusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                      name: Ada
+                      faceCount: 12
+                      representativeFaceId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+                      thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+                      isHidden: false
+                    - clusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72
+                      name: Grace
+                      faceCount: 3
+                      representativeFaceId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73
+                      thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73/thumbnail
+                      isHidden: true
+                empty:
+                  summary: Nothing labeled yet.
+                  value: []
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/unnamed:
+    get:
+      operationId: listUnnamedPeople
+      tags:
+        - people
+      summary: The caller's unnamed face clusters, one keyset page at a time.
+      description: |
+        The unnamed region of the people surface: every face cluster
+        that contains at least one face on an asset visible to the
+        caller (before library sharing exists: an asset the caller
+        owns that is live -- not trashed, not hidden, no Live Photo
+        component row) and carries NO `user_face_labels` row of the
+        caller. The moment the caller labels a cluster it moves to
+        `GET /people` and out of this list; another account's label
+        never moves it for this caller (B4: clusters are global,
+        labels are private per user).
+
+        Pages are keyset-paginated with an opaque cursor over the
+        ordering `faceCount` descending, `clusterId` descending as
+        the tiebreak. The continuation key is the (faceCount,
+        clusterId) pair of a page's last row -- the same row-value
+        predicate pattern the timeline endpoint applies to its
+        (takenAt, id) pair, which keeps pages stable while clusters
+        gain or lose faces. The response carries `nextCursor` exactly
+        when another page exists; the first page omits the `cursor`
+        parameter.
+
+        `limit` bounds the page size: absent means the default of
+        60; a value below 1 or over 200 answers 400
+        `VALIDATION_FAILED`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: |
+            The `nextCursor` of the previous page; absent on the
+            first page. An unparseable value answers 400
+            `VALIDATION_FAILED` (cursors are opaque strings produced
+            by this endpoint, never assembled by clients).
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: |
+            Page size: the number of cluster summaries one response
+            carries at most. Defaults to 60; values below 1 or over
+            200 answer 400.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 60
+          example: 60
+      responses:
+        '200':
+          description: |
+            One page of unnamed clusters, largest face count first.
+            `nextCursor` is present exactly when another page
+            follows; the last page carries none.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnnamedClustersResponse'
+              examples:
+                firstPage:
+                  summary: A full page with a follow-up cursor.
+                  value:
+                    items:
+                      - clusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f74
+                        faceCount: 8
+                        representativeFaceId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f75
+                        thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f75/thumbnail
+                      - clusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f76
+                        faceCount: 2
+                        representativeFaceId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f77
+                        thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f77/thumbnail
+                    nextCursor: GJwAARBkYWQ1YTQ2
+                lastPage:
+                  summary: The final page carries no cursor.
+                  value:
+                    items:
+                      - clusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f78
+                        faceCount: 2
+                        representativeFaceId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f79
+                        thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f79/thumbnail
+                empty:
+                  summary: Every visible cluster is labeled (or none exists).
+                  value:
+                    items: []
+        '400':
+          description: |
+            The pagination parameters are invalid: `cursor` is not a
+            value this endpoint produced, or `limit` is below 1 or
+            over 200.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: A page size over the cap.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: limit must be at most 200
+                    details:
+                      fields:
+                        - limit
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/{clusterId}:
+    get:
+      operationId: getPersonCluster
+      tags:
+        - people
+      summary: One face cluster's detail as the caller sees it.
+      description: |
+        The detail view of one face cluster: the caller's own label
+        state and the cluster's faces on assets visible to the
+        caller, strongest score first with the face id as the
+        tiebreak.
+
+        `label` is null when the caller has not labeled the cluster
+        (the unnamed state). It is the CALLING user's label or no
+        label at all: another account's label never shows here
+        (B4 -- clusters are global, labels are private per user).
+
+        404 has a double meaning by design: the cluster id is
+        unknown, or the cluster exists but none of its faces sits on
+        an asset visible to the caller (before library sharing: the
+        cluster's assets all belong to other accounts). Both answer
+        the same `PERSON_NOT_FOUND`, byte for byte, so cluster ids
+        cannot be probed for existence -- the same anti-enumeration
+        shape as `ASSET_NOT_FOUND`.
+
+        Every `thumbnail` points at the face crop endpoint
+        `GET /api/v1/faces/{faceId}/thumbnail`, which serves the
+        face's bounding-box crop of the asset's view-size
+        derivative.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: clusterId
+          in: path
+          required: true
+          description: Identifier of the face cluster.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            The cluster's detail as the caller sees it. `label` is
+            null in the unnamed state; `faces` holds exactly the
+            faces on caller-visible assets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterDetail'
+              examples:
+                labeled:
+                  summary: A labeled cluster with two visible faces.
+                  value:
+                    clusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                    label:
+                      name: Ada
+                      isHidden: false
+                    faces:
+                      - id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+                        assetId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72
+                        score: 0.94
+                        thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+                        asset:
+                          takenAt: '2026-10-13T12:30:00Z'
+                          originalFilename: IMG_1234.jpg
+                      - id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73
+                        assetId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f74
+                        score: 0.81
+                        thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73/thumbnail
+                        asset:
+                          takenAt: '2026-10-12T08:00:00Z'
+                          originalFilename: IMG_1235.jpg
+                unnamed:
+                  summary: The caller has not labeled this cluster.
+                  value:
+                    clusterId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f76
+                    label: null
+                    faces: []
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '404':
+          description: |
+            No such cluster for this caller: the id is unknown, or
+            the cluster exists but none of its faces sits on an asset
+            visible to the caller -- indistinguishable by design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                personNotFound:
+                  value:
+                    code: PERSON_NOT_FOUND
+                    message: no such person for this caller
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /admin/users:
     get:
       operationId: listUsers
@@ -5028,6 +5362,206 @@ components:
             out of every live view (the timeline, the favorites)
             until it is unhidden; `false` returns it. The same switch
             the batch `hide` / `unhide` actions flip.
+    PersonSummary:
+      type: object
+      description: |
+        One named person of the caller's people list: a global face
+        cluster carrying the caller's own label. The name and the
+        hidden switch are the caller's private label state (B4) --
+        another account labeling or hiding the same cluster never
+        changes this view.
+      required:
+        - clusterId
+        - name
+        - faceCount
+        - representativeFaceId
+        - thumbnail
+        - isHidden
+      properties:
+        clusterId:
+          type: string
+          format: uuid
+          description: Identifier of the face cluster.
+        name:
+          type: string
+          description: The caller's own label of the cluster.
+        faceCount:
+          type: integer
+          description: |
+            The cluster's faces on assets visible to the caller --
+            the honest per-caller count, not the global member count.
+        representativeFaceId:
+          type: string
+          format: uuid
+          description: |
+            The cluster's representative face (its strongest-scoring
+            member); the face the person card renders.
+        thumbnail:
+          type: string
+          description: |
+            URL of the representative face's crop: the face crop
+            endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
+            representative face's id.
+          examples:
+            - /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+        isHidden:
+          type: boolean
+          description: |
+            The caller's hidden switch for this person. Hidden people
+            stay listed carrying this flag (badge semantics); they
+            are not filtered out.
+    UnnamedClusterSummary:
+      type: object
+      description: |
+        One unnamed face cluster of the caller's unnamed region: a
+        global cluster the caller sees through at least one visible
+        asset and has not labeled themselves. Unlabeled for THIS
+        caller says nothing about another account's labels (B4 --
+        labels are private per user).
+      required:
+        - clusterId
+        - faceCount
+        - representativeFaceId
+        - thumbnail
+      properties:
+        clusterId:
+          type: string
+          format: uuid
+          description: Identifier of the face cluster.
+        faceCount:
+          type: integer
+          description: |
+            The cluster's faces on assets visible to the caller --
+            the honest per-caller count, not the global member count.
+        representativeFaceId:
+          type: string
+          format: uuid
+          description: |
+            The cluster's representative face (its strongest-scoring
+            member); the face the cluster tile renders.
+        thumbnail:
+          type: string
+          description: |
+            URL of the representative face's crop: the face crop
+            endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
+            representative face's id.
+          examples:
+            - /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+    UnnamedClustersResponse:
+      type: object
+      description: One keyset page of the caller's unnamed clusters.
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          description: |
+            The page's clusters, ordered by `faceCount` descending
+            with the cluster id as the tiebreak.
+          items:
+            $ref: '#/components/schemas/UnnamedClusterSummary'
+        nextCursor:
+          type: string
+          description: |
+            The opaque continuation cursor: pass it back as the
+            `cursor` query parameter to fetch the next page. Absent
+            exactly when this is the last page.
+    ClusterDetail:
+      type: object
+      description: |
+        One face cluster's detail as the calling user sees it: the
+        caller's own label state and the cluster's faces on
+        caller-visible assets, strongest score first.
+      required:
+        - clusterId
+        - label
+        - faces
+      properties:
+        clusterId:
+          type: string
+          format: uuid
+          description: Identifier of the face cluster.
+        label:
+          description: |
+            The caller's label of the cluster, or null when the
+            caller has not labeled it (the unnamed state). It is the
+            calling user's label or no label at all: another
+            account's label never shows here (B4).
+          anyOf:
+            - $ref: '#/components/schemas/PersonLabel'
+            - type: 'null'
+        faces:
+          type: array
+          description: |
+            The cluster's faces on assets visible to the caller,
+            strongest score first with the face id as the tiebreak.
+            Faces on other accounts' assets never appear.
+          items:
+            $ref: '#/components/schemas/FaceDetail'
+    PersonLabel:
+      type: object
+      description: The calling user's private label of one face cluster.
+      required:
+        - name
+        - isHidden
+      properties:
+        name:
+          type: string
+          description: The caller's name for the person.
+        isHidden:
+          type: boolean
+          description: |
+            The caller's hidden switch. Hidden people stay listed in
+            `GET /people` carrying this flag (badge semantics).
+    FaceDetail:
+      type: object
+      description: |
+        One face of the cluster on an asset visible to the caller:
+        the crop's identity, the detection score and the minimal
+        asset context the detail grid renders.
+      required:
+        - id
+        - assetId
+        - score
+        - thumbnail
+        - asset
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the face row.
+        assetId:
+          type: string
+          format: uuid
+          description: Identifier of the asset the face sits on.
+        score:
+          type: number
+          format: float
+          description: The detector's confidence for this face.
+        thumbnail:
+          type: string
+          description: |
+            URL of the face's crop: the face crop endpoint
+            `GET /api/v1/faces/{faceId}/thumbnail` with this face's
+            id, serving the bounding-box crop of the asset's
+            view-size derivative.
+        asset:
+          type: object
+          description: |
+            The minimal context of the asset the face sits on: when
+            it was taken and under what file name -- the two lines
+            the cluster detail renders under each crop.
+          required:
+            - takenAt
+            - originalFilename
+          properties:
+            takenAt:
+              type: string
+              format: date-time
+              description: When the asset was taken (RFC 3339 UTC).
+            originalFilename:
+              type: string
+              description: The file name the asset was uploaded under.
     Error:
       type: object
       description: |
@@ -5057,6 +5591,7 @@ components:
             - MODEL_DOWNLOAD_FAILED
             - MODEL_NOT_FOUND
             - MODEL_INVALID
+            - PERSON_NOT_FOUND
         message:
           type: string
           description: English technical description for debugging.
