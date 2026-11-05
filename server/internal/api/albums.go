@@ -69,6 +69,37 @@ func (s *server) albumPageParams(w http.ResponseWriter, limit *int, cursor *stri
 	return pageLimit, pageCursor, true
 }
 
+// writeAlbumNotFound emits the album surface's single-shape 404: the
+// same envelope every read and write answers for an album the caller
+// cannot see -- unknown, foreign-unshared, revoked, sync -- so the
+// two faces stay byte-identical and album ids cannot be probed for
+// existence.
+func (s *server) writeAlbumNotFound(w http.ResponseWriter) {
+	s.writeError(w, http.StatusNotFound, apigen.ALBUMNOTFOUND,
+		"no such album for this caller", nil)
+}
+
+// albumSummaryCard maps one album row plus its honest companions
+// onto the wall card shape: the collage source (the pinned cover or
+// the derived candidates), the live member count, the share badge
+// and the caller's role. The wall's own mapping and the write
+// face's responses share this one authority, so a write's answer is
+// the card the wall lists.
+func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role apigen.AlbumSummaryCallerRole, derived []uuid.UUID) apigen.AlbumSummary {
+	return apigen.AlbumSummary{
+		Id:            uuid.UUID(album.ID.Bytes),
+		Title:         album.Title,
+		Description:   album.Description,
+		Type:          apigen.AlbumSummaryType(album.Type),
+		Locked:        album.Locked,
+		IsShared:      isShared,
+		CoverAssetIds: coverAssetIds(album.CoverAssetID, derived),
+		ItemCount:     int(itemCount),
+		UpdatedAt:     album.UpdatedAt.Time.UTC(),
+		CallerRole:    role,
+	}
+}
+
 // assetTileThumbnailPath renders the tile-size serving URL of one
 // asset: the existing asset thumbnail endpoint with the tile size,
 // the same serving copy the timeline's grid requests -- the album
@@ -135,18 +166,8 @@ func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 	albums := make([]apigen.AlbumSummary, 0, len(rows))
 	for _, row := range rows {
 		albumID := uuid.UUID(row.Album.ID.Bytes)
-		summary := apigen.AlbumSummary{
-			Id:            albumID,
-			Title:         row.Album.Title,
-			Description:   row.Album.Description,
-			Type:          apigen.AlbumSummaryType(row.Album.Type),
-			Locked:        row.Album.Locked,
-			IsShared:      row.IsShared,
-			CoverAssetIds: coverAssetIds(row.Album.CoverAssetID, covers[albumID]),
-			ItemCount:     int(row.ItemCount),
-			UpdatedAt:     row.Album.UpdatedAt.Time.UTC(),
-			CallerRole:    apigen.AlbumSummaryCallerRole(row.CallerRole),
-		}
+		summary := albumSummaryCard(row.Album, row.IsShared, row.ItemCount,
+			apigen.AlbumSummaryCallerRole(row.CallerRole), covers[albumID])
 		// The owner attribution rides only on shared items: an own
 		// card's owner is the caller, and the query leaves the pair
 		// NULL for exactly those rows.
@@ -186,8 +207,7 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		AlbumID: pgUUID(albumId),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		s.writeError(w, http.StatusNotFound, apigen.ALBUMNOTFOUND,
-			"no such album for this caller", nil)
+		s.writeAlbumNotFound(w)
 		return
 	}
 	if err != nil {

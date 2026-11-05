@@ -9,9 +9,156 @@ All URIs are relative to */api/v1*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**addAlbumItems**](AlbumsApi.md#addalbumitems) | **POST** /albums/{albumId}/items | Add assets to one virtual album.
+[**createAlbum**](AlbumsApi.md#createalbum) | **POST** /albums | Create one virtual album.
+[**deleteAlbum**](AlbumsApi.md#deletealbum) | **DELETE** /albums/{albumId} | Delete one virtual album.
 [**getAlbum**](AlbumsApi.md#getalbum) | **GET** /albums/{albumId} | One album&#39;s detail and one page of its items.
 [**listAlbums**](AlbumsApi.md#listalbums) | **GET** /albums | The caller&#39;s album wall.
+[**removeAlbumItems**](AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one virtual album.
+[**updateAlbum**](AlbumsApi.md#updatealbum) | **PATCH** /albums/{albumId} | Patch one album&#39;s properties.
 
+
+# **addAlbumItems**
+> AddAlbumItemsResponse addAlbumItems(albumId, albumItemsRequest)
+
+Add assets to one virtual album.
+
+Adds assets to the caller's virtual album with the batch surface's set semantics: one request, one list of at most 200 asset ids, one honest report `{added, skipped}`.  VIRTUAL albums only: directory albums manage their own membership (the rescan flow, a later milestone) and sync albums are no album resources; both answer the single-shape 404 like an unknown id.  Skip semantics (the batch surface's missing-ids discipline): every id must belong to a live asset the CALLER owns -- the owner-based live predicate (not trashed, not hidden, not a Live Photo component row) until the union switchover of a later task. A foreign account's asset, a trashed, hidden or component row, and an unknown id are silently skipped, never errors. An id that already sits in the album is skipped too: membership is a set, the add is idempotent. An all-skipped request still answers 200 with `added` 0. Repeated ids collapse to one application; the counts cover the distinct ids. The inserted rows record the caller as `added_by`.  The locked gate applies: a locked album refuses the write with 409 `ALBUM_LOCKED`. Authorization is the writes' two-tier answer (invisible 404, shared-to-caller 403, the owner or an admin override writes).  The write publishes one `album.items-changed` event exactly when at least one row was added -- the idempotent no-op stays silent. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAlbumsApi();
+final String albumId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the album.
+final AlbumItemsRequest albumItemsRequest = {"assetIds":["0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072","0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073","0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6074"]}; // AlbumItemsRequest | 
+
+try {
+    final response = api.addAlbumItems(albumId, albumItemsRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AlbumsApi->addAlbumItems: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **albumId** | **String**| Identifier of the album. | 
+ **albumItemsRequest** | [**AlbumItemsRequest**](AlbumItemsRequest.md)|  | 
+
+### Return type
+
+[**AddAlbumItemsResponse**](AddAlbumItemsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **createAlbum**
+> AlbumSummary createAlbum(albumCreateRequest)
+
+Create one virtual album.
+
+Creates one virtual album owned by the caller -- the album the wall lists, the detail shows and the curation endpoints edit. The virtual album is the ONLY creatable type through this face, so the request carries no type field: directory albums arrive with their own milestone (they mirror a filesystem path the server scans), and every account's sync album is born with the account.  The title is trimmed and must span 1-64 Unicode characters (the count is over runes, so multi-byte titles stay within the bound at the same length); the description is optional bounded free text (10,000 characters, the asset description's own bound) and defaults to the empty string.  The response is the created album's wall card -- the summary exactly as `GET /albums` lists it: `callerRole` `owner`, `isShared` false, an empty `coverAssetIds` array (never null) and `itemCount` 0, nothing being a member yet. The write publishes one `album.created` event. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAlbumsApi();
+final AlbumCreateRequest albumCreateRequest = {"title":"Road trip 2026","description":"The coastal week in the van."}; // AlbumCreateRequest | 
+
+try {
+    final response = api.createAlbum(albumCreateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AlbumsApi->createAlbum: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **albumCreateRequest** | [**AlbumCreateRequest**](AlbumCreateRequest.md)|  | 
+
+### Return type
+
+[**AlbumSummary**](AlbumSummary.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **deleteAlbum**
+> deleteAlbum(albumId)
+
+Delete one virtual album.
+
+Deletes the caller's virtual album: the row goes, and every `album_items` membership row and every `album_shares` row follows through the schema's cascades. The answer is 204 with no body, and the write publishes one `album.deleted` event.  VIRTUAL albums only: a directory album answers the single-shape 404 (directory removal is the directory album's own flow, not a generic delete -- it arrives with a later milestone), and a sync album is no album resource at all. The same 404 answers an unknown id.  The locked gate does NOT apply to the delete: a locked album can be deleted by its owner -- locking is a curation freeze, not a tombstone.  Authorization is the writes' two-tier answer: an album the caller cannot see answers the single-shape 404; an album shared to the caller answers 403 `AUTH_FORBIDDEN` (the share is view-only); the owner -- or an administrator overriding the owner check -- deletes. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAlbumsApi();
+final String albumId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the album.
+
+try {
+    api.deleteAlbum(albumId);
+} on DioException catch (e) {
+    print('Exception when calling AlbumsApi->deleteAlbum: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **albumId** | **String**| Identifier of the album. | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **getAlbum**
 > AlbumDetail getAlbum(albumId, cursor, limit)
@@ -103,6 +250,104 @@ This endpoint does not need any parameter.
 ### HTTP request headers
 
  - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **removeAlbumItems**
+> RemoveAlbumItemsResponse removeAlbumItems(albumId, albumItemsRequest)
+
+Remove assets from one virtual album.
+
+Removes membership rows from the caller's virtual album: `{removed, skipped}`, the same batch semantics as the add. An id that is no member of the album -- never was, or already removed -- is skipped; an all-skipped request still answers 200 with `removed` 0. Repeated ids collapse; the counts cover the distinct ids.  The removal carries no live predicate: a trashed member's row still leaves, the honest cleanup of the set (the live views filter trashed members out of the renders; removing the row tidies the set itself).  VIRTUAL albums only (directory and sync albums answer the single-shape 404); the locked gate applies (409 `ALBUM_LOCKED`); authorization is the writes' two-tier answer (invisible 404, shared-to-caller 403, the owner or an admin override writes).  The write publishes one `album.items-changed` event exactly when at least one row was removed -- the idempotent no-op stays silent. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAlbumsApi();
+final String albumId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the album.
+final AlbumItemsRequest albumItemsRequest = {"assetIds":["0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072","0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073"]}; // AlbumItemsRequest | 
+
+try {
+    final response = api.removeAlbumItems(albumId, albumItemsRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AlbumsApi->removeAlbumItems: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **albumId** | **String**| Identifier of the album. | 
+ **albumItemsRequest** | [**AlbumItemsRequest**](AlbumItemsRequest.md)|  | 
+
+### Return type
+
+[**RemoveAlbumItemsResponse**](RemoveAlbumItemsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **updateAlbum**
+> AlbumSummary updateAlbum(albumId, albumPatch)
+
+Patch one album's properties.
+
+The owner's partial edit of the album's properties: `title`, `description`, `coverAssetId` and `locked`, any subset, at least one field (a body that carries none -- JSON null counts as absent, the patch discipline of the asset surface -- is a client bug and answers 400). The response is the album's wall card after the edit.  Authorization is the two-tier answer every album write pins: an album the caller cannot see at all -- an unknown id, another account's unshared album, every sync album -- answers the single-shape 404 `ALBUM_NOT_FOUND`, byte-identical to the read face, so album ids cannot be probed; an album the caller CAN see but does not own (an album shared to the caller) is an honest authorization failure -- 403 `AUTH_FORBIDDEN`, the share is view-only. The owner writes, and an administrator may override the owner check (the admin role bypasses it, the permanent delete's own discipline).  The locked gate: a locked album refuses the property and curation fields (`title`, `description`, `coverAssetId`) with 409 `ALBUM_LOCKED` -- unlock first. The `locked` field itself is never gated: a patch of only `locked: false` IS the unlock.  Cover validation (the spec's application-layer pin): a present `coverAssetId` must be a LIVE member of THIS album -- the membership row exists and the asset passes the live predicate (not trashed, not hidden, not a Live Photo component row). Any other id -- an asset that is no member, a trashed, hidden or component row, another account's asset -- answers 400 `VALIDATION_FAILED` carrying the message key `album_cover_not_member`. A `coverAssetId` that is absent (or JSON null, which decodes as absent) leaves the pin unchanged.  The write publishes one `album.updated` event on every successful patch, whatever fields changed -- the convergent refetch makes the unconditional fire harmless. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAlbumsApi();
+final String albumId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the album.
+final AlbumPatch albumPatch = {"title":"Road trip 2026 -- rerun"}; // AlbumPatch | 
+
+try {
+    final response = api.updateAlbum(albumId, albumPatch);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AlbumsApi->updateAlbum: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **albumId** | **String**| Identifier of the album. | 
+ **albumPatch** | [**AlbumPatch**](AlbumPatch.md)|  | 
+
+### Return type
+
+[**AlbumSummary**](AlbumSummary.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)

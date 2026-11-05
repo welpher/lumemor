@@ -187,3 +187,138 @@ WHERE ai.album_id = sqlc.arg('album_id')
   )
 ORDER BY a.taken_at DESC, a.id DESC
 LIMIT sqlc.arg('limit_count');
+
+-- Album writes (M3c Task 2): creation, the property patch, the
+-- delete, the membership curation and the write face's authorization
+-- gate. The reads' live-member predicate runs through the cover
+-- validation and the add's resolution: the same three-part filter
+-- (deleted_at IS NULL AND is_hidden = false AND is_component =
+-- false).
+
+-- name: GetAlbumForWrite :one
+-- The write face's authorization gate: the album row plus whether
+-- the caller holds a view share of it. Sync albums answer no row
+-- (the timeline is their face, whoever owns them); the owner check
+-- itself is NOT here -- the handler shapes the two-tier answer off
+-- the row, the permanent delete's discipline (the refusal, not the
+-- read, shapes the response): the owner or an administrator
+-- proceeds, a sharee answers the honest 403, and everyone else
+-- folds into the reads' byte-identical 404.
+SELECT sqlc.embed(al),
+       EXISTS (
+           SELECT 1 FROM album_shares s
+           WHERE s.album_id = al.id AND s.user_id = sqlc.arg('user_id')
+       ) AS shared_to_caller
+FROM albums al
+WHERE al.id = sqlc.arg('album_id')
+  AND al.type <> 'sync';
+
+-- name: CreateVirtualAlbum :one
+-- The virtual album creator: the write face's only creatable type
+-- (directory albums arrive with their own milestone, sync albums are
+-- born per account), with the id generated caller-side because the
+-- table carries no default. The wall card's companions are the
+-- creation-time constants -- no share, no member, no cover -- so the
+-- handler reads the fresh row's full card through GetAlbumSummary
+-- like every other write response.
+INSERT INTO albums (id, owner_id, title, description, type)
+VALUES (sqlc.arg('id'), sqlc.arg('owner_id'), sqlc.arg('title'), sqlc.arg('description'), 'virtual')
+RETURNING id;
+
+-- name: GetAlbumSummary :one
+-- The album row with the wall card's honest companions: whether any
+-- share row exists and the live member count. The write face's
+-- responses build their cards off this row; the derived cover
+-- candidates ride along through the wall's own follow-up query.
+SELECT sqlc.embed(al),
+       EXISTS (
+           SELECT 1 FROM album_shares s WHERE s.album_id = al.id
+       ) AS is_shared,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+       ) AS item_count
+FROM albums al
+WHERE al.id = sqlc.arg('album_id');
+
+-- name: UpdateAlbumFields :one
+-- The property patch: every field COALESCEs over the stored value,
+-- so an absent (NULL) parameter keeps it and a present one replaces
+-- it. The cover rides the same discipline -- a coverAssetId of JSON
+-- null decodes as absent, the patch convention of the asset surface,
+-- so the pin can change through this face but never clear.
+-- updated_at moves with the write: the wall orders the own group by
+-- it. No owner guard and no type guard here: the handler's gate
+-- already resolved the caller's right to this write, and an album
+-- deleted between the gate and the statement answers no row -- the
+-- honest 404 of a gone album.
+UPDATE albums
+SET title = COALESCE(sqlc.narg('title'), title),
+    description = COALESCE(sqlc.narg('description'), description),
+    cover_asset_id = COALESCE(sqlc.arg('cover_asset_id'), cover_asset_id),
+    locked = COALESCE(sqlc.narg('locked'), locked),
+    updated_at = now()
+WHERE id = sqlc.arg('album_id')
+RETURNING id;
+
+-- name: CountLiveAlbumMember :one
+-- The cover validation (the spec's application-layer pin): does the
+-- given asset sit in this album as a LIVE member? The membership row
+-- must exist AND the asset must pass the live predicate -- a hidden,
+-- trashed or Live Photo component member is a member no more for
+-- cover purposes, and an asset outside the album never was one.
+SELECT count(*) AS matches
+FROM album_items ai
+JOIN assets a ON a.id = ai.asset_id
+WHERE ai.album_id = sqlc.arg('album_id')
+  AND ai.asset_id = sqlc.arg('asset_id')
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false;
+
+-- name: DeleteVirtualAlbum :execrows
+-- The virtual album delete: the row goes and every album_items and
+-- album_shares row follows through the schema's ON DELETE CASCADE.
+-- The type guard keeps the statement honest against the handler's
+-- virtual-only verdict (directory removal is the directory album's
+-- own flow), and zero rows -- a concurrent delete won the race -- is
+-- the 404 of a gone album. No locked gate ever runs here: locking is
+-- a curation freeze, not a tombstone.
+DELETE FROM albums
+WHERE id = sqlc.arg('album_id')
+  AND type = 'virtual';
+
+-- name: AddAlbumItems :execrows
+-- The membership add: resolution and insert in one statement. The
+-- WHERE arm IS the resolution -- every id must name a live asset the
+-- CALLER owns (the owner-based live predicate; the union switchover
+-- of the later task replaces it) -- so foreign, trashed, hidden,
+-- component and unknown ids never produce rows: they are the
+-- skipped of the honest report, never errors. ON CONFLICT DO NOTHING
+-- makes the already-member id the no-op of the idempotent add
+-- (membership is a set). The SELECT scans assets once, so a repeated
+-- id in the array yields one row; the rows-affected count is the
+-- report's added.
+INSERT INTO album_items (album_id, asset_id, added_by)
+SELECT sqlc.arg('album_id'), a.id, sqlc.arg('added_by')
+FROM assets a
+WHERE a.id = ANY(sqlc.arg('asset_ids')::uuid[])
+  AND a.owner_id = sqlc.arg('owner_id')
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+ON CONFLICT DO NOTHING;
+
+-- name: RemoveAlbumItems :execrows
+-- The membership remove: the rows that exist leave, and the ids that
+-- are no members simply match nothing. No live predicate -- the
+-- removal tidies the set itself (a trashed member's row still
+-- leaves), and the rows-affected count is the report's removed.
+DELETE FROM album_items
+WHERE album_id = sqlc.arg('album_id')
+  AND asset_id = ANY(sqlc.arg('asset_ids')::uuid[]);

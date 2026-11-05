@@ -7,6 +7,33 @@ void main() {
   final instance = LumemorApi().getAlbumsApi();
 
   group(AlbumsApi, () {
+    // Add assets to one virtual album.
+    //
+    // Adds assets to the caller's virtual album with the batch surface's set semantics: one request, one list of at most 200 asset ids, one honest report `{added, skipped}`.  VIRTUAL albums only: directory albums manage their own membership (the rescan flow, a later milestone) and sync albums are no album resources; both answer the single-shape 404 like an unknown id.  Skip semantics (the batch surface's missing-ids discipline): every id must belong to a live asset the CALLER owns -- the owner-based live predicate (not trashed, not hidden, not a Live Photo component row) until the union switchover of a later task. A foreign account's asset, a trashed, hidden or component row, and an unknown id are silently skipped, never errors. An id that already sits in the album is skipped too: membership is a set, the add is idempotent. An all-skipped request still answers 200 with `added` 0. Repeated ids collapse to one application; the counts cover the distinct ids. The inserted rows record the caller as `added_by`.  The locked gate applies: a locked album refuses the write with 409 `ALBUM_LOCKED`. Authorization is the writes' two-tier answer (invisible 404, shared-to-caller 403, the owner or an admin override writes).  The write publishes one `album.items-changed` event exactly when at least one row was added -- the idempotent no-op stays silent. 
+    //
+    //Future<AddAlbumItemsResponse> addAlbumItems(String albumId, AlbumItemsRequest albumItemsRequest) async
+    test('test addAlbumItems', () async {
+      // TODO
+    });
+
+    // Create one virtual album.
+    //
+    // Creates one virtual album owned by the caller -- the album the wall lists, the detail shows and the curation endpoints edit. The virtual album is the ONLY creatable type through this face, so the request carries no type field: directory albums arrive with their own milestone (they mirror a filesystem path the server scans), and every account's sync album is born with the account.  The title is trimmed and must span 1-64 Unicode characters (the count is over runes, so multi-byte titles stay within the bound at the same length); the description is optional bounded free text (10,000 characters, the asset description's own bound) and defaults to the empty string.  The response is the created album's wall card -- the summary exactly as `GET /albums` lists it: `callerRole` `owner`, `isShared` false, an empty `coverAssetIds` array (never null) and `itemCount` 0, nothing being a member yet. The write publishes one `album.created` event. 
+    //
+    //Future<AlbumSummary> createAlbum(AlbumCreateRequest albumCreateRequest) async
+    test('test createAlbum', () async {
+      // TODO
+    });
+
+    // Delete one virtual album.
+    //
+    // Deletes the caller's virtual album: the row goes, and every `album_items` membership row and every `album_shares` row follows through the schema's cascades. The answer is 204 with no body, and the write publishes one `album.deleted` event.  VIRTUAL albums only: a directory album answers the single-shape 404 (directory removal is the directory album's own flow, not a generic delete -- it arrives with a later milestone), and a sync album is no album resource at all. The same 404 answers an unknown id.  The locked gate does NOT apply to the delete: a locked album can be deleted by its owner -- locking is a curation freeze, not a tombstone.  Authorization is the writes' two-tier answer: an album the caller cannot see answers the single-shape 404; an album shared to the caller answers 403 `AUTH_FORBIDDEN` (the share is view-only); the owner -- or an administrator overriding the owner check -- deletes. 
+    //
+    //Future deleteAlbum(String albumId) async
+    test('test deleteAlbum', () async {
+      // TODO
+    });
+
     // One album's detail and one page of its items.
     //
     // The detail view of one album the caller can see: the caller owns it, or it is shared to the caller through an `album_shares` row. `callerRole` says which -- `owner` for the owner's write affordances, `viewer` for the read-only share.  Sync albums are not album resources: the id of a sync album -- the caller's own or anyone else's -- answers the same 404 as an unknown id. The sync album is the timeline (`GET /assets/timeline`); its stream surfaces there, never through this face.  404 is single-shape by design: an unknown id, another account's unshared album, and a sync album all answer the same `ALBUM_NOT_FOUND` byte for byte -- the anti-enumeration discipline of `ASSET_NOT_FOUND` applied to the album face. An album whose share to the caller was revoked before the request simply sits in that same invisible region.  `itemCount` counts the album's live members; `items` is one keyset page of them, ordered `takenAt` descending with the asset id as the tiebreak -- the timeline's own ordering and cursor pair, so the album grid pages with the timeline's walking machinery. Every item carries the membership's `addedAt` and the minimal asset context the grid renders; `thumbnail` is the asset thumbnail endpoint's `tile`-size URL. Live members only: trashed, hidden and Live Photo component rows never appear (A5 -- a hidden asset is invisible to the whole family).  `coverAssetId` is the raw pinned column: the single asset the owner chose, or null when unset -- the wall derives its collage fallback from the members, the detail carries the pin itself.  `limit` bounds the page size: absent means the default of 60; a value below 1 or over 200 answers 400 `VALIDATION_FAILED`. Pages continue through the opaque `cursor`, the timeline's exact keyset semantics: `nextCursor` is present exactly when another page follows, and the last page carries none. 
@@ -22,6 +49,24 @@ void main() {
     //
     //Future<AlbumWallResponse> listAlbums() async
     test('test listAlbums', () async {
+      // TODO
+    });
+
+    // Remove assets from one virtual album.
+    //
+    // Removes membership rows from the caller's virtual album: `{removed, skipped}`, the same batch semantics as the add. An id that is no member of the album -- never was, or already removed -- is skipped; an all-skipped request still answers 200 with `removed` 0. Repeated ids collapse; the counts cover the distinct ids.  The removal carries no live predicate: a trashed member's row still leaves, the honest cleanup of the set (the live views filter trashed members out of the renders; removing the row tidies the set itself).  VIRTUAL albums only (directory and sync albums answer the single-shape 404); the locked gate applies (409 `ALBUM_LOCKED`); authorization is the writes' two-tier answer (invisible 404, shared-to-caller 403, the owner or an admin override writes).  The write publishes one `album.items-changed` event exactly when at least one row was removed -- the idempotent no-op stays silent. 
+    //
+    //Future<RemoveAlbumItemsResponse> removeAlbumItems(String albumId, AlbumItemsRequest albumItemsRequest) async
+    test('test removeAlbumItems', () async {
+      // TODO
+    });
+
+    // Patch one album's properties.
+    //
+    // The owner's partial edit of the album's properties: `title`, `description`, `coverAssetId` and `locked`, any subset, at least one field (a body that carries none -- JSON null counts as absent, the patch discipline of the asset surface -- is a client bug and answers 400). The response is the album's wall card after the edit.  Authorization is the two-tier answer every album write pins: an album the caller cannot see at all -- an unknown id, another account's unshared album, every sync album -- answers the single-shape 404 `ALBUM_NOT_FOUND`, byte-identical to the read face, so album ids cannot be probed; an album the caller CAN see but does not own (an album shared to the caller) is an honest authorization failure -- 403 `AUTH_FORBIDDEN`, the share is view-only. The owner writes, and an administrator may override the owner check (the admin role bypasses it, the permanent delete's own discipline).  The locked gate: a locked album refuses the property and curation fields (`title`, `description`, `coverAssetId`) with 409 `ALBUM_LOCKED` -- unlock first. The `locked` field itself is never gated: a patch of only `locked: false` IS the unlock.  Cover validation (the spec's application-layer pin): a present `coverAssetId` must be a LIVE member of THIS album -- the membership row exists and the asset passes the live predicate (not trashed, not hidden, not a Live Photo component row). Any other id -- an asset that is no member, a trashed, hidden or component row, another account's asset -- answers 400 `VALIDATION_FAILED` carrying the message key `album_cover_not_member`. A `coverAssetId` that is absent (or JSON null, which decodes as absent) leaves the pin unchanged.  The write publishes one `album.updated` event on every successful patch, whatever fields changed -- the convergent refetch makes the unconditional fire harmless. 
+    //
+    //Future<AlbumSummary> updateAlbum(String albumId, AlbumPatch albumPatch) async
+    test('test updateAlbum', () async {
       // TODO
     });
 

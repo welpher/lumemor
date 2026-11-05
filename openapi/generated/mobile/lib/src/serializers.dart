@@ -14,14 +14,18 @@ import 'package:built_value/iso_8601_date_time_serializer.dart';
 import 'package:lumemor_api/src/date_serializer.dart';
 import 'package:lumemor_api/src/model/date.dart';
 
+import 'package:lumemor_api/src/model/add_album_items_response.dart';
 import 'package:lumemor_api/src/model/admin_create_user_request.dart';
 import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
+import 'package:lumemor_api/src/model/album_create_request.dart';
 import 'package:lumemor_api/src/model/album_detail.dart';
 import 'package:lumemor_api/src/model/album_item.dart';
 import 'package:lumemor_api/src/model/album_item_asset.dart';
+import 'package:lumemor_api/src/model/album_items_request.dart';
 import 'package:lumemor_api/src/model/album_owner_ref.dart';
+import 'package:lumemor_api/src/model/album_patch.dart';
 import 'package:lumemor_api/src/model/album_summary.dart';
 import 'package:lumemor_api/src/model/album_wall_response.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
@@ -63,6 +67,7 @@ import 'package:lumemor_api/src/model/pairing_token_response.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
 import 'package:lumemor_api/src/model/person_label_response.dart';
 import 'package:lumemor_api/src/model/person_summary.dart';
+import 'package:lumemor_api/src/model/remove_album_items_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
 import 'package:lumemor_api/src/model/set_person_hidden_request.dart';
@@ -78,14 +83,18 @@ import 'package:lumemor_api/src/model/user_role.dart';
 part 'serializers.g.dart';
 
 @SerializersFor([
+  AddAlbumItemsResponse,
   AdminCreateUserRequest,
   AdminUserListResponse,
   AdminUserPatch,
   AdminUserResponse,
+  AlbumCreateRequest,
   AlbumDetail,
   AlbumItem,
   AlbumItemAsset,
+  AlbumItemsRequest,
   AlbumOwnerRef,
+  AlbumPatch,
   AlbumSummary,
   AlbumWallResponse,
   AssetDetail,
@@ -127,6 +136,7 @@ part 'serializers.g.dart';
   PersonLabel,
   PersonLabelResponse,
   PersonSummary,
+  RemoveAlbumItemsResponse,
   ServerInfo,
   SessionInfo,
   SetPersonHiddenRequest,
