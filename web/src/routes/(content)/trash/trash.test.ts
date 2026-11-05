@@ -8,9 +8,11 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 // retention countdown and actions, the restore walks the pinned
 // single-asset endpoint (its 404 counting as the already-gone
 // success), the permanent delete confirms first and drops the row on
-// both 204 and 404, and the SSE restored/deleted events converge the
-// rows away. The events module is mocked with a captured handler
-// registry, the same pattern as the timeline page test.
+// both 204 and 404, and the SSE restored/deleted events converge
+// through a re-fetched listing -- replay-safe, so a stale restored
+// event for an asset that is still trashed keeps its row. The events
+// module is mocked with a captured handler registry, the same
+// pattern as the timeline page test.
 
 const { handlers } = vi.hoisted(() => ({
 	handlers: [] as Array<(event: unknown) => void>
@@ -375,8 +377,19 @@ test('a failed permanent delete keeps the row and the modal message', async () =
 	flushSync();
 });
 
-test('SSE restored and deleted events remove the named rows', async () => {
-	vi.stubGlobal('fetch', stubFetch(trashRoutes([trashItem('a1'), trashItem('a2')])));
+test('SSE restored and deleted events converge through the refetched listing', async () => {
+	// The listing is the truth: another device restored a1 and the
+	// expiry job purged a2, so the server's next listing carries
+	// neither row -- the events trigger the re-fetch, the answer
+	// drops the rows.
+	let current = [trashItem('a1'), trashItem('a2')];
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+		if (String(input) === '/api/v1/trash') {
+			return jsonResponse(200, { items: current });
+		}
+		throw new Error(`unexpected fetch ${String(input)}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
 	expect(cells()).toHaveLength(2);
@@ -386,14 +399,53 @@ test('SSE restored and deleted events remove the named rows', async () => {
 		for (const handler of handlers) {
 			handler(event);
 		}
-		flushSync();
 	};
 
-	// Another device restored a1; the expiry job purged a2.
+	// Another device restored a1; the row leaves only when the
+	// re-fetched listing drops it.
+	current = [trashItem('a2')];
 	deliver({ id: 1, name: 'asset.restored', assetId: 'a1', kind: 'image' });
+	await settle();
+	expect(fetchMock).toHaveBeenCalledTimes(2);
 	expect(cells()).toHaveLength(1);
+
+	// The expiry job purged a2: the same convergence, the same
+	// answer-decides rule.
+	current = [];
 	deliver({ id: 2, name: 'asset.deleted', assetId: 'a2', kind: 'image' });
+	await settle();
+	expect(fetchMock).toHaveBeenCalledTimes(3);
 	expect(cells()).toHaveLength(0);
+
+	unmount(page);
+	flushSync();
+});
+
+test('a replayed stale restored event keeps the row that is still trashed', async () => {
+	// The stream's replay contract: a fresh subscriber receives the
+	// retained ring, so an OLD restored event arrives for an asset
+	// that was restored and then re-trashed (the m2 story's exact
+	// flow). The listing still returns the row, so the row stays --
+	// the event is a claim, never state.
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+		if (String(input) === '/api/v1/trash') {
+			return jsonResponse(200, { items: [trashItem('a1')] });
+		}
+		throw new Error(`unexpected fetch ${String(input)}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+	expect(cells()).toHaveLength(1);
+
+	for (const handler of handlers) {
+		handler({ id: 1, name: 'asset.restored', assetId: 'a1', kind: 'image' });
+	}
+	await settle();
+	// The convergence probe re-fetched and the listing confirmed the
+	// row is in the trash right now.
+	expect(fetchMock).toHaveBeenCalledTimes(2);
+	expect(cells()).toHaveLength(1);
 
 	unmount(page);
 	flushSync();
