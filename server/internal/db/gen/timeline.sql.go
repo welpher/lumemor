@@ -186,6 +186,16 @@ type ListTimelineAssetsRow struct {
 // the three arms below: an own virtual album is neither sync nor
 // directory nor shared to its owner.
 //
+// The three arms below are the arms of caller_asset_visible (the
+// one physical home of the union, migration 00010): this query keeps
+// its own inline EXISTS because the spec's aggregation formula folds
+// the per-user preference INSIDE the existential -- an asset kept in
+// through ANY feeding album stays in even when another of its albums
+// is switched out -- and that conjunct cannot compose outside the
+// existential over the album rows. The arms themselves are
+// structurally identical between the two homes -- keep them in
+// sync.
+//
 // Deduplication is the EXISTS semi-join: one asset visible through
 // several albums yields one row, and an asset kept in through ANY
 // feeding album stays in even when another of its albums is switched

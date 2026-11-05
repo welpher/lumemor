@@ -295,11 +295,11 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 	aTrash := fixturePeopleAssetID("03")
 	aHidden := fixturePeopleAssetID("04")
 	aB := fixturePeopleAssetID("05")
-	env.insertTimelineAsset(t, aA1, adminID, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.insertTimelineAsset(t, aA2, adminID, time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.insertTimelineAsset(t, aTrash, adminID, time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC), timelineAssetOpts{deleted: true})
-	env.insertTimelineAsset(t, aHidden, adminID, time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC), timelineAssetOpts{isHidden: true})
-	env.insertTimelineAsset(t, aB, graceID, time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, aA1, adminID, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, aA2, adminID, time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, aTrash, adminID, time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC), timelineAssetOpts{deleted: true})
+	env.insertOwnedAsset(t, aHidden, adminID, time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC), timelineAssetOpts{isHidden: true})
+	env.insertOwnedAsset(t, aB, graceID, time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 
 	// One global cluster: the representative fA, a stronger face fB,
 	// a score tie fC (higher id), Grace's own face fD, and faces on
@@ -333,10 +333,13 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 		if item.FaceCount != 3 {
 			t.Errorf("admin faceCount = %d, want 3 (the live faces on own assets only)", item.FaceCount)
 		}
-		if uuid.UUID(item.RepresentativeFaceId) != fA {
-			t.Errorf("representativeFaceId = %s, want the stored %s", item.RepresentativeFaceId, fA)
+		// The card face is the best caller-visible live face (the
+		// M3c handoff): the strongest of the admin's three is fB
+		// (0.95), not the cluster's stored representative.
+		if uuid.UUID(item.RepresentativeFaceId) != fB {
+			t.Errorf("representativeFaceId = %s, want the best visible %s", item.RepresentativeFaceId, fB)
 		}
-		wantThumbnail := "/api/v1/faces/" + fA.String() + "/thumbnail"
+		wantThumbnail := "/api/v1/faces/" + fB.String() + "/thumbnail"
 		if item.Thumbnail != wantThumbnail {
 			t.Errorf("thumbnail = %q, want %q", item.Thumbnail, wantThumbnail)
 		}
@@ -441,11 +444,11 @@ func TestPeopleB4LabelIsolation(t *testing.T) {
 	// The shared cluster carries a face on each account's asset: one
 	// global person both callers see through their own photos.
 	assetA := fixturePeopleAssetID("01")
-	env.insertTimelineAsset(t, assetA, adminID, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, assetA, adminID, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	faceA := fixturePeopleFaceID("01")
 	env.insertFace(t, faceA, assetA, 0.9)
 	graceAsset := fixturePeopleAssetID("03")
-	env.insertTimelineAsset(t, graceAsset, graceID, time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, graceAsset, graceID, time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	faceB := fixturePeopleFaceID("03")
 	env.insertFace(t, faceB, graceAsset, 0.8)
 	cluster := fixturePeopleClusterID("01")
@@ -540,7 +543,7 @@ func TestPeopleNamedOrdering(t *testing.T) {
 		clusterID := fixturePeopleClusterID(seed.suffix)
 		assetID := fixturePeopleAssetID(seed.suffix)
 		faceID := fixturePeopleFaceID(seed.suffix)
-		env.insertTimelineAsset(t, assetID, adminID, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+		env.insertOwnedAsset(t, assetID, adminID, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 		env.insertFace(t, faceID, assetID, 0.9)
 		env.seedPersonCluster(t, clusterID, faceID)
 		env.labelPersonCluster(t, adminID, clusterID, seed.name, false)
@@ -584,7 +587,7 @@ func TestPeopleUnnamedPagination(t *testing.T) {
 	// carry exactly the default of 60 plus a follow-up cursor.
 	for i := 0; i < 61; i++ {
 		assetID := bulkPeopleAssetID(i)
-		env.insertTimelineAsset(t, assetID, adminID, base.Add(time.Duration(i)*time.Minute), timelineAssetOpts{})
+		env.insertOwnedAsset(t, assetID, adminID, base.Add(time.Duration(i)*time.Minute), timelineAssetOpts{})
 		faceID := bulkPeopleFaceID(i)
 		env.insertFace(t, faceID, assetID, 0.9)
 		env.seedPersonCluster(t, bulkPeopleClusterID(i), faceID)
@@ -616,7 +619,7 @@ func TestPeopleUnnamedPagination(t *testing.T) {
 		faces := make([]uuid.UUID, count)
 		for j := 0; j < count; j++ {
 			assetID := bulkPeopleAssetID(tieAssetBase + faceSeq)
-			env.insertTimelineAsset(t, assetID, adminID, base, timelineAssetOpts{})
+			env.insertOwnedAsset(t, assetID, adminID, base, timelineAssetOpts{})
 			faceID := fixturePeopleFaceID(fmt.Sprintf("%02d", faceSeq))
 			env.insertFace(t, faceID, assetID, 0.9)
 			faces[j] = faceID

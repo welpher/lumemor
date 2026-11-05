@@ -157,7 +157,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	})
 
 	s.publishSessionEvent("session.started", session.ID, session.Kind)
-	s.writeJSON(w, http.StatusOK, sessionInfoFrom(session))
+	s.writeJSON(w, http.StatusOK, sessionInfoFrom(session, uuid.UUID(user.ID.Bytes), user.Role))
 }
 
 // Logout implements POST /auth/logout: revoke the session that
@@ -201,7 +201,7 @@ func (s *server) ListSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	sessions := make([]apigen.SessionInfo, 0, len(rows))
 	for _, row := range rows {
-		sessions = append(sessions, sessionInfoFrom(row))
+		sessions = append(sessions, sessionInfoFrom(row, user.userID, user.role))
 	}
 	s.writeJSON(w, http.StatusOK, sessions)
 }
@@ -276,9 +276,13 @@ func expireSessionCookie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// sessionInfoFrom maps a session row onto the API shape. Only the
-// whitelisted fields travel: the token hash never leaves the store.
-func sessionInfoFrom(row dbgen.Session) apigen.SessionInfo {
+// sessionInfoFrom maps a session row onto the API shape, carrying the
+// account identity the session belongs to (the M3c seam: the login,
+// the session list and the pairing response all answer who is
+// calling, so a client restoring a session never needs a second
+// endpoint). Only the whitelisted fields travel: the token hash never
+// leaves the store.
+func sessionInfoFrom(row dbgen.Session, userID uuid.UUID, role dbgen.UserRole) apigen.SessionInfo {
 	lastSeen := row.CreatedAt.Time.UTC()
 	if row.LastSeenAt.Valid {
 		lastSeen = row.LastSeenAt.Time.UTC()
@@ -286,6 +290,8 @@ func sessionInfoFrom(row dbgen.Session) apigen.SessionInfo {
 	info := apigen.SessionInfo{
 		Id:         uuid.UUID(row.ID.Bytes),
 		Kind:       apigen.SessionInfoKind(row.Kind),
+		UserId:     userID,
+		Role:       apigen.UserRole(role),
 		CreatedAt:  row.CreatedAt.Time.UTC(),
 		LastSeenAt: lastSeen,
 	}

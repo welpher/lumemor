@@ -11,18 +11,16 @@
 
 -- name: ListFavoriteAssets :many
 -- The favorites view: the caller's favorites rows joined to the live
--- assets behind them, newest capture first. The favorites row is the
--- selection; the asset's state is the filter -- a favorited asset
--- that was hidden or trashed leaves the view (it returns with the
--- unhide or the restore, the favorite row untouched). No owner
--- filter on the asset side: favorites are per-user state joined to
--- whatever live asset the row points at -- in this milestone the
--- batch actions are owner-scoped, so favorites rows of the caller's
--- own assets are all the API can produce, and the join stays the
--- honest shape for any future shared-content favorites. is_favorite
--- is true by construction here (the join selected the row); it is
--- computed anyway so the column carries the same meaning as in the
--- timeline queries.
+-- caller-visible assets behind them, newest capture first. The
+-- favorites row is the selection; the asset's state is the filter --
+-- a favorited asset that was hidden or trashed leaves the view (it
+-- returns with the unhide or the restore, the favorite row
+-- untouched) -- and the caller-visible union is the second filter
+-- (M3c Task 4): a sharee's favorites of shared-album assets appear
+-- here, and a revoked share removes the assets while the favorite
+-- row survives. is_favorite is true by construction here (the join
+-- selected the row); it is computed anyway so the column carries
+-- the same meaning as in the timeline queries.
 SELECT sqlc.embed(a),
        EXISTS (
            SELECT 1 FROM user_favorites uf
@@ -33,6 +31,7 @@ JOIN user_favorites f ON f.asset_id = a.id AND f.user_id = sqlc.arg('user_id')
 WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND caller_asset_visible(sqlc.arg('user_id'), a.id)
   AND (
       sqlc.narg('cursor_taken_at')::timestamptz IS NULL
       OR (a.taken_at, a.id) < (sqlc.narg('cursor_taken_at')::timestamptz, sqlc.narg('cursor_id')::uuid)

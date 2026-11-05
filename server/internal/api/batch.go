@@ -97,14 +97,14 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := dbgen.New(tx)
 
-	// Resolution: the owner-scoped read that decides the report. A
-	// foreign id resolves to no row exactly like an unknown one, so
-	// neither can be probed apart; media_kind rides along for the
-	// events of the ids that end up transitioning.
-	resolved, err := queries.ResolveBatchAssets(ctx, dbgen.ResolveBatchAssetsParams{
-		Ids:     pgUUIDs(ids),
-		OwnerID: pgUUID(requester.userID),
-	})
+	// Resolution: the guard each action resolves against -- the
+	// curation arms own the assets they act on, the favorites arms
+	// only need to see them (the album union, so a sharee favorites
+	// what they see). A foreign or invisible id resolves to no row
+	// exactly like an unknown one, so neither can be probed apart;
+	// media_kind rides along for the events of the ids that end up
+	// transitioning.
+	resolved, err := resolveBatchTargets(ctx, queries, request.Action, requester.userID, ids)
 	if err != nil {
 		s.internalError(w, r, "resolve batch ids", err)
 		return
@@ -162,6 +162,37 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, apigen.BatchResponse{
 		Affected: len(kinds),
 		Missing:  missing,
+	})
+}
+
+// resolveBatchTargets runs the batch's id resolution against the
+// guard the action implies: the favorites arms resolve the
+// caller-VISIBLE ids (the album union -- the caller's own arms plus
+// every album shared to them, so a sharee's favorites cover what
+// they see), every other arm resolves the caller's OWNED ids
+// (curation and the trash lifecycle are the owner's alone). The two
+// resolutions answer the same row shape, so the handler's report
+// partitioning never branches on the action.
+func resolveBatchTargets(ctx context.Context, queries *dbgen.Queries, action apigen.BatchRequestAction, caller uuid.UUID, ids []uuid.UUID) ([]dbgen.ResolveBatchAssetsRow, error) {
+	if action == apigen.Favorite || action == apigen.Unfavorite {
+		rows, err := queries.ResolveVisibleAssets(ctx, dbgen.ResolveVisibleAssetsParams{
+			Ids:    pgUUIDs(ids),
+			Viewer: pgUUID(caller),
+		})
+		if err != nil {
+			return nil, err
+		}
+		resolved := make([]dbgen.ResolveBatchAssetsRow, len(rows))
+		for i, row := range rows {
+			// The two resolutions answer the same (id, kind) shape;
+			// the conversion is the identity on identical structs.
+			resolved[i] = dbgen.ResolveBatchAssetsRow(row)
+		}
+		return resolved, nil
+	}
+	return queries.ResolveBatchAssets(ctx, dbgen.ResolveBatchAssetsParams{
+		Ids:     pgUUIDs(ids),
+		OwnerID: pgUUID(caller),
 	})
 }
 

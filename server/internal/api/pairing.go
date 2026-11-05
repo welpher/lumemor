@@ -213,6 +213,16 @@ func (s *server) ConsumePairingToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The identity half of the response: the burn answers the token
+	// creator's id, the role lookup completes the account identity the
+	// minted session carries (the paired device knows who it paired
+	// as from this response alone).
+	role, err := queries.GetUserRole(r.Context(), burned.CreatedBy)
+	if err != nil {
+		s.internalError(w, r, "lookup pairing user role", err)
+		return
+	}
+
 	if err := tx.Commit(r.Context()); err != nil {
 		s.internalError(w, r, "commit pairing transaction", err)
 		return
@@ -223,7 +233,7 @@ func (s *server) ConsumePairingToken(w http.ResponseWriter, r *http.Request) {
 	s.publishSessionEvent("session.started", session.ID, session.Kind)
 	s.writeJSON(w, http.StatusOK, apigen.BearerSession{
 		Token:   raw,
-		Session: sessionInfoFrom(session),
+		Session: sessionInfoFrom(session, uuid.UUID(burned.CreatedBy.Bytes), role),
 	})
 }
 

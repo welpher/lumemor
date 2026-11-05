@@ -14,10 +14,25 @@ import 'package:built_value/iso_8601_date_time_serializer.dart';
 import 'package:lumemor_api/src/date_serializer.dart';
 import 'package:lumemor_api/src/model/date.dart';
 
+import 'package:lumemor_api/src/model/add_album_items_response.dart';
 import 'package:lumemor_api/src/model/admin_create_user_request.dart';
 import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
+import 'package:lumemor_api/src/model/album_create_request.dart';
+import 'package:lumemor_api/src/model/album_detail.dart';
+import 'package:lumemor_api/src/model/album_item.dart';
+import 'package:lumemor_api/src/model/album_item_asset.dart';
+import 'package:lumemor_api/src/model/album_items_request.dart';
+import 'package:lumemor_api/src/model/album_owner_ref.dart';
+import 'package:lumemor_api/src/model/album_patch.dart';
+import 'package:lumemor_api/src/model/album_share_entry.dart';
+import 'package:lumemor_api/src/model/album_share_grant_request.dart';
+import 'package:lumemor_api/src/model/album_share_response.dart';
+import 'package:lumemor_api/src/model/album_summary.dart';
+import 'package:lumemor_api/src/model/album_timeline_preference_request.dart';
+import 'package:lumemor_api/src/model/album_timeline_preference_response.dart';
+import 'package:lumemor_api/src/model/album_wall_response.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_face_summary.dart';
 import 'package:lumemor_api/src/model/asset_patch.dart';
@@ -57,6 +72,7 @@ import 'package:lumemor_api/src/model/pairing_token_response.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
 import 'package:lumemor_api/src/model/person_label_response.dart';
 import 'package:lumemor_api/src/model/person_summary.dart';
+import 'package:lumemor_api/src/model/remove_album_items_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
 import 'package:lumemor_api/src/model/set_person_hidden_request.dart';
@@ -67,15 +83,32 @@ import 'package:lumemor_api/src/model/trash_response.dart';
 import 'package:lumemor_api/src/model/unnamed_cluster_summary.dart';
 import 'package:lumemor_api/src/model/unnamed_clusters_response.dart';
 import 'package:lumemor_api/src/model/user.dart';
+import 'package:lumemor_api/src/model/user_list_response.dart';
 import 'package:lumemor_api/src/model/user_role.dart';
+import 'package:lumemor_api/src/model/user_summary.dart';
 
 part 'serializers.g.dart';
 
 @SerializersFor([
+  AddAlbumItemsResponse,
   AdminCreateUserRequest,
   AdminUserListResponse,
   AdminUserPatch,
   AdminUserResponse,
+  AlbumCreateRequest,
+  AlbumDetail,
+  AlbumItem,
+  AlbumItemAsset,
+  AlbumItemsRequest,
+  AlbumOwnerRef,
+  AlbumPatch,
+  AlbumShareEntry,
+  AlbumShareGrantRequest,
+  AlbumShareResponse,
+  AlbumSummary,
+  AlbumTimelinePreferenceRequest,
+  AlbumTimelinePreferenceResponse,
+  AlbumWallResponse,
   AssetDetail,
   AssetFaceSummary,
   AssetPatch,
@@ -115,6 +148,7 @@ part 'serializers.g.dart';
   PersonLabel,
   PersonLabelResponse,
   PersonSummary,
+  RemoveAlbumItemsResponse,
   ServerInfo,
   SessionInfo,
   SetPersonHiddenRequest,
@@ -125,7 +159,9 @@ part 'serializers.g.dart';
   UnnamedClusterSummary,
   UnnamedClustersResponse,
   User,
+  UserListResponse,
   UserRole,
+  UserSummary,
 ])
 Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
@@ -135,6 +171,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(TimelineItem)]),
         () => ListBuilder<TimelineItem>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumSummary)]),
+        () => ListBuilder<AlbumSummary>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(TrashItem)]),
@@ -153,8 +193,16 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<ModelResponse>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumShareEntry)]),
+        () => ListBuilder<AlbumShareEntry>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AdminUserResponse)]),
         () => ListBuilder<AdminUserResponse>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumItem)]),
+        () => ListBuilder<AlbumItem>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(SessionInfo)]),
@@ -163,6 +211,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType.nullable(JsonObject)]),
         () => MapBuilder<String, JsonObject?>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(UserSummary)]),
+        () => ListBuilder<UserSummary>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType(bool)]),

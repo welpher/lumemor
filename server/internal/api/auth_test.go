@@ -442,6 +442,97 @@ func subscribeAfterCursor(t *testing.T, bus *events.Bus) (int64, *events.Subscri
 // stream, while every 401 rejection -- wrong password, unknown
 // address, disabled account -- reports auth.login_failed carrying the
 // attempted address.
+// TestSessionIdentity pins the session's identity face: every
+// SessionInfo answer -- the login body, the session list the web's
+// boot probe reads to restore a session, and (in the pairing suite)
+// the consume response's embedded session -- carries the account's
+// userId and role. A client that restores a session never re-logs in;
+// the list it probes must answer who is calling, not just that
+// someone is.
+func TestSessionIdentity(t *testing.T) {
+	env := newAuthEnv(t, nil)
+	env.createAdmin(t, "ada@example.com", testPassword)
+	ada, err := env.queries.GetUserByEmail(t.Context(), "ada@example.com")
+	if err != nil {
+		t.Fatalf("look up ada: %v", err)
+	}
+
+	// A plain member account with a working password hash: the role
+	// the second login arm must answer.
+	graceHash, err := auth.Hash(testPassword)
+	if err != nil {
+		t.Fatalf("hash grace's password: %v", err)
+	}
+	graceID := mustUUIDv7(t)
+	env.exec(t,
+		"INSERT INTO users (id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, 'user')",
+		pgUUID(graceID), "Grace Hopper", "grace@example.com", graceHash)
+
+	t.Run("LoginCarriesIdentity", func(t *testing.T) {
+		_, adminInfo := loginCookie(t, env.router, "ada@example.com", testPassword, "")
+		if uuid.UUID(adminInfo.UserId) != uuid.UUID(ada.ID.Bytes) {
+			t.Errorf("login userId = %s, want ada's account id %s", adminInfo.UserId, ada.ID)
+		}
+		if adminInfo.Role != apigen.UserRoleAdmin {
+			t.Errorf("login role = %q, want admin (the wizard's account)", adminInfo.Role)
+		}
+
+		_, userInfo := loginCookie(t, env.router, "grace@example.com", testPassword, "")
+		if uuid.UUID(userInfo.UserId) != graceID {
+			t.Errorf("member login userId = %s, want grace's account id %s", userInfo.UserId, graceID)
+		}
+		if userInfo.Role != apigen.UserRoleUser {
+			t.Errorf("member login role = %q, want user (the default role)", userInfo.Role)
+		}
+	})
+
+	t.Run("SessionListCarriesIdentity", func(t *testing.T) {
+		// The web restores a signed-in session by probing this list:
+		// the identity must ride the restore path, not just the login.
+		adminCookie, _ := loginCookie(t, env.router, "ada@example.com", testPassword, "")
+		rec := authedRequest(env.router, http.MethodGet, "/api/v1/auth/sessions", adminCookie)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /auth/sessions: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var sessions []apigen.SessionInfo
+		if err := json.Unmarshal(rec.Body.Bytes(), &sessions); err != nil {
+			t.Fatalf("decode sessions %q: %v", rec.Body.String(), err)
+		}
+		if len(sessions) == 0 {
+			t.Fatal("session list is empty, want the just-logged-in session")
+		}
+		for _, session := range sessions {
+			if uuid.UUID(session.UserId) != uuid.UUID(ada.ID.Bytes) {
+				t.Errorf("session list userId = %s, want ada's account id %s", session.UserId, ada.ID)
+			}
+			if session.Role != apigen.UserRoleAdmin {
+				t.Errorf("session list role = %q, want admin", session.Role)
+			}
+		}
+
+		graceCookie, _ := loginCookie(t, env.router, "grace@example.com", testPassword, "")
+		rec = authedRequest(env.router, http.MethodGet, "/api/v1/auth/sessions", graceCookie)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /auth/sessions (grace): status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		sessions = nil
+		if err := json.Unmarshal(rec.Body.Bytes(), &sessions); err != nil {
+			t.Fatalf("decode grace's sessions %q: %v", rec.Body.String(), err)
+		}
+		if len(sessions) == 0 {
+			t.Fatal("grace's session list is empty, want her just-logged-in session")
+		}
+		for _, session := range sessions {
+			if uuid.UUID(session.UserId) != graceID {
+				t.Errorf("grace's session list userId = %s, want %s", session.UserId, graceID)
+			}
+			if session.Role != apigen.UserRoleUser {
+				t.Errorf("grace's session list role = %q, want user", session.Role)
+			}
+		}
+	})
+}
+
 func TestLoginAuditEvents(t *testing.T) {
 	env := newAuthEnv(t, nil)
 	env.createAdmin(t, "ada@example.com", testPassword)

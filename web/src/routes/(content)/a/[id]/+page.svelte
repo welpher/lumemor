@@ -91,6 +91,7 @@
 		type UnnamedClusterSummary
 	} from '$lib/api/people';
 	import { subscribeAssetEvents, subscribePersonEvents, type PersonEvent } from '$lib/events';
+	import { sessionUserId } from '$lib/auth/session.svelte';
 
 	const assetId = $derived(page.params.id ?? '');
 
@@ -122,6 +123,18 @@
 	let actionErrorKey = $state('');
 	/** Bumping re-runs the detail fetch for the same id (the retry button). */
 	let retryTick = $state(0);
+
+	// The caller's ownership of the open asset (the M3c identity seam):
+	// the session's userId against the asset's owner. A viewer -- the
+	// owner's share grants them the read -- sees the drawer without its
+	// owner-only write affordances (the description edit, the hide /
+	// trash curation, the permanent delete); the favorite stays for
+	// everyone (per-user state) and the face chips stay (their assign
+	// dialog carries the per-user label write a sharee holds too).
+	const isOwner = $derived.by(() => {
+		const current = detail;
+		return current !== null && current.ownerId === sessionUserId();
+	});
 
 	// The detail fetch, keyed on the route id (and the retry tick).
 	// A superseded run -- the id changed, or the route left, while
@@ -573,6 +586,7 @@
 <Viewer
 	{detail}
 	{favorite}
+	{isOwner}
 	sequence={sequence}
 	{status}
 	{errorKey}

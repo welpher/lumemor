@@ -1,16 +1,18 @@
-# Continuous integration for the end-to-end acceptance: the full M3b
+# Continuous integration for the end-to-end acceptance: the full M3c
 # chain on a real compose stack. The job installs the web toolchain
-# and Playwright's chromium, then runs scripts/acceptance_m3b.sh,
-# which chains the entire M1/M2/M3a acceptance line (the M2d chain,
-# including the M2 web story through a real browser, and the M3a
-# model pipeline acceptance) and then walks the M3b people story
-# itself: the people surface's API walkthrough on a fresh stack (the
-# two-person cluster structure proven inside the database, the
-# label/merge/hide flows, the asset-delete dissolution with the
-# label cascade) and the M3b people story of the web app through a
-# real browser. The path filters keep this workflow from running on
-# changes that cannot affect it; the workflow also runs when its own
-# definition changes.
+# and Playwright's chromium, then runs scripts/acceptance_m3c.sh,
+# which chains the entire M1/M2/M3a/M3b acceptance line (the M2d
+# chain, including the M2 web story through a real browser, the M3a
+# model pipeline acceptance, and the M3b people story) and then walks
+# the M3c albums and sharing story itself: the sharing surface's API
+# walkthrough on a fresh stack (two accounts, the album curation, the
+# share grant, the member's whole shared surface -- wall, timeline
+# union, read-only detail, per-user favorite, the timeline-exclusion
+# retraction, the people surface's B4 sharing arm, the revoke's full
+# retraction, the album delete cascade) and the M3c sharing story of
+# the web app through a real browser. The path filters keep this
+# workflow from running on changes that cannot affect it; the
+# workflow also runs when its own definition changes.
 
 name: e2e
 
@@ -74,8 +76,8 @@ jobs:
       - name: Install Playwright's chromium
         run: cd web && pnpm exec playwright install --with-deps chromium
 
-      - name: Run the M3b acceptance
-        run: scripts/acceptance_m3b.sh
+      - name: Run the M3c acceptance
+        run: scripts/acceptance_m3c.sh
 
       # The suite's failure artifacts (traces, screenshots, videos of
       # the scenes) land under web/test-results/.

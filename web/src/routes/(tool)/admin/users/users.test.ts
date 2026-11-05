@@ -180,8 +180,11 @@ test('a non-admin caller sees the mapped auth_forbidden message', async () => {
 	await settle();
 
 	expect(rows()).toHaveLength(0);
+	// The generic AUTH_FORBIDDEN message (the M3c albums branch made
+	// the code cover the album share face too, so the text stopped
+	// naming the admin surface).
 	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
-		'You need to be an administrator for this.'
+		"You don't have permission to do this."
 	);
 	// The retry affordance is present (the probe may succeed later).
 	expect(buttonByText('Try again')).toBeTruthy();

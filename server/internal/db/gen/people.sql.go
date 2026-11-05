@@ -16,10 +16,10 @@ SELECT count(*) AS face_count
 FROM faces f
 JOIN assets a ON a.id = f.asset_id
 WHERE f.cluster_id = $1
-  AND a.owner_id = $2
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND caller_asset_visible($2, a.id)
 `
 
 type CountClusterFacesParams struct {
@@ -29,8 +29,10 @@ type CountClusterFacesParams struct {
 
 // The cluster's face count over caller-visible assets ONLY. A count
 // of zero covers both "unknown cluster" and "every face sits on
-// another account's asset" -- the double meaning the detail endpoint
-// answers with one indistinguishable 404.
+// another account's assets or a share the caller lost" -- the double
+// meaning the detail endpoint answers with one indistinguishable
+// 404. This gate also fronts the label writes (a sharee names the
+// people they see; the label row stays the caller's own).
 func (q *Queries) CountClusterFaces(ctx context.Context, arg CountClusterFacesParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countClusterFaces, arg.ClusterID, arg.UserID)
 	var face_count int64
@@ -54,11 +56,15 @@ type CountVisibleClustersParams struct {
 	UserID     pgtype.UUID   `json:"user_id"`
 }
 
-// How many of the given clusters the caller sees (at least one face
-// on a caller-visible asset -- ListUnnamedClusters' predicate,
-// applied to a set). The merge endpoint's visibility gate: one read
-// settles every source plus the target, and a count below the input
-// length names no id (anti-enumeration).
+// How many of the given clusters the caller holds CURATION over:
+// at least one face on an asset the caller OWNS and that is live.
+// Deliberately owner-scoped (M3c Task 4): the merge is cluster
+// curation, and curation is the owner's alone -- a sharee who sees
+// a cluster through a shared album reads it and labels it, but the
+// structural faces never re-shape the shared clusters under their
+// cursor. The merge endpoint's visibility gate: one read settles
+// every source plus the target, and a count below the input length
+// names no id (anti-enumeration).
 func (q *Queries) CountVisibleClusters(ctx context.Context, arg CountVisibleClustersParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countVisibleClusters, arg.ClusterIds, arg.UserID)
 	var count int64
@@ -145,10 +151,10 @@ SELECT f.id,
 FROM faces f
 JOIN assets a ON a.id = f.asset_id
 WHERE f.id = $1
-  AND a.owner_id = $2
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND caller_asset_visible($2, a.id)
 `
 
 type GetFaceCropForCallerParams struct {
@@ -169,10 +175,12 @@ type GetFaceCropForCallerRow struct {
 // The face crop endpoint's read and gate in one: the face's
 // bounding box (per-mille of the full image, addressing the view
 // derivative's own pixels) and its change signal (updated_at, the
-// ETag's input), over a caller-visible asset only. A miss covers an
-// unknown id and a face on an invisible asset alike -- the same 404
-// the people surface answers everywhere; the handler folds the
-// derivative's absence into that same shape (anti-enumeration).
+// ETag's input), over a caller-visible live asset -- the album
+// union (the caller's own arms plus every album shared to them).
+// A miss covers an unknown id and a face on an invisible asset
+// alike -- the same 404 the people surface answers everywhere; the
+// handler folds the derivative's absence into that same shape
+// (anti-enumeration).
 func (q *Queries) GetFaceCropForCaller(ctx context.Context, arg GetFaceCropForCallerParams) (GetFaceCropForCallerRow, error) {
 	row := q.db.QueryRow(ctx, getFaceCropForCaller, arg.FaceID, arg.UserID)
 	var i GetFaceCropForCallerRow
@@ -211,11 +219,14 @@ type GetFaceForCallerRow struct {
 }
 
 // The face-move endpoint's face-side read and gate in one: the
-// face's current cluster, over a caller-visible asset only. A miss
-// (unknown id, foreign or non-live asset) and a face the clustering
-// has not assigned to any cluster (cluster_id NULL) are both "no
-// such movable person face" -- the same 404 every people write
-// keeps indistinguishable.
+// face's current cluster, over an asset the caller OWNS and that is
+// live. Deliberately owner-scoped (M3c Task 4): the face move is
+// cluster curation, and curation is the owner's alone -- a sharee
+// never moves a face of an album shared to them. A miss (unknown
+// id, foreign or non-live asset) and a face the clustering has not
+// assigned to any cluster (cluster_id NULL) are both "no such
+// movable person face" -- the same 404 every people write keeps
+// indistinguishable.
 func (q *Queries) GetFaceForCaller(ctx context.Context, arg GetFaceForCallerParams) (GetFaceForCallerRow, error) {
 	row := q.db.QueryRow(ctx, getFaceForCaller, arg.FaceID, arg.UserID)
 	var i GetFaceForCallerRow
@@ -253,8 +264,9 @@ type ListAssetFacesForCallerRow struct {
 // with the CALLER's label state of its cluster -- the B4 discipline's
 // read: clusters are global, labels are private, so the LEFT JOIN
 // picks the caller's row and another account's label never surfaces.
-// The asset itself was already read owner-scoped by the detail
-// endpoint (a miss answered its own 404 before this query runs), so
+// The asset itself was already read visibility-scoped by the
+// detail endpoint (the union gate answered its own 404 before this
+// query runs), so
 // the faces need no visibility predicate of their own: a trashed or
 // hidden asset's detail answers 200 and its faces ride along. The
 // cluster_id crosses as NULL for a face the clustering has not
@@ -296,10 +308,10 @@ SELECT f.id,
 FROM faces f
 JOIN assets a ON a.id = f.asset_id
 WHERE f.cluster_id = $1
-  AND a.owner_id = $2
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND caller_asset_visible($2, a.id)
 ORDER BY f.score DESC, f.id
 `
 
@@ -350,26 +362,37 @@ const listLabeledPeople = `-- name: ListLabeledPeople :many
 SELECT fc.id AS cluster_id,
        l.name,
        l.is_hidden,
-       fc.representative_face_id,
+       (
+           SELECT f2.id
+           FROM faces f2
+           JOIN assets a2 ON a2.id = f2.asset_id
+           WHERE f2.cluster_id = fc.id
+             AND a2.deleted_at IS NULL
+             AND a2.is_hidden = false
+             AND a2.is_component = false
+             AND caller_asset_visible($1, a2.id)
+           ORDER BY f2.score DESC, f2.id
+           LIMIT 1
+       ) AS best_face_id,
        count(*) AS face_count
 FROM face_clusters fc
 JOIN user_face_labels l ON l.cluster_id = fc.id AND l.user_id = $1
 JOIN faces f ON f.cluster_id = fc.id
 JOIN assets a ON a.id = f.asset_id
-WHERE a.owner_id = $1
-  AND a.deleted_at IS NULL
+WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
-GROUP BY fc.id, l.name, l.is_hidden, fc.representative_face_id
+  AND caller_asset_visible($1, a.id)
+GROUP BY fc.id, l.name, l.is_hidden
 ORDER BY lower(l.name), fc.id
 `
 
 type ListLabeledPeopleRow struct {
-	ClusterID            pgtype.UUID `json:"cluster_id"`
-	Name                 string      `json:"name"`
-	IsHidden             bool        `json:"is_hidden"`
-	RepresentativeFaceID pgtype.UUID `json:"representative_face_id"`
-	FaceCount            int64       `json:"face_count"`
+	ClusterID  pgtype.UUID `json:"cluster_id"`
+	Name       string      `json:"name"`
+	IsHidden   bool        `json:"is_hidden"`
+	BestFaceID pgtype.UUID `json:"best_face_id"`
+	FaceCount  int64       `json:"face_count"`
 }
 
 // People surface queries (M3b Task 1): the read side of the named
@@ -383,13 +406,18 @@ type ListLabeledPeopleRow struct {
 // its label state and its face count all come from the caller's own
 // rows joined onto the global structure.
 //
-// Caller visibility is owner-based while the library has no sharing:
-// an asset is visible to the caller when they own it and it is live
-// (not trashed, not hidden, no Live Photo component row) -- the same
-// live-asset filters the timeline applies. A cluster is visible to
-// the caller when at least one of its faces sits on a visible asset;
-// face counts count ONLY those faces (honest counts per caller, so
-// the same cluster can show different counts to different accounts).
+// Caller visibility is the album union (M3c Task 4): an asset is
+// visible to the caller when caller_asset_visible says so -- the
+// caller's own sync and directory albums plus every album shared to
+// them -- AND it is live (not trashed, not hidden, no Live Photo
+// component row), the same live-asset filters the timeline applies.
+// A cluster is visible to the caller when at least one of its faces
+// sits on a visible asset; face counts count ONLY those faces (honest
+// counts per caller, so the same cluster can show different counts
+// to different accounts). The card crop rides the same union: the
+// best caller-visible live face (score DESC, face id ASC), never the
+// global representative -- a representative on an asset the caller
+// cannot see would render a dead crop URL (the M3b handoff).
 //
 // The unnamed region's keyset predicate is the row-value comparison
 // on the ordering key (face_count DESC, cluster_id DESC): the cursor
@@ -404,7 +432,10 @@ type ListLabeledPeopleRow struct {
 // asset (the faces join drops the rest -- a label on an invisible
 // cluster lists nowhere). Hidden people stay listed carrying their
 // is_hidden flag: the switch is a badge, not a filter. Ordered by
-// name case-insensitively, cluster id as the tiebreak.
+// name case-insensitively, cluster id as the tiebreak. The card face
+// is the cluster's best caller-visible live member (the correlated
+// pick: score DESC, face id ASC), which the listing cluster proves
+// exists -- the join below already found a visible face.
 func (q *Queries) ListLabeledPeople(ctx context.Context, userID pgtype.UUID) ([]ListLabeledPeopleRow, error) {
 	rows, err := q.db.Query(ctx, listLabeledPeople, userID)
 	if err != nil {
@@ -418,7 +449,7 @@ func (q *Queries) ListLabeledPeople(ctx context.Context, userID pgtype.UUID) ([]
 			&i.ClusterID,
 			&i.Name,
 			&i.IsHidden,
-			&i.RepresentativeFaceID,
+			&i.BestFaceID,
 			&i.FaceCount,
 		); err != nil {
 			return nil, err
@@ -432,23 +463,34 @@ func (q *Queries) ListLabeledPeople(ctx context.Context, userID pgtype.UUID) ([]
 }
 
 const listUnnamedClusters = `-- name: ListUnnamedClusters :many
-SELECT cluster_id, representative_face_id, face_count
+SELECT cluster_id, best_face_id, face_count
 FROM (
     SELECT fc.id AS cluster_id,
-           fc.representative_face_id,
+           (
+               SELECT f2.id
+               FROM faces f2
+               JOIN assets a2 ON a2.id = f2.asset_id
+               WHERE f2.cluster_id = fc.id
+                 AND a2.deleted_at IS NULL
+                 AND a2.is_hidden = false
+                 AND a2.is_component = false
+                 AND caller_asset_visible($1, a2.id)
+               ORDER BY f2.score DESC, f2.id
+               LIMIT 1
+           ) AS best_face_id,
            count(*) AS face_count
     FROM face_clusters fc
     JOIN faces f ON f.cluster_id = fc.id
     JOIN assets a ON a.id = f.asset_id
-    WHERE a.owner_id = $1
-      AND a.deleted_at IS NULL
+    WHERE a.deleted_at IS NULL
       AND a.is_hidden = false
       AND a.is_component = false
+      AND caller_asset_visible($1, a.id)
       AND NOT EXISTS (
           SELECT 1 FROM user_face_labels l
           WHERE l.user_id = $1 AND l.cluster_id = fc.id
       )
-    GROUP BY fc.id, fc.representative_face_id
+    GROUP BY fc.id
 ) counts
 WHERE (
     $2::bigint IS NULL
@@ -467,9 +509,9 @@ type ListUnnamedClustersParams struct {
 }
 
 type ListUnnamedClustersRow struct {
-	ClusterID            pgtype.UUID `json:"cluster_id"`
-	RepresentativeFaceID pgtype.UUID `json:"representative_face_id"`
-	FaceCount            int64       `json:"face_count"`
+	ClusterID  pgtype.UUID `json:"cluster_id"`
+	BestFaceID pgtype.UUID `json:"best_face_id"`
+	FaceCount  int64       `json:"face_count"`
 }
 
 // The unnamed region, one keyset page at a time: clusters with at
@@ -478,7 +520,9 @@ type ListUnnamedClustersRow struct {
 // cluster for this caller). Ordered by face count descending, the
 // cluster id descending as the tiebreak; the cursor is the
 // (face_count, cluster_id) pair of the previous page's last row,
-// NULL on the first page.
+// NULL on the first page. The card face is the best caller-visible
+// live member, computed inside the counts subquery beside the count
+// it belongs to.
 func (q *Queries) ListUnnamedClusters(ctx context.Context, arg ListUnnamedClustersParams) ([]ListUnnamedClustersRow, error) {
 	rows, err := q.db.Query(ctx, listUnnamedClusters,
 		arg.UserID,
@@ -493,7 +537,7 @@ func (q *Queries) ListUnnamedClusters(ctx context.Context, arg ListUnnamedCluste
 	var items []ListUnnamedClustersRow
 	for rows.Next() {
 		var i ListUnnamedClustersRow
-		if err := rows.Scan(&i.ClusterID, &i.RepresentativeFaceID, &i.FaceCount); err != nil {
+		if err := rows.Scan(&i.ClusterID, &i.BestFaceID, &i.FaceCount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -14,6 +14,18 @@
 	// delegating to the page's assign dialog), and the places
 	// placeholder pinned to its M3 domain.
 	//
+	// THE VIEWER'S READ-ONLY DRAWER (the M3c identity seam): a caller
+	// who does not own the asset (the owner shared it to them) keeps
+	// every READ and the per-user writes, and loses every owner-only
+	// write affordance -- the description's Edit button (the stored
+	// text renders), the hide / trash curation pair and the permanent
+	// delete. The favorite stays (per-user state anyone holds), and
+	// the face chips stay: their assign dialog carries the per-user
+	// label write a sharee holds (B4's sharee-names-what-they-see)
+	// alongside the owner-only move whose server gate stays the
+	// enforcement. Read-only is visual, never grayed out (the web IA
+	// §3's pinned rule) -- the buttons simply never render.
+	//
 	// The drawer is presentation and edit-mode state only: the page
 	// owns the detail, the optimistic state and every network call,
 	// through the onedit / onaction / onrequestdelete / onassignface
@@ -31,6 +43,12 @@
 		detail: AssetDetail;
 		/** The favorite flag (the detail carries none; the page holds it). */
 		favorite: boolean;
+		/**
+		 * Whether the caller owns this asset: the owner-only write
+		 * affordances (the description edit, hide / trash, the permanent
+		 * delete) render for the owner alone.
+		 */
+		isOwner: boolean;
 		/** Any curation action is in flight: buttons disable. */
 		busy: boolean;
 		/** The error-code i18n key of the last failed action ('' when none). */
@@ -53,6 +71,7 @@
 	let {
 		detail,
 		favorite,
+		isOwner,
 		busy,
 		errorKey,
 		onclose,
@@ -278,7 +297,9 @@
 				<p class="info__description mb-2 font-body font-normal text-[14px] leading-[1.5] text-text whitespace-pre-wrap [overflow-wrap:anywhere]">
 					{detail.description !== '' ? detail.description : $_('viewer_description_empty')}
 				</p>
-				<Button variant="ghost" onclick={startEdit}>{$_('viewer_description_edit')}</Button>
+				{#if isOwner}
+					<Button variant="ghost" onclick={startEdit}>{$_('viewer_description_edit')}</Button>
+				{/if}
 			{/if}
 		</section>
 
@@ -292,24 +313,28 @@
 				>
 					{favorite ? $_('action_unfavorite') : $_('action_favorite')}
 				</Button>
-				<Button
-					variant="ghost"
-					disabled={busy}
-					onclick={() => void onaction(detail.isHidden ? 'unhide' : 'hide')}
-				>
-					{detail.isHidden ? $_('action_unhide') : $_('action_hide')}
-				</Button>
-				<Button
-					variant="danger"
-					disabled={busy}
-					onclick={() => void onaction(detail.isTrashed ? 'restore' : 'trash')}
-				>
-					{detail.isTrashed ? $_('action_restore') : $_('action_trash')}
-				</Button>
+				{#if isOwner}
+					<Button
+						variant="ghost"
+						disabled={busy}
+						onclick={() => void onaction(detail.isHidden ? 'unhide' : 'hide')}
+					>
+						{detail.isHidden ? $_('action_unhide') : $_('action_hide')}
+					</Button>
+					<Button
+						variant="danger"
+						disabled={busy}
+						onclick={() => void onaction(detail.isTrashed ? 'restore' : 'trash')}
+					>
+						{detail.isTrashed ? $_('action_restore') : $_('action_trash')}
+					</Button>
+				{/if}
 			</div>
-			<Button variant="danger" disabled={busy} onclick={onrequestdelete}>
-				{$_('viewer_delete_permanently')}
-			</Button>
+			{#if isOwner}
+				<Button variant="danger" disabled={busy} onclick={onrequestdelete}>
+					{$_('viewer_delete_permanently')}
+				</Button>
+			{/if}
 			{#if errorKey !== ''}
 				<p class="info__error mb-2 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(errorKey)}</p>
 			{/if}

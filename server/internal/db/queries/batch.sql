@@ -1,33 +1,50 @@
--- Batch action queries (M2c Task 4): the write side of the batch
--- endpoint. The endpoint's contract is set semantics over one
--- transaction: resolve the request's ids against the caller's
--- ownership, then apply one action per resolved id through the
--- primitives here (trash and restore reuse the trash lifecycle
--- queries of Task 3, whose owner guards and pair predicates are the
--- single-row authority). Every write carries the owner guard itself
--- so a foreign or unknown id is a no-op, never an error -- the
--- guards make items no-ops, which is what lets the whole batch
--- commit as one transaction without a failure path over individual
--- ids.
+-- Batch action queries (M2c Task 4, favorites widened M3c Task 4):
+-- the write side of the batch endpoint. The endpoint's contract is
+-- set semantics over one transaction: resolve the request's ids
+-- against the action's guard (the caller's ownership for the
+-- curation arms, the caller-visible union for the favorites arms),
+-- then apply one action per resolved id through the primitives here
+-- (trash and restore reuse the trash lifecycle queries of Task 3,
+-- whose owner guards and pair predicates are the single-row
+-- authority). Every write carries its guard itself so a foreign or
+-- unknown id is a no-op, never an error -- the guards make items
+-- no-ops, which is what lets the whole batch commit as one
+-- transaction without a failure path over individual ids.
 
 -- name: ResolveBatchAssets :many
--- The batch's id resolution: which of the request's ids address a
+-- The batch's id resolution for the OWNER-scoped actions (hide,
+-- unhide, trash, restore): which of the request's ids address a
 -- row the caller owns. The owner guard IS the permission check of
--- every batch action -- a foreign id resolves to no row exactly like
--- an unknown one, and the handler reports both through the response's
--- missing list (the deliberate trade of the list surface: the caller
--- handed the ids over themselves). No state filter applies here: the
--- actions are set operations over owned rows whatever their state
--- (favoriting a trashed asset, trashing an already-trashed one),
--- because the state arms live in the action queries themselves --
--- resolution answers "is this id the caller's to act on", nothing
--- more. media_kind rides along for the events the handler publishes
--- per changed id after the commit, so the pair (id, kind) resolves
--- in the same read the handler trusts for the report.
+-- those curation actions -- a foreign id resolves to no row exactly
+-- like an unknown one, and the handler reports both through the
+-- response's missing list (the deliberate trade of the list surface:
+-- the caller handed the ids over themselves). No state filter
+-- applies here: the actions are set operations over owned rows
+-- whatever their state (favoriting a trashed asset, trashing an
+-- already-trashed one), because the state arms live in the action
+-- queries themselves -- resolution answers "is this id the caller's
+-- to act on", nothing more. media_kind rides along for the events
+-- the handler publishes per changed id after the commit, so the
+-- pair (id, kind) resolves in the same read the handler trusts for
+-- the report.
 SELECT id, media_kind
 FROM assets
 WHERE id = ANY(sqlc.arg('ids')::uuid[])
   AND owner_id = sqlc.arg('owner_id');
+
+-- name: ResolveVisibleAssets :many
+-- The batch's id resolution for the FAVORITES arms (favorite,
+-- unfavorite, M3c Task 4): which of the request's ids address an
+-- asset the CALLER CAN SEE -- the album union (their own sync and
+-- directory arms plus every album shared to them), so a sharee
+-- favorites what they see. Like the owner resolution it applies no
+-- state filter: the favorites row is per-user state written
+-- whatever the asset's live state, and the view filters. media_kind
+-- rides along for the same uniform report shape.
+SELECT id, media_kind
+FROM assets a
+WHERE a.id = ANY(sqlc.arg('ids')::uuid[])
+  AND caller_asset_visible(sqlc.arg('viewer'), a.id);
 
 -- name: FavoriteAsset :execrows
 -- The caller's favorites row for one asset. The upsert arm is the
