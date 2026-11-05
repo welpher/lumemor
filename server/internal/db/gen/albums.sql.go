@@ -318,6 +318,34 @@ func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWritePara
 	return i, err
 }
 
+const getAlbumShare = `-- name: GetAlbumShare :one
+SELECT album_id, user_id, granted_at
+FROM album_shares
+WHERE album_id = $1
+  AND user_id = $2
+`
+
+type GetAlbumShareParams struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	UserID  pgtype.UUID `json:"user_id"`
+}
+
+type GetAlbumShareRow struct {
+	AlbumID   pgtype.UUID        `json:"album_id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	GrantedAt pgtype.Timestamptz `json:"granted_at"`
+}
+
+// One share row of one grantee: the honest post-write state of the
+// grant (the fresh row's now(), or the existing row's original
+// values when the grant was the idempotent no-op).
+func (q *Queries) GetAlbumShare(ctx context.Context, arg GetAlbumShareParams) (GetAlbumShareRow, error) {
+	row := q.db.QueryRow(ctx, getAlbumShare, arg.AlbumID, arg.UserID)
+	var i GetAlbumShareRow
+	err := row.Scan(&i.AlbumID, &i.UserID, &i.GrantedAt)
+	return i, err
+}
+
 const getAlbumSummary = `-- name: GetAlbumSummary :one
 SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
        EXISTS (
@@ -365,6 +393,39 @@ func (q *Queries) GetAlbumSummary(ctx context.Context, albumID pgtype.UUID) (Get
 		&i.ItemCount,
 	)
 	return i, err
+}
+
+const grantAlbumShare = `-- name: GrantAlbumShare :execrows
+
+INSERT INTO album_shares (album_id, user_id, granted_by)
+VALUES ($1, $2, $3)
+ON CONFLICT (album_id, user_id) DO NOTHING
+`
+
+type GrantAlbumShareParams struct {
+	AlbumID   pgtype.UUID `json:"album_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+	GrantedBy pgtype.UUID `json:"granted_by"`
+}
+
+// Album sharing (M3c Task 3): the view-ACL grant, revoke and the
+// owner's grantee list. The grant is the set discipline again: ON
+// CONFLICT DO NOTHING makes the re-grant of a current grantee a
+// no-op, so the rows-affected count is the transition signal the
+// handler's event discipline reads (a new row fires album.shared,
+// the idempotent no-op stays silent) -- and the PK is the race
+// guard: concurrent grants converge on one row.
+// The view-ACL grant: one album_shares row. The count answers the
+// transition -- 1 row landed a fresh grant, 0 rows mean the grantee
+// already holds the share (the handler then re-reads the existing
+// row for the response; the grantor and grant time of the original
+// stay untouched).
+func (q *Queries) GrantAlbumShare(ctx context.Context, arg GrantAlbumShareParams) (int64, error) {
+	result, err := q.db.Exec(ctx, grantAlbumShare, arg.AlbumID, arg.UserID, arg.GrantedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const listAlbumCoverCandidates = `-- name: ListAlbumCoverCandidates :many
@@ -480,6 +541,44 @@ func (q *Queries) ListAlbumItemsForCaller(ctx context.Context, arg ListAlbumItem
 			&i.OriginalFilename,
 			&i.MediaKind,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumShares = `-- name: ListAlbumShares :many
+SELECT s.user_id, u.email, s.granted_at
+FROM album_shares s
+JOIN users u ON u.id = s.user_id
+WHERE s.album_id = $1
+ORDER BY s.granted_at ASC, s.user_id ASC
+`
+
+type ListAlbumSharesRow struct {
+	UserID    pgtype.UUID        `json:"user_id"`
+	Email     string             `json:"email"`
+	GrantedAt pgtype.Timestamptz `json:"granted_at"`
+}
+
+// The owner's grantee list of one album: the share management
+// dialog's rows, the grant order (granted_at ascending). The join
+// carries the grantee's email -- the dialog lists people, not
+// uuids. Only the owner's detail ever renders this query's answer.
+func (q *Queries) ListAlbumShares(ctx context.Context, albumID pgtype.UUID) ([]ListAlbumSharesRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumShares, albumID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumSharesRow
+	for rows.Next() {
+		var i ListAlbumSharesRow
+		if err := rows.Scan(&i.UserID, &i.Email, &i.GrantedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -628,6 +727,29 @@ type RemoveAlbumItemsParams struct {
 // leaves), and the rows-affected count is the report's removed.
 func (q *Queries) RemoveAlbumItems(ctx context.Context, arg RemoveAlbumItemsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, removeAlbumItems, arg.AlbumID, arg.AssetIds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeAlbumShare = `-- name: RevokeAlbumShare :execrows
+DELETE FROM album_shares
+WHERE album_id = $1
+  AND user_id = $2
+`
+
+type RevokeAlbumShareParams struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	UserID  pgtype.UUID `json:"user_id"`
+}
+
+// The view-ACL revoke: the row leaves, and the count is the
+// transition signal -- 1 row left fires album.unshared, 0 rows (the
+// share never existed, already left, or the id names no account)
+// are the idempotent silence the 204 answers either way.
+func (q *Queries) RevokeAlbumShare(ctx context.Context, arg RevokeAlbumShareParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeAlbumShare, arg.AlbumID, arg.UserID)
 	if err != nil {
 		return 0, err
 	}

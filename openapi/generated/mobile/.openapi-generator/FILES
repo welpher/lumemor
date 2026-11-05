@@ -15,6 +15,9 @@ doc/AlbumItemAsset.md
 doc/AlbumItemsRequest.md
 doc/AlbumOwnerRef.md
 doc/AlbumPatch.md
+doc/AlbumShareEntry.md
+doc/AlbumShareGrantRequest.md
+doc/AlbumShareResponse.md
 doc/AlbumSummary.md
 doc/AlbumWallResponse.md
 doc/AlbumsApi.md
@@ -73,7 +76,10 @@ doc/TrashResponse.md
 doc/UnnamedClusterSummary.md
 doc/UnnamedClustersResponse.md
 doc/User.md
+doc/UserListResponse.md
 doc/UserRole.md
+doc/UserSummary.md
+doc/UsersApi.md
 lib/lumemor_api.dart
 lib/src/api.dart
 lib/src/api/admin_api.dart
@@ -83,6 +89,7 @@ lib/src/api/auth_api.dart
 lib/src/api/events_api.dart
 lib/src/api/people_api.dart
 lib/src/api/server_api.dart
+lib/src/api/users_api.dart
 lib/src/api_util.dart
 lib/src/auth/api_key_auth.dart
 lib/src/auth/auth.dart
@@ -102,6 +109,9 @@ lib/src/model/album_item_asset.dart
 lib/src/model/album_items_request.dart
 lib/src/model/album_owner_ref.dart
 lib/src/model/album_patch.dart
+lib/src/model/album_share_entry.dart
+lib/src/model/album_share_grant_request.dart
+lib/src/model/album_share_response.dart
 lib/src/model/album_summary.dart
 lib/src/model/album_wall_response.dart
 lib/src/model/asset_detail.dart
@@ -155,7 +165,9 @@ lib/src/model/trash_response.dart
 lib/src/model/unnamed_cluster_summary.dart
 lib/src/model/unnamed_clusters_response.dart
 lib/src/model/user.dart
+lib/src/model/user_list_response.dart
 lib/src/model/user_role.dart
+lib/src/model/user_summary.dart
 lib/src/serializers.dart
 pubspec.yaml
 test/add_album_items_response_test.dart
@@ -171,6 +183,9 @@ test/album_item_test.dart
 test/album_items_request_test.dart
 test/album_owner_ref_test.dart
 test/album_patch_test.dart
+test/album_share_entry_test.dart
+test/album_share_grant_request_test.dart
+test/album_share_response_test.dart
 test/album_summary_test.dart
 test/album_wall_response_test.dart
 test/albums_api_test.dart
@@ -228,5 +243,8 @@ test/trash_item_test.dart
 test/trash_response_test.dart
 test/unnamed_cluster_summary_test.dart
 test/unnamed_clusters_response_test.dart
+test/user_list_response_test.dart
 test/user_role_test.dart
+test/user_summary_test.dart
 test/user_test.dart
+test/users_api_test.dart

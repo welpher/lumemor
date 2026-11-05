@@ -26,6 +26,9 @@ import 'package:lumemor_api/src/model/album_item_asset.dart';
 import 'package:lumemor_api/src/model/album_items_request.dart';
 import 'package:lumemor_api/src/model/album_owner_ref.dart';
 import 'package:lumemor_api/src/model/album_patch.dart';
+import 'package:lumemor_api/src/model/album_share_entry.dart';
+import 'package:lumemor_api/src/model/album_share_grant_request.dart';
+import 'package:lumemor_api/src/model/album_share_response.dart';
 import 'package:lumemor_api/src/model/album_summary.dart';
 import 'package:lumemor_api/src/model/album_wall_response.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
@@ -78,7 +81,9 @@ import 'package:lumemor_api/src/model/trash_response.dart';
 import 'package:lumemor_api/src/model/unnamed_cluster_summary.dart';
 import 'package:lumemor_api/src/model/unnamed_clusters_response.dart';
 import 'package:lumemor_api/src/model/user.dart';
+import 'package:lumemor_api/src/model/user_list_response.dart';
 import 'package:lumemor_api/src/model/user_role.dart';
+import 'package:lumemor_api/src/model/user_summary.dart';
 
 part 'serializers.g.dart';
 
@@ -95,6 +100,9 @@ part 'serializers.g.dart';
   AlbumItemsRequest,
   AlbumOwnerRef,
   AlbumPatch,
+  AlbumShareEntry,
+  AlbumShareGrantRequest,
+  AlbumShareResponse,
   AlbumSummary,
   AlbumWallResponse,
   AssetDetail,
@@ -147,7 +155,9 @@ part 'serializers.g.dart';
   UnnamedClusterSummary,
   UnnamedClustersResponse,
   User,
+  UserListResponse,
   UserRole,
+  UserSummary,
 ])
 Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
@@ -179,6 +189,10 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<ModelResponse>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumShareEntry)]),
+        () => ListBuilder<AlbumShareEntry>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AdminUserResponse)]),
         () => ListBuilder<AdminUserResponse>(),
       )
@@ -193,6 +207,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType.nullable(JsonObject)]),
         () => MapBuilder<String, JsonObject?>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(UserSummary)]),
+        () => ListBuilder<UserSummary>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType(bool)]),
