@@ -9,17 +9,35 @@ import { clearWallItems, wallItems } from '$lib/timeline/wall.svelte';
 // empty and error states carry their affordances, the infinite
 // scroll burst collapses into one fetch (the M2d review focus), the
 // manual pager covers hosts without an observer, selection raises
-// the batch bar with optimistic convergence, and SSE events patch
-// the loaded wall. The events module is mocked with a captured
-// handler registry; $app/navigation is not used by this page, but
-// the tile anchors rely on the router only in a real app.
+// the batch bar with optimistic convergence, the batch bar's
+// add-to-album dialog adds the selection to an existing album or
+// creates one first, and SSE events patch the loaded wall (the
+// album.* events restart the walk: the union's membership arms).
+// $app/state is mocked for the ?album= preselect; the events module
+// is mocked with a captured handler registry; $app/navigation is not
+// used by this page, but the tile anchors rely on the router only in
+// a real app.
 
-const { handlers } = vi.hoisted(() => ({
+const { pageState, handlers } = vi.hoisted(() => ({
+	pageState: {
+		params: {} as Record<string, string>,
+		url: new URL('http://localhost/timeline')
+	},
 	handlers: [] as Array<(event: unknown) => void>
 }));
 
+vi.mock('$app/state', () => ({ page: pageState }));
 vi.mock('$lib/events', () => ({
 	subscribeAssetEvents: (listener: (event: unknown) => void) => {
+		handlers.push(listener);
+		return () => {
+			const index = handlers.indexOf(listener);
+			if (index !== -1) {
+				handlers.splice(index, 1);
+			}
+		};
+	},
+	subscribeAlbumEvents: (listener: (event: unknown) => void) => {
 		handlers.push(listener);
 		return () => {
 			const index = handlers.indexOf(listener);
@@ -68,7 +86,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 /** Route table for the fetch stub; every test installs its own. */
-type FetchRoute = Record<string, () => Response>;
+type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 
 function timelineRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
@@ -81,13 +99,13 @@ function timelineRoutes(overrides: FetchRoute = {}): FetchRoute {
 }
 
 function stubFetch(route: FetchRoute): ReturnType<typeof vi.fn> {
-	return vi.fn(async (input: RequestInfo | URL) => {
+	return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		const answer = route[url];
 		if (answer === undefined) {
 			throw new Error(`unexpected fetch ${url}`);
 		}
-		return answer();
+		return answer(init);
 	});
 }
 
@@ -113,8 +131,8 @@ function tiles(): HTMLElement[] {
 	return Array.from(document.body.querySelectorAll<HTMLElement>('.tile'));
 }
 
-function buttonByText(text: string): HTMLButtonElement {
-	const buttons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'));
+function buttonByText(text: string, scope: ParentNode = document.body): HTMLButtonElement {
+	const buttons = Array.from(scope.querySelectorAll<HTMLButtonElement>('button'));
 	const found = buttons.find((button) => button.textContent?.trim() === text);
 	if (found === undefined) {
 		throw new Error(`missing button ${text}`);
@@ -133,6 +151,7 @@ beforeEach(async () => {
 	handlers.length = 0;
 	vi.clearAllMocks();
 	clearWallItems();
+	pageState.url = new URL('http://localhost/timeline');
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
 	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
@@ -465,7 +484,8 @@ test('leaving the page unsubscribes from the event stream', async () => {
 	vi.stubGlobal('fetch', stubFetch(timelineRoutes()));
 	const page = mountPage();
 	await settle();
-	expect(handlers).toHaveLength(1);
+	// The asset listener and the album listener.
+	expect(handlers).toHaveLength(2);
 
 	unmount(page);
 	flushSync();
@@ -505,6 +525,305 @@ test('the scrubber jumps to a month group', async () => {
 	expect(scrolled).toHaveLength(1);
 	expect(scrolled[0]?.dataset.monthKey).toBe('2026-10');
 	Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+	unmount(page);
+	flushSync();
+});
+
+// --- the batch bar's add-to-album flow (M3c Task 5) ---------------------------
+
+function modal(): HTMLElement | null {
+	return document.body.querySelector<HTMLElement>('.modal__panel');
+}
+
+function fillDialogField(scope: ParentNode, value: string): void {
+	const field = scope.querySelector<HTMLInputElement>("input:not([type='radio'])");
+	if (field === null) {
+		throw new Error('missing dialog input');
+	}
+	field.value = value;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function chooseDialogOption(scope: ParentNode, value: string): void {
+	const select = scope.querySelector<HTMLSelectElement>('select');
+	if (select === null) {
+		throw new Error('missing dialog select');
+	}
+	select.value = value;
+	select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+const ownAlbumsBody = {
+	albums: [
+		{
+			id: 'al1',
+			title: 'Road trip 2026',
+			description: '',
+			type: 'virtual',
+			locked: false,
+			isShared: false,
+			coverAssetIds: [],
+			itemCount: 0,
+			updatedAt: '2026-11-01T10:00:00Z',
+			callerRole: 'owner'
+		},
+		{
+			id: 'al2',
+			title: 'Weekend',
+			description: '',
+			type: 'virtual',
+			locked: false,
+			isShared: false,
+			coverAssetIds: [],
+			itemCount: 0,
+			updatedAt: '2026-10-30T10:00:00Z',
+			callerRole: 'owner'
+		},
+		{
+			id: 'al4',
+			title: 'Shared with me',
+			description: '',
+			type: 'virtual',
+			locked: false,
+			isShared: true,
+			coverAssetIds: [],
+			itemCount: 3,
+			updatedAt: '2026-10-29T10:00:00Z',
+			callerRole: 'viewer',
+			owner: { id: 'u2', email: 'grace@example.com' }
+		},
+		{
+			id: 'al5',
+			title: 'The archive',
+			description: '',
+			type: 'directory',
+			locked: false,
+			isShared: false,
+			coverAssetIds: [],
+			itemCount: 9,
+			updatedAt: '2026-10-28T10:00:00Z',
+			callerRole: 'owner'
+		}
+	]
+};
+
+function selectTwoTiles(): void {
+	buttonByText('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	clickTile(0);
+	clickTile(1);
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('2 selected');
+}
+
+test('add to album: picking an existing album POSTs the selection, the report lands', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/albums': () => jsonResponse(200, ownAlbumsBody),
+			'/api/v1/albums/al1/items': () => jsonResponse(200, { added: 2, skipped: 0 })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	selectTwoTiles();
+	buttonByText('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const dialog = modal();
+	expect(dialog?.getAttribute('aria-label')).toBe('Add to album');
+	// The pick list offers the caller's own virtual albums only.
+	const select = dialog?.querySelector<HTMLSelectElement>('select');
+	const options = Array.from(select?.options ?? []);
+	expect(options.map((option) => option.value)).toEqual(['al1', 'al2']);
+	expect(dialog?.textContent).toContain('Road trip 2026');
+
+	chooseDialogOption(dialog as ParentNode, 'al1');
+	buttonByText('Add photos', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/albums/al1/items');
+	expect(posts).toHaveLength(1);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ assetIds: ['a1', 'a2'] });
+	// The honest report renders inside the dialog.
+	expect(modal()?.textContent).toContain('Added 2, skipped 0.');
+	buttonByText('Done', modal() as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	// The successful add cleared the selection: the bar is gone.
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('add to album: the create-new path creates the album first, then adds', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/albums': (init?: RequestInit) => {
+				if (init?.method === 'POST') {
+					return jsonResponse(201, {
+						id: 'al-new',
+						title: 'Weekend in the hills',
+						description: '',
+						type: 'virtual',
+						locked: false,
+						isShared: false,
+						coverAssetIds: [],
+						itemCount: 0,
+						updatedAt: '2026-11-05T10:15:00Z',
+						callerRole: 'owner'
+					});
+				}
+				return jsonResponse(200, ownAlbumsBody);
+			},
+			'/api/v1/albums/al-new/items': () => jsonResponse(200, { added: 1, skipped: 1 })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	selectTwoTiles();
+	buttonByText('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const dialog = modal();
+	// The new-album mode: name it, create, then add. (A raw click
+	// event does not flip a radio in jsdom -- the viewer assign
+	// dialog's tests follow the same click + change pair.)
+	const radios = Array.from(dialog?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? []);
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
+		new MouseEvent('click', { bubbles: true, cancelable: true })
+	);
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
+		new Event('change', { bubbles: true })
+	);
+	flushSync();
+	fillDialogField(dialog as ParentNode, 'Weekend in the hills');
+	buttonByText('Create and add', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(([input, init]) => String(input) === '/api/v1/albums' && init?.method === 'POST');
+	expect(posts).toHaveLength(1);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({
+		title: 'Weekend in the hills',
+		description: ''
+	});
+	const adds = fetchMock.mock.calls.filter(
+		([input]) => String(input) === '/api/v1/albums/al-new/items'
+	);
+	expect(adds).toHaveLength(1);
+	expect(JSON.parse(String(adds[0]?.[1]?.body))).toEqual({ assetIds: ['a1', 'a2'] });
+	expect(modal()?.textContent).toContain('Added 1, skipped 1.');
+	unmount(page);
+	flushSync();
+});
+
+test('a failed add keeps the selection and surfaces the message in the dialog', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/albums': () => jsonResponse(200, ownAlbumsBody),
+			'/api/v1/albums/al1/items': () =>
+				jsonResponse(409, { code: 'ALBUM_LOCKED', message: 'the album is locked' })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	selectTwoTiles();
+	buttonByText('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const dialog = modal();
+	chooseDialogOption(dialog as ParentNode, 'al1');
+	buttonByText('Add photos', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	expect(modal()?.textContent).toContain('This album is locked.');
+	// The dialog stays on its choice; the selection survives.
+	expect(modal()?.querySelector('select')).not.toBeNull();
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('2 selected');
+	unmount(page);
+	flushSync();
+});
+
+test('the ?album= param arms the select mode and preselects the album', async () => {
+	pageState.url = new URL('http://localhost/timeline?album=al2');
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/albums': () => jsonResponse(200, ownAlbumsBody),
+			'/api/v1/albums/al2/items': () => jsonResponse(200, { added: 2, skipped: 0 })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The select mode armed on arrival: the checkboxes are revealed.
+	expect(tiles()[0]?.className).toContain('tile--selectable');
+
+	clickTile(0);
+	clickTile(1);
+	buttonByText('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The dialog preselected the route's album.
+	const select = modal()?.querySelector<HTMLSelectElement>('select');
+	expect(select?.value).toBe('al2');
+	buttonByText('Add photos', modal() as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/albums/al2/items');
+	expect(posts).toHaveLength(1);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ assetIds: ['a1', 'a2'] });
+	unmount(page);
+	flushSync();
+});
+
+test('an album membership event restarts the walk: the fresh page one applies', async () => {
+	let shared = false;
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/assets/timeline?limit=100') {
+			return jsonResponse(200, {
+				items: shared
+					? [item('s1', '2026-11-04T10:00:00Z'), ...pageOne]
+					: pageOne,
+				nextCursor: 'C1'
+			});
+		}
+		if (url === '/api/v1/assets/timeline?limit=100&cursor=C1') {
+			return jsonResponse(200, { items: pageTwo });
+		}
+		throw new Error(`unexpected fetch ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+	expect(tiles()).toHaveLength(3);
+
+	// Someone shared an album with the caller: the union grew, and the
+	// restart's fresh page one carries the new tile.
+	shared = true;
+	for (const handler of [...handlers]) {
+		handler({ id: 2, name: 'album.shared', albumId: 'al4', userId: 'grantee-me' });
+	}
+	await settle();
+
+	expect(tiles()).toHaveLength(4);
+	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
+		'/api/v1/assets/s1/thumbnail?size=tile'
+	);
 	unmount(page);
 	flushSync();
 });

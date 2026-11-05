@@ -29,13 +29,30 @@
 		 * (unfavorite on favorites, unhide on hidden).
 		 */
 		actions?: readonly BatchAction[];
+		/**
+		 * Open the add-to-album dialog over the current selection (the
+		 * timeline's bar offers it; the curated walls do not). The
+		 * album flow is not a batch action -- it carries its own dialog
+		 * and endpoint -- so it rides this callback instead of the
+		 * action set.
+		 */
+		onaddtoalbum?: () => void;
 		/** Run one batch action over the current selection. */
 		onaction: (action: BatchAction) => void;
 		/** Clear the selection. */
 		onclear: () => void;
 	};
 
-	let { count, allFavorite, errorKey, busy, actions, onaction, onclear }: Props = $props();
+	let {
+		count,
+		allFavorite,
+		errorKey,
+		busy,
+		actions,
+		onaddtoalbum,
+		onaction,
+		onclear
+	}: Props = $props();
 
 	// The default is the full set of the bar's buttons; a caller's
 	// subset keeps its order (the toggle, hide, unhide, trash,
@@ -63,6 +80,10 @@
 		aria-label={$_('batch_selected_count', { values: { count } })}
 	>
 		<p class="batchbar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap">{$_('batch_selected_count', { values: { count } })}</p>
+
+		{#if onaddtoalbum !== undefined}
+			<Button variant="ghost" disabled={busy} onclick={onaddtoalbum}>{$_('action_add_to_album')}</Button>
+		{/if}
 
 		{#if offers('favorite')}
 			<Button variant="ghost" disabled={busy} onclick={() => onaction(allFavorite ? 'unfavorite' : 'favorite')}>

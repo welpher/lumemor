@@ -63,6 +63,13 @@
 // memberships are STICKY: the unfavorite arm parks the ids in a
 // removal set the convergence must respect, and only a rollback (the
 // unfavorite failed) or a reset clears it.
+//
+// THE ALBUM WALL (M3c): the album detail's grid drives this same
+// client through the `albumId` option -- the endpoint's album narrow
+// answers the album's own live items in the timeline's exact shape
+// (keyset order, per-user favorite flags), so the grid reuses the
+// wall wholesale. The `resetKey` convergence (CuratedWall) restarts
+// the walk when an album.items-changed event lands for the album.
 
 import { get, writable } from 'svelte/store';
 import { apiFetch, errorEnvelope } from '$lib/auth/api';
@@ -133,6 +140,12 @@ export type TimelineClientOptions = {
 	 * that view's membership rule.
 	 */
 	view?: WallView;
+	/**
+	 * The album whose own timeline this wall walks: the endpoint's
+	 * `albumId` narrow, carried on every page fetch (the album
+	 * detail's grid reuses the wall over the album's own items).
+	 */
+	albumId?: string;
 };
 
 /** The contract's default page size, pinned by the milestone plan. */
@@ -149,6 +162,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	const limit = options.limit ?? TIMELINE_PAGE_LIMIT;
 	const path = options.path ?? '/api/v1/assets/timeline';
 	const view = options.view ?? 'timeline';
+	const albumId = options.albumId;
 
 	const store = writable<TimelineState>({
 		items: [],
@@ -161,6 +175,13 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	// first page) and the ids SSE events removed -- a page response
 	// racing an event must not resurrect either.
 	let nextCursor: string | null = null;
+	// The walk's generation: reset() raises it, and a page fetch
+	// whose entry generation no longer matches discards its response
+	// -- a reset while a page load is in flight (the album wall's
+	// membership convergence) must never let the stale page land over
+	// the fresh walk. The convergence claims already had this
+	// discipline through their claim maps; this is the page-walk arm.
+	let generation = 0;
 	const tombstones = new Set<string>();
 	// The ids this wall has evidence for inside the loaded range: the
 	// page responses delivered them, or a convergence placed them in
@@ -506,13 +527,22 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			return;
 		}
 		store.update((state) => ({ ...state, status: 'loading', errorKey: '' }));
+		const run = generation;
 
-		const query = `limit=${limit}${nextCursor === null ? '' : `&cursor=${encodeURIComponent(nextCursor)}`}`;
+		const narrow = albumId === undefined ? '' : `albumId=${encodeURIComponent(albumId)}&`;
+		const query = `${narrow}limit=${limit}${nextCursor === null ? '' : `&cursor=${encodeURIComponent(nextCursor)}`}`;
 		let response: Response;
 		try {
 			response = await apiFetch(`${path}?${query}`, undefined, fetcher);
 		} catch {
-			setError('internal');
+			if (run === generation) {
+				setError('internal');
+			}
+			return;
+		}
+		if (run !== generation) {
+			// A reset restarted the walk while this page was in
+			// flight: the fresh walk's own fetch decides the state.
 			return;
 		}
 		if (!response.ok) {
@@ -526,14 +556,21 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 				return;
 			}
 			const envelope = await errorEnvelope(response);
-			setError(envelope !== null ? envelope.code.toLowerCase() : 'internal');
+			if (run === generation) {
+				setError(envelope !== null ? envelope.code.toLowerCase() : 'internal');
+			}
 			return;
 		}
 		let body: unknown;
 		try {
 			body = await response.json();
 		} catch {
-			setError('internal');
+			if (run === generation) {
+				setError('internal');
+			}
+			return;
+		}
+		if (run !== generation) {
 			return;
 		}
 		const page = pageFrom(body);
@@ -567,6 +604,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	}
 
 	function reset(): void {
+		generation += 1;
 		nextCursor = null;
 		tombstones.clear();
 		knownIds.clear();

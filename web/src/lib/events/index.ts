@@ -4,11 +4,12 @@
 // consumer of the instance activity stream: the timeline wall and
 // the upload queue overlay (asset.* through `subscribeAssetEvents`),
 // the admin surfaces' live progress (job.* through
-// `subscribeJobEvents`) and the people surface's convergence
+// `subscribeJobEvents`), the people surface's convergence
 // (person.* and face.clustered through `subscribePersonEvents` /
-// `subscribeFaceEvents`) all subscribe and unsubscribe on unmount;
-// the first subscriber of any kind opens the stream, the last one
-// closes it.
+// `subscribeFaceEvents`), the albums surface's convergence
+// (album.* through `subscribeAlbumEvents`) all subscribe and
+// unsubscribe on unmount; the first subscriber of any kind opens the
+// stream, the last one closes it.
 //
 // RECONNECT SEMANTICS: the browser's EventSource owns them. On a
 // network drop it reconnects on its own and resends the
@@ -167,6 +168,37 @@ export type FaceEvent = {
 
 export type FaceEventListener = (event: FaceEvent) => void;
 
+/**
+ * The albums surface's album.* events: the creation, the property
+ * patch, the delete, the membership curation and the view-ACL
+ * sharing writes. Every payload carries the album's id and one
+ * user's id ONLY: titles, descriptions, covers, the lock state and
+ * the membership itself are album state the subscribers refetch,
+ * never bus payload. On the two share events the `userId` is the
+ * GRANTEE whose view of the album changed (the grantor is derivable
+ * server-side); on the other four it is the acting user.
+ */
+export type AlbumEventName =
+	| 'album.created'
+	| 'album.updated'
+	| 'album.deleted'
+	| 'album.items-changed'
+	| 'album.shared'
+	| 'album.unshared';
+
+/** One parsed album.* activity event, as the wall and detail consume it. */
+export type AlbumEvent = {
+	/** The server's monotonically increasing event id (the resumption cursor). */
+	id: number;
+	name: AlbumEventName;
+	/** The album the write touched. */
+	albumId: string;
+	/** The user the write concerns: the grantee on the share events, the actor otherwise. */
+	userId: string;
+};
+
+export type AlbumEventListener = (event: AlbumEvent) => void;
+
 const EVENTS_PATH = '/api/v1/events';
 
 const ASSET_EVENT_NAMES: readonly AssetEventName[] = [
@@ -196,10 +228,20 @@ const PERSON_EVENT_NAMES: readonly PersonEventName[] = [
 
 const FACE_EVENT_NAMES: readonly FaceEventName[] = ['face.clustered'];
 
+const ALBUM_EVENT_NAMES: readonly AlbumEventName[] = [
+	'album.created',
+	'album.updated',
+	'album.deleted',
+	'album.items-changed',
+	'album.shared',
+	'album.unshared'
+];
+
 const assetListeners = new Set<AssetEventListener>();
 const jobListeners = new Set<JobEventListener>();
 const personListeners = new Set<PersonEventListener>();
 const faceListeners = new Set<FaceEventListener>();
+const albumListeners = new Set<AlbumEventListener>();
 let source: EventSource | null = null;
 
 /** Parse the shared id + JSON payload half of one SSE block; null when malformed. */
@@ -400,6 +442,27 @@ function parseFaceEvent(name: FaceEventName, message: MessageEvent): FaceEvent |
 }
 
 /**
+ * Parse one SSE block into an AlbumEvent; null when the block is not
+ * the payload shape this module subscribes to. The wire payload is
+ * an all-strings map carrying the album's id and one user's id --
+ * ids only, never album state.
+ */
+function parseAlbumEvent(name: AlbumEventName, message: MessageEvent): AlbumEvent | null {
+	const base = baseEvent(message);
+	if (base === null) {
+		return null;
+	}
+	const { albumId, userId } = base.payload as { albumId?: unknown; userId?: unknown };
+	if (typeof albumId !== 'string' || albumId === '') {
+		return null;
+	}
+	if (typeof userId !== 'string' || userId === '') {
+		return null;
+	}
+	return { id: base.id, name, albumId, userId };
+}
+
+/**
  * Open the shared stream when the first listener arrives. The
  * EventSource constructor is read at call time (never at import
  * time) so test environments without one keep every subscriber inert
@@ -458,6 +521,17 @@ function connect(): void {
 			}
 		});
 	}
+	for (const name of ALBUM_EVENT_NAMES) {
+		source.addEventListener(name, (message: MessageEvent) => {
+			const event = parseAlbumEvent(name, message);
+			if (event === null) {
+				return;
+			}
+			for (const listener of albumListeners) {
+				listener(event);
+			}
+		});
+	}
 }
 
 /** Close the shared stream (the last listener left, or the app reset). */
@@ -468,7 +542,13 @@ function disconnect(): void {
 
 /** The number of subscribers across all event kinds. */
 function subscriberCount(): number {
-	return assetListeners.size + jobListeners.size + personListeners.size + faceListeners.size;
+	return (
+		assetListeners.size +
+		jobListeners.size +
+		personListeners.size +
+		faceListeners.size +
+		albumListeners.size
+	);
 }
 
 /**
@@ -535,6 +615,24 @@ export function subscribeFaceEvents(listener: FaceEventListener): () => void {
 	connect();
 	return () => {
 		faceListeners.delete(listener);
+		if (subscriberCount() === 0) {
+			disconnect();
+		}
+	};
+}
+
+/**
+ * Subscribe to the parsed album.* events of the activity stream --
+ * the albums surface's creation, property, delete, curation and
+ * sharing writes, riding the SAME refcounted EventSource as every
+ * other subscriber. Returns the unsubscribe function; the stream
+ * closes when the last subscriber of any kind unsubscribes.
+ */
+export function subscribeAlbumEvents(listener: AlbumEventListener): () => void {
+	albumListeners.add(listener);
+	connect();
+	return () => {
+		albumListeners.delete(listener);
 		if (subscriberCount() === 0) {
 			disconnect();
 		}

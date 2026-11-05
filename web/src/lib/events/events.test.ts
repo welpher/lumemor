@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { subscribeAssetEvents, subscribeFaceEvents, subscribeJobEvents, subscribePersonEvents } from './index';
+import { subscribeAlbumEvents, subscribeAssetEvents, subscribeFaceEvents, subscribeJobEvents, subscribePersonEvents } from './index';
 
 // The shared SSE subscription module: one EventSource per app, opened
 // by the first subscriber and closed by the last unsubscribe, parsing
@@ -342,6 +342,86 @@ test('person subscribers ride the shared stream; the last unsubscribe closes it'
 	assetUnsubscribe();
 	expect(MockEventSource.instances[0]?.closed).toBe(false);
 	personUnsubscribe();
+	expect(MockEventSource.instances[0]?.closed).toBe(true);
+});
+
+// --- album.* (the albums surface's write events) ------------------------------
+
+test('every album event name the wall and detail react to is subscribed', () => {
+	const unsubscribe = subscribeAlbumEvents(() => undefined);
+	const stream = MockEventSource.instances[0];
+	for (const name of [
+		'album.created',
+		'album.updated',
+		'album.deleted',
+		'album.items-changed',
+		'album.shared',
+		'album.unshared'
+	]) {
+		expect(stream?.listeners, name).toBeTruthy();
+	}
+	unsubscribe();
+});
+
+test('album subscribers receive the parsed album events, ids only', () => {
+	const seen: unknown[] = [];
+	const unsubscribe = subscribeAlbumEvents((event) => seen.push(event));
+
+	// The wire payloads are all-strings maps (the server publishes
+	// map[string]string): the album's id and one user's id -- the
+	// GRANTEE on the two share events, the acting user otherwise --
+	// never a title, a count or a lock state.
+	const stream = MockEventSource.instances[0];
+	stream?.emit('album.created', { albumId: 'al1', userId: 'u1' }, 21);
+	stream?.emit('album.updated', { albumId: 'al1', userId: 'u1' }, 22);
+	stream?.emit('album.deleted', { albumId: 'al1', userId: 'u1' }, 23);
+	stream?.emit('album.items-changed', { albumId: 'al1', userId: 'u1' }, 24);
+	stream?.emit('album.shared', { albumId: 'al2', userId: 'grantee' }, 25);
+	stream?.emit('album.unshared', { albumId: 'al2', userId: 'grantee' }, 26);
+
+	expect(seen).toEqual([
+		{ id: 21, name: 'album.created', albumId: 'al1', userId: 'u1' },
+		{ id: 22, name: 'album.updated', albumId: 'al1', userId: 'u1' },
+		{ id: 23, name: 'album.deleted', albumId: 'al1', userId: 'u1' },
+		{ id: 24, name: 'album.items-changed', albumId: 'al1', userId: 'u1' },
+		{ id: 25, name: 'album.shared', albumId: 'al2', userId: 'grantee' },
+		{ id: 26, name: 'album.unshared', albumId: 'al2', userId: 'grantee' }
+	]);
+	unsubscribe();
+});
+
+test('malformed album blocks are ignored, not dispatched', () => {
+	const seen: unknown[] = [];
+	const unsubscribe = subscribeAlbumEvents((event) => seen.push(event));
+
+	const stream = MockEventSource.instances[0];
+	// A payload that is not the published shape.
+	stream?.emit('album.updated', { something: 'else' }, 1);
+	// A missing album id.
+	stream?.emit('album.updated', { userId: 'u1' }, 2);
+	// An album id that is not a string.
+	stream?.emit('album.updated', { albumId: 42, userId: 'u1' }, 3);
+	// A missing user id.
+	stream?.emit('album.created', { albumId: 'al1' }, 4);
+	// An empty user id.
+	stream?.emit('album.shared', { albumId: 'al1', userId: '' }, 5);
+	// A missing id line (lastEventId empty).
+	stream?.emit('album.unshared', { albumId: 'al1', userId: 'u1' }, Number.NaN);
+
+	expect(seen).toEqual([]);
+	unsubscribe();
+});
+
+test('album subscribers ride the shared stream; the last unsubscribe closes it', () => {
+	const assetUnsubscribe = subscribeAssetEvents(() => undefined);
+	const albumUnsubscribe = subscribeAlbumEvents(() => undefined);
+	expect(MockEventSource.instances).toHaveLength(1);
+
+	// The asset subscriber leaving does not close the stream the
+	// album subscriber still uses.
+	assetUnsubscribe();
+	expect(MockEventSource.instances[0]?.closed).toBe(false);
+	albumUnsubscribe();
 	expect(MockEventSource.instances[0]?.closed).toBe(true);
 });
 
