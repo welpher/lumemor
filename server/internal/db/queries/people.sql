@@ -339,8 +339,9 @@ WHERE f.id = sqlc.arg('face_id')
 -- with the CALLER's label state of its cluster -- the B4 discipline's
 -- read: clusters are global, labels are private, so the LEFT JOIN
 -- picks the caller's row and another account's label never surfaces.
--- The asset itself was already read owner-scoped by the detail
--- endpoint (a miss answered its own 404 before this query runs), so
+-- The asset itself was already read visibility-scoped by the
+-- detail endpoint (the union gate answered its own 404 before this
+-- query runs), so
 -- the faces need no visibility predicate of their own: a trashed or
 -- hidden asset's detail answers 200 and its faces ride along. The
 -- cluster_id crosses as NULL for a face the clustering has not

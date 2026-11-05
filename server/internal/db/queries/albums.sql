@@ -321,8 +321,12 @@ WHERE id = sqlc.arg('album_id')
 -- name: AddAlbumItems :execrows
 -- The membership add: resolution and insert in one statement. The
 -- WHERE arm IS the resolution -- every id must name a live asset the
--- CALLER owns (the owner-based live predicate; the union switchover
--- of the later task replaces it) -- so foreign, trashed, hidden,
+-- CALLER owns (the owner-based live predicate, a DELIBERATE M3c
+-- decision: curating another account's shared photos into a virtual
+-- album is the re-share feature, which needs display-time
+-- owner-visibility re-validation on every item-listing surface
+-- before the union can carry curation without leaving stale
+-- snapshots behind a revoked share) -- so foreign, trashed, hidden,
 -- component and unknown ids never produce rows: they are the
 -- skipped of the honest report, never errors. ON CONFLICT DO NOTHING
 -- makes the already-member id the no-op of the idempotent add

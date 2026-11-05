@@ -1162,9 +1162,11 @@ export interface paths {
          *     later milestone), and a sync album is no album resource at
          *     all. The same 404 answers an unknown id.
          *
-         *     The locked gate does NOT apply to the delete: a locked album
-         *     can be deleted by its owner -- locking is a curation freeze,
-         *     not a tombstone.
+         *     The locked gate applies to the delete like every other
+         *     write: the permission matrix pins deletion to the UNLOCKED
+         *     state, so a locked album answers 409 `ALBUM_LOCKED` (the
+         *     owner unlocks first -- one step, the freeze is a state to
+         *     clear, not a wall to climb).
          *
          *     Authorization is the writes' two-tier answer: an album the
          *     caller cannot see answers the single-shape 404; an album
@@ -1242,10 +1244,13 @@ export interface paths {
          *     Skip semantics (the batch surface's missing-ids discipline):
          *     every id must belong to a live asset the CALLER owns -- the
          *     owner-based live predicate (not trashed, not hidden, not a
-         *     Live Photo component row) until the union switchover of a
-         *     later task. A foreign account's asset, a trashed, hidden or
-         *     component row, and an unknown id are silently skipped, never
-         *     errors. An id that already sits in the album is skipped too:
+         *     Live Photo component row). Curating another account's shared
+         *     photos into a virtual album is the re-share feature and
+         *     arrives with its own milestone: the union deliberately does
+         *     not carry curation yet. A foreign account's asset, a
+         *     trashed, hidden or component row, and an unknown id are
+         *     silently skipped, never errors. An id that already sits in
+         *     the album is skipped too:
          *     membership is a set, the add is idempotent. An all-skipped
          *     request still answers 200 with `added` 0. Repeated ids
          *     collapse to one application; the counts cover the distinct
