@@ -118,6 +118,64 @@ test('the page limit is the pinned contract default', async () => {
 	await timeline.loadMore();
 });
 
+test('the album narrow rides every page fetch as the leading query parameter', async () => {
+	const seen: string[] = [];
+	const timeline = createTimelineClient({
+		fetcher: vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			seen.push(url);
+			if (url === '/api/v1/assets/timeline?albumId=al1&limit=100') {
+				return page(pageOneItems, 'CURSOR-A');
+			}
+			if (url === '/api/v1/assets/timeline?albumId=al1&limit=100&cursor=CURSOR-A') {
+				return page([item('b1', '2026-09-01T08:00:00Z')]);
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		}),
+		albumId: 'al1'
+	});
+
+	await timeline.loadMore();
+	await timeline.loadMore();
+
+	expect(seen).toEqual([
+		'/api/v1/assets/timeline?albumId=al1&limit=100',
+		'/api/v1/assets/timeline?albumId=al1&limit=100&cursor=CURSOR-A'
+	]);
+	expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3', 'b1']);
+});
+
+test('a reset mid-flight discards the stale page response', async () => {
+	// The first page-one fetch hangs until the test releases it; the
+	// reset restarts the walk while it is in flight, so the stale
+	// response must never apply over the fresh page one.
+	let release: ((response: Response) => void) | undefined;
+	let hanging = true;
+	const timeline = createTimelineClient({
+		fetcher: vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url === '/api/v1/assets/timeline?limit=100' && hanging) {
+				hanging = false;
+				return new Promise<Response>((resolve) => {
+					release = resolve;
+				});
+			}
+			return page([item('fresh', '2026-11-05T10:00:00Z')]);
+		})
+	});
+
+	const first = timeline.loadMore();
+	timeline.reset();
+	release?.(page(pageOneItems, 'CURSOR-1'));
+	await first;
+
+	await timeline.loadMore();
+
+	const state = get(timeline);
+	expect(state.items.map((i) => i.id)).toEqual(['fresh']);
+	expect(state.status).toBe('ready');
+});
+
 test('the in-flight guard collapses concurrent triggers into one fetch', async () => {
 	let releases = 0;
 	const fetcher = vi.fn(async () => {

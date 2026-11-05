@@ -7,22 +7,38 @@
 	// rail scrubs the loaded months, and selection turns the wall
 	// into a curation surface with the floating batch bar.
 	//
-	// The SSE subscription lives for the page's lifetime: the first
+	// THE ADD-TO-ALBUM FLOW (M3c Task 5): the batch bar's dialog adds
+	// the selection to one of the caller's own virtual albums, or
+	// creates the album first -- the honest {added, skipped} report
+	// of the write's own answer lands in the dialog. The ?album=
+	// query parameter (the album detail's add-photos handoff) arms
+	// the select mode and preselects that album in the dialog.
+	//
+	// The SSE subscriptions live for the page's lifetime: the first
 	// subscriber opens the stream, leaving the page closes it, and
-	// every asset event converges through the client. Render
-	// windowing of v0 is the tiles' content-visibility (see
+	// every asset event converges through the client. The album
+	// events restart the walk: the timeline IS the union of the
+	// feeding albums, and the membership arms (a share granted or
+	// revoked, an album deleted, a shared album's curation) change
+	// what the union holds -- the events carry ids only, so the fresh
+	// page one owns the truth.
+	//
+	// Render windowing of v0 is the tiles' content-visibility (see
 	// PhotoTile); full virtualization is an M3 optimization.
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
+	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { createTimelineClient, type BatchAction } from '$lib/api/timeline';
+	import { addAlbumItems, createAlbum, listAlbums, type AlbumSummary } from '$lib/api/albums';
 	import { resolveErrorText } from '$lib/i18n/errors';
-	import { subscribeAssetEvents } from '$lib/events';
+	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
 	import { groupTimelineItems } from '$lib/timeline/grouping';
 	import { publishWallItems } from '$lib/timeline/wall.svelte';
 	import PhotoTile from '$lib/timeline/PhotoTile.svelte';
 	import MonthScrubber from '$lib/timeline/MonthScrubber.svelte';
 	import BatchBar from '$lib/timeline/BatchBar.svelte';
+	import AddToAlbumDialog from '$lib/albums/AddToAlbumDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 
 	const timeline = createTimelineClient();
@@ -35,6 +51,29 @@
 	let batchErrorKey = $state('');
 	let batchBusy = $state(false);
 	let activeMonthKey = $state<string | null>(null);
+
+	// The add-to-album flow's state: the dialog, the caller's own
+	// virtual albums fetched on open, the honest report of the last
+	// landed add, and the album a create-then-add chain already made
+	// (a retry reuses it instead of creating a second album).
+	let addOpen = $state(false);
+	let addBusy = $state(false);
+	let addErrorKey = $state('');
+	let addAlbums = $state<AlbumSummary[]>([]);
+	let addLoading = $state(false);
+	let addReport = $state<{ added: number; skipped: number } | null>(null);
+	let createdAlbumId = $state('');
+
+	// The ?album= handoff: the album detail's add-photos action sends
+	// the caller here to pick photos for that album -- the select
+	// mode arms and the dialog preselects it.
+	const preselectAlbumId = $derived(page.url.searchParams.get('album') ?? '');
+
+	$effect(() => {
+		if (preselectAlbumId !== '') {
+			selectMode = true;
+		}
+	});
 
 	const groups = $derived(groupTimelineItems($timeline.items, $locale ?? 'en'));
 	const months = $derived(groups.map((group) => ({ key: group.key, label: group.label })));
@@ -91,6 +130,90 @@
 			// surfaces the mapped message in the bar.
 			batchErrorKey = outcome.errorKey;
 		}
+	}
+
+	// The add-to-album flow: open the dialog over the current
+	// selection with the caller's own virtual albums (the only
+	// addable-to kind) fetched fresh -- the pick list is the server's.
+	function openAddDialog(): void {
+		if (selection.size === 0) {
+			return;
+		}
+		addErrorKey = '';
+		addReport = null;
+		createdAlbumId = '';
+		addOpen = true;
+		addAlbums = [];
+		addLoading = true;
+		void (async () => {
+			const outcome = await listAlbums();
+			if (!addOpen) {
+				return;
+			}
+			addLoading = false;
+			if (outcome.ok) {
+				addAlbums = outcome.albums.filter(
+					(album) => album.callerRole === 'owner' && album.type === 'virtual'
+				);
+			} else {
+				addErrorKey = outcome.errorKey;
+			}
+		})();
+	}
+
+	// The existing-album path: the honest {added, skipped} report of
+	// the write's own answer lands in the dialog.
+	async function addToExisting(albumId: string): Promise<void> {
+		if (addBusy || selection.size === 0) {
+			return;
+		}
+		addBusy = true;
+		addErrorKey = '';
+		const outcome = await addAlbumItems(albumId, [...selection]);
+		addBusy = false;
+		if (!outcome.ok) {
+			addErrorKey = outcome.errorKey;
+			return;
+		}
+		addReport = { added: outcome.added, skipped: outcome.skipped };
+	}
+
+	// The create-then-add path: create the album (or reuse the one a
+	// failed retry already made), then feed it the selection.
+	async function addToNew(title: string): Promise<void> {
+		if (addBusy || selection.size === 0) {
+			return;
+		}
+		addBusy = true;
+		addErrorKey = '';
+		let albumId = createdAlbumId;
+		if (albumId === '') {
+			const created = await createAlbum(title);
+			if (!created.ok) {
+				addBusy = false;
+				addErrorKey = created.errorKey;
+				return;
+			}
+			albumId = created.album.id;
+			createdAlbumId = albumId;
+		}
+		const outcome = await addAlbumItems(albumId, [...selection]);
+		addBusy = false;
+		if (!outcome.ok) {
+			addErrorKey = outcome.errorKey;
+			return;
+		}
+		addReport = { added: outcome.added, skipped: outcome.skipped };
+	}
+
+	// The report's done: close the dialog and clear the selection --
+	// the add landed (the SSE items-changed echo converges the album
+	// surfaces, and the timeline itself only changes when the
+	// membership moved a feeding album).
+	function finishAdd(): void {
+		addOpen = false;
+		addReport = null;
+		selection.clear();
 	}
 
 	/** Scroll one month group into view (the scrubber jump target). */
@@ -155,8 +278,25 @@
 	$effect(() => {
 		void timeline.loadMore();
 
-		const unsubscribe = subscribeAssetEvents((event) => {
+		const unsubscribeAssets = subscribeAssetEvents((event) => {
 			void timeline.applyEvent(event);
+		});
+
+		// The album events that can move the union's membership arms:
+		// a share granted to the caller or revoked, an album deleted,
+		// a shared album's curation. The events carry ids only, so
+		// the walk restarts and the fresh page one owns the truth
+		// (property patches and creations change nothing here).
+		const unsubscribeAlbums = subscribeAlbumEvents((event) => {
+			if (
+				event.name === 'album.shared' ||
+				event.name === 'album.unshared' ||
+				event.name === 'album.deleted' ||
+				event.name === 'album.items-changed'
+			) {
+				timeline.reset();
+				void timeline.loadMore();
+			}
 		});
 
 		let observer: IntersectionObserver | undefined;
@@ -175,7 +315,8 @@
 		}
 		return () => {
 			observer?.disconnect();
-			unsubscribe();
+			unsubscribeAssets();
+			unsubscribeAlbums();
 		};
 	});
 </script>
@@ -268,6 +409,19 @@
 	allFavorite={allSelectedFavorite}
 	errorKey={batchErrorKey}
 	busy={batchBusy}
+	onaddtoalbum={openAddDialog}
 	onaction={runAction}
 	onclear={exitSelection}
+/>
+<AddToAlbumDialog
+	bind:open={addOpen}
+	albums={addAlbums}
+	initialAlbumId={preselectAlbumId}
+	loading={addLoading}
+	busy={addBusy}
+	errorKey={addErrorKey}
+	report={addReport}
+	onpick={(albumId) => void addToExisting(albumId)}
+	oncreate={(title) => void addToNew(title)}
+	ondone={finishAdd}
 />
