@@ -21,8 +21,9 @@
 -- the per-user preference INSIDE the existential -- an asset kept in
 -- through ANY feeding album stays in even when another of its albums
 -- is switched out -- and that conjunct cannot compose outside the
--- existential over the album rows. The arms themselves must stay
--- byte-identical between the two homes.
+-- existential over the album rows. The arms themselves are
+-- structurally identical between the two homes -- keep them in
+-- sync.
 --
 -- Deduplication is the EXISTS semi-join: one asset visible through
 -- several albums yields one row, and an asset kept in through ANY

@@ -675,12 +675,19 @@ func TestDeleteAlbum(t *testing.T) {
 	})
 
 	t.Run("DeletesLockedAlbum", func(t *testing.T) {
-		// Locking is a curation freeze, not a tombstone: the delete
-		// is not gated.
+		// The permission matrix pins deletion to the UNLOCKED
+		// state: the lock gates the delete like every other write,
+		// and the rows stay intact.
 		rec := env.deleteAlbumRaw(t, env.cookie, locked)
-		if rec.Code != http.StatusNoContent {
+		if rec.Code != http.StatusConflict {
 			t.Fatalf("DELETE locked album status = %d, want %d (body %q)",
-				rec.Code, http.StatusNoContent, rec.Body.String())
+				rec.Code, http.StatusConflict, rec.Body.String())
+		}
+		requireAlbumLocked(t, rec)
+		// The refused delete leaves the album standing: the detail
+		// read fatals on anything but 200.
+		if detail := env.getAlbumDetail(t, env.cookie, locked, ""); uuid.UUID(detail.Id) != locked {
+			t.Errorf("locked album id = %v, want %v", detail.Id, locked)
 		}
 	})
 

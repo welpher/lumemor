@@ -402,8 +402,10 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 // row follows through the schema's cascades; the answer is 204 with
 // no body, and the write publishes album.deleted. VIRTUAL albums
 // only -- a directory album's removal is its own flow and answers
-// the single-shape 404 -- and the locked gate never applies:
-// locking is a curation freeze, not a tombstone.
+// the single-shape 404 -- and the locked gate applies: the
+// permission matrix pins deletion to the UNLOCKED state (the owner
+// unlocks first -- the freeze is a state to clear, not a wall to
+// climb).
 func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -419,6 +421,11 @@ func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		// Directory removal is the directory album's own flow, not a
 		// generic delete: the id folds into the single-shape 404.
 		s.writeAlbumNotFound(w)
+		return
+	}
+	if gate.Album.Locked {
+		// Deletion is a write the lock freezes like any other.
+		s.writeAlbumLocked(w)
 		return
 	}
 

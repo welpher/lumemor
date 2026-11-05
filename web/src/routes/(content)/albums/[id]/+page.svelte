@@ -460,7 +460,11 @@
 					<Button variant="ghost" disabled={writeBusy} onclick={() => void toggleLock()}>{locked ? $_('albums_action_unlock') : $_('albums_action_lock')}</Button>
 					<Button variant="ghost" onclick={() => { shareErrorKey = ''; shareOpen = true; }}>{$_('albums_action_share')}</Button>
 					<Button variant="ghost" disabled={writeBusy || locked} onclick={() => void goto(`/timeline?album=${encodeURIComponent(albumId)}`)}>{$_('albums_action_add_photos')}</Button>
-					<Button variant="danger" disabled={writeBusy} onclick={() => { deleteErrorKey = ''; deleteOpen = true; }}>{$_('albums_action_delete')}</Button>
+					{#if !locked}
+						<!-- The permission matrix pins deletion to the UNLOCKED
+						     state: the owner unlocks first, one step. -->
+						<Button variant="danger" disabled={writeBusy} onclick={() => { deleteErrorKey = ''; deleteOpen = true; }}>{$_('albums_action_delete')}</Button>
+					{/if}
 				{:else if owner && detail.type === 'directory'}
 					<Button variant="ghost" disabled={writeBusy || locked} onclick={() => { propertiesErrorKey = ''; propertiesOpen = true; }}>{$_('albums_action_properties')}</Button>
 					{#if excludable}

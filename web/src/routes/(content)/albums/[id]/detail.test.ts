@@ -411,11 +411,13 @@ test('the lock toggle PATCHes locked; the badge and notice follow and curation d
 		'until you unlock it'
 	);
 	// The locked gate is visual too: curation and property writes
-	// disable until the unlock, while the delete and the share stay.
+	// disable until the unlock, the delete hides until the unlock
+	// (the permission matrix pins deletion to the unlocked state),
+	// while the share stays.
 	expect(buttonByText('Rename').disabled).toBe(true);
 	expect(buttonByText('Set cover…').disabled).toBe(true);
 	expect(buttonByText('Add photos').disabled).toBe(true);
-	expect(buttonByText('Delete album').disabled).toBe(false);
+	expect(() => buttonByText('Delete album')).toThrow();
 	expect(buttonByText('Share…').disabled).toBe(false);
 	expect(() => buttonByText('Unlock')).not.toThrow();
 	unmount(page);
