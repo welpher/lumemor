@@ -6,7 +6,10 @@ import {
 	logout,
 	probeSession,
 	sessionEntries,
-	sessionStatus
+	sessionIdentity,
+	sessionRole,
+	sessionStatus,
+	sessionUserId
 } from './session.svelte';
 
 // The session store is module state shared by every test of this
@@ -28,6 +31,8 @@ const sessionsBody = [
 	{
 		id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
 		kind: 'WEB',
+		userId: '6f9c2d18-9a4c-4a1b-b1a1-00000000000a',
+		role: 'admin',
 		deviceName: 'Mozilla/5.0 (test)',
 		createdAt: '2026-11-01T10:00:00Z',
 		lastSeenAt: '2026-11-02T10:00:00Z'
@@ -51,6 +56,24 @@ test('the boot probe populates the store on a 200 session list', async () => {
 
 	expect(sessionStatus()).toBe('authenticated');
 	expect(sessionEntries()).toEqual(sessionsBody);
+	// The restore path's identity: every entry belongs to the caller,
+	// so the first entry's userId and role are the caller's.
+	expect(sessionUserId()).toBe('6f9c2d18-9a4c-4a1b-b1a1-00000000000a');
+	expect(sessionRole()).toBe('admin');
+});
+
+test('a session list without identity fields resolves no identity', async () => {
+	// A malformed or truncated body (an older server, a proxy): the
+	// session itself is live, the identity stays unset rather than
+	// guessed -- the UI's role-aware surfaces fall back to their
+	// no-identity rendering.
+	const legacy = [{ id: '6f9c2d18-9a4c-4a1b-b1a1-000000000002', kind: 'WEB' }];
+	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, legacy)));
+
+	await probeSession();
+
+	expect(sessionStatus()).toBe('authenticated');
+	expect(sessionIdentity()).toBeNull();
 });
 
 test('the boot probe answers unauthenticated on a 401', async () => {
@@ -93,6 +116,9 @@ test('a mid-session 401 flips the store to unauthenticated (the interceptor)', a
 	expect(response.status).toBe(401);
 	expect(sessionStatus()).toBe('unauthenticated');
 	expect(sessionEntries()).toEqual([]);
+	// The identity leaves with the session: a dead session's caller
+	// is nobody.
+	expect(sessionIdentity()).toBeNull();
 });
 
 test('a 401 while already unauthenticated never triggers the interceptor (no loop)', async () => {
@@ -124,6 +150,23 @@ test('login success establishes the session', async () => {
 
 	expect(outcome).toEqual({ ok: true });
 	expect(sessionStatus()).toBe('authenticated');
+	// The login response IS the new session's SessionInfo: its
+	// identity fields establish the caller identity at login time.
+	expect(sessionUserId()).toBe('6f9c2d18-9a4c-4a1b-b1a1-00000000000a');
+	expect(sessionRole()).toBe('admin');
+});
+
+test('login success with an unparseable body establishes the session without identity', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => new Response('<html>proxy noise</html>', { status: 200 }))
+	);
+
+	const outcome = await login('ada@example.test', 'correct horse');
+
+	expect(outcome).toEqual({ ok: true });
+	expect(sessionStatus()).toBe('authenticated');
+	expect(sessionIdentity()).toBeNull();
 });
 
 test('login 401 maps to the auth_invalid_credentials i18n key', async () => {

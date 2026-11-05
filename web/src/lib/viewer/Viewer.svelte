@@ -49,6 +49,12 @@
 		detail: AssetDetail | null;
 		/** The favorite flag (the detail carries none; the page holds it). */
 		favorite: boolean;
+		/**
+		 * Whether the caller owns the open asset (the session's userId
+		 * against the detail's ownerId): the drawer's owner-only write
+		 * affordances render for the owner alone.
+		 */
+		isOwner: boolean;
 		/** The wall's current page items: the navigation sequence, newest first. */
 		sequence: readonly TimelineItem[];
 		/** The detail lifecycle: loading, ready, or the failure's key. */
@@ -84,6 +90,7 @@
 	let {
 		detail,
 		favorite,
+		isOwner,
 		sequence,
 		status,
 		errorKey,
@@ -530,6 +537,7 @@
 	<InfoDrawer
 		{detail}
 		{favorite}
+		{isOwner}
 		{busy}
 		errorKey={actionErrorKey}
 		onclose={() => (drawerOpen = false)}

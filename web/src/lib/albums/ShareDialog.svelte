@@ -5,14 +5,12 @@
 	// instance's minimal user list. The page owns the writes (the
 	// grant POST and the revoke DELETE, each followed by the detail
 	// refetch whose fresh `shares` array is this list) and the
-	// candidate list (the users minus the current grantees); the
+	// candidate list (the users minus the current grantees minus the
+	// caller's own account -- the identity seam's self filter, so the
+	// grant's own target rule never has to refuse a self-pick); the
 	// dialog owns the choice's lifecycle (reseeded on open, defaulted
 	// to the first candidate).
 	//
-	// THE PICK LIST cannot exclude the caller's own account: the
-	// contract exposes no session identity on the client, so the
-	// server's own target rule answers a self-pick honestly (the
-	// `album_share_to_owner` message renders through the error line).
 	// Disabled accounts render as unselectable options carrying the
 	// honest note -- the entry's own switch, server-provided state.
 	import { _ } from 'svelte-i18n';

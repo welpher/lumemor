@@ -114,6 +114,8 @@ paths:
                   value:
                     id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
                     kind: web
+                    userId: 0192f2a0-1a2b-7c3d-4e5f-60718293a4b5
+                    role: admin
                     deviceName: Firefox on macOS
                     createdAt: '2026-10-29T08:30:00Z'
                     lastSeenAt: '2026-10-29T08:30:00Z'
@@ -241,12 +243,16 @@ paths:
                   value:
                     - id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
                       kind: web
+                      userId: 0192f2a0-1a2b-7c3d-4e5f-60718293a4b5
+                      role: admin
                       deviceName: Firefox on macOS
                       createdAt: '2026-10-01T08:30:00Z'
                       lastSeenAt: '2026-10-29T21:05:00Z'
                       expiresAt: '2026-11-28T21:05:00Z'
                     - id: 0192f3b2-4c5d-7e8f-8a9b-0c1d2e3f4a5b
                       kind: mobile
+                      userId: 0192f2a0-1a2b-7c3d-4e5f-60718293a4b5
+                      role: admin
                       deviceName: Pixel 9
                       createdAt: '2026-10-02T10:12:00Z'
                       lastSeenAt: '2026-10-28T18:40:00Z'
@@ -451,6 +457,8 @@ paths:
                     session:
                       id: 0192f3b2-4c5d-7e8f-8a9b-0c1d2e3f4a5b
                       kind: mobile
+                      userId: 0192f2a0-1a2b-7c3d-4e5f-60718293a4b5
+                      role: admin
                       deviceName: Pixel 9
                       createdAt: '2026-10-29T08:31:00Z'
                       lastSeenAt: '2026-10-29T08:31:00Z'
@@ -6351,9 +6359,21 @@ components:
         through the `lumemor_session` cookie and mobile sessions
         through their bearer token; both are the same session records
         and appear together in `GET /auth/sessions`.
+
+        The session carries its user's identity: `userId` and `role`
+        name whose credentials this is, so a client that restores a
+        session (a web app booting with the cookie, a mobile app
+        resuming with its bearer token) knows who is calling without a
+        second endpoint. `POST /auth/login`, `GET /auth/sessions` and
+        `POST /auth/pairing/consume` all answer this schema, so the
+        identity arrives at login time, at restore time and at pairing
+        time alike. The role is the live account row's, read through
+        the session's own user join.
       required:
         - id
         - kind
+        - userId
+        - role
         - createdAt
         - lastSeenAt
         - expiresAt
@@ -6378,6 +6398,16 @@ components:
             Human-readable device label of the session. For web
             sessions it is the browser user agent captured at login;
             mobile sessions carry the name supplied during pairing.
+        userId:
+          type: string
+          format: uuid
+          description: |
+            UUIDv7 identifier of the account the session belongs to.
+            Every entry of `GET /auth/sessions` carries the caller's
+            own id (the list is the caller's sessions); the caller is
+            who the client compares asset and album ownership against.
+        role:
+          $ref: '#/components/schemas/UserRole'
         createdAt:
           type: string
           format: date-time

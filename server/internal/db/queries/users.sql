@@ -56,3 +56,10 @@ ORDER BY email ASC;
 SELECT id, email, is_disabled
 FROM users
 WHERE id = $1;
+
+-- name: GetUserRole :one
+-- The role half of the pairing consume's identity answer: the burn
+-- answers the token creator's id, and the minted session's response
+-- carries the account's role with it, so the paired device knows who
+-- it paired as from the consume response alone.
+SELECT role FROM users WHERE id = $1;

@@ -114,6 +114,21 @@ func (q *Queries) GetUserForShareTarget(ctx context.Context, id pgtype.UUID) (Ge
 	return i, err
 }
 
+const getUserRole = `-- name: GetUserRole :one
+SELECT role FROM users WHERE id = $1
+`
+
+// The role half of the pairing consume's identity answer: the burn
+// answers the token creator's id, and the minted session's response
+// carries the account's role with it, so the paired device knows who
+// it paired as from the consume response alone.
+func (q *Queries) GetUserRole(ctx context.Context, id pgtype.UUID) (UserRole, error) {
+	row := q.db.QueryRow(ctx, getUserRole, id)
+	var role UserRole
+	err := row.Scan(&role)
+	return role, err
+}
+
 const listInstanceUsersMinimal = `-- name: ListInstanceUsersMinimal :many
 
 SELECT id, email, role, is_disabled

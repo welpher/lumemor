@@ -1235,6 +1235,16 @@ type BearerSession struct {
 	// through the `lumemor_session` cookie and mobile sessions
 	// through their bearer token; both are the same session records
 	// and appear together in `GET /auth/sessions`.
+	//
+	// The session carries its user's identity: `userId` and `role`
+	// name whose credentials this is, so a client that restores a
+	// session (a web app booting with the cookie, a mobile app
+	// resuming with its bearer token) knows who is calling without a
+	// second endpoint. `POST /auth/login`, `GET /auth/sessions` and
+	// `POST /auth/pairing/consume` all answer this schema, so the
+	// identity arrives at login time, at restore time and at pairing
+	// time alike. The role is the live account row's, read through
+	// the session's own user join.
 	Session SessionInfo `json:"session"`
 
 	// Token Bearer credential of the new mobile session; send it as
@@ -1779,6 +1789,16 @@ type ServerInfo struct {
 // through the `lumemor_session` cookie and mobile sessions
 // through their bearer token; both are the same session records
 // and appear together in `GET /auth/sessions`.
+//
+// The session carries its user's identity: `userId` and `role`
+// name whose credentials this is, so a client that restores a
+// session (a web app booting with the cookie, a mobile app
+// resuming with its bearer token) knows who is calling without a
+// second endpoint. `POST /auth/login`, `GET /auth/sessions` and
+// `POST /auth/pairing/consume` all answer this schema, so the
+// identity arrives at login time, at restore time and at pairing
+// time alike. The role is the live account row's, read through
+// the session's own user join.
 type SessionInfo struct {
 	// CreatedAt When the session was created (RFC 3339 UTC).
 	CreatedAt time.Time `json:"createdAt"`
@@ -1804,6 +1824,17 @@ type SessionInfo struct {
 
 	// LastSeenAt When the session was last used (RFC 3339 UTC).
 	LastSeenAt time.Time `json:"lastSeenAt"`
+
+	// Role Authorization role of an account: `admin` is granted by the
+	// first-run wizard or by another administrator, `user` is the
+	// default of every other creation path.
+	Role UserRole `json:"role"`
+
+	// UserId UUIDv7 identifier of the account the session belongs to.
+	// Every entry of `GET /auth/sessions` carries the caller's
+	// own id (the list is the caller's sessions); the caller is
+	// who the client compares asset and album ownership against.
+	UserId openapi_types.UUID `json:"userId"`
 }
 
 // SessionInfoKind Where the session credential lives: `web` sessions ride
