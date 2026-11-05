@@ -467,8 +467,25 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	 * event: the detail decides whether the tile leaves the wall
 	 * (trashed, hidden, gone) or returns to it (restored, unhidden,
 	 * refined), sequenced by the event id (see the maps above).
+	 *
+	 * THE ALBUM NARROW'S GATE: the album's wall answers the timeline
+	 * endpoint's albumId narrow, whose pages ARE the membership -- an
+	 * asset event for an id no page ever delivered is not this
+	 * album's member, and the detail cannot say otherwise (it carries
+	 * no album list). The event replays the stream's retained ring
+	 * too (an upload pipeline's asset.ready for a photo that never
+	 * joined this album), so without the gate those events would
+	 * upsert foreign tiles into an empty or partial grid. The
+	 * narrow's membership changes arrive as album.items-changed,
+	 * which restarts the walk; the aggregate wall keeps its
+	 * insert-on-event behavior (every asset of the caller's stream is
+	 * its member by construction).
 	 */
 	async function convergeFromDetail(assetId: string, eventId: number): Promise<void> {
+		if (albumId !== undefined && !knownIds.has(assetId)) {
+			// Not a member of THIS album: nothing to converge.
+			return;
+		}
 		const prior = convergeClaim.get(assetId) ?? -1;
 		if (eventId < prior) {
 			// A newer event already owns the asset's convergence; its
