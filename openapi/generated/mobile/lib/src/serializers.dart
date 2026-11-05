@@ -18,6 +18,12 @@ import 'package:lumemor_api/src/model/admin_create_user_request.dart';
 import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
+import 'package:lumemor_api/src/model/album_detail.dart';
+import 'package:lumemor_api/src/model/album_item.dart';
+import 'package:lumemor_api/src/model/album_item_asset.dart';
+import 'package:lumemor_api/src/model/album_owner_ref.dart';
+import 'package:lumemor_api/src/model/album_summary.dart';
+import 'package:lumemor_api/src/model/album_wall_response.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_face_summary.dart';
 import 'package:lumemor_api/src/model/asset_patch.dart';
@@ -76,6 +82,12 @@ part 'serializers.g.dart';
   AdminUserListResponse,
   AdminUserPatch,
   AdminUserResponse,
+  AlbumDetail,
+  AlbumItem,
+  AlbumItemAsset,
+  AlbumOwnerRef,
+  AlbumSummary,
+  AlbumWallResponse,
   AssetDetail,
   AssetFaceSummary,
   AssetPatch,
@@ -137,6 +149,10 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<TimelineItem>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumSummary)]),
+        () => ListBuilder<AlbumSummary>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(TrashItem)]),
         () => ListBuilder<TrashItem>(),
       )
@@ -155,6 +171,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AdminUserResponse)]),
         () => ListBuilder<AdminUserResponse>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumItem)]),
+        () => ListBuilder<AlbumItem>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(SessionInfo)]),
