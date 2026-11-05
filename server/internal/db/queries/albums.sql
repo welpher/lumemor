@@ -56,6 +56,12 @@ ON CONFLICT DO NOTHING;
 -- account's timeline, not a wall artifact -- the caller's own sync
 -- album is invisible on every album face, and a sync album another
 -- account shared feeds the timeline's shared arm, not the wall.
+--
+-- in_timeline is the caller's raw timeline preference row of the
+-- card's album (the exclusion toggle's stored state): NULL means no
+-- row, which the handler maps to the default of feeding the timeline
+-- -- except on the caller's own virtual cards, where the field stays
+-- absent entirely (they never feed the caller's own timeline).
 SELECT sqlc.embed(al),
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
@@ -72,9 +78,12 @@ SELECT sqlc.embed(al),
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       p.in_timeline,
        0::int AS arm_rank,
        al.updated_at AS sort_at
 FROM albums al
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
 WHERE al.owner_id = sqlc.arg('user_id')
   AND al.type IN ('virtual', 'directory')
 
@@ -96,11 +105,14 @@ SELECT sqlc.embed(al),
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       p.in_timeline,
        1::int AS arm_rank,
        s.granted_at AS sort_at
 FROM albums al
 JOIN album_shares s ON s.album_id = al.id AND s.user_id = sqlc.arg('user_id')
 JOIN users u ON u.id = al.owner_id
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
 WHERE al.type IN ('virtual', 'directory')
 
 ORDER BY arm_rank, sort_at DESC, id DESC;
@@ -131,13 +143,17 @@ WHERE ranked.recency_rank <= 4
 ORDER BY ranked.album_id, ranked.recency_rank;
 
 -- name: GetAlbumForCaller :one
--- The album the caller may see, with the caller's role and the live
--- member count. The visibility check is the whole point: the caller
--- owns the album or an album_shares row grants it, and the album is
--- no sync album (the sync album is the timeline's, whoever owns it
--- -- the detail face answers 404 for it through the handler's
--- no-row mapping, which is what keeps unknown, invisible and sync
--- ids indistinguishable).
+-- The album the caller may see, with the caller's role, the live
+-- member count and the caller's timeline preference. The visibility
+-- check is the whole point: the caller owns the album or an
+-- album_shares row grants it, and the album is no sync album (the
+-- sync album is the timeline's, whoever owns it -- the detail face
+-- answers 404 for it through the handler's no-row mapping, which is
+-- what keeps unknown, invisible and sync ids indistinguishable).
+-- in_timeline is the caller's raw preference row (NULL = no row);
+-- the handler maps it to the excludable cards' field -- present for
+-- the own directory albums and the shared albums, absent for the
+-- caller's own virtual albums, true when no row exists.
 SELECT sqlc.embed(al),
        CASE
            WHEN al.owner_id = sqlc.arg('user_id') THEN 'owner'::text
@@ -151,8 +167,11 @@ SELECT sqlc.embed(al),
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
-       ) AS item_count
+       ) AS item_count,
+       p.in_timeline
 FROM albums al
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
 WHERE al.id = sqlc.arg('album_id')
   AND al.type IN ('virtual', 'directory')
   AND (
@@ -227,7 +246,10 @@ RETURNING id;
 
 -- name: GetAlbumSummary :one
 -- The album row with the wall card's honest companions: whether any
--- share row exists and the live member count. The write face's
+-- share row exists, the live member count, and the caller's raw
+-- timeline preference row (the write face's caller is the owner, so a
+-- virtual album's card carries no preference field; the handler maps
+-- NULL to the default the same way the wall does). The write face's
 -- responses build their cards off this row; the derived cover
 -- candidates ride along through the wall's own follow-up query.
 SELECT sqlc.embed(al),
@@ -242,8 +264,11 @@ SELECT sqlc.embed(al),
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
-       ) AS item_count
+       ) AS item_count,
+       p.in_timeline
 FROM albums al
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
 WHERE al.id = sqlc.arg('album_id');
 
 -- name: UpdateAlbumFields :one
@@ -369,3 +394,61 @@ FROM album_shares s
 JOIN users u ON u.id = s.user_id
 WHERE s.album_id = sqlc.arg('album_id')
 ORDER BY s.granted_at ASC, s.user_id ASC;
+
+-- Timeline preferences (M3c Task 4): the per-user "keep this album
+-- out of my timeline" switch. The preference scopes the caller's own
+-- view only (the aggregated timeline's formula folds it inside its
+-- membership existential); the album's own items, the wall and every
+-- sharee's view never read it. The row is the caller's: (user_id,
+-- album_id) primary key, a missing row meaning kept in.
+
+-- name: GetAlbumForTimelinePref :one
+-- The preference face's gate: the album row with the caller's role.
+-- Unlike GetAlbumForCaller this resolves EVERY album type -- the
+-- caller's own sync and own virtual albums must reach the handler so
+-- their 400 (not excludable) can answer, and a sync album a share
+-- row names (nothing can produce one, but a defense holds anyway)
+-- resolves as a viewer row the handler's type check refuses. No row
+-- covers the unknown and the not-visible-alike -- the single-shape
+-- 404 (anti-enumeration).
+SELECT sqlc.embed(al),
+       CASE
+           WHEN al.owner_id = sqlc.arg('user_id') THEN 'owner'::text
+           ELSE 'viewer'::text
+       END AS caller_role
+FROM albums al
+WHERE al.id = sqlc.arg('album_id')
+  AND (
+      al.owner_id = sqlc.arg('user_id')
+      OR EXISTS (
+          SELECT 1 FROM album_shares s
+          WHERE s.album_id = al.id AND s.user_id = sqlc.arg('user_id')
+      )
+  );
+
+-- name: UpsertAlbumTimelinePreference :one
+-- The preference write: an insert for a first toggle, an update for
+-- every repeat (the upsert converges; the response always carries
+-- the stored state). updated_at moves with a real change only, so a
+-- repeat of the stored value leaves the row untouched -- the same
+-- set-semantics guard the album writes apply.
+INSERT INTO user_album_prefs (user_id, album_id, in_timeline)
+VALUES (sqlc.arg('user_id'), sqlc.arg('album_id'), sqlc.arg('in_timeline'))
+ON CONFLICT (user_id, album_id)
+DO UPDATE SET
+    in_timeline = EXCLUDED.in_timeline,
+    updated_at  = CASE
+        WHEN user_album_prefs.in_timeline = EXCLUDED.in_timeline
+        THEN user_album_prefs.updated_at
+        ELSE now()
+    END
+RETURNING in_timeline;
+
+-- name: DeleteAlbumTimelinePreference :execrows
+-- The preference reset: the row goes, the album returns to the
+-- default of feeding the caller's timeline. Zero rows are the
+-- idempotent no-op -- the caller asked for the row to be gone and it
+-- already is.
+DELETE FROM user_album_prefs
+WHERE user_id = sqlc.arg('user_id')
+  AND album_id = sqlc.arg('album_id');

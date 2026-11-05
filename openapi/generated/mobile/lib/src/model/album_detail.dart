@@ -25,6 +25,7 @@ part 'album_detail.g.dart';
 /// * [items] - One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
 /// * [nextCursor] - The opaque continuation cursor: pass it back as the `cursor` query parameter to fetch the next page. Absent exactly when this is the last page. 
 /// * [shares] - The album's grantee list, riding ONLY the owner's view: one entry per `album_shares` row in the grant order (`grantedAt` ascending) -- the share management dialog's list. The owner's response always carries the field, an empty array when the album holds no grants; viewer responses never carry it at all. 
+/// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `virtual` album omits the field (it never feeds the caller's own timeline). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
 @BuiltValue()
 abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   /// Identifier of the album.
@@ -72,6 +73,10 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   /// The album's grantee list, riding ONLY the owner's view: one entry per `album_shares` row in the grant order (`grantedAt` ascending) -- the share management dialog's list. The owner's response always carries the field, an empty array when the album holds no grants; viewer responses never carry it at all. 
   @BuiltValueField(wireName: r'shares')
   BuiltList<AlbumShareEntry>? get shares;
+
+  /// The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `virtual` album omits the field (it never feeds the caller's own timeline). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
+  @BuiltValueField(wireName: r'inTimeline')
+  bool? get inTimeline;
 
   AlbumDetail._();
 
@@ -153,6 +158,13 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
       yield serializers.serialize(
         object.shares,
         specifiedType: const FullType(BuiltList, [FullType(AlbumShareEntry)]),
+      );
+    }
+    if (object.inTimeline != null) {
+      yield r'inTimeline';
+      yield serializers.serialize(
+        object.inTimeline,
+        specifiedType: const FullType(bool),
       );
     }
   }
@@ -257,6 +269,14 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
           ) as BuiltList<AlbumShareEntry>?;
           if (valueDes == null) continue;
           result.shares.replace(valueDes);
+          break;
+        case r'inTimeline':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(bool),
+          ) as bool?;
+          if (valueDes == null) continue;
+          result.inTimeline = valueDes;
           break;
         default:
           unhandled.add(key);

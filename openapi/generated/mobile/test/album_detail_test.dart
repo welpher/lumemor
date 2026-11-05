@@ -73,5 +73,11 @@ void main() {
       // TODO
     });
 
+    // The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `virtual` album omits the field (it never feeds the caller's own timeline). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
+    // bool inTimeline
+    test('to test the property `inTimeline`', () async {
+      // TODO
+    });
+
   });
 }

@@ -110,12 +110,12 @@ func TestFavoritesView(t *testing.T) {
 	favHidden := fixtureAssetID("94")
 	favTrashed := fixtureAssetID("95")
 	plain := fixtureAssetID("96")
-	env.insertTimelineAsset(t, fav1, adminID, taken.Add(4*time.Minute), timelineAssetOpts{})
-	env.insertTimelineAsset(t, fav2, adminID, taken.Add(3*time.Minute), timelineAssetOpts{})
-	env.insertTimelineAsset(t, fav3, adminID, taken.Add(2*time.Minute), timelineAssetOpts{})
-	env.insertTimelineAsset(t, favHidden, adminID, taken.Add(time.Minute), timelineAssetOpts{})
-	env.insertTimelineAsset(t, favTrashed, adminID, taken, timelineAssetOpts{})
-	env.insertTimelineAsset(t, plain, adminID, taken.Add(-time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, fav1, adminID, taken.Add(4*time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, fav2, adminID, taken.Add(3*time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, fav3, adminID, taken.Add(2*time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, favHidden, adminID, taken.Add(time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, favTrashed, adminID, taken, timelineAssetOpts{})
+	env.insertOwnedAsset(t, plain, adminID, taken.Add(-time.Minute), timelineAssetOpts{})
 
 	// Five favorites (the plain asset stays unfavorited), then one
 	// hidden and one trashed: the favorite rows ride both states out
@@ -136,7 +136,7 @@ func TestFavoritesView(t *testing.T) {
 	// Grace's favorites are hers: her empty view stays empty of the
 	// admin's favorites, and her own favorite shows in her view alone.
 	graceFav := fixtureAssetID("97")
-	env.insertTimelineAsset(t, graceFav, graceID, taken.Add(5*time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, graceFav, graceID, taken.Add(5*time.Minute), timelineAssetOpts{})
 	env.batchAssets(t, graceCookie, "favorite", graceFav)
 	page = env.getFavorites(t, graceCookie, "")
 	requireTimelineIDs(t, page.Items, graceFav)
@@ -171,7 +171,7 @@ func TestFavoritesPagination(t *testing.T) {
 	ids := make([]uuid.UUID, 5)
 	for i := range ids {
 		ids[i] = fixtureAssetID("a" + string(rune('1'+i)))
-		env.insertTimelineAsset(t, ids[i], adminID, base.Add(time.Duration(5-i)*time.Minute), timelineAssetOpts{})
+		env.insertOwnedAsset(t, ids[i], adminID, base.Add(time.Duration(5-i)*time.Minute), timelineAssetOpts{})
 	}
 	env.batchAssets(t, env.cookie, "favorite", ids...)
 

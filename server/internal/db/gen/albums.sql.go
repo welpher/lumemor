@@ -138,6 +138,29 @@ func (q *Queries) CreateVirtualAlbum(ctx context.Context, arg CreateVirtualAlbum
 	return id, err
 }
 
+const deleteAlbumTimelinePreference = `-- name: DeleteAlbumTimelinePreference :execrows
+DELETE FROM user_album_prefs
+WHERE user_id = $1
+  AND album_id = $2
+`
+
+type DeleteAlbumTimelinePreferenceParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+// The preference reset: the row goes, the album returns to the
+// default of feeding the caller's timeline. Zero rows are the
+// idempotent no-op -- the caller asked for the row to be gone and it
+// already is.
+func (q *Queries) DeleteAlbumTimelinePreference(ctx context.Context, arg DeleteAlbumTimelinePreferenceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAlbumTimelinePreference, arg.UserID, arg.AlbumID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteVirtualAlbum = `-- name: DeleteVirtualAlbum :execrows
 DELETE FROM albums
 WHERE id = $1
@@ -210,8 +233,11 @@ SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cove
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
-       ) AS item_count
+       ) AS item_count,
+       p.in_timeline
 FROM albums al
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = $1
 WHERE al.id = $2
   AND al.type IN ('virtual', 'directory')
   AND (
@@ -229,18 +255,23 @@ type GetAlbumForCallerParams struct {
 }
 
 type GetAlbumForCallerRow struct {
-	Album      Album  `json:"album"`
-	CallerRole string `json:"caller_role"`
-	ItemCount  int64  `json:"item_count"`
+	Album      Album       `json:"album"`
+	CallerRole string      `json:"caller_role"`
+	ItemCount  int64       `json:"item_count"`
+	InTimeline pgtype.Bool `json:"in_timeline"`
 }
 
-// The album the caller may see, with the caller's role and the live
-// member count. The visibility check is the whole point: the caller
-// owns the album or an album_shares row grants it, and the album is
-// no sync album (the sync album is the timeline's, whoever owns it
-// -- the detail face answers 404 for it through the handler's
-// no-row mapping, which is what keeps unknown, invisible and sync
-// ids indistinguishable).
+// The album the caller may see, with the caller's role, the live
+// member count and the caller's timeline preference. The visibility
+// check is the whole point: the caller owns the album or an
+// album_shares row grants it, and the album is no sync album (the
+// sync album is the timeline's, whoever owns it -- the detail face
+// answers 404 for it through the handler's no-row mapping, which is
+// what keeps unknown, invisible and sync ids indistinguishable).
+// in_timeline is the caller's raw preference row (NULL = no row);
+// the handler maps it to the excludable cards' field -- present for
+// the own directory albums and the shared albums, absent for the
+// caller's own virtual albums, true when no row exists.
 func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerParams) (GetAlbumForCallerRow, error) {
 	row := q.db.QueryRow(ctx, getAlbumForCaller, arg.UserID, arg.AlbumID)
 	var i GetAlbumForCallerRow
@@ -258,6 +289,69 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 		&i.Album.UpdatedAt,
 		&i.CallerRole,
 		&i.ItemCount,
+		&i.InTimeline,
+	)
+	return i, err
+}
+
+const getAlbumForTimelinePref = `-- name: GetAlbumForTimelinePref :one
+
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       CASE
+           WHEN al.owner_id = $1 THEN 'owner'::text
+           ELSE 'viewer'::text
+       END AS caller_role
+FROM albums al
+WHERE al.id = $2
+  AND (
+      al.owner_id = $1
+      OR EXISTS (
+          SELECT 1 FROM album_shares s
+          WHERE s.album_id = al.id AND s.user_id = $1
+      )
+  )
+`
+
+type GetAlbumForTimelinePrefParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+type GetAlbumForTimelinePrefRow struct {
+	Album      Album  `json:"album"`
+	CallerRole string `json:"caller_role"`
+}
+
+// Timeline preferences (M3c Task 4): the per-user "keep this album
+// out of my timeline" switch. The preference scopes the caller's own
+// view only (the aggregated timeline's formula folds it inside its
+// membership existential); the album's own items, the wall and every
+// sharee's view never read it. The row is the caller's: (user_id,
+// album_id) primary key, a missing row meaning kept in.
+// The preference face's gate: the album row with the caller's role.
+// Unlike GetAlbumForCaller this resolves EVERY album type -- the
+// caller's own sync and own virtual albums must reach the handler so
+// their 400 (not excludable) can answer, and a sync album a share
+// row names (nothing can produce one, but a defense holds anyway)
+// resolves as a viewer row the handler's type check refuses. No row
+// covers the unknown and the not-visible-alike -- the single-shape
+// 404 (anti-enumeration).
+func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTimelinePrefParams) (GetAlbumForTimelinePrefRow, error) {
+	row := q.db.QueryRow(ctx, getAlbumForTimelinePref, arg.UserID, arg.AlbumID)
+	var i GetAlbumForTimelinePrefRow
+	err := row.Scan(
+		&i.Album.ID,
+		&i.Album.OwnerID,
+		&i.Album.Title,
+		&i.Album.Description,
+		&i.Album.Type,
+		&i.Album.Locked,
+		&i.Album.CoverAssetID,
+		&i.Album.RootPath,
+		&i.Album.LastScannedAt,
+		&i.Album.CreatedAt,
+		&i.Album.UpdatedAt,
+		&i.CallerRole,
 	)
 	return i, err
 }
@@ -359,23 +453,35 @@ SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cove
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
-       ) AS item_count
+       ) AS item_count,
+       p.in_timeline
 FROM albums al
-WHERE al.id = $1
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = $1
+WHERE al.id = $2
 `
 
+type GetAlbumSummaryParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
 type GetAlbumSummaryRow struct {
-	Album     Album `json:"album"`
-	IsShared  bool  `json:"is_shared"`
-	ItemCount int64 `json:"item_count"`
+	Album      Album       `json:"album"`
+	IsShared   bool        `json:"is_shared"`
+	ItemCount  int64       `json:"item_count"`
+	InTimeline pgtype.Bool `json:"in_timeline"`
 }
 
 // The album row with the wall card's honest companions: whether any
-// share row exists and the live member count. The write face's
+// share row exists, the live member count, and the caller's raw
+// timeline preference row (the write face's caller is the owner, so a
+// virtual album's card carries no preference field; the handler maps
+// NULL to the default the same way the wall does). The write face's
 // responses build their cards off this row; the derived cover
 // candidates ride along through the wall's own follow-up query.
-func (q *Queries) GetAlbumSummary(ctx context.Context, albumID pgtype.UUID) (GetAlbumSummaryRow, error) {
-	row := q.db.QueryRow(ctx, getAlbumSummary, albumID)
+func (q *Queries) GetAlbumSummary(ctx context.Context, arg GetAlbumSummaryParams) (GetAlbumSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getAlbumSummary, arg.UserID, arg.AlbumID)
 	var i GetAlbumSummaryRow
 	err := row.Scan(
 		&i.Album.ID,
@@ -391,6 +497,7 @@ func (q *Queries) GetAlbumSummary(ctx context.Context, albumID pgtype.UUID) (Get
 		&i.Album.UpdatedAt,
 		&i.IsShared,
 		&i.ItemCount,
+		&i.InTimeline,
 	)
 	return i, err
 }
@@ -607,9 +714,12 @@ SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cove
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       p.in_timeline,
        0::int AS arm_rank,
        al.updated_at AS sort_at
 FROM albums al
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = $1
 WHERE al.owner_id = $1
   AND al.type IN ('virtual', 'directory')
 
@@ -631,11 +741,14 @@ SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cove
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       p.in_timeline,
        1::int AS arm_rank,
        s.granted_at AS sort_at
 FROM albums al
 JOIN album_shares s ON s.album_id = al.id AND s.user_id = $1
 JOIN users u ON u.id = al.owner_id
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = $1
 WHERE al.type IN ('virtual', 'directory')
 
 ORDER BY arm_rank, sort_at DESC, id DESC
@@ -648,6 +761,7 @@ type ListWallAlbumsForCallerRow struct {
 	OwnerEmail  pgtype.Text        `json:"owner_email"`
 	IsShared    bool               `json:"is_shared"`
 	ItemCount   int64              `json:"item_count"`
+	InTimeline  pgtype.Bool        `json:"in_timeline"`
 	ArmRank     int32              `json:"arm_rank"`
 	SortAt      pgtype.Timestamptz `json:"sort_at"`
 }
@@ -671,6 +785,12 @@ type ListWallAlbumsForCallerRow struct {
 // account's timeline, not a wall artifact -- the caller's own sync
 // album is invisible on every album face, and a sync album another
 // account shared feeds the timeline's shared arm, not the wall.
+//
+// in_timeline is the caller's raw timeline preference row of the
+// card's album (the exclusion toggle's stored state): NULL means no
+// row, which the handler maps to the default of feeding the timeline
+// -- except on the caller's own virtual cards, where the field stays
+// absent entirely (they never feed the caller's own timeline).
 func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUID) ([]ListWallAlbumsForCallerRow, error) {
 	rows, err := q.db.Query(ctx, listWallAlbumsForCaller, userID)
 	if err != nil {
@@ -697,6 +817,7 @@ func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUI
 			&i.OwnerEmail,
 			&i.IsShared,
 			&i.ItemCount,
+			&i.InTimeline,
 			&i.ArmRank,
 			&i.SortAt,
 		); err != nil {
@@ -796,4 +917,36 @@ func (q *Queries) UpdateAlbumFields(ctx context.Context, arg UpdateAlbumFieldsPa
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const upsertAlbumTimelinePreference = `-- name: UpsertAlbumTimelinePreference :one
+INSERT INTO user_album_prefs (user_id, album_id, in_timeline)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id, album_id)
+DO UPDATE SET
+    in_timeline = EXCLUDED.in_timeline,
+    updated_at  = CASE
+        WHEN user_album_prefs.in_timeline = EXCLUDED.in_timeline
+        THEN user_album_prefs.updated_at
+        ELSE now()
+    END
+RETURNING in_timeline
+`
+
+type UpsertAlbumTimelinePreferenceParams struct {
+	UserID     pgtype.UUID `json:"user_id"`
+	AlbumID    pgtype.UUID `json:"album_id"`
+	InTimeline bool        `json:"in_timeline"`
+}
+
+// The preference write: an insert for a first toggle, an update for
+// every repeat (the upsert converges; the response always carries
+// the stored state). updated_at moves with a real change only, so a
+// repeat of the stored value leaves the row untouched -- the same
+// set-semantics guard the album writes apply.
+func (q *Queries) UpsertAlbumTimelinePreference(ctx context.Context, arg UpsertAlbumTimelinePreferenceParams) (bool, error) {
+	row := q.db.QueryRow(ctx, upsertAlbumTimelinePreference, arg.UserID, arg.AlbumID, arg.InTimeline)
+	var in_timeline bool
+	err := row.Scan(&in_timeline)
+	return in_timeline, err
 }

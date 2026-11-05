@@ -19,6 +19,8 @@ doc/AlbumShareEntry.md
 doc/AlbumShareGrantRequest.md
 doc/AlbumShareResponse.md
 doc/AlbumSummary.md
+doc/AlbumTimelinePreferenceRequest.md
+doc/AlbumTimelinePreferenceResponse.md
 doc/AlbumWallResponse.md
 doc/AlbumsApi.md
 doc/AssetDetail.md
@@ -113,6 +115,8 @@ lib/src/model/album_share_entry.dart
 lib/src/model/album_share_grant_request.dart
 lib/src/model/album_share_response.dart
 lib/src/model/album_summary.dart
+lib/src/model/album_timeline_preference_request.dart
+lib/src/model/album_timeline_preference_response.dart
 lib/src/model/album_wall_response.dart
 lib/src/model/asset_detail.dart
 lib/src/model/asset_face_summary.dart
@@ -187,6 +191,8 @@ test/album_share_entry_test.dart
 test/album_share_grant_request_test.dart
 test/album_share_response_test.dart
 test/album_summary_test.dart
+test/album_timeline_preference_request_test.dart
+test/album_timeline_preference_response_test.dart
 test/album_wall_response_test.dart
 test/albums_api_test.dart
 test/asset_detail_test.dart

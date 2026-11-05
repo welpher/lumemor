@@ -182,6 +182,8 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"DELETE /api/v1/albums/{albumId}/items",
 		"POST /api/v1/albums/{albumId}/shares",
 		"DELETE /api/v1/albums/{albumId}/shares/{userId}",
+		"PUT /api/v1/albums/{albumId}/timeline-preference",
+		"DELETE /api/v1/albums/{albumId}/timeline-preference",
 		"GET /api/v1/users",
 		"GET /api/v1/people",
 		"GET /api/v1/people/unnamed",

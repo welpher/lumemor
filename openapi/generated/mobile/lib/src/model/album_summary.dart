@@ -24,6 +24,7 @@ part 'album_summary.g.dart';
 /// * [updatedAt] - When the album row last changed (RFC 3339 UTC).
 /// * [callerRole] - The caller's relation to this album: `owner` items belong to the own group, `viewer` items to the shared group. The web client sections the wall off this discriminator. 
 /// * [owner] - The owner attribution of a shared item: the account that owns the album. Present exactly when `callerRole` is `viewer`; own items omit it (the owner is the caller). 
+/// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `virtual` items omit it (they never feed the caller's own timeline, so there is nothing to exclude). The value is the preference row's switch, true when no row exists (the default). 
 @BuiltValue()
 abstract class AlbumSummary implements Built<AlbumSummary, AlbumSummaryBuilder> {
   /// Identifier of the album.
@@ -71,6 +72,10 @@ abstract class AlbumSummary implements Built<AlbumSummary, AlbumSummaryBuilder> 
   /// The owner attribution of a shared item: the account that owns the album. Present exactly when `callerRole` is `viewer`; own items omit it (the owner is the caller). 
   @BuiltValueField(wireName: r'owner')
   AlbumOwnerRef? get owner;
+
+  /// The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `virtual` items omit it (they never feed the caller's own timeline, so there is nothing to exclude). The value is the preference row's switch, true when no row exists (the default). 
+  @BuiltValueField(wireName: r'inTimeline')
+  bool? get inTimeline;
 
   AlbumSummary._();
 
@@ -150,6 +155,13 @@ class _$AlbumSummarySerializer implements PrimitiveSerializer<AlbumSummary> {
       yield serializers.serialize(
         object.owner,
         specifiedType: const FullType(AlbumOwnerRef),
+      );
+    }
+    if (object.inTimeline != null) {
+      yield r'inTimeline';
+      yield serializers.serialize(
+        object.inTimeline,
+        specifiedType: const FullType(bool),
       );
     }
   }
@@ -252,6 +264,14 @@ class _$AlbumSummarySerializer implements PrimitiveSerializer<AlbumSummary> {
           ) as AlbumOwnerRef?;
           if (valueDes == null) continue;
           result.owner.replace(valueDes);
+          break;
+        case r'inTimeline':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(bool),
+          ) as bool?;
+          if (valueDes == null) continue;
+          result.inTimeline = valueDes;
           break;
         default:
           unhandled.add(key);

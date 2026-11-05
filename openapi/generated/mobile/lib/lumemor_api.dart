@@ -35,6 +35,8 @@ export 'package:lumemor_api/src/model/album_share_entry.dart';
 export 'package:lumemor_api/src/model/album_share_grant_request.dart';
 export 'package:lumemor_api/src/model/album_share_response.dart';
 export 'package:lumemor_api/src/model/album_summary.dart';
+export 'package:lumemor_api/src/model/album_timeline_preference_request.dart';
+export 'package:lumemor_api/src/model/album_timeline_preference_response.dart';
 export 'package:lumemor_api/src/model/album_wall_response.dart';
 export 'package:lumemor_api/src/model/asset_detail.dart';
 export 'package:lumemor_api/src/model/asset_face_summary.dart';

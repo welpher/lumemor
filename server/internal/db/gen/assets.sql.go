@@ -192,12 +192,15 @@ type GetAssetParams struct {
 	OwnerID pgtype.UUID `json:"owner_id"`
 }
 
-// The owner-scoped read of the media serving endpoints: the full row
-// behind a thumbnail or original request. The owner filter IS the
-// permission check (M2b is owner-only): a foreign id resolves to no
-// row, which the handlers answer exactly like an unknown id -- 404,
-// byte-identical -- so asset ids cannot be enumerated. Album sharing
-// widens this in M2c with the album domain.
+// The owner-scoped row read behind the WRITE faces that gate on
+// ownership (the attribute PATCH and the trash restore): their
+// permission is ACL derivation -- the owner alone may edit and
+// restore -- so the owner filter IS the check, and a foreign id
+// resolves to no row, which the handlers answer exactly like an
+// unknown id -- 404, byte-identical -- so asset ids cannot be
+// enumerated. The READ faces (detail, thumbnail, original, play)
+// use GetAssetDetail / GetVisibleAsset instead: the caller-visible
+// union the switchover moved them onto.
 func (q *Queries) GetAsset(ctx context.Context, arg GetAssetParams) (Asset, error) {
 	row := q.db.QueryRow(ctx, getAsset, arg.ID, arg.OwnerID)
 	var i Asset
@@ -373,12 +376,13 @@ SELECT a.id,
        e.tz_offset
 FROM assets a
 LEFT JOIN exif e ON e.asset_id = a.id
-WHERE a.id = $1 AND a.owner_id = $2
+WHERE a.id = $1
+  AND caller_asset_visible($2, a.id)
 `
 
 type GetAssetDetailParams struct {
-	ID      pgtype.UUID `json:"id"`
-	OwnerID pgtype.UUID `json:"owner_id"`
+	ID     pgtype.UUID `json:"id"`
+	Viewer pgtype.UUID `json:"viewer"`
 }
 
 type GetAssetDetailRow struct {
@@ -415,15 +419,18 @@ type GetAssetDetailRow struct {
 }
 
 // The detail read of GET /assets/{id}: the asset row joined with the
-// exif hot fields the response flattens. Owner-scoped like GetAsset
-// (the join only attaches the sidecar of the row that matched).
-// The LEFT JOIN keeps the detail answering before and after the
-// metadata job refined the sidecar: hot fields are NULL until then.
-// description and is_hidden ride along (M2c Task 5): the PATCH
-// response reuses this read after its writes, so it serves the same
-// shape the GET endpoint serves, applied values included.
+// exif hot fields the response flattens. The gate is the
+// caller-visible union (M3c Task 4): the owner's own arms (their
+// sync album holds every upload, whatever the row's state) plus
+// every album shared to the caller. The join only attaches the
+// sidecar of the row that matched. The LEFT JOIN keeps the detail
+// answering before and after the metadata job refined the sidecar:
+// hot fields are NULL until then. description and is_hidden ride
+// along (M2c Task 5): the PATCH response reuses this read after its
+// writes, so it serves the same shape the GET endpoint serves,
+// applied values included.
 func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) (GetAssetDetailRow, error) {
-	row := q.db.QueryRow(ctx, getAssetDetail, arg.ID, arg.OwnerID)
+	row := q.db.QueryRow(ctx, getAssetDetail, arg.ID, arg.Viewer)
 	var i GetAssetDetailRow
 	err := row.Scan(
 		&i.ID,
@@ -504,6 +511,62 @@ func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetA
 		&i.PendingJobs,
 		&i.IsComponent,
 		&i.Exif,
+	)
+	return i, err
+}
+
+const getVisibleAsset = `-- name: GetVisibleAsset :one
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at FROM assets a
+WHERE a.id = $1
+  AND caller_asset_visible($2, a.id)
+`
+
+type GetVisibleAssetParams struct {
+	ID     pgtype.UUID `json:"id"`
+	Viewer pgtype.UUID `json:"viewer"`
+}
+
+// The caller-visible row read behind the media serving endpoints
+// (the thumbnail, the original download, the playable stream): the
+// album union -- the caller's own sync and directory arms plus
+// every album shared to them -- with no state filter, matching the
+// owner's long-standing shape (a trashed or hidden asset stays
+// servable at its known id; the listing surfaces are what filter
+// the states out). A miss answers the single-shape 404 the asset
+// endpoints share.
+func (q *Queries) GetVisibleAsset(ctx context.Context, arg GetVisibleAssetParams) (Asset, error) {
+	row := q.db.QueryRow(ctx, getVisibleAsset, arg.ID, arg.Viewer)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.StorageKind,
+		&i.FilePath,
+		&i.Checksum,
+		&i.OriginalFilename,
+		&i.FileSize,
+		&i.MimeType,
+		&i.MediaKind,
+		&i.LivePhotoVideoID,
+		&i.IsComponent,
+		&i.Width,
+		&i.Height,
+		&i.DurationMs,
+		&i.TakenAt,
+		&i.TakenAtSource,
+		&i.PlaceID,
+		&i.Blurhash,
+		&i.Phash,
+		&i.IsHidden,
+		&i.Description,
+		&i.DeletedAt,
+		&i.OriginalPath,
+		&i.TrashPath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeviceAssetID,
+		&i.PendingJobs,
+		&i.ReadyAt,
 	)
 	return i, err
 }

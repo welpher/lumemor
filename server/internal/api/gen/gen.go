@@ -619,6 +619,18 @@ type AlbumDetail struct {
 	// Id Identifier of the album.
 	Id openapi_types.UUID `json:"id"`
 
+	// InTimeline The caller's timeline preference of this album: whether
+	// it feeds their aggregated timeline. Present exactly when
+	// the album is excludable for the caller -- an own
+	// `directory` album or an album shared to them; an own
+	// `virtual` album omits the field (it never feeds the
+	// caller's own timeline). The value is the preference
+	// row's switch, true when no row exists (the default).
+	// The preference scopes the aggregated timeline only: it
+	// never filters this album's own items, whatever the
+	// switch says.
+	InTimeline *bool `json:"inTimeline,omitempty"`
+
 	// ItemCount The album's live member count, the same predicate as the
 	// items below.
 	ItemCount int `json:"itemCount"`
@@ -815,6 +827,15 @@ type AlbumSummary struct {
 	// Id Identifier of the album.
 	Id openapi_types.UUID `json:"id"`
 
+	// InTimeline The caller's timeline preference of this album: whether
+	// it feeds their aggregated timeline. Present exactly on
+	// the excludable cards -- the own `directory` items and
+	// every shared item; the own `virtual` items omit it
+	// (they never feed the caller's own timeline, so there is
+	// nothing to exclude). The value is the preference row's
+	// switch, true when no row exists (the default).
+	InTimeline *bool `json:"inTimeline,omitempty"`
+
 	// IsShared True when the album carries at least one `album_shares`
 	// row -- someone besides the owner can see it. Always true
 	// on shared-group items by construction.
@@ -856,6 +877,31 @@ type AlbumSummaryCallerRole string
 // owner; `directory` albums mirror a filesystem path. Sync
 // albums never reach this shape.
 type AlbumSummaryType string
+
+// AlbumTimelinePreferenceRequest The caller's timeline preference write: the per-user switch
+// of whether one album feeds the caller's aggregated timeline.
+// The `inTimeline` field is required in practice: a body
+// without it (or one carrying an explicit JSON null -- a
+// required boolean has no absent-state semantics) answers 400
+// `VALIDATION_FAILED` naming the body.
+type AlbumTimelinePreferenceRequest struct {
+	// InTimeline Whether the album's items feed the caller's aggregated
+	// timeline. `false` keeps them out; `true` (and a missing
+	// preference row) keeps them in.
+	InTimeline *bool `json:"inTimeline,omitempty"`
+}
+
+// AlbumTimelinePreferenceResponse One album's timeline preference as the caller's row now
+// carries it. Self-affecting state: the write publishes no
+// event, this response is the only view that changed.
+type AlbumTimelinePreferenceResponse struct {
+	// AlbumId Identifier of the album the preference scopes.
+	AlbumId openapi_types.UUID `json:"albumId"`
+
+	// InTimeline Whether the album feeds the caller's aggregated timeline
+	// (a missing preference row means true, the default).
+	InTimeline bool `json:"inTimeline"`
+}
 
 // AlbumWallResponse The caller's album wall: the own group followed by the shared
 // group, concatenated into one array.
@@ -1679,13 +1725,18 @@ type PersonSummary struct {
 	// Name The caller's own label of the cluster.
 	Name string `json:"name"`
 
-	// RepresentativeFaceId The cluster's representative face (its strongest-scoring
-	// member); the face the person card renders.
+	// RepresentativeFaceId The face the person card renders: the cluster's
+	// strongest-scoring face on a caller-visible live asset
+	// (score descending, the face id ascending as the
+	// tiebreak) -- the best face the CALLER can see, not the
+	// cluster's global representative, so a card never crops
+	// out of an asset the caller cannot view. The field is the
+	// thumbnail's face id.
 	RepresentativeFaceId openapi_types.UUID `json:"representativeFaceId"`
 
-	// Thumbnail URL of the representative face's crop: the face crop
-	// endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
-	// representative face's id.
+	// Thumbnail URL of the card's face crop: the face crop endpoint
+	// `GET /api/v1/faces/{faceId}/thumbnail` with the
+	// caller-visible best face's id.
 	//
 	//
 	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
@@ -2013,13 +2064,17 @@ type UnnamedClusterSummary struct {
 	// the honest per-caller count, not the global member count.
 	FaceCount int `json:"faceCount"`
 
-	// RepresentativeFaceId The cluster's representative face (its strongest-scoring
-	// member); the face the cluster tile renders.
+	// RepresentativeFaceId The face the cluster tile renders: the cluster's
+	// strongest-scoring face on a caller-visible live asset
+	// (score descending, the face id ascending as the
+	// tiebreak) -- the best face the CALLER can see, not the
+	// cluster's global representative, so a tile never crops
+	// out of an asset the caller cannot view.
 	RepresentativeFaceId openapi_types.UUID `json:"representativeFaceId"`
 
-	// Thumbnail URL of the representative face's crop: the face crop
-	// endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
-	// representative face's id.
+	// Thumbnail URL of the tile's face crop: the face crop endpoint
+	// `GET /api/v1/faces/{faceId}/thumbnail` with the
+	// caller-visible best face's id.
 	//
 	//
 	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
@@ -2264,6 +2319,9 @@ type AddAlbumItemsJSONRequestBody = AlbumItemsRequest
 // GrantAlbumShareJSONRequestBody defines body for GrantAlbumShare for application/json ContentType.
 type GrantAlbumShareJSONRequestBody = AlbumShareGrantRequest
 
+// SetAlbumTimelinePreferenceJSONRequestBody defines body for SetAlbumTimelinePreference for application/json ContentType.
+type SetAlbumTimelinePreferenceJSONRequestBody = AlbumTimelinePreferenceRequest
+
 // UploadAssetMultipartRequestBody defines body for UploadAsset for multipart/form-data ContentType.
 type UploadAssetMultipartRequestBody UploadAssetMultipartBody
 
@@ -2350,6 +2408,12 @@ type ServerInterface interface {
 	// RevokeAlbumShare Revoke one account's view ACL of an album.
 	// (DELETE /albums/{albumId}/shares/{userId})
 	RevokeAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, userId openapi_types.UUID)
+	// ResetAlbumTimelinePreference Reset the caller's timeline preference of one album.
+	// (DELETE /albums/{albumId}/timeline-preference)
+	ResetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// SetAlbumTimelinePreference Set the caller's timeline preference of one album.
+	// (PUT /albums/{albumId}/timeline-preference)
+	SetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
 	// UploadAsset Upload one photo, optionally with its Live Photo video.
 	// (POST /assets)
 	UploadAsset(w http.ResponseWriter, r *http.Request)
@@ -2560,6 +2624,18 @@ func (_ Unimplemented) GrantAlbumShare(w http.ResponseWriter, r *http.Request, a
 // RevokeAlbumShare Revoke one account's view ACL of an album.
 // (DELETE /albums/{albumId}/shares/{userId})
 func (_ Unimplemented) RevokeAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, userId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResetAlbumTimelinePreference Reset the caller's timeline preference of one album.
+// (DELETE /albums/{albumId}/timeline-preference)
+func (_ Unimplemented) ResetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetAlbumTimelinePreference Set the caller's timeline preference of one album.
+// (PUT /albums/{albumId}/timeline-preference)
+func (_ Unimplemented) SetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3190,6 +3266,58 @@ func (siw *ServerInterfaceWrapper) RevokeAlbumShare(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RevokeAlbumShare(w, r, albumId, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetAlbumTimelinePreference operation middleware
+func (siw *ServerInterfaceWrapper) ResetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetAlbumTimelinePreference(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAlbumTimelinePreference operation middleware
+func (siw *ServerInterfaceWrapper) SetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAlbumTimelinePreference(w, r, albumId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4233,6 +4361,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/albums/{albumId}/timeline-preference", wrapper.ResetAlbumTimelinePreference)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/albums/{albumId}/timeline-preference", wrapper.SetAlbumTimelinePreference)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/people", wrapper.ListPeople)

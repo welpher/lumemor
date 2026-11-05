@@ -30,6 +30,8 @@ import 'package:lumemor_api/src/model/album_share_entry.dart';
 import 'package:lumemor_api/src/model/album_share_grant_request.dart';
 import 'package:lumemor_api/src/model/album_share_response.dart';
 import 'package:lumemor_api/src/model/album_summary.dart';
+import 'package:lumemor_api/src/model/album_timeline_preference_request.dart';
+import 'package:lumemor_api/src/model/album_timeline_preference_response.dart';
 import 'package:lumemor_api/src/model/album_wall_response.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_face_summary.dart';
@@ -104,6 +106,8 @@ part 'serializers.g.dart';
   AlbumShareGrantRequest,
   AlbumShareResponse,
   AlbumSummary,
+  AlbumTimelinePreferenceRequest,
+  AlbumTimelinePreferenceResponse,
   AlbumWallResponse,
   AssetDetail,
   AssetFaceSummary,

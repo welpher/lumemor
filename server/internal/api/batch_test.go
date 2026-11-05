@@ -131,9 +131,9 @@ func TestBatchMixedResolution(t *testing.T) {
 	live := fixtureAssetID("41")
 	alreadyTrashed := fixtureAssetID("42")
 	foreign := fixtureAssetID("43")
-	env.insertTimelineAsset(t, live, adminID, taken, timelineAssetOpts{})
-	env.insertTimelineAsset(t, alreadyTrashed, adminID, taken.Add(time.Minute), timelineAssetOpts{deleted: true})
-	env.insertTimelineAsset(t, foreign, graceID, taken.Add(2*time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, live, adminID, taken, timelineAssetOpts{})
+	env.insertOwnedAsset(t, alreadyTrashed, adminID, taken.Add(time.Minute), timelineAssetOpts{deleted: true})
+	env.insertOwnedAsset(t, foreign, graceID, taken.Add(2*time.Minute), timelineAssetOpts{})
 	unknown := uuid.MustParse("31000000-0000-0000-0000-000000000041")
 	trashedMark := env.assetRowOf(t, alreadyTrashed).DeletedAt
 
@@ -182,9 +182,9 @@ func TestBatchSetSemantics(t *testing.T) {
 	f1 := fixtureAssetID("51")
 	f2 := fixtureAssetID("52")
 	f3 := fixtureAssetID("53")
-	env.insertTimelineAsset(t, f1, adminID, taken, timelineAssetOpts{})
-	env.insertTimelineAsset(t, f2, adminID, taken.Add(time.Minute), timelineAssetOpts{})
-	env.insertTimelineAsset(t, f3, adminID, taken.Add(2*time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, f1, adminID, taken, timelineAssetOpts{})
+	env.insertOwnedAsset(t, f2, adminID, taken.Add(time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, f3, adminID, taken.Add(2*time.Minute), timelineAssetOpts{})
 
 	// Favoriting twice converges: both runs report the same full
 	// count, and the rows exist exactly once.

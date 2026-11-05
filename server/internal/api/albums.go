@@ -81,11 +81,11 @@ func (s *server) writeAlbumNotFound(w http.ResponseWriter) {
 
 // albumSummaryCard maps one album row plus its honest companions
 // onto the wall card shape: the collage source (the pinned cover or
-// the derived candidates), the live member count, the share badge
-// and the caller's role. The wall's own mapping and the write
-// face's responses share this one authority, so a write's answer is
-// the card the wall lists.
-func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role apigen.AlbumSummaryCallerRole, derived []uuid.UUID) apigen.AlbumSummary {
+// the derived candidates), the live member count, the share badge,
+// the caller's role and the caller's timeline preference. The wall's
+// own mapping and the write face's responses share this one
+// authority, so a write's answer is the card the wall lists.
+func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role apigen.AlbumSummaryCallerRole, derived []uuid.UUID, inTimeline *bool) apigen.AlbumSummary {
 	return apigen.AlbumSummary{
 		Id:            uuid.UUID(album.ID.Bytes),
 		Title:         album.Title,
@@ -97,7 +97,27 @@ func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role ap
 		ItemCount:     int(itemCount),
 		UpdatedAt:     album.UpdatedAt.Time.UTC(),
 		CallerRole:    role,
+		InTimeline:    inTimeline,
 	}
+}
+
+// timelinePrefField maps one album's raw preference row onto the
+// card's field: the excludable cards (the caller's own directory
+// albums and every shared album) carry the switch -- the stored
+// value, or true when no row exists (the default of feeding the
+// timeline) -- while the caller's own virtual albums omit the field
+// entirely: they never feed the caller's own timeline, so there is
+// nothing to exclude. The role rides along because the write face's
+// cards are always the owner's.
+func timelinePrefField(albumType dbgen.AlbumType, role string, stored pgtype.Bool) *bool {
+	if albumType == dbgen.AlbumTypeVirtual && role == "owner" {
+		return nil
+	}
+	value := true
+	if stored.Valid {
+		value = stored.Bool
+	}
+	return &value
 }
 
 // assetTileThumbnailPath renders the tile-size serving URL of one
@@ -167,7 +187,8 @@ func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		albumID := uuid.UUID(row.Album.ID.Bytes)
 		summary := albumSummaryCard(row.Album, row.IsShared, row.ItemCount,
-			apigen.AlbumSummaryCallerRole(row.CallerRole), covers[albumID])
+			apigen.AlbumSummaryCallerRole(row.CallerRole), covers[albumID],
+			timelinePrefField(row.Album.Type, row.CallerRole, row.InTimeline))
 		// The owner attribution rides only on shared items: an own
 		// card's owner is the caller, and the query leaves the pair
 		// NULL for exactly those rows.
@@ -242,6 +263,7 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		CallerRole:   apigen.AlbumDetailCallerRole(album.CallerRole),
 		ItemCount:    int(album.ItemCount),
 		Items:        make([]apigen.AlbumItem, 0, len(rows)),
+		InTimeline:   timelinePrefField(album.Album.Type, album.CallerRole, album.InTimeline),
 	}
 	// The owner-only grantee list (the share management dialog's
 	// rows): the field rides the owner's view and only that view --

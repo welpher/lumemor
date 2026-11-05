@@ -169,14 +169,18 @@ func (s *server) albumCurationGate(w http.ResponseWriter, r *http.Request, reque
 
 // albumSummaryCardForID reads one album's wall card for a write
 // response: the row with its honest companions (the share badge, the
-// live member count) plus the derived cover candidates when no pin
-// exists -- the wall's own derivation, so the write's answer is the
-// card GET /albums lists. The card's callerRole is owner: only an
-// owner-or-admin write reaches this point, and the role is the
-// write-affordance discriminator of the card shape. It answers
-// ok=false once it has written the response.
-func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, albumID uuid.UUID) (apigen.AlbumSummary, bool) {
-	row, err := s.queries.GetAlbumSummary(r.Context(), pgUUID(albumID))
+// live member count, the caller's timeline preference) plus the
+// derived cover candidates when no pin exists -- the wall's own
+// derivation, so the write's answer is the card GET /albums lists.
+// The card's callerRole is owner: only an owner-or-admin write
+// reaches this point, and the role is the write-affordance
+// discriminator of the card shape. It answers ok=false once it has
+// written the response.
+func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, callerID, albumID uuid.UUID) (apigen.AlbumSummary, bool) {
+	row, err := s.queries.GetAlbumSummary(r.Context(), dbgen.GetAlbumSummaryParams{
+		AlbumID: pgUUID(albumID),
+		UserID:  pgUUID(callerID),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.writeAlbumNotFound(w)
 		return apigen.AlbumSummary{}, false
@@ -200,7 +204,8 @@ func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, a
 		}
 	}
 	return albumSummaryCard(row.Album, row.IsShared, row.ItemCount,
-		apigen.AlbumSummaryCallerRoleOwner, derived), true
+		apigen.AlbumSummaryCallerRoleOwner, derived,
+		timelinePrefField(row.Album.Type, "owner", row.InTimeline)), true
 }
 
 // albumItemsIDs validates the membership write's id list and
@@ -280,7 +285,7 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 
 	s.publishAlbumEvent("album.created", id, requester.userID)
 
-	summary, ok := s.albumSummaryCardForID(w, r, id)
+	summary, ok := s.albumSummaryCardForID(w, r, requester.userID, id)
 	if !ok {
 		return
 	}
@@ -385,7 +390,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 
 	s.publishAlbumEvent("album.updated", uuid.UUID(albumId), requester.userID)
 
-	summary, ok := s.albumSummaryCardForID(w, r, uuid.UUID(albumId))
+	summary, ok := s.albumSummaryCardForID(w, r, requester.userID, uuid.UUID(albumId))
 	if !ok {
 		return
 	}

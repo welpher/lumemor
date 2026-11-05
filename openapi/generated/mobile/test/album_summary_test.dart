@@ -73,5 +73,11 @@ void main() {
       // TODO
     });
 
+    // The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `virtual` items omit it (they never feed the caller's own timeline, so there is nothing to exclude). The value is the preference row's switch, true when no row exists (the default). 
+    // bool inTimeline
+    test('to test the property `inTimeline`', () async {
+      // TODO
+    });
+
   });
 }
