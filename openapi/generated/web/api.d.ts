@@ -3164,15 +3164,23 @@ export interface components {
              */
             isReady: boolean;
             /**
-             * @description Pixel width in sensor order; null until the metadata job
-             *     refined the dimensions.
+             * @description Pixel width in sensor order, straight from the assets
+             *     column: the upload writes the 0 placeholder and the
+             *     metadata job refines the real value, so 0 means "not
+             *     refined yet" (the wall layout assumes a fallback aspect
+             *     until then). Always present -- the justified photo wall
+             *     reads it on every tile, never null.
              */
-            width: number | null;
+            width: number;
             /**
-             * @description Pixel height in sensor order; null until the metadata job
-             *     refined the dimensions.
+             * @description Pixel height in sensor order, straight from the assets
+             *     column: the upload writes the 0 placeholder and the
+             *     metadata job refines the real value, so 0 means "not
+             *     refined yet" (the wall layout assumes a fallback aspect
+             *     until then). Always present -- the justified photo wall
+             *     reads it on every tile, never null.
              */
-            height: number | null;
+            height: number;
             /**
              * @description Playback duration of a video in milliseconds; null for
              *     images and until the metadata job refined it.

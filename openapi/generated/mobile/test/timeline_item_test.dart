@@ -85,13 +85,13 @@ void main() {
       // TODO
     });
 
-    // Pixel width in sensor order; null until the metadata job refined the dimensions. 
+    // Pixel width in sensor order, straight from the assets column: the upload writes the 0 placeholder and the metadata job refines the real value, so 0 means \"not refined yet\" (the wall layout assumes a fallback aspect until then). Always present -- the justified photo wall reads it on every tile, never null. 
     // int width
     test('to test the property `width`', () async {
       // TODO
     });
 
-    // Pixel height in sensor order; null until the metadata job refined the dimensions. 
+    // Pixel height in sensor order, straight from the assets column: the upload writes the 0 placeholder and the metadata job refines the real value, so 0 means \"not refined yet\" (the wall layout assumes a fallback aspect until then). Always present -- the justified photo wall reads it on every tile, never null. 
     // int height
     test('to test the property `height`', () async {
       // TODO

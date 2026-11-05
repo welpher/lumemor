@@ -172,3 +172,27 @@ test('badges: favorite star, live photo mark, video mark', () => {
 	unmount(video.tile);
 	flushSync();
 });
+
+test('selection is geometric: the resting tile is bare, the selected tile retreats and rings', () => {
+	// The visual semantics of the justified wall (adapted from the
+	// old 3px inner-stroke + always-rounded look): a RESTING tile is
+	// pure photo edge-to-edge -- no radius, no outline; the SELECTED
+	// tile retreats (the scale), gains the radius and draws the
+	// accent ring at its edge. No reflow -- transform and outline.
+	const resting = mountTile({});
+	const bare = tileRoot();
+	expect(bare.className).not.toContain('rounded-control');
+	expect(bare.className).not.toContain('outline');
+	expect(bare.className).not.toContain('scale-');
+	unmount(resting.tile);
+	flushSync();
+
+	const selected = mountTile({}, { selectable: true, selected: true });
+	const geometry = tileRoot();
+	expect(geometry.className).toContain('tile--selected');
+	expect(geometry.className).toContain('rounded-control');
+	expect(geometry.className).toContain('scale-(--wall-select-scale)');
+	expect(geometry.className).toContain('[outline:var(--wall-select-ring)_solid_var(--color-accent)]');
+	unmount(selected.tile);
+	flushSync();
+});

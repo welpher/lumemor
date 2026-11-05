@@ -23,8 +23,10 @@
 	// what the union holds -- the events carry ids only, so the fresh
 	// page one owns the truth.
 	//
-	// Render windowing of v0 is the tiles' content-visibility (see
-	// PhotoTile); full virtualization is an M3 optimization.
+	// Render windowing is row-level: every justified row carries
+	// content-visibility with its engine-computed height (see
+	// MonthGroups); full virtualization stays an M3 option if the
+	// wall outgrows it.
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
 	import { page } from '$app/state';
@@ -35,7 +37,7 @@
 	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
 	import { groupTimelineItems } from '$lib/timeline/grouping';
 	import { publishWallItems } from '$lib/timeline/wall.svelte';
-	import PhotoTile from '$lib/timeline/PhotoTile.svelte';
+	import MonthGroups from '$lib/timeline/MonthGroups.svelte';
 	import MonthScrubber from '$lib/timeline/MonthScrubber.svelte';
 	import BatchBar from '$lib/timeline/BatchBar.svelte';
 	import AddToAlbumDialog from '$lib/albums/AddToAlbumDialog.svelte';
@@ -361,30 +363,11 @@
 			<Button variant="primary" onclick={() => void timeline.loadMore()}>{$_('action_retry')}</Button>
 		</div>
 	{:else}
-		{#each groups as group (group.key)}
-			<!-- Both sticky headers ride above the tiles; the section's
-			     scroll margin leaves room for them under the scrubber's
-			     jumps. -->
-			<section class="timeline__month scroll-mt-[92px]" data-month-key={group.key}>
-				<h2 class="timeline__month-header sticky top-0 z-[10] mt-6 mb-3 py-2.5 px-3 text-[20px] bg-[color-mix(in_srgb,var(--color-page)_88%,transparent)] backdrop-blur-[6px] rounded-control">{group.label}</h2>
-				{#each group.days as day (day.key)}
-					<div class="timeline__day" data-day-key={day.key}>
-						<!-- Stacks under the month header (44px + its margins). -->
-						<h3 class="timeline__day-header sticky top-[44px] z-[9] mt-4 mb-2 py-1 px-2 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-[color-mix(in_srgb,var(--color-page)_88%,transparent)] backdrop-blur-[6px] rounded-control">{day.label}</h3>
-						<div class="timeline__wall grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3">
-							{#each day.items as tileItem (tileItem.id)}
-								<PhotoTile
-									item={tileItem}
-									selected={selection.has(tileItem.id)}
-									selectable={selectable}
-									onselect={toggleSelected}
-								/>
-							{/each}
-						</div>
-					</div>
-				{/each}
-			</section>
-		{/each}
+		<!-- The month-grouped justified wall (the shared renderer): the
+		     page keeps its toolbar, its scrubber and its scroll
+		     tracking; the groups, the sticky headers and the packed
+		     rows are the one wall component every view renders. -->
+		<MonthGroups {groups} isSelected={(id) => selection.has(id)} {selectable} onselect={toggleSelected} />
 	{/if}
 
 	{#if $timeline.status === 'error' && $timeline.items.length > 0}
