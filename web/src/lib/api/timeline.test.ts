@@ -323,6 +323,58 @@ describe('SSE convergence', () => {
 		expect(patched?.isFavorite).toBe(false);
 	});
 
+	test('the album narrow ignores convergence events for ids no page delivered', async () => {
+		// The stream's ring replays the upload pipeline's asset.ready
+		// events to every subscriber, so an album wall hears about
+		// assets that are NOT its members. The narrow's membership is
+		// the page walk's answer alone (membership changes arrive as
+		// album.items-changed, which restarts the walk) -- an event
+		// for an id no page delivered must converge NOTHING: no
+		// fetch, no tile.
+		const fetches: string[] = [];
+		const albumWall = createTimelineClient({
+			fetcher: vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				fetches.push(url);
+				if (url === '/api/v1/assets/timeline?albumId=al1&limit=100') {
+					return page(pageOneItems);
+				}
+				throw new Error(`unexpected fetch ${url}`);
+			}),
+			albumId: 'al1'
+		});
+		await albumWall.loadMore();
+
+		await albumWall.applyEvent({ id: 1, name: 'asset.ready', assetId: 'foreign', kind: 'image' });
+		await albumWall.applyEvent({ id: 2, name: 'asset.restored', assetId: 'other', kind: 'image' });
+
+		// No member changed: no detail fetch fired, no tile arrived.
+		expect(fetches).toEqual(['/api/v1/assets/timeline?albumId=al1&limit=100']);
+		expect(get(albumWall).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+
+		// An event for an id the walk DID deliver is the wall's own
+		// member: the convergence applies.
+		const memberWall = createTimelineClient({
+			fetcher: vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				fetches.push(url);
+				if (url === '/api/v1/assets/timeline?albumId=al1&limit=100') {
+					return page(pageOneItems.map((i) => item(i.id, i.takenAt, { isReady: false })));
+				}
+				if (url === '/api/v1/assets/a2') {
+					return detailOf(item('a2', '2026-11-01T09:00:00Z'), { isReady: true });
+				}
+				throw new Error(`unexpected fetch ${url}`);
+			}),
+			albumId: 'al1'
+		});
+		await memberWall.loadMore();
+		await memberWall.applyEvent({ id: 3, name: 'asset.ready', assetId: 'a2', kind: 'image' });
+
+		expect(fetches).toContain('/api/v1/assets/a2');
+		expect(get(memberWall).items.find((i) => i.id === 'a2')?.isReady).toBe(true);
+	});
+
 	test('asset.updated with a hidden detail removes the tile; unhide returns it in place', async () => {
 		let hidden = true;
 		const timeline = clientWith((url) => {
