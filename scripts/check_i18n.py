@@ -122,6 +122,10 @@ NON_ERROR_KEYS = {
     # Album surface message keys (M3c): the cover validation's
     # message key carried in a VALIDATION_FAILED details.
     "album_cover_not_member",
+    # Album sharing message keys (M3c Task 3): the grant target
+    # rules' keys carried in a VALIDATION_FAILED details.
+    "album_share_to_owner",
+    "album_share_user_invalid",
     # People surface UI strings (M3b Task 4): the three pages of the
     # people domain.
     "people_loading",

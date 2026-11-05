@@ -17,6 +17,7 @@ export 'package:lumemor_api/src/api/auth_api.dart';
 export 'package:lumemor_api/src/api/events_api.dart';
 export 'package:lumemor_api/src/api/people_api.dart';
 export 'package:lumemor_api/src/api/server_api.dart';
+export 'package:lumemor_api/src/api/users_api.dart';
 
 export 'package:lumemor_api/src/model/add_album_items_response.dart';
 export 'package:lumemor_api/src/model/admin_create_user_request.dart';
@@ -30,6 +31,9 @@ export 'package:lumemor_api/src/model/album_item_asset.dart';
 export 'package:lumemor_api/src/model/album_items_request.dart';
 export 'package:lumemor_api/src/model/album_owner_ref.dart';
 export 'package:lumemor_api/src/model/album_patch.dart';
+export 'package:lumemor_api/src/model/album_share_entry.dart';
+export 'package:lumemor_api/src/model/album_share_grant_request.dart';
+export 'package:lumemor_api/src/model/album_share_response.dart';
 export 'package:lumemor_api/src/model/album_summary.dart';
 export 'package:lumemor_api/src/model/album_wall_response.dart';
 export 'package:lumemor_api/src/model/asset_detail.dart';
@@ -82,5 +86,7 @@ export 'package:lumemor_api/src/model/trash_response.dart';
 export 'package:lumemor_api/src/model/unnamed_cluster_summary.dart';
 export 'package:lumemor_api/src/model/unnamed_clusters_response.dart';
 export 'package:lumemor_api/src/model/user.dart';
+export 'package:lumemor_api/src/model/user_list_response.dart';
 export 'package:lumemor_api/src/model/user_role.dart';
+export 'package:lumemor_api/src/model/user_summary.dart';
 

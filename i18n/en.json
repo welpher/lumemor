@@ -53,6 +53,8 @@
   "album_locked": "This album is locked. Unlock it before editing it.",
   "person_hide_requires_label": "Name this person before hiding them.",
   "album_cover_not_member": "The cover photo must be a photo in this album.",
+  "album_share_to_owner": "This album is already yours -- it cannot be shared to its own owner.",
+  "album_share_user_invalid": "That account cannot be shared to.",
   "timeline_loading": "Loading your timeline…",
   "timeline_empty": "Your timeline is empty. Photos you upload appear here.",
   "timeline_load_more": "Load more",

@@ -635,6 +635,14 @@ type AlbumDetail struct {
 	// exactly when this is the last page.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
+	// Shares The album's grantee list, riding ONLY the owner's view:
+	// one entry per `album_shares` row in the grant order
+	// (`grantedAt` ascending) -- the share management dialog's
+	// list. The owner's response always carries the field, an
+	// empty array when the album holds no grants; viewer
+	// responses never carry it at all.
+	Shares *[]AlbumShareEntry `json:"shares,omitempty"`
+
 	// Title The album's display title.
 	Title string `json:"title"`
 
@@ -743,6 +751,44 @@ type AlbumPatch struct {
 	// present it must span 1-64 Unicode characters after the
 	// trim.
 	Title *string `json:"title,omitempty"`
+}
+
+// AlbumShareEntry One grantee of the owner's `shares` list on the album
+// detail: the grantee's identity and the grant time -- the
+// share management dialog's row.
+type AlbumShareEntry struct {
+	// Email The grantee's login address.
+	Email openapi_types.Email `json:"email"`
+
+	// GrantedAt When the view ACL was granted (RFC 3339 UTC).
+	GrantedAt time.Time `json:"grantedAt"`
+
+	// UserId Identifier of the grantee account.
+	UserId openapi_types.UUID `json:"userId"`
+}
+
+// AlbumShareGrantRequest The grant body: the account receiving the view ACL. The
+// target rules live in the endpoint's own answer -- the
+// album's owner and unusable accounts answer 400 there, never
+// a distinct shape here.
+type AlbumShareGrantRequest struct {
+	// UserId Identifier of the account receiving the view ACL.
+	UserId openapi_types.UUID `json:"userId"`
+}
+
+// AlbumShareResponse One share row as the grant endpoint answers it: the album,
+// the grantee and the grant time. The idempotent re-grant
+// answers the existing row's values -- the original
+// `grantedAt` and grantor untouched.
+type AlbumShareResponse struct {
+	// AlbumId Identifier of the shared album.
+	AlbumId openapi_types.UUID `json:"albumId"`
+
+	// GrantedAt When the view ACL was granted (RFC 3339 UTC).
+	GrantedAt time.Time `json:"grantedAt"`
+
+	// UserId Identifier of the grantee account.
+	UserId openapi_types.UUID `json:"userId"`
 }
 
 // AlbumSummary One album card of the wall: the metadata, the live member
@@ -2012,10 +2058,38 @@ type User struct {
 	Role UserRole `json:"role"`
 }
 
+// UserListResponse The instance's member list: every account, `email`
+// ascending, in one bounded response (a family instance holds
+// a handful of accounts).
+type UserListResponse struct {
+	// Users Every account of the instance, `email` ascending.
+	Users []UserSummary `json:"users"`
+}
+
 // UserRole Authorization role of an account: `admin` is granted by the
 // first-run wizard or by another administrator, `user` is the
 // default of every other creation path.
 type UserRole string
+
+// UserSummary One account of the minimal member list: exactly the identity
+// fields a pick list renders -- no display name, no
+// timestamps, and never a password hash.
+type UserSummary struct {
+	// Email Login address.
+	Email openapi_types.Email `json:"email"`
+
+	// Id UUIDv7 identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsDisabled The disabled switch: a disabled account cannot sign in
+	// and its sessions carry no authority until re-enabled.
+	IsDisabled bool `json:"isDisabled"`
+
+	// Role Authorization role of an account: `admin` is granted by the
+	// first-run wizard or by another administrator, `user` is the
+	// default of every other creation path.
+	Role UserRole `json:"role"`
+}
 
 // ListJobsParams defines parameters for ListJobs.
 type ListJobsParams struct {
@@ -2187,6 +2261,9 @@ type RemoveAlbumItemsJSONRequestBody = AlbumItemsRequest
 // AddAlbumItemsJSONRequestBody defines body for AddAlbumItems for application/json ContentType.
 type AddAlbumItemsJSONRequestBody = AlbumItemsRequest
 
+// GrantAlbumShareJSONRequestBody defines body for GrantAlbumShare for application/json ContentType.
+type GrantAlbumShareJSONRequestBody = AlbumShareGrantRequest
+
 // UploadAssetMultipartRequestBody defines body for UploadAsset for multipart/form-data ContentType.
 type UploadAssetMultipartRequestBody UploadAssetMultipartBody
 
@@ -2267,6 +2344,12 @@ type ServerInterface interface {
 	// AddAlbumItems Add assets to one virtual album.
 	// (POST /albums/{albumId}/items)
 	AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// GrantAlbumShare Grant one account the view ACL of an album.
+	// (POST /albums/{albumId}/shares)
+	GrantAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// RevokeAlbumShare Revoke one account's view ACL of an album.
+	// (DELETE /albums/{albumId}/shares/{userId})
+	RevokeAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, userId openapi_types.UUID)
 	// UploadAsset Upload one photo, optionally with its Live Photo video.
 	// (POST /assets)
 	UploadAsset(w http.ResponseWriter, r *http.Request)
@@ -2363,6 +2446,9 @@ type ServerInterface interface {
 	// RestoreAsset Restore one trashed asset.
 	// (POST /trash/{id}/restore)
 	RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ListInstanceUsers The instance's member list.
+	// (GET /users)
+	ListInstanceUsers(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -2462,6 +2548,18 @@ func (_ Unimplemented) RemoveAlbumItems(w http.ResponseWriter, r *http.Request, 
 // AddAlbumItems Add assets to one virtual album.
 // (POST /albums/{albumId}/items)
 func (_ Unimplemented) AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GrantAlbumShare Grant one account the view ACL of an album.
+// (POST /albums/{albumId}/shares)
+func (_ Unimplemented) GrantAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeAlbumShare Revoke one account's view ACL of an album.
+// (DELETE /albums/{albumId}/shares/{userId})
+func (_ Unimplemented) RevokeAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, userId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2654,6 +2752,12 @@ func (_ Unimplemented) GetTrash(w http.ResponseWriter, r *http.Request) {
 // RestoreAsset Restore one trashed asset.
 // (POST /trash/{id}/restore)
 func (_ Unimplemented) RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListInstanceUsers The instance's member list.
+// (GET /users)
+func (_ Unimplemented) ListInstanceUsers(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3025,6 +3129,67 @@ func (siw *ServerInterfaceWrapper) AddAlbumItems(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AddAlbumItems(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GrantAlbumShare operation middleware
+func (siw *ServerInterfaceWrapper) GrantAlbumShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GrantAlbumShare(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeAlbumShare operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAlbumShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", chi.URLParam(r, "userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeAlbumShare(w, r, albumId, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3846,6 +4011,20 @@ func (siw *ServerInterfaceWrapper) RestoreAsset(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ListInstanceUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListInstanceUsers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInstanceUsers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -4050,6 +4229,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/albums/{albumId}/items", wrapper.AddAlbumItems)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/albums/{albumId}/shares", wrapper.GrantAlbumShare)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/people", wrapper.ListPeople)
 	})
 	r.Group(func(r chi.Router) {
@@ -4075,6 +4260,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/faces/{faceId}/thumbnail", wrapper.GetFaceThumbnail)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/users", wrapper.ListInstanceUsers)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/users", wrapper.ListUsers)

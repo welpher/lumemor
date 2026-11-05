@@ -67,5 +67,11 @@ void main() {
       // TODO
     });
 
+    // The album's grantee list, riding ONLY the owner's view: one entry per `album_shares` row in the grant order (`grantedAt` ascending) -- the share management dialog's list. The owner's response always carries the field, an empty array when the album holds no grants; viewer responses never carry it at all. 
+    // BuiltList<AlbumShareEntry> shares
+    test('to test the property `shares`', () async {
+      // TODO
+    });
+
   });
 }

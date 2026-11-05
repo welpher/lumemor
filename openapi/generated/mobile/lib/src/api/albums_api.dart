@@ -14,6 +14,8 @@ import 'package:lumemor_api/src/model/album_create_request.dart';
 import 'package:lumemor_api/src/model/album_detail.dart';
 import 'package:lumemor_api/src/model/album_items_request.dart';
 import 'package:lumemor_api/src/model/album_patch.dart';
+import 'package:lumemor_api/src/model/album_share_grant_request.dart';
+import 'package:lumemor_api/src/model/album_share_response.dart';
 import 'package:lumemor_api/src/model/album_summary.dart';
 import 'package:lumemor_api/src/model/album_wall_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
@@ -300,7 +302,7 @@ class AlbumsApi {
   }
 
   /// One album&#39;s detail and one page of its items.
-  /// The detail view of one album the caller can see: the caller owns it, or it is shared to the caller through an &#x60;album_shares&#x60; row. &#x60;callerRole&#x60; says which -- &#x60;owner&#x60; for the owner&#39;s write affordances, &#x60;viewer&#x60; for the read-only share.  Sync albums are not album resources: the id of a sync album -- the caller&#39;s own or anyone else&#39;s -- answers the same 404 as an unknown id. The sync album is the timeline (&#x60;GET /assets/timeline&#x60;); its stream surfaces there, never through this face.  404 is single-shape by design: an unknown id, another account&#39;s unshared album, and a sync album all answer the same &#x60;ALBUM_NOT_FOUND&#x60; byte for byte -- the anti-enumeration discipline of &#x60;ASSET_NOT_FOUND&#x60; applied to the album face. An album whose share to the caller was revoked before the request simply sits in that same invisible region.  &#x60;itemCount&#x60; counts the album&#39;s live members; &#x60;items&#x60; is one keyset page of them, ordered &#x60;takenAt&#x60; descending with the asset id as the tiebreak -- the timeline&#39;s own ordering and cursor pair, so the album grid pages with the timeline&#39;s walking machinery. Every item carries the membership&#39;s &#x60;addedAt&#x60; and the minimal asset context the grid renders; &#x60;thumbnail&#x60; is the asset thumbnail endpoint&#39;s &#x60;tile&#x60;-size URL. Live members only: trashed, hidden and Live Photo component rows never appear (A5 -- a hidden asset is invisible to the whole family).  &#x60;coverAssetId&#x60; is the raw pinned column: the single asset the owner chose, or null when unset -- the wall derives its collage fallback from the members, the detail carries the pin itself.  &#x60;limit&#x60; bounds the page size: absent means the default of 60; a value below 1 or over 200 answers 400 &#x60;VALIDATION_FAILED&#x60;. Pages continue through the opaque &#x60;cursor&#x60;, the timeline&#39;s exact keyset semantics: &#x60;nextCursor&#x60; is present exactly when another page follows, and the last page carries none. 
+  /// The detail view of one album the caller can see: the caller owns it, or it is shared to the caller through an &#x60;album_shares&#x60; row. &#x60;callerRole&#x60; says which -- &#x60;owner&#x60; for the owner&#39;s write affordances, &#x60;viewer&#x60; for the read-only share.  Sync albums are not album resources: the id of a sync album -- the caller&#39;s own or anyone else&#39;s -- answers the same 404 as an unknown id. The sync album is the timeline (&#x60;GET /assets/timeline&#x60;); its stream surfaces there, never through this face.  404 is single-shape by design: an unknown id, another account&#39;s unshared album, and a sync album all answer the same &#x60;ALBUM_NOT_FOUND&#x60; byte for byte -- the anti-enumeration discipline of &#x60;ASSET_NOT_FOUND&#x60; applied to the album face. An album whose share to the caller was revoked before the request simply sits in that same invisible region.  &#x60;itemCount&#x60; counts the album&#39;s live members; &#x60;items&#x60; is one keyset page of them, ordered &#x60;takenAt&#x60; descending with the asset id as the tiebreak -- the timeline&#39;s own ordering and cursor pair, so the album grid pages with the timeline&#39;s walking machinery. Every item carries the membership&#39;s &#x60;addedAt&#x60; and the minimal asset context the grid renders; &#x60;thumbnail&#x60; is the asset thumbnail endpoint&#39;s &#x60;tile&#x60;-size URL. Live members only: trashed, hidden and Live Photo component rows never appear (A5 -- a hidden asset is invisible to the whole family).  &#x60;coverAssetId&#x60; is the raw pinned column: the single asset the owner chose, or null when unset -- the wall derives its collage fallback from the members, the detail carries the pin itself.  &#x60;shares&#x60; rides only the owner&#39;s view: the album&#39;s grantee list, one entry per &#x60;album_shares&#x60; row in the grant order (&#x60;grantedAt&#x60; ascending), each carrying the grantee&#39;s id, email and grant time -- the share management dialog&#39;s list. The owner&#39;s response always carries the field, an empty array when the album holds no grants; viewer responses never carry it at all (a sharee sees the album, never the ACL).  &#x60;limit&#x60; bounds the page size: absent means the default of 60; a value below 1 or over 200 answers 400 &#x60;VALIDATION_FAILED&#x60;. Pages continue through the opaque &#x60;cursor&#x60;, the timeline&#39;s exact keyset semantics: &#x60;nextCursor&#x60; is present exactly when another page follows, and the last page carries none. 
   ///
   /// Parameters:
   /// * [albumId] - Identifier of the album.
@@ -384,6 +386,114 @@ class AlbumsApi {
     }
 
     return Response<AlbumDetail>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Grant one account the view ACL of an album.
+  /// Grants an album&#39;s view ACL to another account: one &#x60;album_shares&#x60; row, one more viewer. The grantee&#39;s read access is immediate -- their wall lists the album in the shared group, the detail answers with &#x60;callerRole&#x60; &#x60;viewer&#x60; -- and the share is view-only forever: every write face of the album stays the owner&#39;s.  Authorization is the writes&#39; two-tier answer: an album the caller cannot see at all -- an unknown id, another account&#39;s unshared album, every sync album -- answers the single-shape 404 &#x60;ALBUM_NOT_FOUND&#x60;, byte-identical to the read face, so album ids cannot be probed; an album the caller CAN see but does not own (an album shared to the caller) answers the honest 403 &#x60;AUTH_FORBIDDEN&#x60; -- a sharee cannot share onward. The owner grants, and an administrator may override the owner check.  VIRTUAL and DIRECTORY albums are shareable; sync albums are never -- a sync album id folds into the same single-shape 404 (the timeline is the sync album&#39;s face). &#x60;locked&#x60; does NOT gate the grant: the freeze is a curation gate, and a viewer only ever reads.  The grant is idempotent: re-granting to a current grantee answers 200 with the existing row -- the same &#x60;grantedAt&#x60;, the original grantor untouched -- and stays silent on the activity stream.  Target rules (both answer 400 &#x60;VALIDATION_FAILED&#x60; with a message key in &#x60;details.key&#x60;): the album&#39;s own owner is never a grantee (&#x60;album_share_to_owner&#x60; -- the owner sees the album by construction, a share row would be noise); an unknown or disabled account is not a share target (&#x60;album_share_user_invalid&#x60; -- the two cases answer the same shape, so user ids cannot be probed through this face).  The write publishes one &#x60;album.shared&#x60; event exactly when the grant landed a new row: the payload carries the album&#39;s id and the GRANTEE&#39;s user id, nothing else. 
+  ///
+  /// Parameters:
+  /// * [albumId] - Identifier of the album.
+  /// * [albumShareGrantRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [AlbumShareResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<AlbumShareResponse>> grantAlbumShare({ 
+    required String albumId,
+    required AlbumShareGrantRequest albumShareGrantRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/albums/{albumId}/shares'.replaceAll('{' r'albumId' '}', encodeQueryParameter(_serializers, albumId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(AlbumShareGrantRequest);
+      _bodyData = _serializers.serialize(albumShareGrantRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    AlbumShareResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(AlbumShareResponse),
+      ) as AlbumShareResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<AlbumShareResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,
@@ -585,6 +695,66 @@ class AlbumsApi {
       statusMessage: _response.statusMessage,
       extra: _response.extra,
     );
+  }
+
+  /// Revoke one account&#39;s view ACL of an album.
+  /// Removes one &#x60;album_shares&#x60; row: the grantee&#39;s read access ends immediately -- the album leaves their wall, the detail answers the single-shape 404.  The owner (or an administrator) revokes any grantee. A grantee may revoke their OWN row -- leaving a shared album is the sharee&#39;s own right, the family semantics -- through this same endpoint: the caller&#39;s own user id in the path is the departure, whoever granted the row. A sharee cannot revoke ANOTHER account&#39;s grant: 403 &#x60;AUTH_FORBIDDEN&#x60;, the honest refusal of a caller who can see the album but holds no power over its ACL.  Everything else mirrors the grant: the single-shape 404 for the invisible ids (an unknown album, another account&#39;s unshared album, every sync album), and &#x60;locked&#x60; never gates -- revocation is not curation.  The 204 is idempotent: revoking a share that is already gone -- never granted, already revoked, or an id that names no account -- is the state the caller asked for, so it answers 204 again and stays silent on the activity stream.  The write publishes one &#x60;album.unshared&#x60; event exactly when a row left: the payload carries the album&#39;s id and the revoked grantee&#39;s user id, nothing else. 
+  ///
+  /// Parameters:
+  /// * [albumId] - Identifier of the album.
+  /// * [userId] - Identifier of the account whose share row leaves: any grantee for the owner or an administrator, the caller's own id for a sharee's departure. 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future]
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<void>> revokeAlbumShare({ 
+    required String albumId,
+    required String userId,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/albums/{albumId}/shares/{userId}'.replaceAll('{' r'albumId' '}', encodeQueryParameter(_serializers, albumId, const FullType(String)).toString()).replaceAll('{' r'userId' '}', encodeQueryParameter(_serializers, userId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'DELETE',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    return _response;
   }
 
   /// Patch one album&#39;s properties.

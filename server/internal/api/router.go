@@ -326,6 +326,19 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Delete("/albums/{albumId}", wrapper.DeleteAlbum)
 				r.Post("/albums/{albumId}/items", wrapper.AddAlbumItems)
 				r.Delete("/albums/{albumId}/items", wrapper.RemoveAlbumItems)
+				// The album sharing face (M3c Task 3): the view-ACL
+				// grant and revoke, and the instance's minimal
+				// member list the share dialog picks its grantee
+				// from. The grant is one bounded row write; the
+				// revoke deletes one row; the member list is one
+				// bounded read of the small users table. The
+				// /albums/{albumId}/shares segments never contend
+				// with the /albums/{albumId} routes (a longer path
+				// shape), and /users never contends with the
+				// /admin/users group (a different prefix).
+				r.Post("/albums/{albumId}/shares", wrapper.GrantAlbumShare)
+				r.Delete("/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
+				r.Get("/users", wrapper.ListInstanceUsers)
 				// The people surface reads (M3b Task 1): the named
 				// region, the unnamed region's keyset pages and one
 				// cluster's detail. All are bounded row reads (the

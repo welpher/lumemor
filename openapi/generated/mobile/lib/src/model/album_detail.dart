@@ -4,6 +4,7 @@
 
 // ignore_for_file: unused_element
 import 'package:built_collection/built_collection.dart';
+import 'package:lumemor_api/src/model/album_share_entry.dart';
 import 'package:lumemor_api/src/model/album_item.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
@@ -23,6 +24,7 @@ part 'album_detail.g.dart';
 /// * [itemCount] - The album's live member count, the same predicate as the items below. 
 /// * [items] - One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
 /// * [nextCursor] - The opaque continuation cursor: pass it back as the `cursor` query parameter to fetch the next page. Absent exactly when this is the last page. 
+/// * [shares] - The album's grantee list, riding ONLY the owner's view: one entry per `album_shares` row in the grant order (`grantedAt` ascending) -- the share management dialog's list. The owner's response always carries the field, an empty array when the album holds no grants; viewer responses never carry it at all. 
 @BuiltValue()
 abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   /// Identifier of the album.
@@ -66,6 +68,10 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   /// The opaque continuation cursor: pass it back as the `cursor` query parameter to fetch the next page. Absent exactly when this is the last page. 
   @BuiltValueField(wireName: r'nextCursor')
   String? get nextCursor;
+
+  /// The album's grantee list, riding ONLY the owner's view: one entry per `album_shares` row in the grant order (`grantedAt` ascending) -- the share management dialog's list. The owner's response always carries the field, an empty array when the album holds no grants; viewer responses never carry it at all. 
+  @BuiltValueField(wireName: r'shares')
+  BuiltList<AlbumShareEntry>? get shares;
 
   AlbumDetail._();
 
@@ -140,6 +146,13 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
       yield serializers.serialize(
         object.nextCursor,
         specifiedType: const FullType(String),
+      );
+    }
+    if (object.shares != null) {
+      yield r'shares';
+      yield serializers.serialize(
+        object.shares,
+        specifiedType: const FullType(BuiltList, [FullType(AlbumShareEntry)]),
       );
     }
   }
@@ -236,6 +249,14 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
           ) as String?;
           if (valueDes == null) continue;
           result.nextCursor = valueDes;
+          break;
+        case r'shares':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(BuiltList, [FullType(AlbumShareEntry)]),
+          ) as BuiltList<AlbumShareEntry>?;
+          if (valueDes == null) continue;
+          result.shares.replace(valueDes);
           break;
         default:
           unhandled.add(key);

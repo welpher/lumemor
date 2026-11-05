@@ -40,8 +40,9 @@ tags:
   - name: albums
     description: 'The album surface: the wall of the caller''s own and
       shared albums, one album''s detail with its keyset-paged items,
-      and the owner''s write face -- virtual album creation, the
-      property patch, the delete and the membership curation. Sync
+      the owner''s write face -- virtual album creation, the property
+      patch, the delete and the membership curation -- and the owner''s
+      sharing face, granting and revoking the view-only ACL. Sync
       albums are never album resources here -- the timeline is their
       face.'
   - name: assets
@@ -57,6 +58,10 @@ tags:
       the calling user''s visible assets and private labels.'
   - name: server
     description: Instance discovery and first-run setup.
+  - name: users
+    description: 'The instance''s member list: the minimal authenticated
+      account enumeration of the family instance -- the share
+      dialog''s pick list.'
 paths:
   /auth/login:
     post:
@@ -526,18 +531,23 @@ paths:
 
         The `album.*` events report the album write surface: creation
         (`album.created`), the property patch (`album.updated`), the
-        delete (`album.deleted`) and the membership curation
-        (`album.items-changed`). Every payload carries ONLY the
-        album's id and the acting user's `userId`: titles,
+        delete (`album.deleted`), the membership curation
+        (`album.items-changed`) and the view-ACL sharing
+        (`album.shared`, `album.unshared`). Every payload carries
+        ONLY the album's id and one user's `userId`: titles,
         descriptions, covers, the lock state and the membership
         itself are album state the subscribers refetch, never bus
         payload. `album.updated` fires on every successful patch
         (the convergent refetch makes the unconditional fire
-        harmless), and `album.items-changed` exactly when a
-        membership write added or removed at least one row -- the
-        idempotent no-op stays silent. `album.shared` and
-        `album.unshared` arrive with the share endpoints of a later
-        milestone.
+        harmless), `album.items-changed` exactly when a membership
+        write added or removed at least one row, and
+        `album.shared`/`album.unshared` exactly when a share grant
+        landed a new row or a revoke removed one -- every idempotent
+        no-op stays silent. On the two share events the `userId` is
+        the GRANTEE whose view of the album changed, not the acting
+        grantor: the grantor is derivable server-side, the grantee
+        is the state that changed, and the grant time and the
+        grantee's email never ride the bus.
 
         The server keeps the last five minutes of events in a ring
         buffer. Browser EventSource clients reconnect automatically and
@@ -2890,6 +2900,15 @@ paths:
         collage fallback from the members, the detail carries the
         pin itself.
 
+        `shares` rides only the owner's view: the album's grantee
+        list, one entry per `album_shares` row in the grant order
+        (`grantedAt` ascending), each carrying the grantee's id,
+        email and grant time -- the share management dialog's list.
+        The owner's response always carries the field, an empty
+        array when the album holds no grants; viewer responses
+        never carry it at all (a sharee sees the album, never the
+        ACL).
+
         `limit` bounds the page size: absent means the default of 60;
         a value below 1 or over 200 answers 400 `VALIDATION_FAILED`.
         Pages continue through the opaque `cursor`, the timeline's
@@ -2968,6 +2987,10 @@ paths:
                           kind: image
                           thumbnail: /api/v1/assets/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/thumbnail?size=tile
                     nextCursor: GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
+                    shares:
+                      - userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        email: grace@example.com
+                        grantedAt: '2026-11-05T09:30:00Z'
                 emptyAlbum:
                   summary: An album with no live members yet, seen by a viewer.
                   value:
@@ -3605,6 +3628,279 @@ paths:
                   value:
                     code: ALBUM_LOCKED
                     message: the album is locked
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /albums/{albumId}/shares:
+    post:
+      operationId: grantAlbumShare
+      tags:
+        - albums
+      summary: Grant one account the view ACL of an album.
+      description: |
+        Grants an album's view ACL to another account: one
+        `album_shares` row, one more viewer. The grantee's read
+        access is immediate -- their wall lists the album in the
+        shared group, the detail answers with `callerRole` `viewer`
+        -- and the share is view-only forever: every write face of
+        the album stays the owner's.
+
+        Authorization is the writes' two-tier answer: an album the
+        caller cannot see at all -- an unknown id, another account's
+        unshared album, every sync album -- answers the single-shape
+        404 `ALBUM_NOT_FOUND`, byte-identical to the read face, so
+        album ids cannot be probed; an album the caller CAN see but
+        does not own (an album shared to the caller) answers the
+        honest 403 `AUTH_FORBIDDEN` -- a sharee cannot share onward.
+        The owner grants, and an administrator may override the
+        owner check.
+
+        VIRTUAL and DIRECTORY albums are shareable; sync albums are
+        never -- a sync album id folds into the same single-shape
+        404 (the timeline is the sync album's face). `locked` does
+        NOT gate the grant: the freeze is a curation gate, and a
+        viewer only ever reads.
+
+        The grant is idempotent: re-granting to a current grantee
+        answers 200 with the existing row -- the same `grantedAt`,
+        the original grantor untouched -- and stays silent on the
+        activity stream.
+
+        Target rules (both answer 400 `VALIDATION_FAILED` with a
+        message key in `details.key`): the album's own owner is
+        never a grantee (`album_share_to_owner` -- the owner sees
+        the album by construction, a share row would be noise); an
+        unknown or disabled account is not a share target
+        (`album_share_user_invalid` -- the two cases answer the
+        same shape, so user ids cannot be probed through this
+        face).
+
+        The write publishes one `album.shared` event exactly when
+        the grant landed a new row: the payload carries the album's
+        id and the GRANTEE's user id, nothing else.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          description: Identifier of the album.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlbumShareGrantRequest'
+            examples:
+              familyMember:
+                summary: Grant the view ACL to one member account.
+                value:
+                  userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+      responses:
+        '200':
+          description: |
+            The share row after the write: the fresh row for a new
+            grantee, the existing row (its original `grantedAt`
+            untouched) for the idempotent re-grant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumShareResponse'
+              examples:
+                freshGrant:
+                  summary: A new grantee's row.
+                  value:
+                    albumId: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
+                    userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                    grantedAt: '2026-11-05T09:30:00Z'
+                idempotentRegrant:
+                  summary: The re-grant answers the existing row.
+                  value:
+                    albumId: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
+                    userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                    grantedAt: '2026-11-01T10:00:00Z'
+        '400':
+          description: |
+            The request is invalid: the body is not valid JSON, or
+            the target violates a rule -- the album's own owner
+            (`album_share_to_owner`) or an unknown or disabled
+            account (`album_share_user_invalid`, the same shape for
+            both).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                shareToOwner:
+                  summary: The owner is never a grantee.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: an album's owner cannot be its grantee
+                    details:
+                      key: album_share_to_owner
+                shareUserInvalid:
+                  summary: An unknown or disabled account.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: the share target is not a usable account
+                    details:
+                      key: album_share_user_invalid
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller can see the album but is not its owner (an
+            album shared to the caller): the share is view-only, so
+            sharing onward is an honest authorization failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                viewerShares:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: only the album's owner may share it
+        '404':
+          description: |
+            No such album for this caller: the id is unknown, the
+            album belongs to another account without a share to the
+            caller, or it is a sync album -- indistinguishable by
+            design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumNotFound:
+                  value:
+                    code: ALBUM_NOT_FOUND
+                    message: no such album for this caller
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /albums/{albumId}/shares/{userId}:
+    delete:
+      operationId: revokeAlbumShare
+      tags:
+        - albums
+      summary: Revoke one account's view ACL of an album.
+      description: |
+        Removes one `album_shares` row: the grantee's read access
+        ends immediately -- the album leaves their wall, the detail
+        answers the single-shape 404.
+
+        The owner (or an administrator) revokes any grantee. A
+        grantee may revoke their OWN row -- leaving a shared album
+        is the sharee's own right, the family semantics -- through
+        this same endpoint: the caller's own user id in the path is
+        the departure, whoever granted the row. A sharee cannot
+        revoke ANOTHER account's grant: 403 `AUTH_FORBIDDEN`, the
+        honest refusal of a caller who can see the album but holds
+        no power over its ACL.
+
+        Everything else mirrors the grant: the single-shape 404 for
+        the invisible ids (an unknown album, another account's
+        unshared album, every sync album), and `locked` never gates
+        -- revocation is not curation.
+
+        The 204 is idempotent: revoking a share that is already
+        gone -- never granted, already revoked, or an id that names
+        no account -- is the state the caller asked for, so it
+        answers 204 again and stays silent on the activity stream.
+
+        The write publishes one `album.unshared` event exactly when
+        a row left: the payload carries the album's id and the
+        revoked grantee's user id, nothing else.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          description: Identifier of the album.
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          description: |
+            Identifier of the account whose share row leaves: any
+            grantee for the owner or an administrator, the caller's
+            own id for a sharee's departure.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: |
+            The share row is gone -- or was already gone: the
+            idempotent revoke answers 204 either way, with no body.
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller can see the album but is neither its owner
+            nor the departing grantee: a sharee cannot revoke
+            another account's grant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                viewerRevokes:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: only the album's owner or the grantee may revoke this share
+        '404':
+          description: |
+            No such album for this caller: the id is unknown, the
+            album belongs to another account without a share to the
+            caller, or it is a sync album -- indistinguishable by
+            design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumNotFound:
+                  value:
+                    code: ALBUM_NOT_FOUND
+                    message: no such album for this caller
         '500':
           description: Unexpected server failure.
           content:
@@ -4605,6 +4901,78 @@ paths:
                   value:
                     code: PERSON_NOT_FOUND
                     message: no such person for this caller
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users:
+    get:
+      operationId: listInstanceUsers
+      tags:
+        - users
+      summary: The instance's member list.
+      description: |
+        The minimal member list of the instance: one entry per
+        account, `email` ascending. Any authenticated account may
+        enumerate it -- the family-instance posture: the accounts
+        of a shared photo home are not secret from one another, and
+        the album share dialog's pick list (the owner choosing whom
+        to grant) is the list's first consumer.
+
+        The entries carry exactly the identity a pick list renders:
+        `id`, `email`, `role` and `isDisabled` -- no display name,
+        no timestamps, and a password hash never appears in any
+        response. The disabled switch rides the entry so callers
+        can present accounts that cannot sign in for what they are
+        (granting to one still answers 400 through the share
+        endpoint's own target rule).
+
+        The list is small by construction (a family instance holds
+        a handful of accounts) and grows only through the admin
+        surface's own create endpoint, so it answers every account
+        in one response: there is no pagination, no filtering and
+        no ordering parameter. This is NOT the admin management
+        face (`GET /admin/users`): it is the minimal, non-managing
+        pick list every authenticated account may read.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            Every account of the instance, `email` ascending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+              examples:
+                familyInstance:
+                  summary: The wizard's admin and one member account.
+                  value:
+                    users:
+                      - id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                        email: ada@example.com
+                        role: admin
+                        isDisabled: false
+                      - id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        email: grace@example.com
+                        role: user
+                        isDisabled: false
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
         '500':
           description: Unexpected server failure.
           content:
@@ -7675,6 +8043,17 @@ components:
             The opaque continuation cursor: pass it back as the
             `cursor` query parameter to fetch the next page. Absent
             exactly when this is the last page.
+        shares:
+          type: array
+          description: |
+            The album's grantee list, riding ONLY the owner's view:
+            one entry per `album_shares` row in the grant order
+            (`grantedAt` ascending) -- the share management dialog's
+            list. The owner's response always carries the field, an
+            empty array when the album holds no grants; viewer
+            responses never carry it at all.
+          items:
+            $ref: '#/components/schemas/AlbumShareEntry'
     AlbumItem:
       type: object
       description: |
@@ -7869,6 +8248,108 @@ components:
           description: |
             The distinct ids that were no members of the album --
             never added, or already removed.
+    AlbumShareGrantRequest:
+      type: object
+      description: |
+        The grant body: the account receiving the view ACL. The
+        target rules live in the endpoint's own answer -- the
+        album's owner and unusable accounts answer 400 there, never
+        a distinct shape here.
+      required:
+        - userId
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: Identifier of the account receiving the view ACL.
+    AlbumShareResponse:
+      type: object
+      description: |
+        One share row as the grant endpoint answers it: the album,
+        the grantee and the grant time. The idempotent re-grant
+        answers the existing row's values -- the original
+        `grantedAt` and grantor untouched.
+      required:
+        - albumId
+        - userId
+        - grantedAt
+      properties:
+        albumId:
+          type: string
+          format: uuid
+          description: Identifier of the shared album.
+        userId:
+          type: string
+          format: uuid
+          description: Identifier of the grantee account.
+        grantedAt:
+          type: string
+          format: date-time
+          description: When the view ACL was granted (RFC 3339 UTC).
+    AlbumShareEntry:
+      type: object
+      description: |
+        One grantee of the owner's `shares` list on the album
+        detail: the grantee's identity and the grant time -- the
+        share management dialog's row.
+      required:
+        - userId
+        - email
+        - grantedAt
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: Identifier of the grantee account.
+        email:
+          type: string
+          format: email
+          description: The grantee's login address.
+        grantedAt:
+          type: string
+          format: date-time
+          description: When the view ACL was granted (RFC 3339 UTC).
+    UserSummary:
+      type: object
+      description: |
+        One account of the minimal member list: exactly the identity
+        fields a pick list renders -- no display name, no
+        timestamps, and never a password hash.
+      required:
+        - id
+        - email
+        - role
+        - isDisabled
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 identifier.
+        email:
+          type: string
+          format: email
+          description: Login address.
+        role:
+          $ref: '#/components/schemas/UserRole'
+        isDisabled:
+          type: boolean
+          description: |
+            The disabled switch: a disabled account cannot sign in
+            and its sessions carry no authority until re-enabled.
+    UserListResponse:
+      type: object
+      description: |
+        The instance's member list: every account, `email`
+        ascending, in one bounded response (a family instance holds
+        a handful of accounts).
+      required:
+        - users
+      properties:
+        users:
+          type: array
+          description: Every account of the instance, `email` ascending.
+          items:
+            $ref: '#/components/schemas/UserSummary'
     Error:
       type: object
       description: |

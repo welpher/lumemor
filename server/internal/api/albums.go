@@ -243,6 +243,28 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		ItemCount:    int(album.ItemCount),
 		Items:        make([]apigen.AlbumItem, 0, len(rows)),
 	}
+	// The owner-only grantee list (the share management dialog's
+	// rows): the field rides the owner's view and only that view --
+	// a sharee sees the album, never its ACL. The non-nil pointer
+	// keeps the field present in the owner's JSON even when the
+	// album holds no grants (the empty array is the dialog's honest
+	// "no one yet" state).
+	if album.CallerRole == "owner" {
+		entries, err := s.queries.ListAlbumShares(r.Context(), pgUUID(albumId))
+		if err != nil {
+			s.internalError(w, r, "load album shares", err)
+			return
+		}
+		shares := make([]apigen.AlbumShareEntry, 0, len(entries))
+		for _, entry := range entries {
+			shares = append(shares, apigen.AlbumShareEntry{
+				UserId:    uuid.UUID(entry.UserID.Bytes),
+				Email:     oapitypes.Email(entry.Email),
+				GrantedAt: entry.GrantedAt.Time.UTC(),
+			})
+		}
+		detail.Shares = &shares
+	}
 	if album.Album.CoverAssetID.Valid {
 		cover := uuid.UUID(album.Album.CoverAssetID.Bytes)
 		detail.CoverAssetId = &cover

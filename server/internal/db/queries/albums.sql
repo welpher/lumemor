@@ -322,3 +322,50 @@ ON CONFLICT DO NOTHING;
 DELETE FROM album_items
 WHERE album_id = sqlc.arg('album_id')
   AND asset_id = ANY(sqlc.arg('asset_ids')::uuid[]);
+
+-- Album sharing (M3c Task 3): the view-ACL grant, revoke and the
+-- owner's grantee list. The grant is the set discipline again: ON
+-- CONFLICT DO NOTHING makes the re-grant of a current grantee a
+-- no-op, so the rows-affected count is the transition signal the
+-- handler's event discipline reads (a new row fires album.shared,
+-- the idempotent no-op stays silent) -- and the PK is the race
+-- guard: concurrent grants converge on one row.
+
+-- name: GrantAlbumShare :execrows
+-- The view-ACL grant: one album_shares row. The count answers the
+-- transition -- 1 row landed a fresh grant, 0 rows mean the grantee
+-- already holds the share (the handler then re-reads the existing
+-- row for the response; the grantor and grant time of the original
+-- stay untouched).
+INSERT INTO album_shares (album_id, user_id, granted_by)
+VALUES (sqlc.arg('album_id'), sqlc.arg('user_id'), sqlc.arg('granted_by'))
+ON CONFLICT (album_id, user_id) DO NOTHING;
+
+-- name: GetAlbumShare :one
+-- One share row of one grantee: the honest post-write state of the
+-- grant (the fresh row's now(), or the existing row's original
+-- values when the grant was the idempotent no-op).
+SELECT album_id, user_id, granted_at
+FROM album_shares
+WHERE album_id = sqlc.arg('album_id')
+  AND user_id = sqlc.arg('user_id');
+
+-- name: RevokeAlbumShare :execrows
+-- The view-ACL revoke: the row leaves, and the count is the
+-- transition signal -- 1 row left fires album.unshared, 0 rows (the
+-- share never existed, already left, or the id names no account)
+-- are the idempotent silence the 204 answers either way.
+DELETE FROM album_shares
+WHERE album_id = sqlc.arg('album_id')
+  AND user_id = sqlc.arg('user_id');
+
+-- name: ListAlbumShares :many
+-- The owner's grantee list of one album: the share management
+-- dialog's rows, the grant order (granted_at ascending). The join
+-- carries the grantee's email -- the dialog lists people, not
+-- uuids. Only the owner's detail ever renders this query's answer.
+SELECT s.user_id, u.email, s.granted_at
+FROM album_shares s
+JOIN users u ON u.id = s.user_id
+WHERE s.album_id = sqlc.arg('album_id')
+ORDER BY s.granted_at ASC, s.user_id ASC;

@@ -53,6 +53,8 @@
   "album_locked": "该相册已锁定。请先解锁再编辑。",
   "person_hide_requires_label": "请先为该人物命名，然后再隐藏。",
   "album_cover_not_member": "封面照片必须是本相册中的照片。",
+  "album_share_to_owner": "这个相册本来就是您的，无需共享给相册所有者。",
+  "album_share_user_invalid": "该账号无法被共享。",
   "timeline_loading": "正在加载时间线…",
   "timeline_empty": "时间线还没有照片。上传后会出现在这里。",
   "timeline_load_more": "加载更多",

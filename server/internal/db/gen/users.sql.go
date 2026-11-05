@@ -91,6 +91,75 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 	return i, err
 }
 
+const getUserForShareTarget = `-- name: GetUserForShareTarget :one
+SELECT id, email, is_disabled
+FROM users
+WHERE id = $1
+`
+
+type GetUserForShareTargetRow struct {
+	ID         pgtype.UUID `json:"id"`
+	Email      string      `json:"email"`
+	IsDisabled bool        `json:"is_disabled"`
+}
+
+// One account as the share grant's target lookup: does the id name
+// a usable account? An unknown id answers no row and a disabled
+// account answers its switch -- the caller folds both into the same
+// 400 so user ids cannot be probed through the sharing face.
+func (q *Queries) GetUserForShareTarget(ctx context.Context, id pgtype.UUID) (GetUserForShareTargetRow, error) {
+	row := q.db.QueryRow(ctx, getUserForShareTarget, id)
+	var i GetUserForShareTargetRow
+	err := row.Scan(&i.ID, &i.Email, &i.IsDisabled)
+	return i, err
+}
+
+const listInstanceUsersMinimal = `-- name: ListInstanceUsersMinimal :many
+
+SELECT id, email, role, is_disabled
+FROM users
+ORDER BY email ASC
+`
+
+type ListInstanceUsersMinimalRow struct {
+	ID         pgtype.UUID `json:"id"`
+	Email      string      `json:"email"`
+	Role       UserRole    `json:"role"`
+	IsDisabled bool        `json:"is_disabled"`
+}
+
+// User reads of the sharing face (M3c Task 3): the minimal member
+// list and the share-target lookup. Both select the safe identity
+// columns only -- a password hash never leaves the table through
+// any non-auth surface.
+// The minimal member list: every account, email ascending. Any
+// authenticated account may read it (the family-instance posture);
+// the share dialog's pick list is the first consumer.
+func (q *Queries) ListInstanceUsersMinimal(ctx context.Context) ([]ListInstanceUsersMinimalRow, error) {
+	rows, err := q.db.Query(ctx, listInstanceUsersMinimal)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListInstanceUsersMinimalRow
+	for rows.Next() {
+		var i ListInstanceUsersMinimalRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Role,
+			&i.IsDisabled,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT id, name, email, role, is_disabled, created_at
 FROM users

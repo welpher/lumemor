@@ -100,8 +100,10 @@ Class | Method | HTTP request | Description
 [*AlbumsApi*](doc/AlbumsApi.md) | [**createAlbum**](doc/AlbumsApi.md#createalbum) | **POST** /albums | Create one virtual album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**deleteAlbum**](doc/AlbumsApi.md#deletealbum) | **DELETE** /albums/{albumId} | Delete one virtual album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**getAlbum**](doc/AlbumsApi.md#getalbum) | **GET** /albums/{albumId} | One album&#39;s detail and one page of its items.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**grantAlbumShare**](doc/AlbumsApi.md#grantalbumshare) | **POST** /albums/{albumId}/shares | Grant one account the view ACL of an album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**listAlbums**](doc/AlbumsApi.md#listalbums) | **GET** /albums | The caller&#39;s album wall.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**removeAlbumItems**](doc/AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one virtual album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**revokeAlbumShare**](doc/AlbumsApi.md#revokealbumshare) | **DELETE** /albums/{albumId}/shares/{userId} | Revoke one account&#39;s view ACL of an album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**updateAlbum**](doc/AlbumsApi.md#updatealbum) | **PATCH** /albums/{albumId} | Patch one album&#39;s properties.
 [*AssetsApi*](doc/AssetsApi.md) | [**batchAssets**](doc/AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
 [*AssetsApi*](doc/AssetsApi.md) | [**deleteAsset**](doc/AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
@@ -135,6 +137,7 @@ Class | Method | HTTP request | Description
 [*PeopleApi*](doc/PeopleApi.md) | [**unlabelPerson**](doc/PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
 [*ServerApi*](doc/ServerApi.md) | [**createAdmin**](doc/ServerApi.md#createadmin) | **POST** /server/setup/admin | Create the first administrator account.
 [*ServerApi*](doc/ServerApi.md) | [**getServerInfo**](doc/ServerApi.md#getserverinfo) | **GET** /server/info | Report instance version and feature switches.
+[*UsersApi*](doc/UsersApi.md) | [**listInstanceUsers**](doc/UsersApi.md#listinstanceusers) | **GET** /users | The instance&#39;s member list.
 
 
 ## Documentation For Models
@@ -151,6 +154,9 @@ Class | Method | HTTP request | Description
  - [AlbumItemsRequest](doc/AlbumItemsRequest.md)
  - [AlbumOwnerRef](doc/AlbumOwnerRef.md)
  - [AlbumPatch](doc/AlbumPatch.md)
+ - [AlbumShareEntry](doc/AlbumShareEntry.md)
+ - [AlbumShareGrantRequest](doc/AlbumShareGrantRequest.md)
+ - [AlbumShareResponse](doc/AlbumShareResponse.md)
  - [AlbumSummary](doc/AlbumSummary.md)
  - [AlbumWallResponse](doc/AlbumWallResponse.md)
  - [AssetDetail](doc/AssetDetail.md)
@@ -203,7 +209,9 @@ Class | Method | HTTP request | Description
  - [UnnamedClusterSummary](doc/UnnamedClusterSummary.md)
  - [UnnamedClustersResponse](doc/UnnamedClustersResponse.md)
  - [User](doc/User.md)
+ - [UserListResponse](doc/UserListResponse.md)
  - [UserRole](doc/UserRole.md)
+ - [UserSummary](doc/UserSummary.md)
 
 
 ## Documentation For Authorization
