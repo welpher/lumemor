@@ -172,7 +172,7 @@
 
 <div class="jobs max-w-[680px] mx-auto flex flex-col gap-5">
 	{#if status === 'loading'}
-		<p class="jobs__status my-12 text-center text-text-soft" role="status">{$_('admin_jobs_loading')}</p>
+		<p class="jobs__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('admin_jobs_loading')}</p>
 	{:else if status === 'error'}
 		<div class="jobs__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
@@ -180,7 +180,7 @@
 		</div>
 	{:else if status === 'ready'}
 		<header class="jobs__header">
-			<h1 class="jobs__title mb-1 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('admin_jobs_title')}</h1>
+			<h1 class="jobs__title mb-1 font-display font-bold text-[26px] text-text">{$_('admin_jobs_title')}</h1>
 			<p class="jobs__note font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_jobs_note')}</p>
 		</header>
 
@@ -195,7 +195,7 @@
 							<span class="jobs__badge jobs__badge--{job.state} inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] text-text-soft bg-accent-soft rounded-control">{stateLabel(job)}</span>
 						</header>
 						<div
-							class="jobs__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden"
+							class="jobs__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden animate-progress-in"
 							role="progressbar"
 							aria-valuemin="0"
 							aria-valuemax="100"

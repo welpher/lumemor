@@ -218,7 +218,7 @@
 	{/if}
 
 	{#if firstLoad}
-		<p class="wall__status my-12 text-center text-text-soft" role="status">{$_(loadingKey)}</p>
+		<p class="wall__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_(loadingKey)}</p>
 	{:else if settledEmpty}
 		<div class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 			<h1 class="text-[22px] mb-2">{emptyHeading}</h1>

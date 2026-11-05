@@ -306,7 +306,7 @@
 
 <div class="models max-w-[760px] mx-auto flex flex-col gap-6">
 	{#if status === 'loading'}
-		<p class="models__status my-12 text-center text-text-soft" role="status">{$_('admin_models_loading')}</p>
+		<p class="models__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('admin_models_loading')}</p>
 	{:else if status === 'error'}
 		<div class="models__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
@@ -314,7 +314,7 @@
 		</div>
 	{:else if status === 'ready'}
 		<header class="models__header">
-			<h1 class="models__title mb-1 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('admin_models_title')}</h1>
+			<h1 class="models__title mb-1 font-display font-bold text-[26px] text-text">{$_('admin_models_title')}</h1>
 			<p class="models__note font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_models_note')}</p>
 		</header>
 
@@ -333,7 +333,7 @@
 		     below carries the action instead. -->
 		{#if settledEmpty && !downloadActive && !downloadFailed && downloadErrorKey === ''}
 			<section class="models__empty flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
-				<h2 class="models__empty-title font-display font-bold text-[22px] tracking-[0.01em] text-text">{$_('admin_models_empty_title')}</h2>
+				<h2 class="models__empty-title font-display font-bold text-[22px] text-text">{$_('admin_models_empty_title')}</h2>
 				<p class="models__empty-body font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_models_empty_body')}</p>
 				<Button
 					variant="primary"
@@ -363,7 +363,7 @@
 							: downloadProgressText()}
 					</p>
 					<div
-						class="models__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden"
+						class="models__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden animate-progress-in"
 						role="progressbar"
 						aria-valuemin="0"
 						aria-valuemax="100"

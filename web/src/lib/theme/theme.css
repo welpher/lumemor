@@ -92,6 +92,14 @@
 		system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
 	--font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC',
 		'Noto Sans SC', 'Helvetica Neue', Arial, sans-serif;
+	/* Body copy's global tracking (G5) — mirrors Layer 2 below. */
+	--tracking-body: 0.01em;
+
+	/* The tile's compact-badge breakpoint (G9): below this inline
+	 * size a tile's duration chip scales down instead of
+	 * overflowing its tile. Consumed by the @max-tile-compact
+	 * container variant. */
+	--container-tile-compact: 112px;
 
 	/* Radii (spec §5) — mirrors Layer 2 below. */
 	--radius-control: 12px;
@@ -102,9 +110,28 @@
 	 * overrides the same variables for the dark theme). */
 	--shadow-card: 0 1px 2px rgb(27 42 91 / 0.05), 0 2px 12px rgb(27 42 91 / 0.07);
 	--shadow-overlay: 0 12px 40px rgb(20 26 46 / 0.18), 0 2px 8px rgb(20 26 46 / 0.12);
+	/* The subtle text shadow of a chip over media (G9): theme-independent
+	 * (a black shadow reads on both themes' night chips). */
+	--text-shadow-badge: 0 1px 2px rgb(0 0 0 / 0.55);
 
 	/* Motion (spec §5) — mirrors Layer 2 below. */
 	--ease-standard: ease-out;
+
+	/* The anti-flicker entrances (G6): one shared keyframe whose
+	 * starting state (invisible) is held through the delay by the
+	 * `backwards` fill mode — an operation that resolves faster
+	 * than its indicator never flashes one. The delay values are
+	 * the Layer 2 motion tokens below. */
+	--animate-progress-in: indicator-in var(--motion-fast) var(--motion-delay-progress)
+		backwards;
+	--animate-loading-in: indicator-in var(--motion-fast) var(--motion-delay-loading)
+		backwards;
+
+	@keyframes indicator-in {
+		from {
+			opacity: 0;
+		}
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -175,6 +202,68 @@
 		system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
 	--font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC',
 		'Noto Sans SC', 'Helvetica Neue', Arial, sans-serif;
+	/* Body copy's global tracking (G5): the ~0.01em tier the display
+	 * type already tunes with, now the body's rhythm too — the one
+	 * token every per-site tracking value folds into. */
+	--tracking-body: 0.01em;
+
+	/* ---------------------------------------------------------------- */
+	/* Interface craft (web polish batch 2)                              */
+	/* ---------------------------------------------------------------- */
+
+	/* The anti-flicker timing (G6): progress indicators wait out a
+	 * 100ms grace and full loading lines 400ms before their first
+	 * paint, and the blurhash placeholder cross-fades out over
+	 * 100ms once the image's load event lands — nothing that
+	 * resolves faster than its indicator ever flashes one. All
+	 * three ride the existing prefers-reduced-motion collapse (the
+	 * delays are timing, not motion). */
+	--motion-delay-progress: 100ms; /* a progress bar's grace */
+	--motion-delay-loading: 400ms; /* a loading line's patience */
+	--motion-placeholder-fade: 100ms; /* the placeholder's exit */
+
+	/* The scrollbar language (G8): a thin rail whose thumb stays
+	 * hidden until the pointer enters its scroll region, themed
+	 * through the semantic tokens so it flips with the theme. The
+	 * thumb rest color mixes the text ink translucently; the
+	 * direct-interaction state strengthens toward the accent. */
+	--scrollbar-width: 8px;
+	--scrollbar-thumb: color-mix(in srgb, var(--color-text) 24%, transparent);
+	--scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent) 60%, transparent);
+
+	/* The stacking ladder (G7): every stacking decision resolves
+	 * through one of these named rungs — no component writes a
+	 * z-index of its own, so what covers what stays reviewable
+	 * here. The first two sections are SCOPED stacks (their values
+	 * compare only inside the one surface's own stacking context);
+	 * the app ladder below them is the document-wide order, frozen
+	 * from the values the surfaces already carried:
+	 *
+	 *   content chips < sticky chrome < fixed page surfaces <
+	 *   the top bar's menu < floating toolbars < the status panel <
+	 *   the active toolbar < the side drawer < scrims < the nav
+	 *   drawer < the modal on top.
+	 */
+	/* The viewer stage's media stack (scoped to the viewer). */
+	--z-stage-media: 1; /* the video, poster and full-res layers over the placeholder */
+	--z-stage-live: 2; /* a live motion layer over the still */
+	--z-stage-chrome: 3; /* the stage's status chips and press affordance */
+	--z-stage-arrow: 4; /* the navigation arrows */
+	/* A tile's own chrome (scoped to the wall's rows). */
+	--z-tile-chip: 2; /* a tile's chips over its photo */
+	--z-tile-check: 3; /* a tile's check circle over its chips */
+	/* The app ladder (document-wide). */
+	--z-sticky-sub: 9; /* the wall's sticky day header, under the month header */
+	--z-sticky: 10; /* the wall's sticky month header */
+	--z-page: 40; /* page-filling fixed surfaces: the viewer, the scrubber rail */
+	--z-menu: 50; /* the top bar's account dropdown */
+	--z-toolbar: 60; /* a page's floating toolbar (the merge bar) */
+	--z-panel: 70; /* persistent status panels (the upload queue) */
+	--z-toolbar-active: 75; /* the active selection toolbar over passive panels */
+	--z-aside: 80; /* the viewer's info drawer */
+	--z-scrim: 90; /* dismissal scrims and the drop hint */
+	--z-drawer: 100; /* the navigation drawer's panel */
+	--z-modal: 110; /* the modal (backdrop and panel): the top of the ladder */
 
 	/* ---------------------------------------------------------------- */
 	/* The justified photo wall (the wall's density rhythm)              */
@@ -264,6 +353,9 @@ html.dark {
 		background-color: var(--color-page);
 		/* Times, counts and other numerals align in tables and timelines. */
 		font-variant-numeric: tabular-nums;
+		/* The body copy's global tracking (G5) — one rhythm for every
+		 * run of text; the display type joins it by inheritance. */
+		letter-spacing: var(--tracking-body);
 		-webkit-font-smoothing: antialiased;
 	}
 
@@ -312,6 +404,61 @@ html.dark {
 	::after,
 	::backdrop {
 		border-color: var(--color-border);
+	}
+
+	/* The scrollbar language (G8), in two routes:
+	 *
+	 * 1. The STANDARD route (Chromium 121+, Firefox, Safari 18.2+):
+	 *    `scrollbar-width: thin` plus an invisible thumb that the
+	 *    region's hover reveals — :hover chains to every ancestor
+	 *    scroller, so `*:hover` lights the thumb of whatever scroll
+	 *    region contains the pointer. A classic (non-overlay)
+	 *    scrollbar still reserves its gutter; the panels that
+	 *    toggle overflow opt into `scrollbar-gutter: stable` so
+	 *    their content never jumps when the rail appears.
+	 * 2. The legacy webkit pseudo-element route: engines without
+	 *    the standard properties (older Safari and Chromium) draw
+	 *    the 8px rail and its hover-revealed thumb themselves.
+	 *    Setting the standard properties makes the supporting
+	 *    engines ignore these rules, so the routing needs no
+	 *    feature query.
+	 *
+	 * Firefox and the standard route reveal the thumb but cannot
+	 * strengthen it under a direct pointer press (one color pair
+	 * per state); the accent-stronger thumb-hover is the legacy
+	 * route's detail. */
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: transparent transparent;
+	}
+
+	*:hover {
+		scrollbar-color: var(--scrollbar-thumb) transparent;
+	}
+
+	::-webkit-scrollbar {
+		width: var(--scrollbar-width);
+		height: var(--scrollbar-width);
+	}
+
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	::-webkit-scrollbar-thumb {
+		background: transparent;
+		border-radius: calc(var(--scrollbar-width) / 2);
+	}
+
+	/* The rail paints only while the pointer is inside its scroll
+	 * region (hover chains to the scroller's ancestors); the thumb
+	 * itself strengthens under a direct hover. */
+	*:hover::-webkit-scrollbar-thumb {
+		background: var(--scrollbar-thumb);
+	}
+
+	::-webkit-scrollbar-thumb:hover {
+		background: var(--scrollbar-thumb-hover);
 	}
 }
 

@@ -339,7 +339,7 @@
 	</div>
 
 	{#if firstLoad}
-		<p class="unnamed__loading my-12 text-center text-text-soft" role="status">{$_('people_unnamed_loading')}</p>
+		<p class="unnamed__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('people_unnamed_loading')}</p>
 	{:else if settledEmpty}
 		<div class="unnamed__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 			<h1 class="text-[22px] mb-2">{$_('people_unnamed_title')}</h1>
@@ -378,7 +378,7 @@
 							     button itself (no nested interactive element),
 							     the timeline checkbox's look. -->
 							<span
-								class="cluster-card__check absolute top-1.5 left-1.5 z-[3] inline-flex items-center justify-center w-[26px] h-[26px] p-0 border rounded-full text-transparent bg-night border-cream-text/35 {selection.has(cluster.clusterId) ? 'border-accent bg-accent text-accent-on' : ''}"
+								class="cluster-card__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex items-center justify-center w-[26px] h-[26px] p-0 border rounded-full text-transparent bg-night border-cream-text/35 {selection.has(cluster.clusterId) ? 'border-accent bg-accent text-accent-on' : ''}"
 								aria-hidden="true"
 							>
 								<svg viewBox="0 0 24 24" width="14" height="14" fill="none">
@@ -387,7 +387,7 @@
 							</span>
 						{/if}
 					</span>
-					<span class="cluster-card__count block px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft">{$_('people_face_count', { values: { count: cluster.faceCount } })}</span>
+					<span class="cluster-card__count block px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums">{$_('people_face_count', { values: { count: cluster.faceCount } })}</span>
 				</button>
 			{/each}
 		</div>
@@ -418,11 +418,11 @@
 	     pairwise fold is the cluster detail's "merge into" path), so
 	     a lone selection keeps the button disabled. -->
 	<div
-		class="mergebar fixed left-1/2 bottom-5 z-[60] box-content flex flex-wrap items-center justify-center gap-2 max-w-[min(92vw,720px)] px-3.5 py-2.5 border border-border rounded-overlay bg-card shadow-overlay [transform:translateX(-50%)]"
+		class="mergebar fixed left-1/2 bottom-5 z-(--z-toolbar) box-content flex flex-wrap items-center justify-center gap-2 max-w-[min(92vw,720px)] px-3.5 py-2.5 border border-border rounded-overlay bg-card shadow-overlay [transform:translateX(-50%)]"
 		role="toolbar"
 		aria-label={$_('batch_selected_count', { values: { count: selection.size } })}
 	>
-		<p class="mergebar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap">{$_('batch_selected_count', { values: { count: selection.size } })}</p>
+		<p class="mergebar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap tabular-nums">{$_('batch_selected_count', { values: { count: selection.size } })}</p>
 		<Button
 			variant="primary"
 			disabled={selection.size < 2 || mergeBusy}

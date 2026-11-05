@@ -351,7 +351,7 @@
 	</div>
 
 	{#if firstLoad}
-		<p class="timeline__status my-12 text-center text-text-soft" role="status">{$_('timeline_loading')}</p>
+		<p class="timeline__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('timeline_loading')}</p>
 	{:else if settledEmpty}
 		<div class="timeline__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 			<h1 class="text-[22px] mb-2">{$_('nav_timeline')}</h1>

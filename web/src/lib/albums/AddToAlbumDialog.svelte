@@ -129,7 +129,7 @@
 			     {added, skipped} answer, with the done affordance. -->
 			<p class="add-album__report m-0 font-body font-semibold text-[15px] leading-[1.5] text-text" role="status">{$_('albums_add_report', { values: { added: report.added, skipped: report.skipped } })}</p>
 		{:else if loading}
-			<p class="add-album__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft" role="status">{$_('albums_add_pick_label')}…</p>
+			<p class="add-album__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('albums_add_pick_label')}…</p>
 		{:else}
 			<!-- The two paths: picking an existing album or naming a new one. -->
 			<fieldset class="add-album__modes flex gap-4 m-0 p-0 border-none">

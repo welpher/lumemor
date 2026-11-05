@@ -162,7 +162,7 @@
 			<p class="cluster-picker__body m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_(bodyKey)}</p>
 		{/if}
 		{#if loading}
-			<p class="cluster-picker__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft" role="status">{$_('people_loading')}</p>
+			<p class="cluster-picker__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('people_loading')}</p>
 		{:else}
 			{#if newPerson !== undefined}
 				<!-- The two paths of the assign flow: picking an existing

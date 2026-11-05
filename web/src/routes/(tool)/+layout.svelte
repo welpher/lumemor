@@ -34,7 +34,7 @@
 				/>
 			</svg>
 		</button>
-		<span class="tool-topbar__brand font-display font-bold text-[20px] tracking-[0.01em] text-text">{$_('app_name')}</span>
+		<span class="tool-topbar__brand font-display font-bold text-[20px] text-text">{$_('app_name')}</span>
 	</header>
 	<main class="tool-main flex-1 p-6">
 		{@render children()}

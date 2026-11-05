@@ -22,6 +22,18 @@
 	// badge here; the hover video preview arrives with the viewer and
 	// the component transcode (later tasks of this milestone).
 	//
+	// THE HOVER AFFORDANCES (web polish batch 2, G3+G9): a restrained
+	// bottom scrim of translucent Night rises on hover and keyboard
+	// focus — the photo never scales, it stays authoritative. The
+	// scrim reveals the tile's STATE (the favorite star, bottom-left)
+	// while the TYPE marks stay readable at rest (the live badge
+	// top-left, the video chip bottom-right). The video chip carries
+	// the duration: an opaque night chip (the batch-1 ink-chip
+	// vocabulary), tabular numerals, a subtle text shadow, and a
+	// container-query scale-down so narrow portrait tiles shrink it
+	// instead of overflowing. There is no stack count yet — nothing
+	// invents data the contract does not carry.
+	//
 	// Selection interaction (unchanged): the check circle appears on
 	// hover and whenever a selection or the select mode is active
 	// (the touch-friendly path); with selection active the whole tile
@@ -31,13 +43,21 @@
 	import { decode } from 'blurhash';
 	import { _ } from 'svelte-i18n';
 	import type { TimelineItem } from '$lib/api/timeline';
+	import { formatDuration } from '$lib/format';
 
 	// The tile-relevant subset of the timeline item shape: every wall
 	// item (the trash listing's rows included) structurally satisfies
 	// it, so the tile renders wherever the wall's item shape lives.
 	type TileItem = Pick<
 		TimelineItem,
-		'id' | 'kind' | 'originalFilename' | 'isFavorite' | 'isReady' | 'blurhash' | 'livePhotoVideoId'
+		| 'id'
+		| 'kind'
+		| 'originalFilename'
+		| 'isFavorite'
+		| 'isReady'
+		| 'blurhash'
+		| 'livePhotoVideoId'
+		| 'durationMs'
 	>;
 
 	type Props = {
@@ -107,11 +127,12 @@
      selected state is geometric -- the retreat scale, the radius and
      the accent ring at the retreated edge, all transform/outline so
      nothing reflows. The ink chips (badges, check) are opaque night
-     surfaces over the photo, no blur. The content-visibility pair
-     keeps offscreen tiles out of layout and paint (rows add their own
-     windowing above it). -->
+     surfaces over the photo, no blur. The tile is a size container
+     so its duration chip can scale itself down on narrow tiles. The
+     content-visibility pair keeps offscreen tiles out of layout and
+     paint (rows add their own windowing above it). -->
 <div
-	class="tile group relative w-full h-full overflow-hidden bg-accent-soft [content-visibility:auto] transition-[scale,border-radius] duration-(--motion-base) ease-standard {selected
+	class="tile @container group relative w-full h-full overflow-hidden bg-accent-soft [content-visibility:auto] transition-[scale,border-radius] duration-(--motion-base) ease-standard {selected
 		? 'rounded-control scale-(--wall-select-scale) [outline:var(--wall-select-ring)_solid_var(--color-accent)] [outline-offset:calc(var(--wall-select-ring)*-1)]'
 		: ''}"
 	class:tile--selected={selected}
@@ -125,10 +146,20 @@
 		aria-label={item.originalFilename}
 	>
 		{#if item.blurhash !== null}
-			<canvas class="tile__placeholder absolute inset-0 w-full h-full object-cover" width="32" height="32" bind:this={canvas} aria-hidden="true"></canvas>
+			<canvas
+				class="tile__placeholder absolute inset-0 w-full h-full object-cover transition-[opacity] duration-(--motion-placeholder-fade) ease-standard"
+				class:tile__placeholder--hidden={loaded}
+				class:opacity-0={loaded}
+				width="32"
+				height="32"
+				bind:this={canvas}
+				aria-hidden="true"
+			></canvas>
 		{:else}
 			<div
-				class="tile__placeholder tile__placeholder--empty absolute inset-0 w-full h-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-accent-soft)_60%,var(--color-card)),var(--color-accent-soft))]"
+				class="tile__placeholder tile__placeholder--empty absolute inset-0 w-full h-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-accent-soft)_60%,var(--color-card)),var(--color-accent-soft))] transition-[opacity] duration-(--motion-placeholder-fade) ease-standard"
+				class:tile__placeholder--hidden={loaded}
+				class:opacity-0={loaded}
 				aria-hidden="true"
 			></div>
 		{/if}
@@ -148,9 +179,22 @@
 			/>
 		{/if}
 
+		<!-- G3's bottom scrim: the Night-based translucency that rises
+		     with the tile's state affordances on hover and keyboard
+		     focus. Pure opacity -- the photo never scales, and the
+		     pointer never interacts with the veil itself. -->
+		<div
+			class="tile__scrim absolute inset-x-0 bottom-0 h-1/3 pointer-events-none bg-linear-to-t from-night/55 to-transparent opacity-0 transition-[opacity] duration-(--motion-fast) ease-standard group-hover:opacity-100 group-focus-within:opacity-100"
+			aria-hidden="true"
+		></div>
+
 		{#if item.isFavorite}
+			<!-- The state affordance the scrim reveals: the star rests
+			     invisible in the scrim zone (bottom-left) and fades in
+			     with it -- an opaque night chip with the gold star, no
+			     blur, readable in both themes. -->
 			<span
-				class="tile__badge tile__badge--favorite absolute top-1.5 right-1.5 z-[2] inline-flex items-center justify-center w-6 h-6 rounded-full text-star bg-night"
+				class="tile__badge tile__badge--favorite absolute bottom-1.5 left-1.5 z-(--z-tile-chip) inline-flex items-center justify-center w-6 h-6 rounded-full text-star bg-night opacity-0 transition-[opacity] duration-(--motion-fast) ease-standard group-hover:opacity-100 group-focus-within:opacity-100"
 				title={$_('asset_favorite_label')}
 				aria-hidden="true"
 			>
@@ -162,7 +206,7 @@
 
 		{#if item.kind === 'image' && item.livePhotoVideoId !== null}
 			<span
-				class="tile__badge tile__badge--live absolute top-1.5 left-1.5 z-[2] inline-flex items-center justify-center w-6 h-6 rounded-full text-cream-text bg-night"
+				class="tile__badge tile__badge--live absolute top-1.5 left-1.5 z-(--z-tile-chip) inline-flex items-center justify-center w-6 h-6 rounded-full text-cream-text bg-night"
 				title={$_('asset_live_photo_label')}
 				aria-hidden="true"
 			>
@@ -174,15 +218,25 @@
 		{/if}
 
 		{#if item.kind === 'video'}
+			<!-- G9's duration chip: the play mark and the m:ss
+			     duration on one opaque night chip (the ink-chip
+			     vocabulary), with tabular numerals and the subtle
+			     text shadow; the container query scales the whole
+			     chip down on narrow (portrait-tile) widths instead
+			     of overflowing. An unknown duration (null on the
+			     wire) keeps the mark alone. -->
 			<span
-				class="tile__badge tile__badge--video absolute bottom-1.5 right-1.5 z-[2] inline-flex items-center justify-center w-6 h-6 rounded-full text-cream-text bg-night"
+				class="tile__badge tile__badge--video absolute bottom-1.5 right-1.5 z-(--z-tile-chip) inline-flex items-center gap-1 h-6 px-1.5 rounded-control font-body font-semibold text-xs text-cream-text bg-night tabular-nums text-shadow-badge @max-tile-compact:scale-75"
 				title={$_('asset_video_label')}
 				aria-hidden="true"
 			>
-				<svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
+				<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
 					<path d="M9 8.2v7.6l6-3.8z" fill="currentColor" />
 					<circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.75" />
 				</svg>
+				{#if item.durationMs !== null}
+					<span class="tile__duration">{formatDuration(item.durationMs)}</span>
+				{/if}
 			</span>
 		{/if}
 	</a>
@@ -193,7 +247,7 @@
 	     translucent cream rim -- readable over any photo, in both
 	     themes, without a blur in sight. -->
 	<button
-		class="tile__check absolute top-1.5 left-1.5 z-[3] inline-flex items-center justify-center w-[26px] h-[26px] p-0 border border-cream-text/35 rounded-full text-transparent bg-night cursor-pointer transition-[opacity,background-color,border-color,color] duration-(--motion-fast) ease-standard group-hover:opacity-100 group-focus-within:opacity-100 aria-checked:bg-accent aria-checked:border-accent aria-checked:text-accent-on"
+		class="tile__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex items-center justify-center w-[26px] h-[26px] p-0 border border-cream-text/35 rounded-full text-transparent bg-night cursor-pointer transition-[opacity,background-color,border-color,color] duration-(--motion-fast) ease-standard group-hover:opacity-100 group-focus-within:opacity-100 aria-checked:bg-accent aria-checked:border-accent aria-checked:text-accent-on"
 		class:opacity-0={!selectable}
 		class:tile__check--shown={selectable}
 		type="button"
