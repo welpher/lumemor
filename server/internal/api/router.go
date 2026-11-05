@@ -302,6 +302,15 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/trash", wrapper.GetTrash)
 				r.Post("/trash/{id}/restore", wrapper.RestoreAsset)
 				r.Delete("/assets/{id}", wrapper.DeleteAsset)
+				// The album surface reads (M3c Task 1): the wall
+				// (the caller's own and shared albums) and one
+				// album's detail with its keyset-paged items. Both
+				// are bounded row reads (the detail's page size is
+				// capped by the contract); the wall's derived
+				// covers are a second bounded read of at most four
+				// candidates per album.
+				r.Get("/albums", wrapper.ListAlbums)
+				r.Get("/albums/{albumId}", wrapper.GetAlbum)
 				// The people surface reads (M3b Task 1): the named
 				// region, the unnamed region's keyset pages and one
 				// cluster's detail. All are bounded row reads (the

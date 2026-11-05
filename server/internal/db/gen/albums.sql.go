@@ -72,3 +72,313 @@ func (q *Queries) EnsureSyncAlbum(ctx context.Context, arg EnsureSyncAlbumParams
 	err := row.Scan(&id)
 	return id, err
 }
+
+const getAlbumForCaller = `-- name: GetAlbumForCaller :one
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       CASE
+           WHEN al.owner_id = $1 THEN 'owner'::text
+           ELSE 'viewer'::text
+       END AS caller_role,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+       ) AS item_count
+FROM albums al
+WHERE al.id = $2
+  AND al.type IN ('virtual', 'directory')
+  AND (
+      al.owner_id = $1
+      OR EXISTS (
+          SELECT 1 FROM album_shares s
+          WHERE s.album_id = al.id AND s.user_id = $1
+      )
+  )
+`
+
+type GetAlbumForCallerParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+type GetAlbumForCallerRow struct {
+	Album      Album  `json:"album"`
+	CallerRole string `json:"caller_role"`
+	ItemCount  int64  `json:"item_count"`
+}
+
+// The album the caller may see, with the caller's role and the live
+// member count. The visibility check is the whole point: the caller
+// owns the album or an album_shares row grants it, and the album is
+// no sync album (the sync album is the timeline's, whoever owns it
+// -- the detail face answers 404 for it through the handler's
+// no-row mapping, which is what keeps unknown, invisible and sync
+// ids indistinguishable).
+func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerParams) (GetAlbumForCallerRow, error) {
+	row := q.db.QueryRow(ctx, getAlbumForCaller, arg.UserID, arg.AlbumID)
+	var i GetAlbumForCallerRow
+	err := row.Scan(
+		&i.Album.ID,
+		&i.Album.OwnerID,
+		&i.Album.Title,
+		&i.Album.Description,
+		&i.Album.Type,
+		&i.Album.Locked,
+		&i.Album.CoverAssetID,
+		&i.Album.RootPath,
+		&i.Album.LastScannedAt,
+		&i.Album.CreatedAt,
+		&i.Album.UpdatedAt,
+		&i.CallerRole,
+		&i.ItemCount,
+	)
+	return i, err
+}
+
+const listAlbumCoverCandidates = `-- name: ListAlbumCoverCandidates :many
+SELECT ranked.album_id,
+       ranked.asset_id
+FROM (
+    SELECT ai.album_id,
+           ai.asset_id,
+           row_number() OVER (
+               PARTITION BY ai.album_id
+               ORDER BY a.taken_at DESC, a.id DESC
+           ) AS recency_rank
+    FROM album_items ai
+    JOIN assets a ON a.id = ai.asset_id
+    WHERE ai.album_id = ANY($1::uuid[])
+      AND a.deleted_at IS NULL
+      AND a.is_hidden = false
+      AND a.is_component = false
+) ranked
+WHERE ranked.recency_rank <= 4
+ORDER BY ranked.album_id, ranked.recency_rank
+`
+
+type ListAlbumCoverCandidatesRow struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	AssetID pgtype.UUID `json:"asset_id"`
+}
+
+// The derived covers of the given albums: each one's four most
+// recent live members, taken_at descending with the asset id as the
+// tiebreak -- the exact rows the wall renders for an album without a
+// pinned cover asset. The window keeps the result bounded at four
+// rows per album however many members an album holds.
+func (q *Queries) ListAlbumCoverCandidates(ctx context.Context, albumIds []pgtype.UUID) ([]ListAlbumCoverCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumCoverCandidates, albumIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumCoverCandidatesRow
+	for rows.Next() {
+		var i ListAlbumCoverCandidatesRow
+		if err := rows.Scan(&i.AlbumID, &i.AssetID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumItemsForCaller = `-- name: ListAlbumItemsForCaller :many
+SELECT ai.asset_id,
+       ai.added_at,
+       a.taken_at,
+       a.original_filename,
+       a.media_kind
+FROM album_items ai
+JOIN assets a ON a.id = ai.asset_id
+WHERE ai.album_id = $1
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND (
+      $2::timestamptz IS NULL
+      OR (a.taken_at, a.id) < ($2::timestamptz, $3::uuid)
+  )
+ORDER BY a.taken_at DESC, a.id DESC
+LIMIT $4
+`
+
+type ListAlbumItemsForCallerParams struct {
+	AlbumID       pgtype.UUID        `json:"album_id"`
+	CursorTakenAt pgtype.Timestamptz `json:"cursor_taken_at"`
+	CursorID      pgtype.UUID        `json:"cursor_id"`
+	LimitCount    int32              `json:"limit_count"`
+}
+
+type ListAlbumItemsForCallerRow struct {
+	AssetID          pgtype.UUID        `json:"asset_id"`
+	AddedAt          pgtype.Timestamptz `json:"added_at"`
+	TakenAt          pgtype.Timestamptz `json:"taken_at"`
+	OriginalFilename string             `json:"original_filename"`
+	MediaKind        MediaKind          `json:"media_kind"`
+}
+
+// One page of the album's items: the live members in the timeline's
+// own ordering (taken_at DESC, id DESC), keyset-paginated with the
+// same row-value predicate and the same NULL-init first page. The
+// caller's visibility gate is NOT here: the handler runs this only
+// after GetAlbumForCaller returned the album, so the rows it lists
+// are rows of an album the caller already proved they may see.
+func (q *Queries) ListAlbumItemsForCaller(ctx context.Context, arg ListAlbumItemsForCallerParams) ([]ListAlbumItemsForCallerRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumItemsForCaller,
+		arg.AlbumID,
+		arg.CursorTakenAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumItemsForCallerRow
+	for rows.Next() {
+		var i ListAlbumItemsForCallerRow
+		if err := rows.Scan(
+			&i.AssetID,
+			&i.AddedAt,
+			&i.TakenAt,
+			&i.OriginalFilename,
+			&i.MediaKind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWallAlbumsForCaller = `-- name: ListWallAlbumsForCaller :many
+
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       'owner'::text AS caller_role,
+       NULL::uuid AS owner_user_id,
+       NULL::text AS owner_email,
+       EXISTS (
+           SELECT 1 FROM album_shares s WHERE s.album_id = al.id
+       ) AS is_shared,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+       ) AS item_count,
+       0::int AS arm_rank,
+       al.updated_at AS sort_at
+FROM albums al
+WHERE al.owner_id = $1
+  AND al.type IN ('virtual', 'directory')
+
+UNION ALL
+
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       'viewer'::text AS caller_role,
+       u.id AS owner_user_id,
+       u.email AS owner_email,
+       -- The shared arm's is_shared holds true by construction: the
+       -- caller's own share row is the reason this row exists.
+       true AS is_shared,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+       ) AS item_count,
+       1::int AS arm_rank,
+       s.granted_at AS sort_at
+FROM albums al
+JOIN album_shares s ON s.album_id = al.id AND s.user_id = $1
+JOIN users u ON u.id = al.owner_id
+WHERE al.type IN ('virtual', 'directory')
+
+ORDER BY arm_rank, sort_at DESC, id DESC
+`
+
+type ListWallAlbumsForCallerRow struct {
+	Album       Album              `json:"album"`
+	CallerRole  string             `json:"caller_role"`
+	OwnerUserID pgtype.UUID        `json:"owner_user_id"`
+	OwnerEmail  pgtype.Text        `json:"owner_email"`
+	IsShared    bool               `json:"is_shared"`
+	ItemCount   int64              `json:"item_count"`
+	ArmRank     int32              `json:"arm_rank"`
+	SortAt      pgtype.Timestamptz `json:"sort_at"`
+}
+
+// Album reads (M3c Task 1): the wall, the cover candidates and the
+// detail face. The live-member predicate runs through all of them:
+// deleted_at IS NULL AND is_hidden = false AND is_component = false,
+// the timeline's own definition of a live asset row (A5 -- a hidden
+// asset is invisible to the whole family, and a Live Photo's video
+// component is never a tile of its own).
+// The wall of the calling user in one statement: the own group (the
+// caller's virtual and directory albums, updated_at descending) UNION
+// ALL the shared group (the albums shared to the caller, the
+// caller's grant time descending), each group breaking ties on the
+// album id descending. The arm_rank column is the group
+// discriminator the ORDER BY pins -- own first, shared second -- and
+// the per-arm sort key rides as sort_at (the album's updated_at for
+// own cards, the caller's granted_at for shared ones).
+//
+// Sync albums never appear in either arm: the sync album is the
+// account's timeline, not a wall artifact -- the caller's own sync
+// album is invisible on every album face, and a sync album another
+// account shared feeds the timeline's shared arm, not the wall.
+func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUID) ([]ListWallAlbumsForCallerRow, error) {
+	rows, err := q.db.Query(ctx, listWallAlbumsForCaller, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWallAlbumsForCallerRow
+	for rows.Next() {
+		var i ListWallAlbumsForCallerRow
+		if err := rows.Scan(
+			&i.Album.ID,
+			&i.Album.OwnerID,
+			&i.Album.Title,
+			&i.Album.Description,
+			&i.Album.Type,
+			&i.Album.Locked,
+			&i.Album.CoverAssetID,
+			&i.Album.RootPath,
+			&i.Album.LastScannedAt,
+			&i.Album.CreatedAt,
+			&i.Album.UpdatedAt,
+			&i.CallerRole,
+			&i.OwnerUserID,
+			&i.OwnerEmail,
+			&i.IsShared,
+			&i.ItemCount,
+			&i.ArmRank,
+			&i.SortAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -173,6 +173,8 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"GET /api/v1/trash",
 		"POST /api/v1/trash/{id}/restore",
 		"DELETE /api/v1/assets/{id}",
+		"GET /api/v1/albums",
+		"GET /api/v1/albums/{albumId}",
 		"GET /api/v1/people",
 		"GET /api/v1/people/unnamed",
 		"GET /api/v1/people/{clusterId}",

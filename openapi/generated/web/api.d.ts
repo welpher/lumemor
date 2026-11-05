@@ -944,6 +944,120 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/albums": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's album wall.
+         * @description The album wall of the calling user: every album that deserves
+         *     a wall card, in two groups concatenated into one array -- the
+         *     web client renders its sections off the `callerRole`
+         *     discriminator each item carries.
+         *
+         *     The own group comes first: the albums the caller owns of type
+         *     `virtual` or `directory`, the most recently updated first
+         *     (the album id descending as the tiebreak). The shared group
+         *     follows: every album shared to the caller through an
+         *     `album_shares` row, the caller's most recently granted share
+         *     first (the album id descending as the tiebreak). Shared items
+         *     carry `owner` -- the honest attribution of another account's
+         *     album: the owner's id and email.
+         *
+         *     Sync albums NEVER appear on the wall, in either group. The
+         *     sync album is the account's core backup stream and lives as
+         *     the timeline (`GET /assets/timeline`), not as an album
+         *     resource; a sync album another account shared is likewise no
+         *     wall card. The caller's own sync album is invisible here and
+         *     answers 404 through `GET /albums/{albumId}`.
+         *
+         *     `coverAssetIds` is the wall card's collage source: the
+         *     pinned `coverAssetId` as a single-element list when the
+         *     owner set one, otherwise the album's most recent live member
+         *     assets -- up to four, `takenAt` descending with the asset id
+         *     as the tiebreak, fewer when the album holds fewer members,
+         *     empty for an album with none. `itemCount` counts live
+         *     members under the same predicate: trashed, hidden and Live
+         *     Photo component rows never count (A5 -- a hidden asset is
+         *     invisible to the whole family).
+         *
+         *     `isShared` reports whether the album carries at least one
+         *     `album_shares` row -- the owner's "someone else sees this"
+         *     badge. It is true by construction on every shared-group item
+         *     (the caller's share row is the reason the item exists).
+         */
+        get: operations["listAlbums"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/albums/{albumId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One album's detail and one page of its items.
+         * @description The detail view of one album the caller can see: the caller
+         *     owns it, or it is shared to the caller through an
+         *     `album_shares` row. `callerRole` says which -- `owner` for
+         *     the owner's write affordances, `viewer` for the read-only
+         *     share.
+         *
+         *     Sync albums are not album resources: the id of a sync album
+         *     -- the caller's own or anyone else's -- answers the same 404
+         *     as an unknown id. The sync album is the timeline
+         *     (`GET /assets/timeline`); its stream surfaces there, never
+         *     through this face.
+         *
+         *     404 is single-shape by design: an unknown id, another
+         *     account's unshared album, and a sync album all answer the
+         *     same `ALBUM_NOT_FOUND` byte for byte -- the
+         *     anti-enumeration discipline of `ASSET_NOT_FOUND` applied to
+         *     the album face. An album whose share to the caller was
+         *     revoked before the request simply sits in that same invisible
+         *     region.
+         *
+         *     `itemCount` counts the album's live members; `items` is one
+         *     keyset page of them, ordered `takenAt` descending with the
+         *     asset id as the tiebreak -- the timeline's own ordering and
+         *     cursor pair, so the album grid pages with the timeline's
+         *     walking machinery. Every item carries the membership's
+         *     `addedAt` and the minimal asset context the grid renders;
+         *     `thumbnail` is the asset thumbnail endpoint's `tile`-size
+         *     URL. Live members only: trashed, hidden and Live Photo
+         *     component rows never appear (A5 -- a hidden asset is
+         *     invisible to the whole family).
+         *
+         *     `coverAssetId` is the raw pinned column: the single asset
+         *     the owner chose, or null when unset -- the wall derives its
+         *     collage fallback from the members, the detail carries the
+         *     pin itself.
+         *
+         *     `limit` bounds the page size: absent means the default of 60;
+         *     a value below 1 or over 200 answers 400 `VALIDATION_FAILED`.
+         *     Pages continue through the opaque `cursor`, the timeline's
+         *     exact keyset semantics: `nextCursor` is present exactly when
+         *     another page follows, and the last page carries none.
+         */
+        get: operations["getAlbum"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/people": {
         parameters: {
             query?: never;
@@ -3089,6 +3203,201 @@ export interface components {
             clusterId: string;
         };
         /**
+         * @description The caller's album wall: the own group followed by the shared
+         *     group, concatenated into one array.
+         */
+        AlbumWallResponse: {
+            /**
+             * @description Every wall album: the own group first (the caller's
+             *     virtual and directory albums, `updatedAt` descending),
+             *     then the shared group (the albums shared to the caller,
+             *     the caller's grant time descending). Each group breaks
+             *     ties on the album id, descending. Sync albums never
+             *     appear in either group.
+             */
+            albums: components["schemas"]["AlbumSummary"][];
+        };
+        /**
+         * @description One album card of the wall: the metadata, the live member
+         *     count and the collage source, plus the `callerRole`
+         *     discriminator the web client sections the wall by. Shared
+         *     items carry `owner`, the honest attribution of another
+         *     account's album; own items omit it.
+         */
+        AlbumSummary: {
+            /**
+             * Format: uuid
+             * @description Identifier of the album.
+             */
+            id: string;
+            /** @description The album's display title. */
+            title: string;
+            /** @description The album's free-text description (empty when unset). */
+            description: string;
+            /**
+             * @description The album's type. `virtual` albums are curated by their
+             *     owner; `directory` albums mirror a filesystem path. Sync
+             *     albums never reach this shape.
+             * @enum {string}
+             */
+            type: "virtual" | "directory";
+            /**
+             * @description The owner's lock: a locked album refuses its owner's
+             *     curation and property writes until unlocked. It is
+             *     metadata to a viewer (viewers are read-only regardless).
+             */
+            locked: boolean;
+            /**
+             * @description True when the album carries at least one `album_shares`
+             *     row -- someone besides the owner can see it. Always true
+             *     on shared-group items by construction.
+             */
+            isShared: boolean;
+            /**
+             * @description The collage source of the wall card: the pinned cover
+             *     asset as a single-element list when the owner set one,
+             *     otherwise the album's most recent live member assets (up
+             *     to four, `takenAt` descending, the asset id as the
+             *     tiebreak). Empty for an album with no live members.
+             */
+            coverAssetIds: string[];
+            /**
+             * @description The album's live member count: trashed, hidden and Live
+             *     Photo component rows never count (A5 -- a hidden asset is
+             *     invisible to the whole family).
+             */
+            itemCount: number;
+            /**
+             * Format: date-time
+             * @description When the album row last changed (RFC 3339 UTC).
+             */
+            updatedAt: string;
+            /**
+             * @description The caller's relation to this album: `owner` items belong
+             *     to the own group, `viewer` items to the shared group. The
+             *     web client sections the wall off this discriminator.
+             * @enum {string}
+             */
+            callerRole: "owner" | "viewer";
+            /**
+             * @description The owner attribution of a shared item: the account that
+             *     owns the album. Present exactly when `callerRole` is
+             *     `viewer`; own items omit it (the owner is the caller).
+             */
+            owner?: components["schemas"]["AlbumOwnerRef"];
+        };
+        /**
+         * @description The owner of an album shared to the caller: the honest
+         *     attribution a shared wall card renders.
+         */
+        AlbumOwnerRef: {
+            /**
+             * Format: uuid
+             * @description Identifier of the owning account.
+             */
+            id: string;
+            /**
+             * Format: email
+             * @description The email address of the owning account.
+             */
+            email: string;
+        };
+        /**
+         * @description One album's detail as the calling user sees it: the metadata,
+         *     the caller's role, the live member count and one keyset page
+         *     of the live items.
+         */
+        AlbumDetail: {
+            /**
+             * Format: uuid
+             * @description Identifier of the album.
+             */
+            id: string;
+            /** @description The album's display title. */
+            title: string;
+            /** @description The album's free-text description (empty when unset). */
+            description: string;
+            /**
+             * @description The album's type; sync albums never reach this shape.
+             * @enum {string}
+             */
+            type: "virtual" | "directory";
+            /** @description The owner's lock (metadata to a viewer). */
+            locked: boolean;
+            /**
+             * @description The pinned cover asset, or null when unset -- the raw
+             *     column; the wall derives its collage fallback, the detail
+             *     carries the pin itself.
+             */
+            coverAssetId: string | null;
+            /**
+             * @description The caller's relation to this album: the owner holds the
+             *     write affordances, a viewer is read-only.
+             * @enum {string}
+             */
+            callerRole: "owner" | "viewer";
+            /**
+             * @description The album's live member count, the same predicate as the
+             *     items below.
+             */
+            itemCount: number;
+            /**
+             * @description One page of the album's live members, `takenAt` descending
+             *     with the asset id as the tiebreak.
+             */
+            items: components["schemas"]["AlbumItem"][];
+            /**
+             * @description The opaque continuation cursor: pass it back as the
+             *     `cursor` query parameter to fetch the next page. Absent
+             *     exactly when this is the last page.
+             */
+            nextCursor?: string;
+        };
+        /**
+         * @description One live member of the album: the membership's identity and
+         *     the minimal asset context the detail grid renders.
+         */
+        AlbumItem: {
+            /**
+             * Format: uuid
+             * @description Identifier of the member asset.
+             */
+            assetId: string;
+            /**
+             * Format: date-time
+             * @description When the membership row was added to the album (RFC 3339
+             *     UTC).
+             */
+            addedAt: string;
+            /** @description The minimal context of the member asset. */
+            asset: components["schemas"]["AlbumItemAsset"];
+        };
+        /**
+         * @description The minimal context of one album member asset: the lines the
+         *     detail grid renders per tile.
+         */
+        AlbumItemAsset: {
+            /**
+             * Format: date-time
+             * @description When the asset was taken (RFC 3339 UTC).
+             */
+            takenAt: string;
+            /** @description The file name the asset was uploaded under. */
+            originalFilename: string;
+            /**
+             * @description The asset's media kind.
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /**
+             * @description URL of the asset's tile-size serving copy: the asset
+             *     thumbnail endpoint
+             *     `GET /api/v1/assets/{assetId}/thumbnail?size=tile`.
+             * @example /api/v1/assets/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072/thumbnail?size=tile
+             */
+            thumbnail: string;
+        };
+        /**
          * @description Error envelope shared by all endpoints. `code` is the authoritative
          *     registry of stable error codes; clients must not parse `message`.
          */
@@ -3098,7 +3407,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -4701,6 +5010,142 @@ export interface operations {
              * @description No asset with this id is restorable by the caller: the id
              *     is unknown, already purged by the expiry job, or belongs
              *     to another account -- all indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAlbums: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The caller's wall, the own group followed by the shared
+             *     group. The array is empty when the caller owns no virtual
+             *     or directory album and no album is shared to them.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumWallResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAlbum: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The `nextCursor` of the previous page; absent on the first
+                 *     page. An unparseable value answers 400
+                 *     `VALIDATION_FAILED` (cursors are opaque strings produced
+                 *     by this endpoint, never assembled by clients).
+                 * @example GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
+                 */
+                cursor?: string;
+                /**
+                 * @description Page size: the number of album items one response carries
+                 *     at most. Defaults to 60; values below 1 or over 200
+                 *     answer 400.
+                 * @example 60
+                 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Identifier of the album. */
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The album's detail with one page of its live items.
+             *     `nextCursor` is present exactly when another page follows;
+             *     the last page carries none.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumDetail"];
+                };
+            };
+            /**
+             * @description The pagination parameters are invalid: `cursor` is not a
+             *     value this endpoint produced, or `limit` is below 1 or
+             *     over 200.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such album for this caller: the id is unknown, the
+             *     album belongs to another account without a share to the
+             *     caller, or it is a sync album -- indistinguishable by
+             *     design.
              */
             404: {
                 headers: {
