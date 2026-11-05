@@ -112,6 +112,12 @@ export function createZoomEngine(apply: (state: ZoomState) => void): ZoomEngine 
 		startScale = scale;
 		startTime = performance.now();
 		target = next;
+		// A mid-flight input must leave EXACTLY ONE frame chain: the
+		// pending callback is cancelled before the new one is
+		// scheduled, or the old id is overwritten and never
+		// cancelled -- a duplicate chain that destroy() cannot fully
+		// stop. (stop() is a no-op when nothing is scheduled.)
+		stop();
 		running = typeof requestAnimationFrame === 'function';
 		// The target applies synchronously (the affordances key on
 		// it); the scale follows through the frames.
