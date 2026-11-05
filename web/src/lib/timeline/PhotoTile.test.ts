@@ -36,7 +36,10 @@ function item(overrides: Partial<TimelineItem> = {}): TimelineItem {
 	return { id: 'a1', ...itemBase, ...overrides } as TimelineItem;
 }
 
-function mountTile(overrides: Partial<TimelineItem>, props: { selected?: boolean; selectable?: boolean } = {}) {
+function mountTile(
+	overrides: Partial<TimelineItem>,
+	props: { selected?: boolean; selectable?: boolean; sizes?: string } = {}
+) {
 	const onselect = vi.fn();
 	const tile = mount(PhotoTile, {
 		target: document.body,
@@ -44,6 +47,7 @@ function mountTile(overrides: Partial<TimelineItem>, props: { selected?: boolean
 			item: item(overrides),
 			selected: props.selected ?? false,
 			selectable: props.selectable ?? false,
+			sizes: props.sizes,
 			onselect
 		}
 	});
@@ -84,6 +88,34 @@ test('a ready asset requests the tile-size thumbnail over the blurhash placehold
 	// The placeholder canvas renders underneath (the blurhash decode
 	// draws into it where a canvas context exists).
 	expect(tileRoot().querySelector('canvas.tile__placeholder')).not.toBeNull();
+	unmount(tile);
+	flushSync();
+});
+
+test('the tile serves the tile and view derivatives through a DPR srcset', () => {
+	// R2-2: the 250px tile box feeding a Retina-density wall tile
+	// reads soft, so the tile offers the view derivative as its 2x
+	// candidate. The x descriptors are the honest pair for the
+	// endpoint's aspect-variable files (a w descriptor would have to
+	// lie about the file's intrinsic width); the src stays the 1x
+	// candidate as the no-srcset fallback.
+	const { tile } = mountTile({});
+	const image = tileRoot().querySelector('img.tile__image');
+	expect(image?.getAttribute('srcset')).toBe(
+		'/api/v1/assets/a1/thumbnail?size=tile 1x, /api/v1/assets/a1/thumbnail?size=view 2x'
+	);
+	// The width hint: the justified wall passes the row engine's
+	// exact cell width; the default covers the callers that do not
+	// know it (the trash grid's fluid cells).
+	expect(image?.getAttribute('sizes')).toBe('240px');
+	unmount(tile);
+	flushSync();
+});
+
+test('a caller that knows the rendered width passes it as the sizes hint', () => {
+	const { tile } = mountTile({}, { sizes: '288px' });
+	const image = tileRoot().querySelector('img.tile__image');
+	expect(image?.getAttribute('sizes')).toBe('288px');
 	unmount(tile);
 	flushSync();
 });
@@ -149,6 +181,36 @@ test('the checkbox reflects the selection state and toggles without navigating',
 	flushSync();
 
 	expect(click.defaultPrevented).toBe(false);
+	expect(onselect).toHaveBeenCalledWith('a1', true);
+	unmount(tile);
+	flushSync();
+});
+
+test('the check affordance reveals on hover and keyboard focus regardless of the select mode', () => {
+	// R2-11: the selection entry IS the check. The affordance hides
+	// at rest but its reveal utilities are unconditional -- hover and
+	// keyboard focus surface it on EVERY tile (never only while a
+	// select mode is armed), and its click enters the selection even
+	// when the wall is not selectable yet. The role/aria-checked/
+	// aria-label contract survives exactly.
+	const { tile, onselect } = mountTile({}, { selectable: false, selected: false });
+	const checkbox = tileRoot().querySelector<HTMLButtonElement>('.tile__check');
+	expect(checkbox).not.toBeNull();
+
+	// Hidden at rest, revealed by the pointer or the keyboard --
+	// always, not gated on the selectable prop.
+	expect(checkbox?.className).toContain('opacity-0');
+	expect(checkbox?.className).toContain('group-hover:opacity-100');
+	expect(checkbox?.className).toContain('group-focus-within:opacity-100');
+	// The a11y contract is exactly the wall's checkbox role.
+	expect(checkbox?.getAttribute('role')).toBe('checkbox');
+	expect(checkbox?.getAttribute('aria-checked')).toBe('false');
+	expect(checkbox?.getAttribute('aria-label')).toBe('Select: IMG_1234.jpg');
+
+	// The first check-click enters the selection (the batch bar rises
+	// at >=1 on the wall's side of the callback).
+	checkbox?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
 	expect(onselect).toHaveBeenCalledWith('a1', true);
 	unmount(tile);
 	flushSync();

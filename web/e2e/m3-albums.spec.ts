@@ -380,16 +380,19 @@ test.describe('the member viewer scenes', () => {
 		await expect(page).toHaveURL(new RegExp(`/a/[0-9a-f-]{36}$`));
 		await expect(page.getByText(PHOTO_A_NAME)).toBeVisible();
 
-		// The info drawer: the reads render (the file facts, the
-		// download affordance) and the per-user favorite stays, while
-		// every owner-only write affordance is absent (the identity
-		// seam's browser proof -- the session's userId is not the
-		// asset's owner).
+		// The info drawer plus the action bar (the R2-3 rework: the
+		// drawer is metadata-only, the per-user favorite rides the
+		// bar's icon button): the reads render (the file facts, the
+		// download affordance) and the favorite stays, while every
+		// owner-only write affordance is absent (the identity seam's
+		// browser proof -- the session's userId is not the asset's
+		// owner).
 		await page.getByRole('button', { name: 'Photo information' }).click();
 		const drawer = page.getByRole('complementary', { name: 'Photo information' });
 		await expect(drawer).toBeVisible();
-		await expect(drawer.getByRole('button', { name: 'Favorite', exact: true })).toBeVisible();
 		await expect(drawer.getByRole('link', { name: 'Download the original' })).toBeVisible();
+		const favorite = page.getByRole('button', { name: 'Favorite', exact: true });
+		await expect(favorite).toBeVisible();
 		for (const label of [
 			'Edit',
 			'Hide',
@@ -398,12 +401,15 @@ test.describe('the member viewer scenes', () => {
 			'Restore',
 			'Delete permanently'
 		]) {
-			await expect(drawer.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+			// The owner-only writes never render in either surface:
+			// no trash/restore in the BAR (the drawer never carried a
+			// curation button since the rework), no description edit.
+			await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 		}
 
 		// The per-user favorite works for the viewer: the flag flips
 		// without a page reload (the optimistic per-user state).
-		await drawer.getByRole('button', { name: 'Favorite', exact: true }).click();
-		await expect(drawer.getByRole('button', { name: 'Unfavorite', exact: true })).toBeVisible();
+		await favorite.click();
+		await expect(page.getByRole('button', { name: 'Unfavorite', exact: true })).toBeVisible();
 	});
 });

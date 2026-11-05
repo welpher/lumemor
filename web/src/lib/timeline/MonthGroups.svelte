@@ -16,10 +16,12 @@
 	// falls back to the content column maximum so the wall still
 	// renders deterministically).
 	//
-	// THE HEADERS: opaque page-colored bands with a hairline edge --
-	// the restrained surface language (no translucency, no blur): the
-	// tiles scroll under them and the 1px border separates chrome
-	// from content. The month gap token above each group is the
+	// THE HEADERS: opaque page-colored bands with NO dividing edge
+	// (R2-12: the density contrast IS the separation -- a hairline
+	// under every band was the pre-rework drift away from the
+	// photo-first language), the vertical rhythm tightened (the month
+	// band's ~py-1.5/mb-2, the day header closer still). The tiles
+	// scroll under them. The month gap token above each group is the
 	// breathing room the density contrast reads on.
 	//
 	// PERFORMANCE: every row carries content-visibility with its
@@ -87,19 +89,21 @@
 	{#each packed as month (month.key)}
 		<!-- Both sticky headers ride above the rows; the section's
 		     scroll margin leaves room for them under the scrubber's
-		     jumps. -->
+		     jumps. The day header stacks under the month band exactly
+		     (the band is 38px: py-1.5's 12px + the 26px line at
+		     text-[20px]/1.3, probe-verified). -->
 		<section class="wall__month scroll-mt-[92px]" data-month-key={month.key}>
-			<h2 class="wall__month-header sticky top-0 z-(--z-sticky) mt-(--wall-month-gap) mb-3 py-2.5 px-3 text-[20px] bg-page border-b">{month.label}</h2>
+			<h2 class="wall__month-header sticky top-0 z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 px-3 text-[20px] bg-page">{month.label}</h2>
 			{#each month.days as day (day.key)}
 				<div class="wall__day" data-day-key={day.key}>
-					<!-- Stacks under the month header (44px + its margins). -->
-					<h3 class="wall__day-header sticky top-[44px] z-(--z-sticky-sub) mt-4 mb-2 py-1 px-2 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-page border-b">{day.label}</h3>
+					<h3 class="wall__day-header sticky top-[38px] z-(--z-sticky-sub) mt-3 mb-1.5 py-1 px-2 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-page">{day.label}</h3>
 					{#each day.rows as row, rowIndex (rowIndex)}
 						<!-- The row's height is the engine's exact math; the
 						     seam rides the row's gap so the widths plus the
 						     gaps fill the container. Offscreen rows skip their
 						     tiles' layout and paint (the height is style-pinned,
-						     so the scrollbar stays honest). -->
+						     so the scrollbar stays honest). The tile's sizes
+						     hint is the engine's exact cell width (R2-2). -->
 						<div
 							class="wall__row flex [content-visibility:auto]"
 							style="height:{row.height}px; gap:{WALL_TILE_SEAM}px"
@@ -110,6 +114,7 @@
 										item={tile.item}
 										selected={isSelected(tile.item.id)}
 										selectable={selectable}
+										sizes="{tile.width}px"
 										onselect={onselect}
 									/>
 								</div>

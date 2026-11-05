@@ -30,8 +30,9 @@
 //     never the photo's), and pressing again returns the still.
 //  8. Batch hide moves a tile to the hidden view; unhiding from
 //     there returns it to the timeline.
-//  9. The viewer's permanent delete (confirm dialog) removes one
-//     asset for good.
+//  9. The trash page's confirmed delete removes one asset for good
+//     (trashed there through the viewer's action bar, the R2-3
+//     rework: the permanent delete lives on the trash page alone).
 // 10. The trash view shows the retention countdown of the asset
 //     trashed through the viewer's action bar, and restores it.
 // 11. Signing out re-arms the route guard: the deep link redirects
@@ -116,7 +117,9 @@ function tile(page: Page, name: string) {
 	return page.getByRole('link', { name, exact: true });
 }
 
-/** One tile's selection checkbox (revealed on hover or in select mode). */
+/** One tile's selection checkbox (revealed on hover or keyboard focus
+ *  on every tile -- R2-11 made the check the selection entry, so it
+ *  surfaces regardless of any select mode). */
 function tileCheckbox(page: Page, name: string) {
 	return page.getByRole('checkbox', { name: `Select: ${name}`, exact: true });
 }
@@ -438,11 +441,13 @@ test.describe('the signed-in scenes', () => {
 		await batchBar(page).getByRole('button', { name: 'Hide', exact: true }).click();
 		await expect(tile(page, PHOTO_A_NAME)).toHaveCount(0);
 
-		// The timeline's Hidden entry opens the hidden view: the tile
-		// lives there now. The populated view renders the wall itself
-		// (month groups, no page heading), so the document title is
-		// the view's identity.
-		await page.getByRole('link', { name: 'Hidden', exact: true }).click();
+		// The navigation drawer's Hidden entry opens the hidden view
+		// (R2-11: the timeline's toolbar link is gone -- the drawer
+		// owns the entry, beside favorites and trash): the tile lives
+		// there now. The populated view renders the wall itself (month
+		// groups, no page heading), so the document title is the
+		// view's identity.
+		await navigateViaDrawer(page, 'Hidden');
 		await expect(page).toHaveURL(/\/hidden$/);
 		await expect(page).toHaveTitle('Hidden · lumemor');
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
@@ -465,15 +470,29 @@ test.describe('the signed-in scenes', () => {
 		await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible();
 	});
 
-	test('scene 9: the viewer\'s confirmed delete removes the asset for good', async ({ page }) => {
+	test("scene 9: the trash page's confirmed delete removes the asset for good", async ({ page }) => {
 		await page.goto('/timeline');
 		await tile(page, PHOTO_B_NAME).click();
 
-		// The info drawer's action bar carries the permanent delete.
+		// Trash it through the viewer's ACTION BAR (the R2-3 rework:
+		// the curation affordances ride the bar's icon buttons and the
+		// info drawer is metadata-only; the permanent delete lives on
+		// the trash page alone): the drawer's trashed notice carries
+		// the optimistic flip, and the back mark returns to the wall.
 		await page.getByRole('button', { name: 'Photo information' }).click();
 		const drawer = page.getByRole('complementary', { name: 'Photo information' });
 		await expect(drawer).toBeVisible();
-		await drawer.getByRole('button', { name: 'Delete permanently', exact: true }).click();
+		await page.getByRole('button', { name: 'Trash', exact: true }).click();
+		await expect(drawer.getByRole('status').getByText('This photo is in the trash.')).toBeVisible();
+		await page.getByRole('button', { name: 'Back to the timeline' }).click();
+		await expect(page).toHaveURL(/\/timeline$/);
+		await expect(tile(page, PHOTO_B_NAME)).toHaveCount(0);
+
+		// The trash page's recovery card carries the permanent delete.
+		await navigateViaDrawer(page, 'Trash');
+		await expect(page).toHaveURL(/\/trash$/);
+		await expect(page.getByRole('heading', { level: 1, name: 'Trash', exact: true })).toBeVisible();
+		await page.getByRole('button', { name: 'Delete permanently', exact: true }).click();
 
 		// The confirm dialog names the asset and requires the explicit
 		// confirmation.
@@ -482,10 +501,14 @@ test.describe('the signed-in scenes', () => {
 		await expect(dialog).toContainText(`"${PHOTO_B_NAME}"`);
 		await dialog.getByRole('button', { name: 'Delete forever', exact: true }).click();
 
-		// The viewer leaves for the timeline and the asset is gone from
-		// the wall; the survivors remain.
-		await expect(page).toHaveURL(/\/timeline$/);
+		// The row is gone for good: the trash settles empty and the
+		// survivors remain on the timeline.
 		await expect(tile(page, PHOTO_B_NAME)).toHaveCount(0);
+		await expect(
+			page.getByText('The trash is empty. Photos you delete appear here before they are removed for good.')
+		).toBeVisible();
+		await navigateViaDrawer(page, 'Timeline');
+		await expect(page).toHaveURL(/\/timeline$/);
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
 		await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible();
 	});
@@ -494,11 +517,13 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/timeline');
 		await tile(page, PHOTO_A_NAME).click();
 
-		// Trash it through the viewer's action bar: the trashed notice
-		// appears in the drawer, and the timeline drops the tile.
+		// Trash it through the viewer's ACTION BAR (the R2-3 rework
+		// moved the curation affordances from the drawer to the bar's
+		// icon buttons): the trashed notice appears in the drawer, and
+		// the timeline drops the tile.
 		await page.getByRole('button', { name: 'Photo information' }).click();
 		const drawer = page.getByRole('complementary', { name: 'Photo information' });
-		await drawer.getByRole('button', { name: 'Trash', exact: true }).click();
+		await page.getByRole('button', { name: 'Trash', exact: true }).click();
 		await expect(drawer.getByRole('status').getByText('This photo is in the trash.')).toBeVisible();
 		await page.getByRole('button', { name: 'Back to the timeline' }).click();
 		await expect(page).toHaveURL(/\/timeline$/);

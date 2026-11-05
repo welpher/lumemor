@@ -6,8 +6,23 @@
 	// language, from the shared wiring task) and the logout action.
 	// The drawer carries the IA's seven content sections; search and
 	// upload stay placeholders wired by later tasks.
+	//
+	// THE APP FRAME (R2-1): the shell is an h-dvh flex column with
+	// overflow hidden -- the top bar is pinned by the frame itself
+	// (no sticky hack, the document never scrolls) and <main> is the
+	// one scroll container. Two frame duties follow from that:
+	// - Keyboard scrolling follows FOCUS, and a body-focused page
+	//   stops scrolling once the document does, so the frame keeps
+	//   the focus on its scroll root (tabindex -1: a scroll vehicle
+	//   that never joins the tab order; a click on any non-focusable
+	//   content keeps the focus there too).
+	// - SvelteKit's navigation scroll reset acts on the document, so
+	//   the frame resets <main> itself: push navigations land at the
+	//   top, popstate keeps whatever offset the wall left (the wall
+	//   remounts and refetches on the back-from-viewer return either
+	//   way -- nothing restores a stale offset).
 	import { locale, _ } from 'svelte-i18n';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { setLocale, type AppLocale } from '$lib/i18n';
 	import {
 		setThemePreference,
@@ -19,6 +34,9 @@
 	import UploadOverlay from '$lib/upload/UploadOverlay.svelte';
 	import { enqueueUploadFiles } from '$lib/upload/queue.svelte';
 	import { logout } from '$lib/auth/session.svelte';
+	import Menu from '@lucide/svelte/icons/menu';
+	import Search from '@lucide/svelte/icons/search';
+	import CircleUser from '@lucide/svelte/icons/circle-user';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -27,6 +45,8 @@
 	let accountMenuOpen = $state(false);
 	let signingOut = $state(false);
 	let accountWrap: HTMLElement | undefined = $state();
+	// The frame's scroll root (the one scroll container of the app).
+	let main: HTMLElement | undefined = $state();
 	// The top bar's own hidden picker (the overlay component carries
 	// only the queue panel and the drop zone): the button trigger and
 	// its input live side by side, and picked files join the same
@@ -50,6 +70,26 @@
 		'.webm',
 		'.mkv'
 	].join(',');
+
+	// The frame's scroll reset AND its focus: SvelteKit's navigation
+	// focus management resets focus to the BODY before the
+	// afterNavigate callbacks run, and the body cannot scroll inside
+	// the frame -- so this callback (running after that reset) puts
+	// the focus on the scroll root whenever nothing else took it (an
+	// autofocus field, a persisted link), keeping the browser's
+	// keyboard scrolling (Space, PageDown, the arrows) alive. Push
+	// navigations also start at the frame's top: SvelteKit's own
+	// scroll reset acts on the document, which no longer scrolls.
+	afterNavigate((navigation) => {
+		if (main !== undefined) {
+			if (navigation.type !== 'popstate') {
+				main.scrollTop = 0;
+			}
+			if (document.activeElement === document.body) {
+				main.focus({ preventScroll: true });
+			}
+		}
+	});
 
 	function pickFiles(): void {
 		picker?.click();
@@ -110,7 +150,7 @@
 
 <svelte:window onpointerdown={handleWindowPointerdown} onkeydown={handleWindowKeydown} />
 
-<div class="shell min-h-screen flex flex-col">
+<div class="shell h-dvh flex flex-col overflow-hidden">
 	<header class="shell-topbar flex items-center gap-3 px-4 py-2 border-b border-border bg-card">
 		<button
 			class="topbar-icon inline-flex items-center justify-center w-9 h-9 rounded-control bg-transparent text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
@@ -119,26 +159,24 @@
 			aria-expanded={drawerOpen}
 			onclick={() => (drawerOpen = !drawerOpen)}
 		>
-			<svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
-				<path
-					d="M4 7h16M4 12h16M4 17h16"
-					stroke="currentColor"
-					stroke-width="1.75"
-					stroke-linecap="round"
-				/>
-			</svg>
+			<Menu size={22} />
 		</button>
 		<!-- Wordmark: Nunito 700 in the text color (Navy 900 light,
 		     Cream dark), per the brand spec. -->
 		<span class="topbar-brand font-display font-bold text-[20px] text-text">{$_('app_name')}</span>
 		<!-- Push the search box away from the brand; the upload and
-		     account marks stay pinned to the right end. -->
-		<input
-			class="topbar-search flex-1 max-w-[420px] box-content ml-auto px-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
-			type="search"
-			placeholder={$_('nav_search')}
-			aria-label={$_('nav_search')}
-		/>
+		     account marks stay pinned to the right end. The leading
+		     magnifier is decorative (the field's own aria-label names
+		     it) and never takes the pointer. -->
+		<span class="topbar-search-wrap relative flex-1 max-w-[420px] ml-auto">
+			<Search size={16} class="absolute start-3 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
+			<input
+				class="topbar-search w-full box-content ps-9 pe-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+				type="search"
+				placeholder={$_('nav_search')}
+				aria-label={$_('nav_search')}
+			/>
+		</span>
 		<span class="topbar-upload-wrap">
 			<!-- The hidden input of the top bar's Upload button; picked
 			     files join the upload queue through enqueueUploadFiles. -->
@@ -160,15 +198,7 @@
 				aria-expanded={accountMenuOpen}
 				onclick={() => (accountMenuOpen = !accountMenuOpen)}
 			>
-				<svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
-					<circle cx="12" cy="8.5" r="3.75" stroke="currentColor" stroke-width="1.75" />
-					<path
-						d="M4.75 19.25c1.1-3.4 4-5 7.25-5s6.15 1.6 7.25 5"
-						stroke="currentColor"
-						stroke-width="1.75"
-						stroke-linecap="round"
-					/>
-				</svg>
+				<CircleUser size={20} />
 			</button>
 			{#if accountMenuOpen}
 				<div class="account-menu absolute top-[calc(100%_+_8px)] right-0 z-(--z-menu) min-w-[180px] box-content p-2 bg-card border border-border rounded-overlay shadow-overlay">
@@ -215,7 +245,14 @@
 		</div>
 	</header>
 	<Drawer bind:open={drawerOpen} />
-	<main class="shell-main flex-1 p-6">
+	<!-- The frame's one scroll container: the sticky month/day
+	     headers, the scrubber tracking and the batch bar all answer
+	     to THIS element now (see the pages' capture-phase scroll
+	     listeners). tabindex -1 keeps the scroll root out of the tab
+	     order while staying focusable (the navigation focus rule
+	     above keeps the browser's keyboard scrolling on it); the
+	     outline suppression keeps that focus visually silent. -->
+	<main bind:this={main} tabindex="-1" class="shell-main flex-1 min-h-0 overflow-y-auto p-6 focus-visible:outline-none">
 		{@render children()}
 	</main>
 </div>
