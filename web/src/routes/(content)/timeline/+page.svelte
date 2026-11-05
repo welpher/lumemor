@@ -239,7 +239,15 @@
 		if (first === undefined || (first.top === 0 && first.height === 0)) {
 			return;
 		}
-		const anchor = 100;
+		// The frame's scroll root is the shell's <main>: the sticky
+		// month/day header stack pins to its content top (main's p-6
+		// padding below the pinned top bar), so the anchor keeps the
+		// old rule's 100px -- the stack plus its grace -- below that
+		// edge instead of the viewport's. A page mounted without the
+		// shell (the unit tests) reads the viewport's top.
+		const scroller = document.querySelector<HTMLElement>('main');
+		const scrollerTop = scroller?.getBoundingClientRect().top ?? 0;
+		const anchor = scrollerTop + 124;
 		let current: string | null = null;
 		for (const section of sections) {
 			if (section.getBoundingClientRect().top <= anchor) {
@@ -251,7 +259,8 @@
 		activeMonthKey = current;
 	}
 
-	function handleWindowScroll(): void {
+	/** The rAF-collapsed scroll notification (one pass per frame). */
+	function handleScrollEvent(): void {
 		if (scrollScheduled) {
 			return;
 		}
@@ -261,6 +270,20 @@
 			updateActiveMonth();
 		});
 	}
+
+	// THE FRAME MIGRATION'S RISKY EDGE (R2-1): scrolling moved from
+	// the document into the shell's <main>, and element scroll events
+	// do not bubble -- a window-level onscroll handler would silently
+	// never fire again. The tracking therefore listens in the CAPTURE
+	// phase on the document: the one registration that observes every
+	// scroll container below it (the frame's main today, whatever
+	// scrolls tomorrow).
+	$effect(() => {
+		document.addEventListener('scroll', handleScrollEvent, { capture: true, passive: true });
+		return () => {
+			document.removeEventListener('scroll', handleScrollEvent, { capture: true });
+		};
+	});
 
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon); the
@@ -323,7 +346,7 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} onscroll={handleWindowScroll} />
+<svelte:window onkeydown={handleWindowKeydown} />
 
 <svelte:head>
 	<title>Timeline · lumemor</title>

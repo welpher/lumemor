@@ -17,10 +17,11 @@
 	// the route id, the SSE subscription that converges the open
 	// asset (a video's readiness in particular; the newest event's
 	// refetch response wins), the description PATCH, the single-id
-	// curation batches with the optimistic local detail the drawer
-	// renders, the permanent delete, and the face assign flow of the
-	// drawer's People section -- while Viewer.svelte owns the
-	// presentation and interaction.
+	// curation batches with the optimistic local detail the action
+	// bar renders, and the face assign flow of the drawer's People
+	// section -- while Viewer.svelte owns the presentation and
+	// interaction. The permanent delete is NOT this route's business
+	// since the R2-3 rework: it lives on the trash page alone.
 	//
 	// THE PINNED CHOICES:
 	//
@@ -41,7 +42,10 @@
 	//   the pre-action snapshot on failure, and the SSE convergence
 	//   confirming the success (favorites publish no events -- the
 	//   optimistic flag is the final state, the wall runner's
-	//   reasoning).
+	//   reasoning). The action bar surfaces the favorite and the
+	//   trash/restore pair; the runner stays the total mirror of the
+	//   batch API (hide / unhide included), ready for any surface
+	//   that offers them.
 	// - The video's playability is decided by the play-stream probe,
 	//   not the detail's isReady (a stale detail or a missed event
 	//   cannot wedge the poster); a not-ready answer keeps the
@@ -59,12 +63,11 @@
 	//   IS the chips' truth, and the person.* events of other
 	//   sessions refetch it the same way (the server's answer
 	//   decides, B4 -- the page never patches local state).
-	// - The permanent delete leaves for /timeline explicitly (a deep
-	//   link may have no history to back through); its 404 counts
-	//   as success -- the row is gone either way, the same
-	//   already-cleaned reading the upload queue's save-as pins.
-	//   Escape follows the same rule: history.back() only runs when
-	//   the document actually has in-app history behind the route.
+	// - A deletion of the open asset (another session, the expiry
+	//   job) leaves the viewer through SSE (the detail would 404
+	//   from here on). Escape follows the history-back rule:
+	//   history.back() only runs when the document actually has
+	//   in-app history behind the route.
 	import { page } from '$app/state';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -74,7 +77,6 @@
 	import { wallItems } from '$lib/timeline/wall.svelte';
 	import type { BatchAction } from '$lib/api/timeline';
 	import {
-		deleteAsset,
 		fetchAssetDetail,
 		patchAsset,
 		probeAssetPlay,
@@ -562,21 +564,6 @@
 		return false;
 	}
 
-	async function confirmDelete(): Promise<{ ok: boolean; errorKey: string }> {
-		const current = detail;
-		if (current === null || busy) {
-			return { ok: false, errorKey: 'internal' };
-		}
-		busy = true;
-		actionErrorKey = '';
-		const outcome = await deleteAsset(current.id);
-		busy = false;
-		if (outcome.ok) {
-			goto('/timeline');
-			return { ok: true, errorKey: '' };
-		}
-		return { ok: false, errorKey: outcome.errorKey };
-	}
 </script>
 
 <svelte:head>
@@ -600,7 +587,6 @@
 	onprobe={probePlayable}
 	onedit={editDescription}
 	onaction={runAction}
-	ondelete={confirmDelete}
 	onassignface={startAssign}
 />
 

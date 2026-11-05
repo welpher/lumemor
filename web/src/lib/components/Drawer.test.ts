@@ -65,11 +65,30 @@ test('closed renders nothing; open renders the seven sections in IA order', () =
 	const panel = document.body.querySelector<HTMLElement>('nav.drawer__panel');
 	expect(panel?.getAttribute('aria-label')).toBe('Navigation');
 
-	// The IA's route-table order, all seven visible.
+	// The IA's route-table order, all seven visible. The leading
+	// icons (R2-5) add a whitespace text node before each label, so
+	// the text assertions trim.
 	const labels = [...document.body.querySelectorAll('.drawer__item')].map(
-		(element) => element.textContent
+		(element) => element.textContent?.trim()
 	);
 	expect(labels).toEqual(['Timeline', 'Albums', 'People', 'Places', 'Memories', 'Favorites', 'Trash']);
+
+	// Every item LEADS with its icon (R2-5): the svg is the item's
+	// first element child, decorative (aria-hidden), and the text
+	// stays the accessible name -- the icon never replaces it.
+	const items = [...document.body.querySelectorAll<HTMLElement>('.drawer__item')];
+	expect(items).toHaveLength(7);
+	for (const item of items) {
+		const icon = item.querySelector<SVGSVGElement>('svg');
+		expect(icon, 'leading icon present').not.toBeNull();
+		expect(item.firstElementChild).toBe(icon);
+		expect(icon?.getAttribute('aria-hidden')).toBe('true');
+	}
+	// The icon set is one distinct glyph per section, not one repeated.
+	const iconClasses = new Set(
+		items.map((item) => item.querySelector('svg')?.getAttribute('class') ?? '')
+	);
+	expect(iconClasses.size).toBe(7);
 
 	// The live links: the timeline, the M3c albums wall, the people,
 	// favorites and trash routes.
@@ -80,7 +99,7 @@ test('closed renders nothing; open renders the seven sections in IA order', () =
 
 	// The M3 placeholders: present, visible, disabled.
 	const disabled = [...document.body.querySelectorAll<HTMLButtonElement>('button.drawer__item--disabled')];
-	expect(disabled.map((button) => button.textContent)).toEqual(['Places', 'Memories']);
+	expect(disabled.map((button) => button.textContent?.trim())).toEqual(['Places', 'Memories']);
 	expect(disabled.every((button) => button.disabled)).toBe(true);
 	expect(disabled.every((button) => button.title !== '')).toBe(true);
 
@@ -106,10 +125,13 @@ test('an admin session renders the admin panel entry below the content list', as
 	const divider = document.body.querySelector('.drawer__divider');
 	expect(divider).not.toBeNull();
 	const admin = document.body.querySelector<HTMLAnchorElement>('a.drawer__item[href="/admin/users"]');
-	expect(admin?.textContent).toBe('Admin panel');
+	expect(admin?.textContent?.trim()).toBe('Admin panel');
+	// The admin entry leads with its own icon like every content item.
+	expect(admin?.querySelector('svg')).not.toBeNull();
+	expect(admin?.firstElementChild?.tagName.toLowerCase()).toBe('svg');
 
 	const labels = [...document.body.querySelectorAll('.drawer__item')].map(
-		(element) => element.textContent
+		(element) => element.textContent?.trim()
 	);
 	expect(labels).toEqual([
 		'Timeline',

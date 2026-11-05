@@ -17,6 +17,13 @@
 	// ring draws at its edge -- the whitespace IS the selected state,
 	// no reflow, no checkbox geometry change.
 	//
+	// THE SERVING PAIR (R2-2): the thumbnail rides a DPR srcset --
+	// the tile derivative as 1x, the view derivative as 2x -- so a
+	// Retina-density wall tile gets real pixels instead of an
+	// upscaled 250px box; the caller passes the rendered width as
+	// the sizes hint (the engine's exact cell width on the justified
+	// wall).
+	//
 	// THE PINNED LIVE-PHOTO DECISION: TimelineItem carries
 	// livePhotoVideoId, so a Live Photo tile shows its small live
 	// badge here; the hover video preview arrives with the viewer and
@@ -66,17 +73,37 @@
 		selected: boolean;
 		/** Whether checkboxes show and clicks toggle (select mode or an active selection). */
 		selectable: boolean;
+		/**
+		 * The rendered width hint for the srcset (R2-2): the justified
+		 * wall passes the row engine's exact cell width; callers that
+		 * do not know it (the trash grid's fluid cells) fall back to
+		 * the default. The attribute is advisory under x descriptors
+		 * but carries the honest width for any future w migration.
+		 */
+		sizes?: string;
 		/** Toggle callback; the checkbox and the tile body both call it. */
-		onselect: (id: string, next: boolean) => void;
+		onselect: (id: string, selected: boolean) => void;
 	};
 
-	let { item, selected, selectable, onselect }: Props = $props();
+	let { item, selected, selectable, sizes = '240px', onselect }: Props = $props();
 
 	let loaded = $state(false);
 	let canvas: HTMLCanvasElement | undefined = $state();
 
 	/** The tile-size serving copy (the timeline box size). */
 	const thumbnailUrl = $derived(`/api/v1/assets/${encodeURIComponent(item.id)}/thumbnail?size=tile`);
+	/** The view-size serving copy (the 2x candidate of the srcset). */
+	const viewUrl = $derived(`/api/v1/assets/${encodeURIComponent(item.id)}/thumbnail?size=view`);
+	/**
+	 * The DPR pair (R2-2): the 250px tile box feeding a Retina-density
+	 * wall tile reads soft, so the view derivative rides as the 2x
+	 * candidate. The x descriptors are the honest pair for the
+	 * endpoint's aspect-variable files -- a w descriptor would have
+	 * to lie about each file's intrinsic width; the browser picks by
+	 * the device pixel ratio, exactly the binary the round-2 feedback
+	 * pins ("srcset tile/view × DPR + sizes").
+	 */
+	const srcset = $derived(`${thumbnailUrl} 1x, ${viewUrl} 2x`);
 
 	// Reset the crossfade when the tile's image identity changes (the
 	// item object is replaced by patches, not mutated).
@@ -170,6 +197,8 @@
 				class:opacity-0={!loaded}
 				class:tile__image--loaded={loaded}
 				src={thumbnailUrl}
+				srcset={srcset}
+				sizes={sizes}
 				alt=""
 				loading="lazy"
 				decoding="async"

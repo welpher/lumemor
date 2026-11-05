@@ -11,11 +11,12 @@ import Page from './+page.svelte';
 // links), the image / video / Live Photo stage, the not-ready wait
 // that converges through the SSE asset.ready, the info drawer's
 // description edit (PATCH body, error mapping, the stored text
-// untouched on failure), the batch actions' optimistic flips with
-// rollback, the permanent delete's confirm flow, and the layered
-// Escape. $app/state and $app/navigation are mocked because the
-// real router needs a running SvelteKit app; the events module is
-// mocked with a captured handler registry (the timeline page's
+// untouched on failure), the action bar's curation actions with
+// their optimistic flips and rollback (the permanent delete left
+// the viewer for the trash page in the R2-3 rework), and the
+// layered Escape. $app/state and $app/navigation are mocked because
+// the real router needs a running SvelteKit app; the events module
+// is mocked with a captured handler registry (the timeline page's
 // pattern). The navigation mock captures afterNavigate callbacks
 // and delivers the MOUNTING navigation's type per test ('link' for
 // a wall click by default, 'enter' for a fresh-document deep link);
@@ -186,10 +187,6 @@ function put(url: string, respond: () => Response | Promise<Response>): RouteRul
 	return { method: 'PUT', url, respond };
 }
 
-function del(url: string, respond: () => Response | Promise<Response>): RouteRule {
-	return { method: 'DELETE', url, respond };
-}
-
 /** The default routes of the viewer surface (an image asset). */
 function viewerRoutes(id: string, extra: RouteRule[] = []): RouteRule[] {
 	return [get(`/api/v1/assets/${id}`, () => jsonResponse(200, detailBodyOf(sequence[1]!))), ...extra];
@@ -263,6 +260,15 @@ function navigate(type: string): void {
 /** Open the info drawer through the top-bar toggle. */
 function openDrawer(): void {
 	click(element('[aria-label="Photo information"]'));
+}
+
+/** One icon-only button of the viewer's action bar, addressed by its aria-label. */
+function barButton(label: string): HTMLButtonElement {
+	const found = document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (found === null) {
+		throw new Error(`missing bar button ${label}`);
+	}
+	return found;
 }
 
 function fillTextarea(selector: string, value: string): void {
@@ -615,9 +621,11 @@ test('a not-ready video shows the poster and waits for the SSE ready event', asy
 	flushSync();
 });
 
-test('the curation actions flip optimistically, roll back on failure', async () => {
+test('the bar trash action flips optimistically, rolls back on failure', async () => {
 	// The batch hangs until the test releases it, so the optimistic
-	// window is observable before the failure.
+	// window is observable before the failure. (The R2-3 rework: the
+	// curation actions ride the viewer's action bar; the permanent
+	// delete left the viewer for the trash page.)
 	let release: ((response: Response) => void) | undefined;
 	const batchAnswer = new Promise<Response>((resolve) => {
 		release = resolve;
@@ -627,51 +635,77 @@ test('the curation actions flip optimistically, roll back on failure', async () 
 		post('/api/v1/assets/batch', () => batchAnswer)
 	]);
 	await settle();
-	openDrawer();
 
-	// Hide: the optimistic banner and label flip immediately.
-	click(buttonByText('Hide'));
+	// Trash: the bar's icon flips to Restore immediately (the
+	// optimistic switch on the local detail).
+	click(barButton('Trash'));
 	await new Promise((resolve) => setTimeout(resolve, 0));
-	expect(element('.info').textContent).toContain('This photo is hidden from the timeline.');
-	expect(() => buttonByText('Unhide')).not.toThrow();
+	expect(() => barButton('Restore')).not.toThrow();
 
-	// The failed batch rolls both back and maps the error.
+	// The drawer's trashed notice carries the flip's visible state.
+	openDrawer();
+	expect(element('.info').textContent).toContain('This photo is in the trash.');
+
+	// The failed batch rolls both back and maps the error into the
+	// bar's alert line.
 	release?.(jsonResponse(502, { code: 'PROXY_TEAPOT' }));
 	await settle();
-	expect(element('.info').textContent).not.toContain('This photo is hidden');
-	expect(element('.info__error').textContent).toBe('Something went wrong. Please try again.');
-	expect(() => buttonByText('Hide')).not.toThrow();
+	expect(() => barButton('Trash')).not.toThrow();
+	expect(element('.info').textContent).not.toContain('This photo is in the trash');
+	expect(element('.viewer__action-error').textContent).toBe('Something went wrong. Please try again.');
 	unmount(app);
 	flushSync();
 });
 
-test('a successful favorite batch flips the label (per-user state, no events)', async () => {
+test('a successful favorite batch flips the bar label (per-user state, no events)', async () => {
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
 	]);
 	await settle();
-	openDrawer();
 
-	click(buttonByText('Favorite'));
+	click(barButton('Favorite'));
 	await settle();
 
 	// The exact single-id batch body.
 	const init = requestOf(fetchMock, 'POST', '/api/v1/assets/batch');
 	expect(JSON.parse(String(init?.body))).toEqual({ action: 'favorite', ids: ['a2'] });
 	// The optimistic flag is the final state (favorites are silent).
-	expect(() => buttonByText('Unfavorite')).not.toThrow();
+	expect(() => barButton('Unfavorite')).not.toThrow();
 	unmount(app);
 	flushSync();
 });
 
-test("a viewer's drawer renders the reads and the per-user writes without the owner-only affordances", async () => {
+test('a trashed asset offers Restore in the bar and runs the restore batch', async () => {
+	const { app, fetchMock } = mountViewer('a2', [
+		get(
+			'/api/v1/assets/a2',
+			() => jsonResponse(200, detailBodyOf(sequence[1]!, { isTrashed: true }))
+		),
+		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
+	]);
+	await settle();
+
+	// The trash/restore pair is one toggle: a trashed asset's bar
+	// action is the restore.
+	click(barButton('Restore'));
+	await settle();
+
+	const init = requestOf(fetchMock, 'POST', '/api/v1/assets/batch');
+	expect(JSON.parse(String(init?.body))).toEqual({ action: 'restore', ids: ['a2'] });
+	// The optimistic flip returns the trash affordance.
+	expect(() => barButton('Trash')).not.toThrow();
+	unmount(app);
+	flushSync();
+});
+
+test("a viewer's bar keeps the per-user favorite, never the owner-only trash; the drawer stays read-only for them", async () => {
 	// The identity seam's other arm: the session's account is NOT the
-	// asset's owner (the owner shared it to them) -- the drawer keeps
-	// every read and the per-user favorite, and never renders the
-	// owner-only writes (the description edit, the hide / trash
-	// curation, the permanent delete). The face chips stay: their
-	// assign dialog carries the per-user label write a sharee holds.
+	// asset's owner (the owner shared it to them) -- the bar keeps
+	// the per-user favorite and never renders the owner-only trash;
+	// the drawer keeps every read and the description text without
+	// its edit affordance. The face chips stay: their assign dialog
+	// carries the per-user label write a sharee holds.
 	const { app, fetchMock } = mountViewer('a2', [
 		get(
 			'/api/v1/assets/a2',
@@ -680,23 +714,22 @@ test("a viewer's drawer renders the reads and the per-user writes without the ow
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
 	]);
 	await settle();
-	openDrawer();
 
 	// The reads render: the stored description text, the file facts,
 	// the download affordance.
+	openDrawer();
 	expect(element('.info__description').textContent).toBe('Original caption.');
 	expect(() => element('.info__download')).not.toThrow();
 
 	// The owner-only writes never render (read-only is visual, never
-	// grayed out -- the web IA's pinned rule).
+	// grayed out -- the web IA's pinned rule): no trash in the bar,
+	// no edit in the drawer.
+	expect(() => barButton('Trash')).toThrow();
 	expect(document.body.textContent).not.toContain('Edit');
-	expect(() => buttonByText('Favorite')).not.toThrow();
-	expect(() => buttonByText('Hide')).toThrow();
-	expect(() => buttonByText('Trash')).toThrow();
-	expect(() => buttonByText('Delete permanently')).toThrow();
+	expect(() => barButton('Favorite')).not.toThrow();
 
 	// The per-user favorite still works for the viewer.
-	click(buttonByText('Favorite'));
+	click(barButton('Favorite'));
 	await settle();
 	const init = requestOf(fetchMock, 'POST', '/api/v1/assets/batch');
 	expect(JSON.parse(String(init?.body))).toEqual({ action: 'favorite', ids: ['a2'] });
@@ -704,84 +737,76 @@ test("a viewer's drawer renders the reads and the per-user writes without the ow
 	flushSync();
 });
 
-test('the permanent delete confirms first; 204 leaves for the timeline', async () => {
-	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
-		del('/api/v1/assets/a2', () => new Response(null, { status: 204 }))
-	]);
-	await settle();
-	openDrawer();
-
-	// The confirm dialog opens first (the trash bypass is
-	// destructive; the contract pins confirm-first UI).
-	click(buttonByText('Delete permanently'));
-	expect(element('[role="dialog"]').getAttribute('aria-modal')).toBe('true');
-	expect(element('.viewer__confirm-body').textContent).toContain('IMG_2.jpg');
-
-	click(buttonByText('Delete forever'));
+test('the action bar carries the curation icon actions; the permanent delete is gone', async () => {
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
 	await settle();
 
-	// The DELETE went out and the viewer left for the timeline.
-	expect(requestOf(fetchMock, 'DELETE', '/api/v1/assets/a2')).toBeDefined();
-	expect(goto).toHaveBeenCalledWith('/timeline');
+	// R2-3's bar: the close mark, the favorite toggle, the info-panel
+	// toggle and (for the owner) the trash/restore pair, every button
+	// an icon button named by its aria-label.
+	expect(() => barButton('Back to the timeline')).not.toThrow();
+	expect(() => barButton('Favorite')).not.toThrow();
+	expect(() => barButton('Photo information')).not.toThrow();
+	expect(() => barButton('Trash')).not.toThrow();
+	expect(() => barButton('Zoom in')).not.toThrow();
+
+	// The permanent delete left the viewer entirely: no confirm
+	// dialog, no affordance (it lives on the trash page alone).
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+	expect(document.body.textContent).not.toContain('Delete permanently');
+
+	// With the info panel open, the action cluster shifts left of the
+	// panel's edge (the full-height panel would otherwise cover the
+	// buttons at the bar's right end).
+	click(barButton('Photo information'));
+	expect(document.body.querySelector('.viewer__bar-actions')?.className).toContain('me-[calc(min(360px,92vw)+1rem)]');
+	click(barButton('Photo information'));
+	expect(document.body.querySelector('.viewer__bar-actions')?.className).not.toContain('me-[calc(min(360px,92vw)+1rem)]');
 	unmount(app);
 	flushSync();
 });
 
-test('a failed delete keeps the dialog open with the mapped error; a 404 already-gone still leaves', async () => {
-	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
-		del('/api/v1/assets/a2', () => jsonResponse(500, { code: 'INTERNAL' }))
-	]);
+test('the info panel is metadata-only: key-value rows with hairline dividers, no actions section', async () => {
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
 	await settle();
 	openDrawer();
-	click(buttonByText('Delete permanently'));
-	click(buttonByText('Delete forever'));
-	await settle();
 
-	// The failure keeps the dialog open (the retry affordance) with
-	// the mapped message.
-	expect(element('[role="dialog"]')).not.toBeNull();
-	expect(element('.viewer__confirm-error').textContent).toBe('Something went wrong. Please try again.');
-	expect(goto).not.toHaveBeenCalled();
+	// No actions section survived the R2-3 rework: the curation
+	// affordances live in the bar.
+	expect(element('.info').textContent).not.toContain('Actions');
+
+	// The file facts: label column faint, value column text, one
+	// hairline between the rows.
+	const facts = element('.info__facts');
+	expect(facts.className).toContain('divide-y');
+	const term = facts.querySelector('dt');
+	const value = facts.querySelector('dd');
+	expect(term?.className).toContain('text-text-faint');
+	expect(value?.className).toContain('text-text');
+	expect(value?.className).not.toContain('text-text-faint');
 	unmount(app);
-	flushSync();
-
-	// The already-deleted row answers 404: the outcome the user
-	// wanted holds either way.
-	const gone = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
-		del('/api/v1/assets/a2', () => jsonResponse(404, { code: 'ASSET_NOT_FOUND' }))
-	]);
-	await settle();
-	openDrawer();
-	click(buttonByText('Delete permanently'));
-	click(buttonByText('Delete forever'));
-	await settle();
-	expect(goto).toHaveBeenCalledWith('/timeline');
-	unmount(gone.app);
 	flushSync();
 });
 
-test('the layered Escape closes the dialog, then the drawer, then leaves', async () => {
+test('the layered Escape closes the assign dialog, then the drawer, then leaves', async () => {
 	const back = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+	// The modal layer is the page's face-assign dialog (the delete
+	// dialog is gone with the permanent delete's departure).
+	const faces = [faceSummary('f2')];
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
-		del('/api/v1/assets/a2', () => new Response(null, { status: 204 }))
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
+		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
+		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [] }))
 	]);
 	await settle();
 
 	openDrawer();
 	expect(document.body.querySelector('.info')).not.toBeNull();
 
-	// Escape with the drawer open closes only the drawer.
-	pressKey('Escape');
-	expect(document.body.querySelector('.info')).toBeNull();
-	expect(back).not.toHaveBeenCalled();
-
-	// With the delete dialog open, Escape closes only the dialog.
-	openDrawer();
-	click(buttonByText('Delete permanently'));
+	// A face chip opens the assign dialog: Escape with it open closes
+	// only the dialog (the viewer defers to the open modal).
+	click(element('[data-face-id="f2"]'));
+	await settle();
 	expect(element('[role="dialog"]')).not.toBeNull();
 	pressKey('Escape');
 	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
@@ -917,10 +942,9 @@ test('a failed initial load re-seeds the favorite flag when the convergence refe
 	handlers[0]?.({ id: 22, name: 'asset.updated', assetId: 'a2', kind: 'image' });
 	await settle();
 
-	// The recovered drawer shows the favorite state (the Unfavorite
+	// The recovered bar shows the favorite state (the Unfavorite
 	// action), not the default.
-	openDrawer();
-	expect(() => buttonByText('Unfavorite')).not.toThrow();
+	expect(() => barButton('Unfavorite')).not.toThrow();
 	unmount(app);
 	flushSync();
 });
@@ -1034,12 +1058,12 @@ test('an in-progress description draft survives same-id detail replacements', as
 	click(buttonByText('Edit'));
 	fillTextarea('textarea.info__editor', 'My work in progress.');
 
-	// The optimistic hide flip replaces the detail object (same id):
-	// the flip is observable (the hidden banner) and the draft and
-	// the edit mode survive the replacement.
-	click(buttonByText('Hide'));
+	// The optimistic trash flip replaces the detail object (same
+	// id): the flip is observable (the trashed banner) and the draft
+	// and the edit mode survive the replacement.
+	click(barButton('Trash'));
 	await new Promise((resolve) => setTimeout(resolve, 0));
-	expect(element('.info').textContent).toContain('This photo is hidden from the timeline.');
+	expect(element('.info').textContent).toContain('This photo is in the trash.');
 	expect(document.body.querySelector<HTMLTextAreaElement>('textarea.info__editor')?.value).toBe(
 		'My work in progress.'
 	);
