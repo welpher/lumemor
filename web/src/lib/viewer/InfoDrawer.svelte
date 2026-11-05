@@ -1,66 +1,65 @@
 <script lang="ts">
-	// The information drawer of the asset viewer: the owner-level
-	// editing surfaces of one asset -- the description editor (the
-	// PATCH endpoint; the drawer keeps the draft on failure so a
-	// retry never retypes anything, and through the same-id detail
-	// replacements of the optimistic curation flips and the SSE
-	// convergence), the curation action bar
-	// (favorite / hide / trash, the batch endpoint, optimistic on
-	// the page's local state), and the permanent delete's confirm
-	// dialog trigger -- plus the read-only panels: the file facts,
-	// the EXIF hot fields folded into collapsible groups, the
-	// People section (one face chip per face of the detail's faces
-	// array, the caller's label state per cluster, the click
-	// delegating to the page's assign dialog), and the places
-	// placeholder pinned to its M3 domain.
+	// The information panel of the asset viewer: METADATA ONLY (the
+	// R2-3 rework) -- the description editor (the PATCH endpoint; the
+	// drawer keeps the draft on failure so a retry never retypes
+	// anything, and through the same-id detail replacements of the
+	// optimistic curation flips and the SSE convergence), the People
+	// section (one face chip per face of the detail's faces array,
+	// the caller's label state per cluster, the click delegating to
+	// the page's assign dialog), the EXIF hot fields folded into
+	// collapsible groups, the file facts, and the places placeholder
+	// pinned to its M3 domain. The curation actions and the permanent
+	// delete are GONE from this surface: the action bar over the
+	// media carries the favorite and the trash/restore pair, and the
+	// permanent delete lives on the trash page alone.
+	//
+	// THE FORM (R2-10): the same markup serves the two shapes the
+	// viewer composes it into -- the right DOCKED split region at lg+
+	// (the viewer's flex row) and the fixed overlay drawer below lg.
+	// Every class below is shared; the form lives in the aside's
+	// lg:* utilities alone.
 	//
 	// THE VIEWER'S READ-ONLY DRAWER (the M3c identity seam): a caller
 	// who does not own the asset (the owner shared it to them) keeps
-	// every READ and the per-user writes, and loses every owner-only
-	// write affordance -- the description's Edit button (the stored
-	// text renders), the hide / trash curation pair and the permanent
-	// delete. The favorite stays (per-user state anyone holds), and
-	// the face chips stay: their assign dialog carries the per-user
-	// label write a sharee holds (B4's sharee-names-what-they-see)
-	// alongside the owner-only move whose server gate stays the
-	// enforcement. Read-only is visual, never grayed out (the web IA
-	// §3's pinned rule) -- the buttons simply never render.
+	// every READ and loses every owner-only write affordance -- the
+	// description's Edit button (the stored text renders) never
+	// renders for them. Read-only is visual, never grayed out (the
+	// web IA §3's pinned rule) -- the button simply never renders.
+	//
+	// THE ROW LANGUAGE (R2-4): key-value rows -- the label column in
+	// the faint text tone, the value in the text tone, one hairline
+	// between the rows (divide-y), the grouped sections under the
+	// existing uppercase micro-heads, tightened vertical rhythm per
+	// brand spec §5 (no heavy borders, feather shadows): the EXIF
+	// groups dropped their card borders for the same row rhythm.
 	//
 	// The drawer is presentation and edit-mode state only: the page
-	// owns the detail, the optimistic state and every network call,
-	// through the onedit / onaction / onrequestdelete / onassignface
-	// callbacks. Escape does not close it from here -- the viewer
-	// owns the layered Escape rule (modal first, then this drawer,
-	// then the route) so the layers cannot race.
+	// owns the detail and every network call, through the
+	// onedit / onassignface callbacks. Escape does not close it from
+	// here -- the viewer owns the layered Escape rule (the page's
+	// dialog first, then this drawer, then the route) so the layers
+	// cannot race.
 	import { locale, _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
 	import { assetOriginalUrl, type AssetDetail, type AssetFaceSummary } from '$lib/api/assets';
-	import type { BatchAction } from '$lib/api/timeline';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import X from '@lucide/svelte/icons/x';
+	import Download from '@lucide/svelte/icons/download';
 
 	type Props = {
 		/** The current asset's detail (the page's local, optimistic copy). */
 		detail: AssetDetail;
-		/** The favorite flag (the detail carries none; the page holds it). */
-		favorite: boolean;
 		/**
-		 * Whether the caller owns this asset: the owner-only write
-		 * affordances (the description edit, hide / trash, the permanent
-		 * delete) render for the owner alone.
+		 * Whether the caller owns this asset: the description's edit
+		 * affordance renders for the owner alone (the identity seam's
+		 * write arm; the curation pair lives in the viewer's action
+		 * bar, gated there).
 		 */
 		isOwner: boolean;
-		/** Any curation action is in flight: buttons disable. */
-		busy: boolean;
-		/** The error-code i18n key of the last failed action ('' when none). */
-		errorKey: string;
 		/** Close the drawer. */
 		onclose: () => void;
 		/** Save the description; the outcome decides the edit mode. */
 		onedit: (text: string) => Promise<{ ok: boolean; errorKey: string }>;
-		/** Run one curation action over this asset. */
-		onaction: (action: BatchAction) => Promise<boolean>;
-		/** Open the permanent-delete confirm dialog (the viewer owns it). */
-		onrequestdelete: () => void;
 		/**
 		 * Open the assign dialog for one face of the People section (the
 		 * page owns the dialog and the writes).
@@ -68,18 +67,7 @@
 		onassignface: (face: AssetFaceSummary) => void;
 	};
 
-	let {
-		detail,
-		favorite,
-		isOwner,
-		busy,
-		errorKey,
-		onclose,
-		onedit,
-		onaction,
-		onrequestdelete,
-		onassignface
-	}: Props = $props();
+	let { detail, isOwner, onclose, onedit, onassignface }: Props = $props();
 
 	let editing = $state(false);
 	let draft = $state('');
@@ -249,7 +237,17 @@
 	}
 </script>
 
-<aside class="info fixed top-0 right-0 bottom-0 z-(--z-aside) flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay" aria-label={$_('viewer_info_title')}>
+<!-- The docked split region (R2-10): at lg+ the panel is STATIC in
+     the viewer's flex row -- it occupies layout space beside the
+     media column (the stage re-fits through the flow, the width is
+     the same min(360px,92vw) family, no floating shadow: the
+     border-l hairline separates it). Below lg the same element keeps
+     the overlay-drawer form: fixed, full-height over the right edge,
+     with the floating shadow the overlay language carries. -->
+<aside
+	class="info fixed top-0 right-0 bottom-0 z-(--z-aside) flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay lg:static lg:shrink-0 lg:shadow-none"
+	aria-label={$_('viewer_info_title')}
+>
 	<header class="info__header flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border">
 		<h2 class="info__filename font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail.originalFilename}</h2>
 		<button
@@ -258,9 +256,7 @@
 			aria-label={$_('common_close')}
 			onclick={onclose}
 		>
-			<svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
-				<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
-			</svg>
+			<X size={20} />
 		</button>
 	</header>
 
@@ -272,8 +268,8 @@
 			<p class="info__notice mt-3 py-2 px-3 font-body font-medium text-[13px] leading-[1.4] text-text-soft border border-notice rounded-control" role="status">{$_('viewer_hidden_notice')}</p>
 		{/if}
 
-		<section class="info__section mt-5">
-			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_description_label')}</h3>
+		<section class="info__section mt-4">
+			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_description_label')}</h3>
 			{#if editing}
 				<textarea
 					class="info__editor w-full mb-2 px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-page border border-border-strong rounded-control resize-y focus:border-accent"
@@ -303,121 +299,91 @@
 			{/if}
 		</section>
 
-		<section class="info__section mt-5">
-			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_actions_label')}</h3>
-			<div class="info__row flex flex-wrap gap-2 mb-2">
-				<Button
-					variant="ghost"
-					disabled={busy}
-					onclick={() => void onaction(favorite ? 'unfavorite' : 'favorite')}
-				>
-					{favorite ? $_('action_unfavorite') : $_('action_favorite')}
-				</Button>
-				{#if isOwner}
-					<Button
-						variant="ghost"
-						disabled={busy}
-						onclick={() => void onaction(detail.isHidden ? 'unhide' : 'hide')}
-					>
-						{detail.isHidden ? $_('action_unhide') : $_('action_hide')}
-					</Button>
-					<Button
-						variant="danger"
-						disabled={busy}
-						onclick={() => void onaction(detail.isTrashed ? 'restore' : 'trash')}
-					>
-						{detail.isTrashed ? $_('action_restore') : $_('action_trash')}
-					</Button>
-				{/if}
-			</div>
-			{#if isOwner}
-				<Button variant="danger" disabled={busy} onclick={onrequestdelete}>
-					{$_('viewer_delete_permanently')}
-				</Button>
-			{/if}
-			{#if errorKey !== ''}
-				<p class="info__error mb-2 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(errorKey)}</p>
-			{/if}
-		</section>
-
-		<section class="info__section mt-5">
-			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_file_section')}</h3>
-			<dl class="info__facts">
+		<!-- The key-value row language (R2-4): one hairline between
+		     the rows, the label column faint, the value column text,
+		     the tightened section rhythm -- no card borders, the
+		     section's own spacing is the grouping. -->
+		<section class="info__section mt-4">
+			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_file_section')}</h3>
+			<dl class="info__facts divide-y divide-border">
 				{#each fileRows as entry (entry.label)}
-					<div class="info__fact flex justify-between gap-3 py-[5px]">
+					<div class="info__fact flex justify-between gap-3 py-[7px]">
 						<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
 						<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
 					</div>
 				{/each}
 			</dl>
 			<a
-				class="info__download inline-block mt-1 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-link no-underline border border-border-strong rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+				class="info__download inline-flex items-center gap-2 mt-2 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-link no-underline border border-border-strong rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
 				href={assetOriginalUrl(detail.id)}
 				download
 			>
+				<Download size={16} />
 				{$_('viewer_download')}
 			</a>
 		</section>
 
-		<section class="info__section mt-5">
-			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_exif_heading')}</h3>
-			<!-- The EXIF groups: the group class feeds the open-summary
-			     border (group-open) and the facts padding below. -->
-			<details class="info__group group border border-border rounded-control" open>
-				<summary class="px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer group-open:border-b group-open:border-border">{$_('viewer_exif_camera')}</summary>
+		<section class="info__section mt-4">
+			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_exif_heading')}</h3>
+			<!-- The EXIF groups: collapsible summaries over the same
+			     hairline row rhythm (the card borders of the old
+			     presentation are gone -- brand spec §5's no heavy
+			     borders). -->
+			<details class="info__group" open>
+				<summary class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer">{$_('viewer_exif_camera')}</summary>
 				{#if cameraRows.length > 0}
-					<dl class="info__facts pt-1 px-3">
+					<dl class="info__facts divide-y divide-border">
 						{#each cameraRows as entry (entry.label)}
-							<div class="info__fact flex justify-between gap-3 py-[5px]">
+							<div class="info__fact flex justify-between gap-3 py-[7px]">
 								<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
 								<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
 							</div>
 						{/each}
 					</dl>
 				{:else}
-					<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
+					<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
 				{/if}
 			</details>
-			<details class="info__group group border border-border rounded-control">
-				<summary class="px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer group-open:border-b group-open:border-border">{$_('viewer_exif_exposure')}</summary>
+			<details class="info__group">
+				<summary class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer">{$_('viewer_exif_exposure')}</summary>
 				{#if exposureRows.length > 0}
-					<dl class="info__facts pt-1 px-3">
+					<dl class="info__facts divide-y divide-border">
 						{#each exposureRows as entry (entry.label)}
-							<div class="info__fact flex justify-between gap-3 py-[5px]">
+							<div class="info__fact flex justify-between gap-3 py-[7px]">
 								<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
 								<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
 							</div>
 						{/each}
 					</dl>
 				{:else}
-					<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
+					<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
 				{/if}
 			</details>
-			<details class="info__group group border border-border rounded-control">
-				<summary class="px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer group-open:border-b group-open:border-border">{$_('viewer_exif_location')}</summary>
+			<details class="info__group">
+				<summary class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer">{$_('viewer_exif_location')}</summary>
 				{#if locationRows.length > 0}
-					<dl class="info__facts pt-1 px-3">
+					<dl class="info__facts divide-y divide-border">
 						{#each locationRows as entry (entry.label)}
-							<div class="info__fact flex justify-between gap-3 py-[5px]">
+							<div class="info__fact flex justify-between gap-3 py-[7px]">
 								<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
 								<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
 							</div>
 						{/each}
 					</dl>
 				{:else}
-					<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
+					<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
 				{/if}
 			</details>
 		</section>
 
-		<section class="info__section mt-5">
-			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_people')}</h3>
+		<section class="info__section mt-4">
+			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_people')}</h3>
 			{#if detail.isTrashed || detail.isHidden || detail.faces.length === 0}
 				<!-- A trashed or hidden asset keeps its faces in the
 				     detail but every crop endpoint answers 404 for it
 				     -- the placeholder stands in rather than broken
 				     chips. -->
-				<p class="info__faces-empty info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_faces_placeholder')}</p>
+				<p class="info__faces-empty info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_faces_placeholder')}</p>
 			{:else}
 				<!-- One chip per face of the detail's faces array: the crop,
 				     the caller's label state of the face's cluster, and the
@@ -448,9 +414,9 @@
 			{/if}
 		</section>
 
-		<section class="info__section mt-5">
-			<h3 class="info__heading mb-2 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_places')}</h3>
-			<p class="info__placeholder font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_places_placeholder')}</p>
+		<section class="info__section mt-4">
+			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_places')}</h3>
+			<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_places_placeholder')}</p>
 		</section>
 	</div>
 </aside>

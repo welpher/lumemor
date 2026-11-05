@@ -3,14 +3,45 @@
 	// blurhash placeholder with the view-size and full-resolution
 	// serving copies crossfading over it, a video's transcoded
 	// stream behind its poster, a Live Photo's press-toggle between
-	// the still and the component video's play stream), the basic
-	// image zoom, the arrow-key walk over the timeline wall's
-	// current page sequence with the bottom filmstrip, and the
-	// layered Escape rule (the confirm dialog first, then the info
-	// drawer, then the route).
+	// the still and the component video's play stream), the gradual
+	// zoom, the arrow-key walk over the timeline wall's current page
+	// sequence with the bottom filmstrip, and the layered Escape rule
+	// (the page's assign dialog first, then the info panel, then the
+	// route).
+	//
+	// THE ACTION BAR (R2-3): the top chrome carries the curation
+	// affordances as icon buttons -- the close mark, the favorite
+	// toggle (per-user state, everyone holds it), the info-panel
+	// toggle, and the trash/restore pair (owner-only, the identity
+	// seam's write arm). The permanent delete LEFT the viewer for
+	// the trash page alone: the destructive irreversible action
+	// stays behind the trash listing's confirm-first flow, and this
+	// surface never carries it. The bar surfaces the last action's
+	// failure inline (the mapped error line under the buttons).
+	//
+	// THE SPLIT INFO PANEL (R2-9/10): the panel is a right DOCKED
+	// region at lg+ -- the viewer root is a flex row, the media
+	// column flexes (flex-1 min-w-0) and the panel rides beside it
+	// occupying layout space, so the media stage re-fits through the
+	// flow (the img's max-w/max-h constraints re-resolve against the
+	// shrunken stage -- the resize-aware fit, no observer needed
+	// because nothing about the fit is JS-computed). Below lg the
+	// same panel falls back to the overlay-drawer form (fixed,
+	// full-height over the right edge) and the action cluster keeps
+	// R2-3's left shift to clear it. The open preference persists in
+	// localStorage (one key, default closed) and restores on mount.
+	//
+	// THE GRADUAL ZOOM (R2-7/8): the in/out/reset buttons, the +/- keys
+	// and the stage's double-click all drive one engine (see ./zoom.ts)
+	// -- every change animates through rAF interpolation (~300ms,
+	// cubicOut, interruptible: an input mid-flight takes over from the
+	// current interpolated scale) and the scale clamps to the same 2x
+	// ceiling the old binary zoom had. The affordances key on the
+	// engine's TARGET (synchronous with the intent) while the media
+	// transform rides the per-frame --viewer-zoom var.
 	//
 	// OWNERSHIP SPLIT: this component owns the viewer's interaction
-	// state (zoom, live playback, drawer and dialog open) and every
+	// state (zoom, live playback, panel open) and every
 	// presentation; the route page owns the data (the detail, the
 	// sequence, the network). The callbacks carry the page's
 	// outcomes back so the surfaces here can render failures.
@@ -27,14 +58,20 @@
 	//   through the page; ASSET_NOT_READY keeps the still photo (a
 	//   later press re-probes -- the pair's own ready event says
 	//   nothing about the component's transcode).
-	// - Escape layers: the delete dialog closes first, then the
-	//   drawer, then the route exits. Keys typed into an editable
-	//   field (the description editor) never reach the viewer.
+	// - Escape layers: the page's assign dialog closes first (its
+	//   own Escape), then the panel, then the route exits. Keys
+	//   typed into an editable field (the description editor) never
+	//   reach the viewer.
 	import { decode } from 'blurhash';
 	import { _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
-	import Modal from '$lib/components/Modal.svelte';
 	import InfoDrawer from './InfoDrawer.svelte';
+	import {
+		createZoomEngine,
+		VIEWER_ZOOM_BASE,
+		VIEWER_ZOOM_MAX,
+		type ZoomState
+	} from './zoom';
 	import {
 		assetThumbnailUrl,
 		assetPlayUrl,
@@ -43,6 +80,15 @@
 	} from '$lib/api/assets';
 	import type { BatchAction, TimelineItem } from '$lib/api/timeline';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Star from '@lucide/svelte/icons/star';
+	import Info from '@lucide/svelte/icons/info';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ZoomIn from '@lucide/svelte/icons/zoom-in';
+	import ZoomOut from '@lucide/svelte/icons/zoom-out';
+	import Maximize from '@lucide/svelte/icons/maximize';
 
 	type Props = {
 		/** The current asset's detail; null while loading. */
@@ -51,8 +97,9 @@
 		favorite: boolean;
 		/**
 		 * Whether the caller owns the open asset (the session's userId
-		 * against the detail's ownerId): the drawer's owner-only write
-		 * affordances render for the owner alone.
+		 * against the detail's ownerId): the bar's owner-only
+		 * affordances (the trash/restore pair) and the drawer's
+		 * description editor render for the owner alone.
 		 */
 		isOwner: boolean;
 		/** The wall's current page items: the navigation sequence, newest first. */
@@ -81,8 +128,6 @@
 		onedit: (text: string) => Promise<{ ok: boolean; errorKey: string }>;
 		/** Run one curation action over the current asset. */
 		onaction: (action: BatchAction) => Promise<boolean>;
-		/** Run the permanent delete; ok means the page left the viewer. */
-		ondelete: () => Promise<{ ok: boolean; errorKey: string }>;
 		/** Open the page's assign dialog for one face (the drawer's People section). */
 		onassignface: (face: AssetFaceSummary) => void;
 	};
@@ -104,14 +149,63 @@
 		onprobe,
 		onedit,
 		onaction,
-		ondelete,
 		onassignface
 	}: Props = $props();
 
-	let drawerOpen = $state(false);
-	let confirmOpen = $state(false);
-	let deleteErrorKey = $state('');
-	let zoomed = $state(false);
+	// The panel's open-preference persistence (R2-9): one key, default
+	// closed, restored on mount. Storage can be unavailable (private
+	// mode); the preference then lives for the session only.
+	const INFO_PANEL_STORAGE_KEY = 'lumemor:viewer:info-panel';
+
+	function readStoredPanelOpen(): boolean {
+		try {
+			return localStorage.getItem(INFO_PANEL_STORAGE_KEY) === 'true';
+		} catch {
+			return false;
+		}
+	}
+
+	function writeStoredPanelOpen(open: boolean): void {
+		try {
+			localStorage.setItem(INFO_PANEL_STORAGE_KEY, open ? 'true' : 'false');
+		} catch {
+			// The panel still opens and closes for this session.
+		}
+	}
+
+	let drawerOpen = $state(readStoredPanelOpen());
+	// The value the effect last persisted: the restore itself never
+	// writes, so a fresh session without a stored key stays unwritten
+	// until the user actually chooses. (Read from the same source the
+	// state was seeded from, not from the state itself -- the effect
+	// must not observe the initializer.)
+	let persistedOpen = readStoredPanelOpen();
+	$effect(() => {
+		if (drawerOpen !== persistedOpen) {
+			persistedOpen = drawerOpen;
+			writeStoredPanelOpen(drawerOpen);
+		}
+	});
+
+	// The gradual zoom (R2-7/8): the engine owns the scale and its
+	// target; this component mirrors them into reactive state the
+	// template rides (the affordances read the target, the media
+	// transform reads the per-frame scale).
+	let zoomScale = $state(VIEWER_ZOOM_BASE);
+	let zoomTarget = $state(VIEWER_ZOOM_BASE);
+	const zoomEngine = createZoomEngine((state: ZoomState) => {
+		zoomScale = state.scale;
+		zoomTarget = state.target;
+	});
+
+	// The engine's rAF loop dies with the component (a pending frame
+	// after unmount would write state into a dead tree).
+	$effect(() => {
+		return () => {
+			zoomEngine.destroy();
+		};
+	});
+
 	let livePlaying = $state(false);
 	/** Whether the Live Photo component's stream answered the probe. */
 	let livePlayable = $state(false);
@@ -137,9 +231,10 @@
 	// flips, the SSE convergence refetch -- must NOT reset the stage,
 	// or a loaded photo fades back to its placeholder (the img element
 	// survives without a src re-set, so nothing re-fires the load).
-	// The drawer persists across neighbors regardless (comparing
-	// metadata across neighbors is the drawer-open navigation's
-	// point).
+	// The zoom snaps to the base (never animates: the new asset must
+	// not inherit the old one's zoom). The panel persists across
+	// neighbors regardless (comparing metadata across neighbors is
+	// the panel-open navigation's point).
 	let resetFor = '';
 	$effect(() => {
 		const id = detail?.id ?? '';
@@ -147,13 +242,12 @@
 			return;
 		}
 		resetFor = id;
-		zoomed = false;
+		zoomEngine.snapToBase();
 		livePlaying = false;
 		livePlayable = false;
 		viewLoaded = false;
 		fullLoaded = false;
 		posterFailed = false;
-		deleteErrorKey = '';
 	});
 
 	// Paint the blurhash placeholder (the tile's guarded pattern: a
@@ -244,15 +338,10 @@
 			return;
 		}
 		if (event.key === 'Escape') {
-			// The layered dismissal: the dialogs, then the drawer, then
-			// the route. The modals' own Escape handling coexists --
-			// their close is idempotent and it no-ops once closed. The
-			// page's assign dialog (modalOpen) owns its own Escape; this
-			// handler defers to it so the drawer underneath stays open.
-			if (confirmOpen) {
-				confirmOpen = false;
-				return;
-			}
+			// The layered dismissal: the page's dialog, then the
+			// panel, then the route. The assign dialog (modalOpen)
+			// owns its own Escape; this handler defers to it so the
+			// panel underneath stays open.
 			if (modalOpen) {
 				return;
 			}
@@ -263,7 +352,7 @@
 			onexit();
 			return;
 		}
-		if (confirmOpen || modalOpen) {
+		if (modalOpen) {
 			// The open dialog owns every other key.
 			return;
 		}
@@ -277,24 +366,37 @@
 			navigate(1);
 			return;
 		}
+		if (event.key === '+' || event.key === '-') {
+			// The zoom's keyboard arm (R2-7): the same engine the
+			// bar's buttons and the double-click ride. Videos keep
+			// their native controls' keyboard handling.
+			if (isImage) {
+				if (event.key === '+') {
+					zoomEngine.zoomIn();
+				} else {
+					zoomEngine.zoomOut();
+				}
+			}
+			return;
+		}
 		if (event.key === 'i' || event.key === 'I') {
 			drawerOpen = !drawerOpen;
 		}
 	}
 
-	async function runDelete(): Promise<void> {
-		if (busy) {
+	// The binary zoom toggle (R2-8): a double-click on the media flips
+	// 1x/the zoomed ceiling through the same gradual animation. The
+	// Live Photo's press affordance owns its own clicks -- a double
+	// press is the press pair (play/stop), never a zoom toggle.
+	function handleStageDblclick(event: MouseEvent): void {
+		if (!isImage) {
 			return;
 		}
-		deleteErrorKey = '';
-		const outcome = await ondelete();
-		if (outcome.ok) {
-			confirmOpen = false;
+		const target = event.target;
+		if (target instanceof HTMLElement && target.closest('.viewer__press') !== null) {
 			return;
 		}
-		// The failure keeps the dialog open with the mapped message
-		// (a retry affordance); nothing was deleted.
-		deleteErrorKey = outcome.errorKey;
+		zoomEngine.toggleZoom();
 	}
 
 	// The shared unknown-code fallback (see $lib/i18n/errors); the
@@ -309,59 +411,132 @@
 <!-- The viewer's backdrop: the brand's deep night ink, opaque -- the
      photo surface needs no translucency and no blur behind it (the
      restrained surface strategy); only the controls that truly float
-     over the media keep their glass. -->
-<div class="viewer fixed inset-0 z-(--z-page) flex flex-col bg-night" aria-busy={status === 'loading'}>
-	<header class="viewer__bar flex items-center gap-3 px-4 py-2.5 text-cream-text">
+     over the media keep their glass. The root is the SPLIT ROW
+     (R2-10): the media column flexes, the docked panel (lg+) rides
+     beside it. -->
+<div class="viewer fixed inset-0 z-(--z-page) flex bg-night" aria-busy={status === 'loading'}>
+	<div class="viewer__main flex flex-col flex-1 min-w-0">
+	<!-- The action bar (R2-3): the top chrome over the media, Night
+	     surface, icon buttons named by their aria-labels -- the close
+	     mark, the favorite toggle, the trash/restore pair (owner-only),
+	     the zoom trio (R2-7, images) and the info-panel toggle; the
+	     last failed action's mapped error lands on the bar's wrap row
+	     (the batch bar's pattern). At lg+ the bar spans only the media
+	     column, so the docked panel can never cover it (the split's
+	     formalization of R2-3's left shift). -->
+	<header class="viewer__bar flex flex-wrap items-center gap-3 px-4 py-2.5 text-cream-text">
 		<button
 			class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 			type="button"
 			aria-label={$_('viewer_close')}
 			onclick={onexit}
 		>
-			<svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
-				<path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
-			</svg>
+			<ChevronLeft size={22} />
 		</button>
-		<p class="viewer__title flex-1 font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail?.originalFilename ?? ''}</p>
-		<div class="viewer__bar-actions flex gap-1">
-			{#if isImage && detail !== null}
+		<p class="viewer__title flex-1 min-w-[120px] font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail?.originalFilename ?? ''}</p>
+		{#if detail !== null}
+			<!-- The action cluster's left shift (R2-3), now the OVERLAY
+			     fallback's guard alone: below lg the panel is a fixed
+			     overlay over the right edge and would cover these
+			     buttons without the shift; at lg+ the split layout owns
+			     the clearance (lg:me-0) and the shift is inert. -->
+			<div class="viewer__bar-actions flex gap-1 {drawerOpen ? 'me-[calc(min(360px,92vw)+1rem)] lg:me-0' : ''}">
+				<button
+					class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+					type="button"
+					aria-label={favorite ? $_('action_unfavorite') : $_('action_favorite')}
+					aria-pressed={favorite}
+					disabled={busy}
+					onclick={() => void onaction(favorite ? 'unfavorite' : 'favorite')}
+				>
+					<!-- The per-user favorite: the star fills and takes the
+					     star accent color when the flag is on (the gold
+					     the tile's favorite badge already carries). -->
+					<Star size={20} fill={favorite ? 'currentColor' : 'none'} class={favorite ? 'text-star' : ''} />
+				</button>
+				{#if isOwner}
+					<button
+						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+						type="button"
+						aria-label={detail.isTrashed ? $_('action_restore') : $_('action_trash')}
+						disabled={busy}
+						onclick={() => void onaction(detail.isTrashed ? 'restore' : 'trash')}
+					>
+						{#if detail.isTrashed}
+							<RotateCcw size={20} />
+						{:else}
+							<Trash2 size={20} />
+						{/if}
+					</button>
+				{/if}
+				{#if isImage}
+					<!-- The zoom trio (R2-7): step in, step out, and the
+					     fit reset -- one step each, every change riding
+					     the gradual engine; the buttons disable at their
+					     clamp ends (the engine's targets, not the
+					     interpolated scale, drive them). -->
+					<button
+						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+						type="button"
+						aria-label={$_('viewer_zoom_in')}
+						disabled={zoomTarget >= VIEWER_ZOOM_MAX}
+						onclick={() => zoomEngine.zoomIn()}
+					>
+						<ZoomIn size={20} />
+					</button>
+					<button
+						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+						type="button"
+						aria-label={$_('viewer_zoom_out')}
+						disabled={zoomTarget <= VIEWER_ZOOM_BASE}
+						onclick={() => zoomEngine.zoomOut()}
+					>
+						<ZoomOut size={20} />
+					</button>
+					<button
+						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+						type="button"
+						aria-label={$_('viewer_zoom_reset')}
+						disabled={zoomTarget <= VIEWER_ZOOM_BASE}
+						onclick={() => zoomEngine.reset()}
+					>
+						<Maximize size={20} />
+					</button>
+				{/if}
 				<button
 					class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 					type="button"
-					aria-label={zoomed ? $_('viewer_zoom_out') : $_('viewer_zoom_in')}
-					aria-pressed={zoomed}
-					onclick={() => (zoomed = !zoomed)}
+					aria-label={$_('viewer_info_open')}
+					aria-pressed={drawerOpen}
+					onclick={() => (drawerOpen = !drawerOpen)}
 				>
-					<svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
-						<circle cx="11" cy="11" r="6.25" stroke="currentColor" stroke-width="1.75" />
-						<path d="M8.25 11h5.5M11 8.25v5.5M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
-					</svg>
+					<Info size={20} />
 				</button>
-			{/if}
-			<button
-				class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
-				type="button"
-				aria-label={$_('viewer_info_open')}
-				aria-pressed={drawerOpen}
-				onclick={() => (drawerOpen = !drawerOpen)}
-			>
-				<svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
-					<circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.75" />
-					<path d="M12 11v5.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
-					<circle cx="12" cy="7.9" r="1.05" fill="currentColor" />
-				</svg>
-			</button>
-		</div>
+			</div>
+		{/if}
+		{#if actionErrorKey !== ''}
+			<p class="viewer__action-error basis-full my-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(actionErrorKey)}</p>
+		{/if}
 	</header>
 
 	<div class="viewer__stage-wrap relative flex-1 min-h-0 flex flex-col">
-		<!-- Basic zoom: the stage's media doubles around its center (the
-		     zoomed children carry the transform in the residual styles
-		     below). -->
+		<!-- The gradual zoom (R2-8): the stage's media children scale
+		     around the stage's center through --viewer-zoom (the
+		     engine drives the var per frame, the residual style rule
+		     below applies it to the image, placeholder and live
+		     layers); the double-click flips the 1x/zoomed binary. The
+		     zoomed marker class and the cursor key on the engine's
+		     TARGET -- synchronous with the intent -- while the var
+		     carries the interpolation. The double-click is a pointer
+		     convenience with full keyboard parity (the +/- keys and
+		     the bar's buttons), so the stage carries no widget role. -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="viewer__stage relative flex-1 min-h-0 flex items-center justify-center overflow-hidden"
-			class:viewer__stage--zoomed={zoomed}
-			class:cursor-zoom-out={zoomed}
+			class:viewer__stage--zoomed={zoomTarget > VIEWER_ZOOM_BASE}
+			class:cursor-zoom-out={zoomTarget > VIEWER_ZOOM_BASE}
+			style:--viewer-zoom={zoomScale}
+			ondblclick={handleStageDblclick}
 		>
 			{#if status === 'error'}
 				<div class="viewer__failure flex flex-col items-center gap-3 p-5 text-center" role="alert">
@@ -434,7 +609,7 @@
 
 				{#if detail.isReady}
 					<img
-						class="viewer__image absolute inset-0 m-auto max-w-full max-h-full object-contain transition-[opacity,transform] duration-(--motion-base) ease-standard"
+						class="viewer__image absolute inset-0 m-auto max-w-full max-h-full object-contain transition-[opacity] duration-(--motion-base) ease-standard"
 						class:opacity-0={!viewLoaded}
 						class:viewer__image--loaded={viewLoaded}
 						src={assetThumbnailUrl(detail.id, 'view')}
@@ -445,7 +620,7 @@
 					/>
 					<!-- The full-resolution layer rides above the view-size copy. -->
 					<img
-						class="viewer__image viewer__image--full absolute inset-0 m-auto z-(--z-stage-media) max-w-full max-h-full object-contain transition-[opacity,transform] duration-(--motion-base) ease-standard"
+						class="viewer__image viewer__image--full absolute inset-0 m-auto z-(--z-stage-media) max-w-full max-h-full object-contain transition-[opacity] duration-(--motion-base) ease-standard"
 						class:opacity-0={!fullLoaded}
 						class:viewer__image--loaded={fullLoaded}
 						src={assetThumbnailUrl(detail.id, 'original')}
@@ -532,9 +707,7 @@
 				aria-label={$_('viewer_previous')}
 				onclick={() => navigate(-1)}
 			>
-				<svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden="true">
-					<path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
-				</svg>
+				<ChevronLeft size={26} />
 			</button>
 		{/if}
 		{#if detail !== null && position !== -1 && position < sequence.length - 1}
@@ -544,63 +717,44 @@
 				aria-label={$_('viewer_next')}
 				onclick={() => navigate(1)}
 			>
-				<svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden="true">
-					<path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
-				</svg>
+				<ChevronRight size={26} />
 			</button>
 		{/if}
 	</div>
+	</div>
+
+	{#if drawerOpen && detail !== null}
+		<!-- The docked split region (R2-10): a flex sibling of the media
+		     column at lg+ (lg:static inside the row -- the stage re-fits
+		     through the flow), the fixed overlay drawer below lg. -->
+		<InfoDrawer
+			{detail}
+			{isOwner}
+			onclose={() => (drawerOpen = false)}
+			{onedit}
+			{onassignface}
+		/>
+	{/if}
 </div>
 
-{#if drawerOpen && detail !== null}
-	<InfoDrawer
-		{detail}
-		{favorite}
-		{isOwner}
-		{busy}
-		errorKey={actionErrorKey}
-		onclose={() => (drawerOpen = false)}
-		{onedit}
-		{onaction}
-		onrequestdelete={() => {
-			deleteErrorKey = '';
-			confirmOpen = true;
-		}}
-		{onassignface}
-	/>
-{/if}
-
-<Modal open={confirmOpen} title={$_('viewer_delete_title')} onclose={() => (confirmOpen = false)}>
-	{#snippet children()}
-		<p class="viewer__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-			{$_('viewer_delete_body', { values: { name: detail?.originalFilename ?? '' } })}
-		</p>
-		{#if deleteErrorKey !== ''}
-			<p class="viewer__confirm-error mt-3 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(deleteErrorKey)}</p>
-		{/if}
-	{/snippet}
-	{#snippet footer()}
-		<Button variant="ghost" disabled={busy} onclick={() => (confirmOpen = false)}>
-			{$_('common_cancel')}
-		</Button>
-		<Button variant="danger" disabled={busy} onclick={() => void runDelete()}>
-			{$_('viewer_delete_confirm')}
-		</Button>
-	{/snippet}
-</Modal>
-
 <style>
-	/* Residual styles (verbatim): the entrance keyframes and the
-	 * zoomed stage's transform on its media children (a parent state
-	 * class reaching three different elements). */
+	/* Residual styles: the entrance keyframes and the zoomed stage's
+	 * transform on its media children (one rule reaching three
+	 * different elements). */
 	.viewer {
 		animation: viewer-in var(--motion-fast) var(--ease-standard);
 	}
 
-	.viewer__stage--zoomed .viewer__image,
-	.viewer__stage--zoomed .viewer__placeholder,
-	.viewer__stage--zoomed .viewer__live {
-		transform: scale(2);
+	/* The gradual zoom's application (R2-8): the engine writes
+	 * --viewer-zoom on the stage per frame and this one rule scales
+	 * the three media children off it. The rule is unconditional
+	 * (not gated on the zoomed marker class) so a zoom-OUT animates
+	 * the same way a zoom-in does -- a class gate would drop the
+	 * transform mid-animation and snap the exit. */
+	.viewer__image,
+	.viewer__placeholder,
+	.viewer__live {
+		transform: scale(var(--viewer-zoom, 1));
 	}
 
 	@keyframes viewer-in {

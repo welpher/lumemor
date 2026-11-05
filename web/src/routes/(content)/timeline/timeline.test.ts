@@ -146,6 +146,18 @@ function clickTile(index: number): void {
 	flushSync();
 }
 
+/**
+ * Click one tile's check affordance -- R2-11's selection entry: the
+ * check reveals on hover/keyboard focus on every tile (the toolbar's
+ * select-mode button is gone), and the first click enters the
+ * selection.
+ */
+function clickTileCheck(index: number): void {
+	const check = tiles()[index]?.querySelector<HTMLButtonElement>('.tile__check');
+	check?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
+}
+
 beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
@@ -173,7 +185,23 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	// The wall's month and day headers: the shared justified wall
 	// renderer (MonthGroups) owns the header classes now -- the
 	// selectors follow the wall__ prefix the curated views always
-	// used.
+	// used. R2-12: no dividing hairline, the tightened vertical
+	// rhythm (the month band's ~py-1.5/mb-2), the sticky positions
+	// and the opaque bg-page stays.
+	const monthHeader = document.body.querySelector('.wall__month-header');
+	expect(monthHeader?.className).not.toContain('border-b');
+	expect(monthHeader?.className).toContain('py-1.5');
+	expect(monthHeader?.className).toContain('mb-2');
+	expect(monthHeader?.className).toContain('sticky');
+	expect(monthHeader?.className).toContain('bg-page');
+	expect(monthHeader?.className).toContain('mt-(--wall-month-gap)');
+	const dayHeader = document.body.querySelector('.wall__day-header');
+	expect(dayHeader?.className).not.toContain('border-b');
+	expect(dayHeader?.className).toContain('sticky');
+	expect(dayHeader?.className).toContain('bg-page');
+	// The day header stacks under the tightened month band exactly
+	// (44px -> 38px: py-2.5 -> py-1.5 over the same 26px line).
+	expect(dayHeader?.className).toContain('top-[38px]');
 	const monthHeaders = Array.from(document.body.querySelectorAll('.wall__month-header'));
 	expect(monthHeaders.map((header) => header.textContent)).toEqual([
 		'November 2026',
@@ -222,6 +250,11 @@ test('tiles pack into justified rows at the engine-computed sizes', async () => 
 	// width over the row height is the item's sensor ratio.
 	const tile = cells[0]?.querySelector<HTMLElement>('.tile');
 	expect(tile).not.toBeNull();
+
+	// The wall passes the engine's exact cell width as the tile's
+	// sizes hint (the srcset's honest width source).
+	const image = cells[0]?.querySelector('img');
+	expect(image?.getAttribute('sizes')).toBe('288px');
 	unmount(page);
 	flushSync();
 });
@@ -372,7 +405,7 @@ test('without an observer the manual pager loads the next page', async () => {
 	flushSync();
 });
 
-test('selection: the bar rises with the count, a batch trash removes the tiles', async () => {
+test('selection: the check entry raises the bar, a batch trash removes the tiles', async () => {
 	const fetchMock = stubFetch(
 		timelineRoutes({
 			'/api/v1/assets/batch': () => jsonResponse(200, { affected: 2, missing: [] })
@@ -382,13 +415,18 @@ test('selection: the bar rises with the count, a batch trash removes the tiles',
 	const page = mountPage();
 	await settle();
 
-	expect(document.body.querySelector('.batchbar')).toBeNull();
+	// R2-11: the toolbar is gone -- no hidden-view link, no
+	// select-mode button -- and the check affordance is the entry.
+	expect(document.body.querySelector('.timeline__toolbar')).toBeNull();
+	expect(() => buttonByText('Select')).toThrow();
+	expect(() => buttonByText('Hidden')).toThrow();
+	expect(document.body.querySelector('a[href="/hidden"]')).toBeNull();
 
-	// Enter the select mode (the touch-friendly path) and pick two.
-	buttonByText('Select').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-	flushSync();
-	clickTile(0);
-	clickTile(1);
+	// Enter the selection through the tiles' checks and pick two (the
+	// affordance's click toggles the id; the bar rises at >=1).
+	clickTileCheck(0);
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('1 selected');
+	clickTileCheck(1);
 
 	const bar = document.body.querySelector('.batchbar');
 	expect(bar?.textContent).toContain('2 selected');
@@ -418,9 +456,9 @@ test('a failed batch keeps the tiles, the selection and shows the message', asyn
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Select').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-	flushSync();
-	clickTile(0);
+	// R2-11: the check entry (the select-mode button is gone from the
+	// toolbar).
+	clickTileCheck(0);
 
 	buttonByText('Hide').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	await settle();
@@ -450,9 +488,9 @@ test('favorite toggles the selected tiles optimistically', async () => {
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Select').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-	flushSync();
-	clickTile(0);
+	// R2-11: the check entry (the select-mode button is gone from the
+	// toolbar).
+	clickTileCheck(0);
 
 	buttonByText('Favorite').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	await settle();
@@ -563,6 +601,43 @@ test('the scrubber jumps to a month group', async () => {
 	flushSync();
 });
 
+test('the scrubber tracking observes the scroll root through the capture phase', async () => {
+	// R2-1's risky edge: the frame moved scrolling from the document
+	// into the shell's <main>, and element scroll events DO NOT
+	// BUBBLE -- a window-level onscroll would silently die. The
+	// tracking must observe the scroll root some other way, and the
+	// capture-phase registration is the one that reaches every
+	// container under the document (a jsdom mount has no <main>, so
+	// a scroll dispatched on any descendant stands in for it).
+	vi.stubGlobal('fetch', stubFetch(timelineRoutes()));
+	const page = mountPage();
+	await settle();
+
+	const sections = Array.from(document.body.querySelectorAll<HTMLElement>('[data-month-key]'));
+	expect(sections.map((section) => section.dataset.monthKey)).toEqual(['2026-11', '2026-10']);
+
+	// A scrolled-forward geometry: both groups above the anchor, the
+	// older one last-past (the layout-less host's rects are zero, so
+	// the rects are stubbed the way the wall's own test does).
+	const rects = [
+		{ top: -300, height: 600 } as DOMRect,
+		{ top: -50, height: 600 } as DOMRect
+	];
+	sections.forEach((section, index) => {
+		vi.spyOn(section, 'getBoundingClientRect').mockReturnValue(rects[index]!);
+	});
+
+	// The non-bubbling scroll event of the scroll container.
+	sections[1]!.dispatchEvent(new Event('scroll'));
+	await new Promise((resolve) => requestAnimationFrame(resolve));
+	flushSync();
+
+	const active = document.body.querySelector('.scrubber__stop[aria-current="true"]');
+	expect(active?.textContent).toBe('October 2026');
+	unmount(page);
+	flushSync();
+});
+
 // --- the batch bar's add-to-album flow (M3c Task 5) ---------------------------
 
 function modal(): HTMLElement | null {
@@ -642,10 +717,10 @@ const ownAlbumsBody = {
 };
 
 function selectTwoTiles(): void {
-	buttonByText('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	clickTile(0);
-	clickTile(1);
+	// R2-11: the check entry (the select-mode button is gone from the
+	// toolbar -- the tiles' checks are the only way in).
+	clickTileCheck(0);
+	clickTileCheck(1);
 	expect(document.body.querySelector('.batchbar')?.textContent).toContain('2 selected');
 }
 

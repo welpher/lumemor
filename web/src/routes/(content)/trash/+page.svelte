@@ -2,10 +2,16 @@
 	// The trash page (M2d Task 8): the bounded listing of the
 	// caller's soft-deleted assets with each row's retention
 	// countdown, the single restore, and the confirm-first permanent
-	// delete. The SSE subscription converges the rows asset.deleted
-	// and asset.restored events remove (the expiry job and other
-	// devices' actions), so the view never shows a row that left the
-	// trash; every other event is not this view's business.
+	// delete. The SSE subscription converges through the LISTING,
+	// never on an event's claim: the stream's contract replays the
+	// retained ring to every fresh subscriber (a first connect
+	// carries no Last-Event-ID cursor, and the refcounted stream
+	// reconnects while routes swap), so a stale restored or deleted
+	// event for a row that is in the trash RIGHT NOW must not erase
+	// it. A restored or deleted event for a row the view holds
+	// re-fetches the listing; the server's answer decides which rows
+	// stay (the expiry job and other devices' actions included), and
+	// every other event is not this view's business.
 	//
 	// THE PINNED CHOICES:
 	//
@@ -67,16 +73,48 @@
 		};
 	});
 
-	// The SSE convergence of this view: restored and deleted events
-	// remove the named row. The other asset events (uploads, edits,
-	// the pipeline) do not change a row's trash membership -- the
+	// The SSE convergence of this view is REPLAY-SAFE: restored and
+	// deleted events for rows the view HOLDS re-fetch the listing,
+	// and the server's answer decides whether a row leaves. The
+	// event alone is a claim, never state -- the stream replays its
+	// retained ring to every fresh subscriber, and the
+	// restore-then-retrash flow delivers an OLD restored event for
+	// an asset that is in the trash right now; the row must survive
+	// it (the listing, having just returned it, says so). Events for
+	// assets the view does not hold (the rest of a replayed ring)
+	// cost nothing; the other asset events (uploads, edits, the
+	// pipeline) do not change a row's trash membership -- the
 	// countdown text is a snapshot until the next listing.
+	let refreshRun = 0;
+
+	/** Re-run the listing and adopt its answer (silent on failure). */
+	async function refresh(): Promise<void> {
+		// Newest-wins, the refetch discipline of the viewer's detail
+		// convergence: a slower stale response never lands over a
+		// newer one.
+		const run = ++refreshRun;
+		const outcome = await fetchTrash();
+		if (run !== refreshRun) {
+			return;
+		}
+		if (!outcome.ok) {
+			// Keep the current rows: the refresh is a convergence
+			// probe, not the load path -- the retry button stays a
+			// failed first load's recovery.
+			return;
+		}
+		items = outcome.items;
+		status = 'ready';
+	}
+
 	$effect(() => {
 		return subscribeAssetEvents((event) => {
 			if (event.name !== 'asset.restored' && event.name !== 'asset.deleted') {
 				return;
 			}
-			removeRow(event.assetId);
+			if (items.some((entry) => entry.id === event.assetId)) {
+				void refresh();
+			}
 		});
 	});
 
