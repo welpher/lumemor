@@ -2,7 +2,7 @@
 
 # lumemor
 
-**Lume (light) + Memor (memory)** — a self-hosted photo & video library designed for families.
+A self-hosted photo & video library designed for families.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-development%20in%20progress-yellow)](#status)
