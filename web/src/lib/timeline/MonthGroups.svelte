@@ -99,7 +99,8 @@
 						     seam rides the row's gap so the widths plus the
 						     gaps fill the container. Offscreen rows skip their
 						     tiles' layout and paint (the height is style-pinned,
-						     so the scrollbar stays honest). -->
+						     so the scrollbar stays honest). The tile's sizes
+						     hint is the engine's exact cell width (R2-2). -->
 						<div
 							class="wall__row flex [content-visibility:auto]"
 							style="height:{row.height}px; gap:{WALL_TILE_SEAM}px"
@@ -110,6 +111,7 @@
 										item={tile.item}
 										selected={isSelected(tile.item.id)}
 										selectable={selectable}
+										sizes="{tile.width}px"
 										onselect={onselect}
 									/>
 								</div>

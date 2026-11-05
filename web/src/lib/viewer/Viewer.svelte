@@ -6,11 +6,21 @@
 	// the still and the component video's play stream), the basic
 	// image zoom, the arrow-key walk over the timeline wall's
 	// current page sequence with the bottom filmstrip, and the
-	// layered Escape rule (the confirm dialog first, then the info
-	// drawer, then the route).
+	// layered Escape rule (the page's assign dialog first, then the
+	// info drawer, then the route).
+	//
+	// THE ACTION BAR (R2-3): the top chrome carries the curation
+	// affordances as icon buttons -- the close mark, the favorite
+	// toggle (per-user state, everyone holds it), the info-panel
+	// toggle, and the trash/restore pair (owner-only, the identity
+	// seam's write arm). The permanent delete LEFT the viewer for
+	// the trash page alone: the destructive irreversible action
+	// stays behind the trash listing's confirm-first flow, and this
+	// surface never carries it. The bar surfaces the last action's
+	// failure inline (the mapped error line under the buttons).
 	//
 	// OWNERSHIP SPLIT: this component owns the viewer's interaction
-	// state (zoom, live playback, drawer and dialog open) and every
+	// state (zoom, live playback, drawer open) and every
 	// presentation; the route page owns the data (the detail, the
 	// sequence, the network). The callbacks carry the page's
 	// outcomes back so the surfaces here can render failures.
@@ -27,13 +37,13 @@
 	//   through the page; ASSET_NOT_READY keeps the still photo (a
 	//   later press re-probes -- the pair's own ready event says
 	//   nothing about the component's transcode).
-	// - Escape layers: the delete dialog closes first, then the
-	//   drawer, then the route exits. Keys typed into an editable
-	//   field (the description editor) never reach the viewer.
+	// - Escape layers: the page's assign dialog closes first (its
+	//   own Escape), then the drawer, then the route exits. Keys
+	//   typed into an editable field (the description editor) never
+	//   reach the viewer.
 	import { decode } from 'blurhash';
 	import { _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
-	import Modal from '$lib/components/Modal.svelte';
 	import InfoDrawer from './InfoDrawer.svelte';
 	import {
 		assetThumbnailUrl,
@@ -43,6 +53,14 @@
 	} from '$lib/api/assets';
 	import type { BatchAction, TimelineItem } from '$lib/api/timeline';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Star from '@lucide/svelte/icons/star';
+	import Info from '@lucide/svelte/icons/info';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ZoomIn from '@lucide/svelte/icons/zoom-in';
+	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 
 	type Props = {
 		/** The current asset's detail; null while loading. */
@@ -51,8 +69,9 @@
 		favorite: boolean;
 		/**
 		 * Whether the caller owns the open asset (the session's userId
-		 * against the detail's ownerId): the drawer's owner-only write
-		 * affordances render for the owner alone.
+		 * against the detail's ownerId): the bar's owner-only
+		 * affordances (the trash/restore pair) and the drawer's
+		 * description editor render for the owner alone.
 		 */
 		isOwner: boolean;
 		/** The wall's current page items: the navigation sequence, newest first. */
@@ -81,8 +100,6 @@
 		onedit: (text: string) => Promise<{ ok: boolean; errorKey: string }>;
 		/** Run one curation action over the current asset. */
 		onaction: (action: BatchAction) => Promise<boolean>;
-		/** Run the permanent delete; ok means the page left the viewer. */
-		ondelete: () => Promise<{ ok: boolean; errorKey: string }>;
 		/** Open the page's assign dialog for one face (the drawer's People section). */
 		onassignface: (face: AssetFaceSummary) => void;
 	};
@@ -104,13 +121,10 @@
 		onprobe,
 		onedit,
 		onaction,
-		ondelete,
 		onassignface
 	}: Props = $props();
 
 	let drawerOpen = $state(false);
-	let confirmOpen = $state(false);
-	let deleteErrorKey = $state('');
 	let zoomed = $state(false);
 	let livePlaying = $state(false);
 	/** Whether the Live Photo component's stream answered the probe. */
@@ -153,7 +167,6 @@
 		viewLoaded = false;
 		fullLoaded = false;
 		posterFailed = false;
-		deleteErrorKey = '';
 	});
 
 	// Paint the blurhash placeholder (the tile's guarded pattern: a
@@ -244,15 +257,10 @@
 			return;
 		}
 		if (event.key === 'Escape') {
-			// The layered dismissal: the dialogs, then the drawer, then
-			// the route. The modals' own Escape handling coexists --
-			// their close is idempotent and it no-ops once closed. The
-			// page's assign dialog (modalOpen) owns its own Escape; this
-			// handler defers to it so the drawer underneath stays open.
-			if (confirmOpen) {
-				confirmOpen = false;
-				return;
-			}
+			// The layered dismissal: the page's dialog, then the
+			// drawer, then the route. The assign dialog (modalOpen)
+			// owns its own Escape; this handler defers to it so the
+			// drawer underneath stays open.
 			if (modalOpen) {
 				return;
 			}
@@ -263,7 +271,7 @@
 			onexit();
 			return;
 		}
-		if (confirmOpen || modalOpen) {
+		if (modalOpen) {
 			// The open dialog owns every other key.
 			return;
 		}
@@ -282,21 +290,6 @@
 		}
 	}
 
-	async function runDelete(): Promise<void> {
-		if (busy) {
-			return;
-		}
-		deleteErrorKey = '';
-		const outcome = await ondelete();
-		if (outcome.ok) {
-			confirmOpen = false;
-			return;
-		}
-		// The failure keeps the dialog open with the mapped message
-		// (a retry affordance); nothing was deleted.
-		deleteErrorKey = outcome.errorKey;
-	}
-
 	// The shared unknown-code fallback (see $lib/i18n/errors); the
 	// reactive `$_` keeps the text locale-tracked.
 	function errorText(key: string): string {
@@ -311,47 +304,86 @@
      restrained surface strategy); only the controls that truly float
      over the media keep their glass. -->
 <div class="viewer fixed inset-0 z-(--z-page) flex flex-col bg-night" aria-busy={status === 'loading'}>
-	<header class="viewer__bar flex items-center gap-3 px-4 py-2.5 text-cream-text">
+	<!-- The action bar (R2-3): the top chrome over the media, Night
+	     surface, icon buttons named by their aria-labels -- the close
+	     mark, the favorite toggle, the trash/restore pair (owner-only)
+	     and the info-panel toggle; the zoom rides with them on images.
+	     The last failed action's mapped error lands on the bar's wrap
+	     row (the batch bar's pattern). -->
+	<header class="viewer__bar flex flex-wrap items-center gap-3 px-4 py-2.5 text-cream-text">
 		<button
 			class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 			type="button"
 			aria-label={$_('viewer_close')}
 			onclick={onexit}
 		>
-			<svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
-				<path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
-			</svg>
+			<ChevronLeft size={22} />
 		</button>
-		<p class="viewer__title flex-1 font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail?.originalFilename ?? ''}</p>
-		<div class="viewer__bar-actions flex gap-1">
-			{#if isImage && detail !== null}
+		<p class="viewer__title flex-1 min-w-[120px] font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail?.originalFilename ?? ''}</p>
+		{#if detail !== null}
+			<!-- The action cluster shifts left of the open info panel (the
+			     panel is full-height over the right edge; without the
+			     shift its 360px would cover these buttons -- the zoom and
+			     info toggles were covered before the rework, the favorite
+			     and trash would have joined them). -->
+			<div class="viewer__bar-actions flex gap-1 {drawerOpen ? 'me-[calc(min(360px,92vw)+1rem)]' : ''}">
+				<button
+					class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+					type="button"
+					aria-label={favorite ? $_('action_unfavorite') : $_('action_favorite')}
+					aria-pressed={favorite}
+					disabled={busy}
+					onclick={() => void onaction(favorite ? 'unfavorite' : 'favorite')}
+				>
+					<!-- The per-user favorite: the star fills and takes the
+					     star accent color when the flag is on (the gold
+					     the tile's favorite badge already carries). -->
+					<Star size={20} fill={favorite ? 'currentColor' : 'none'} class={favorite ? 'text-star' : ''} />
+				</button>
+				{#if isOwner}
+					<button
+						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+						type="button"
+						aria-label={detail.isTrashed ? $_('action_restore') : $_('action_trash')}
+						disabled={busy}
+						onclick={() => void onaction(detail.isTrashed ? 'restore' : 'trash')}
+					>
+						{#if detail.isTrashed}
+							<RotateCcw size={20} />
+						{:else}
+							<Trash2 size={20} />
+						{/if}
+					</button>
+				{/if}
+				{#if isImage}
+					<button
+						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						type="button"
+						aria-label={zoomed ? $_('viewer_zoom_out') : $_('viewer_zoom_in')}
+						aria-pressed={zoomed}
+						onclick={() => (zoomed = !zoomed)}
+					>
+						{#if zoomed}
+							<ZoomOut size={20} />
+						{:else}
+							<ZoomIn size={20} />
+						{/if}
+					</button>
+				{/if}
 				<button
 					class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 					type="button"
-					aria-label={zoomed ? $_('viewer_zoom_out') : $_('viewer_zoom_in')}
-					aria-pressed={zoomed}
-					onclick={() => (zoomed = !zoomed)}
+					aria-label={$_('viewer_info_open')}
+					aria-pressed={drawerOpen}
+					onclick={() => (drawerOpen = !drawerOpen)}
 				>
-					<svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
-						<circle cx="11" cy="11" r="6.25" stroke="currentColor" stroke-width="1.75" />
-						<path d="M8.25 11h5.5M11 8.25v5.5M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
-					</svg>
+					<Info size={20} />
 				</button>
-			{/if}
-			<button
-				class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
-				type="button"
-				aria-label={$_('viewer_info_open')}
-				aria-pressed={drawerOpen}
-				onclick={() => (drawerOpen = !drawerOpen)}
-			>
-				<svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden="true">
-					<circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.75" />
-					<path d="M12 11v5.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
-					<circle cx="12" cy="7.9" r="1.05" fill="currentColor" />
-				</svg>
-			</button>
-		</div>
+			</div>
+		{/if}
+		{#if actionErrorKey !== ''}
+			<p class="viewer__action-error basis-full my-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(actionErrorKey)}</p>
+		{/if}
 	</header>
 
 	<div class="viewer__stage-wrap relative flex-1 min-h-0 flex flex-col">
@@ -532,9 +564,7 @@
 				aria-label={$_('viewer_previous')}
 				onclick={() => navigate(-1)}
 			>
-				<svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden="true">
-					<path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
-				</svg>
+				<ChevronLeft size={26} />
 			</button>
 		{/if}
 		{#if detail !== null && position !== -1 && position < sequence.length - 1}
@@ -544,9 +574,7 @@
 				aria-label={$_('viewer_next')}
 				onclick={() => navigate(1)}
 			>
-				<svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden="true">
-					<path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
-				</svg>
+				<ChevronRight size={26} />
 			</button>
 		{/if}
 	</div>
@@ -555,39 +583,12 @@
 {#if drawerOpen && detail !== null}
 	<InfoDrawer
 		{detail}
-		{favorite}
 		{isOwner}
-		{busy}
-		errorKey={actionErrorKey}
 		onclose={() => (drawerOpen = false)}
 		{onedit}
-		{onaction}
-		onrequestdelete={() => {
-			deleteErrorKey = '';
-			confirmOpen = true;
-		}}
 		{onassignface}
 	/>
 {/if}
-
-<Modal open={confirmOpen} title={$_('viewer_delete_title')} onclose={() => (confirmOpen = false)}>
-	{#snippet children()}
-		<p class="viewer__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-			{$_('viewer_delete_body', { values: { name: detail?.originalFilename ?? '' } })}
-		</p>
-		{#if deleteErrorKey !== ''}
-			<p class="viewer__confirm-error mt-3 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(deleteErrorKey)}</p>
-		{/if}
-	{/snippet}
-	{#snippet footer()}
-		<Button variant="ghost" disabled={busy} onclick={() => (confirmOpen = false)}>
-			{$_('common_cancel')}
-		</Button>
-		<Button variant="danger" disabled={busy} onclick={() => void runDelete()}>
-			{$_('viewer_delete_confirm')}
-		</Button>
-	{/snippet}
-</Modal>
 
 <style>
 	/* Residual styles (verbatim): the entrance keyframes and the

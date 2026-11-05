@@ -222,6 +222,11 @@ test('tiles pack into justified rows at the engine-computed sizes', async () => 
 	// width over the row height is the item's sensor ratio.
 	const tile = cells[0]?.querySelector<HTMLElement>('.tile');
 	expect(tile).not.toBeNull();
+
+	// The wall passes the engine's exact cell width as the tile's
+	// sizes hint (the srcset's honest width source).
+	const image = cells[0]?.querySelector('img');
+	expect(image?.getAttribute('sizes')).toBe('288px');
 	unmount(page);
 	flushSync();
 });
@@ -559,6 +564,43 @@ test('the scrubber jumps to a month group', async () => {
 	expect(scrolled).toHaveLength(1);
 	expect(scrolled[0]?.dataset.monthKey).toBe('2026-10');
 	Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+	unmount(page);
+	flushSync();
+});
+
+test('the scrubber tracking observes the scroll root through the capture phase', async () => {
+	// R2-1's risky edge: the frame moved scrolling from the document
+	// into the shell's <main>, and element scroll events DO NOT
+	// BUBBLE -- a window-level onscroll would silently die. The
+	// tracking must observe the scroll root some other way, and the
+	// capture-phase registration is the one that reaches every
+	// container under the document (a jsdom mount has no <main>, so
+	// a scroll dispatched on any descendant stands in for it).
+	vi.stubGlobal('fetch', stubFetch(timelineRoutes()));
+	const page = mountPage();
+	await settle();
+
+	const sections = Array.from(document.body.querySelectorAll<HTMLElement>('[data-month-key]'));
+	expect(sections.map((section) => section.dataset.monthKey)).toEqual(['2026-11', '2026-10']);
+
+	// A scrolled-forward geometry: both groups above the anchor, the
+	// older one last-past (the layout-less host's rects are zero, so
+	// the rects are stubbed the way the wall's own test does).
+	const rects = [
+		{ top: -300, height: 600 } as DOMRect,
+		{ top: -50, height: 600 } as DOMRect
+	];
+	sections.forEach((section, index) => {
+		vi.spyOn(section, 'getBoundingClientRect').mockReturnValue(rects[index]!);
+	});
+
+	// The non-bubbling scroll event of the scroll container.
+	sections[1]!.dispatchEvent(new Event('scroll'));
+	await new Promise((resolve) => requestAnimationFrame(resolve));
+	flushSync();
+
+	const active = document.body.querySelector('.scrubber__stop[aria-current="true"]');
+	expect(active?.textContent).toBe('October 2026');
 	unmount(page);
 	flushSync();
 });
