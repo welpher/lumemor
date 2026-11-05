@@ -117,7 +117,9 @@ function tile(page: Page, name: string) {
 	return page.getByRole('link', { name, exact: true });
 }
 
-/** One tile's selection checkbox (revealed on hover or in select mode). */
+/** One tile's selection checkbox (revealed on hover or keyboard focus
+ *  on every tile -- R2-11 made the check the selection entry, so it
+ *  surfaces regardless of any select mode). */
 function tileCheckbox(page: Page, name: string) {
 	return page.getByRole('checkbox', { name: `Select: ${name}`, exact: true });
 }
@@ -439,11 +441,13 @@ test.describe('the signed-in scenes', () => {
 		await batchBar(page).getByRole('button', { name: 'Hide', exact: true }).click();
 		await expect(tile(page, PHOTO_A_NAME)).toHaveCount(0);
 
-		// The timeline's Hidden entry opens the hidden view: the tile
-		// lives there now. The populated view renders the wall itself
-		// (month groups, no page heading), so the document title is
-		// the view's identity.
-		await page.getByRole('link', { name: 'Hidden', exact: true }).click();
+		// The navigation drawer's Hidden entry opens the hidden view
+		// (R2-11: the timeline's toolbar link is gone -- the drawer
+		// owns the entry, beside favorites and trash): the tile lives
+		// there now. The populated view renders the wall itself (month
+		// groups, no page heading), so the document title is the
+		// view's identity.
+		await navigateViaDrawer(page, 'Hidden');
 		await expect(page).toHaveURL(/\/hidden$/);
 		await expect(page).toHaveTitle('Hidden · lumemor');
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();

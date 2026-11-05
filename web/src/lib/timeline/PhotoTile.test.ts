@@ -186,6 +186,36 @@ test('the checkbox reflects the selection state and toggles without navigating',
 	flushSync();
 });
 
+test('the check affordance reveals on hover and keyboard focus regardless of the select mode', () => {
+	// R2-11: the selection entry IS the check. The affordance hides
+	// at rest but its reveal utilities are unconditional -- hover and
+	// keyboard focus surface it on EVERY tile (never only while a
+	// select mode is armed), and its click enters the selection even
+	// when the wall is not selectable yet. The role/aria-checked/
+	// aria-label contract survives exactly.
+	const { tile, onselect } = mountTile({}, { selectable: false, selected: false });
+	const checkbox = tileRoot().querySelector<HTMLButtonElement>('.tile__check');
+	expect(checkbox).not.toBeNull();
+
+	// Hidden at rest, revealed by the pointer or the keyboard --
+	// always, not gated on the selectable prop.
+	expect(checkbox?.className).toContain('opacity-0');
+	expect(checkbox?.className).toContain('group-hover:opacity-100');
+	expect(checkbox?.className).toContain('group-focus-within:opacity-100');
+	// The a11y contract is exactly the wall's checkbox role.
+	expect(checkbox?.getAttribute('role')).toBe('checkbox');
+	expect(checkbox?.getAttribute('aria-checked')).toBe('false');
+	expect(checkbox?.getAttribute('aria-label')).toBe('Select: IMG_1234.jpg');
+
+	// The first check-click enters the selection (the batch bar rises
+	// at >=1 on the wall's side of the callback).
+	checkbox?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
+	expect(onselect).toHaveBeenCalledWith('a1', true);
+	unmount(tile);
+	flushSync();
+});
+
 test('badges: favorite star, live photo mark, video mark', () => {
 	const favorite = mountTile({ isFavorite: true });
 	expect(tileRoot().querySelector('.tile__badge--favorite')).not.toBeNull();

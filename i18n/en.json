@@ -98,6 +98,7 @@
   "viewer_next": "Next photo",
   "viewer_zoom_in": "Zoom in",
   "viewer_zoom_out": "Zoom out",
+  "viewer_zoom_reset": "Reset zoom",
   "viewer_processing": "This video is still processing. It plays as soon as it is ready.",
   "viewer_filmstrip_label": "Photos in view",
   "viewer_live_play": "Play the Live Photo",

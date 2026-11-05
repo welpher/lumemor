@@ -1,14 +1,16 @@
 <script lang="ts">
 	// The navigation drawer of the content shell (web IA: the
 	// hamburger opens it; Escape and a click outside close it). It
-	// carries the IA's seven content sections in route-table order
-	// (the albums wall's entry is live since the M3c surface), and --
-	// below the content list, behind a divider -- the admin panel's
-	// entry, rendered only for an admin's session (the identity seam's
-	// role arm, the M2d deferred item: a member account never sees the
-	// management surface's door). Places and Memories stay
-	// visible-but-disabled placeholders until their M3 domains
-	// arrive.
+	// carries the IA's content sections in route-table order (the
+	// albums wall's entry live since the M3c surface), plus the
+	// hidden view's entry, which moved here from the timeline's
+	// toolbar in R2-11 -- it sits with the other list views
+	// (favorites/trash). Below the content list, behind a divider,
+	// the admin panel's entry renders only for an admin's session
+	// (the identity seam's role arm, the M2d deferred item: a member
+	// account never sees the management surface's door). Places and
+	// Memories stay visible-but-disabled placeholders until their M3
+	// domains arrive.
 	//
 	// THE LEADING ICONS (R2-5): every item LEADS with its lucide icon
 	// (24-grid, 2px round caps, currentColor -- the icon language of
@@ -23,6 +25,7 @@
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Star from '@lucide/svelte/icons/star';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Shield from '@lucide/svelte/icons/shield';
 	import type { Component } from 'svelte';
@@ -31,7 +34,7 @@
 		labelKey: string;
 		href: string;
 		/** Disabled items are M3 placeholders, not hidden: the IA's
-		 * seven sections stay visible in a disabled state. */
+		 * content sections stay visible in a disabled state. */
 		disabled: boolean;
 		/** The leading icon component (decorative, aria-hidden). */
 		icon: Component;
@@ -44,6 +47,7 @@
 		{ labelKey: 'nav_places', href: '/places', disabled: true, icon: MapPin },
 		{ labelKey: 'nav_memories', href: '/memories', disabled: true, icon: Sparkles },
 		{ labelKey: 'nav_favorites', href: '/favorites', disabled: false, icon: Star },
+		{ labelKey: 'hidden_title', href: '/hidden', disabled: false, icon: EyeOff },
 		{ labelKey: 'nav_trash', href: '/trash', disabled: false, icon: Trash2 }
 	];
 

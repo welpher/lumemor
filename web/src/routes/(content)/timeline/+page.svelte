@@ -45,9 +45,12 @@
 
 	const timeline = createTimelineClient();
 
-	// The selection is a reactive id set: checkbox and tile clicks
-	// toggle it, Esc and the bar's clear drop it, and the select mode
-	// (the touch-friendly entry) keeps the checkboxes revealed.
+	// The selection is a reactive id set: the tiles' check
+	// affordances toggle it (the entry, R2-11: the check reveals on
+	// hover/keyboard focus on every tile, and its first click enters
+	// the selection), Esc and the bar's clear drop it, and the
+	// ?album= handoff arms the select mode for the add-photos flow
+	// (the touch-friendly path the toolbar button used to carry).
 	const selection = new SvelteSet<string>();
 	let selectMode = $state(false);
 	let batchErrorKey = $state('');
@@ -353,25 +356,13 @@
 </svelte:head>
 
 <section class="timeline max-w-[1200px] mx-auto" aria-busy={$timeline.status === 'loading'}>
-	<!-- The one toolbar of the wall: the hidden view's entry point
-	     (the IA's timeline-header entry, a lightweight link while the
-	     dropdown pattern it names waits for the settings surface of
-	     M3) and, once tiles exist, the selection-mode toggle. -->
-	<div class="timeline__toolbar flex justify-end items-center gap-3 mb-2">
-		<a
-			class="timeline__hidden-link mr-auto px-2.5 py-1.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft no-underline rounded-control transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
-			href="/hidden"
-		>{$_('hidden_title')}</a>
-		{#if $timeline.items.length > 0}
-			<Button
-				variant="ghost"
-				aria-pressed={selectMode}
-				onclick={() => (selectMode = !selectMode)}
-			>
-				{selectMode ? $_('action_done') : $_('action_select')}
-			</Button>
-		{/if}
-	</div>
+	<!-- No toolbar (R2-11): the timeline's header carries nothing but
+	     what the top bar already owns (upload, search). The hidden
+	     view's entry moved to the navigation drawer; the selection
+	     entry is the tiles' check affordance (hover/keyboard-focus
+	     revealed on every tile, the first click enters the selection)
+	     -- the ?album= handoff below still arms the select mode for
+	     the add-photos flow. -->
 
 	{#if firstLoad}
 		<p class="timeline__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('timeline_loading')}</p>

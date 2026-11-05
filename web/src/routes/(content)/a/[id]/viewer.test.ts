@@ -316,6 +316,10 @@ beforeEach(async () => {
 	navigationCallbacks.length = 0;
 	vi.clearAllMocks();
 	clearWallItems();
+	// The info panel's open preference persists in localStorage (R2-9):
+	// every test starts from the default (closed) unless it writes the
+	// key itself.
+	localStorage.clear();
 	// Boot the session store as the sequence's owner: the drawer's
 	// owner-only affordances resolve against this identity (the
 	// identity seam's store carries it; the interceptor stays inert
@@ -743,25 +747,183 @@ test('the action bar carries the curation icon actions; the permanent delete is 
 
 	// R2-3's bar: the close mark, the favorite toggle, the info-panel
 	// toggle and (for the owner) the trash/restore pair, every button
-	// an icon button named by its aria-label.
+	// an icon button named by its aria-label. R2-7 widens the zoom
+	// controls to the in/out/reset trio.
 	expect(() => barButton('Back to the timeline')).not.toThrow();
 	expect(() => barButton('Favorite')).not.toThrow();
 	expect(() => barButton('Photo information')).not.toThrow();
 	expect(() => barButton('Trash')).not.toThrow();
 	expect(() => barButton('Zoom in')).not.toThrow();
+	expect(() => barButton('Zoom out')).not.toThrow();
+	expect(() => barButton('Reset zoom')).not.toThrow();
 
 	// The permanent delete left the viewer entirely: no confirm
 	// dialog, no affordance (it lives on the trash page alone).
 	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 	expect(document.body.textContent).not.toContain('Delete permanently');
 
-	// With the info panel open, the action cluster shifts left of the
-	// panel's edge (the full-height panel would otherwise cover the
-	// buttons at the bar's right end).
+	// With the info panel open, the action cluster keeps its overlay
+	// guard -- the left shift (R2-3) now serves only the <lg overlay
+	// fallback form (lg:me-0); at lg+ the split layout itself clears
+	// the cluster (the split composition test below).
+	const actions = () => document.body.querySelector('.viewer__bar-actions');
 	click(barButton('Photo information'));
-	expect(document.body.querySelector('.viewer__bar-actions')?.className).toContain('me-[calc(min(360px,92vw)+1rem)]');
+	expect(actions()?.className).toContain('me-[calc(min(360px,92vw)+1rem)]');
+	expect(actions()?.className).toContain('lg:me-0');
 	click(barButton('Photo information'));
-	expect(document.body.querySelector('.viewer__bar-actions')?.className).not.toContain('me-[calc(min(360px,92vw)+1rem)]');
+	expect(actions()?.className).not.toContain('me-[calc(min(360px,92vw)+1rem)]');
+	unmount(app);
+	flushSync();
+});
+
+test('the info panel docks as a right split region at lg and falls back to the overlay below it', async () => {
+	// R2-10's composition: the viewer root is a flex ROW -- the media
+	// column flexes (flex-1 min-w-0, the bar and the stage live inside
+	// it) and the panel rides BESIDE it as a real flex sibling
+	// (lg:static: it occupies layout space, so the stage re-fits
+	// through the flow instead of being covered). Below lg the same
+	// panel keeps the fixed overlay-drawer form.
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+
+	// The frame: the root dropped its column layout for the row; the
+	// media column owns the column flow.
+	const root = element('.viewer');
+	expect(root.className).not.toContain('flex-col');
+	const main = element('.viewer__main');
+	expect(main.className).toContain('flex-col');
+	expect(main.className).toContain('flex-1');
+	expect(main.className).toContain('min-w-0');
+	// The bar and the stage both render inside the media column (the
+	// panel can never cover them at lg+).
+	expect(main.contains(element('.viewer__bar'))).toBe(true);
+	expect(main.contains(element('.viewer__stage'))).toBe(true);
+
+	openDrawer();
+	const panel = element('.info');
+	// The panel is INSIDE the viewer's row (a flex sibling of the
+	// media column), never a page-level overlay.
+	expect(root.contains(panel)).toBe(true);
+	// The docked form: static in the row, the same width family, no
+	// floating shadow. The overlay form (fixed, full-height, shadowed)
+	// rides the same element below lg.
+	expect(panel.className).toContain('lg:static');
+	expect(panel.className).toContain('lg:shrink-0');
+	expect(panel.className).toContain('lg:shadow-none');
+	expect(panel.className).toContain('w-[min(360px,92vw)]');
+	expect(panel.className).toContain('fixed');
+	expect(panel.className).toContain('shadow-overlay');
+	// The zoom var the media transform rides (the engine drives it
+	// per frame; 1 at rest).
+	expect(element('.viewer__stage').style.getPropertyValue('--viewer-zoom')).toBe('1');
+	unmount(app);
+	flushSync();
+});
+
+test('the info panel open preference persists across viewer sessions', async () => {
+	// R2-9: one localStorage key, default closed; the stored open
+	// state restores on the next viewer mount, and closing persists
+	// back.
+	const first = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+	expect(document.body.querySelector('.info')).toBeNull();
+
+	openDrawer();
+	expect(localStorage.getItem('lumemor:viewer:info-panel')).toBe('true');
+	unmount(first.app);
+	flushSync();
+
+	// A fresh viewer session restores the open panel without a click.
+	const second = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+	expect(document.body.querySelector('.info')).not.toBeNull();
+
+	// Closing it persists the closed preference for the next session.
+	click(barButton('Photo information'));
+	expect(localStorage.getItem('lumemor:viewer:info-panel')).toBe('false');
+	unmount(second.app);
+	flushSync();
+
+	const third = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+	expect(document.body.querySelector('.info')).toBeNull();
+	unmount(third.app);
+	flushSync();
+});
+
+test('the +/- keys and the double-click ride the gradual zoom; a neighbor resets it', async () => {
+	// R2-7/8: the keyboard pair steps the same engine the bar's
+	// buttons and the stage's double-click ride -- every change
+	// animates, and the affordances key on the engine's target (the
+	// zoomed stage flips synchronously with the intent). Navigating
+	// to a neighbor snaps back to the resting scale.
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
+		get('/api/v1/assets/a1', () => jsonResponse(200, detailBodyOf(sequence[0]!)))
+	]);
+	await settle();
+	const stage = () => element('.viewer__stage');
+
+	// The zoomed state is the zoomed class + the cursor contract.
+	expect(stage().classList.contains('viewer__stage--zoomed')).toBe(false);
+	pressKey('+');
+	expect(stage().classList.contains('viewer__stage--zoomed')).toBe(true);
+	pressKey('-');
+	expect(stage().classList.contains('viewer__stage--zoomed')).toBe(false);
+
+	// The double-click binary: on at rest, off when zoomed.
+	stage().dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+	flushSync();
+	expect(stage().classList.contains('viewer__stage--zoomed')).toBe(true);
+	stage().dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+	flushSync();
+	expect(stage().classList.contains('viewer__stage--zoomed')).toBe(false);
+
+	// The zoomed state holds across the same-id replacement (the
+	// per-asset reset only fires on an actual asset change -- the
+	// stage-survival test) and the walk replaces the route.
+	pressKey('+');
+	handlers[0]?.({ id: 40, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+	await settle();
+	expect(stage().classList.contains('viewer__stage--zoomed')).toBe(true);
+	pressKey('ArrowLeft');
+	expect(goto).toHaveBeenCalledWith('/a/a1', { replaceState: true });
+	unmount(app);
+	flushSync();
+
+	// A fresh neighbor starts unzoomed: the engine's hard reset ran on
+	// the asset change.
+	const neighbor = mountViewer('a1', [
+		get('/api/v1/assets/a1', () => jsonResponse(200, detailBodyOf(sequence[0]!)))
+	]);
+	await settle();
+	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(false);
+	unmount(neighbor.app);
+	flushSync();
+});
+
+test("a Live Photo's double press is the press pair, never a zoom toggle", async () => {
+	const liveDetail = () =>
+		jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', liveDetail),
+		get('/api/v1/assets/c2/play', () => rangeResponse())
+	]);
+	await settle();
+
+	// The press affordance covers the stage; its double-click stays
+	// the press pair (play/stop), so the zoom stays at rest.
+	const press = element('.viewer__press');
+	press.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+	flushSync();
+	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(false);
+
+	// A double-click on the still itself toggles the zoom.
+	element('.viewer__image').dispatchEvent(
+		new MouseEvent('dblclick', { bubbles: true, cancelable: true })
+	);
+	flushSync();
+	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(true);
 	unmount(app);
 	flushSync();
 });
@@ -1082,16 +1244,18 @@ test('an in-progress description draft survives same-id detail replacements', as
 	unmount(app);
 	flushSync();
 
-	// An actual asset change (the drawer-open navigation to the
-	// neighbor) resets the edit mode: the neighbor's drawer opens in
-	// the read view and the draft never leaks across assets.
+	// An actual asset change (the panel-open navigation to the
+	// neighbor) resets the edit mode: the neighbor's panel RESTORED
+	// OPEN (R2-9: the preference persists across viewer sessions, and
+	// this test's first half left it open), so no toggle click is
+	// needed -- the read view renders and the draft never leaks
+	// across assets.
 	const neighbor = mountViewer('a1', [
 		get('/api/v1/assets/a1', () =>
 			jsonResponse(200, detailBodyOf(sequence[0]!, { description: 'The neighbor caption.' }))
 		)
 	]);
 	await settle();
-	openDrawer();
 	expect(document.body.querySelector('textarea.info__editor')).toBeNull();
 	expect(element('.info__description').textContent).toBe('The neighbor caption.');
 	unmount(neighbor.app);
@@ -1234,11 +1398,13 @@ test('the drawer renders one chip per face with the caller-visible label states'
 	flushSync();
 
 	// A faceless asset: the honest empty line, never a bare heading.
+	// (The panel restored open -- R2-9's persistence, this test's own
+	// first half left it open -- so no toggle click precedes the
+	// assertion.)
 	const empty = mountViewer('a2', [
 		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: [] })))
 	]);
 	await settle();
-	openDrawer();
 	expect(document.body.querySelector('.info__face')).toBeNull();
 	expect(element('.info__faces-empty').textContent).toBe('No people recognized in this photo.');
 	unmount(empty.app);

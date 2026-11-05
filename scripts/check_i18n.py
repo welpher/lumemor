@@ -203,6 +203,7 @@ NON_ERROR_KEYS = {
     "viewer_next",
     "viewer_zoom_in",
     "viewer_zoom_out",
+    "viewer_zoom_reset",
     "viewer_processing",
     "viewer_filmstrip_label",
     "viewer_live_play",
