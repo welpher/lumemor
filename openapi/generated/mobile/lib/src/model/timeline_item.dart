@@ -25,8 +25,8 @@ part 'timeline_item.g.dart';
 /// * [isTrashed] - Always false in the timeline: trashed assets never enter it. The field exists to keep the shape identical to the asset detail's. 
 /// * [isFavorite] - Whether the REQUESTING user favorites this asset: the caller's own row of the per-user favorites state, written by the batch endpoint's favorite action. False whenever the caller has no favorites row for the asset -- the same asset can be a favorite for one viewer of a shared timeline and not for another. 
 /// * [isReady] - True once the whole pipeline of the asset (metadata and serving copies) completed; until then the pipeline-dependent fields are null and the client renders placeholders. 
-/// * [width] - Pixel width in sensor order; null until the metadata job refined the dimensions. 
-/// * [height] - Pixel height in sensor order; null until the metadata job refined the dimensions. 
+/// * [width] - Pixel width in sensor order, straight from the assets column: the upload writes the 0 placeholder and the metadata job refines the real value, so 0 means \"not refined yet\" (the wall layout assumes a fallback aspect until then). Always present -- the justified photo wall reads it on every tile, never null. 
+/// * [height] - Pixel height in sensor order, straight from the assets column: the upload writes the 0 placeholder and the metadata job refines the real value, so 0 means \"not refined yet\" (the wall layout assumes a fallback aspect until then). Always present -- the justified photo wall reads it on every tile, never null. 
 /// * [durationMs] - Playback duration of a video in milliseconds; null for images and until the metadata job refined it. 
 /// * [blurhash] - The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it. 
 /// * [livePhotoVideoId] - For a Live Photo image, the id of its linked component video row (its original is downloadable by that id, the transcoded play stream is not); null otherwise. 
@@ -86,13 +86,13 @@ abstract class TimelineItem implements Built<TimelineItem, TimelineItemBuilder> 
   @BuiltValueField(wireName: r'isReady')
   bool get isReady;
 
-  /// Pixel width in sensor order; null until the metadata job refined the dimensions. 
+  /// Pixel width in sensor order, straight from the assets column: the upload writes the 0 placeholder and the metadata job refines the real value, so 0 means \"not refined yet\" (the wall layout assumes a fallback aspect until then). Always present -- the justified photo wall reads it on every tile, never null. 
   @BuiltValueField(wireName: r'width')
-  int? get width;
+  int get width;
 
-  /// Pixel height in sensor order; null until the metadata job refined the dimensions. 
+  /// Pixel height in sensor order, straight from the assets column: the upload writes the 0 placeholder and the metadata job refines the real value, so 0 means \"not refined yet\" (the wall layout assumes a fallback aspect until then). Always present -- the justified photo wall reads it on every tile, never null. 
   @BuiltValueField(wireName: r'height')
-  int? get height;
+  int get height;
 
   /// Playback duration of a video in milliseconds; null for images and until the metadata job refined it. 
   @BuiltValueField(wireName: r'durationMs')
@@ -195,14 +195,14 @@ class _$TimelineItemSerializer implements PrimitiveSerializer<TimelineItem> {
       specifiedType: const FullType(bool),
     );
     yield r'width';
-    yield object.width == null ? null : serializers.serialize(
+    yield serializers.serialize(
       object.width,
-      specifiedType: const FullType.nullable(int),
+      specifiedType: const FullType(int),
     );
     yield r'height';
-    yield object.height == null ? null : serializers.serialize(
+    yield serializers.serialize(
       object.height,
-      specifiedType: const FullType.nullable(int),
+      specifiedType: const FullType(int),
     );
     yield r'durationMs';
     yield object.durationMs == null ? null : serializers.serialize(
@@ -336,17 +336,15 @@ class _$TimelineItemSerializer implements PrimitiveSerializer<TimelineItem> {
         case r'width':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(int),
-          ) as int?;
-          if (valueDes == null) continue;
+            specifiedType: const FullType(int),
+          ) as int;
           result.width = valueDes;
           break;
         case r'height':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(int),
-          ) as int?;
-          if (valueDes == null) continue;
+            specifiedType: const FullType(int),
+          ) as int;
           result.height = valueDes;
           break;
         case r'durationMs':

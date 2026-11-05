@@ -177,6 +177,26 @@
 		'Noto Sans SC', 'Helvetica Neue', Arial, sans-serif;
 
 	/* ---------------------------------------------------------------- */
+	/* The justified photo wall (the wall's density rhythm)              */
+	/* ---------------------------------------------------------------- */
+
+	/* The wall's layout tokens. The row math runs in TypeScript
+	 * (src/lib/timeline/layout.ts), where CSS custom properties
+	 * cannot be read, so the three row-math values are mirrored
+	 * there as pinned constants -- keep the pairs in sync exactly
+	 * like the @theme/Layer 2 mirrors above. The tile seam is the
+	 * photo-first density statement; the month gap (the band's
+	 * ceiling) keeps the group separation breathing at five times
+	 * the seam, which is the hierarchy the wall reads on. */
+	--wall-row-target: 216px; /* target tile height of a packed row */
+	--wall-row-tolerance: 0.25; /* accepted height band around the target */
+	--wall-tile-seam: 3px; /* gap between the tiles of one row */
+	--wall-month-gap: 16px; /* breathing room above a month group */
+	--wall-select-scale: 0.85; /* the selected tile's retreat */
+	--wall-select-ring: 3px; /* the selected tile's accent ring */
+	--wall-fallback-aspect: 1.5; /* assumed aspect while dims are 0 */
+
+	/* ---------------------------------------------------------------- */
 	/* Radii, shadows' companions and motion (spec §5)                  */
 	/* ---------------------------------------------------------------- */
 
@@ -280,6 +300,18 @@ html.dark {
 	:focus-visible {
 		outline: 2px solid var(--color-accent);
 		outline-offset: 2px;
+	}
+
+	/* The hairline default: every `border`-style utility paints the
+	 * theme's border color unless the component overrides it, so
+	 * hairlines exist without per-component color utilities. The
+	 * preflight base sets currentColor; this restores the token
+	 * default (Tailwind's utilities layer still overrides it). */
+	*,
+	::before,
+	::after,
+	::backdrop {
+		border-color: var(--color-border);
 	}
 }
 

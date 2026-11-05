@@ -182,12 +182,15 @@
 		<div class="trash__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3">
 			{#each items as entry (entry.id)}
 				<div class="trash__cell flex flex-col gap-2">
-					<!-- The recovery tile stacks the countdown over the tile and
-					     the row's actions under it: the trash styling carries the
+					<!-- The recovery tile keeps the management grid's square
+					     crop (the wrapper owns the box now that the tile
+					     renders at true aspect inside the justified walls)
+					     and stacks the countdown over it and the row's
+					     actions under it: the trash styling carries the
 					     de-emphasized tone of a row on its way out. -->
-					<div class="trash__tile relative rounded-control [outline:1px_solid_var(--color-border)] outline-offset-[-1px] opacity-85">
+					<div class="trash__tile relative aspect-square overflow-hidden rounded-control [outline:1px_solid_var(--color-border)] outline-offset-[-1px] opacity-85">
 						<PhotoTile item={tileItem(entry)} selected={false} selectable={false} onselect={noopSelect} />
-						<p class="trash__days absolute bottom-1.5 left-1.5 z-[2] py-0.5 px-2 font-body font-semibold text-[12px] leading-[1.5] text-accent-on bg-[rgb(20_26_46/0.65)] backdrop-blur-[2px] rounded-control">{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}</p>
+						<p class="trash__days absolute bottom-1.5 left-1.5 z-[2] py-0.5 px-2 font-body font-semibold text-[12px] leading-[1.5] text-cream-text bg-night rounded-control">{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}</p>
 					</div>
 					<div class="trash__actions flex gap-2">
 						<Button class="flex-1" variant="ghost" disabled={busy} onclick={() => void restore(entry)}>

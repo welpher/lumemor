@@ -1,21 +1,33 @@
 <script lang="ts">
-	// One tile of the timeline wall: the blurhash placeholder paints
-	// first (a 32x32 decode stretched over the square tile), the
+	// One tile of the photo walls: the blurhash placeholder paints
+	// first (a 32x32 decode stretched over the tile box), the
 	// thumbnail request only fires once the pipeline marked the asset
 	// ready (before that the endpoint answers ASSET_NOT_READY -- pure
 	// noise), and the image crossfades in over the placeholder on its
 	// load event. The browser's cache does the ETag/immutable work;
 	// the tile just sets the src.
 	//
+	// THE TILE'S BOX (the justified wall): the tile renders at its
+	// TRUE aspect, but it no longer sizes itself -- the row layout
+	// engine (see ./layout.ts) computes the box from the item's
+	// dimensions and the caller wraps this tile in a sized cell. A
+	// RESTING tile is pure photo edge-to-edge: no radius, no border,
+	// no frame -- the photo IS the surface. Selection is geometric:
+	// the tile retreats (a scale), gains its radius, and an accent
+	// ring draws at its edge -- the whitespace IS the selected state,
+	// no reflow, no checkbox geometry change.
+	//
 	// THE PINNED LIVE-PHOTO DECISION: TimelineItem carries
 	// livePhotoVideoId, so a Live Photo tile shows its small live
 	// badge here; the hover video preview arrives with the viewer and
 	// the component transcode (later tasks of this milestone).
 	//
-	// Selection: the checkbox appears on hover and whenever a
-	// selection or the select mode is active (the touch-friendly
-	// path); with selection active the whole tile toggles, otherwise
-	// the tile is the anchor into the asset viewer.
+	// Selection interaction (unchanged): the check circle appears on
+	// hover and whenever a selection or the select mode is active
+	// (the touch-friendly path); with selection active the whole tile
+	// toggles, otherwise the tile is the anchor into the asset
+	// viewer. `aria-checked` and the keyboard semantics stay exactly
+	// as they were -- only the visuals moved.
 	import { decode } from 'blurhash';
 	import { _ } from 'svelte-i18n';
 	import type { TimelineItem } from '$lib/api/timeline';
@@ -89,15 +101,19 @@
 	}
 </script>
 
-<!-- One square cell of the wall grid: the anchor fills it with the
-     stacked placeholder and image; the checkbox is a sibling, not
-     nested interactive content. The group class feeds the hover and
-     focus-within reveal of the checkbox; the content-visibility pair
-     is the batched-render windowing of v0 (tiles offscreen skip
-     their layout and paint, the estimated size keeps the scrollbar
-     honest). -->
+<!-- One cell of the justified wall: the caller's sized cell carries
+     the box (the row's height and the engine's width); this tile
+     fills it edge-to-edge. The resting tile is the photo alone; the
+     selected state is geometric -- the retreat scale, the radius and
+     the accent ring at the retreated edge, all transform/outline so
+     nothing reflows. The ink chips (badges, check) are opaque night
+     surfaces over the photo, no blur. The content-visibility pair
+     keeps offscreen tiles out of layout and paint (rows add their own
+     windowing above it). -->
 <div
-	class="tile group relative aspect-square overflow-hidden rounded-control bg-accent-soft [content-visibility:auto] [contain-intrinsic-size:auto_240px] {selected ? '[outline:3px_solid_var(--color-accent)] outline-offset-[-3px]' : ''}"
+	class="tile group relative w-full h-full overflow-hidden bg-accent-soft [content-visibility:auto] transition-[scale,border-radius] duration-(--motion-base) ease-standard {selected
+		? 'rounded-control scale-(--wall-select-scale) [outline:var(--wall-select-ring)_solid_var(--color-accent)] [outline-offset:calc(var(--wall-select-ring)*-1)]'
+		: ''}"
 	class:tile--selected={selected}
 	class:tile--selectable={selectable}
 	class:cursor-pointer={selectable}
@@ -134,7 +150,7 @@
 
 		{#if item.isFavorite}
 			<span
-				class="tile__badge tile__badge--favorite absolute top-1.5 right-1.5 z-[2] inline-flex items-center justify-center w-6 h-6 rounded-full text-star bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px]"
+				class="tile__badge tile__badge--favorite absolute top-1.5 right-1.5 z-[2] inline-flex items-center justify-center w-6 h-6 rounded-full text-star bg-night"
 				title={$_('asset_favorite_label')}
 				aria-hidden="true"
 			>
@@ -146,7 +162,7 @@
 
 		{#if item.kind === 'image' && item.livePhotoVideoId !== null}
 			<span
-				class="tile__badge tile__badge--live absolute top-1.5 left-1.5 z-[2] inline-flex items-center justify-center w-6 h-6 rounded-full text-accent-on bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px]"
+				class="tile__badge tile__badge--live absolute top-1.5 left-1.5 z-[2] inline-flex items-center justify-center w-6 h-6 rounded-full text-cream-text bg-night"
 				title={$_('asset_live_photo_label')}
 				aria-hidden="true"
 			>
@@ -159,7 +175,7 @@
 
 		{#if item.kind === 'video'}
 			<span
-				class="tile__badge tile__badge--video absolute bottom-1.5 right-1.5 z-[2] inline-flex items-center justify-center w-6 h-6 rounded-full text-accent-on bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px]"
+				class="tile__badge tile__badge--video absolute bottom-1.5 right-1.5 z-[2] inline-flex items-center justify-center w-6 h-6 rounded-full text-cream-text bg-night"
 				title={$_('asset_video_label')}
 				aria-hidden="true"
 			>
@@ -173,9 +189,11 @@
 
 	<!-- The selection checkbox: revealed on hover (the group on the
 	     tile, for pointer users) and whenever selection is active
-	     (touch users, mid-selection). -->
+	     (touch users, mid-selection). An opaque night surface with a
+	     translucent cream rim -- readable over any photo, in both
+	     themes, without a blur in sight. -->
 	<button
-		class="tile__check absolute top-1.5 left-1.5 z-[3] inline-flex items-center justify-center w-[26px] h-[26px] p-0 border-2 border-accent-on rounded-full text-transparent bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px] cursor-pointer transition-[opacity] duration-(--motion-fast) ease-standard group-hover:opacity-100 group-focus-within:opacity-100 aria-checked:bg-accent aria-checked:border-accent aria-checked:text-accent-on"
+		class="tile__check absolute top-1.5 left-1.5 z-[3] inline-flex items-center justify-center w-[26px] h-[26px] p-0 border border-cream-text/35 rounded-full text-transparent bg-night cursor-pointer transition-[opacity,background-color,border-color,color] duration-(--motion-fast) ease-standard group-hover:opacity-100 group-focus-within:opacity-100 aria-checked:bg-accent aria-checked:border-accent aria-checked:text-accent-on"
 		class:opacity-0={!selectable}
 		class:tile__check--shown={selectable}
 		type="button"

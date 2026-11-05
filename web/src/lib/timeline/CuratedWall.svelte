@@ -26,7 +26,7 @@
 	import { subscribeAssetEvents } from '$lib/events';
 	import { groupTimelineItems } from '$lib/timeline/grouping';
 	import { publishWallItems } from '$lib/timeline/wall.svelte';
-	import PhotoTile from '$lib/timeline/PhotoTile.svelte';
+	import MonthGroups from '$lib/timeline/MonthGroups.svelte';
 	import BatchBar from '$lib/timeline/BatchBar.svelte';
 	import Button from '$lib/components/Button.svelte';
 
@@ -230,30 +230,10 @@
 			<Button variant="primary" onclick={() => void wall.loadMore()}>{$_('action_retry')}</Button>
 		</div>
 	{:else}
-		{#each groups as group (group.key)}
-			<!-- Both sticky headers ride above the tiles; the section's
-			     scroll margin leaves room for them under the scrubber's
-			     jumps. -->
-			<section class="wall__month scroll-mt-[92px]" data-month-key={group.key}>
-				<h2 class="wall__month-header sticky top-0 z-[10] mt-6 mb-3 py-2.5 px-3 text-[20px] bg-[color-mix(in_srgb,var(--color-page)_88%,transparent)] backdrop-blur-[6px] rounded-control">{group.label}</h2>
-				{#each group.days as day (day.key)}
-					<div class="wall__day" data-day-key={day.key}>
-						<!-- Stacks under the month header (44px + its margins). -->
-						<h3 class="wall__day-header sticky top-[44px] z-[9] mt-4 mb-2 py-1 px-2 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-[color-mix(in_srgb,var(--color-page)_88%,transparent)] backdrop-blur-[6px] rounded-control">{day.label}</h3>
-						<div class="wall__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3">
-							{#each day.items as tileItem (tileItem.id)}
-								<PhotoTile
-									item={tileItem}
-									selected={selection.has(tileItem.id)}
-									selectable={selectable}
-									onselect={toggleSelected}
-								/>
-							{/each}
-						</div>
-					</div>
-				{/each}
-			</section>
-		{/each}
+		<!-- The month-grouped justified wall (the shared renderer): the
+		     curated views render exactly the timeline's own wall -- the
+		     one density language for every photo surface. -->
+		<MonthGroups {groups} isSelected={(id) => selection.has(id)} {selectable} onselect={toggleSelected} />
 	{/if}
 
 	{#if $wall.status === 'error' && $wall.items.length > 0}

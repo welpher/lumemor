@@ -306,8 +306,11 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<!-- The viewer's scrim: the brand night tone in both themes. -->
-<div class="viewer fixed inset-0 z-[40] flex flex-col bg-[rgb(20_26_46/0.92)] backdrop-blur-[6px]" aria-busy={status === 'loading'}>
+<!-- The viewer's backdrop: the brand's deep night ink, opaque -- the
+     photo surface needs no translucency and no blur behind it (the
+     restrained surface strategy); only the controls that truly float
+     over the media keep their glass. -->
+<div class="viewer fixed inset-0 z-[40] flex flex-col bg-night" aria-busy={status === 'loading'}>
 	<header class="viewer__bar flex items-center gap-3 px-4 py-2.5 text-cream-text">
 		<button
 			class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
@@ -366,7 +369,7 @@
 					<Button variant="primary" onclick={onretry}>{$_('action_retry')}</Button>
 				</div>
 			{:else if detail === null}
-				<p class="viewer__status relative z-[3] px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px]" role="status">{$_('viewer_loading')}</p>
+				<p class="viewer__status relative z-[3] px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-night/55 backdrop-blur-[2px]" role="status">{$_('viewer_loading')}</p>
 			{:else if detail.kind === 'video'}
 				<!-- svelte-ignore a11y_media_has_caption -->
 				{#if videoPlayable}
@@ -401,7 +404,7 @@
 							onerror={() => (posterFailed = true)}
 						/>
 					{/if}
-					<p class="viewer__processing absolute bottom-6 z-[3] px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px]" role="status">{$_('viewer_processing')}</p>
+					<p class="viewer__processing absolute bottom-6 z-[3] px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-night/55 backdrop-blur-[2px]" role="status">{$_('viewer_processing')}</p>
 				{/if}
 			{:else}
 				{#if detail.blurhash !== null}
@@ -508,7 +511,7 @@
 
 		{#if detail !== null && position !== -1 && position > 0}
 			<button
-				class="viewer__arrow viewer__arrow--left absolute left-4 top-1/2 -translate-y-1/2 z-[4] inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
+				class="viewer__arrow viewer__arrow--left absolute left-4 top-1/2 -translate-y-1/2 z-[4] inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
 				type="button"
 				aria-label={$_('viewer_previous')}
 				onclick={() => navigate(-1)}
@@ -520,7 +523,7 @@
 		{/if}
 		{#if detail !== null && position !== -1 && position < sequence.length - 1}
 			<button
-				class="viewer__arrow viewer__arrow--right absolute right-4 top-1/2 -translate-y-1/2 z-[4] inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
+				class="viewer__arrow viewer__arrow--right absolute right-4 top-1/2 -translate-y-1/2 z-[4] inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
 				type="button"
 				aria-label={$_('viewer_next')}
 				onclick={() => navigate(1)}

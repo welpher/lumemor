@@ -1888,9 +1888,13 @@ type TimelineItem struct {
 	// FileSize Size of the stored file in bytes.
 	FileSize int64 `json:"fileSize"`
 
-	// Height Pixel height in sensor order; null until the metadata job
-	// refined the dimensions.
-	Height *int `json:"height"`
+	// Height Pixel height in sensor order, straight from the assets
+	// column: the upload writes the 0 placeholder and the
+	// metadata job refines the real value, so 0 means "not
+	// refined yet" (the wall layout assumes a fallback aspect
+	// until then). Always present -- the justified photo wall
+	// reads it on every tile, never null.
+	Height int `json:"height"`
 
 	// Id UUIDv7 identifier of the asset.
 	Id openapi_types.UUID `json:"id"`
@@ -1946,9 +1950,13 @@ type TimelineItem struct {
 	// directory-album importer).
 	TakenAtSource TimelineItemTakenAtSource `json:"takenAtSource"`
 
-	// Width Pixel width in sensor order; null until the metadata job
-	// refined the dimensions.
-	Width *int `json:"width"`
+	// Width Pixel width in sensor order, straight from the assets
+	// column: the upload writes the 0 placeholder and the
+	// metadata job refines the real value, so 0 means "not
+	// refined yet" (the wall layout assumes a fallback aspect
+	// until then). Always present -- the justified photo wall
+	// reads it on every tile, never null.
+	Width int `json:"width"`
 }
 
 // TimelineItemKind Media family of the asset. A Live Photo is an `image`

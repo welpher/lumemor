@@ -378,7 +378,7 @@
 							     button itself (no nested interactive element),
 							     the timeline checkbox's look. -->
 							<span
-								class="cluster-card__check absolute top-1.5 left-1.5 z-[3] inline-flex items-center justify-center w-[26px] h-[26px] p-0 border-2 rounded-full text-transparent bg-[rgb(20_26_46/0.55)] backdrop-blur-[2px] {selection.has(cluster.clusterId) ? 'border-accent bg-accent text-accent-on' : 'border-accent-on'}"
+								class="cluster-card__check absolute top-1.5 left-1.5 z-[3] inline-flex items-center justify-center w-[26px] h-[26px] p-0 border rounded-full text-transparent bg-night border-cream-text/35 {selection.has(cluster.clusterId) ? 'border-accent bg-accent text-accent-on' : ''}"
 								aria-hidden="true"
 							>
 								<svg viewBox="0 0 24 24" width="14" height="14" fill="none">
