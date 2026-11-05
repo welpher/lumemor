@@ -1,0 +1,531 @@
+// The album surface writes (M3c Task 2): the virtual album creator
+// behind POST /albums (the write face's only creatable type), the
+// property patch behind PATCH /albums/{albumId} (with the cover's
+// live-member validation and the locked gate), the virtual-only
+// delete behind DELETE /albums/{albumId} (never locked-gated --
+// locking is a curation freeze, not a tombstone) and the membership
+// curation behind POST and DELETE /albums/{albumId}/items (batch
+// semantics: honest {added|removed, skipped} reports, never
+// per-item errors).
+//
+// Every write shares the two-tier authorization answer: an album the
+// caller cannot see at all (unknown, foreign-unshared, every sync
+// album) answers the reads' byte-identical single-shape 404, so
+// album ids cannot be probed; an album the caller CAN see but does
+// not own (a share row exists) answers the honest 403 -- the share is
+// view-only. The owner writes, and the admin role bypasses the owner
+// check (the permanent delete's discipline: the refusal, not the
+// read, shapes the response). The four live events
+// (album.created/updated/deleted/items-changed) publish after the
+// writes commit, ids-only payloads -- no album state rides the
+// shared stream.
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
+	apigen "github.com/welpher/lumemor/server/internal/api/gen"
+	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+)
+
+const (
+	// albumTitleMinRunes and albumTitleMaxRunes bound the album
+	// title: trimmed, counted in characters (a byte bound would
+	// shorten non-ASCII titles), pinned by the contract.
+	albumTitleMinRunes = 1
+	albumTitleMaxRunes = 64
+
+	// albumDescriptionLimit is the contract's bound on the album
+	// description: 10,000 Unicode characters, the asset
+	// description's own bound. The handler enforces it because the
+	// generated binder does not check the schema's maxLength.
+	albumDescriptionLimit = 10000
+
+	// albumItemsMaxIds caps the membership write's id list, pinned
+	// by the contract: 200 ids keep one request a bounded statement
+	// and a bounded report, the batch surface's own discipline.
+	albumItemsMaxIds = 200
+)
+
+// writeAlbumLocked emits the locked gate's 409: the album refuses its
+// curation and property writes until the owner unlocks it.
+func (s *server) writeAlbumLocked(w http.ResponseWriter) {
+	s.writeError(w, http.StatusConflict, apigen.ALBUMLOCKED,
+		"the album is locked", nil)
+}
+
+// publishAlbumEvent reports one album write onto the activity
+// stream. The payload carries ONLY the album's id and the acting
+// user's id: titles, descriptions, covers, the lock state and the
+// membership itself are album state the subscribers refetch, never
+// bus payload -- the person.* events' ids-only discipline, applied
+// to the album face. The nil guard matches the people publisher (a
+// router wired without a bus is a wiring-order state, tests only).
+func (s *server) publishAlbumEvent(name string, albumID, userID uuid.UUID) {
+	if s.events == nil {
+		return
+	}
+	s.events.Publish(name, map[string]string{
+		"albumId": albumID.String(),
+		"userId":  userID.String(),
+	})
+}
+
+// albumTitle trims the title and bounds its rune count; it answers
+// ok=false once it has written the 400.
+func (s *server) albumTitle(w http.ResponseWriter, title string) (string, bool) {
+	trimmed := strings.TrimSpace(title)
+	if runes := utf8.RuneCountInString(trimmed); runes < albumTitleMinRunes || runes > albumTitleMaxRunes {
+		s.writeValidationError(w, "title must span 1-64 characters", []string{"title"})
+		return "", false
+	}
+	return trimmed, true
+}
+
+// albumDescription bounds the optional free-text description and
+// answers its value (the empty string when absent); it answers
+// ok=false once it has written the 400.
+func (s *server) albumDescription(w http.ResponseWriter, description *string) (string, bool) {
+	if description == nil {
+		return "", true
+	}
+	if utf8.RuneCountInString(*description) > albumDescriptionLimit {
+		s.writeValidationError(w,
+			fmt.Sprintf("description exceeds the limit of %d characters", albumDescriptionLimit),
+			[]string{"description"})
+		return "", false
+	}
+	return *description, true
+}
+
+// albumWriteGate resolves the two-tier authorization answer every
+// album write shares. The read is deliberately unfiltered by
+// ownership: the row plus the caller's share flag come back for
+// every non-sync album, and the refusal below, not the read, shapes
+// the response -- the owner or an administrator proceeds (the admin
+// role bypasses the owner check), a sharee answers the honest 403
+// because the album is visible to them, and everyone else folds
+// into the reads' byte-identical 404. It answers ok=false once it
+// has written the response.
+func (s *server) albumWriteGate(w http.ResponseWriter, r *http.Request, requester authContext, albumID uuid.UUID) (dbgen.GetAlbumForWriteRow, bool) {
+	row, err := s.queries.GetAlbumForWrite(r.Context(), dbgen.GetAlbumForWriteParams{
+		AlbumID: pgUUID(albumID),
+		UserID:  pgUUID(requester.userID),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.writeAlbumNotFound(w)
+		return dbgen.GetAlbumForWriteRow{}, false
+	}
+	if err != nil {
+		s.internalError(w, r, "load album for write", err)
+		return dbgen.GetAlbumForWriteRow{}, false
+	}
+	if uuid.UUID(row.Album.OwnerID.Bytes) != requester.userID && requester.role != dbgen.UserRoleAdmin {
+		if row.SharedToCaller {
+			// The caller sees the album -- their share row exists --
+			// so the write is an honest authorization failure, not a
+			// missing resource: the share is view-only.
+			s.writeError(w, http.StatusForbidden, apigen.AUTHFORBIDDEN,
+				"only the album's owner may write it", nil)
+			return dbgen.GetAlbumForWriteRow{}, false
+		}
+		s.writeAlbumNotFound(w)
+		return dbgen.GetAlbumForWriteRow{}, false
+	}
+	return row, true
+}
+
+// albumCurationGate resolves the membership writes' gate: the write
+// authorization, the virtual-only rule and the locked gate. Directory
+// albums manage their own membership (the rescan flow of a later
+// milestone) and sync albums are no album resources, so both fold
+// into the single-shape 404; a locked album refuses the curation
+// with 409. It answers ok=false once it has written the response.
+func (s *server) albumCurationGate(w http.ResponseWriter, r *http.Request, requester authContext, albumID uuid.UUID) bool {
+	gate, ok := s.albumWriteGate(w, r, requester, albumID)
+	if !ok {
+		return false
+	}
+	if gate.Album.Type != dbgen.AlbumTypeVirtual {
+		s.writeAlbumNotFound(w)
+		return false
+	}
+	if gate.Album.Locked {
+		s.writeAlbumLocked(w)
+		return false
+	}
+	return true
+}
+
+// albumSummaryCardForID reads one album's wall card for a write
+// response: the row with its honest companions (the share badge, the
+// live member count) plus the derived cover candidates when no pin
+// exists -- the wall's own derivation, so the write's answer is the
+// card GET /albums lists. The card's callerRole is owner: only an
+// owner-or-admin write reaches this point, and the role is the
+// write-affordance discriminator of the card shape. It answers
+// ok=false once it has written the response.
+func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, albumID uuid.UUID) (apigen.AlbumSummary, bool) {
+	row, err := s.queries.GetAlbumSummary(r.Context(), pgUUID(albumID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.writeAlbumNotFound(w)
+		return apigen.AlbumSummary{}, false
+	}
+	if err != nil {
+		s.internalError(w, r, "load album summary", err)
+		return apigen.AlbumSummary{}, false
+	}
+
+	// The derived cover: the wall's own candidates query over the one
+	// album, bounded at four rows by construction.
+	var derived []uuid.UUID
+	if !row.Album.CoverAssetID.Valid {
+		candidates, err := s.queries.ListAlbumCoverCandidates(r.Context(), []pgtype.UUID{row.Album.ID})
+		if err != nil {
+			s.internalError(w, r, "load album cover candidates", err)
+			return apigen.AlbumSummary{}, false
+		}
+		for _, candidate := range candidates {
+			derived = append(derived, uuid.UUID(candidate.AssetID.Bytes))
+		}
+	}
+	return albumSummaryCard(row.Album, row.IsShared, row.ItemCount,
+		apigen.AlbumSummaryCallerRoleOwner, derived), true
+}
+
+// albumItemsIDs validates the membership write's id list and
+// collapses it to the distinct ids in first-appearance order (the
+// batch surface's pinned pattern: the actions are set operations,
+// and a duplicated id addresses one row). It answers ok=false once
+// it has written the 400.
+func (s *server) albumItemsIDs(w http.ResponseWriter, assetIds []openapi_types.UUID) ([]uuid.UUID, bool) {
+	if len(assetIds) == 0 {
+		s.writeValidationError(w, "assetIds must carry at least one asset id", []string{"assetIds"})
+		return nil, false
+	}
+	if len(assetIds) > albumItemsMaxIds {
+		s.writeValidationError(w,
+			fmt.Sprintf("assetIds exceed the limit of %d", albumItemsMaxIds),
+			[]string{"assetIds"})
+		return nil, false
+	}
+	ids := make([]uuid.UUID, 0, len(assetIds))
+	seen := make(map[uuid.UUID]bool, len(assetIds))
+	for _, raw := range assetIds {
+		id := uuid.UUID(raw)
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids, true
+}
+
+// CreateAlbum implements POST /api/v1/albums: the virtual album
+// creator. The request carries no type field -- this endpoint IS
+// virtual creation, the only creatable type of the face (directory
+// albums arrive with their own milestone, sync albums are born per
+// account). The response is the fresh row's wall card -- the owner
+// role, no share, no members, no cover -- and the write publishes
+// album.created.
+func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	// The body is a small JSON document (the route group's 1 MiB cap
+	// bounds it before this decode); anything that does not decode
+	// is a client bug.
+	var request apigen.AlbumCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+		return
+	}
+	title, ok := s.albumTitle(w, request.Title)
+	if !ok {
+		return
+	}
+	description, ok := s.albumDescription(w, request.Description)
+	if !ok {
+		return
+	}
+
+	ctx := r.Context()
+	id, err := uuid.NewV7()
+	if err != nil {
+		s.internalError(w, r, "generate album id", err)
+		return
+	}
+	if _, err := s.queries.CreateVirtualAlbum(ctx, dbgen.CreateVirtualAlbumParams{
+		ID:          pgUUID(id),
+		OwnerID:     pgUUID(requester.userID),
+		Title:       title,
+		Description: description,
+	}); err != nil {
+		s.internalError(w, r, "create the album", err)
+		return
+	}
+
+	s.publishAlbumEvent("album.created", id, requester.userID)
+
+	summary, ok := s.albumSummaryCardForID(w, r, id)
+	if !ok {
+		return
+	}
+	s.writeJSON(w, http.StatusCreated, summary)
+}
+
+// UpdateAlbum implements PATCH /api/v1/albums/{albumId}: the owner's
+// partial edit of the four properties -- any subset, at least one
+// field, JSON null counting as absent. The locked gate refuses the
+// property fields on a locked album (the locked field itself is
+// never gated: a patch of locked alone IS the unlock); the cover
+// validation refuses every id that is not a live member of the album
+// itself. The write publishes album.updated unconditionally on
+// success -- the convergent refetch makes the unconditional fire
+// harmless -- and the response is the album's wall card after the
+// edit.
+func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	var request apigen.AlbumPatch
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+		return
+	}
+	if request.Title == nil && request.Description == nil &&
+		request.CoverAssetId == nil && request.Locked == nil {
+		s.writeValidationError(w, "the patch must carry a field", []string{"body"})
+		return
+	}
+
+	ctx := r.Context()
+
+	gate, ok := s.albumWriteGate(w, r, requester, uuid.UUID(albumId))
+	if !ok {
+		return
+	}
+
+	// The locked gate: the album refuses its property and curation
+	// fields until the owner unlocks it. A mixed patch carrying the
+	// unlock is refused whole -- unlock first, then edit.
+	if gate.Album.Locked &&
+		(request.Title != nil || request.Description != nil || request.CoverAssetId != nil) {
+		s.writeAlbumLocked(w)
+		return
+	}
+
+	// The cover validation, the spec's application-layer pin: a
+	// present cover must be a LIVE member of THIS album. The check
+	// runs before the write so an invalid patch lands nothing.
+	if request.CoverAssetId != nil {
+		matches, err := s.queries.CountLiveAlbumMember(ctx, dbgen.CountLiveAlbumMemberParams{
+			AlbumID: pgUUID(albumId),
+			AssetID: pgUUID(uuid.UUID(*request.CoverAssetId)),
+		})
+		if err != nil {
+			s.internalError(w, r, "validate the album cover", err)
+			return
+		}
+		if matches == 0 {
+			s.writeMessageKey(w, "the cover must be a live member of this album", "album_cover_not_member")
+			return
+		}
+	}
+
+	// The tri-state patch: an absent field passes NULL and the
+	// statement's COALESCE keeps the stored value.
+	params := dbgen.UpdateAlbumFieldsParams{AlbumID: pgUUID(albumId)}
+	if request.Title != nil {
+		title, ok := s.albumTitle(w, *request.Title)
+		if !ok {
+			return
+		}
+		params.Title = pgtype.Text{String: title, Valid: true}
+	}
+	if request.Description != nil {
+		description, ok := s.albumDescription(w, request.Description)
+		if !ok {
+			return
+		}
+		params.Description = pgtype.Text{String: description, Valid: true}
+	}
+	if request.CoverAssetId != nil {
+		params.CoverAssetID = pgUUID(uuid.UUID(*request.CoverAssetId))
+	}
+	if request.Locked != nil {
+		params.Locked = pgtype.Bool{Bool: *request.Locked, Valid: true}
+	}
+
+	if _, err := s.queries.UpdateAlbumFields(ctx, params); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// The album vanished between the gate and the write.
+			s.writeAlbumNotFound(w)
+			return
+		}
+		s.internalError(w, r, "patch the album", err)
+		return
+	}
+
+	s.publishAlbumEvent("album.updated", uuid.UUID(albumId), requester.userID)
+
+	summary, ok := s.albumSummaryCardForID(w, r, uuid.UUID(albumId))
+	if !ok {
+		return
+	}
+	s.writeJSON(w, http.StatusOK, summary)
+}
+
+// DeleteAlbum implements DELETE /api/v1/albums/{albumId}: the
+// virtual album delete. The row goes and every membership and share
+// row follows through the schema's cascades; the answer is 204 with
+// no body, and the write publishes album.deleted. VIRTUAL albums
+// only -- a directory album's removal is its own flow and answers
+// the single-shape 404 -- and the locked gate never applies:
+// locking is a curation freeze, not a tombstone.
+func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	gate, ok := s.albumWriteGate(w, r, requester, uuid.UUID(albumId))
+	if !ok {
+		return
+	}
+	if gate.Album.Type != dbgen.AlbumTypeVirtual {
+		// Directory removal is the directory album's own flow, not a
+		// generic delete: the id folds into the single-shape 404.
+		s.writeAlbumNotFound(w)
+		return
+	}
+
+	deleted, err := s.queries.DeleteVirtualAlbum(r.Context(), pgUUID(albumId))
+	if err != nil {
+		s.internalError(w, r, "delete the album", err)
+		return
+	}
+	if deleted == 0 {
+		// A concurrent delete won the race: the album is gone
+		// exactly like an unknown id.
+		s.writeAlbumNotFound(w)
+		return
+	}
+
+	s.publishAlbumEvent("album.deleted", uuid.UUID(albumId), requester.userID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// AddAlbumItems implements POST /api/v1/albums/{albumId}/items: the
+// membership add with the batch surface's set semantics. Resolution
+// and insert are one statement whose WHERE arm IS the resolution --
+// every id must name a live asset the caller owns -- so foreign,
+// trashed, hidden, component, unknown and already-member ids are the
+// skipped of the honest report, never errors, and an all-skipped
+// request still answers 200. The write publishes album.items-changed
+// exactly when at least one row landed: the idempotent no-op stays
+// silent, the batch's transition-only discipline.
+func (s *server) AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	var request apigen.AlbumItemsRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+		return
+	}
+	ids, ok := s.albumItemsIDs(w, request.AssetIds)
+	if !ok {
+		return
+	}
+
+	if !s.albumCurationGate(w, r, requester, uuid.UUID(albumId)) {
+		return
+	}
+
+	added, err := s.queries.AddAlbumItems(r.Context(), dbgen.AddAlbumItemsParams{
+		AlbumID:  pgUUID(albumId),
+		AddedBy:  pgUUID(requester.userID),
+		AssetIds: pgUUIDs(ids),
+		OwnerID:  pgUUID(requester.userID),
+	})
+	if err != nil {
+		s.internalError(w, r, "add the album items", err)
+		return
+	}
+
+	if added > 0 {
+		s.publishAlbumEvent("album.items-changed", uuid.UUID(albumId), requester.userID)
+	}
+
+	s.writeJSON(w, http.StatusOK, apigen.AddAlbumItemsResponse{
+		Added:   int(added),
+		Skipped: len(ids) - int(added),
+	})
+}
+
+// RemoveAlbumItems implements DELETE /api/v1/albums/{albumId}/items:
+// the membership remove. The rows that exist leave; the ids that are
+// no members are the skipped of the honest report. The removal
+// carries no live predicate -- it tidies the set itself, so a
+// trashed member's row still leaves -- and the write publishes
+// album.items-changed exactly when at least one row left.
+func (s *server) RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	var request apigen.AlbumItemsRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+		return
+	}
+	ids, ok := s.albumItemsIDs(w, request.AssetIds)
+	if !ok {
+		return
+	}
+
+	if !s.albumCurationGate(w, r, requester, uuid.UUID(albumId)) {
+		return
+	}
+
+	removed, err := s.queries.RemoveAlbumItems(r.Context(), dbgen.RemoveAlbumItemsParams{
+		AlbumID:  pgUUID(albumId),
+		AssetIds: pgUUIDs(ids),
+	})
+	if err != nil {
+		s.internalError(w, r, "remove the album items", err)
+		return
+	}
+
+	if removed > 0 {
+		s.publishAlbumEvent("album.items-changed", uuid.UUID(albumId), requester.userID)
+	}
+
+	s.writeJSON(w, http.StatusOK, apigen.RemoveAlbumItemsResponse{
+		Removed: int(removed),
+		Skipped: len(ids) - int(removed),
+	})
+}

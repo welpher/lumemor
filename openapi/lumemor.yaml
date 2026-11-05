@@ -39,9 +39,11 @@ tags:
       management of the users surface.'
   - name: albums
     description: 'The album surface: the wall of the caller''s own and
-      shared albums, and one album''s detail with its keyset-paged
-      items. Sync albums are never album resources here -- the
-      timeline is their face.'
+      shared albums, one album''s detail with its keyset-paged items,
+      and the owner''s write face -- virtual album creation, the
+      property patch, the delete and the membership curation. Sync
+      albums are never album resources here -- the timeline is their
+      face.'
   - name: assets
     description: 'Photo and video assets: upload with idempotent three-state
       semantics and device idempotency lookup.'
@@ -521,6 +523,21 @@ paths:
         account's change. `person.merged` carries the dissolved
         source cluster ids comma-joined as `mergedClusterIds`, and
         `person.face_moved` carries the face's new `clusterId`.
+
+        The `album.*` events report the album write surface: creation
+        (`album.created`), the property patch (`album.updated`), the
+        delete (`album.deleted`) and the membership curation
+        (`album.items-changed`). Every payload carries ONLY the
+        album's id and the acting user's `userId`: titles,
+        descriptions, covers, the lock state and the membership
+        itself are album state the subscribers refetch, never bus
+        payload. `album.updated` fires on every successful patch
+        (the convergent refetch makes the unconditional fire
+        harmless), and `album.items-changed` exactly when a
+        membership write added or removed at least one row -- the
+        idempotent no-op stays silent. `album.shared` and
+        `album.unshared` arrive with the share endpoints of a later
+        milestone.
 
         The server keeps the last five minutes of events in a ring
         buffer. Browser EventSource clients reconnect automatically and
@@ -2724,6 +2741,112 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    post:
+      operationId: createAlbum
+      tags:
+        - albums
+      summary: Create one virtual album.
+      description: |
+        Creates one virtual album owned by the caller -- the album
+        the wall lists, the detail shows and the curation endpoints
+        edit. The virtual album is the ONLY creatable type through
+        this face, so the request carries no type field: directory
+        albums arrive with their own milestone (they mirror a
+        filesystem path the server scans), and every account's sync
+        album is born with the account.
+
+        The title is trimmed and must span 1-64 Unicode characters
+        (the count is over runes, so multi-byte titles stay within
+        the bound at the same length); the description is optional
+        bounded free text (10,000 characters, the asset
+        description's own bound) and defaults to the empty string.
+
+        The response is the created album's wall card -- the summary
+        exactly as `GET /albums` lists it: `callerRole` `owner`,
+        `isShared` false, an empty `coverAssetIds` array (never
+        null) and `itemCount` 0, nothing being a member yet. The
+        write publishes one `album.created` event.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlbumCreateRequest'
+            examples:
+              titled:
+                summary: A titled album with a description.
+                value:
+                  title: Road trip 2026
+                  description: The coastal week in the van.
+              bare:
+                summary: The minimal creation, title only.
+                value:
+                  title: Quick picks
+      responses:
+        '201':
+          description: |
+            The album exists; the response is its wall card. The
+            counts are the creation-time zeros: no member, no share,
+            no cover.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumSummary'
+              examples:
+                freshAlbum:
+                  summary: The freshly created virtual album.
+                  value:
+                    id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
+                    title: Road trip 2026
+                    description: The coastal week in the van.
+                    type: virtual
+                    locked: false
+                    isShared: false
+                    coverAssetIds: []
+                    itemCount: 0
+                    updatedAt: '2026-11-05T10:15:00Z'
+                    callerRole: owner
+        '400':
+          description: |
+            The request is invalid: the title is missing, empty,
+            whitespace-only, or spans more than 64 characters; or
+            the description exceeds its 10,000-character bound; or
+            the body is not valid JSON.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                titleTooLong:
+                  summary: A title past the bound.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: title must span 1-64 characters
+                    details:
+                      fields:
+                        - title
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /albums/{albumId}:
     get:
       operationId: getAlbum
@@ -2903,6 +3026,585 @@ paths:
                   value:
                     code: ALBUM_NOT_FOUND
                     message: no such album for this caller
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      operationId: updateAlbum
+      tags:
+        - albums
+      summary: Patch one album's properties.
+      description: |
+        The owner's partial edit of the album's properties: `title`,
+        `description`, `coverAssetId` and `locked`, any subset, at
+        least one field (a body that carries none -- JSON null counts
+        as absent, the patch discipline of the asset surface -- is a
+        client bug and answers 400). The response is the album's wall
+        card after the edit.
+
+        Authorization is the two-tier answer every album write pins:
+        an album the caller cannot see at all -- an unknown id,
+        another account's unshared album, every sync album -- answers
+        the single-shape 404 `ALBUM_NOT_FOUND`, byte-identical to the
+        read face, so album ids cannot be probed; an album the caller
+        CAN see but does not own (an album shared to the caller) is
+        an honest authorization failure -- 403 `AUTH_FORBIDDEN`, the
+        share is view-only. The owner writes, and an administrator
+        may override the owner check (the admin role bypasses it, the
+        permanent delete's own discipline).
+
+        The locked gate: a locked album refuses the property and
+        curation fields (`title`, `description`, `coverAssetId`)
+        with 409 `ALBUM_LOCKED` -- unlock first. The `locked` field
+        itself is never gated: a patch of only `locked: false` IS the
+        unlock.
+
+        Cover validation (the spec's application-layer pin): a
+        present `coverAssetId` must be a LIVE member of THIS album --
+        the membership row exists and the asset passes the live
+        predicate (not trashed, not hidden, not a Live Photo
+        component row). Any other id -- an asset that is no member, a
+        trashed, hidden or component row, another account's asset --
+        answers 400 `VALIDATION_FAILED` carrying the message key
+        `album_cover_not_member`. A `coverAssetId` that is absent (or
+        JSON null, which decodes as absent) leaves the pin
+        unchanged.
+
+        The write publishes one `album.updated` event on every
+        successful patch, whatever fields changed -- the convergent
+        refetch makes the unconditional fire harmless.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          description: Identifier of the album.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlbumPatch'
+            examples:
+              rename:
+                summary: Rename the album.
+                value:
+                  title: Road trip 2026 -- rerun
+              setCover:
+                summary: Pin one member as the cover.
+                value:
+                  coverAssetId: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072
+              unlock:
+                summary: The unlock -- locked itself is never gated.
+                value:
+                  locked: false
+      responses:
+        '200':
+          description: |
+            The patch landed; the response is the album's wall card
+            after the edit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumSummary'
+              examples:
+                renamed:
+                  summary: The album after the rename.
+                  value:
+                    id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
+                    title: Road trip 2026 -- rerun
+                    description: The coastal week in the van.
+                    type: virtual
+                    locked: false
+                    isShared: true
+                    coverAssetIds:
+                      - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072
+                    itemCount: 128
+                    updatedAt: '2026-11-05T11:02:00Z'
+                    callerRole: owner
+        '400':
+          description: |
+            The request is invalid: the body is not valid JSON or
+            carries no field; a present title is empty,
+            whitespace-only or spans more than 64 characters; the
+            description exceeds its bound; or a present
+            `coverAssetId` is not a live member of this album (the
+            message key `album_cover_not_member`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                coverNotMember:
+                  summary: The cover must be a live member.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: the cover must be a live member of this album
+                    details:
+                      key: album_cover_not_member
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller can see the album but is not its owner (an
+            album shared to the caller): the share is view-only, so
+            the write is an honest authorization failure, not a
+            missing resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                viewerWrite:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: only the album's owner may write it
+        '404':
+          description: |
+            No such album for this caller: the id is unknown, the
+            album belongs to another account without a share to the
+            caller, or it is a sync album -- indistinguishable by
+            design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumNotFound:
+                  value:
+                    code: ALBUM_NOT_FOUND
+                    message: no such album for this caller
+        '409':
+          description: |
+            The album is locked and the patch touches a property or
+            curation field (`title`, `description`, `coverAssetId`).
+            Unlock first -- a patch of only `locked: false` is the
+            unlock and is never gated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumLocked:
+                  value:
+                    code: ALBUM_LOCKED
+                    message: the album is locked
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      operationId: deleteAlbum
+      tags:
+        - albums
+      summary: Delete one virtual album.
+      description: |
+        Deletes the caller's virtual album: the row goes, and every
+        `album_items` membership row and every `album_shares` row
+        follows through the schema's cascades. The answer is 204 with
+        no body, and the write publishes one `album.deleted` event.
+
+        VIRTUAL albums only: a directory album answers the
+        single-shape 404 (directory removal is the directory
+        album's own flow, not a generic delete -- it arrives with a
+        later milestone), and a sync album is no album resource at
+        all. The same 404 answers an unknown id.
+
+        The locked gate does NOT apply to the delete: a locked album
+        can be deleted by its owner -- locking is a curation freeze,
+        not a tombstone.
+
+        Authorization is the writes' two-tier answer: an album the
+        caller cannot see answers the single-shape 404; an album
+        shared to the caller answers 403 `AUTH_FORBIDDEN` (the share
+        is view-only); the owner -- or an administrator overriding
+        the owner check -- deletes.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          description: Identifier of the album.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: |
+            The album is gone, its membership and share rows
+            cascaded with it. The answer carries no body.
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller can see the album but is not its owner (an
+            album shared to the caller): the share is view-only.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                viewerWrite:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: only the album's owner may write it
+        '404':
+          description: |
+            No such album for this caller: the id is unknown, the
+            album is another account's unshared or sync album, or it
+            is a directory album (whose removal is its own flow) --
+            indistinguishable by design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumNotFound:
+                  value:
+                    code: ALBUM_NOT_FOUND
+                    message: no such album for this caller
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /albums/{albumId}/items:
+    post:
+      operationId: addAlbumItems
+      tags:
+        - albums
+      summary: Add assets to one virtual album.
+      description: |
+        Adds assets to the caller's virtual album with the batch
+        surface's set semantics: one request, one list of at most 200
+        asset ids, one honest report `{added, skipped}`.
+
+        VIRTUAL albums only: directory albums manage their own
+        membership (the rescan flow, a later milestone) and sync
+        albums are no album resources; both answer the single-shape
+        404 like an unknown id.
+
+        Skip semantics (the batch surface's missing-ids discipline):
+        every id must belong to a live asset the CALLER owns -- the
+        owner-based live predicate (not trashed, not hidden, not a
+        Live Photo component row) until the union switchover of a
+        later task. A foreign account's asset, a trashed, hidden or
+        component row, and an unknown id are silently skipped, never
+        errors. An id that already sits in the album is skipped too:
+        membership is a set, the add is idempotent. An all-skipped
+        request still answers 200 with `added` 0. Repeated ids
+        collapse to one application; the counts cover the distinct
+        ids. The inserted rows record the caller as `added_by`.
+
+        The locked gate applies: a locked album refuses the write
+        with 409 `ALBUM_LOCKED`. Authorization is the writes'
+        two-tier answer (invisible 404, shared-to-caller 403, the
+        owner or an admin override writes).
+
+        The write publishes one `album.items-changed` event exactly
+        when at least one row was added -- the idempotent no-op stays
+        silent.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          description: Identifier of the album.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlbumItemsRequest'
+            examples:
+              threePicks:
+                summary: Three asset ids to add.
+                value:
+                  assetIds:
+                    - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072
+                    - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073
+                    - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6074
+      responses:
+        '200':
+          description: |
+            The report over the request's distinct ids: `added`
+            counts the rows the request inserted, `skipped` the rest
+            -- already-members and ids the caller cannot act on
+            alike.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddAlbumItemsResponse'
+              examples:
+                twoAdded:
+                  summary: Two new members, one already in.
+                  value:
+                    added: 2
+                    skipped: 1
+                allSkipped:
+                  summary: Nothing the caller can add.
+                  value:
+                    added: 0
+                    skipped: 3
+        '400':
+          description: |
+            The request is invalid: the body is not valid JSON, the
+            list is empty, or it carries more than 200 ids.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                tooManyIds:
+                  summary: Past the list bound.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: assetIds exceed the limit of 200
+                    details:
+                      fields:
+                        - assetIds
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller can see the album but is not its owner (an
+            album shared to the caller): the share is view-only, so
+            the curation write is an honest authorization failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                viewerWrite:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: only the album's owner may write it
+        '404':
+          description: |
+            No such album for this caller: the id is unknown, the
+            album belongs to another account without a share to the
+            caller, it is a sync album, or it is a directory album
+            (whose membership is its own flow) -- indistinguishable
+            by design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumNotFound:
+                  value:
+                    code: ALBUM_NOT_FOUND
+                    message: no such album for this caller
+        '409':
+          description: |
+            The album is locked: curation writes are refused until
+            the owner unlocks it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumLocked:
+                  value:
+                    code: ALBUM_LOCKED
+                    message: the album is locked
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      operationId: removeAlbumItems
+      tags:
+        - albums
+      summary: Remove assets from one virtual album.
+      description: |
+        Removes membership rows from the caller's virtual album:
+        `{removed, skipped}`, the same batch semantics as the add.
+        An id that is no member of the album -- never was, or
+        already removed -- is skipped; an all-skipped request still
+        answers 200 with `removed` 0. Repeated ids collapse; the
+        counts cover the distinct ids.
+
+        The removal carries no live predicate: a trashed member's
+        row still leaves, the honest cleanup of the set (the live
+        views filter trashed members out of the renders; removing
+        the row tidies the set itself).
+
+        VIRTUAL albums only (directory and sync albums answer the
+        single-shape 404); the locked gate applies (409
+        `ALBUM_LOCKED`); authorization is the writes' two-tier
+        answer (invisible 404, shared-to-caller 403, the owner or an
+        admin override writes).
+
+        The write publishes one `album.items-changed` event exactly
+        when at least one row was removed -- the idempotent no-op
+        stays silent.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          description: Identifier of the album.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlbumItemsRequest'
+            examples:
+              twoDrops:
+                summary: Two asset ids to remove.
+                value:
+                  assetIds:
+                    - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072
+                    - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073
+      responses:
+        '200':
+          description: |
+            The report over the request's distinct ids: `removed`
+            counts the membership rows the request deleted,
+            `skipped` the rest -- the ids that were no members.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoveAlbumItemsResponse'
+              examples:
+                oneRemoved:
+                  summary: One member left, one id was no member.
+                  value:
+                    removed: 1
+                    skipped: 1
+        '400':
+          description: |
+            The request is invalid: the body is not valid JSON, the
+            list is empty, or it carries more than 200 ids.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                tooManyIds:
+                  summary: Past the list bound.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: assetIds exceed the limit of 200
+                    details:
+                      fields:
+                        - assetIds
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller can see the album but is not its owner (an
+            album shared to the caller): the share is view-only, so
+            the curation write is an honest authorization failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                viewerWrite:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: only the album's owner may write it
+        '404':
+          description: |
+            No such album for this caller: the id is unknown, the
+            album belongs to another account without a share to the
+            caller, it is a sync album, or it is a directory album
+            (whose membership is its own flow) -- indistinguishable
+            by design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumNotFound:
+                  value:
+                    code: ALBUM_NOT_FOUND
+                    message: no such album for this caller
+        '409':
+          description: |
+            The album is locked: curation writes are refused until
+            the owner unlocks it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumLocked:
+                  value:
+                    code: ALBUM_LOCKED
+                    message: the album is locked
         '500':
           description: Unexpected server failure.
           content:
@@ -7029,6 +7731,144 @@ components:
             `GET /api/v1/assets/{assetId}/thumbnail?size=tile`.
           examples:
             - /api/v1/assets/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072/thumbnail?size=tile
+    AlbumCreateRequest:
+      type: object
+      description: |
+        The creation body of one virtual album: the title and the
+        optional bounded description. No type field exists -- this
+        endpoint IS virtual creation, the only creatable album type
+        of the face.
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |
+            The album's display title, trimmed server-side; it must
+            span 1-64 Unicode characters after the trim (the count
+            is over runes, so multi-byte titles stay within the
+            bound at the same length).
+        description:
+          type: string
+          maxLength: 10000
+          description: |
+            The album's free-text description; empty when absent.
+            At most 10,000 Unicode characters, the asset
+            description's own bound.
+    AlbumPatch:
+      type: object
+      description: |
+        The partial edit of one album: every field is optional, at
+        least one must be present (a body that carries none -- JSON
+        null values count as absent, the patch discipline of the
+        asset surface -- is a client bug and answers 400), and only
+        the fields the request carries update; the rest keep their
+        values. A present `coverAssetId` must be a live member of
+        the album itself. The write publishes one `album.updated`
+        event whatever fields changed.
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |
+            The album's display title, trimmed server-side; when
+            present it must span 1-64 Unicode characters after the
+            trim.
+        description:
+          type: string
+          maxLength: 10000
+          description: |
+            The album's free-text description; the value replaces
+            the stored text wholesale (an empty string clears it).
+            At most 10,000 Unicode characters.
+        coverAssetId:
+          type: string
+          format: uuid
+          description: |
+            The pinned cover asset. When present it must be a LIVE
+            member of THIS album (the membership row exists and the
+            asset is not trashed, not hidden, not a Live Photo
+            component row) -- otherwise the answer is 400 with the
+            message key `album_cover_not_member`. Absent (or JSON
+            null, which decodes as absent) leaves the pin
+            unchanged.
+        locked:
+          type: boolean
+          description: |
+            The owner's lock. `true` freezes the album's curation
+            and property fields against later writes (this same
+            endpoint refuses them with 409 until the owner patches
+            `locked: false` -- the unlock, never gated itself).
+            Locking does not gate the album's delete.
+    AlbumItemsRequest:
+      type: object
+      description: |
+        The membership write body: the list of asset ids to add to
+        or remove from one virtual album. Repeated ids collapse to
+        one application; the report's counts cover the distinct ids.
+      required:
+        - assetIds
+      properties:
+        assetIds:
+          type: array
+          minItems: 1
+          maxItems: 200
+          description: |
+            The asset ids of the membership write, between 1 and 200
+            entries. The add skips -- never errors on -- every id
+            that is not a live caller-owned asset or that already
+            sits in the album; the remove skips the ids that are no
+            members.
+          items:
+            type: string
+            format: uuid
+    AddAlbumItemsResponse:
+      type: object
+      description: |
+        The honest report of one membership add over the request's
+        distinct ids: what landed and what was skipped, foreign,
+        non-live and already-member ids alike.
+      required:
+        - added
+        - skipped
+      properties:
+        added:
+          type: integer
+          description: |
+            The membership rows the request inserted. Zero for an
+            all-skipped request, which is still a 200 -- batch
+            semantics, never an error.
+        skipped:
+          type: integer
+          description: |
+            The distinct ids that did not land: unknown ids, another
+            account's assets, trashed, hidden or component rows, and
+            the ids already sitting in the album (the idempotent
+            add).
+    RemoveAlbumItemsResponse:
+      type: object
+      description: |
+        The honest report of one membership remove over the
+        request's distinct ids: the rows that left and the ids that
+        were no members.
+      required:
+        - removed
+        - skipped
+      properties:
+        removed:
+          type: integer
+          description: |
+            The membership rows the request deleted. Zero for an
+            all-skipped request, which is still a 200.
+        skipped:
+          type: integer
+          description: |
+            The distinct ids that were no members of the album --
+            never added, or already removed.
     Error:
       type: object
       description: |
@@ -7060,6 +7900,7 @@ components:
             - MODEL_INVALID
             - PERSON_NOT_FOUND
             - ALBUM_NOT_FOUND
+            - ALBUM_LOCKED
         message:
           type: string
           description: English technical description for debugging.

@@ -119,6 +119,9 @@ NON_ERROR_KEYS = {
     # People surface message keys (M3b): message keys carried in a
     # VALIDATION_FAILED details, not error codes of their own.
     "person_hide_requires_label",
+    # Album surface message keys (M3c): the cover validation's
+    # message key carried in a VALIDATION_FAILED details.
+    "album_cover_not_member",
     # People surface UI strings (M3b Task 4): the three pages of the
     # people domain.
     "people_loading",

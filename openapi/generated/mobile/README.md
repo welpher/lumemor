@@ -96,8 +96,13 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**addAlbumItems**](doc/AlbumsApi.md#addalbumitems) | **POST** /albums/{albumId}/items | Add assets to one virtual album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**createAlbum**](doc/AlbumsApi.md#createalbum) | **POST** /albums | Create one virtual album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**deleteAlbum**](doc/AlbumsApi.md#deletealbum) | **DELETE** /albums/{albumId} | Delete one virtual album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**getAlbum**](doc/AlbumsApi.md#getalbum) | **GET** /albums/{albumId} | One album&#39;s detail and one page of its items.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**listAlbums**](doc/AlbumsApi.md#listalbums) | **GET** /albums | The caller&#39;s album wall.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**removeAlbumItems**](doc/AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one virtual album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**updateAlbum**](doc/AlbumsApi.md#updatealbum) | **PATCH** /albums/{albumId} | Patch one album&#39;s properties.
 [*AssetsApi*](doc/AssetsApi.md) | [**batchAssets**](doc/AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
 [*AssetsApi*](doc/AssetsApi.md) | [**deleteAsset**](doc/AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
 [*AssetsApi*](doc/AssetsApi.md) | [**getAsset**](doc/AssetsApi.md#getasset) | **GET** /assets/{id} | Fetch the detail of one owned asset.
@@ -134,14 +139,18 @@ Class | Method | HTTP request | Description
 
 ## Documentation For Models
 
+ - [AddAlbumItemsResponse](doc/AddAlbumItemsResponse.md)
  - [AdminCreateUserRequest](doc/AdminCreateUserRequest.md)
  - [AdminUserListResponse](doc/AdminUserListResponse.md)
  - [AdminUserPatch](doc/AdminUserPatch.md)
  - [AdminUserResponse](doc/AdminUserResponse.md)
+ - [AlbumCreateRequest](doc/AlbumCreateRequest.md)
  - [AlbumDetail](doc/AlbumDetail.md)
  - [AlbumItem](doc/AlbumItem.md)
  - [AlbumItemAsset](doc/AlbumItemAsset.md)
+ - [AlbumItemsRequest](doc/AlbumItemsRequest.md)
  - [AlbumOwnerRef](doc/AlbumOwnerRef.md)
+ - [AlbumPatch](doc/AlbumPatch.md)
  - [AlbumSummary](doc/AlbumSummary.md)
  - [AlbumWallResponse](doc/AlbumWallResponse.md)
  - [AssetDetail](doc/AssetDetail.md)
@@ -183,6 +192,7 @@ Class | Method | HTTP request | Description
  - [PersonLabel](doc/PersonLabel.md)
  - [PersonLabelResponse](doc/PersonLabelResponse.md)
  - [PersonSummary](doc/PersonSummary.md)
+ - [RemoveAlbumItemsResponse](doc/RemoveAlbumItemsResponse.md)
  - [ServerInfo](doc/ServerInfo.md)
  - [SessionInfo](doc/SessionInfo.md)
  - [SetPersonHiddenRequest](doc/SetPersonHiddenRequest.md)

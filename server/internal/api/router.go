@@ -311,6 +311,21 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// candidates per album.
 				r.Get("/albums", wrapper.ListAlbums)
 				r.Get("/albums/{albumId}", wrapper.GetAlbum)
+				// The album surface writes (M3c Task 2): virtual
+				// album creation, the property patch, the delete
+				// and the membership curation. All are bounded row
+				// writes -- the membership lists are capped at 200
+				// ids by the contract, and the cascades ride the
+				// row deletes -- so they belong in this group like
+				// every other bounded JSON handler. The static
+				// /albums/{albumId}/items segment never contends
+				// with the /albums/{albumId} routes (a longer path
+				// shape).
+				r.Post("/albums", wrapper.CreateAlbum)
+				r.Patch("/albums/{albumId}", wrapper.UpdateAlbum)
+				r.Delete("/albums/{albumId}", wrapper.DeleteAlbum)
+				r.Post("/albums/{albumId}/items", wrapper.AddAlbumItems)
+				r.Delete("/albums/{albumId}/items", wrapper.RemoveAlbumItems)
 				// The people surface reads (M3b Task 1): the named
 				// region, the unnamed region's keyset pages and one
 				// cluster's detail. All are bounded row reads (the

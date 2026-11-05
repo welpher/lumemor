@@ -210,6 +210,21 @@ export interface paths {
          *     source cluster ids comma-joined as `mergedClusterIds`, and
          *     `person.face_moved` carries the face's new `clusterId`.
          *
+         *     The `album.*` events report the album write surface: creation
+         *     (`album.created`), the property patch (`album.updated`), the
+         *     delete (`album.deleted`) and the membership curation
+         *     (`album.items-changed`). Every payload carries ONLY the
+         *     album's id and the acting user's `userId`: titles,
+         *     descriptions, covers, the lock state and the membership
+         *     itself are album state the subscribers refetch, never bus
+         *     payload. `album.updated` fires on every successful patch
+         *     (the convergent refetch makes the unconditional fire
+         *     harmless), and `album.items-changed` exactly when a
+         *     membership write added or removed at least one row -- the
+         *     idempotent no-op stays silent. `album.shared` and
+         *     `album.unshared` arrive with the share endpoints of a later
+         *     milestone.
+         *
          *     The server keeps the last five minutes of events in a ring
          *     buffer. Browser EventSource clients reconnect automatically and
          *     resend `Last-Event-ID`; the server replays everything newer
@@ -991,7 +1006,29 @@ export interface paths {
          */
         get: operations["listAlbums"];
         put?: never;
-        post?: never;
+        /**
+         * Create one virtual album.
+         * @description Creates one virtual album owned by the caller -- the album
+         *     the wall lists, the detail shows and the curation endpoints
+         *     edit. The virtual album is the ONLY creatable type through
+         *     this face, so the request carries no type field: directory
+         *     albums arrive with their own milestone (they mirror a
+         *     filesystem path the server scans), and every account's sync
+         *     album is born with the account.
+         *
+         *     The title is trimmed and must span 1-64 Unicode characters
+         *     (the count is over runes, so multi-byte titles stay within
+         *     the bound at the same length); the description is optional
+         *     bounded free text (10,000 characters, the asset
+         *     description's own bound) and defaults to the empty string.
+         *
+         *     The response is the created album's wall card -- the summary
+         *     exactly as `GET /albums` lists it: `callerRole` `owner`,
+         *     `isShared` false, an empty `coverAssetIds` array (never
+         *     null) and `itemCount` 0, nothing being a member yet. The
+         *     write publishes one `album.created` event.
+         */
+        post: operations["createAlbum"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1052,7 +1089,143 @@ export interface paths {
         get: operations["getAlbum"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete one virtual album.
+         * @description Deletes the caller's virtual album: the row goes, and every
+         *     `album_items` membership row and every `album_shares` row
+         *     follows through the schema's cascades. The answer is 204 with
+         *     no body, and the write publishes one `album.deleted` event.
+         *
+         *     VIRTUAL albums only: a directory album answers the
+         *     single-shape 404 (directory removal is the directory
+         *     album's own flow, not a generic delete -- it arrives with a
+         *     later milestone), and a sync album is no album resource at
+         *     all. The same 404 answers an unknown id.
+         *
+         *     The locked gate does NOT apply to the delete: a locked album
+         *     can be deleted by its owner -- locking is a curation freeze,
+         *     not a tombstone.
+         *
+         *     Authorization is the writes' two-tier answer: an album the
+         *     caller cannot see answers the single-shape 404; an album
+         *     shared to the caller answers 403 `AUTH_FORBIDDEN` (the share
+         *     is view-only); the owner -- or an administrator overriding
+         *     the owner check -- deletes.
+         */
+        delete: operations["deleteAlbum"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch one album's properties.
+         * @description The owner's partial edit of the album's properties: `title`,
+         *     `description`, `coverAssetId` and `locked`, any subset, at
+         *     least one field (a body that carries none -- JSON null counts
+         *     as absent, the patch discipline of the asset surface -- is a
+         *     client bug and answers 400). The response is the album's wall
+         *     card after the edit.
+         *
+         *     Authorization is the two-tier answer every album write pins:
+         *     an album the caller cannot see at all -- an unknown id,
+         *     another account's unshared album, every sync album -- answers
+         *     the single-shape 404 `ALBUM_NOT_FOUND`, byte-identical to the
+         *     read face, so album ids cannot be probed; an album the caller
+         *     CAN see but does not own (an album shared to the caller) is
+         *     an honest authorization failure -- 403 `AUTH_FORBIDDEN`, the
+         *     share is view-only. The owner writes, and an administrator
+         *     may override the owner check (the admin role bypasses it, the
+         *     permanent delete's own discipline).
+         *
+         *     The locked gate: a locked album refuses the property and
+         *     curation fields (`title`, `description`, `coverAssetId`)
+         *     with 409 `ALBUM_LOCKED` -- unlock first. The `locked` field
+         *     itself is never gated: a patch of only `locked: false` IS the
+         *     unlock.
+         *
+         *     Cover validation (the spec's application-layer pin): a
+         *     present `coverAssetId` must be a LIVE member of THIS album --
+         *     the membership row exists and the asset passes the live
+         *     predicate (not trashed, not hidden, not a Live Photo
+         *     component row). Any other id -- an asset that is no member, a
+         *     trashed, hidden or component row, another account's asset --
+         *     answers 400 `VALIDATION_FAILED` carrying the message key
+         *     `album_cover_not_member`. A `coverAssetId` that is absent (or
+         *     JSON null, which decodes as absent) leaves the pin
+         *     unchanged.
+         *
+         *     The write publishes one `album.updated` event on every
+         *     successful patch, whatever fields changed -- the convergent
+         *     refetch makes the unconditional fire harmless.
+         */
+        patch: operations["updateAlbum"];
+        trace?: never;
+    };
+    "/albums/{albumId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add assets to one virtual album.
+         * @description Adds assets to the caller's virtual album with the batch
+         *     surface's set semantics: one request, one list of at most 200
+         *     asset ids, one honest report `{added, skipped}`.
+         *
+         *     VIRTUAL albums only: directory albums manage their own
+         *     membership (the rescan flow, a later milestone) and sync
+         *     albums are no album resources; both answer the single-shape
+         *     404 like an unknown id.
+         *
+         *     Skip semantics (the batch surface's missing-ids discipline):
+         *     every id must belong to a live asset the CALLER owns -- the
+         *     owner-based live predicate (not trashed, not hidden, not a
+         *     Live Photo component row) until the union switchover of a
+         *     later task. A foreign account's asset, a trashed, hidden or
+         *     component row, and an unknown id are silently skipped, never
+         *     errors. An id that already sits in the album is skipped too:
+         *     membership is a set, the add is idempotent. An all-skipped
+         *     request still answers 200 with `added` 0. Repeated ids
+         *     collapse to one application; the counts cover the distinct
+         *     ids. The inserted rows record the caller as `added_by`.
+         *
+         *     The locked gate applies: a locked album refuses the write
+         *     with 409 `ALBUM_LOCKED`. Authorization is the writes'
+         *     two-tier answer (invisible 404, shared-to-caller 403, the
+         *     owner or an admin override writes).
+         *
+         *     The write publishes one `album.items-changed` event exactly
+         *     when at least one row was added -- the idempotent no-op stays
+         *     silent.
+         */
+        post: operations["addAlbumItems"];
+        /**
+         * Remove assets from one virtual album.
+         * @description Removes membership rows from the caller's virtual album:
+         *     `{removed, skipped}`, the same batch semantics as the add.
+         *     An id that is no member of the album -- never was, or
+         *     already removed -- is skipped; an all-skipped request still
+         *     answers 200 with `removed` 0. Repeated ids collapse; the
+         *     counts cover the distinct ids.
+         *
+         *     The removal carries no live predicate: a trashed member's
+         *     row still leaves, the honest cleanup of the set (the live
+         *     views filter trashed members out of the renders; removing
+         *     the row tidies the set itself).
+         *
+         *     VIRTUAL albums only (directory and sync albums answer the
+         *     single-shape 404); the locked gate applies (409
+         *     `ALBUM_LOCKED`); authorization is the writes' two-tier
+         *     answer (invisible 404, shared-to-caller 403, the owner or an
+         *     admin override writes).
+         *
+         *     The write publishes one `album.items-changed` event exactly
+         *     when at least one row was removed -- the idempotent no-op
+         *     stays silent.
+         */
+        delete: operations["removeAlbumItems"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3398,6 +3571,122 @@ export interface components {
             thumbnail: string;
         };
         /**
+         * @description The creation body of one virtual album: the title and the
+         *     optional bounded description. No type field exists -- this
+         *     endpoint IS virtual creation, the only creatable album type
+         *     of the face.
+         */
+        AlbumCreateRequest: {
+            /**
+             * @description The album's display title, trimmed server-side; it must
+             *     span 1-64 Unicode characters after the trim (the count
+             *     is over runes, so multi-byte titles stay within the
+             *     bound at the same length).
+             */
+            title: string;
+            /**
+             * @description The album's free-text description; empty when absent.
+             *     At most 10,000 Unicode characters, the asset
+             *     description's own bound.
+             */
+            description?: string;
+        };
+        /**
+         * @description The partial edit of one album: every field is optional, at
+         *     least one must be present (a body that carries none -- JSON
+         *     null values count as absent, the patch discipline of the
+         *     asset surface -- is a client bug and answers 400), and only
+         *     the fields the request carries update; the rest keep their
+         *     values. A present `coverAssetId` must be a live member of
+         *     the album itself. The write publishes one `album.updated`
+         *     event whatever fields changed.
+         */
+        AlbumPatch: {
+            /**
+             * @description The album's display title, trimmed server-side; when
+             *     present it must span 1-64 Unicode characters after the
+             *     trim.
+             */
+            title?: string;
+            /**
+             * @description The album's free-text description; the value replaces
+             *     the stored text wholesale (an empty string clears it).
+             *     At most 10,000 Unicode characters.
+             */
+            description?: string;
+            /**
+             * Format: uuid
+             * @description The pinned cover asset. When present it must be a LIVE
+             *     member of THIS album (the membership row exists and the
+             *     asset is not trashed, not hidden, not a Live Photo
+             *     component row) -- otherwise the answer is 400 with the
+             *     message key `album_cover_not_member`. Absent (or JSON
+             *     null, which decodes as absent) leaves the pin
+             *     unchanged.
+             */
+            coverAssetId?: string;
+            /**
+             * @description The owner's lock. `true` freezes the album's curation
+             *     and property fields against later writes (this same
+             *     endpoint refuses them with 409 until the owner patches
+             *     `locked: false` -- the unlock, never gated itself).
+             *     Locking does not gate the album's delete.
+             */
+            locked?: boolean;
+        };
+        /**
+         * @description The membership write body: the list of asset ids to add to
+         *     or remove from one virtual album. Repeated ids collapse to
+         *     one application; the report's counts cover the distinct ids.
+         */
+        AlbumItemsRequest: {
+            /**
+             * @description The asset ids of the membership write, between 1 and 200
+             *     entries. The add skips -- never errors on -- every id
+             *     that is not a live caller-owned asset or that already
+             *     sits in the album; the remove skips the ids that are no
+             *     members.
+             */
+            assetIds: string[];
+        };
+        /**
+         * @description The honest report of one membership add over the request's
+         *     distinct ids: what landed and what was skipped, foreign,
+         *     non-live and already-member ids alike.
+         */
+        AddAlbumItemsResponse: {
+            /**
+             * @description The membership rows the request inserted. Zero for an
+             *     all-skipped request, which is still a 200 -- batch
+             *     semantics, never an error.
+             */
+            added: number;
+            /**
+             * @description The distinct ids that did not land: unknown ids, another
+             *     account's assets, trashed, hidden or component rows, and
+             *     the ids already sitting in the album (the idempotent
+             *     add).
+             */
+            skipped: number;
+        };
+        /**
+         * @description The honest report of one membership remove over the
+         *     request's distinct ids: the rows that left and the ids that
+         *     were no members.
+         */
+        RemoveAlbumItemsResponse: {
+            /**
+             * @description The membership rows the request deleted. Zero for an
+             *     all-skipped request, which is still a 200.
+             */
+            removed: number;
+            /**
+             * @description The distinct ids that were no members of the album --
+             *     never added, or already removed.
+             */
+            skipped: number;
+        };
+        /**
          * @description Error envelope shared by all endpoints. `code` is the authoritative
          *     registry of stable error codes; clients must not parse `message`.
          */
@@ -3407,7 +3696,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_LOCKED";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -5075,6 +5364,69 @@ export interface operations {
             };
         };
     };
+    createAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumCreateRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The album exists; the response is its wall card. The
+             *     counts are the creation-time zeros: no member, no share,
+             *     no cover.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumSummary"];
+                };
+            };
+            /**
+             * @description The request is invalid: the title is missing, empty,
+             *     whitespace-only, or spans more than 64 characters; or
+             *     the description exceeds its 10,000-character bound; or
+             *     the body is not valid JSON.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getAlbum: {
         parameters: {
             query?: {
@@ -5148,6 +5500,395 @@ export interface operations {
              *     design.
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the album. */
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The album is gone, its membership and share rows
+             *     cascaded with it. The answer carries no body.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller can see the album but is not its owner (an
+             *     album shared to the caller): the share is view-only.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such album for this caller: the id is unknown, the
+             *     album is another account's unshared or sync album, or it
+             *     is a directory album (whose removal is its own flow) --
+             *     indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the album. */
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumPatch"];
+            };
+        };
+        responses: {
+            /**
+             * @description The patch landed; the response is the album's wall card
+             *     after the edit.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumSummary"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON or
+             *     carries no field; a present title is empty,
+             *     whitespace-only or spans more than 64 characters; the
+             *     description exceeds its bound; or a present
+             *     `coverAssetId` is not a live member of this album (the
+             *     message key `album_cover_not_member`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller can see the album but is not its owner (an
+             *     album shared to the caller): the share is view-only, so
+             *     the write is an honest authorization failure, not a
+             *     missing resource.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such album for this caller: the id is unknown, the
+             *     album belongs to another account without a share to the
+             *     caller, or it is a sync album -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The album is locked and the patch touches a property or
+             *     curation field (`title`, `description`, `coverAssetId`).
+             *     Unlock first -- a patch of only `locked: false` is the
+             *     unlock and is never gated.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addAlbumItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the album. */
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumItemsRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The report over the request's distinct ids: `added`
+             *     counts the rows the request inserted, `skipped` the rest
+             *     -- already-members and ids the caller cannot act on
+             *     alike.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddAlbumItemsResponse"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, the
+             *     list is empty, or it carries more than 200 ids.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller can see the album but is not its owner (an
+             *     album shared to the caller): the share is view-only, so
+             *     the curation write is an honest authorization failure.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such album for this caller: the id is unknown, the
+             *     album belongs to another account without a share to the
+             *     caller, it is a sync album, or it is a directory album
+             *     (whose membership is its own flow) -- indistinguishable
+             *     by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The album is locked: curation writes are refused until
+             *     the owner unlocks it.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeAlbumItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the album. */
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumItemsRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The report over the request's distinct ids: `removed`
+             *     counts the membership rows the request deleted,
+             *     `skipped` the rest -- the ids that were no members.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoveAlbumItemsResponse"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, the
+             *     list is empty, or it carries more than 200 ids.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller can see the album but is not its owner (an
+             *     album shared to the caller): the share is view-only, so
+             *     the curation write is an honest authorization failure.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such album for this caller: the id is unknown, the
+             *     album belongs to another account without a share to the
+             *     caller, it is a sync album, or it is a directory album
+             *     (whose membership is its own flow) -- indistinguishable
+             *     by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The album is locked: curation writes are refused until
+             *     the owner unlocks it.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
