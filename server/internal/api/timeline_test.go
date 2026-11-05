@@ -285,10 +285,16 @@ func TestTimelineUploadWiring(t *testing.T) {
 		if !item.TakenAt.Truncate(time.Microsecond).Equal(wantTaken) {
 			t.Errorf("takenAt = %v, want the device-reported %v", item.TakenAt, wantTaken)
 		}
-		if item.Blurhash != nil || item.Width != nil || item.Height != nil ||
-			item.DurationMs != nil || item.LivePhotoVideoId != nil {
-			t.Errorf("pipeline fields = %v/%v/%v/%v/%v, want all null before the jobs ran",
-				item.Blurhash, item.Width, item.Height, item.DurationMs, item.LivePhotoVideoId)
+		// Width and height are the raw assets columns (the justified
+		// wall's contract): always present, the 0 placeholder until
+		// the metadata job refines them -- never null.
+		if item.Width != 0 || item.Height != 0 {
+			t.Errorf("width/height = %d/%d, want 0/0 (the upload placeholder) before the jobs ran",
+				item.Width, item.Height)
+		}
+		if item.Blurhash != nil || item.DurationMs != nil || item.LivePhotoVideoId != nil {
+			t.Errorf("pipeline fields = %v/%v/%v, want all null before the jobs ran",
+				item.Blurhash, item.DurationMs, item.LivePhotoVideoId)
 		}
 		if item.Checksum != asset.Checksum || item.MimeType != asset.MimeType ||
 			item.OriginalFilename != asset.OriginalFilename || item.FileSize != asset.FileSize {
@@ -482,11 +488,13 @@ func TestTimeline(t *testing.T) {
 		if !item.IsReady {
 			t.Error("isReady = false, want true for the fixture with ready_at set")
 		}
-		if item.Width == nil || *item.Width != 4032 {
-			t.Errorf("width = %v, want 4032", item.Width)
+		// The refined dimensions cross as plain integers (the
+		// justified wall's contract pins them NOT NULL).
+		if item.Width != 4032 {
+			t.Errorf("width = %d, want 4032", item.Width)
 		}
-		if item.Height == nil || *item.Height != 3024 {
-			t.Errorf("height = %v, want 3024", item.Height)
+		if item.Height != 3024 {
+			t.Errorf("height = %d, want 3024", item.Height)
 		}
 		if item.Blurhash == nil || *item.Blurhash != "UHL6aAof00WBWB00ayWB00" {
 			t.Errorf("blurhash = %v, want the fixture value", item.Blurhash)

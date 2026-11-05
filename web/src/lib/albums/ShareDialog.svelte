@@ -106,7 +106,7 @@
 
 		<section class="share-dialog__pick flex flex-col gap-1.5">
 			{#if loading}
-				<p class="share-dialog__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft" role="status">{$_('albums_share_pick_label')}…</p>
+				<p class="share-dialog__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('albums_share_pick_label')}…</p>
 			{:else if candidates.length === 0}
 				<p class="share-dialog__no-candidates m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('albums_share_no_candidates')}</p>
 			{:else}

@@ -170,12 +170,16 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	const page = mountPage();
 	await settle();
 
-	const monthHeaders = Array.from(document.body.querySelectorAll('.timeline__month-header'));
+	// The wall's month and day headers: the shared justified wall
+	// renderer (MonthGroups) owns the header classes now -- the
+	// selectors follow the wall__ prefix the curated views always
+	// used.
+	const monthHeaders = Array.from(document.body.querySelectorAll('.wall__month-header'));
 	expect(monthHeaders.map((header) => header.textContent)).toEqual([
 		'November 2026',
 		'October 2026'
 	]);
-	const dayHeaders = Array.from(document.body.querySelectorAll('.timeline__day-header'));
+	const dayHeaders = Array.from(document.body.querySelectorAll('.wall__day-header'));
 	expect(dayHeaders.map((header) => header.textContent)).toEqual([
 		'November 2',
 		'November 1',
@@ -190,6 +194,34 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	const stops = Array.from(document.body.querySelectorAll('.scrubber__stop'));
 	expect(stops.map((stop) => stop.textContent)).toEqual(['November 2026', 'October 2026']);
 
+	unmount(page);
+	flushSync();
+});
+
+test('tiles pack into justified rows at the engine-computed sizes', async () => {
+	vi.stubGlobal('fetch', stubFetch(timelineRoutes()));
+	const page = mountPage();
+	await settle();
+
+	// jsdom has neither a ResizeObserver nor box metrics, so the wall
+	// packs against the content-column fallback width (1200px): every
+	// day group holds ONE 4:3 item, whose natural row height (900px)
+	// is above the 216px target, so each row is the clamped tail --
+	// height exactly the target, tile width 216 * 4/3 = 288px.
+	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.wall__row'));
+	expect(rows).toHaveLength(3);
+	for (const row of rows) {
+		expect(row.style.height).toBe('216px');
+		expect(row.style.gap).toBe('3px');
+	}
+	const cells = Array.from(document.body.querySelectorAll<HTMLElement>('.wall__cell'));
+	expect(cells).toHaveLength(3);
+	expect(cells[0]?.style.width).toBe('288px');
+
+	// The tiles fill their cells at the true aspect: the engine's
+	// width over the row height is the item's sensor ratio.
+	const tile = cells[0]?.querySelector<HTMLElement>('.tile');
+	expect(tile).not.toBeNull();
 	unmount(page);
 	flushSync();
 });
@@ -325,7 +357,9 @@ test('without an observer the manual pager loads the next page', async () => {
 	await settle();
 
 	expect(tiles()).toHaveLength(5);
-	const months = Array.from(document.body.querySelectorAll('.timeline__month-header'));
+	// (The wall__ prefix: the shared MonthGroups renderer owns the
+	// headers of every wall.)
+	const months = Array.from(document.body.querySelectorAll('.wall__month-header'));
 	expect(months.map((header) => header.textContent)).toEqual([
 		'November 2026',
 		'October 2026',

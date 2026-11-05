@@ -136,7 +136,7 @@
 	<!-- The hint is visual only: the drag events stay on the window,
 	     and a drop landing on the hint must still reach the page. -->
 	<div
-		class="drophint fixed inset-0 z-[90] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-accent-soft)_40%,transparent)] border-3 border-dashed border-accent pointer-events-none"
+		class="drophint fixed inset-0 z-(--z-scrim) flex items-center justify-center bg-[color-mix(in_srgb,var(--color-accent-soft)_40%,transparent)] border-3 border-dashed border-accent pointer-events-none"
 		aria-hidden="true"
 	>
 		<p class="py-4 px-7 rounded-overlay bg-card font-body font-bold text-[18px] leading-[1.4] text-accent-on shadow-overlay">{$_('upload_drop_hint')}</p>
@@ -145,16 +145,16 @@
 
 {#if items.length > 0}
 	<section
-		class="overlay fixed right-4 bottom-4 z-[70] w-[min(360px,calc(100vw-32px))] max-h-[min(60vh,480px)] box-content flex flex-col p-3 bg-card border border-border rounded-overlay shadow-overlay"
+		class="overlay fixed right-4 bottom-4 z-(--z-panel) w-[min(360px,calc(100vw-32px))] max-h-[min(60vh,480px)] box-content flex flex-col p-3 bg-card border border-border rounded-overlay shadow-overlay"
 		aria-label={$_('upload_queue_title')}
 	>
 		<header class="overlay__head flex items-baseline gap-2 pb-2">
 			<h2 class="overlay__title font-body font-bold text-[14px] leading-[1.4] text-text">{$_('upload_queue_title')}</h2>
 			{#if activeCount > 0}
-				<span class="overlay__count font-body font-normal text-[12px] leading-[1.4] text-text-soft">{$_('upload_active_count', { values: { count: activeCount } })}</span>
+				<span class="overlay__count font-body font-normal text-[12px] leading-[1.4] text-text-soft tabular-nums">{$_('upload_active_count', { values: { count: activeCount } })}</span>
 			{/if}
 		</header>
-		<ul class="overlay__rows flex flex-col gap-2 overflow-y-auto list-none">
+		<ul class="overlay__rows flex flex-col gap-2 overflow-y-auto [scrollbar-gutter:stable] list-none">
 			{#each items as item (item.id)}
 				<li class="row row--{item.state} grid grid-cols-[1fr_auto] [grid-template-areas:'main_close''bar_close''error_close''actions_close'] items-center gap-x-2 p-2 border border-border rounded-control">
 					<div class="row__main flex flex-col min-w-0 [grid-area:main]">
@@ -166,11 +166,19 @@
 						     live percentage; the processing row's bar is
 						     indeterminate, so it names its own state and
 						     reports no value (an aria-valuenow of a settled
-						     100% would misstate an unknown-duration wait). -->
+						     100% would misstate an unknown-duration wait).
+						     Both bars enter through the anti-flicker delays:
+						     the determinate progress waits out its 100ms
+						     grace and the indeterminate processing bar (the
+						     spinner class) the loading line's 400ms -- an
+						     upload that errors or converges inside the
+						     window never flashes a bar. -->
 						{@const indeterminate = item.state === 'processing'}
 						<div
 							class="row__bar [grid-area:bar] mt-1.5 h-1 rounded-[2px] bg-border overflow-hidden"
 							class:row__bar--indeterminate={indeterminate}
+							class:animate-progress-in={!indeterminate}
+							class:animate-loading-in={indeterminate}
 							role="progressbar"
 							aria-label={stateLabel(item)}
 							aria-valuemin={indeterminate ? undefined : 0}

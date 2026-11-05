@@ -63,18 +63,19 @@
 	     except the panel, so a click on the page content, the top bar
 	     or the hamburger closes the drawer. -->
 	<div
-		class="drawer__scrim fixed inset-0 z-[90] bg-[color-mix(in_srgb,var(--color-night)_48%,transparent)]"
+		class="drawer__scrim fixed inset-0 z-(--z-scrim) bg-[color-mix(in_srgb,var(--color-night)_48%,transparent)]"
 		role="presentation"
 		onclick={close}
 	></div>
-	<nav class="drawer__panel fixed top-0 bottom-0 left-0 z-[100] flex flex-col gap-2 w-[min(320px,85vw)] px-3 py-4 box-content bg-card border-r border-border shadow-overlay" aria-label={$_('nav_label')}>
+	<nav class="drawer__panel fixed top-0 bottom-0 left-0 z-(--z-drawer) flex flex-col gap-2 w-[min(320px,85vw)] px-3 py-4 box-content bg-card border-r border-border shadow-overlay" aria-label={$_('nav_label')}>
 		<ul class="drawer__list flex flex-col gap-0.5 list-none">
 			{#each items as item (item.labelKey)}
 				<li>
 					{#if item.disabled}
 						<!-- The M3 placeholders: present and visible, but inert
 						     until their domains arrive; the title carries the
-						     coming-later note. -->
+						     coming-later note. No hover shift: a disabled row
+						     owes no affordance. -->
 						<button
 							class="drawer__item drawer__item--disabled block w-full px-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard disabled:text-text-faint disabled:cursor-not-allowed"
 							type="button"
@@ -86,9 +87,11 @@
 					{:else}
 						<!-- Navigating closes the drawer; the SvelteKit router
 						     owns the click's default action, so the handler must
-						     not prevent it. -->
+						     not prevent it. The hover adds G10's small padding
+						     nudge (the 3 -> 3.5 spacing step, ~2px) alongside
+						     the background, riding the same fast transition. -->
 						<a
-							class="drawer__item block w-full px-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left no-underline rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]"
+							class="drawer__item block w-full ps-3 pe-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left no-underline rounded-control bg-transparent cursor-pointer transition-[background-color,padding] duration-(--motion-fast) ease-standard hover:ps-3.5 hover:bg-accent-soft hover:text-accent-soft-text focus-visible:ps-3.5 focus-visible:bg-accent-soft focus-visible:text-accent-soft-text active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]"
 							href={item.href}
 							onclick={close}
 						>
@@ -107,7 +110,7 @@
 			<ul class="drawer__list flex flex-col gap-0.5 list-none">
 				<li>
 					<a
-						class="drawer__item block w-full px-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left no-underline rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]"
+						class="drawer__item block w-full ps-3 pe-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left no-underline rounded-control bg-transparent cursor-pointer transition-[background-color,padding] duration-(--motion-fast) ease-standard hover:ps-3.5 hover:bg-accent-soft hover:text-accent-soft-text focus-visible:ps-3.5 focus-visible:bg-accent-soft focus-visible:text-accent-soft-text active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]"
 						href={adminEntry.href}
 						onclick={close}
 					>

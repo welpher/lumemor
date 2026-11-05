@@ -218,8 +218,11 @@ func (s *server) timelinePageParams(w http.ResponseWriter, limit *int, cursor *s
 // hidden, trashed and component rows), so isTrashed is always false
 // here -- carried only to keep the shape identical to the asset
 // detail's. isFavorite is the per-user state the query computed for
-// the requesting user. The pipeline-dependent values cross as null
-// while the jobs have not produced them, exactly like the detail's.
+// the requesting user. Width and height cross as the raw NOT NULL
+// column values (the justified wall's contract: always present, the
+// 0 placeholder while the metadata job has not refined them); the
+// other pipeline-dependent values cross as null, exactly like the
+// detail's.
 func timelineItemFrom(row dbgen.Asset, isFavorite bool) apigen.TimelineItem {
 	return apigen.TimelineItem{
 		Id:               uuid.UUID(row.ID.Bytes),
@@ -235,8 +238,8 @@ func timelineItemFrom(row dbgen.Asset, isFavorite bool) apigen.TimelineItem {
 		IsTrashed:        row.DeletedAt.Valid,
 		IsFavorite:       isFavorite,
 		IsReady:          row.ReadyAt.Valid,
-		Width:            dimensionValue(row.Width),
-		Height:           dimensionValue(row.Height),
+		Width:            int(row.Width),
+		Height:           int(row.Height),
 		DurationMs:       int4Value(row.DurationMs),
 		Blurhash:         textValue(row.Blurhash),
 		LivePhotoVideoId: uuidValue(row.LivePhotoVideoID),

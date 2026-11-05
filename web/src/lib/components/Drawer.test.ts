@@ -176,6 +176,23 @@ test('a click on the panel itself does not close the drawer', async () => {
 	flushSync();
 });
 
+test('the nav items shift their leading padding on hover (the G10 trial)', () => {
+	// The rail item's hover adds a small start-side nudge (~2px,
+	// the 3 -> 3.5 spacing step) alongside the background change,
+	// riding the item's existing transition so both arrive at the
+	// theme's fast step together.
+	const drawer = mount(Drawer, { target: document.body, props: { open: true } });
+	flushSync();
+
+	const link = document.body.querySelector<HTMLAnchorElement>('a.drawer__item[href="/timeline"]');
+	expect(link?.className).toContain('ps-3');
+	expect(link?.className).toContain('pe-3');
+	expect(link?.className).toContain('hover:ps-3.5');
+	expect(link?.className).toContain('transition-[background-color,padding]');
+	unmount(drawer);
+	flushSync();
+});
+
 test('navigating through a drawer link closes the drawer', async () => {
 	const drawer = mount(Drawer, { target: document.body, props: { open: true } });
 	flushSync();
