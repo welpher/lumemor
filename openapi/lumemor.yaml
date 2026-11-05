@@ -3349,6 +3349,20 @@ paths:
                   value:
                     code: AUTH_INVALID_CREDENTIALS
                     message: authentication required
+        '409':
+          description: |
+            The album is locked: the permission matrix pins deletion
+            to the UNLOCKED state. Unlock first -- one step, the
+            freeze is a state to clear, not a wall to climb.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                albumLocked:
+                  value:
+                    code: ALBUM_LOCKED
+                    message: the album is locked
         '403':
           description: |
             The caller can see the album but is not its owner (an

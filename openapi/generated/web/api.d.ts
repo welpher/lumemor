@@ -6056,6 +6056,19 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /**
+             * @description The album is locked: the permission matrix pins deletion
+             *     to the UNLOCKED state. Unlock first -- one step, the
+             *     freeze is a state to clear, not a wall to climb.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Unexpected server failure. */
             500: {
                 headers: {
