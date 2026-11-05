@@ -11,6 +11,52 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addAlbumItems = `-- name: AddAlbumItems :execrows
+INSERT INTO album_items (album_id, asset_id, added_by)
+SELECT $1, a.id, $2
+FROM assets a
+WHERE a.id = ANY($3::uuid[])
+  AND a.owner_id = $4
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+ON CONFLICT DO NOTHING
+`
+
+type AddAlbumItemsParams struct {
+	AlbumID  pgtype.UUID   `json:"album_id"`
+	AddedBy  pgtype.UUID   `json:"added_by"`
+	AssetIds []pgtype.UUID `json:"asset_ids"`
+	OwnerID  pgtype.UUID   `json:"owner_id"`
+}
+
+// The membership add: resolution and insert in one statement. The
+// WHERE arm IS the resolution -- every id must name a live asset the
+// CALLER owns (the owner-based live predicate, a DELIBERATE M3c
+// decision: curating another account's shared photos into a virtual
+// album is the re-share feature, which needs display-time
+// owner-visibility re-validation on every item-listing surface
+// before the union can carry curation without leaving stale
+// snapshots behind a revoked share) -- so foreign, trashed, hidden,
+// component and unknown ids never produce rows: they are the
+// skipped of the honest report, never errors. ON CONFLICT DO NOTHING
+// makes the already-member id the no-op of the idempotent add
+// (membership is a set). The SELECT scans assets once, so a repeated
+// id in the array yields one row; the rows-affected count is the
+// report's added.
+func (q *Queries) AddAlbumItems(ctx context.Context, arg AddAlbumItemsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addAlbumItems,
+		arg.AlbumID,
+		arg.AddedBy,
+		arg.AssetIds,
+		arg.OwnerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const addAssetToAlbum = `-- name: AddAssetToAlbum :exec
 INSERT INTO album_items (album_id, asset_id, added_by)
 VALUES ($1, $2, $3)
@@ -34,6 +80,110 @@ type AddAssetToAlbumParams struct {
 func (q *Queries) AddAssetToAlbum(ctx context.Context, arg AddAssetToAlbumParams) error {
 	_, err := q.db.Exec(ctx, addAssetToAlbum, arg.AlbumID, arg.AssetID, arg.AddedBy)
 	return err
+}
+
+const countLiveAlbumMember = `-- name: CountLiveAlbumMember :one
+SELECT count(*) AS matches
+FROM album_items ai
+JOIN assets a ON a.id = ai.asset_id
+WHERE ai.album_id = $1
+  AND ai.asset_id = $2
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+`
+
+type CountLiveAlbumMemberParams struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	AssetID pgtype.UUID `json:"asset_id"`
+}
+
+// The cover validation (the spec's application-layer pin): does the
+// given asset sit in this album as a LIVE member? The membership row
+// must exist AND the asset must pass the live predicate -- a hidden,
+// trashed or Live Photo component member is a member no more for
+// cover purposes, and an asset outside the album never was one.
+func (q *Queries) CountLiveAlbumMember(ctx context.Context, arg CountLiveAlbumMemberParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countLiveAlbumMember, arg.AlbumID, arg.AssetID)
+	var matches int64
+	err := row.Scan(&matches)
+	return matches, err
+}
+
+const createVirtualAlbum = `-- name: CreateVirtualAlbum :one
+INSERT INTO albums (id, owner_id, title, description, type)
+VALUES ($1, $2, $3, $4, 'virtual')
+RETURNING id
+`
+
+type CreateVirtualAlbumParams struct {
+	ID          pgtype.UUID `json:"id"`
+	OwnerID     pgtype.UUID `json:"owner_id"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+}
+
+// The virtual album creator: the write face's only creatable type
+// (directory albums arrive with their own milestone, sync albums are
+// born per account), with the id generated caller-side because the
+// table carries no default. The wall card's companions are the
+// creation-time constants -- no share, no member, no cover -- so the
+// handler reads the fresh row's full card through GetAlbumSummary
+// like every other write response.
+func (q *Queries) CreateVirtualAlbum(ctx context.Context, arg CreateVirtualAlbumParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, createVirtualAlbum,
+		arg.ID,
+		arg.OwnerID,
+		arg.Title,
+		arg.Description,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteAlbumTimelinePreference = `-- name: DeleteAlbumTimelinePreference :execrows
+DELETE FROM user_album_prefs
+WHERE user_id = $1
+  AND album_id = $2
+`
+
+type DeleteAlbumTimelinePreferenceParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+// The preference reset: the row goes, the album returns to the
+// default of feeding the caller's timeline. Zero rows are the
+// idempotent no-op -- the caller asked for the row to be gone and it
+// already is.
+func (q *Queries) DeleteAlbumTimelinePreference(ctx context.Context, arg DeleteAlbumTimelinePreferenceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAlbumTimelinePreference, arg.UserID, arg.AlbumID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteVirtualAlbum = `-- name: DeleteVirtualAlbum :execrows
+DELETE FROM albums
+WHERE id = $1
+  AND type = 'virtual'
+`
+
+// The virtual album delete: the row goes and every album_items and
+// album_shares row follows through the schema's ON DELETE CASCADE.
+// The type guard keeps the statement honest against the handler's
+// virtual-only verdict (directory removal is the directory album's
+// own flow), and zero rows -- a concurrent delete won the race -- is
+// the 404 of a gone album. No locked gate ever runs here: locking is
+// a curation freeze, not a tombstone.
+func (q *Queries) DeleteVirtualAlbum(ctx context.Context, albumID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteVirtualAlbum, albumID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const ensureSyncAlbum = `-- name: EnsureSyncAlbum :one
@@ -71,4 +221,736 @@ func (q *Queries) EnsureSyncAlbum(ctx context.Context, arg EnsureSyncAlbumParams
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getAlbumForCaller = `-- name: GetAlbumForCaller :one
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       CASE
+           WHEN al.owner_id = $1 THEN 'owner'::text
+           ELSE 'viewer'::text
+       END AS caller_role,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+       ) AS item_count,
+       p.in_timeline
+FROM albums al
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = $1
+WHERE al.id = $2
+  AND al.type IN ('virtual', 'directory')
+  AND (
+      al.owner_id = $1
+      OR EXISTS (
+          SELECT 1 FROM album_shares s
+          WHERE s.album_id = al.id AND s.user_id = $1
+      )
+  )
+`
+
+type GetAlbumForCallerParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+type GetAlbumForCallerRow struct {
+	Album      Album       `json:"album"`
+	CallerRole string      `json:"caller_role"`
+	ItemCount  int64       `json:"item_count"`
+	InTimeline pgtype.Bool `json:"in_timeline"`
+}
+
+// The album the caller may see, with the caller's role, the live
+// member count and the caller's timeline preference. The visibility
+// check is the whole point: the caller owns the album or an
+// album_shares row grants it, and the album is no sync album (the
+// sync album is the timeline's, whoever owns it -- the detail face
+// answers 404 for it through the handler's no-row mapping, which is
+// what keeps unknown, invisible and sync ids indistinguishable).
+// in_timeline is the caller's raw preference row (NULL = no row);
+// the handler maps it to the excludable cards' field -- present for
+// the own directory albums and the shared albums, absent for the
+// caller's own virtual albums, true when no row exists.
+func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerParams) (GetAlbumForCallerRow, error) {
+	row := q.db.QueryRow(ctx, getAlbumForCaller, arg.UserID, arg.AlbumID)
+	var i GetAlbumForCallerRow
+	err := row.Scan(
+		&i.Album.ID,
+		&i.Album.OwnerID,
+		&i.Album.Title,
+		&i.Album.Description,
+		&i.Album.Type,
+		&i.Album.Locked,
+		&i.Album.CoverAssetID,
+		&i.Album.RootPath,
+		&i.Album.LastScannedAt,
+		&i.Album.CreatedAt,
+		&i.Album.UpdatedAt,
+		&i.CallerRole,
+		&i.ItemCount,
+		&i.InTimeline,
+	)
+	return i, err
+}
+
+const getAlbumForTimelinePref = `-- name: GetAlbumForTimelinePref :one
+
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       CASE
+           WHEN al.owner_id = $1 THEN 'owner'::text
+           ELSE 'viewer'::text
+       END AS caller_role
+FROM albums al
+WHERE al.id = $2
+  AND (
+      al.owner_id = $1
+      OR EXISTS (
+          SELECT 1 FROM album_shares s
+          WHERE s.album_id = al.id AND s.user_id = $1
+      )
+  )
+`
+
+type GetAlbumForTimelinePrefParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+type GetAlbumForTimelinePrefRow struct {
+	Album      Album  `json:"album"`
+	CallerRole string `json:"caller_role"`
+}
+
+// Timeline preferences (M3c Task 4): the per-user "keep this album
+// out of my timeline" switch. The preference scopes the caller's own
+// view only (the aggregated timeline's formula folds it inside its
+// membership existential); the album's own items, the wall and every
+// sharee's view never read it. The row is the caller's: (user_id,
+// album_id) primary key, a missing row meaning kept in.
+// The preference face's gate: the album row with the caller's role.
+// Unlike GetAlbumForCaller this resolves EVERY album type -- the
+// caller's own sync and own virtual albums must reach the handler so
+// their 400 (not excludable) can answer, and a sync album a share
+// row names (nothing can produce one, but a defense holds anyway)
+// resolves as a viewer row the handler's type check refuses. No row
+// covers the unknown and the not-visible-alike -- the single-shape
+// 404 (anti-enumeration).
+func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTimelinePrefParams) (GetAlbumForTimelinePrefRow, error) {
+	row := q.db.QueryRow(ctx, getAlbumForTimelinePref, arg.UserID, arg.AlbumID)
+	var i GetAlbumForTimelinePrefRow
+	err := row.Scan(
+		&i.Album.ID,
+		&i.Album.OwnerID,
+		&i.Album.Title,
+		&i.Album.Description,
+		&i.Album.Type,
+		&i.Album.Locked,
+		&i.Album.CoverAssetID,
+		&i.Album.RootPath,
+		&i.Album.LastScannedAt,
+		&i.Album.CreatedAt,
+		&i.Album.UpdatedAt,
+		&i.CallerRole,
+	)
+	return i, err
+}
+
+const getAlbumForWrite = `-- name: GetAlbumForWrite :one
+
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       EXISTS (
+           SELECT 1 FROM album_shares s
+           WHERE s.album_id = al.id AND s.user_id = $1
+       ) AS shared_to_caller
+FROM albums al
+WHERE al.id = $2
+  AND al.type <> 'sync'
+`
+
+type GetAlbumForWriteParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+type GetAlbumForWriteRow struct {
+	Album          Album `json:"album"`
+	SharedToCaller bool  `json:"shared_to_caller"`
+}
+
+// Album writes (M3c Task 2): creation, the property patch, the
+// delete, the membership curation and the write face's authorization
+// gate. The reads' live-member predicate runs through the cover
+// validation and the add's resolution: the same three-part filter
+// (deleted_at IS NULL AND is_hidden = false AND is_component =
+// false).
+// The write face's authorization gate: the album row plus whether
+// the caller holds a view share of it. Sync albums answer no row
+// (the timeline is their face, whoever owns them); the owner check
+// itself is NOT here -- the handler shapes the two-tier answer off
+// the row, the permanent delete's discipline (the refusal, not the
+// read, shapes the response): the owner or an administrator
+// proceeds, a sharee answers the honest 403, and everyone else
+// folds into the reads' byte-identical 404.
+func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWriteParams) (GetAlbumForWriteRow, error) {
+	row := q.db.QueryRow(ctx, getAlbumForWrite, arg.UserID, arg.AlbumID)
+	var i GetAlbumForWriteRow
+	err := row.Scan(
+		&i.Album.ID,
+		&i.Album.OwnerID,
+		&i.Album.Title,
+		&i.Album.Description,
+		&i.Album.Type,
+		&i.Album.Locked,
+		&i.Album.CoverAssetID,
+		&i.Album.RootPath,
+		&i.Album.LastScannedAt,
+		&i.Album.CreatedAt,
+		&i.Album.UpdatedAt,
+		&i.SharedToCaller,
+	)
+	return i, err
+}
+
+const getAlbumShare = `-- name: GetAlbumShare :one
+SELECT album_id, user_id, granted_at
+FROM album_shares
+WHERE album_id = $1
+  AND user_id = $2
+`
+
+type GetAlbumShareParams struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	UserID  pgtype.UUID `json:"user_id"`
+}
+
+type GetAlbumShareRow struct {
+	AlbumID   pgtype.UUID        `json:"album_id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	GrantedAt pgtype.Timestamptz `json:"granted_at"`
+}
+
+// One share row of one grantee: the honest post-write state of the
+// grant (the fresh row's now(), or the existing row's original
+// values when the grant was the idempotent no-op).
+func (q *Queries) GetAlbumShare(ctx context.Context, arg GetAlbumShareParams) (GetAlbumShareRow, error) {
+	row := q.db.QueryRow(ctx, getAlbumShare, arg.AlbumID, arg.UserID)
+	var i GetAlbumShareRow
+	err := row.Scan(&i.AlbumID, &i.UserID, &i.GrantedAt)
+	return i, err
+}
+
+const getAlbumSummary = `-- name: GetAlbumSummary :one
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       EXISTS (
+           SELECT 1 FROM album_shares s WHERE s.album_id = al.id
+       ) AS is_shared,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+       ) AS item_count,
+       p.in_timeline
+FROM albums al
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = $1
+WHERE al.id = $2
+`
+
+type GetAlbumSummaryParams struct {
+	UserID  pgtype.UUID `json:"user_id"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+type GetAlbumSummaryRow struct {
+	Album      Album       `json:"album"`
+	IsShared   bool        `json:"is_shared"`
+	ItemCount  int64       `json:"item_count"`
+	InTimeline pgtype.Bool `json:"in_timeline"`
+}
+
+// The album row with the wall card's honest companions: whether any
+// share row exists, the live member count, and the caller's raw
+// timeline preference row (the write face's caller is the owner, so a
+// virtual album's card carries no preference field; the handler maps
+// NULL to the default the same way the wall does). The write face's
+// responses build their cards off this row; the derived cover
+// candidates ride along through the wall's own follow-up query.
+func (q *Queries) GetAlbumSummary(ctx context.Context, arg GetAlbumSummaryParams) (GetAlbumSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getAlbumSummary, arg.UserID, arg.AlbumID)
+	var i GetAlbumSummaryRow
+	err := row.Scan(
+		&i.Album.ID,
+		&i.Album.OwnerID,
+		&i.Album.Title,
+		&i.Album.Description,
+		&i.Album.Type,
+		&i.Album.Locked,
+		&i.Album.CoverAssetID,
+		&i.Album.RootPath,
+		&i.Album.LastScannedAt,
+		&i.Album.CreatedAt,
+		&i.Album.UpdatedAt,
+		&i.IsShared,
+		&i.ItemCount,
+		&i.InTimeline,
+	)
+	return i, err
+}
+
+const grantAlbumShare = `-- name: GrantAlbumShare :execrows
+
+INSERT INTO album_shares (album_id, user_id, granted_by)
+VALUES ($1, $2, $3)
+ON CONFLICT (album_id, user_id) DO NOTHING
+`
+
+type GrantAlbumShareParams struct {
+	AlbumID   pgtype.UUID `json:"album_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+	GrantedBy pgtype.UUID `json:"granted_by"`
+}
+
+// Album sharing (M3c Task 3): the view-ACL grant, revoke and the
+// owner's grantee list. The grant is the set discipline again: ON
+// CONFLICT DO NOTHING makes the re-grant of a current grantee a
+// no-op, so the rows-affected count is the transition signal the
+// handler's event discipline reads (a new row fires album.shared,
+// the idempotent no-op stays silent) -- and the PK is the race
+// guard: concurrent grants converge on one row.
+// The view-ACL grant: one album_shares row. The count answers the
+// transition -- 1 row landed a fresh grant, 0 rows mean the grantee
+// already holds the share (the handler then re-reads the existing
+// row for the response; the grantor and grant time of the original
+// stay untouched).
+func (q *Queries) GrantAlbumShare(ctx context.Context, arg GrantAlbumShareParams) (int64, error) {
+	result, err := q.db.Exec(ctx, grantAlbumShare, arg.AlbumID, arg.UserID, arg.GrantedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const listAlbumCoverCandidates = `-- name: ListAlbumCoverCandidates :many
+SELECT ranked.album_id,
+       ranked.asset_id
+FROM (
+    SELECT ai.album_id,
+           ai.asset_id,
+           row_number() OVER (
+               PARTITION BY ai.album_id
+               ORDER BY a.taken_at DESC, a.id DESC
+           ) AS recency_rank
+    FROM album_items ai
+    JOIN assets a ON a.id = ai.asset_id
+    WHERE ai.album_id = ANY($1::uuid[])
+      AND a.deleted_at IS NULL
+      AND a.is_hidden = false
+      AND a.is_component = false
+) ranked
+WHERE ranked.recency_rank <= 4
+ORDER BY ranked.album_id, ranked.recency_rank
+`
+
+type ListAlbumCoverCandidatesRow struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	AssetID pgtype.UUID `json:"asset_id"`
+}
+
+// The derived covers of the given albums: each one's four most
+// recent live members, taken_at descending with the asset id as the
+// tiebreak -- the exact rows the wall renders for an album without a
+// pinned cover asset. The window keeps the result bounded at four
+// rows per album however many members an album holds.
+func (q *Queries) ListAlbumCoverCandidates(ctx context.Context, albumIds []pgtype.UUID) ([]ListAlbumCoverCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumCoverCandidates, albumIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumCoverCandidatesRow
+	for rows.Next() {
+		var i ListAlbumCoverCandidatesRow
+		if err := rows.Scan(&i.AlbumID, &i.AssetID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumItemsForCaller = `-- name: ListAlbumItemsForCaller :many
+SELECT ai.asset_id,
+       ai.added_at,
+       a.taken_at,
+       a.original_filename,
+       a.media_kind
+FROM album_items ai
+JOIN assets a ON a.id = ai.asset_id
+WHERE ai.album_id = $1
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND (
+      $2::timestamptz IS NULL
+      OR (a.taken_at, a.id) < ($2::timestamptz, $3::uuid)
+  )
+ORDER BY a.taken_at DESC, a.id DESC
+LIMIT $4
+`
+
+type ListAlbumItemsForCallerParams struct {
+	AlbumID       pgtype.UUID        `json:"album_id"`
+	CursorTakenAt pgtype.Timestamptz `json:"cursor_taken_at"`
+	CursorID      pgtype.UUID        `json:"cursor_id"`
+	LimitCount    int32              `json:"limit_count"`
+}
+
+type ListAlbumItemsForCallerRow struct {
+	AssetID          pgtype.UUID        `json:"asset_id"`
+	AddedAt          pgtype.Timestamptz `json:"added_at"`
+	TakenAt          pgtype.Timestamptz `json:"taken_at"`
+	OriginalFilename string             `json:"original_filename"`
+	MediaKind        MediaKind          `json:"media_kind"`
+}
+
+// One page of the album's items: the live members in the timeline's
+// own ordering (taken_at DESC, id DESC), keyset-paginated with the
+// same row-value predicate and the same NULL-init first page. The
+// caller's visibility gate is NOT here: the handler runs this only
+// after GetAlbumForCaller returned the album, so the rows it lists
+// are rows of an album the caller already proved they may see.
+func (q *Queries) ListAlbumItemsForCaller(ctx context.Context, arg ListAlbumItemsForCallerParams) ([]ListAlbumItemsForCallerRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumItemsForCaller,
+		arg.AlbumID,
+		arg.CursorTakenAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumItemsForCallerRow
+	for rows.Next() {
+		var i ListAlbumItemsForCallerRow
+		if err := rows.Scan(
+			&i.AssetID,
+			&i.AddedAt,
+			&i.TakenAt,
+			&i.OriginalFilename,
+			&i.MediaKind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumShares = `-- name: ListAlbumShares :many
+SELECT s.user_id, u.email, s.granted_at
+FROM album_shares s
+JOIN users u ON u.id = s.user_id
+WHERE s.album_id = $1
+ORDER BY s.granted_at ASC, s.user_id ASC
+`
+
+type ListAlbumSharesRow struct {
+	UserID    pgtype.UUID        `json:"user_id"`
+	Email     string             `json:"email"`
+	GrantedAt pgtype.Timestamptz `json:"granted_at"`
+}
+
+// The owner's grantee list of one album: the share management
+// dialog's rows, the grant order (granted_at ascending). The join
+// carries the grantee's email -- the dialog lists people, not
+// uuids. Only the owner's detail ever renders this query's answer.
+func (q *Queries) ListAlbumShares(ctx context.Context, albumID pgtype.UUID) ([]ListAlbumSharesRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumShares, albumID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumSharesRow
+	for rows.Next() {
+		var i ListAlbumSharesRow
+		if err := rows.Scan(&i.UserID, &i.Email, &i.GrantedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWallAlbumsForCaller = `-- name: ListWallAlbumsForCaller :many
+
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       'owner'::text AS caller_role,
+       NULL::uuid AS owner_user_id,
+       NULL::text AS owner_email,
+       EXISTS (
+           SELECT 1 FROM album_shares s WHERE s.album_id = al.id
+       ) AS is_shared,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+       ) AS item_count,
+       p.in_timeline,
+       0::int AS arm_rank,
+       al.updated_at AS sort_at
+FROM albums al
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = $1
+WHERE al.owner_id = $1
+  AND al.type IN ('virtual', 'directory')
+
+UNION ALL
+
+SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+       'viewer'::text AS caller_role,
+       u.id AS owner_user_id,
+       u.email AS owner_email,
+       -- The shared arm's is_shared holds true by construction: the
+       -- caller's own share row is the reason this row exists.
+       true AS is_shared,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+       ) AS item_count,
+       p.in_timeline,
+       1::int AS arm_rank,
+       s.granted_at AS sort_at
+FROM albums al
+JOIN album_shares s ON s.album_id = al.id AND s.user_id = $1
+JOIN users u ON u.id = al.owner_id
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = $1
+WHERE al.type IN ('virtual', 'directory')
+
+ORDER BY arm_rank, sort_at DESC, id DESC
+`
+
+type ListWallAlbumsForCallerRow struct {
+	Album       Album              `json:"album"`
+	CallerRole  string             `json:"caller_role"`
+	OwnerUserID pgtype.UUID        `json:"owner_user_id"`
+	OwnerEmail  pgtype.Text        `json:"owner_email"`
+	IsShared    bool               `json:"is_shared"`
+	ItemCount   int64              `json:"item_count"`
+	InTimeline  pgtype.Bool        `json:"in_timeline"`
+	ArmRank     int32              `json:"arm_rank"`
+	SortAt      pgtype.Timestamptz `json:"sort_at"`
+}
+
+// Album reads (M3c Task 1): the wall, the cover candidates and the
+// detail face. The live-member predicate runs through all of them:
+// deleted_at IS NULL AND is_hidden = false AND is_component = false,
+// the timeline's own definition of a live asset row (A5 -- a hidden
+// asset is invisible to the whole family, and a Live Photo's video
+// component is never a tile of its own).
+// The wall of the calling user in one statement: the own group (the
+// caller's virtual and directory albums, updated_at descending) UNION
+// ALL the shared group (the albums shared to the caller, the
+// caller's grant time descending), each group breaking ties on the
+// album id descending. The arm_rank column is the group
+// discriminator the ORDER BY pins -- own first, shared second -- and
+// the per-arm sort key rides as sort_at (the album's updated_at for
+// own cards, the caller's granted_at for shared ones).
+//
+// Sync albums never appear in either arm: the sync album is the
+// account's timeline, not a wall artifact -- the caller's own sync
+// album is invisible on every album face, and a sync album another
+// account shared feeds the timeline's shared arm, not the wall.
+//
+// in_timeline is the caller's raw timeline preference row of the
+// card's album (the exclusion toggle's stored state): NULL means no
+// row, which the handler maps to the default of feeding the timeline
+// -- except on the caller's own virtual cards, where the field stays
+// absent entirely (they never feed the caller's own timeline).
+func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUID) ([]ListWallAlbumsForCallerRow, error) {
+	rows, err := q.db.Query(ctx, listWallAlbumsForCaller, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWallAlbumsForCallerRow
+	for rows.Next() {
+		var i ListWallAlbumsForCallerRow
+		if err := rows.Scan(
+			&i.Album.ID,
+			&i.Album.OwnerID,
+			&i.Album.Title,
+			&i.Album.Description,
+			&i.Album.Type,
+			&i.Album.Locked,
+			&i.Album.CoverAssetID,
+			&i.Album.RootPath,
+			&i.Album.LastScannedAt,
+			&i.Album.CreatedAt,
+			&i.Album.UpdatedAt,
+			&i.CallerRole,
+			&i.OwnerUserID,
+			&i.OwnerEmail,
+			&i.IsShared,
+			&i.ItemCount,
+			&i.InTimeline,
+			&i.ArmRank,
+			&i.SortAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeAlbumItems = `-- name: RemoveAlbumItems :execrows
+DELETE FROM album_items
+WHERE album_id = $1
+  AND asset_id = ANY($2::uuid[])
+`
+
+type RemoveAlbumItemsParams struct {
+	AlbumID  pgtype.UUID   `json:"album_id"`
+	AssetIds []pgtype.UUID `json:"asset_ids"`
+}
+
+// The membership remove: the rows that exist leave, and the ids that
+// are no members simply match nothing. No live predicate -- the
+// removal tidies the set itself (a trashed member's row still
+// leaves), and the rows-affected count is the report's removed.
+func (q *Queries) RemoveAlbumItems(ctx context.Context, arg RemoveAlbumItemsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, removeAlbumItems, arg.AlbumID, arg.AssetIds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeAlbumShare = `-- name: RevokeAlbumShare :execrows
+DELETE FROM album_shares
+WHERE album_id = $1
+  AND user_id = $2
+`
+
+type RevokeAlbumShareParams struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	UserID  pgtype.UUID `json:"user_id"`
+}
+
+// The view-ACL revoke: the row leaves, and the count is the
+// transition signal -- 1 row left fires album.unshared, 0 rows (the
+// share never existed, already left, or the id names no account)
+// are the idempotent silence the 204 answers either way.
+func (q *Queries) RevokeAlbumShare(ctx context.Context, arg RevokeAlbumShareParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeAlbumShare, arg.AlbumID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateAlbumFields = `-- name: UpdateAlbumFields :one
+UPDATE albums
+SET title = COALESCE($1, title),
+    description = COALESCE($2, description),
+    cover_asset_id = COALESCE($3, cover_asset_id),
+    locked = COALESCE($4, locked),
+    updated_at = now()
+WHERE id = $5
+RETURNING id
+`
+
+type UpdateAlbumFieldsParams struct {
+	Title        pgtype.Text `json:"title"`
+	Description  pgtype.Text `json:"description"`
+	CoverAssetID pgtype.UUID `json:"cover_asset_id"`
+	Locked       pgtype.Bool `json:"locked"`
+	AlbumID      pgtype.UUID `json:"album_id"`
+}
+
+// The property patch: every field COALESCEs over the stored value,
+// so an absent (NULL) parameter keeps it and a present one replaces
+// it. The cover rides the same discipline -- a coverAssetId of JSON
+// null decodes as absent, the patch convention of the asset surface,
+// so the pin can change through this face but never clear.
+// updated_at moves with the write: the wall orders the own group by
+// it. No owner guard and no type guard here: the handler's gate
+// already resolved the caller's right to this write, and an album
+// deleted between the gate and the statement answers no row -- the
+// honest 404 of a gone album.
+func (q *Queries) UpdateAlbumFields(ctx context.Context, arg UpdateAlbumFieldsParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, updateAlbumFields,
+		arg.Title,
+		arg.Description,
+		arg.CoverAssetID,
+		arg.Locked,
+		arg.AlbumID,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const upsertAlbumTimelinePreference = `-- name: UpsertAlbumTimelinePreference :one
+INSERT INTO user_album_prefs (user_id, album_id, in_timeline)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id, album_id)
+DO UPDATE SET
+    in_timeline = EXCLUDED.in_timeline,
+    updated_at  = CASE
+        WHEN user_album_prefs.in_timeline = EXCLUDED.in_timeline
+        THEN user_album_prefs.updated_at
+        ELSE now()
+    END
+RETURNING in_timeline
+`
+
+type UpsertAlbumTimelinePreferenceParams struct {
+	UserID     pgtype.UUID `json:"user_id"`
+	AlbumID    pgtype.UUID `json:"album_id"`
+	InTimeline bool        `json:"in_timeline"`
+}
+
+// The preference write: an insert for a first toggle, an update for
+// every repeat (the upsert converges; the response always carries
+// the stored state). updated_at moves with a real change only, so a
+// repeat of the stored value leaves the row untouched -- the same
+// set-semantics guard the album writes apply.
+func (q *Queries) UpsertAlbumTimelinePreference(ctx context.Context, arg UpsertAlbumTimelinePreferenceParams) (bool, error) {
+	row := q.db.QueryRow(ctx, upsertAlbumTimelinePreference, arg.UserID, arg.AlbumID, arg.InTimeline)
+	var in_timeline bool
+	err := row.Scan(&in_timeline)
+	return in_timeline, err
 }

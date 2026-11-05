@@ -109,6 +109,24 @@ func (e *assetEnv) addTimelineItem(t *testing.T, album, asset, addedBy uuid.UUID
 	}
 }
 
+// insertOwnedAsset inserts one fixture asset row AND lands it in the
+// owner's sync album -- the production invariant the upload path
+// guarantees (every owned asset is a sync member, ensured in the
+// upload transaction), which the caller-visible predicate builds on:
+// the sync arm is how an owner sees their own rows whatever their
+// state. Seeded accounts (no wizard) get their sync album ensured
+// here, exactly like the upload path does.
+func (e *assetEnv) insertOwnedAsset(t *testing.T, id, owner uuid.UUID, taken time.Time, opts timelineAssetOpts) {
+	t.Helper()
+	e.insertTimelineAsset(t, id, owner, taken, opts)
+	e.exec(t, `
+		INSERT INTO albums (id, owner_id, title, type)
+		VALUES ($1, $2, 'Sync', 'sync')
+		ON CONFLICT (owner_id) WHERE type = 'sync' DO NOTHING`,
+		pgUUID(uuid.New()), pgUUID(owner))
+	e.addTimelineItem(t, e.syncAlbumIDOf(t, owner), id, owner)
+}
+
 // shareTimelineAlbum grants one user the view ACL of an album.
 func (e *assetEnv) shareTimelineAlbum(t *testing.T, album, grantee, grantedBy uuid.UUID) {
 	t.Helper()

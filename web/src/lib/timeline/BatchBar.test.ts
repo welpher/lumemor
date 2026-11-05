@@ -17,6 +17,7 @@ function mountBar(
 		errorKey?: string;
 		busy?: boolean;
 		actions?: readonly BatchAction[];
+		onaddtoalbum?: () => void;
 	} = {}
 ) {
 	const onaction = vi.fn();
@@ -29,6 +30,7 @@ function mountBar(
 			errorKey: props.errorKey ?? '',
 			busy: props.busy ?? false,
 			actions: props.actions,
+			onaddtoalbum: props.onaddtoalbum,
 			onaction,
 			onclear
 		}
@@ -153,6 +155,31 @@ test('the clear action asks the page to drop the selection', () => {
 	clear?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	expect(onclear).toHaveBeenCalledTimes(1);
 	unmount(bar);
+	flushSync();
+});
+
+test('an add-to-album affordance renders only when the page offers it', () => {
+	// Without the callback (the curated walls) the bar carries only
+	// the batch actions.
+	const plain = mountBar({ count: 2, actions: ['favorite'] });
+	expect(() => buttonByLabel('Add to album')).toThrow();
+	unmount(plain.bar);
+	flushSync();
+
+	// With it, the button leads the actions and fires the callback;
+	// a busy run disables it like every other.
+	const onaddtoalbum = vi.fn();
+	const offering = mountBar({ count: 2, actions: ['favorite'], onaddtoalbum });
+	const add = buttonByLabel('Add to album');
+	expect(add.disabled).toBe(false);
+	add.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	expect(onaddtoalbum).toHaveBeenCalledTimes(1);
+	unmount(offering.bar);
+	flushSync();
+
+	const busy = mountBar({ count: 2, busy: true, onaddtoalbum });
+	expect(buttonByLabel('Add to album').disabled).toBe(true);
+	unmount(busy.bar);
 	flushSync();
 });
 

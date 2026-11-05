@@ -54,7 +54,7 @@ type writeFaceSpec struct {
 // themselves; fixtures never need to guess the best member).
 func (e *assetEnv) seedWriteCluster(t *testing.T, assetID, ownerID uuid.UUID, taken time.Time, clusterID uuid.UUID, faces ...writeFaceSpec) {
 	t.Helper()
-	e.insertTimelineAsset(t, assetID, ownerID, taken, timelineAssetOpts{})
+	e.insertOwnedAsset(t, assetID, ownerID, taken, timelineAssetOpts{})
 	ids := make([]uuid.UUID, len(faces))
 	for i, face := range faces {
 		ids[i] = face.id
@@ -359,8 +359,8 @@ func TestPeopleLabelB4Isolation(t *testing.T) {
 	shared := fixtureWriteClusterID("11")
 	assetA := fixtureWriteAssetID("11")
 	assetB := fixtureWriteAssetID("12")
-	env.insertTimelineAsset(t, assetA, adminID, time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.insertTimelineAsset(t, assetB, graceID, time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, assetA, adminID, time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, assetB, graceID, time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	fA := fixtureWriteFaceID("11")
 	fB := fixtureWriteFaceID("12")
 	env.insertFace(t, fA, assetA, 0.90)

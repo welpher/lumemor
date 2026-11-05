@@ -302,6 +302,53 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/trash", wrapper.GetTrash)
 				r.Post("/trash/{id}/restore", wrapper.RestoreAsset)
 				r.Delete("/assets/{id}", wrapper.DeleteAsset)
+				// The album surface reads (M3c Task 1): the wall
+				// (the caller's own and shared albums) and one
+				// album's detail with its keyset-paged items. Both
+				// are bounded row reads (the detail's page size is
+				// capped by the contract); the wall's derived
+				// covers are a second bounded read of at most four
+				// candidates per album.
+				r.Get("/albums", wrapper.ListAlbums)
+				r.Get("/albums/{albumId}", wrapper.GetAlbum)
+				// The album surface writes (M3c Task 2): virtual
+				// album creation, the property patch, the delete
+				// and the membership curation. All are bounded row
+				// writes -- the membership lists are capped at 200
+				// ids by the contract, and the cascades ride the
+				// row deletes -- so they belong in this group like
+				// every other bounded JSON handler. The static
+				// /albums/{albumId}/items segment never contends
+				// with the /albums/{albumId} routes (a longer path
+				// shape).
+				r.Post("/albums", wrapper.CreateAlbum)
+				r.Patch("/albums/{albumId}", wrapper.UpdateAlbum)
+				r.Delete("/albums/{albumId}", wrapper.DeleteAlbum)
+				r.Post("/albums/{albumId}/items", wrapper.AddAlbumItems)
+				r.Delete("/albums/{albumId}/items", wrapper.RemoveAlbumItems)
+				// The album sharing face (M3c Task 3): the view-ACL
+				// grant and revoke, and the instance's minimal
+				// member list the share dialog picks its grantee
+				// from. The grant is one bounded row write; the
+				// revoke deletes one row; the member list is one
+				// bounded read of the small users table. The
+				// /albums/{albumId}/shares segments never contend
+				// with the /albums/{albumId} routes (a longer path
+				// shape), and /users never contends with the
+				// /admin/users group (a different prefix).
+				r.Post("/albums/{albumId}/shares", wrapper.GrantAlbumShare)
+				r.Delete("/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
+				r.Get("/users", wrapper.ListInstanceUsers)
+				// The timeline-preference face (M3c Task 4): the
+				// caller's per-user "keep this album out of my
+				// timeline" switch -- one bounded row upsert and
+				// one bounded row delete over an album the caller
+				// can see, self-affecting state that publishes no
+				// event. The static /timeline-preference segment
+				// never contends with the /albums/{albumId}
+				// routes (a longer path shape).
+				r.Put("/albums/{albumId}/timeline-preference", wrapper.SetAlbumTimelinePreference)
+				r.Delete("/albums/{albumId}/timeline-preference", wrapper.ResetAlbumTimelinePreference)
 				// The people surface reads (M3b Task 1): the named
 				// region, the unnamed region's keyset pages and one
 				// cluster's detail. All are bounded row reads (the

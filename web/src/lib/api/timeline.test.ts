@@ -118,6 +118,64 @@ test('the page limit is the pinned contract default', async () => {
 	await timeline.loadMore();
 });
 
+test('the album narrow rides every page fetch as the leading query parameter', async () => {
+	const seen: string[] = [];
+	const timeline = createTimelineClient({
+		fetcher: vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			seen.push(url);
+			if (url === '/api/v1/assets/timeline?albumId=al1&limit=100') {
+				return page(pageOneItems, 'CURSOR-A');
+			}
+			if (url === '/api/v1/assets/timeline?albumId=al1&limit=100&cursor=CURSOR-A') {
+				return page([item('b1', '2026-09-01T08:00:00Z')]);
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		}),
+		albumId: 'al1'
+	});
+
+	await timeline.loadMore();
+	await timeline.loadMore();
+
+	expect(seen).toEqual([
+		'/api/v1/assets/timeline?albumId=al1&limit=100',
+		'/api/v1/assets/timeline?albumId=al1&limit=100&cursor=CURSOR-A'
+	]);
+	expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3', 'b1']);
+});
+
+test('a reset mid-flight discards the stale page response', async () => {
+	// The first page-one fetch hangs until the test releases it; the
+	// reset restarts the walk while it is in flight, so the stale
+	// response must never apply over the fresh page one.
+	let release: ((response: Response) => void) | undefined;
+	let hanging = true;
+	const timeline = createTimelineClient({
+		fetcher: vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url === '/api/v1/assets/timeline?limit=100' && hanging) {
+				hanging = false;
+				return new Promise<Response>((resolve) => {
+					release = resolve;
+				});
+			}
+			return page([item('fresh', '2026-11-05T10:00:00Z')]);
+		})
+	});
+
+	const first = timeline.loadMore();
+	timeline.reset();
+	release?.(page(pageOneItems, 'CURSOR-1'));
+	await first;
+
+	await timeline.loadMore();
+
+	const state = get(timeline);
+	expect(state.items.map((i) => i.id)).toEqual(['fresh']);
+	expect(state.status).toBe('ready');
+});
+
 test('the in-flight guard collapses concurrent triggers into one fetch', async () => {
 	let releases = 0;
 	const fetcher = vi.fn(async () => {
@@ -263,6 +321,58 @@ describe('SSE convergence', () => {
 		// The loaded favorite flag survives a detail patch (the detail
 		// endpoint carries no isFavorite).
 		expect(patched?.isFavorite).toBe(false);
+	});
+
+	test('the album narrow ignores convergence events for ids no page delivered', async () => {
+		// The stream's ring replays the upload pipeline's asset.ready
+		// events to every subscriber, so an album wall hears about
+		// assets that are NOT its members. The narrow's membership is
+		// the page walk's answer alone (membership changes arrive as
+		// album.items-changed, which restarts the walk) -- an event
+		// for an id no page delivered must converge NOTHING: no
+		// fetch, no tile.
+		const fetches: string[] = [];
+		const albumWall = createTimelineClient({
+			fetcher: vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				fetches.push(url);
+				if (url === '/api/v1/assets/timeline?albumId=al1&limit=100') {
+					return page(pageOneItems);
+				}
+				throw new Error(`unexpected fetch ${url}`);
+			}),
+			albumId: 'al1'
+		});
+		await albumWall.loadMore();
+
+		await albumWall.applyEvent({ id: 1, name: 'asset.ready', assetId: 'foreign', kind: 'image' });
+		await albumWall.applyEvent({ id: 2, name: 'asset.restored', assetId: 'other', kind: 'image' });
+
+		// No member changed: no detail fetch fired, no tile arrived.
+		expect(fetches).toEqual(['/api/v1/assets/timeline?albumId=al1&limit=100']);
+		expect(get(albumWall).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+
+		// An event for an id the walk DID deliver is the wall's own
+		// member: the convergence applies.
+		const memberWall = createTimelineClient({
+			fetcher: vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				fetches.push(url);
+				if (url === '/api/v1/assets/timeline?albumId=al1&limit=100') {
+					return page(pageOneItems.map((i) => item(i.id, i.takenAt, { isReady: false })));
+				}
+				if (url === '/api/v1/assets/a2') {
+					return detailOf(item('a2', '2026-11-01T09:00:00Z'), { isReady: true });
+				}
+				throw new Error(`unexpected fetch ${url}`);
+			}),
+			albumId: 'al1'
+		});
+		await memberWall.loadMore();
+		await memberWall.applyEvent({ id: 3, name: 'asset.ready', assetId: 'a2', kind: 'image' });
+
+		expect(fetches).toContain('/api/v1/assets/a2');
+		expect(get(memberWall).items.find((i) => i.id === 'a2')?.isReady).toBe(true);
 	});
 
 	test('asset.updated with a hidden detail removes the tile; unhide returns it in place', async () => {

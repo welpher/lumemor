@@ -9,6 +9,14 @@
 	// endpoint, its view, its strings and its action subset; the
 	// timeline page itself keeps its richer layout (the month
 	// scrubber, the scroll tracking) and does not use this component.
+	//
+	// THE ALBUM WALL (M3c Task 5): the album detail's grid reuses
+	// this wall over the timeline endpoint's `albumId` narrow -- the
+	// album's own live items in the timeline's exact shape, paged and
+	// converged the same way. The `resetKey` prop is the album's
+	// membership convergence: an album.items-changed event lands with
+	// ids only, so the wall restarts its walk and the fresh answer
+	// owns the truth.
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -27,23 +35,49 @@
 		path: string;
 		/** Which membership view the client serves (see WallView). */
 		view: WallView;
+		/**
+		 * The album whose own timeline this wall walks (the endpoint's
+		 * `albumId` narrow). Absent on the favorites and hidden walls.
+		 */
+		albumId?: string;
 		/** The i18n key of the view's name (the empty state's heading). */
-		titleKey: string;
+		titleKey?: string;
+		/**
+		 * The empty state's heading as direct text -- the album wall
+		 * passes the album's title; it overrides `titleKey`.
+		 */
+		heading?: string;
 		/** The i18n key of the view's loading line. */
 		loadingKey: string;
 		/** The i18n key of the view's empty state text. */
 		emptyKey: string;
 		/** Which batch actions the selection bar offers (see BatchBar). */
 		actions: readonly BatchAction[];
+		/**
+		 * The membership convergence: a change drops the loaded pages
+		 * and restarts the walk from page one (the album wall's
+		 * items-changed restart).
+		 */
+		resetKey?: number | string;
 	};
 
-	let { path, view, titleKey, loadingKey, emptyKey, actions }: Props = $props();
+	let {
+		path,
+		view,
+		albumId,
+		titleKey = '',
+		heading = '',
+		loadingKey,
+		emptyKey,
+		actions,
+		resetKey = 0
+	}: Props = $props();
 
 	// The client is constructed ONCE per wall: a route's endpoint and
 	// view never change while its wall is mounted (a route change
 	// remounts the component), so the props are read through untrack
 	// and the client owns exactly this wall for its lifetime.
-	const wall = untrack(() => createTimelineClient({ path, view }));
+	const wall = untrack(() => createTimelineClient({ path, view, albumId }));
 
 	// The selection is a reactive id set: checkbox and tile clicks
 	// toggle it, Esc and the bar's clear drop it, and the select mode
@@ -63,6 +97,9 @@
 	const settledEmpty = $derived(
 		$wall.items.length === 0 && $wall.status === 'ready' && !$wall.hasMore
 	);
+	// The empty state's heading: the album wall passes the album's
+	// title as direct text; the curated views pass an i18n key.
+	const emptyHeading = $derived(heading !== '' ? heading : titleKey !== '' ? $_(titleKey) : '');
 
 	// IntersectionObserver exists in every browser jsdom is not; the
 	// manual load-more button is the fallback surface (and the error
@@ -124,9 +161,22 @@
 		publishWallItems($wall.items);
 	});
 
+	// The walk itself: the first load and every resetKey change (the
+	// album wall's membership convergence). A reset while a page load
+	// is in flight discards the stale response (the client's
+	// generation guard), so the fresh walk's answer is the only one
+	// that lands.
 	$effect(() => {
-		void wall.loadMore();
+		void resetKey;
+		untrack(() => {
+			wall.reset();
+			void wall.loadMore();
+		});
+	});
 
+	// The live surfaces: the SSE subscription and the scroll sentinel
+	// observer live for the wall's lifetime.
+	$effect(() => {
 		const unsubscribe = subscribeAssetEvents((event) => {
 			void wall.applyEvent(event);
 		});
@@ -171,7 +221,7 @@
 		<p class="wall__status my-12 text-center text-text-soft" role="status">{$_(loadingKey)}</p>
 	{:else if settledEmpty}
 		<div class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
-			<h1 class="text-[22px] mb-2">{$_(titleKey)}</h1>
+			<h1 class="text-[22px] mb-2">{emptyHeading}</h1>
 			<p class="text-text-soft">{$_(emptyKey)}</p>
 		</div>
 	{:else if $wall.status === 'error' && $wall.items.length === 0}

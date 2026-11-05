@@ -14,6 +14,96 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AlbumDetailCallerRole.
+const (
+	AlbumDetailCallerRoleOwner  AlbumDetailCallerRole = "owner"
+	AlbumDetailCallerRoleViewer AlbumDetailCallerRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the AlbumDetailCallerRole enum.
+func (e AlbumDetailCallerRole) Valid() bool {
+	switch e {
+	case AlbumDetailCallerRoleOwner:
+		return true
+	case AlbumDetailCallerRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AlbumDetailType.
+const (
+	AlbumDetailTypeDirectory AlbumDetailType = "directory"
+	AlbumDetailTypeVirtual   AlbumDetailType = "virtual"
+)
+
+// Valid indicates whether the value is a known member of the AlbumDetailType enum.
+func (e AlbumDetailType) Valid() bool {
+	switch e {
+	case AlbumDetailTypeDirectory:
+		return true
+	case AlbumDetailTypeVirtual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AlbumItemAssetKind.
+const (
+	AlbumItemAssetKindImage AlbumItemAssetKind = "image"
+	AlbumItemAssetKindVideo AlbumItemAssetKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the AlbumItemAssetKind enum.
+func (e AlbumItemAssetKind) Valid() bool {
+	switch e {
+	case AlbumItemAssetKindImage:
+		return true
+	case AlbumItemAssetKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AlbumSummaryCallerRole.
+const (
+	AlbumSummaryCallerRoleOwner  AlbumSummaryCallerRole = "owner"
+	AlbumSummaryCallerRoleViewer AlbumSummaryCallerRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the AlbumSummaryCallerRole enum.
+func (e AlbumSummaryCallerRole) Valid() bool {
+	switch e {
+	case AlbumSummaryCallerRoleOwner:
+		return true
+	case AlbumSummaryCallerRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AlbumSummaryType.
+const (
+	AlbumSummaryTypeDirectory AlbumSummaryType = "directory"
+	AlbumSummaryTypeVirtual   AlbumSummaryType = "virtual"
+)
+
+// Valid indicates whether the value is a known member of the AlbumSummaryType enum.
+func (e AlbumSummaryType) Valid() bool {
+	switch e {
+	case AlbumSummaryTypeDirectory:
+		return true
+	case AlbumSummaryTypeVirtual:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssetDetailKind.
 const (
 	AssetDetailKindImage AssetDetailKind = "image"
@@ -124,6 +214,8 @@ func (e BatchRequestAction) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
+	ALBUMLOCKED            ErrorCode = "ALBUM_LOCKED"
+	ALBUMNOTFOUND          ErrorCode = "ALBUM_NOT_FOUND"
 	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
 	ASSETNOTREADY          ErrorCode = "ASSET_NOT_READY"
 	ASSETTOOLARGE          ErrorCode = "ASSET_TOO_LARGE"
@@ -145,6 +237,10 @@ const (
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
+	case ALBUMLOCKED:
+		return true
+	case ALBUMNOTFOUND:
+		return true
 	case ASSETNOTFOUND:
 		return true
 	case ASSETNOTREADY:
@@ -410,6 +506,22 @@ func (e GetAssetThumbnailParamsSize) Valid() bool {
 	}
 }
 
+// AddAlbumItemsResponse The honest report of one membership add over the request's
+// distinct ids: what landed and what was skipped, foreign,
+// non-live and already-member ids alike.
+type AddAlbumItemsResponse struct {
+	// Added The membership rows the request inserted. Zero for an
+	// all-skipped request, which is still a 200 -- batch
+	// semantics, never an error.
+	Added int `json:"added"`
+
+	// Skipped The distinct ids that did not land: unknown ids, another
+	// account's assets, trashed, hidden or component rows, and
+	// the ids already sitting in the album (the idempotent
+	// add).
+	Skipped int `json:"skipped"`
+}
+
 // AdminCreateUserRequest Payload of `POST /admin/users`.
 type AdminCreateUserRequest struct {
 	// Email Login address of the new account; unique instance-wide.
@@ -469,6 +581,338 @@ type AdminUserResponse struct {
 	// first-run wizard or by another administrator, `user` is the
 	// default of every other creation path.
 	Role UserRole `json:"role"`
+}
+
+// AlbumCreateRequest The creation body of one virtual album: the title and the
+// optional bounded description. No type field exists -- this
+// endpoint IS virtual creation, the only creatable album type
+// of the face.
+type AlbumCreateRequest struct {
+	// Description The album's free-text description; empty when absent.
+	// At most 10,000 Unicode characters, the asset
+	// description's own bound.
+	Description *string `json:"description,omitempty"`
+
+	// Title The album's display title, trimmed server-side; it must
+	// span 1-64 Unicode characters after the trim (the count
+	// is over runes, so multi-byte titles stay within the
+	// bound at the same length).
+	Title string `json:"title"`
+}
+
+// AlbumDetail One album's detail as the calling user sees it: the metadata,
+// the caller's role, the live member count and one keyset page
+// of the live items.
+type AlbumDetail struct {
+	// CallerRole The caller's relation to this album: the owner holds the
+	// write affordances, a viewer is read-only.
+	CallerRole AlbumDetailCallerRole `json:"callerRole"`
+
+	// CoverAssetId The pinned cover asset, or null when unset -- the raw
+	// column; the wall derives its collage fallback, the detail
+	// carries the pin itself.
+	CoverAssetId *openapi_types.UUID `json:"coverAssetId"`
+
+	// Description The album's free-text description (empty when unset).
+	Description string `json:"description"`
+
+	// Id Identifier of the album.
+	Id openapi_types.UUID `json:"id"`
+
+	// InTimeline The caller's timeline preference of this album: whether
+	// it feeds their aggregated timeline. Present exactly when
+	// the album is excludable for the caller -- an own
+	// `directory` album or an album shared to them; an own
+	// `virtual` album omits the field (it never feeds the
+	// caller's own timeline). The value is the preference
+	// row's switch, true when no row exists (the default).
+	// The preference scopes the aggregated timeline only: it
+	// never filters this album's own items, whatever the
+	// switch says.
+	InTimeline *bool `json:"inTimeline,omitempty"`
+
+	// ItemCount The album's live member count, the same predicate as the
+	// items below.
+	ItemCount int `json:"itemCount"`
+
+	// Items One page of the album's live members, `takenAt` descending
+	// with the asset id as the tiebreak.
+	Items []AlbumItem `json:"items"`
+
+	// Locked The owner's lock (metadata to a viewer).
+	Locked bool `json:"locked"`
+
+	// NextCursor The opaque continuation cursor: pass it back as the
+	// `cursor` query parameter to fetch the next page. Absent
+	// exactly when this is the last page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Shares The album's grantee list, riding ONLY the owner's view:
+	// one entry per `album_shares` row in the grant order
+	// (`grantedAt` ascending) -- the share management dialog's
+	// list. The owner's response always carries the field, an
+	// empty array when the album holds no grants; viewer
+	// responses never carry it at all.
+	Shares *[]AlbumShareEntry `json:"shares,omitempty"`
+
+	// Title The album's display title.
+	Title string `json:"title"`
+
+	// Type The album's type; sync albums never reach this shape.
+	Type AlbumDetailType `json:"type"`
+}
+
+// AlbumDetailCallerRole The caller's relation to this album: the owner holds the
+// write affordances, a viewer is read-only.
+type AlbumDetailCallerRole string
+
+// AlbumDetailType The album's type; sync albums never reach this shape.
+type AlbumDetailType string
+
+// AlbumItem One live member of the album: the membership's identity and
+// the minimal asset context the detail grid renders.
+type AlbumItem struct {
+	// AddedAt When the membership row was added to the album (RFC 3339
+	// UTC).
+	AddedAt time.Time `json:"addedAt"`
+
+	// Asset The minimal context of the member asset.
+	Asset AlbumItemAsset `json:"asset"`
+
+	// AssetId Identifier of the member asset.
+	AssetId openapi_types.UUID `json:"assetId"`
+}
+
+// AlbumItemAsset The minimal context of one album member asset: the lines the
+// detail grid renders per tile.
+type AlbumItemAsset struct {
+	// Kind The asset's media kind.
+	Kind AlbumItemAssetKind `json:"kind"`
+
+	// OriginalFilename The file name the asset was uploaded under.
+	OriginalFilename string `json:"originalFilename"`
+
+	// TakenAt When the asset was taken (RFC 3339 UTC).
+	TakenAt time.Time `json:"takenAt"`
+
+	// Thumbnail URL of the asset's tile-size serving copy: the asset
+	// thumbnail endpoint
+	// `GET /api/v1/assets/{assetId}/thumbnail?size=tile`.
+	//
+	//
+	// Examples: /api/v1/assets/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072/thumbnail?size=tile
+	Thumbnail string `json:"thumbnail"`
+}
+
+// AlbumItemAssetKind The asset's media kind.
+type AlbumItemAssetKind string
+
+// AlbumItemsRequest The membership write body: the list of asset ids to add to
+// or remove from one virtual album. Repeated ids collapse to
+// one application; the report's counts cover the distinct ids.
+type AlbumItemsRequest struct {
+	// AssetIds The asset ids of the membership write, between 1 and 200
+	// entries. The add skips -- never errors on -- every id
+	// that is not a live caller-owned asset or that already
+	// sits in the album; the remove skips the ids that are no
+	// members.
+	AssetIds []openapi_types.UUID `json:"assetIds"`
+}
+
+// AlbumOwnerRef The owner of an album shared to the caller: the honest
+// attribution a shared wall card renders.
+type AlbumOwnerRef struct {
+	// Email The email address of the owning account.
+	Email openapi_types.Email `json:"email"`
+
+	// Id Identifier of the owning account.
+	Id openapi_types.UUID `json:"id"`
+}
+
+// AlbumPatch The partial edit of one album: every field is optional, at
+// least one must be present (a body that carries none -- JSON
+// null values count as absent, the patch discipline of the
+// asset surface -- is a client bug and answers 400), and only
+// the fields the request carries update; the rest keep their
+// values. A present `coverAssetId` must be a live member of
+// the album itself. The write publishes one `album.updated`
+// event whatever fields changed.
+type AlbumPatch struct {
+	// CoverAssetId The pinned cover asset. When present it must be a LIVE
+	// member of THIS album (the membership row exists and the
+	// asset is not trashed, not hidden, not a Live Photo
+	// component row) -- otherwise the answer is 400 with the
+	// message key `album_cover_not_member`. Absent (or JSON
+	// null, which decodes as absent) leaves the pin
+	// unchanged.
+	CoverAssetId *openapi_types.UUID `json:"coverAssetId,omitempty"`
+
+	// Description The album's free-text description; the value replaces
+	// the stored text wholesale (an empty string clears it).
+	// At most 10,000 Unicode characters.
+	Description *string `json:"description,omitempty"`
+
+	// Locked The owner's lock. `true` freezes the album's curation
+	// and property fields against later writes (this same
+	// endpoint refuses them with 409 until the owner patches
+	// `locked: false` -- the unlock, never gated itself).
+	// Locking does not gate the album's delete.
+	Locked *bool `json:"locked,omitempty"`
+
+	// Title The album's display title, trimmed server-side; when
+	// present it must span 1-64 Unicode characters after the
+	// trim.
+	Title *string `json:"title,omitempty"`
+}
+
+// AlbumShareEntry One grantee of the owner's `shares` list on the album
+// detail: the grantee's identity and the grant time -- the
+// share management dialog's row.
+type AlbumShareEntry struct {
+	// Email The grantee's login address.
+	Email openapi_types.Email `json:"email"`
+
+	// GrantedAt When the view ACL was granted (RFC 3339 UTC).
+	GrantedAt time.Time `json:"grantedAt"`
+
+	// UserId Identifier of the grantee account.
+	UserId openapi_types.UUID `json:"userId"`
+}
+
+// AlbumShareGrantRequest The grant body: the account receiving the view ACL. The
+// target rules live in the endpoint's own answer -- the
+// album's owner and unusable accounts answer 400 there, never
+// a distinct shape here.
+type AlbumShareGrantRequest struct {
+	// UserId Identifier of the account receiving the view ACL.
+	UserId openapi_types.UUID `json:"userId"`
+}
+
+// AlbumShareResponse One share row as the grant endpoint answers it: the album,
+// the grantee and the grant time. The idempotent re-grant
+// answers the existing row's values -- the original
+// `grantedAt` and grantor untouched.
+type AlbumShareResponse struct {
+	// AlbumId Identifier of the shared album.
+	AlbumId openapi_types.UUID `json:"albumId"`
+
+	// GrantedAt When the view ACL was granted (RFC 3339 UTC).
+	GrantedAt time.Time `json:"grantedAt"`
+
+	// UserId Identifier of the grantee account.
+	UserId openapi_types.UUID `json:"userId"`
+}
+
+// AlbumSummary One album card of the wall: the metadata, the live member
+// count and the collage source, plus the `callerRole`
+// discriminator the web client sections the wall by. Shared
+// items carry `owner`, the honest attribution of another
+// account's album; own items omit it.
+type AlbumSummary struct {
+	// CallerRole The caller's relation to this album: `owner` items belong
+	// to the own group, `viewer` items to the shared group. The
+	// web client sections the wall off this discriminator.
+	CallerRole AlbumSummaryCallerRole `json:"callerRole"`
+
+	// CoverAssetIds The collage source of the wall card: the pinned cover
+	// asset as a single-element list when the owner set one,
+	// otherwise the album's most recent live member assets (up
+	// to four, `takenAt` descending, the asset id as the
+	// tiebreak). Empty for an album with no live members.
+	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
+
+	// Description The album's free-text description (empty when unset).
+	Description string `json:"description"`
+
+	// Id Identifier of the album.
+	Id openapi_types.UUID `json:"id"`
+
+	// InTimeline The caller's timeline preference of this album: whether
+	// it feeds their aggregated timeline. Present exactly on
+	// the excludable cards -- the own `directory` items and
+	// every shared item; the own `virtual` items omit it
+	// (they never feed the caller's own timeline, so there is
+	// nothing to exclude). The value is the preference row's
+	// switch, true when no row exists (the default).
+	InTimeline *bool `json:"inTimeline,omitempty"`
+
+	// IsShared True when the album carries at least one `album_shares`
+	// row -- someone besides the owner can see it. Always true
+	// on shared-group items by construction.
+	IsShared bool `json:"isShared"`
+
+	// ItemCount The album's live member count: trashed, hidden and Live
+	// Photo component rows never count (A5 -- a hidden asset is
+	// invisible to the whole family).
+	ItemCount int `json:"itemCount"`
+
+	// Locked The owner's lock: a locked album refuses its owner's
+	// curation and property writes until unlocked. It is
+	// metadata to a viewer (viewers are read-only regardless).
+	Locked bool `json:"locked"`
+
+	// Owner The owner attribution of a shared item: the account that
+	// owns the album. Present exactly when `callerRole` is
+	// `viewer`; own items omit it (the owner is the caller).
+	Owner *AlbumOwnerRef `json:"owner,omitempty"`
+
+	// Title The album's display title.
+	Title string `json:"title"`
+
+	// Type The album's type. `virtual` albums are curated by their
+	// owner; `directory` albums mirror a filesystem path. Sync
+	// albums never reach this shape.
+	Type AlbumSummaryType `json:"type"`
+
+	// UpdatedAt When the album row last changed (RFC 3339 UTC).
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// AlbumSummaryCallerRole The caller's relation to this album: `owner` items belong
+// to the own group, `viewer` items to the shared group. The
+// web client sections the wall off this discriminator.
+type AlbumSummaryCallerRole string
+
+// AlbumSummaryType The album's type. `virtual` albums are curated by their
+// owner; `directory` albums mirror a filesystem path. Sync
+// albums never reach this shape.
+type AlbumSummaryType string
+
+// AlbumTimelinePreferenceRequest The caller's timeline preference write: the per-user switch
+// of whether one album feeds the caller's aggregated timeline.
+// The `inTimeline` field is required in practice: a body
+// without it (or one carrying an explicit JSON null -- a
+// required boolean has no absent-state semantics) answers 400
+// `VALIDATION_FAILED` naming the body.
+type AlbumTimelinePreferenceRequest struct {
+	// InTimeline Whether the album's items feed the caller's aggregated
+	// timeline. `false` keeps them out; `true` (and a missing
+	// preference row) keeps them in.
+	InTimeline *bool `json:"inTimeline,omitempty"`
+}
+
+// AlbumTimelinePreferenceResponse One album's timeline preference as the caller's row now
+// carries it. Self-affecting state: the write publishes no
+// event, this response is the only view that changed.
+type AlbumTimelinePreferenceResponse struct {
+	// AlbumId Identifier of the album the preference scopes.
+	AlbumId openapi_types.UUID `json:"albumId"`
+
+	// InTimeline Whether the album feeds the caller's aggregated timeline
+	// (a missing preference row means true, the default).
+	InTimeline bool `json:"inTimeline"`
+}
+
+// AlbumWallResponse The caller's album wall: the own group followed by the shared
+// group, concatenated into one array.
+type AlbumWallResponse struct {
+	// Albums Every wall album: the own group first (the caller's
+	// virtual and directory albums, `updatedAt` descending),
+	// then the shared group (the albums shared to the caller,
+	// the caller's grant time descending). Each group breaks
+	// ties on the album id, descending. Sync albums never
+	// appear in either group.
+	Albums []AlbumSummary `json:"albums"`
 }
 
 // AssetDetail One asset as the detail endpoint returns it: the upload
@@ -791,6 +1235,16 @@ type BearerSession struct {
 	// through the `lumemor_session` cookie and mobile sessions
 	// through their bearer token; both are the same session records
 	// and appear together in `GET /auth/sessions`.
+	//
+	// The session carries its user's identity: `userId` and `role`
+	// name whose credentials this is, so a client that restores a
+	// session (a web app booting with the cookie, a mobile app
+	// resuming with its bearer token) knows who is calling without a
+	// second endpoint. `POST /auth/login`, `GET /auth/sessions` and
+	// `POST /auth/pairing/consume` all answer this schema, so the
+	// identity arrives at login time, at restore time and at pairing
+	// time alike. The role is the live account row's, read through
+	// the session's own user join.
 	Session SessionInfo `json:"session"`
 
 	// Token Bearer credential of the new mobile session; send it as
@@ -1281,17 +1735,35 @@ type PersonSummary struct {
 	// Name The caller's own label of the cluster.
 	Name string `json:"name"`
 
-	// RepresentativeFaceId The cluster's representative face (its strongest-scoring
-	// member); the face the person card renders.
+	// RepresentativeFaceId The face the person card renders: the cluster's
+	// strongest-scoring face on a caller-visible live asset
+	// (score descending, the face id ascending as the
+	// tiebreak) -- the best face the CALLER can see, not the
+	// cluster's global representative, so a card never crops
+	// out of an asset the caller cannot view. The field is the
+	// thumbnail's face id.
 	RepresentativeFaceId openapi_types.UUID `json:"representativeFaceId"`
 
-	// Thumbnail URL of the representative face's crop: the face crop
-	// endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
-	// representative face's id.
+	// Thumbnail URL of the card's face crop: the face crop endpoint
+	// `GET /api/v1/faces/{faceId}/thumbnail` with the
+	// caller-visible best face's id.
 	//
 	//
 	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
 	Thumbnail string `json:"thumbnail"`
+}
+
+// RemoveAlbumItemsResponse The honest report of one membership remove over the
+// request's distinct ids: the rows that left and the ids that
+// were no members.
+type RemoveAlbumItemsResponse struct {
+	// Removed The membership rows the request deleted. Zero for an
+	// all-skipped request, which is still a 200.
+	Removed int `json:"removed"`
+
+	// Skipped The distinct ids that were no members of the album --
+	// never added, or already removed.
+	Skipped int `json:"skipped"`
 }
 
 // ServerInfo Instance capability report served by `GET /server/info`.
@@ -1317,6 +1789,16 @@ type ServerInfo struct {
 // through the `lumemor_session` cookie and mobile sessions
 // through their bearer token; both are the same session records
 // and appear together in `GET /auth/sessions`.
+//
+// The session carries its user's identity: `userId` and `role`
+// name whose credentials this is, so a client that restores a
+// session (a web app booting with the cookie, a mobile app
+// resuming with its bearer token) knows who is calling without a
+// second endpoint. `POST /auth/login`, `GET /auth/sessions` and
+// `POST /auth/pairing/consume` all answer this schema, so the
+// identity arrives at login time, at restore time and at pairing
+// time alike. The role is the live account row's, read through
+// the session's own user join.
 type SessionInfo struct {
 	// CreatedAt When the session was created (RFC 3339 UTC).
 	CreatedAt time.Time `json:"createdAt"`
@@ -1342,6 +1824,17 @@ type SessionInfo struct {
 
 	// LastSeenAt When the session was last used (RFC 3339 UTC).
 	LastSeenAt time.Time `json:"lastSeenAt"`
+
+	// Role Authorization role of an account: `admin` is granted by the
+	// first-run wizard or by another administrator, `user` is the
+	// default of every other creation path.
+	Role UserRole `json:"role"`
+
+	// UserId UUIDv7 identifier of the account the session belongs to.
+	// Every entry of `GET /auth/sessions` carries the caller's
+	// own id (the list is the caller's sessions); the caller is
+	// who the client compares asset and album ownership against.
+	UserId openapi_types.UUID `json:"userId"`
 }
 
 // SessionInfoKind Where the session credential lives: `web` sessions ride
@@ -1602,13 +2095,17 @@ type UnnamedClusterSummary struct {
 	// the honest per-caller count, not the global member count.
 	FaceCount int `json:"faceCount"`
 
-	// RepresentativeFaceId The cluster's representative face (its strongest-scoring
-	// member); the face the cluster tile renders.
+	// RepresentativeFaceId The face the cluster tile renders: the cluster's
+	// strongest-scoring face on a caller-visible live asset
+	// (score descending, the face id ascending as the
+	// tiebreak) -- the best face the CALLER can see, not the
+	// cluster's global representative, so a tile never crops
+	// out of an asset the caller cannot view.
 	RepresentativeFaceId openapi_types.UUID `json:"representativeFaceId"`
 
-	// Thumbnail URL of the representative face's crop: the face crop
-	// endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
-	// representative face's id.
+	// Thumbnail URL of the tile's face crop: the face crop endpoint
+	// `GET /api/v1/faces/{faceId}/thumbnail` with the
+	// caller-visible best face's id.
 	//
 	//
 	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
@@ -1647,10 +2144,38 @@ type User struct {
 	Role UserRole `json:"role"`
 }
 
+// UserListResponse The instance's member list: every account, `email`
+// ascending, in one bounded response (a family instance holds
+// a handful of accounts).
+type UserListResponse struct {
+	// Users Every account of the instance, `email` ascending.
+	Users []UserSummary `json:"users"`
+}
+
 // UserRole Authorization role of an account: `admin` is granted by the
 // first-run wizard or by another administrator, `user` is the
 // default of every other creation path.
 type UserRole string
+
+// UserSummary One account of the minimal member list: exactly the identity
+// fields a pick list renders -- no display name, no
+// timestamps, and never a password hash.
+type UserSummary struct {
+	// Email Login address.
+	Email openapi_types.Email `json:"email"`
+
+	// Id UUIDv7 identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsDisabled The disabled switch: a disabled account cannot sign in
+	// and its sessions carry no authority until re-enabled.
+	IsDisabled bool `json:"isDisabled"`
+
+	// Role Authorization role of an account: `admin` is granted by the
+	// first-run wizard or by another administrator, `user` is the
+	// default of every other creation path.
+	Role UserRole `json:"role"`
+}
 
 // ListJobsParams defines parameters for ListJobs.
 type ListJobsParams struct {
@@ -1662,6 +2187,20 @@ type ListJobsParams struct {
 
 // ActivateModelJSONBody defines parameters for ActivateModel.
 type ActivateModelJSONBody = map[string]interface{}
+
+// GetAlbumParams defines parameters for GetAlbum.
+type GetAlbumParams struct {
+	// Cursor The `nextCursor` of the previous page; absent on the first
+	// page. An unparseable value answers 400
+	// `VALIDATION_FAILED` (cursors are opaque strings produced
+	// by this endpoint, never assembled by clients).
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size: the number of album items one response carries
+	// at most. Defaults to 60; values below 1 or over 200
+	// answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // UploadAssetMultipartBody defines parameters for UploadAsset.
 type UploadAssetMultipartBody struct {
@@ -1796,6 +2335,24 @@ type CreateUserJSONRequestBody = AdminCreateUserRequest
 // UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
 type UpdateUserJSONRequestBody = AdminUserPatch
 
+// CreateAlbumJSONRequestBody defines body for CreateAlbum for application/json ContentType.
+type CreateAlbumJSONRequestBody = AlbumCreateRequest
+
+// UpdateAlbumJSONRequestBody defines body for UpdateAlbum for application/json ContentType.
+type UpdateAlbumJSONRequestBody = AlbumPatch
+
+// RemoveAlbumItemsJSONRequestBody defines body for RemoveAlbumItems for application/json ContentType.
+type RemoveAlbumItemsJSONRequestBody = AlbumItemsRequest
+
+// AddAlbumItemsJSONRequestBody defines body for AddAlbumItems for application/json ContentType.
+type AddAlbumItemsJSONRequestBody = AlbumItemsRequest
+
+// GrantAlbumShareJSONRequestBody defines body for GrantAlbumShare for application/json ContentType.
+type GrantAlbumShareJSONRequestBody = AlbumShareGrantRequest
+
+// SetAlbumTimelinePreferenceJSONRequestBody defines body for SetAlbumTimelinePreference for application/json ContentType.
+type SetAlbumTimelinePreferenceJSONRequestBody = AlbumTimelinePreferenceRequest
+
 // UploadAssetMultipartRequestBody defines body for UploadAsset for multipart/form-data ContentType.
 type UploadAssetMultipartRequestBody UploadAssetMultipartBody
 
@@ -1855,6 +2412,39 @@ type ServerInterface interface {
 	// UpdateUser Toggle one account's disabled switch.
 	// (PATCH /admin/users/{id})
 	UpdateUser(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ListAlbums The caller's album wall.
+	// (GET /albums)
+	ListAlbums(w http.ResponseWriter, r *http.Request)
+	// CreateAlbum Create one virtual album.
+	// (POST /albums)
+	CreateAlbum(w http.ResponseWriter, r *http.Request)
+	// DeleteAlbum Delete one virtual album.
+	// (DELETE /albums/{albumId})
+	DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// GetAlbum One album's detail and one page of its items.
+	// (GET /albums/{albumId})
+	GetAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, params GetAlbumParams)
+	// UpdateAlbum Patch one album's properties.
+	// (PATCH /albums/{albumId})
+	UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// RemoveAlbumItems Remove assets from one virtual album.
+	// (DELETE /albums/{albumId}/items)
+	RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// AddAlbumItems Add assets to one virtual album.
+	// (POST /albums/{albumId}/items)
+	AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// GrantAlbumShare Grant one account the view ACL of an album.
+	// (POST /albums/{albumId}/shares)
+	GrantAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// RevokeAlbumShare Revoke one account's view ACL of an album.
+	// (DELETE /albums/{albumId}/shares/{userId})
+	RevokeAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, userId openapi_types.UUID)
+	// ResetAlbumTimelinePreference Reset the caller's timeline preference of one album.
+	// (DELETE /albums/{albumId}/timeline-preference)
+	ResetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// SetAlbumTimelinePreference Set the caller's timeline preference of one album.
+	// (PUT /albums/{albumId}/timeline-preference)
+	SetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
 	// UploadAsset Upload one photo, optionally with its Live Photo video.
 	// (POST /assets)
 	UploadAsset(w http.ResponseWriter, r *http.Request)
@@ -1951,6 +2541,9 @@ type ServerInterface interface {
 	// RestoreAsset Restore one trashed asset.
 	// (POST /trash/{id}/restore)
 	RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// ListInstanceUsers The instance's member list.
+	// (GET /users)
+	ListInstanceUsers(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -2008,6 +2601,72 @@ func (_ Unimplemented) CreateUser(w http.ResponseWriter, r *http.Request) {
 // UpdateUser Toggle one account's disabled switch.
 // (PATCH /admin/users/{id})
 func (_ Unimplemented) UpdateUser(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListAlbums The caller's album wall.
+// (GET /albums)
+func (_ Unimplemented) ListAlbums(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateAlbum Create one virtual album.
+// (POST /albums)
+func (_ Unimplemented) CreateAlbum(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteAlbum Delete one virtual album.
+// (DELETE /albums/{albumId})
+func (_ Unimplemented) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetAlbum One album's detail and one page of its items.
+// (GET /albums/{albumId})
+func (_ Unimplemented) GetAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, params GetAlbumParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateAlbum Patch one album's properties.
+// (PATCH /albums/{albumId})
+func (_ Unimplemented) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RemoveAlbumItems Remove assets from one virtual album.
+// (DELETE /albums/{albumId}/items)
+func (_ Unimplemented) RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AddAlbumItems Add assets to one virtual album.
+// (POST /albums/{albumId}/items)
+func (_ Unimplemented) AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GrantAlbumShare Grant one account the view ACL of an album.
+// (POST /albums/{albumId}/shares)
+func (_ Unimplemented) GrantAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeAlbumShare Revoke one account's view ACL of an album.
+// (DELETE /albums/{albumId}/shares/{userId})
+func (_ Unimplemented) RevokeAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, userId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ResetAlbumTimelinePreference Reset the caller's timeline preference of one album.
+// (DELETE /albums/{albumId}/timeline-preference)
+func (_ Unimplemented) ResetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetAlbumTimelinePreference Set the caller's timeline preference of one album.
+// (PUT /albums/{albumId}/timeline-preference)
+func (_ Unimplemented) SetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2203,6 +2862,12 @@ func (_ Unimplemented) RestoreAsset(w http.ResponseWriter, r *http.Request, id o
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListInstanceUsers The instance's member list.
+// (GET /users)
+func (_ Unimplemented) ListInstanceUsers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ServerInterfaceWrapper converts contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler            ServerInterface
@@ -2384,6 +3049,306 @@ func (siw *ServerInterfaceWrapper) UpdateUser(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateUser(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAlbums operation middleware
+func (siw *ServerInterfaceWrapper) ListAlbums(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAlbums(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAlbum operation middleware
+func (siw *ServerInterfaceWrapper) CreateAlbum(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAlbum(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAlbum operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAlbum(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAlbum(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAlbum operation middleware
+func (siw *ServerInterfaceWrapper) GetAlbum(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAlbumParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAlbum(w, r, albumId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAlbum operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAlbum(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAlbum(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveAlbumItems operation middleware
+func (siw *ServerInterfaceWrapper) RemoveAlbumItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveAlbumItems(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddAlbumItems operation middleware
+func (siw *ServerInterfaceWrapper) AddAlbumItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddAlbumItems(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GrantAlbumShare operation middleware
+func (siw *ServerInterfaceWrapper) GrantAlbumShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GrantAlbumShare(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeAlbumShare operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAlbumShare(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", chi.URLParam(r, "userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeAlbumShare(w, r, albumId, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetAlbumTimelinePreference operation middleware
+func (siw *ServerInterfaceWrapper) ResetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetAlbumTimelinePreference(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAlbumTimelinePreference operation middleware
+func (siw *ServerInterfaceWrapper) SetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAlbumTimelinePreference(w, r, albumId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3205,6 +4170,20 @@ func (siw *ServerInterfaceWrapper) RestoreAsset(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ListInstanceUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListInstanceUsers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInstanceUsers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -3388,6 +4367,39 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/trash/{id}/restore", wrapper.RestoreAsset)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/albums", wrapper.ListAlbums)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/albums", wrapper.CreateAlbum)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/albums/{albumId}", wrapper.DeleteAlbum)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/albums/{albumId}", wrapper.GetAlbum)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/albums/{albumId}", wrapper.UpdateAlbum)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/albums/{albumId}/items", wrapper.RemoveAlbumItems)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/albums/{albumId}/items", wrapper.AddAlbumItems)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/albums/{albumId}/shares", wrapper.GrantAlbumShare)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/albums/{albumId}/timeline-preference", wrapper.ResetAlbumTimelinePreference)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/albums/{albumId}/timeline-preference", wrapper.SetAlbumTimelinePreference)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/people", wrapper.ListPeople)
 	})
 	r.Group(func(r chi.Router) {
@@ -3413,6 +4425,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/faces/{faceId}/thumbnail", wrapper.GetFaceThumbnail)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/users", wrapper.ListInstanceUsers)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/users", wrapper.ListUsers)

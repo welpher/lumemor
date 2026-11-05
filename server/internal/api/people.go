@@ -143,13 +143,18 @@ func (s *server) ListPeople(w http.ResponseWriter, r *http.Request) {
 
 	people := make([]apigen.PersonSummary, 0, len(rows))
 	for _, row := range rows {
-		representative := uuid.UUID(row.RepresentativeFaceID.Bytes)
+		// The card face is the query's best caller-visible live face
+		// (the M3b handoff): never the cluster's global
+		// representative, which can sit on an asset this caller
+		// cannot see -- the listing's join already proved a visible
+		// face exists, so the pick is always present here.
+		cardFace := uuid.UUID(row.BestFaceID.Bytes)
 		people = append(people, apigen.PersonSummary{
 			ClusterId:            uuid.UUID(row.ClusterID.Bytes),
 			Name:                 row.Name,
 			FaceCount:            int(row.FaceCount),
-			RepresentativeFaceId: representative,
-			Thumbnail:            faceThumbnailPath(representative),
+			RepresentativeFaceId: cardFace,
+			Thumbnail:            faceThumbnailPath(cardFace),
 			IsHidden:             row.IsHidden,
 		})
 	}
@@ -194,12 +199,14 @@ func (s *server) ListUnnamedPeople(w http.ResponseWriter, r *http.Request, param
 		response.NextCursor = &next
 	}
 	for _, row := range rows {
-		representative := uuid.UUID(row.RepresentativeFaceID.Bytes)
+		// The tile face is the query's best caller-visible live face
+		// -- the same pick the named region's cards apply.
+		cardFace := uuid.UUID(row.BestFaceID.Bytes)
 		response.Items = append(response.Items, apigen.UnnamedClusterSummary{
 			ClusterId:            uuid.UUID(row.ClusterID.Bytes),
 			FaceCount:            int(row.FaceCount),
-			RepresentativeFaceId: representative,
-			Thumbnail:            faceThumbnailPath(representative),
+			RepresentativeFaceId: cardFace,
+			Thumbnail:            faceThumbnailPath(cardFace),
 		})
 	}
 

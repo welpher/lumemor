@@ -97,6 +97,7 @@ NON_ERROR_KEYS = {
     "nav_label",
     "nav_timeline",
     "nav_albums",
+    "nav_admin",
     "nav_people",
     "nav_places",
     "nav_memories",
@@ -119,6 +120,17 @@ NON_ERROR_KEYS = {
     # People surface message keys (M3b): message keys carried in a
     # VALIDATION_FAILED details, not error codes of their own.
     "person_hide_requires_label",
+    # Album surface message keys (M3c): the cover validation's
+    # message key carried in a VALIDATION_FAILED details.
+    "album_cover_not_member",
+    # Album sharing message keys (M3c Task 3): the grant target
+    # rules' keys carried in a VALIDATION_FAILED details.
+    "album_share_to_owner",
+    "album_share_user_invalid",
+    # Album timeline-preference message keys (M3c Task 4): the
+    # not-excludable album kinds' key carried in a VALIDATION_FAILED
+    # details.
+    "album_pref_not_excludable",
     # People surface UI strings (M3b Task 4): the three pages of the
     # people domain.
     "people_loading",
@@ -347,9 +359,70 @@ NON_ERROR_KEYS = {
     "admin_jobs_started",
     "admin_jobs_finished",
     "admin_jobs_not_started",
-    # Albums placeholder shell (M2d; the domain itself is M3).
+    # Albums surface UI strings (M3c Task 5): the wall, the detail,
+    # the share dialog and the timeline's add-to-album flow.
+    "action_add_to_album",
     "albums_title",
-    "albums_coming_later",
+    "albums_loading",
+    "albums_empty",
+    "albums_new",
+    "albums_own_section",
+    "albums_shared_section",
+    "albums_photo_count",
+    "albums_locked_badge",
+    "albums_shared_badge",
+    "albums_excluded_badge",
+    "albums_shared_by",
+    "albums_create_title",
+    "albums_properties_title",
+    "albums_title_field",
+    "albums_description_field",
+    "albums_create_submit",
+    "albums_properties_submit",
+    "albums_title_invalid",
+    "albums_detail_loading",
+    "albums_detail_empty",
+    "albums_action_rename",
+    "albums_action_properties",
+    "albums_action_cover",
+    "albums_action_lock",
+    "albums_action_unlock",
+    "albums_action_share",
+    "albums_action_add_photos",
+    "albums_action_delete",
+    "albums_delete_title",
+    "albums_delete_body",
+    "albums_delete_confirm",
+    "albums_locked_notice",
+    "albums_excluded_notice",
+    "albums_action_exclude",
+    "albums_action_include",
+    "albums_leave_action",
+    "albums_rescan_action",
+    "albums_rescan_note",
+    "albums_cover_title",
+    "albums_cover_body",
+    "albums_cover_submit",
+    "albums_cover_empty",
+    "albums_cover_current_badge",
+    "albums_share_title",
+    "albums_share_body",
+    "albums_share_pick_label",
+    "albums_share_submit",
+    "albums_share_empty",
+    "albums_share_no_candidates",
+    "albums_share_revoke",
+    "albums_share_member_since",
+    "albums_share_disabled_note",
+    "albums_add_title",
+    "albums_add_mode_existing",
+    "albums_add_mode_new",
+    "albums_add_pick_label",
+    "albums_add_submit",
+    "albums_add_create_submit",
+    "albums_add_empty",
+    "albums_add_report",
+    "albums_add_done",
 }
 
 KEY_PATTERN = re.compile(r"^[a-z0-9_]+$")

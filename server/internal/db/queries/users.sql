@@ -34,3 +34,32 @@ UPDATE users
 SET is_disabled = $2, updated_at = now()
 WHERE id = $1
 RETURNING id, name, email, role, is_disabled, created_at;
+
+-- User reads of the sharing face (M3c Task 3): the minimal member
+-- list and the share-target lookup. Both select the safe identity
+-- columns only -- a password hash never leaves the table through
+-- any non-auth surface.
+
+-- name: ListInstanceUsersMinimal :many
+-- The minimal member list: every account, email ascending. Any
+-- authenticated account may read it (the family-instance posture);
+-- the share dialog's pick list is the first consumer.
+SELECT id, email, role, is_disabled
+FROM users
+ORDER BY email ASC;
+
+-- name: GetUserForShareTarget :one
+-- One account as the share grant's target lookup: does the id name
+-- a usable account? An unknown id answers no row and a disabled
+-- account answers its switch -- the caller folds both into the same
+-- 400 so user ids cannot be probed through the sharing face.
+SELECT id, email, is_disabled
+FROM users
+WHERE id = $1;
+
+-- name: GetUserRole :one
+-- The role half of the pairing consume's identity answer: the burn
+-- answers the token creator's id, and the minted session's response
+-- carries the account's role with it, so the paired device knows who
+-- it paired as from the consume response alone.
+SELECT role FROM users WHERE id = $1;

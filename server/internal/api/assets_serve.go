@@ -7,9 +7,11 @@
 // copy arrives through its own transcode job. M3b Task 5 extends the
 // detail with the asset's faces (caller-scoped label state, the
 // people section's read).
-// The permission model is owner-only: every read funnels through the
-// owner-scoped sqlc query, and a miss answers the anti-enumeration
-// 404 -- byte-identical for unknown and foreign ids.
+// The permission model is the caller-visible union (M3c Task 4):
+// every read funnels through the union-gated sqlc query -- the
+// caller's own sync and directory arms plus every album shared to
+// them -- and a miss answers the anti-enumeration 404,
+// byte-identical for unknown and invisible ids.
 package api
 
 import (
@@ -51,14 +53,15 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 		return
 	}
 
-	// The owner filter in the query is the permission check: a foreign
-	// id resolves to no row, exactly like an unknown one, and the
-	// answer below is the byte-identical 404 of the anti-enumeration
-	// discipline. ACL/album sharing widens this to album members in
-	// M2c, together with the album domain.
+	// The caller-visible union in the query is the permission check
+	// (M3c Task 4): the owner's own arms -- their sync album holds
+	// every upload, whatever the row's state -- plus every album
+	// shared to the caller. An id none of those cover resolves to no
+	// row, exactly like an unknown one, and the answer below is the
+	// byte-identical 404 of the anti-enumeration discipline.
 	row, err := s.queries.GetAssetDetail(r.Context(), dbgen.GetAssetDetailParams{
-		ID:      pgUUID(id),
-		OwnerID: pgUUID(requester.userID),
+		ID:     pgUUID(id),
+		Viewer: pgUUID(requester.userID),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.writeAssetNotFound(w)
@@ -70,8 +73,8 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 	}
 
 	// The faces ride on the detail's own permission: the row above
-	// proved the caller owns the asset, so its faces (each joined with
-	// the caller's label state) need no gate of their own.
+	// proved the caller can see the asset, so its faces (each joined
+	// with the caller's label state) need no gate of their own.
 	faces, err := s.assetFacesForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
 	if err != nil {
 		s.internalError(w, r, "load asset faces", err)
@@ -99,9 +102,9 @@ func (s *server) GetAssetThumbnail(w http.ResponseWriter, r *http.Request, id op
 		return
 	}
 
-	row, err := s.queries.GetAsset(r.Context(), dbgen.GetAssetParams{
-		ID:      pgUUID(id),
-		OwnerID: pgUUID(requester.userID),
+	row, err := s.queries.GetVisibleAsset(r.Context(), dbgen.GetVisibleAssetParams{
+		ID:     pgUUID(id),
+		Viewer: pgUUID(requester.userID),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.writeAssetNotFound(w)
@@ -150,9 +153,9 @@ func (s *server) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id ope
 		return
 	}
 
-	row, err := s.queries.GetAsset(r.Context(), dbgen.GetAssetParams{
-		ID:      pgUUID(id),
-		OwnerID: pgUUID(requester.userID),
+	row, err := s.queries.GetVisibleAsset(r.Context(), dbgen.GetVisibleAssetParams{
+		ID:     pgUUID(id),
+		Viewer: pgUUID(requester.userID),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.writeAssetNotFound(w)
@@ -216,9 +219,9 @@ func (s *server) PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_ty
 		return
 	}
 
-	row, err := s.queries.GetAsset(r.Context(), dbgen.GetAssetParams{
-		ID:      pgUUID(id),
-		OwnerID: pgUUID(requester.userID),
+	row, err := s.queries.GetVisibleAsset(r.Context(), dbgen.GetVisibleAssetParams{
+		ID:     pgUUID(id),
+		Viewer: pgUUID(requester.userID),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.writeAssetNotFound(w)
@@ -370,8 +373,8 @@ func (s *server) writeAssetNotFound(w http.ResponseWriter) {
 // endpoints (GET and PATCH) share, so the PATCH response carries the
 // faces exactly as the GET serves them. The caller scoping is the
 // query's LEFT JOIN (B4): another account's label of the same global
-// cluster never surfaces. Callers must have proven the asset readable
-// owner-scoped first; the faces carry no gate of their own.
+// cluster never surfaces. Callers must have proven the asset
+// caller-visible first; the faces carry no gate of their own.
 func (s *server) assetFacesForCaller(ctx context.Context, assetID, callerID pgtype.UUID) ([]apigen.AssetFaceSummary, error) {
 	rows, err := s.queries.ListAssetFacesForCaller(ctx, dbgen.ListAssetFacesForCallerParams{
 		UserID:  callerID,

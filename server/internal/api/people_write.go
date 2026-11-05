@@ -58,8 +58,8 @@ func (s *server) writePersonNotFound(w http.ResponseWriter) {
 
 // writeMessageKey emits a 400 VALIDATION_FAILED whose details carry a
 // message key: a code-specific sub-condition the clients translate
-// through their i18n tables (today only
-// person_hide_requires_label).
+// through their i18n tables (person_hide_requires_label on the people
+// surface, album_cover_not_member on the album face).
 func (s *server) writeMessageKey(w http.ResponseWriter, message string, key string) {
 	details := map[string]interface{}{"key": key}
 	s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, &details)

@@ -48,24 +48,43 @@ ORDER BY deleted_at NULLS FIRST
 LIMIT 1;
 
 -- name: GetAsset :one
--- The owner-scoped read of the media serving endpoints: the full row
--- behind a thumbnail or original request. The owner filter IS the
--- permission check (M2b is owner-only): a foreign id resolves to no
--- row, which the handlers answer exactly like an unknown id -- 404,
--- byte-identical -- so asset ids cannot be enumerated. Album sharing
--- widens this in M2c with the album domain.
+-- The owner-scoped row read behind the WRITE faces that gate on
+-- ownership (the attribute PATCH and the trash restore): their
+-- permission is ACL derivation -- the owner alone may edit and
+-- restore -- so the owner filter IS the check, and a foreign id
+-- resolves to no row, which the handlers answer exactly like an
+-- unknown id -- 404, byte-identical -- so asset ids cannot be
+-- enumerated. The READ faces (detail, thumbnail, original, play)
+-- use GetAssetDetail / GetVisibleAsset instead: the caller-visible
+-- union the switchover moved them onto.
 SELECT * FROM assets
 WHERE id = $1 AND owner_id = $2;
 
+-- name: GetVisibleAsset :one
+-- The caller-visible row read behind the media serving endpoints
+-- (the thumbnail, the original download, the playable stream): the
+-- album union -- the caller's own sync and directory arms plus
+-- every album shared to them -- with no state filter, matching the
+-- owner's long-standing shape (a trashed or hidden asset stays
+-- servable at its known id; the listing surfaces are what filter
+-- the states out). A miss answers the single-shape 404 the asset
+-- endpoints share.
+SELECT * FROM assets a
+WHERE a.id = sqlc.arg('id')
+  AND caller_asset_visible(sqlc.arg('viewer'), a.id);
+
 -- name: GetAssetDetail :one
 -- The detail read of GET /assets/{id}: the asset row joined with the
--- exif hot fields the response flattens. Owner-scoped like GetAsset
--- (the join only attaches the sidecar of the row that matched).
--- The LEFT JOIN keeps the detail answering before and after the
--- metadata job refined the sidecar: hot fields are NULL until then.
--- description and is_hidden ride along (M2c Task 5): the PATCH
--- response reuses this read after its writes, so it serves the same
--- shape the GET endpoint serves, applied values included.
+-- exif hot fields the response flattens. The gate is the
+-- caller-visible union (M3c Task 4): the owner's own arms (their
+-- sync album holds every upload, whatever the row's state) plus
+-- every album shared to the caller. The join only attaches the
+-- sidecar of the row that matched. The LEFT JOIN keeps the detail
+-- answering before and after the metadata job refined the sidecar:
+-- hot fields are NULL until then. description and is_hidden ride
+-- along (M2c Task 5): the PATCH response reuses this read after its
+-- writes, so it serves the same shape the GET endpoint serves,
+-- applied values included.
 SELECT a.id,
        a.owner_id,
        a.media_kind,
@@ -98,7 +117,8 @@ SELECT a.id,
        e.tz_offset
 FROM assets a
 LEFT JOIN exif e ON e.asset_id = a.id
-WHERE a.id = $1 AND a.owner_id = $2;
+WHERE a.id = sqlc.arg('id')
+  AND caller_asset_visible(sqlc.arg('viewer'), a.id);
 
 -- name: CreateExifPlaceholder :exec
 -- The metadata sidecar row of a fresh asset: the exif jsonb carries

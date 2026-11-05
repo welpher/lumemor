@@ -156,10 +156,13 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 	// and this read answers the 404 of a gone asset, exactly like
 	// the delete endpoint's repeat. The faces ride along through the
 	// shared read: the PATCH answer is the detail the GET serves,
-	// people section included.
+	// people section included. The read rides the caller-visible
+	// union like the GET's own -- the gate above already proved the
+	// caller owns the row, and an owner's sync membership is what
+	// the union resolves it through.
 	detail, err := s.queries.GetAssetDetail(r.Context(), dbgen.GetAssetDetailParams{
-		ID:      pgUUID(id),
-		OwnerID: pgUUID(requester.userID),
+		ID:     pgUUID(id),
+		Viewer: pgUUID(requester.userID),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.writeAssetNotFound(w)

@@ -7,6 +7,14 @@
 	// the page) and the last failed action's message. The bar owns
 	// presentation only: the page runs the actions and owns the
 	// selection.
+	//
+	// THE LAYERING: the bar paints above the upload queue's panel
+	// (z-70, the bottom-right status surface) -- the curation bar is
+	// the ACTIVE interaction and its wide row (the add-to-album
+	// affordance grew it past the panel's left edge at common
+	// viewports) must stay clickable while uploads run; the passive
+	// panel yields the overlap. The bar stays below the info drawer
+	// (80) and every dialog (100).
 	import { _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
@@ -29,13 +37,30 @@
 		 * (unfavorite on favorites, unhide on hidden).
 		 */
 		actions?: readonly BatchAction[];
+		/**
+		 * Open the add-to-album dialog over the current selection (the
+		 * timeline's bar offers it; the curated walls do not). The
+		 * album flow is not a batch action -- it carries its own dialog
+		 * and endpoint -- so it rides this callback instead of the
+		 * action set.
+		 */
+		onaddtoalbum?: () => void;
 		/** Run one batch action over the current selection. */
 		onaction: (action: BatchAction) => void;
 		/** Clear the selection. */
 		onclear: () => void;
 	};
 
-	let { count, allFavorite, errorKey, busy, actions, onaction, onclear }: Props = $props();
+	let {
+		count,
+		allFavorite,
+		errorKey,
+		busy,
+		actions,
+		onaddtoalbum,
+		onaction,
+		onclear
+	}: Props = $props();
 
 	// The default is the full set of the bar's buttons; a caller's
 	// subset keeps its order (the toggle, hide, unhide, trash,
@@ -58,11 +83,15 @@
 
 {#if count > 0}
 	<div
-		class="batchbar fixed left-1/2 bottom-5 z-[60] box-content flex flex-wrap items-center justify-center gap-2 max-w-[min(92vw,720px)] px-3.5 py-2.5 border border-border rounded-overlay bg-card shadow-overlay [transform:translateX(-50%)]"
+		class="batchbar fixed left-1/2 bottom-5 z-[75] box-content flex flex-wrap items-center justify-center gap-2 max-w-[min(92vw,720px)] px-3.5 py-2.5 border border-border rounded-overlay bg-card shadow-overlay [transform:translateX(-50%)]"
 		role="toolbar"
 		aria-label={$_('batch_selected_count', { values: { count } })}
 	>
 		<p class="batchbar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap">{$_('batch_selected_count', { values: { count } })}</p>
+
+		{#if onaddtoalbum !== undefined}
+			<Button variant="ghost" disabled={busy} onclick={onaddtoalbum}>{$_('action_add_to_album')}</Button>
+		{/if}
 
 		{#if offers('favorite')}
 			<Button variant="ghost" disabled={busy} onclick={() => onaction(allFavorite ? 'unfavorite' : 'favorite')}>

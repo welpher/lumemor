@@ -10,11 +10,13 @@ import 'package:lumemor_api/src/auth/basic_auth.dart';
 import 'package:lumemor_api/src/auth/bearer_auth.dart';
 import 'package:lumemor_api/src/auth/oauth.dart';
 import 'package:lumemor_api/src/api/admin_api.dart';
+import 'package:lumemor_api/src/api/albums_api.dart';
 import 'package:lumemor_api/src/api/assets_api.dart';
 import 'package:lumemor_api/src/api/auth_api.dart';
 import 'package:lumemor_api/src/api/events_api.dart';
 import 'package:lumemor_api/src/api/people_api.dart';
 import 'package:lumemor_api/src/api/server_api.dart';
+import 'package:lumemor_api/src/api/users_api.dart';
 
 class LumemorApi {
   static const String basePath = r'/api/v1';
@@ -116,6 +118,12 @@ class LumemorApi {
     return AdminApi(dio, serializers);
   }
 
+  /// Get AlbumsApi instance, base route and serializer can be overridden by a given but be careful,
+  /// by doing that all interceptors will not be executed
+  AlbumsApi getAlbumsApi() {
+    return AlbumsApi(dio, serializers);
+  }
+
   /// Get AssetsApi instance, base route and serializer can be overridden by a given but be careful,
   /// by doing that all interceptors will not be executed
   AssetsApi getAssetsApi() {
@@ -144,5 +152,11 @@ class LumemorApi {
   /// by doing that all interceptors will not be executed
   ServerApi getServerApi() {
     return ServerApi(dio, serializers);
+  }
+
+  /// Get UsersApi instance, base route and serializer can be overridden by a given but be careful,
+  /// by doing that all interceptors will not be executed
+  UsersApi getUsersApi() {
+    return UsersApi(dio, serializers);
   }
 }
