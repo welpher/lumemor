@@ -2283,6 +2283,16 @@ export interface components {
          *     through the `lumemor_session` cookie and mobile sessions
          *     through their bearer token; both are the same session records
          *     and appear together in `GET /auth/sessions`.
+         *
+         *     The session carries its user's identity: `userId` and `role`
+         *     name whose credentials this is, so a client that restores a
+         *     session (a web app booting with the cookie, a mobile app
+         *     resuming with its bearer token) knows who is calling without a
+         *     second endpoint. `POST /auth/login`, `GET /auth/sessions` and
+         *     `POST /auth/pairing/consume` all answer this schema, so the
+         *     identity arrives at login time, at restore time and at pairing
+         *     time alike. The role is the live account row's, read through
+         *     the session's own user join.
          */
         SessionInfo: {
             /**
@@ -2304,6 +2314,15 @@ export interface components {
              *     mobile sessions carry the name supplied during pairing.
              */
             deviceName?: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the account the session belongs to.
+             *     Every entry of `GET /auth/sessions` carries the caller's
+             *     own id (the list is the caller's sessions); the caller is
+             *     who the client compares asset and album ownership against.
+             */
+            userId: string;
+            role: components["schemas"]["UserRole"];
             /**
              * Format: date-time
              * @description When the session was created (RFC 3339 UTC).

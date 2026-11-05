@@ -15,8 +15,10 @@
 	//   the timeline-exclusion toggle and the rescan placeholder
 	//   (disabled with the honest "later update" note -- directory
 	//   albums arrive with their own milestone); a viewer holds the
-	//   exclusion toggle alone. Read-only is VISUAL: a sharee never
-	//   sees a write affordance, the server keeps refusing them.
+	//   exclusion toggle (their own preference) and the leave
+	//   affordance (the revoke of their own share row, the identity
+	//   seam's departure). Read-only is VISUAL: a sharee never sees a
+	//   write affordance, the server keeps refusing them.
 	// - The locked gate is visual too: while locked, the curation and
 	//   property actions disable (the unlock is the lock toggle
 	//   itself, never gated), while the delete and the share stay
@@ -48,6 +50,7 @@
 		type UserSummary
 	} from '$lib/api/albums';
 	import { subscribeAlbumEvents } from '$lib/events';
+	import { sessionUserId } from '$lib/auth/session.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { wallItems } from '$lib/timeline/wall.svelte';
 	import CuratedWall from '$lib/timeline/CuratedWall.svelte';
@@ -85,9 +88,16 @@
 	let shareUsers = $state<UserSummary[]>([]);
 	let shareLoading = $state(false);
 
+	// The share dialog: the member list is the server's; the pick list
+	// filters the current grantees AND the caller's own account -- the
+	// identity seam's userId names the one account the grant's own
+	// target rule refuses (`album_share_to_owner`), so the dialog
+	// never offers it in the first place.
 	const shareCandidates = $derived(
 		shareUsers.filter(
-			(user) => !(detail?.shares ?? []).some((share) => share.userId === user.id)
+			(user) =>
+				user.id !== sessionUserId() &&
+				!(detail?.shares ?? []).some((share) => share.userId === user.id)
 		)
 	);
 
@@ -96,9 +106,7 @@
 	let deleteErrorKey = $state('');
 
 	// The exclusion toggle's honest failure (the header owns the line).
-	let exclusionErrorKey = $state('');
-
-	// The items walk's membership convergence key: album.items-changed
+	let exclusionErrorKey = $state('');	// The items walk's membership convergence key: album.items-changed
 	// bumps it and the CuratedWall restarts from page one.
 	let wallResetKey = $state(0);
 
@@ -257,10 +265,10 @@
 		coverOpen = false;
 	}
 
-	// The share dialog: the member list is the server's; the caller's
-	// own account cannot be excluded from it -- the contract exposes
-	// no session identity on the client, so the server's target rule
-	// answers a self-pick honestly.
+	// The share dialog: the member list is the server's minimal face
+	// (every account); the pick list's filtering -- the current
+	// grantees and the caller's own account -- lives in the
+	// shareCandidates derivation above.
 	$effect(() => {
 		if (!shareOpen) {
 			return;
@@ -356,6 +364,31 @@
 		}
 	}
 
+	// The sharee's departure (the identity seam's second consumer):
+	// the revoke of the CALLER'S OWN share row -- DELETE
+	// /albums/{id}/shares/{own id}. The owner can re-share at any
+	// time, so no confirm dialog stands in the way (the same
+	// plain-button shape the owner's own revoke rows carry). Success
+	// leaves for the wall: the album left the caller's view, the
+	// detail would 404 from here on. A failure renders through the
+	// header's shared error line.
+	async function leaveAlbum(): Promise<void> {
+		const id = untrack(() => albumId);
+		const userId = sessionUserId();
+		if (writeBusy || id === '' || userId === null) {
+			return;
+		}
+		writeBusy = true;
+		exclusionErrorKey = '';
+		const outcome = await revokeAlbumShare(id, userId);
+		writeBusy = false;
+		if (!outcome.ok) {
+			exclusionErrorKey = outcome.errorKey;
+			return;
+		}
+		void goto('/albums');
+	}
+
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon); the
 	// reactive `$_` keeps the text locale-tracked.
@@ -417,7 +450,9 @@
 			<!-- The action set, per callerRole x type: the owner of a
 			     virtual album holds the full write set; the owner of a
 			     directory album the properties / exclusion / rescan
-			     placeholder; a viewer the exclusion toggle alone. -->
+			     placeholder; a viewer the exclusion toggle and the
+			     leave affordance -- both self-affecting writes the
+			     share holds. -->
 			<div class="album-detail__actions ml-auto flex flex-wrap items-center gap-2">
 				{#if owner && virtual}
 					<Button variant="ghost" disabled={writeBusy || locked} onclick={() => { propertiesErrorKey = ''; propertiesOpen = true; }}>{$_('albums_action_rename')}</Button>
@@ -435,8 +470,14 @@
 					     directory album's own flow arrives with a later
 					     milestone, and the tooltip says so. -->
 					<Button variant="ghost" disabled title={$_('albums_rescan_note')} aria-describedby="album-detail-rescan-note">{$_('albums_rescan_action')}</Button>
-				{:else if excludable}
-					<Button variant="ghost" disabled={writeBusy} onclick={() => void toggleExclusion()}>{excluded ? $_('albums_action_include') : $_('albums_action_exclude')}</Button>
+				{:else if !owner}
+					<!-- The read-only share's own writes: the timeline
+					     exclusion (the caller's preference) and the
+					     departure (the caller's own share row). -->
+					{#if excludable}
+						<Button variant="ghost" disabled={writeBusy} onclick={() => void toggleExclusion()}>{excluded ? $_('albums_action_include') : $_('albums_action_exclude')}</Button>
+					{/if}
+					<Button variant="ghost" disabled={writeBusy} onclick={() => void leaveAlbum()}>{$_('albums_leave_action')}</Button>
 				{/if}
 			</div>
 		</header>

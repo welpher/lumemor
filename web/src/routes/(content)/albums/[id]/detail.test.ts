@@ -1,7 +1,7 @@
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
-import { sessionStatus } from '$lib/auth/session.svelte';
+import { probeSession, sessionStatus } from '$lib/auth/session.svelte';
 import { clearWallItems } from '$lib/timeline/wall.svelte';
 import type { AlbumDetail, AlbumSummary } from '$lib/api/albums';
 import type { TimelineItem } from '$lib/api/timeline';
@@ -554,6 +554,10 @@ test('the share dialog grants and revokes through the detail refetch', async () 
 });
 
 test('the share dialog surfaces the honest owner-target message', async () => {
+	// No identity booted: a session the store could not resolve (the
+	// degraded path) cannot filter the caller out of the pick list,
+	// so the server's own target rule answers the pick honestly --
+	// the backstop the client-side self filter never replaces.
 	vi.stubGlobal(
 		'fetch',
 		stubFetch(
@@ -579,10 +583,106 @@ test('the share dialog surfaces the honest owner-target message', async () => {
 	);
 	await settle();
 
-	// The pick list cannot exclude the caller (no me source on the
-	// client), so the server's own target rule answers the pick
-	// honestly.
 	expect(modal()?.textContent).toContain('This album is already yours');
+	unmount(page);
+	flushSync();
+});
+
+/** Boot the session store signed in as one of the fixture accounts. */
+async function bootDetailSession(userId: string, role: 'admin' | 'user'): Promise<void> {
+	vi.stubGlobal('fetch', vi.fn(async () =>
+		jsonResponse(200, [
+			{
+				id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
+				kind: 'WEB',
+				userId,
+				role,
+				deviceName: 'Mozilla/5.0 (test)',
+				createdAt: '2026-11-01T10:00:00Z',
+				lastSeenAt: '2026-11-02T10:00:00Z'
+			}
+		])
+	));
+	await probeSession();
+}
+
+test("the share pick filters the caller's own account (the identity seam)", async () => {
+	// Signed in as ada (u1, the album's owner): the pick list offers
+	// neither the current grantees nor the caller's own account --
+	// the grant's own target rule never has to refuse a self-pick.
+	await bootDetailSession('u1', 'admin');
+	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
+	const page = mountPage();
+	await settle();
+
+	buttonByText('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const dialog = modal();
+	expect(dialog?.textContent).toContain('grace@example.com');
+
+	const options = [...(dialog?.querySelectorAll<HTMLOptionElement>('option') ?? [])].map(
+		(option) => option.value
+	);
+	expect(options).toEqual(['u3']);
+	unmount(page);
+	flushSync();
+});
+
+test("the sharee's leave affordance revokes their own share row and leaves for the wall", async () => {
+	// Signed in as grace (u2, the grantee): the viewer header renders
+	// the departure. The write is the revoke of the CALLER'S OWN
+	// share row -- DELETE /albums/al1/shares/u2 -- and success leaves
+	// for the wall.
+	await bootDetailSession('u2', 'user');
+	detailState = { ...detailState, callerRole: 'viewer', shares: undefined, inTimeline: true };
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/albums/al1/shares/u2': (init?: RequestInit) => {
+				expect(init?.method).toBe('DELETE');
+				return new Response(null, { status: 204 });
+			}
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	const leave = buttonByText('Leave album');
+	leave.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const calls = fetchMock.mock.calls.filter(
+		([input, init]) =>
+			String(input) === '/api/v1/albums/al1/shares/u2' && init?.method === 'DELETE'
+	);
+	expect(calls).toHaveLength(1);
+	expect(vi.mocked(goto)).toHaveBeenCalledWith('/albums');
+	unmount(page);
+	flushSync();
+});
+
+test("the sharee's failed leave keeps the detail with the mapped error", async () => {
+	await bootDetailSession('u2', 'user');
+	detailState = { ...detailState, callerRole: 'viewer', shares: undefined, inTimeline: true };
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			detailRoutes({
+				'/api/v1/albums/al1/shares/u2': () =>
+					jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'no' })
+			})
+		)
+	);
+	const page = mountPage();
+	await settle();
+
+	buttonByText('Leave album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// Still on the detail (the departure never happened), with the
+	// header's shared error line carrying the mapped failure.
+	expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	expect(document.body.textContent).toContain("You don't have permission to do this.");
 	unmount(page);
 	flushSync();
 });

@@ -25,6 +25,17 @@ void main() {
       // TODO
     });
 
+    // UUIDv7 identifier of the account the session belongs to. Every entry of `GET /auth/sessions` carries the caller's own id (the list is the caller's sessions); the caller is who the client compares asset and album ownership against. 
+    // String userId
+    test('to test the property `userId`', () async {
+      // TODO
+    });
+
+    // UserRole role
+    test('to test the property `role`', () async {
+      // TODO
+    });
+
     // When the session was created (RFC 3339 UTC).
     // DateTime createdAt
     test('to test the property `createdAt`', () async {

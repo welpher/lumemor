@@ -1,12 +1,16 @@
 <script lang="ts">
 	// The navigation drawer of the content shell (web IA: the
 	// hamburger opens it; Escape and a click outside close it). It
-	// carries the IA's seven content sections in route-table order:
-	// Timeline, People, Favorites and Trash link to their routes now
-	// (the people surface is the M3b domain), while Albums, Places
-	// and Memories stay visible-but-disabled placeholders until
-	// their M3 domains arrive.
+	// carries the IA's seven content sections in route-table order
+	// (the albums wall's entry is live since the M3c surface), and --
+	// below the content list, behind a divider -- the admin panel's
+	// entry, rendered only for an admin's session (the identity seam's
+	// role arm, the M2d deferred item: a member account never sees the
+	// management surface's door). Places and Memories stay
+	// visible-but-disabled placeholders until their M3 domains
+	// arrive.
 	import { _ } from 'svelte-i18n';
+	import { sessionRole } from '$lib/auth/session.svelte';
 
 	type DrawerItem = {
 		labelKey: string;
@@ -18,13 +22,21 @@
 
 	const items: readonly DrawerItem[] = [
 		{ labelKey: 'nav_timeline', href: '/timeline', disabled: false },
-		{ labelKey: 'nav_albums', href: '/albums', disabled: true },
+		{ labelKey: 'nav_albums', href: '/albums', disabled: false },
 		{ labelKey: 'nav_people', href: '/people', disabled: false },
 		{ labelKey: 'nav_places', href: '/places', disabled: true },
 		{ labelKey: 'nav_memories', href: '/memories', disabled: true },
 		{ labelKey: 'nav_favorites', href: '/favorites', disabled: false },
 		{ labelKey: 'nav_trash', href: '/trash', disabled: false }
 	];
+
+	// The admin panel's entry (the tool shell's door): an
+	// administrator's session renders it, every other role does not.
+	// The landing is the users page -- the first live management
+	// section; /admin itself has no index route.
+	const adminEntry = $derived(
+		sessionRole() === 'admin' ? { labelKey: 'nav_admin', href: '/admin/users' } : null
+	);
 
 	type Props = {
 		/** Open state; bind it from the shell, the drawer closes itself. */
@@ -86,6 +98,24 @@
 				</li>
 			{/each}
 		</ul>
+		{#if adminEntry !== null}
+			<!-- The tool shell's door, separated from the content list:
+			     an administrator's session alone renders it (the role
+			     arm of the identity seam; a member account's drawer
+			     never shows the management surface's entry). -->
+			<div class="drawer__divider h-px my-2 bg-border" role="presentation"></div>
+			<ul class="drawer__list flex flex-col gap-0.5 list-none">
+				<li>
+					<a
+						class="drawer__item block w-full px-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left no-underline rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]"
+						href={adminEntry.href}
+						onclick={close}
+					>
+						{$_(adminEntry.labelKey)}
+					</a>
+				</li>
+			</ul>
+		{/if}
 		<p class="drawer__footnote mt-auto mx-2 pt-3 border-t border-border font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('nav_coming_later')}</p>
 	</nav>
 {/if}

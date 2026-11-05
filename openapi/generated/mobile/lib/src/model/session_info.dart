@@ -3,18 +3,21 @@
 //
 
 // ignore_for_file: unused_element
+import 'package:lumemor_api/src/model/user_role.dart';
 import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
 part 'session_info.g.dart';
 
-/// One authenticated session of a user. Web sessions authenticate through the `lumemor_session` cookie and mobile sessions through their bearer token; both are the same session records and appear together in `GET /auth/sessions`. 
+/// One authenticated session of a user. Web sessions authenticate through the `lumemor_session` cookie and mobile sessions through their bearer token; both are the same session records and appear together in `GET /auth/sessions`.  The session carries its user's identity: `userId` and `role` name whose credentials this is, so a client that restores a session (a web app booting with the cookie, a mobile app resuming with its bearer token) knows who is calling without a second endpoint. `POST /auth/login`, `GET /auth/sessions` and `POST /auth/pairing/consume` all answer this schema, so the identity arrives at login time, at restore time and at pairing time alike. The role is the live account row's, read through the session's own user join. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the session.
 /// * [kind] - Where the session credential lives: `web` sessions ride the `lumemor_session` cookie and slide their expiry by 30 days on use; `mobile` sessions ride a bearer token and are revoked explicitly. 
 /// * [deviceName] - Human-readable device label of the session. For web sessions it is the browser user agent captured at login; mobile sessions carry the name supplied during pairing. 
+/// * [userId] - UUIDv7 identifier of the account the session belongs to. Every entry of `GET /auth/sessions` carries the caller's own id (the list is the caller's sessions); the caller is who the client compares asset and album ownership against. 
+/// * [role] 
 /// * [createdAt] - When the session was created (RFC 3339 UTC).
 /// * [lastSeenAt] - When the session was last used (RFC 3339 UTC).
 /// * [expiresAt] - When the session expires (RFC 3339 UTC). Null for bearer sessions, which are revoked explicitly instead of expiring. 
@@ -32,6 +35,14 @@ abstract class SessionInfo implements Built<SessionInfo, SessionInfoBuilder> {
   /// Human-readable device label of the session. For web sessions it is the browser user agent captured at login; mobile sessions carry the name supplied during pairing. 
   @BuiltValueField(wireName: r'deviceName')
   String? get deviceName;
+
+  /// UUIDv7 identifier of the account the session belongs to. Every entry of `GET /auth/sessions` carries the caller's own id (the list is the caller's sessions); the caller is who the client compares asset and album ownership against. 
+  @BuiltValueField(wireName: r'userId')
+  String get userId;
+
+  @BuiltValueField(wireName: r'role')
+  UserRole get role;
+  // enum roleEnum {  admin,  user,  };
 
   /// When the session was created (RFC 3339 UTC).
   @BuiltValueField(wireName: r'createdAt')
@@ -85,6 +96,16 @@ class _$SessionInfoSerializer implements PrimitiveSerializer<SessionInfo> {
         specifiedType: const FullType(String),
       );
     }
+    yield r'userId';
+    yield serializers.serialize(
+      object.userId,
+      specifiedType: const FullType(String),
+    );
+    yield r'role';
+    yield serializers.serialize(
+      object.role,
+      specifiedType: const FullType(UserRole),
+    );
     yield r'createdAt';
     yield serializers.serialize(
       object.createdAt,
@@ -144,6 +165,20 @@ class _$SessionInfoSerializer implements PrimitiveSerializer<SessionInfo> {
           ) as String?;
           if (valueDes == null) continue;
           result.deviceName = valueDes;
+          break;
+        case r'userId':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.userId = valueDes;
+          break;
+        case r'role':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(UserRole),
+          ) as UserRole;
+          result.role = valueDes;
           break;
         case r'createdAt':
           final valueDes = serializers.deserialize(

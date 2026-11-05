@@ -315,7 +315,9 @@ func TestConsumePairingToken(t *testing.T) {
 		}
 
 		// The API shape: mobile kind, no expiry (bearer sessions are
-		// revoked, not expired), the device label rides along.
+		// revoked, not expired), the device label rides along, and the
+		// identity of the token's creator answers with it (the pairing
+		// client knows who it paired as).
 		if row.ID != pgUUID(bearer.Session.Id) {
 			t.Errorf("bearer session id = %v, want the created row's id", bearer.Session.Id)
 		}
@@ -327,6 +329,12 @@ func TestConsumePairingToken(t *testing.T) {
 		}
 		if bearer.Session.ExpiresAt != nil {
 			t.Errorf("bearer session expiresAt = %v, want null (bearer sessions do not expire)", bearer.Session.ExpiresAt)
+		}
+		if pgUUID(bearer.Session.UserId) != user.ID {
+			t.Errorf("bearer session userId = %s, want the token creator %s", bearer.Session.UserId, user.ID)
+		}
+		if bearer.Session.Role != apigen.UserRoleAdmin {
+			t.Errorf("bearer session role = %q, want admin (the token creator's role)", bearer.Session.Role)
 		}
 
 		// Review focus: the bearer works on an authed endpoint.

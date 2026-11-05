@@ -297,6 +297,11 @@ function requestOf(fetchMock: ReturnType<typeof vi.fn>, method: string, url: str
 	return call?.[1];
 }
 
+// The signed-in owner of the test sequence's assets: the session the
+// viewer's ownership comparisons resolve against (every
+// itemDefaults.ownerId names this account).
+const ownerId = '0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60';
+
 beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
@@ -305,11 +310,25 @@ beforeEach(async () => {
 	navigationCallbacks.length = 0;
 	vi.clearAllMocks();
 	clearWallItems();
-	// Boot the session store unauthenticated (the interceptor stays
-	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	// Boot the session store as the sequence's owner: the drawer's
+	// owner-only affordances resolve against this identity (the
+	// identity seam's store carries it; the interceptor stays inert
+	// because these routes answer 200s).
+	vi.stubGlobal('fetch', vi.fn(async () =>
+		jsonResponse(200, [
+			{
+				id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
+				kind: 'WEB',
+				userId: ownerId,
+				role: 'admin',
+				deviceName: 'Mozilla/5.0 (test)',
+				createdAt: '2026-11-01T10:00:00Z',
+				lastSeenAt: '2026-11-02T10:00:00Z'
+			}
+		])
+	));
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
-	expect(sessionStatus()).toBe('unauthenticated');
+	expect(sessionStatus()).toBe('authenticated');
 	await initI18n();
 	publishWallItems(sequence);
 });
@@ -642,6 +661,45 @@ test('a successful favorite batch flips the label (per-user state, no events)', 
 	expect(JSON.parse(String(init?.body))).toEqual({ action: 'favorite', ids: ['a2'] });
 	// The optimistic flag is the final state (favorites are silent).
 	expect(() => buttonByText('Unfavorite')).not.toThrow();
+	unmount(app);
+	flushSync();
+});
+
+test("a viewer's drawer renders the reads and the per-user writes without the owner-only affordances", async () => {
+	// The identity seam's other arm: the session's account is NOT the
+	// asset's owner (the owner shared it to them) -- the drawer keeps
+	// every read and the per-user favorite, and never renders the
+	// owner-only writes (the description edit, the hide / trash
+	// curation, the permanent delete). The face chips stay: their
+	// assign dialog carries the per-user label write a sharee holds.
+	const { app, fetchMock } = mountViewer('a2', [
+		get(
+			'/api/v1/assets/a2',
+			() => jsonResponse(200, detailBodyOf(sequence[1]!, { ownerId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70' }))
+		),
+		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
+	]);
+	await settle();
+	openDrawer();
+
+	// The reads render: the stored description text, the file facts,
+	// the download affordance.
+	expect(element('.info__description').textContent).toBe('Original caption.');
+	expect(() => element('.info__download')).not.toThrow();
+
+	// The owner-only writes never render (read-only is visual, never
+	// grayed out -- the web IA's pinned rule).
+	expect(document.body.textContent).not.toContain('Edit');
+	expect(() => buttonByText('Favorite')).not.toThrow();
+	expect(() => buttonByText('Hide')).toThrow();
+	expect(() => buttonByText('Trash')).toThrow();
+	expect(() => buttonByText('Delete permanently')).toThrow();
+
+	// The per-user favorite still works for the viewer.
+	click(buttonByText('Favorite'));
+	await settle();
+	const init = requestOf(fetchMock, 'POST', '/api/v1/assets/batch');
+	expect(JSON.parse(String(init?.body))).toEqual({ action: 'favorite', ids: ['a2'] });
 	unmount(app);
 	flushSync();
 });
