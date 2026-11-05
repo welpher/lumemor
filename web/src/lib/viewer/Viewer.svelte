@@ -310,7 +310,7 @@
      photo surface needs no translucency and no blur behind it (the
      restrained surface strategy); only the controls that truly float
      over the media keep their glass. -->
-<div class="viewer fixed inset-0 z-[40] flex flex-col bg-night" aria-busy={status === 'loading'}>
+<div class="viewer fixed inset-0 z-(--z-page) flex flex-col bg-night" aria-busy={status === 'loading'}>
 	<header class="viewer__bar flex items-center gap-3 px-4 py-2.5 text-cream-text">
 		<button
 			class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
@@ -369,12 +369,12 @@
 					<Button variant="primary" onclick={onretry}>{$_('action_retry')}</Button>
 				</div>
 			{:else if detail === null}
-				<p class="viewer__status relative z-[3] px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-night/55 backdrop-blur-[2px]" role="status">{$_('viewer_loading')}</p>
+				<p class="viewer__status relative z-(--z-stage-chrome) px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-night/55 backdrop-blur-[2px] animate-loading-in" role="status">{$_('viewer_loading')}</p>
 			{:else if detail.kind === 'video'}
 				<!-- svelte-ignore a11y_media_has_caption -->
 				{#if videoPlayable}
 					<video
-						class="viewer__video relative z-[1] max-w-full max-h-full"
+						class="viewer__video relative z-(--z-stage-media) max-w-full max-h-full"
 						controls
 						src={assetPlayUrl(detail.id)}
 						poster={assetThumbnailUrl(detail.id, 'view')}
@@ -398,20 +398,36 @@
 					{/if}
 					{#if !posterFailed}
 						<img
-							class="viewer__poster relative z-[1] max-w-full max-h-full"
+							class="viewer__poster relative z-(--z-stage-media) max-w-full max-h-full"
 							src={assetThumbnailUrl(detail.id, 'view')}
 							alt={detail.originalFilename}
 							onerror={() => (posterFailed = true)}
 						/>
 					{/if}
-					<p class="viewer__processing absolute bottom-6 z-[3] px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-night/55 backdrop-blur-[2px]" role="status">{$_('viewer_processing')}</p>
+					<p class="viewer__processing absolute bottom-6 z-(--z-stage-chrome) px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-night/55 backdrop-blur-[2px] animate-loading-in" role="status">{$_('viewer_processing')}</p>
 				{/if}
 			{:else}
+				<!-- The placeholder cross-fades out (G6's placeholder
+				     fade) once the view-size copy's load event lands --
+				     the blurhash approximates the image's own average
+				     colors, so the exit rides under the image's fade-in
+				     without a visible dip; a failed load gives the
+				     placeholder back. -->
 				{#if detail.blurhash !== null}
-					<canvas class="viewer__placeholder absolute w-full h-full object-contain" width="32" height="32" bind:this={canvas} aria-hidden="true"></canvas>
+					<canvas
+						class="viewer__placeholder absolute w-full h-full object-contain transition-[opacity] duration-(--motion-placeholder-fade) ease-standard"
+						class:viewer__placeholder--hidden={viewLoaded}
+						class:opacity-0={viewLoaded}
+						width="32"
+						height="32"
+						bind:this={canvas}
+						aria-hidden="true"
+					></canvas>
 				{:else}
 					<div
-						class="viewer__placeholder viewer__placeholder--empty absolute w-full h-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-night-surface)_70%,var(--color-night)),var(--color-night-surface))]"
+						class="viewer__placeholder viewer__placeholder--empty absolute w-full h-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-night-surface)_70%,var(--color-night)),var(--color-night-surface))] transition-[opacity] duration-(--motion-placeholder-fade) ease-standard"
+						class:viewer__placeholder--hidden={viewLoaded}
+						class:opacity-0={viewLoaded}
 						aria-hidden="true"
 					></div>
 				{/if}
@@ -429,7 +445,7 @@
 					/>
 					<!-- The full-resolution layer rides above the view-size copy. -->
 					<img
-						class="viewer__image viewer__image--full absolute inset-0 m-auto z-[1] max-w-full max-h-full object-contain transition-[opacity,transform] duration-(--motion-base) ease-standard"
+						class="viewer__image viewer__image--full absolute inset-0 m-auto z-(--z-stage-media) max-w-full max-h-full object-contain transition-[opacity,transform] duration-(--motion-base) ease-standard"
 						class:opacity-0={!fullLoaded}
 						class:viewer__image--loaded={fullLoaded}
 						src={assetThumbnailUrl(detail.id, 'original')}
@@ -446,7 +462,7 @@
 					     capture; the end returns to the still. -->
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
-						class="viewer__live relative z-[2] max-w-full max-h-full object-contain"
+						class="viewer__live relative z-(--z-stage-live) max-w-full max-h-full object-contain"
 						autoplay
 						muted
 						loop
@@ -463,7 +479,7 @@
 					     still; pressing swaps the still for the component
 					     video's motion and pressing again swaps back. -->
 					<button
-						class="viewer__press absolute inset-0 z-[3] block p-0 bg-transparent cursor-pointer focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						class="viewer__press absolute inset-0 z-(--z-stage-chrome) block p-0 bg-transparent cursor-pointer focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 						type="button"
 						aria-label={livePlaying ? $_('viewer_live_stop') : $_('viewer_live_play')}
 						aria-pressed={livePlaying}
@@ -511,7 +527,7 @@
 
 		{#if detail !== null && position !== -1 && position > 0}
 			<button
-				class="viewer__arrow viewer__arrow--left absolute left-4 top-1/2 -translate-y-1/2 z-[4] inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
+				class="viewer__arrow viewer__arrow--left absolute left-4 top-1/2 -translate-y-1/2 z-(--z-stage-arrow) inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
 				type="button"
 				aria-label={$_('viewer_previous')}
 				onclick={() => navigate(-1)}
@@ -523,7 +539,7 @@
 		{/if}
 		{#if detail !== null && position !== -1 && position < sequence.length - 1}
 			<button
-				class="viewer__arrow viewer__arrow--right absolute right-4 top-1/2 -translate-y-1/2 z-[4] inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
+				class="viewer__arrow viewer__arrow--right absolute right-4 top-1/2 -translate-y-1/2 z-(--z-stage-arrow) inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on"
 				type="button"
 				aria-label={$_('viewer_next')}
 				onclick={() => navigate(1)}

@@ -203,7 +203,7 @@
 
 <div class="users max-w-[920px] mx-auto flex flex-col gap-6">
 	{#if status === 'loading'}
-		<p class="users__status my-12 text-center text-text-soft" role="status">{$_('admin_users_loading')}</p>
+		<p class="users__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('admin_users_loading')}</p>
 	{:else if status === 'error'}
 		<div class="users__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
@@ -211,7 +211,7 @@
 		</div>
 	{:else if status === 'ready'}
 		<section class="users__list" aria-label={$_('admin_users_title')}>
-			<h1 class="users__title mb-3 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('admin_users_title')}</h1>
+			<h1 class="users__title mb-3 font-display font-bold text-[26px] text-text">{$_('admin_users_title')}</h1>
 			<table class="users__table w-full border-collapse bg-card border border-border rounded-card shadow-card overflow-hidden">
 				<thead>
 					<tr>
@@ -276,7 +276,7 @@
 		<section class="users__create">
 			<div class="users__create-card w-[min(400px,100%)]">
 				<Card>
-					<h2 class="users__create-title mb-1 font-display font-bold text-[22px] tracking-[0.01em] text-text">{$_('admin_users_create_heading')}</h2>
+					<h2 class="users__create-title mb-1 font-display font-bold text-[22px] text-text">{$_('admin_users_create_heading')}</h2>
 					<p class="users__create-note mb-5 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_users_create_note')}</p>
 					<form class="users__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
 						<Input

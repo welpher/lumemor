@@ -91,7 +91,7 @@
 		     another component, so styling it from here is scoped out. -->
 		<div class="login__card w-[min(400px,100%)]">
 			<Card>
-				<h1 class="login__title mb-1 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('login_title')}</h1>
+				<h1 class="login__title mb-1 font-display font-bold text-[26px] text-text">{$_('login_title')}</h1>
 				<p class="login__description mb-5 font-body font-normal text-[15px] leading-[1.5] text-text-soft">{$_('login_description')}</p>
 				<form class="login__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
 					<Input

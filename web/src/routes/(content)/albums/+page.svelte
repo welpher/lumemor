@@ -154,7 +154,7 @@
 	</div>
 
 	{#if firstLoad}
-		<p class="albums__loading my-12 text-center text-text-soft" role="status">{$_('albums_loading')}</p>
+		<p class="albums__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('albums_loading')}</p>
 	{:else if settledEmpty}
 		<div class="albums__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 			<h1 class="text-[22px] mb-2">{$_('albums_title')}</h1>
@@ -245,7 +245,7 @@
 				<span class="album-card__owner font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate">{$_('albums_shared_by', { values: { email: album.owner.email } })}</span>
 			{/if}
 			<span class="album-card__meta flex items-center gap-1.5 mt-0.5">
-				<span class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap">{$_('albums_photo_count', { values: { count: album.itemCount } })}</span>
+				<span class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums">{$_('albums_photo_count', { values: { count: album.itemCount } })}</span>
 				{#if album.locked}
 					<span class="album-card__badge album-card__badge--locked inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">
 						<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">

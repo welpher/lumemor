@@ -89,11 +89,11 @@
 		     scroll margin leaves room for them under the scrubber's
 		     jumps. -->
 		<section class="wall__month scroll-mt-[92px]" data-month-key={month.key}>
-			<h2 class="wall__month-header sticky top-0 z-[10] mt-(--wall-month-gap) mb-3 py-2.5 px-3 text-[20px] bg-page border-b">{month.label}</h2>
+			<h2 class="wall__month-header sticky top-0 z-(--z-sticky) mt-(--wall-month-gap) mb-3 py-2.5 px-3 text-[20px] bg-page border-b">{month.label}</h2>
 			{#each month.days as day (day.key)}
 				<div class="wall__day" data-day-key={day.key}>
 					<!-- Stacks under the month header (44px + its margins). -->
-					<h3 class="wall__day-header sticky top-[44px] z-[9] mt-4 mb-2 py-1 px-2 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-page border-b">{day.label}</h3>
+					<h3 class="wall__day-header sticky top-[44px] z-(--z-sticky-sub) mt-4 mb-2 py-1 px-2 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-page border-b">{day.label}</h3>
 					{#each day.rows as row, rowIndex (rowIndex)}
 						<!-- The row's height is the engine's exact math; the
 						     seam rides the row's gap so the widths plus the

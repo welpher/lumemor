@@ -163,12 +163,12 @@
 
 <section class="trash max-w-[1200px] mx-auto" aria-busy={status === 'loading'}>
 	<header class="trash__header mb-4">
-		<h1 class="mb-1 font-display font-bold text-[26px] tracking-[0.01em] text-text">{$_('nav_trash')}</h1>
+		<h1 class="mb-1 font-display font-bold text-[26px] text-text">{$_('nav_trash')}</h1>
 		<p class="trash__note font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('trash_note')}</p>
 	</header>
 
 	{#if firstLoad}
-		<p class="trash__status my-12 text-center text-text-soft" role="status">{$_('trash_loading')}</p>
+		<p class="trash__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('trash_loading')}</p>
 	{:else if settledEmpty}
 		<div class="trash__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 			<p class="text-text-soft">{$_('trash_empty')}</p>
@@ -190,7 +190,7 @@
 					     de-emphasized tone of a row on its way out. -->
 					<div class="trash__tile relative aspect-square overflow-hidden rounded-control [outline:1px_solid_var(--color-border)] outline-offset-[-1px] opacity-85">
 						<PhotoTile item={tileItem(entry)} selected={false} selectable={false} onselect={noopSelect} />
-						<p class="trash__days absolute bottom-1.5 left-1.5 z-[2] py-0.5 px-2 font-body font-semibold text-[12px] leading-[1.5] text-cream-text bg-night rounded-control">{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}</p>
+						<p class="trash__days absolute bottom-1.5 left-1.5 z-(--z-tile-chip) py-0.5 px-2 font-body font-semibold text-[12px] leading-[1.5] text-cream-text bg-night rounded-control tabular-nums">{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}</p>
 					</div>
 					<div class="trash__actions flex gap-2">
 						<Button class="flex-1" variant="ghost" disabled={busy} onclick={() => void restore(entry)}>
