@@ -98,7 +98,7 @@
 </script>
 
 {#if months.length > 0}
-	<nav class="scrubber fixed top-1/2 right-1 -translate-y-1/2 z-[40]" aria-label={$_('timeline_scrubber_label')}>
+	<nav class="scrubber fixed top-1/2 right-1 -translate-y-1/2 z-(--z-page)" aria-label={$_('timeline_scrubber_label')}>
 		<!-- The drag owns the pointer: no touch scrolling fights it. -->
 		<div
 			class="scrubber__rail flex flex-col gap-0.5 px-1 py-1.5 rounded-control bg-[color-mix(in_srgb,var(--color-card)_85%,transparent)] shadow-card touch-none"

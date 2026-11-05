@@ -249,7 +249,7 @@
 	}
 </script>
 
-<aside class="info fixed top-0 right-0 bottom-0 z-[80] flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay" aria-label={$_('viewer_info_title')}>
+<aside class="info fixed top-0 right-0 bottom-0 z-(--z-aside) flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay" aria-label={$_('viewer_info_title')}>
 	<header class="info__header flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border">
 		<h2 class="info__filename font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail.originalFilename}</h2>
 		<button
@@ -264,7 +264,7 @@
 		</button>
 	</header>
 
-	<div class="info__scroll flex-1 overflow-y-auto pt-1 px-4 pb-5">
+	<div class="info__scroll flex-1 overflow-y-auto [scrollbar-gutter:stable] pt-1 px-4 pb-5">
 		{#if detail.isTrashed}
 			<p class="info__notice mt-3 py-2 px-3 font-body font-medium text-[13px] leading-[1.4] text-text-soft border border-notice rounded-control" role="status">{$_('viewer_trashed_notice')}</p>
 		{/if}

@@ -172,3 +172,102 @@ test('badges: favorite star, live photo mark, video mark', () => {
 	unmount(video.tile);
 	flushSync();
 });
+
+test('the hover scrim rides over the photo: hidden at rest, revealed on hover and keyboard focus', () => {
+	// G3's restrained bottom veil: the Night-based gradient stays
+	// opacity-0 until the pointer or the keyboard focus enters the
+	// tile, never takes a pointer event, and never scales the photo.
+	const { tile } = mountTile({});
+	const scrim = tileRoot().querySelector<HTMLElement>('.tile__scrim');
+	expect(scrim).not.toBeNull();
+	expect(scrim?.getAttribute('aria-hidden')).toBe('true');
+	expect(scrim?.className).toContain('pointer-events-none');
+	expect(scrim?.className).toContain('opacity-0');
+	expect(scrim?.className).toContain('group-hover:opacity-100');
+	expect(scrim?.className).toContain('group-focus-within:opacity-100');
+	expect(scrim?.className).toContain('from-night/55');
+	unmount(tile);
+	flushSync();
+});
+
+test('a video tile carries the duration chip: tabular numerals over the night chip', () => {
+	const { tile } = mountTile({ kind: 'video', durationMs: 61_500 });
+	const badge = tileRoot().querySelector<HTMLElement>('.tile__badge--video');
+	expect(badge).not.toBeNull();
+	// The chip renders the play mark plus the m:ss duration.
+	expect(badge?.textContent).toContain('1:02');
+	expect(badge?.className).toContain('tabular-nums');
+	expect(badge?.className).toContain('bg-night');
+	expect(badge?.getAttribute('title')).toBe('Video');
+	unmount(tile);
+	flushSync();
+});
+
+test('a video tile without a known duration keeps the play mark alone', () => {
+	const { tile } = mountTile({ kind: 'video', durationMs: null });
+	const badge = tileRoot().querySelector<HTMLElement>('.tile__badge--video');
+	expect(badge).not.toBeNull();
+	expect(badge?.textContent).not.toContain(':');
+	unmount(tile);
+	flushSync();
+});
+
+test('the favorite star is a hover-revealed state riding the scrim zone', () => {
+	// The state affordance the scrim reveals: the star rests
+	// invisible in the bottom-left corner and fades in with the
+	// scrim on hover and keyboard focus.
+	const { tile } = mountTile({ isFavorite: true });
+	const star = tileRoot().querySelector<HTMLElement>('.tile__badge--favorite');
+	expect(star).not.toBeNull();
+	expect(star?.className).toContain('bottom-1.5');
+	expect(star?.className).toContain('opacity-0');
+	expect(star?.className).toContain('group-hover:opacity-100');
+	expect(star?.className).toContain('group-focus-within:opacity-100');
+	unmount(tile);
+	flushSync();
+});
+
+test('the blurhash placeholder cross-fades out when the image loads', () => {
+	// G6: the placeholder drops to opacity-0 over the placeholder
+	// fade token once the thumbnail's load event lands.
+	const { tile } = mountTile({});
+	const canvas = tileRoot().querySelector<HTMLElement>('canvas.tile__placeholder');
+	const image = tileRoot().querySelector<HTMLElement>('img.tile__image');
+	expect(canvas?.className).not.toContain('tile__placeholder--hidden');
+
+	image?.dispatchEvent(new Event('load'));
+	flushSync();
+	expect(canvas?.className).toContain('tile__placeholder--hidden');
+	expect(canvas?.className).toContain('duration-(--motion-placeholder-fade)');
+
+	image?.dispatchEvent(new Event('error'));
+	flushSync();
+	// A failed load gives the placeholder back.
+	expect(canvas?.className).not.toContain('tile__placeholder--hidden');
+	unmount(tile);
+	flushSync();
+});
+
+test('selection is geometric: the resting tile is bare, the selected tile retreats and rings', () => {
+	// The visual semantics of the justified wall (adapted from the
+	// old 3px inner-stroke + always-rounded look): a RESTING tile is
+	// pure photo edge-to-edge -- no radius, no outline; the SELECTED
+	// tile retreats (the scale), gains the radius and draws the
+	// accent ring at its edge. No reflow -- transform and outline.
+	const resting = mountTile({});
+	const bare = tileRoot();
+	expect(bare.className).not.toContain('rounded-control');
+	expect(bare.className).not.toContain('outline');
+	expect(bare.className).not.toContain('scale-');
+	unmount(resting.tile);
+	flushSync();
+
+	const selected = mountTile({}, { selectable: true, selected: true });
+	const geometry = tileRoot();
+	expect(geometry.className).toContain('tile--selected');
+	expect(geometry.className).toContain('rounded-control');
+	expect(geometry.className).toContain('scale-(--wall-select-scale)');
+	expect(geometry.className).toContain('[outline:var(--wall-select-ring)_solid_var(--color-accent)]');
+	unmount(selected.tile);
+	flushSync();
+});

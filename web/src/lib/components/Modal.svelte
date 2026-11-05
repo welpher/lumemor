@@ -106,7 +106,7 @@
 	     panel never count as backdrop dismissals. The Escape key on
 	     svelte:window is the keyboard equivalent of this dismissal. -->
 	<div
-		class="modal__backdrop fixed inset-0 z-[100] flex items-center justify-center p-6 bg-[rgb(20_26_46/0.55)]"
+		class="modal__backdrop fixed inset-0 z-(--z-modal) flex items-center justify-center p-6 bg-night/55"
 		role="presentation"
 		onmousedown={close}
 	>
@@ -132,7 +132,7 @@
 					</svg>
 				</button>
 			</header>
-			<div class="modal__body px-5 py-4 overflow-y-auto">
+			<div class="modal__body px-5 py-4 overflow-y-auto [scrollbar-gutter:stable]">
 				{@render children?.()}
 			</div>
 			{#if footer}

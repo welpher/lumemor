@@ -108,7 +108,7 @@
 	</div>
 
 	{#if firstLoad}
-		<p class="people__loading my-12 text-center text-text-soft" role="status">{$_('people_loading')}</p>
+		<p class="people__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('people_loading')}</p>
 	{:else if settledEmpty}
 		<div class="people__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
 			<h1 class="text-[22px] mb-2">{$_('nav_people')}</h1>
@@ -146,7 +146,7 @@
 						{#if person.isHidden}
 							<span class="person-card__badge inline-flex items-center px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">{$_('people_hidden_badge')}</span>
 						{/if}
-						<span class="person-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap">{$_('people_face_count', { values: { count: person.faceCount } })}</span>
+						<span class="person-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums">{$_('people_face_count', { values: { count: person.faceCount } })}</span>
 					</span>
 				</a>
 			{/each}

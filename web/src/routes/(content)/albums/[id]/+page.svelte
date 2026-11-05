@@ -416,7 +416,7 @@
 	</div>
 
 	{#if status === 'loading'}
-		<p class="album-detail__loading my-12 text-center text-text-soft" role="status">{$_('albums_detail_loading')}</p>
+		<p class="album-detail__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('albums_detail_loading')}</p>
 	{:else if status === 'error'}
 		<div class="album-detail__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
@@ -445,7 +445,7 @@
 					{$_('albums_excluded_badge')}
 				</span>
 			{/if}
-			<span class="album-detail__count ml-1 font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap">{$_('albums_photo_count', { values: { count: detail.itemCount } })}</span>
+			<span class="album-detail__count ml-1 font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums">{$_('albums_photo_count', { values: { count: detail.itemCount } })}</span>
 
 			<!-- The action set, per callerRole x type: the owner of a
 			     virtual album holds the full write set; the owner of a

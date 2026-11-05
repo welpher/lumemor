@@ -111,7 +111,7 @@
 	<div class="merge-dialog flex flex-col gap-3">
 		<p class="merge-dialog__body m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('people_merge_body')}</p>
 		{#if loadingPeople}
-			<p class="merge-dialog__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft" role="status">{$_('people_loading')}</p>
+			<p class="merge-dialog__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('people_loading')}</p>
 		{:else if loadErrorKey !== ''}
 			<p class="merge-dialog__load-error m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{resolveErrorText($_, loadErrorKey)}</p>
 		{:else if optionIds.length === 0}

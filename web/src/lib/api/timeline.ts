@@ -372,8 +372,13 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			isTrashed: false,
 			isFavorite: existing?.isFavorite ?? false,
 			isReady: detail.isReady,
-			width: detail.width,
-			height: detail.height,
+			// The timeline item's dimensions are always present (the
+			// justified wall's contract); the detail's stay nullable
+			// while unrefined, so the 0 placeholder crosses here and
+			// the wall's layout falls back to the assumed aspect until
+			// the ready event refetches the refined values.
+			width: detail.width ?? 0,
+			height: detail.height ?? 0,
 			durationMs: detail.durationMs,
 			blurhash: detail.blurhash,
 			livePhotoVideoId: detail.livePhotoVideoId

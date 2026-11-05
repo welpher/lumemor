@@ -365,7 +365,7 @@
 	</div>
 
 	{#if firstLoad}
-		<p class="person-detail__status my-12 text-center text-text-soft" role="status">{$_('people_loading')}</p>
+		<p class="person-detail__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('people_loading')}</p>
 	{:else if status === 'error'}
 		<div class="person-detail__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
