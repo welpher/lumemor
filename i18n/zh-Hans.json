@@ -98,6 +98,7 @@
   "viewer_next": "下一张",
   "viewer_zoom_in": "放大",
   "viewer_zoom_out": "缩小",
+  "viewer_zoom_reset": "重置缩放",
   "viewer_processing": "视频仍在处理中，就绪后即可播放。",
   "viewer_filmstrip_label": "当前照片序列",
   "viewer_live_play": "播放实况照片",

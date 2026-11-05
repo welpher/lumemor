@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The information drawer of the asset viewer: METADATA ONLY (the
+	// The information panel of the asset viewer: METADATA ONLY (the
 	// R2-3 rework) -- the description editor (the PATCH endpoint; the
 	// drawer keeps the draft on failure so a retry never retypes
 	// anything, and through the same-id detail replacements of the
@@ -12,6 +12,12 @@
 	// delete are GONE from this surface: the action bar over the
 	// media carries the favorite and the trash/restore pair, and the
 	// permanent delete lives on the trash page alone.
+	//
+	// THE FORM (R2-10): the same markup serves the two shapes the
+	// viewer composes it into -- the right DOCKED split region at lg+
+	// (the viewer's flex row) and the fixed overlay drawer below lg.
+	// Every class below is shared; the form lives in the aside's
+	// lg:* utilities alone.
 	//
 	// THE VIEWER'S READ-ONLY DRAWER (the M3c identity seam): a caller
 	// who does not own the asset (the owner shared it to them) keeps
@@ -231,7 +237,17 @@
 	}
 </script>
 
-<aside class="info fixed top-0 right-0 bottom-0 z-(--z-aside) flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay" aria-label={$_('viewer_info_title')}>
+<!-- The docked split region (R2-10): at lg+ the panel is STATIC in
+     the viewer's flex row -- it occupies layout space beside the
+     media column (the stage re-fits through the flow, the width is
+     the same min(360px,92vw) family, no floating shadow: the
+     border-l hairline separates it). Below lg the same element keeps
+     the overlay-drawer form: fixed, full-height over the right edge,
+     with the floating shadow the overlay language carries. -->
+<aside
+	class="info fixed top-0 right-0 bottom-0 z-(--z-aside) flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay lg:static lg:shrink-0 lg:shadow-none"
+	aria-label={$_('viewer_info_title')}
+>
 	<header class="info__header flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border">
 		<h2 class="info__filename font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail.originalFilename}</h2>
 		<button
