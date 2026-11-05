@@ -126,6 +126,10 @@ NON_ERROR_KEYS = {
     # rules' keys carried in a VALIDATION_FAILED details.
     "album_share_to_owner",
     "album_share_user_invalid",
+    # Album timeline-preference message keys (M3c Task 4): the
+    # not-excludable album kinds' key carried in a VALIDATION_FAILED
+    # details.
+    "album_pref_not_excludable",
     # People surface UI strings (M3b Task 4): the three pages of the
     # people domain.
     "people_loading",

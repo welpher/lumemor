@@ -19,13 +19,13 @@ void main() {
       // TODO
     });
 
-    // The cluster's representative face (its strongest-scoring member); the face the cluster tile renders. 
+    // The face the cluster tile renders: the cluster's strongest-scoring face on a caller-visible live asset (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, not the cluster's global representative, so a tile never crops out of an asset the caller cannot view. 
     // String representativeFaceId
     test('to test the property `representativeFaceId`', () async {
       // TODO
     });
 
-    // URL of the representative face's crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the representative face's id. 
+    // URL of the tile's face crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the caller-visible best face's id. 
     // String thumbnail
     test('to test the property `thumbnail`', () async {
       // TODO

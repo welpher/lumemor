@@ -386,13 +386,16 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	// timeline aggregates. The insert rides the upload transaction, so
 	// the asset and its album membership commit atomically: an upload
 	// that committed but stayed album-less would be invisible to every
-	// timeline. The component video row deliberately does NOT land in
-	// the album: it is reachable only through the photo's
-	// livePhotoVideoId and filtered out of every timeline by
-	// is_component, so a membership row would be pure dead weight. The
-	// ensure (rather than a plain insert) is the recovery path for an
-	// account whose rows predate this wiring; its upsert arm keeps a
-	// concurrent recovery from failing this upload.
+	// timeline. The component video row lands in the album TOO (M3c
+	// Task 4): the caller-visible union reads membership, so the
+	// component stays reachable BY ITS ID through the detail, the
+	// original download and the play stream exactly like the contract
+	// documents -- while the membership stays invisible to every
+	// listing surface, which all filter component rows (the row is
+	// dead weight for the timeline alone). The ensure (rather than a
+	// plain insert) is the recovery path for an account whose rows
+	// predate this wiring; its upsert arm keeps a concurrent recovery
+	// from failing this upload.
 	syncAlbumID, err := uuid.NewV7()
 	if err != nil {
 		return dbgen.Asset{}, "", err
@@ -410,6 +413,15 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 		AddedBy: pgUUID(owner),
 	}); err != nil {
 		return dbgen.Asset{}, "", err
+	}
+	if videoID.Valid {
+		if err := queries.AddAssetToAlbum(ctx, dbgen.AddAssetToAlbumParams{
+			AlbumID: albumID,
+			AssetID: videoID,
+			AddedBy: pgUUID(owner),
+		}); err != nil {
+			return dbgen.Asset{}, "", err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

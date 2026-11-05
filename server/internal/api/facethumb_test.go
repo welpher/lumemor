@@ -198,7 +198,7 @@ func TestFaceThumbnailServes(t *testing.T) {
 
 	assetID := fixturePeopleAssetID("61")
 	taken := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
-	env.insertTimelineAsset(t, assetID, adminID, taken, timelineAssetOpts{width: 800, height: 600})
+	env.insertOwnedAsset(t, assetID, adminID, taken, timelineAssetOpts{width: 800, height: 600})
 	deriveQuadrantViewFixture(t, assetID)
 
 	updatedAt := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
@@ -332,7 +332,7 @@ func TestFaceThumbnailGeometry(t *testing.T) {
 
 	assetID := fixturePeopleAssetID("71")
 	taken := time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC)
-	env.insertTimelineAsset(t, assetID, adminID, taken, timelineAssetOpts{width: 800, height: 600})
+	env.insertOwnedAsset(t, assetID, adminID, taken, timelineAssetOpts{width: 800, height: 600})
 	deriveQuadrantViewFixture(t, assetID)
 	updatedAt := time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC)
 
@@ -391,9 +391,9 @@ func TestFaceThumbnailNotFound(t *testing.T) {
 	notReady := fixturePeopleAssetID("81")
 	foreign := fixturePeopleAssetID("82")
 	trashed := fixturePeopleAssetID("83")
-	env.insertTimelineAsset(t, notReady, adminID, taken, timelineAssetOpts{})
-	env.insertTimelineAsset(t, foreign, graceID, taken, timelineAssetOpts{})
-	env.insertTimelineAsset(t, trashed, adminID, taken, timelineAssetOpts{deleted: true})
+	env.insertOwnedAsset(t, notReady, adminID, taken, timelineAssetOpts{})
+	env.insertOwnedAsset(t, foreign, graceID, taken, timelineAssetOpts{})
+	env.insertOwnedAsset(t, trashed, adminID, taken, timelineAssetOpts{deleted: true})
 
 	faceNotReady := fixturePeopleFaceID("81")
 	faceForeign := fixturePeopleFaceID("82")
@@ -458,7 +458,7 @@ func TestFaceThumbnailETagChange(t *testing.T) {
 
 	assetID := fixturePeopleAssetID("91")
 	taken := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
-	env.insertTimelineAsset(t, assetID, adminID, taken, timelineAssetOpts{width: 800, height: 600})
+	env.insertOwnedAsset(t, assetID, adminID, taken, timelineAssetOpts{width: 800, height: 600})
 	deriveQuadrantViewFixture(t, assetID)
 
 	first := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)

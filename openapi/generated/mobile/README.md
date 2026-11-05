@@ -103,7 +103,9 @@ Class | Method | HTTP request | Description
 [*AlbumsApi*](doc/AlbumsApi.md) | [**grantAlbumShare**](doc/AlbumsApi.md#grantalbumshare) | **POST** /albums/{albumId}/shares | Grant one account the view ACL of an album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**listAlbums**](doc/AlbumsApi.md#listalbums) | **GET** /albums | The caller&#39;s album wall.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**removeAlbumItems**](doc/AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one virtual album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**resetAlbumTimelinePreference**](doc/AlbumsApi.md#resetalbumtimelinepreference) | **DELETE** /albums/{albumId}/timeline-preference | Reset the caller&#39;s timeline preference of one album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**revokeAlbumShare**](doc/AlbumsApi.md#revokealbumshare) | **DELETE** /albums/{albumId}/shares/{userId} | Revoke one account&#39;s view ACL of an album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**setAlbumTimelinePreference**](doc/AlbumsApi.md#setalbumtimelinepreference) | **PUT** /albums/{albumId}/timeline-preference | Set the caller&#39;s timeline preference of one album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**updateAlbum**](doc/AlbumsApi.md#updatealbum) | **PATCH** /albums/{albumId} | Patch one album&#39;s properties.
 [*AssetsApi*](doc/AssetsApi.md) | [**batchAssets**](doc/AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
 [*AssetsApi*](doc/AssetsApi.md) | [**deleteAsset**](doc/AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
@@ -158,6 +160,8 @@ Class | Method | HTTP request | Description
  - [AlbumShareGrantRequest](doc/AlbumShareGrantRequest.md)
  - [AlbumShareResponse](doc/AlbumShareResponse.md)
  - [AlbumSummary](doc/AlbumSummary.md)
+ - [AlbumTimelinePreferenceRequest](doc/AlbumTimelinePreferenceRequest.md)
+ - [AlbumTimelinePreferenceResponse](doc/AlbumTimelinePreferenceResponse.md)
  - [AlbumWallResponse](doc/AlbumWallResponse.md)
  - [AssetDetail](doc/AssetDetail.md)
  - [AssetFaceSummary](doc/AssetFaceSummary.md)

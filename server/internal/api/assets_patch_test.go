@@ -121,7 +121,7 @@ func requireAssetUpdatedEvents(t *testing.T, e *assetEnv, count int, id uuid.UUI
 func TestPatchAssetDescription(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	id := fixtureAssetID("d1")
-	env.insertTimelineAsset(t, id, env.sessionUserID(t),
+	env.insertOwnedAsset(t, id, env.sessionUserID(t),
 		time.Date(2026, 7, 5, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
 
 	// The fresh row carries no description and is visible; the patch
@@ -236,7 +236,7 @@ func TestPatchAssetHiddenAffectsTimeline(t *testing.T) {
 func TestPatchAssetBothFields(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	id := fixtureAssetID("d4")
-	env.insertTimelineAsset(t, id, env.sessionUserID(t),
+	env.insertOwnedAsset(t, id, env.sessionUserID(t),
 		time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
 
 	// Both fields in one request: the response carries both applied
@@ -272,7 +272,7 @@ func TestPatchAssetBothFields(t *testing.T) {
 func TestPatchAssetValidation(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	id := fixtureAssetID("d5")
-	env.insertTimelineAsset(t, id, env.sessionUserID(t),
+	env.insertOwnedAsset(t, id, env.sessionUserID(t),
 		time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
 
 	// Neither field carried -- the empty object and the pure-null
@@ -344,7 +344,7 @@ func TestPatchAssetValidation(t *testing.T) {
 func TestPatchAssetSetSemantics(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	id := fixtureAssetID("d7")
-	env.insertTimelineAsset(t, id, env.sessionUserID(t),
+	env.insertOwnedAsset(t, id, env.sessionUserID(t),
 		time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
 
 	// Repeating the row's fresh values (empty description, hidden

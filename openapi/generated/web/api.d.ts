@@ -230,6 +230,12 @@ export interface paths {
          *     is the state that changed, and the grant time and the
          *     grantee's email never ride the bus.
          *
+         *     The timeline-preference writes publish nothing at all: the
+         *     per-user preference is self-affecting state -- the caller's
+         *     own timeline is the only view that changes, and their own
+         *     response carries the new value, so no other session has
+         *     anything to refetch.
+         *
          *     The server keeps the last five minutes of events in a ring
          *     buffer. Browser EventSource clients reconnect automatically and
          *     resend `Last-Event-ID`; the server replays everything newer
@@ -444,14 +450,24 @@ export interface paths {
          *     restore -- to a list of up to 1000 asset ids, in one
          *     transaction. The endpoint follows set semantics: it is a
          *     convergence operation, not a state-change counter. Every id
-         *     that resolves to an asset the caller owns is applied (an id
+         *     that resolves against the action's guard is applied (an id
          *     already in the target state is the idempotent no-op and still
          *     counts as affected), and every id that does not resolve --
-         *     unknown, or another account's asset, the two
+         *     unknown, or one the guard does not cover, the two
          *     indistinguishable -- is ignored and reported in the response's
          *     `missing` list. The two lists partition the request's
          *     distinct ids: no individual id ever fails the request, and a
          *     repeat of a successful batch converges to the same answer.
+         *
+         *     The guards differ by action, exactly as the single-asset
+         *     faces do: favorite and unfavorite resolve CALLER-VISIBLE ids
+         *     -- the caller's own assets plus the assets of every album
+         *     shared to them, the same union the timeline aggregates (a
+         *     sharee favorites what they see) -- while hide, unhide, trash
+         *     and resolve's restore arm stay OWNER-scoped: curation and the
+         *     trash lifecycle are the owner's alone, so another account's
+         *     asset resolves for a sharee only through the favorite arms
+         *     and reports as missing through every other.
          *
          *     This is the deliberate trade of the list surface: the
          *     byte-identical 404 anti-enumeration of the single-asset
@@ -522,13 +538,17 @@ export interface paths {
          *     the favorites.
          *
          *     Favorites are per-user state written by the batch endpoint's
-         *     favorite action. In this milestone the batch actions are
-         *     owner-scoped, so favorites apply to the caller's own assets;
-         *     the listing itself joins the caller's favorites rows with
-         *     the live-asset filters, nothing more. Hiding (or trashing) a
-         *     favorited asset removes it from this view; it returns when
-         *     unhidden (or restored), the favorite row untouched -- an
-         *     idempotent per-user mark, not a copy of the asset.
+         *     favorite action, and the view is the caller's favorites rows
+         *     crossed with CALLER-VISIBLE assets: the caller's own, plus
+         *     the assets of every album shared to them -- the same album
+         *     union the timeline aggregates. A sharee's favorites of
+         *     shared assets appear here; a revoked share removes the
+         *     assets from the view (the favorite row itself survives and
+         *     resurfaces if the album is shared again). Hiding (or
+         *     trashing) a favorited asset removes it from this view; it
+         *     returns when unhidden (or restored), the favorite row
+         *     untouched -- an idempotent per-user mark, not a copy of the
+         *     asset.
          */
         get: operations["getFavorites"];
         put?: never;
@@ -592,12 +612,19 @@ export interface paths {
          *     which the detail view's people section renders and the people
          *     write endpoints maintain.
          *
-         *     Access is owner-only: an id that belongs to another account
-         *     answers the same 404 `ASSET_NOT_FOUND` as an id that does not
-         *     exist, byte for byte, so asset ids cannot be enumerated. Album
-         *     sharing and ACLs widen access for shared content in a later
-         *     milestone (M2c, with the album domain); until then only the
-         *     owner's own assets answer.
+         *     Access is the caller-visible gate: the asset's owner, and
+         *     every member of an album the caller sees -- their own sync
+         *     and directory albums plus every album shared to them (the
+         *     same album union the timeline aggregates). An id none of
+         *     those cover answers the same 404 `ASSET_NOT_FOUND` as an id
+         *     that does not exist, byte for byte, so asset ids cannot be
+         *     enumerated. The owner's reads keep their current shape: a
+         *     trashed or hidden asset answers 200 (`isTrashed`, `isHidden`
+         *     honest) because the owner's album memberships outlive both
+         *     marks; for a sharee the same holds by id -- the album views
+         *     and the timeline list live members only, so a hidden or
+         *     trashed shared asset surfaces nowhere but stays readable at
+         *     its known id until the share itself goes.
          *
          *     A trashed asset answers 200 with `isTrashed: true` -- the
          *     trash view reads the detail the same way. The component video
@@ -731,9 +758,10 @@ export interface paths {
          *     answers 404 `ASSET_NOT_READY`: the client renders the blurhash
          *     or a placeholder and waits for the `asset.ready` event instead
          *     of treating the asset as gone. `ASSET_NOT_FOUND`, by contrast,
-         *     means the id is unknown or not the caller's; the owner-only
-         *     anti-enumeration of the detail endpoint applies here too, with
-         *     byte-identical 404 bodies for foreign and unknown ids.
+         *     means the id is unknown or not caller-visible: the detail
+         *     endpoint's album-union gate applies here too (the owner, or
+         *     a member of an album the caller sees), with byte-identical
+         *     404 bodies for foreign and unknown ids.
          *
          *     `size` must be one of the three values below; anything else
          *     (including a missing `size`) answers 400 `VALIDATION_FAILED`.
@@ -779,8 +807,9 @@ export interface paths {
          *     416 with the total size in `Content-Range`; a malformed Range
          *     header is ignored and the full body answers 200.
          *
-         *     The same owner-only download gate as every asset endpoint:
-         *     foreign and unknown ids answer byte-identical 404
+         *     The same caller-visible gate as every asset endpoint: the
+         *     owner, or a member of an album the caller sees -- foreign
+         *     and unknown ids answer byte-identical 404
          *     `ASSET_NOT_FOUND`.
          */
         get: operations["getAssetOriginal"];
@@ -1008,6 +1037,15 @@ export interface paths {
          *     `album_shares` row -- the owner's "someone else sees this"
          *     badge. It is true by construction on every shared-group item
          *     (the caller's share row is the reason the item exists).
+         *
+         *     `inTimeline` rides the excludable cards -- the own
+         *     `directory` items and every shared item: the caller's
+         *     timeline preference of that album, true when no preference
+         *     row exists (the default of feeding the timeline). The own
+         *     `virtual` items omit the field: they never feed the caller's
+         *     own timeline. The field is the toggle's source of truth for
+         *     the wall's "excluded" badge, kept current by the
+         *     `PUT/DELETE /albums/{albumId}/timeline-preference` endpoints.
          */
         get: operations["listAlbums"];
         put?: never;
@@ -1093,6 +1131,14 @@ export interface paths {
          *     array when the album holds no grants; viewer responses
          *     never carry it at all (a sharee sees the album, never the
          *     ACL).
+         *
+         *     `inTimeline` is the caller's timeline preference of this
+         *     album (the exclusion toggle's source of truth): present on
+         *     the excludable types -- the caller's own `directory` albums
+         *     and the albums shared to them -- and absent on the caller's
+         *     own `virtual` albums. The preference scopes the aggregate:
+         *     it never filters this album's own items, so browsing a
+         *     switched-off album still shows everything.
          *
          *     `limit` bounds the page size: absent means the default of 60;
          *     a value below 1 or over 200 answers 400 `VALIDATION_FAILED`.
@@ -1349,6 +1395,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/albums/{albumId}/timeline-preference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the caller's timeline preference of one album.
+         * @description Upserts the calling user's per-user timeline preference of
+         *     one album: the `user_album_prefs` row keyed
+         *     (userId, albumId) whose `inTimeline` switch says whether the
+         *     album feeds the caller's aggregated timeline. The preference
+         *     is the CALLER's own state over an album they can see --
+         *     self-affecting only, which is why these writes publish no
+         *     event: the caller's own response is the only view that
+         *     changed, and no other session has anything to refetch.
+         *     The scope is the albums whose membership a caller could want
+         *     out of their timeline feed: the caller's own `directory`
+         *     albums, and every album shared to the caller (whatever the
+         *     owner's type). Two kinds of album answer 400 instead, with
+         *     the `album_pref_not_excludable` message key in the details:
+         *
+         *     - the caller's own `sync` album: it IS the core stream, and
+         *       the core stream is never excludable (the aggregation
+         *       formula exempts the sync arm from the preference row --
+         *       a stray row there excludes nothing);
+         *     - the caller's own `virtual` albums: they never feed the
+         *       caller's own timeline at all (in-stream curation would be
+         *       pure duplication), so there is nothing to exclude.
+         *
+         *     An album the caller cannot see -- unknown, another account's
+         *     unshared album, a revoked share -- answers the same
+         *     byte-identical 404 `ALBUM_NOT_FOUND` as every album face, so
+         *     album ids cannot be probed for existence through this
+         *     endpoint. There is no administrator override: the
+         *     preference is always the caller's own row over their own
+         *     view, never a write onto another account's state.
+         *
+         *     `inTimeline` is required and must be a JSON boolean: a body
+         *     that is not valid JSON, or one without the field, answers
+         *     400 `VALIDATION_FAILED`. The write is an upsert: repeating
+         *     it with the same value converges to the same row, and
+         *     repeating it with the other value flips the switch -- the
+         *     response always carries the stored state.
+         */
+        put: operations["setAlbumTimelinePreference"];
+        post?: never;
+        /**
+         * Reset the caller's timeline preference of one album.
+         * @description Removes the calling user's preference row of one album: the
+         *     album returns to the default state of feeding the caller's
+         *     timeline (a missing row means kept in). The eligibility
+         *     scope is the PUT's own -- the caller's own directory albums
+         *     and the albums shared to the caller; the same 400
+         *     `album_pref_not_excludable` answers the caller's own sync
+         *     and own virtual albums, and the same single-shape 404
+         *     answers an album the caller cannot see.
+         *
+         *     The delete is idempotent: an album with no preference row
+         *     (never set, or already reset) still answers 204 -- the row
+         *     is gone either way, which is the state the caller asked for.
+         *     Like the PUT it publishes no event: the preference is the
+         *     caller's own state, and no other session has anything to
+         *     refetch.
+         */
+        delete: operations["resetAlbumTimelinePreference"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/people": {
         parameters: {
             query?: never;
@@ -1363,9 +1482,9 @@ export interface paths {
          *     A cluster is listed here when both hold:
          *
          *     - it contains at least one face on an asset visible to the
-         *       caller (before library sharing exists: an asset the caller
-         *       owns that is live -- not trashed, not hidden, no Live Photo
-         *       component row), and
+         *       caller (an asset the caller can see that is live -- not
+         *       trashed, not hidden, no Live Photo component row: their
+         *       own, or one shared to them through an album), and
          *     - the caller has labeled it with a `user_face_labels` row of
          *       their own.
          *
@@ -1406,13 +1525,14 @@ export interface paths {
          * The caller's unnamed face clusters, one keyset page at a time.
          * @description The unnamed region of the people surface: every face cluster
          *     that contains at least one face on an asset visible to the
-         *     caller (before library sharing exists: an asset the caller
-         *     owns that is live -- not trashed, not hidden, no Live Photo
-         *     component row) and carries NO `user_face_labels` row of the
-         *     caller. The moment the caller labels a cluster it moves to
-         *     `GET /people` and out of this list; another account's label
-         *     never moves it for this caller (B4: clusters are global,
-         *     labels are private per user).
+         *     caller (an asset the caller can see that is live -- not
+         *     trashed, not hidden, no Live Photo component row: their own,
+         *     or one shared to them through an album) and carries NO
+         *     `user_face_labels` row of the caller. The moment the caller
+         *     labels a cluster it moves to `GET /people` and out of this
+         *     list; another account's label never moves it for this
+         *     caller (B4: clusters are global, labels are private per
+         *     user).
          *
          *     Pages are keyset-paginated with an opaque cursor over the
          *     ordering `faceCount` descending, `clusterId` descending as
@@ -1458,11 +1578,11 @@ export interface paths {
          *
          *     404 has a double meaning by design: the cluster id is
          *     unknown, or the cluster exists but none of its faces sits on
-         *     an asset visible to the caller (before library sharing: the
-         *     cluster's assets all belong to other accounts). Both answer
-         *     the same `PERSON_NOT_FOUND`, byte for byte, so cluster ids
-         *     cannot be probed for existence -- the same anti-enumeration
-         *     shape as `ASSET_NOT_FOUND`.
+         *     an asset visible to the caller (the cluster's assets all
+         *     belong to other accounts and none is shared to them). Both
+         *     answer the same `PERSON_NOT_FOUND`, byte for byte, so
+         *     cluster ids cannot be probed for existence -- the same
+         *     anti-enumeration shape as `ASSET_NOT_FOUND`.
          *
          *     Every `thumbnail` points at the face crop endpoint
          *     `GET /api/v1/faces/{faceId}/thumbnail`, which serves the
@@ -1491,10 +1611,12 @@ export interface paths {
          * @description Upserts the calling user's label of one face cluster: the
          *     `user_face_labels` row keyed (userId, clusterId) -- the B4
          *     write. The cluster must be visible to the caller (at least
-         *     one of its faces sits on an asset visible to them); an
-         *     unknown or invisible cluster id answers the same
-         *     byte-identical 404 `PERSON_NOT_FOUND` as every people read
-         *     (anti-enumeration -- cluster ids cannot be probed).
+         *     one of its faces sits on an asset visible to them -- their
+         *     own, or one shared to them through an album, so a sharee
+         *     names the people they see); an unknown or invisible cluster
+         *     id answers the same byte-identical 404 `PERSON_NOT_FOUND`
+         *     as every people read (anti-enumeration -- cluster ids
+         *     cannot be probed).
          *
          *     The name is trimmed and must span 1-64 characters; anything
          *     else answers 400 `VALIDATION_FAILED` naming the `name`
@@ -1614,8 +1736,13 @@ export interface paths {
          *     cluster.
          *
          *     Rules: every source and the target must be visible to the
-         *     caller (at least one face on an asset visible to them), and
-         *     the target must not be among the sources -- any violation
+         *     caller (at least one face on an asset the caller OWNS and
+         *     that is live) -- merging is cluster curation, and curation
+         *     is the owner's alone: a sharee who sees a cluster through a
+         *     shared album reads it and labels it, but a merge from their
+         *     hand answers the same 404 `PERSON_NOT_FOUND`, so the shared
+         *     structure never re-shapes under another account's cursor.
+         *     The target must not be among the sources -- any violation
          *     answers the same byte-identical 404 `PERSON_NOT_FOUND`
          *     (anti-enumeration). An empty source list or more than 50
          *     source ids (duplicates collapse first) answer 400
@@ -1645,12 +1772,15 @@ export interface paths {
          * Move one face onto an existing face cluster.
          * @description One face's move onto an existing target cluster: the tidy-up
          *     primitive behind the viewer's face chips. The face must sit
-         *     on an asset visible to the caller and the target must be
-         *     visible too -- any other state (unknown face, foreign asset,
-         *     invisible or unknown target) answers the same byte-identical
-         *     404 `PERSON_NOT_FOUND` (anti-enumeration). A face the
-         *     clustering has not yet assigned to any cluster is not part
-         *     of any person and answers the same 404.
+         *     on an asset the caller OWNS and that is live, and the target
+         *     must be caller-visible -- any other state (unknown face,
+         *     another account's asset, an asset shared to the caller but
+         *     not owned -- the move is curation, and curation is the
+         *     owner's alone -- an invisible or unknown target) answers the
+         *     same byte-identical 404 `PERSON_NOT_FOUND`
+         *     (anti-enumeration). A face the clustering has not yet
+         *     assigned to any cluster is not part of any person and
+         *     answers the same 404.
          *
          *     The move runs as ONE transaction through the cluster
          *     maintenance discipline: the target's representative face
@@ -1699,13 +1829,14 @@ export interface paths {
          *     256x256 pixels -- upscaled when the window is smaller,
          *     a zoom rather than a fit.
          *
-         *     The permission gate is the face's asset: the caller must own
-         *     a live, visible, non-component asset. Every other state
-         *     answers the SAME byte-identical 404 PERSON_NOT_FOUND -- an
-         *     unknown face id, a face on another account's (or a trashed,
-         *     or hidden) asset, and an asset whose view derivative has not
-         *     been derived yet (the thumbnail job has not run). Face ids
-         *     cannot be probed for existence; the web renders its skeleton
+         *     The permission gate is the face's asset: the caller must see
+         *     a live, non-component asset -- their own, or one shared to
+         *     them through an album. Every other state answers the SAME
+         *     byte-identical 404 PERSON_NOT_FOUND -- an unknown face id, a
+         *     face on another account's unshared (or a trashed, or hidden)
+         *     asset, and an asset whose view derivative has not been
+         *     derived yet (the thumbnail job has not run). Face ids cannot
+         *     be probed for existence; the web renders its skeleton
          *     placeholder until the pixels exist, which is why there is
          *     deliberately no separate not-ready code here, unlike the
          *     asset thumbnail endpoint.
@@ -3289,14 +3420,19 @@ export interface components {
             faceCount: number;
             /**
              * Format: uuid
-             * @description The cluster's representative face (its strongest-scoring
-             *     member); the face the person card renders.
+             * @description The face the person card renders: the cluster's
+             *     strongest-scoring face on a caller-visible live asset
+             *     (score descending, the face id ascending as the
+             *     tiebreak) -- the best face the CALLER can see, not the
+             *     cluster's global representative, so a card never crops
+             *     out of an asset the caller cannot view. The field is the
+             *     thumbnail's face id.
              */
             representativeFaceId: string;
             /**
-             * @description URL of the representative face's crop: the face crop
-             *     endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
-             *     representative face's id.
+             * @description URL of the card's face crop: the face crop endpoint
+             *     `GET /api/v1/faces/{faceId}/thumbnail` with the
+             *     caller-visible best face's id.
              * @example /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
              */
             thumbnail: string;
@@ -3327,14 +3463,18 @@ export interface components {
             faceCount: number;
             /**
              * Format: uuid
-             * @description The cluster's representative face (its strongest-scoring
-             *     member); the face the cluster tile renders.
+             * @description The face the cluster tile renders: the cluster's
+             *     strongest-scoring face on a caller-visible live asset
+             *     (score descending, the face id ascending as the
+             *     tiebreak) -- the best face the CALLER can see, not the
+             *     cluster's global representative, so a tile never crops
+             *     out of an asset the caller cannot view.
              */
             representativeFaceId: string;
             /**
-             * @description URL of the representative face's crop: the face crop
-             *     endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the
-             *     representative face's id.
+             * @description URL of the tile's face crop: the face crop endpoint
+             *     `GET /api/v1/faces/{faceId}/thumbnail` with the
+             *     caller-visible best face's id.
              * @example /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
              */
             thumbnail: string;
@@ -3617,6 +3757,16 @@ export interface components {
              *     `viewer`; own items omit it (the owner is the caller).
              */
             owner?: components["schemas"]["AlbumOwnerRef"];
+            /**
+             * @description The caller's timeline preference of this album: whether
+             *     it feeds their aggregated timeline. Present exactly on
+             *     the excludable cards -- the own `directory` items and
+             *     every shared item; the own `virtual` items omit it
+             *     (they never feed the caller's own timeline, so there is
+             *     nothing to exclude). The value is the preference row's
+             *     switch, true when no row exists (the default).
+             */
+            inTimeline?: boolean;
         };
         /**
          * @description The owner of an album shared to the caller: the honest
@@ -3693,6 +3843,19 @@ export interface components {
              *     responses never carry it at all.
              */
             shares?: components["schemas"]["AlbumShareEntry"][];
+            /**
+             * @description The caller's timeline preference of this album: whether
+             *     it feeds their aggregated timeline. Present exactly when
+             *     the album is excludable for the caller -- an own
+             *     `directory` album or an album shared to them; an own
+             *     `virtual` album omits the field (it never feeds the
+             *     caller's own timeline). The value is the preference
+             *     row's switch, true when no row exists (the default).
+             *     The preference scopes the aggregated timeline only: it
+             *     never filters this album's own items, whatever the
+             *     switch says.
+             */
+            inTimeline?: boolean;
         };
         /**
          * @description One live member of the album: the membership's identity and
@@ -3889,6 +4052,39 @@ export interface components {
              * @description When the view ACL was granted (RFC 3339 UTC).
              */
             grantedAt: string;
+        };
+        /**
+         * @description The caller's timeline preference write: the per-user switch
+         *     of whether one album feeds the caller's aggregated timeline.
+         *     The `inTimeline` field is required in practice: a body
+         *     without it (or one carrying an explicit JSON null -- a
+         *     required boolean has no absent-state semantics) answers 400
+         *     `VALIDATION_FAILED` naming the body.
+         */
+        AlbumTimelinePreferenceRequest: {
+            /**
+             * @description Whether the album's items feed the caller's aggregated
+             *     timeline. `false` keeps them out; `true` (and a missing
+             *     preference row) keeps them in.
+             */
+            inTimeline?: boolean | null;
+        };
+        /**
+         * @description One album's timeline preference as the caller's row now
+         *     carries it. Self-affecting state: the write publishes no
+         *     event, this response is the only view that changed.
+         */
+        AlbumTimelinePreferenceResponse: {
+            /**
+             * Format: uuid
+             * @description Identifier of the album the preference scopes.
+             */
+            albumId: string;
+            /**
+             * @description Whether the album feeds the caller's aggregated timeline
+             *     (a missing preference row means true, the default).
+             */
+            inTimeline: boolean;
         };
         /**
          * @description One grantee of the owner's `shares` list on the album
@@ -5327,7 +5523,7 @@ export interface operations {
                      */
                     ETag?: string;
                     /**
-                     * @description The transcoded copy is private to the owner and
+                     * @description The transcoded copy is private to the caller and
                      *     immutable (its content is a function of the immutable
                      *     original bytes), so clients may cache it for a year.
                      * @example private, max-age=31536000, immutable
@@ -6316,6 +6512,158 @@ export interface operations {
              * @description No such album for this caller: the id is unknown, the
              *     album belongs to another account without a share to the
              *     caller, or it is a sync album -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setAlbumTimelinePreference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the album. */
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumTimelinePreferenceRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The stored preference: the album and the switch as the
+             *     row now carries it.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumTimelinePreferenceResponse"];
+                };
+            };
+            /**
+             * @description The request is not a well-formed preference: the body is
+             *     not valid JSON or carries no `inTimeline`; or the album
+             *     is not excludable from the caller's timeline (the
+             *     caller's own sync or own virtual album, the
+             *     `album_pref_not_excludable` message key in the details).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such album for this caller: the id is unknown, the
+             *     album belongs to another account without a share to the
+             *     caller, or the share was revoked -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resetAlbumTimelinePreference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the album. */
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The preference row is gone; the album feeds the caller's
+             *     timeline again (or never stopped).
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The album is not excludable from the caller's timeline:
+             *     the caller's own sync or own virtual album
+             *     (`album_pref_not_excludable` in the details).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such album for this caller: the id is unknown, the
+             *     album belongs to another account without a share to the
+             *     caller, or the share was revoked -- indistinguishable by
              *     design.
              */
             404: {

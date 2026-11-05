@@ -339,6 +339,16 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Post("/albums/{albumId}/shares", wrapper.GrantAlbumShare)
 				r.Delete("/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
 				r.Get("/users", wrapper.ListInstanceUsers)
+				// The timeline-preference face (M3c Task 4): the
+				// caller's per-user "keep this album out of my
+				// timeline" switch -- one bounded row upsert and
+				// one bounded row delete over an album the caller
+				// can see, self-affecting state that publishes no
+				// event. The static /timeline-preference segment
+				// never contends with the /albums/{albumId}
+				// routes (a longer path shape).
+				r.Put("/albums/{albumId}/timeline-preference", wrapper.SetAlbumTimelinePreference)
+				r.Delete("/albums/{albumId}/timeline-preference", wrapper.ResetAlbumTimelinePreference)
 				// The people surface reads (M3b Task 1): the named
 				// region, the unnamed region's keyset pages and one
 				// cluster's detail. All are bounded row reads (the
