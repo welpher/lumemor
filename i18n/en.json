@@ -59,7 +59,6 @@
   "album_pref_not_excludable": "This album cannot be excluded from your timeline.",
   "timeline_loading": "Loading your timeline…",
   "timeline_empty": "Your timeline is empty. Photos you upload appear here.",
-  "timeline_month_count": "{count} photos",
   "timeline_load_more": "Load more",
   "timeline_scrubber_label": "Jump to month",
   "action_retry": "Try again",
