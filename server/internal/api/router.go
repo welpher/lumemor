@@ -400,6 +400,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Delete("/tags/{tagId}", wrapper.DeleteTag)
 				r.Post("/tags/{tagId}/assets", wrapper.AddTagAssets)
 				r.Delete("/tags/{tagId}/assets", wrapper.RemoveTagAssets)
+				// The unified search surface (M3d Task 3): the two
+				// merged paths over caller-visible assets plus the
+				// filter facets. Bounded reads (the arms' depth cut,
+				// the page cap, the family-scale facet lists) plus
+				// at most one model inference per request -- the same
+				// bounded-JSON cost class as the timeline.
+				r.Get("/search", wrapper.SearchAssets)
 				// The people surface writes (M3b Task 2): the caller's
 				// label and hidden switches, the cluster merge and the
 				// single face move. All are bounded row reads and
@@ -556,6 +563,12 @@ type server struct {
 	// queue is wired and the re-resolution endpoint answers the
 	// generic internal error.
 	placesReruns PlacesRerunEnqueuer
+
+	// textTowerCache keeps the search's semantic path warm: the
+	// active clip-text model's loaded session and tokenizer (loading
+	// a 400 MB graph per request is not a cost the page shape can
+	// carry). A model switch replaces it under its mutex.
+	textTowerCache textTowerSession
 }
 
 // writeJSON emits v as the JSON response body with the given status.

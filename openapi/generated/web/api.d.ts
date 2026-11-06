@@ -1929,6 +1929,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unified search, one text box, two merged paths, filter facets.
+         * @description The unified search over the caller-visible asset domain (the
+         *     album union of the caller's own sync and directory albums plus
+         *     every album shared to them, and the timeline's live-row
+         *     filters: not trashed, not hidden, no Live Photo component
+         *     row). One optional text box drives TWO backend paths that
+         *     merge deterministically; the optional filter parameters
+         *     narrow both paths and the pure-filter mode (no text) is the
+         *     filter browse the search page opens with.
+         *
+         *     The TEXT path is unaccented case-insensitive SUBSTRING
+         *     matching over the asset's own text sources -- the original
+         *     filename, the description, and the extracted OCR text -- plus
+         *     the caller's relational vocabularies joined at query time:
+         *     the caller's own tags, the titles of albums the caller can
+         *     see (own albums and albums shared to them; the sync album is
+         *     the timeline's face, not a filter), and the caller's own
+         *     non-hidden person labels. The query is a LITERAL substring,
+         *     never a pattern: the engine escapes its own wildcard
+         *     characters, so `50%` matches the literal text `50%` and never
+         *     globs. Word semantics, stemming and segmentation are out of
+         *     scope by design (the v1 boundary: the match is containment,
+         *     which is language-agnostic by construction; a tokenizing
+         *     engine is the v1.x upgrade path). The path's weak rank
+         *     signal is the trigram similarity of the best matched source.
+         *
+         *     The SEMANTIC path embeds the query through the active CLIP
+         *     text tower (the model registry's clip-text slot) and ranks
+         *     the caller-visible assets by cosine similarity over the
+         *     image embeddings the active clip-embed model produced -- the
+         *     same joint space both towers share. The semantic path needs
+         *     the model machinery: when no text tower is active (or the
+         *     tower's dimension disagrees with the embeddings column) the
+         *     semantic path honestly answers EMPTY and the text path still
+         *     serves -- the degradation the model admin page resolves by
+         *     downloading and activating the text tower.
+         *
+         *     The MERGE: both paths answer at most their top 500 ranked
+         *     hits; an asset's fused score is the sum over the paths it
+         *     appears in of (500 minus its zero-based position in that
+         *     path), so an asset hit by both paths outranks the single-path
+         *     hits around it; the page orders by the fused score descending
+         *     with the asset id ascending as the total-order tiebreak, and
+         *     one asset hit through many sources or both paths appears
+         *     exactly once. The rule is deterministic: the same query over
+         *     unchanged data answers the same page, and cursors page
+         *     through that stable order.
+         *
+         *     A query of fewer than two characters (after trimming), or
+         *     only whitespace, takes NO text path and NO semantic path: the
+         *     request is the pure filter browse. An empty `from`/`to` pair
+         *     with no other filter is the whole visible timeline.
+         *
+         *     The FACETS count the current filtered set minus their own
+         *     dimension: `people` lists the caller's named, non-hidden
+         *     people with the number of assets of the current set (query
+         *     and every filter applied EXCEPT personIds) that carry a face
+         *     of that cluster; `places`, `years`, `cameras`, `kinds`,
+         *     `albums` and `tags` follow the same rule for their own
+         *     dimension. Facet ids the caller cannot resolve (an album they
+         *     cannot see, another account's tag) DROP OUT of the filter
+         *     parameters rather than emptying the result -- filters narrow,
+         *     they never probe.
+         *
+         *     `personIds`, `albumIds` and `tagIds` are comma-separated id
+         *     lists; `placeIds` is a comma-separated integer list;
+         *     `cameras` is a comma-separated list of the camera facet ids
+         *     (`make|model`). Every id list is capped at 200 entries; a
+         *     longer list answers 400 `VALIDATION_FAILED`. `from` is
+         *     inclusive, `to` is EXCLUSIVE; an inverted range answers 400.
+         *     `locale` picks the places facet's display names exactly the
+         *     way `GET /places` does.
+         */
+        get: operations["searchAssets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tags": {
         parameters: {
             query?: never;
@@ -2816,11 +2906,15 @@ export interface components {
         /**
          * @description The functional slot a model fills. `face_detect`,
          *     `face_recognize`, `clip_embed` and `ocr` are the machine
-         *     learning slots of this milestone; a speech slot arrives with
-         *     a later one.
+         *     learning slots of the pipeline; `clip_text` is the search's
+         *     semantic arm -- the CLIP text tower that embeds queries into
+         *     the vision tower's joint embedding space (it produces no
+         *     per-asset rows, so its rerun endpoint answers 400
+         *     `MODEL_INVALID`); a speech slot arrives with a later
+         *     milestone.
          * @enum {string}
          */
-        ModelSlot: "face_detect" | "face_recognize" | "clip_embed" | "ocr";
+        ModelSlot: "face_detect" | "face_recognize" | "clip_embed" | "clip_text" | "ocr";
         /**
          * @description Where a model's registration came from: `downloaded` models
          *     landed through the download endpoint's manifest-pinned
@@ -4093,6 +4187,192 @@ export interface components {
              *     the request joined instead.
              */
             jobRunId: string;
+        };
+        /**
+         * @description The media family of an asset. A Live Photo is an `image`
+         *     whose linked component video row never appears in the
+         *     timeline or the search.
+         * @enum {string}
+         */
+        MediaKind: "image" | "video";
+        /**
+         * @description One page of the unified search: the keyset-paged items (the
+         *     timeline item shape -- the search results page renders the
+         *     same wall the timeline does) plus the facet counts of the
+         *     current filtered set minus each dimension. `nextCursor` is
+         *     present exactly when another page follows; the cursor is
+         *     mode-tagged (the fused-rank order of a text query, or the
+         *     timeline order of the filter browse).
+         */
+        SearchResponse: {
+            /**
+             * @description The page's assets, ordered by the fused score descending
+             *     with the asset id ascending as the tiebreak (a text
+             *     query), or by taken-at descending with the id descending
+             *     (the filter browse -- the timeline's own order).
+             */
+            items: components["schemas"]["TimelineItem"][];
+            /**
+             * @description The continuation token of the page: present exactly when
+             *     another page follows. Opaque; pass it back as `cursor`.
+             */
+            nextCursor?: string;
+            facets: components["schemas"]["SearchFacets"];
+        };
+        /**
+         * @description The filter bar's counts over the current filtered set minus
+         *     each dimension: a facet entry's `assetCount` answers "how
+         *     many results would I have if I added this value ON TOP of
+         *     the current query and filters" (the dimension's own filter
+         *     parameters excluded). Every facet is caller-scoped exactly
+         *     like the surface it summarizes: places count visible assets,
+         *     tags and people are the caller's own (B4), albums are the
+         *     ones the caller can see. The lists are ordered by
+         *     `assetCount` descending with a deterministic per-dimension
+         *     tiebreak; they are not paginated (bounded by the family
+         *     instance's vocabulary sizes, the tags listing's own shape).
+         */
+        SearchFacets: {
+            /**
+             * @description The caller's named, non-hidden people: one entry per
+             *     labeled face cluster with a face on the current set.
+             *     Hidden labels never list (the B4 hidden switch removes
+             *     the person from every face position).
+             */
+            people: components["schemas"]["PersonFacetCount"][];
+            /**
+             * @description The resolved places of the current set with the locale
+             *     display name (`locale` parameter, the `GET /places` join).
+             */
+            places: components["schemas"]["PlaceFacetCount"][];
+            /**
+             * @description The taken-at years of the current set, newest first: the
+             *     time-range facet (the `from`/`to` filters are the
+             *     dimension the year counts exclude).
+             */
+            years: components["schemas"]["YearFacetCount"][];
+            /**
+             * @description The EXIF camera makes/models of the current set. The `id`
+             *     is the round-trip filter value (`make|model`); `make` and
+             *     `model` are the display halves, null exactly when the
+             *     EXIF row carries no value there.
+             */
+            cameras: components["schemas"]["CameraFacetCount"][];
+            /** @description The media families of the current set. */
+            kinds: components["schemas"]["KindFacetCount"][];
+            /**
+             * @description The caller-visible albums (own and shared, never the sync
+             *     albums -- the timeline is their face) holding members of
+             *     the current set.
+             */
+            albums: components["schemas"]["AlbumFacetCount"][];
+            /**
+             * @description The CALLER's tags with members in the current set (B4:
+             *     another account's tags never surface).
+             */
+            tags: components["schemas"]["TagFacetCount"][];
+        };
+        /** @description One named person of the people facet. */
+        PersonFacetCount: {
+            /**
+             * Format: uuid
+             * @description The face cluster id (the people surface's id).
+             */
+            id: string;
+            /** @description The CALLER's label of the cluster. */
+            name: string;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the person filter) carrying a face of this cluster.
+             */
+            assetCount: number;
+        };
+        /** @description One place of the places facet. */
+        PlaceFacetCount: {
+            /**
+             * Format: int32
+             * @description The GeoNames id (the round-trip filter value).
+             */
+            placeId: number;
+            /** @description The locale display name, canonical fallback. */
+            name: string;
+            /** @description The ISO country code. */
+            country: string;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the place filter) resolved to this place.
+             */
+            assetCount: number;
+        };
+        /** @description One year of the time-range facet. */
+        YearFacetCount: {
+            /**
+             * Format: int32
+             * @description The taken-at year.
+             */
+            year: number;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the time-range filter) taken in this year.
+             */
+            assetCount: number;
+        };
+        /** @description One camera of the cameras facet. */
+        CameraFacetCount: {
+            /**
+             * @description The round-trip filter value: `make|model` with both
+             *     halves trimmed, empty where the EXIF row carries no
+             *     value.
+             */
+            id: string;
+            /** @description The EXIF camera make, null when absent. */
+            make?: string | null;
+            /** @description The EXIF camera model, null when absent. */
+            model?: string | null;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the camera filter) shot with this camera.
+             */
+            assetCount: number;
+        };
+        /** @description One media family of the kinds facet. */
+        KindFacetCount: {
+            kind: components["schemas"]["MediaKind"];
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the kind filter) of this family.
+             */
+            assetCount: number;
+        };
+        /** @description One album of the albums facet. */
+        AlbumFacetCount: {
+            /**
+             * Format: uuid
+             * @description The album id (the round-trip filter value).
+             */
+            id: string;
+            /** @description The album's title. */
+            title: string;
+            /**
+             * @description The number of members of the current filtered set (minus
+             *     the album filter) this album holds.
+             */
+            assetCount: number;
+        };
+        /** @description One tag of the tags facet. */
+        TagFacetCount: {
+            /**
+             * Format: uuid
+             * @description The CALLER's tag id (the round-trip filter value).
+             */
+            id: string;
+            /** @description The caller's tag name. */
+            name: string;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the tag filter) carrying this tag.
+             */
+            assetCount: number;
         };
         /**
          * @description One tag of the caller's vocabulary as every tags-face
@@ -7888,6 +8168,149 @@ export interface operations {
             /**
              * @description The locale parameter carries a value outside the
              *     instance's language set.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    searchAssets: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The free-text query: a literal substring matched
+                 *     (unaccented, case-insensitively) against the filename,
+                 *     the description, the OCR text and the caller's tag,
+                 *     album-title and person-name vocabularies, and embedded
+                 *     through the CLIP text tower for the semantic path. A
+                 *     value of fewer than two characters (after trimming) takes
+                 *     no text path: the request is the pure filter browse. The
+                 *     length is capped at 256 characters.
+                 * @example 海边
+                 */
+                query?: string;
+                /**
+                 * @description Restrict the results to assets carrying a face of one of
+                 *     these face clusters (the caller's people surface's
+                 *     cluster ids).
+                 */
+                personIds?: string[];
+                /**
+                 * @description Restrict the results to assets resolved to one of these
+                 *     places (the places facet's GeoNames ids).
+                 */
+                placeIds?: number[];
+                /**
+                 * @description The inclusive lower bound of the taken-at range.
+                 * @example 2024-01-01T00:00:00Z
+                 */
+                from?: string;
+                /**
+                 * @description The EXCLUSIVE upper bound of the taken-at range. A `to`
+                 *     at or before `from` answers 400 `VALIDATION_FAILED`.
+                 * @example 2025-01-01T00:00:00Z
+                 */
+                to?: string;
+                /**
+                 * @description Restrict the results to assets whose EXIF camera matches
+                 *     one of these camera facet ids (`make|model`).
+                 */
+                cameras?: string[];
+                /**
+                 * @description Restrict the results to these media families. A value
+                 *     outside `image`/`video` answers 400.
+                 */
+                kinds?: components["schemas"]["MediaKind"][];
+                /**
+                 * @description Restrict the results to members of these albums. Albums
+                 *     the caller cannot see drop out of the filter: they
+                 *     contribute nothing, they never empty the result.
+                 */
+                albumIds?: string[];
+                /**
+                 * @description Restrict the results to assets carrying one of the
+                 *     CALLER's tags. Another account's tag ids drop out of the
+                 *     filter (B4: tags are per-user state).
+                 */
+                tagIds?: string[];
+                /**
+                 * @description The display locale of the places facet's names, exactly
+                 *     the `GET /places` locale join. Absent means `en`. A value
+                 *     outside the set answers 400 `VALIDATION_FAILED`.
+                 * @example zh-Hans
+                 */
+                locale?: "en" | "zh-Hans";
+                /**
+                 * @description The `nextCursor` of the previous page; absent on the first
+                 *     page. The cursor carries the page's ordering mode (the
+                 *     fused rank of a text query, or the timeline order of the
+                 *     filter browse): a cursor of the other mode answers 400
+                 *     `VALIDATION_FAILED`, and so does any value this endpoint
+                 *     did not produce.
+                 * @example GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
+                 */
+                cursor?: string;
+                /**
+                 * @description Page size: the number of items one response carries at
+                 *     most. Defaults to 100; values over 200 are answered with
+                 *     200, values below 1 answer 400.
+                 * @example 100
+                 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description One page of the merged search (or the filter browse),
+             *     plus the facet counts over the current filtered set minus
+             *     each dimension. `nextCursor` is present exactly when
+             *     another page follows.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /**
+             * @description The parameters are invalid: a mangled or mode-mismatched
+             *     cursor, `limit` below 1, an inverted or unparseable time
+             *     range, a `kinds` value outside the media families, a
+             *     negative `placeIds` entry, an id list over 200 entries, a
+             *     `locale` outside the language set, or a `query` over 256
+             *     characters.
              */
             400: {
                 headers: {

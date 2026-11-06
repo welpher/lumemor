@@ -22,7 +22,7 @@ abstract class ModelRef implements Built<ModelRef, ModelRefBuilder> {
 
   @BuiltValueField(wireName: r'slot')
   ModelSlot get slot;
-  // enum slotEnum {  face_detect,  face_recognize,  clip_embed,  ocr,  };
+  // enum slotEnum {  face_detect,  face_recognize,  clip_embed,  clip_text,  ocr,  };
 
   ModelRef._();
 

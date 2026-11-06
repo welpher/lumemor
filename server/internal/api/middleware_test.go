@@ -201,6 +201,7 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"DELETE /api/v1/tags/{tagId}",
 		"POST /api/v1/tags/{tagId}/assets",
 		"DELETE /api/v1/tags/{tagId}/assets",
+		"GET /api/v1/search",
 		"GET /api/v1/admin/users",
 		"POST /api/v1/admin/users",
 		"PATCH /api/v1/admin/users/{id}",

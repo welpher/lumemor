@@ -92,6 +92,7 @@ var manifestSlotNames = map[ml.Slot]string{
 	ml.SlotFaceDetect:    "face-detect",
 	ml.SlotFaceRecognize: "face-recognize",
 	ml.SlotClipEmbed:     "clip-embed",
+	ml.SlotClipText:      "clip-text",
 	ml.SlotOcr:           "ocr",
 }
 

@@ -22,6 +22,7 @@ import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
 import 'package:lumemor_api/src/model/album_create_request.dart';
 import 'package:lumemor_api/src/model/album_detail.dart';
+import 'package:lumemor_api/src/model/album_facet_count.dart';
 import 'package:lumemor_api/src/model/album_item.dart';
 import 'package:lumemor_api/src/model/album_item_asset.dart';
 import 'package:lumemor_api/src/model/album_items_request.dart';
@@ -42,6 +43,7 @@ import 'package:lumemor_api/src/model/asset_tag_summary.dart';
 import 'package:lumemor_api/src/model/batch_request.dart';
 import 'package:lumemor_api/src/model/batch_response.dart';
 import 'package:lumemor_api/src/model/bearer_session.dart';
+import 'package:lumemor_api/src/model/camera_facet_count.dart';
 import 'package:lumemor_api/src/model/cluster_detail.dart';
 import 'package:lumemor_api/src/model/create_admin_request.dart';
 import 'package:lumemor_api/src/model/error.dart';
@@ -52,8 +54,10 @@ import 'package:lumemor_api/src/model/job_run_kind.dart';
 import 'package:lumemor_api/src/model/job_run_list_response.dart';
 import 'package:lumemor_api/src/model/job_run_response.dart';
 import 'package:lumemor_api/src/model/job_run_state.dart';
+import 'package:lumemor_api/src/model/kind_facet_count.dart';
 import 'package:lumemor_api/src/model/label_person_request.dart';
 import 'package:lumemor_api/src/model/login_request.dart';
+import 'package:lumemor_api/src/model/media_kind.dart';
 import 'package:lumemor_api/src/model/merge_people_request.dart';
 import 'package:lumemor_api/src/model/merge_people_response.dart';
 import 'package:lumemor_api/src/model/model_activate_response.dart';
@@ -71,17 +75,22 @@ import 'package:lumemor_api/src/model/move_face_request.dart';
 import 'package:lumemor_api/src/model/move_face_response.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
 import 'package:lumemor_api/src/model/pairing_token_response.dart';
+import 'package:lumemor_api/src/model/person_facet_count.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
 import 'package:lumemor_api/src/model/person_label_response.dart';
 import 'package:lumemor_api/src/model/person_summary.dart';
+import 'package:lumemor_api/src/model/place_facet_count.dart';
 import 'package:lumemor_api/src/model/place_summary.dart';
 import 'package:lumemor_api/src/model/places_rerun_response.dart';
 import 'package:lumemor_api/src/model/remove_album_items_response.dart';
 import 'package:lumemor_api/src/model/remove_tag_assets_response.dart';
+import 'package:lumemor_api/src/model/search_facets.dart';
+import 'package:lumemor_api/src/model/search_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
 import 'package:lumemor_api/src/model/set_person_hidden_request.dart';
 import 'package:lumemor_api/src/model/tag_assets_request.dart';
+import 'package:lumemor_api/src/model/tag_facet_count.dart';
 import 'package:lumemor_api/src/model/tag_name_request.dart';
 import 'package:lumemor_api/src/model/tag_summary.dart';
 import 'package:lumemor_api/src/model/timeline_item.dart';
@@ -94,6 +103,7 @@ import 'package:lumemor_api/src/model/user.dart';
 import 'package:lumemor_api/src/model/user_list_response.dart';
 import 'package:lumemor_api/src/model/user_role.dart';
 import 'package:lumemor_api/src/model/user_summary.dart';
+import 'package:lumemor_api/src/model/year_facet_count.dart';
 
 part 'serializers.g.dart';
 
@@ -106,6 +116,7 @@ part 'serializers.g.dart';
   AdminUserResponse,
   AlbumCreateRequest,
   AlbumDetail,
+  AlbumFacetCount,
   AlbumItem,
   AlbumItemAsset,
   AlbumItemsRequest,
@@ -126,6 +137,7 @@ part 'serializers.g.dart';
   BatchRequest,
   BatchResponse,
   BearerSession,
+  CameraFacetCount,
   ClusterDetail,
   CreateAdminRequest,
   Error,
@@ -136,8 +148,10 @@ part 'serializers.g.dart';
   JobRunListResponse,
   JobRunResponse,
   JobRunState,
+  KindFacetCount,
   LabelPersonRequest,
   LoginRequest,
+  MediaKind,
   MergePeopleRequest,
   MergePeopleResponse,
   ModelActivateResponse,
@@ -155,17 +169,22 @@ part 'serializers.g.dart';
   MoveFaceResponse,
   PairingConsumeRequest,
   PairingTokenResponse,
+  PersonFacetCount,
   PersonLabel,
   PersonLabelResponse,
   PersonSummary,
+  PlaceFacetCount,
   PlaceSummary,
   PlacesRerunResponse,
   RemoveAlbumItemsResponse,
   RemoveTagAssetsResponse,
+  SearchFacets,
+  SearchResponse,
   ServerInfo,
   SessionInfo,
   SetPersonHiddenRequest,
   TagAssetsRequest,
+  TagFacetCount,
   TagNameRequest,
   TagSummary,
   TimelineItem,
@@ -178,12 +197,9 @@ part 'serializers.g.dart';
   UserListResponse,
   UserRole,
   UserSummary,
+  YearFacetCount,
 ])
 Serializers serializers = (_$serializers.toBuilder()
-      ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(AssetFaceSummary)]),
-        () => ListBuilder<AssetFaceSummary>(),
-      )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(TimelineItem)]),
         () => ListBuilder<TimelineItem>(),
@@ -193,24 +209,16 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<PlaceSummary>(),
       )
       ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(AlbumSummary)]),
-        () => ListBuilder<AlbumSummary>(),
-      )
-      ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(TrashItem)]),
-        () => ListBuilder<TrashItem>(),
-      )
-      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(UnnamedClusterSummary)]),
         () => ListBuilder<UnnamedClusterSummary>(),
       )
       ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(PersonSummary)]),
-        () => ListBuilder<PersonSummary>(),
+        const FullType(BuiltList, [FullType(PlaceFacetCount)]),
+        () => ListBuilder<PlaceFacetCount>(),
       )
       ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(ModelResponse)]),
-        () => ListBuilder<ModelResponse>(),
+        const FullType(BuiltList, [FullType(PersonSummary)]),
+        () => ListBuilder<PersonSummary>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AlbumShareEntry)]),
@@ -221,16 +229,68 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<AdminUserResponse>(),
       )
       ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(AssetTagSummary)]),
-        () => ListBuilder<AssetTagSummary>(),
-      )
-      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AlbumItem)]),
         () => ListBuilder<AlbumItem>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(PersonFacetCount)]),
+        () => ListBuilder<PersonFacetCount>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(SessionInfo)]),
         () => ListBuilder<SessionInfo>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(YearFacetCount)]),
+        () => ListBuilder<YearFacetCount>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(TagFacetCount)]),
+        () => ListBuilder<TagFacetCount>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(JobRunResponse)]),
+        () => ListBuilder<JobRunResponse>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AssetFaceSummary)]),
+        () => ListBuilder<AssetFaceSummary>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumFacetCount)]),
+        () => ListBuilder<AlbumFacetCount>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(CameraFacetCount)]),
+        () => ListBuilder<CameraFacetCount>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumSummary)]),
+        () => ListBuilder<AlbumSummary>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(KindFacetCount)]),
+        () => ListBuilder<KindFacetCount>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(TrashItem)]),
+        () => ListBuilder<TrashItem>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(MediaKind)]),
+        () => ListBuilder<MediaKind>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(ModelResponse)]),
+        () => ListBuilder<ModelResponse>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AssetTagSummary)]),
+        () => ListBuilder<AssetTagSummary>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(int)]),
+        () => ListBuilder<int>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType.nullable(JsonObject)]),
@@ -247,10 +307,6 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType(bool)]),
         () => MapBuilder<String, bool>(),
-      )
-      ..addBuilderFactory(
-        const FullType(BuiltList, [FullType(JobRunResponse)]),
-        () => ListBuilder<JobRunResponse>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(String)]),

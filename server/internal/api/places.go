@@ -63,7 +63,7 @@ func (s *server) ListPlaces(w http.ResponseWriter, r *http.Request, params apige
 	// language set, and the generated binder binds the raw string, so
 	// the membership check lives here -- an out-of-set locale is a
 	// client bug the 400 names.
-	locale := apigen.En
+	locale := apigen.ListPlacesParamsLocaleEn
 	if params.Locale != nil {
 		if !params.Locale.Valid() {
 			s.writeValidationError(w, "locale must be one of: en, zh-Hans", []string{"locale"})

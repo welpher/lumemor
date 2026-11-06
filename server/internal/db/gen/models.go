@@ -150,6 +150,7 @@ const (
 	ModelSlotClipEmbed     ModelSlot = "clip_embed"
 	ModelSlotOcr           ModelSlot = "ocr"
 	ModelSlotStt           ModelSlot = "stt"
+	ModelSlotClipText      ModelSlot = "clip_text"
 )
 
 func (e *ModelSlot) Scan(src interface{}) error {
