@@ -374,7 +374,7 @@ func TestReresolvePlaces(t *testing.T) {
 	// An in-flight run answers 200 with its identifier and enqueues
 	// nothing: the seeded row is the join point.
 	inFlight := uuid.MustParse("60000000-0000-0000-0002-000000000002")
-	if _, err := dbgen.New(pool).InsertJobRun(context.Background(), dbgen.InsertJobRunParams{
+	if err := dbgen.New(pool).InsertJobRun(context.Background(), dbgen.InsertJobRunParams{
 		ID:    pgUUID(inFlight),
 		Kind:  "places_rerun",
 		Total: 3,
@@ -402,8 +402,9 @@ func TestReresolvePlaces(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("failed enqueue status = %d, want 500", rec.Code)
 	}
-	if code, _ := decodeError(t, rec); code != apigen.INTERNAL {
-		t.Errorf("code = %q, want INTERNAL", code)
+	apiErr, _ := decodeError(t, rec)
+	if apiErr.Code != apigen.INTERNAL {
+		t.Errorf("code = %q, want INTERNAL", apiErr.Code)
 	}
 }
 

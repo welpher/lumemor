@@ -268,6 +268,20 @@
 		activeMonthKey = current;
 	}
 
+	/** The wall's scroll progress (0-1) for the axis's position
+	 * indicator: the scroll root's own fraction, read alongside the
+	 * active-month tracking. */
+	let scrollProgress = $state(0);
+
+	function updateScrollProgress(): void {
+		const scroller = document.querySelector<HTMLElement>('main');
+		if (scroller === null) {
+			return;
+		}
+		const span = scroller.scrollHeight - scroller.clientHeight;
+		scrollProgress = span > 0 ? Math.min(1, Math.max(0, scroller.scrollTop / span)) : 0;
+	}
+
 	/** The rAF-collapsed scroll notification (one pass per frame). */
 	function handleScrollEvent(): void {
 		if (scrollScheduled) {
@@ -277,6 +291,7 @@
 		requestAnimationFrame(() => {
 			scrollScheduled = false;
 			updateActiveMonth();
+			updateScrollProgress();
 		});
 	}
 
@@ -410,7 +425,7 @@
 	</section>
 </div>
 
-<MonthScrubber {months} activeKey={activeMonthKey} onjump={jumpToMonth} />
+<MonthScrubber {months} activeKey={activeMonthKey} progress={scrollProgress} onjump={jumpToMonth} />
 <BatchBar
 	count={selectedItems.length}
 	allFavorite={allSelectedFavorite}
