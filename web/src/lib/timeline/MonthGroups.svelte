@@ -30,6 +30,7 @@
 	// (the row-level windowing the justified math makes exact); the
 	// tiles keep their own content-visibility inside a partially
 	// visible row.
+	import { _ } from 'svelte-i18n';
 	import { packWall, WALL_MAX_WIDTH, WALL_TILE_SEAM, type PackedMonth } from './layout';
 	import type { MonthGroup } from './grouping';
 	import PhotoTile from './PhotoTile.svelte';
@@ -93,7 +94,10 @@
 		     (the band is 38px: py-1.5's 12px + the 26px line at
 		     text-[20px]/1.3, probe-verified). -->
 		<section class="wall__month scroll-mt-[92px]" data-month-key={month.key}>
-			<h2 class="wall__month-header sticky top-0 z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page">{month.label}</h2>
+			<h2 class="wall__month-header sticky top-0 z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page">
+				{month.label}
+				<span class="wall__month-count ml-2 font-body font-normal text-[14px] text-text-soft tabular-nums">{$_('timeline_month_count', { values: { count: month.days.reduce((total, day) => total + day.rows.reduce((rowTotal, row) => rowTotal + row.tiles.length, 0), 0) } })}</span>
+			</h2>
 			{#each month.days as day (day.key)}
 				<div class="wall__day" data-day-key={day.key}>
 					<h3 class="wall__day-header sticky top-[38px] z-(--z-sticky-sub) mt-3 mb-1.5 py-1 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-page">{day.label}</h3>

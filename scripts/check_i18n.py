@@ -112,6 +112,7 @@ NON_ERROR_KEYS = {
     "timeline_loading",
     "timeline_empty",
     "timeline_load_more",
+    "timeline_month_count",
     "timeline_scrubber_label",
     "action_retry",
     "action_select",
