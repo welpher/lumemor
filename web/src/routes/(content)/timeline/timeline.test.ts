@@ -220,9 +220,13 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 		'/api/v1/assets/a1/thumbnail?size=tile'
 	);
 
-	// The scrubber carries the loaded months.
+	// The scrubber carries the loaded months as the proportional
+	// axis: short labels with the year once at the run's head.
 	const stops = Array.from(document.body.querySelectorAll('.scrubber__stop'));
-	expect(stops.map((stop) => stop.textContent)).toEqual(['November 2026', 'October 2026']);
+	const labels = Array.from(document.body.querySelectorAll('.scrubber__label'));
+	expect(labels.map((label) => label.textContent)).toEqual(['Nov', 'Oct']);
+	expect(stops[0]?.querySelector('.scrubber__year')?.textContent).toBe('2026');
+	expect(stops[1]?.querySelector('.scrubber__year')).toBeNull();
 
 	unmount(page);
 	flushSync();
@@ -635,7 +639,7 @@ test('the scrubber tracking observes the scroll root through the capture phase',
 	flushSync();
 
 	const active = document.body.querySelector('.scrubber__stop[aria-current="true"]');
-	expect(active?.textContent).toBe('October 2026');
+	expect(active?.querySelector('.scrubber__label')?.textContent).toBe('Oct');
 	unmount(page);
 	flushSync();
 });
