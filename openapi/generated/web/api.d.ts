@@ -1865,6 +1865,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's city grouping.
+         * @description The places surface: every place of the GeoNames reference data
+         *     that holds at least one asset the caller can see -- the city
+         *     grouping the places page renders as its grid. A place joins
+         *     the list when it carries a caller-visible live asset (the
+         *     album union of the caller's own sync and directory albums
+         *     plus every album shared to them, and the timeline's live-row
+         *     filters: not trashed, not hidden, no Live Photo component
+         *     row); `assetCount` counts exactly those assets, so the same
+         *     place can show different counts to different accounts -- the
+         *     honest per-caller counting discipline the people surface
+         *     pins, applied to cities.
+         *
+         *     `name` is the locale-joined display name: the
+         *     `place_names` row of the requested locale when the reference
+         *     data carries one, the GeoNames canonical (English or
+         *     romanized) name otherwise. Locale is a REQUEST parameter
+         *     (the web app owns the active locale and passes it along);
+         *     `en` is the default. A locale switch changes the join only
+         *     -- the assets rows never carry locale strings, so switching
+         *     languages never rewrites asset data.
+         *
+         *     `representativeCoverAssetIds` is the wall's derived-cover
+         *     discipline applied to city groups: the place's (up to) four
+         *     most recent caller-visible live members, taken_at descending
+         *     with the asset id as the tiebreak -- the cover tiles the
+         *     places page renders from. A listed place always carries at
+         *     least one candidate (the listing itself proved a visible
+         *     member exists).
+         *
+         *     The list is ordered by `assetCount` descending, the place id
+         *     ascending as the deterministic tiebreak. It is not paginated:
+         *     the same single-document shape the named-people listing
+         *     uses, sized for a family instance's few thousand places.
+         *
+         *     Place resolution itself (which asset belongs to which city)
+         *     is the ingestion pipeline's business -- the metadata job's
+         *     GPS step and the admin re-resolution run -- and follows the
+         *     reference data baked into the server image; this endpoint
+         *     only reads what those wrote.
+         */
+        get: operations["listPlaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -2228,6 +2286,51 @@ export interface paths {
          *     with 400 MODEL_INVALID and registers nothing.
          */
         post: operations["scanModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/places/reresolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a full place re-resolution run.
+         * @description The places-data-update path of the admin surface: one run
+         *     that re-resolves the place of EVERY asset whose exif row
+         *     carries GPS coordinates, against the reference data the
+         *     server currently runs on. The run that refills resolutions
+         *     after the baked GeoNames data changed -- the startup import
+         *     of a rebuilt image replaces the reference tables and, through
+         *     the schema's ON DELETE SET NULL, releases every stale
+         *     resolution; this run is the deliberate step that refills
+         *     them. (The metadata job resolves every NEW upload on its
+         *     own; this run only matters for re-resolving what already
+         *     exists.)
+         *
+         *     The scope is every GPS-bearing asset row whatever its
+         *     lifecycle state -- place resolution is metadata, not
+         *     visibility. `total` and `done` of the run's `job_runs` row
+         *     count those assets and `failed` the ones whose re-resolution
+         *     write failed.
+         *
+         *     The endpoint is idempotent the way the model rerun is: a
+         *     place re-resolution run still in flight (`queued` or
+         *     `running`) answers 200 with its identifier and starts
+         *     nothing; a finished (or failed) run never blocks a new one.
+         *
+         *     The run is API-only in this milestone: no admin page button
+         *     is wired to it yet (the job panel's listing shows its
+         *     progress like any other run).
+         */
+        post: operations["reresolvePlaces"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2606,10 +2709,11 @@ export interface components {
         /**
          * @description The kinds of job runs the instance records. The model
          *     download is one run; each machine learning slot's rerun is
-         *     its own kind, named after the slot it redoes.
+         *     its own kind, named after the slot it redoes; the place
+         *     re-resolution is the places-data-update path's kind.
          * @enum {string}
          */
-        JobRunKind: "model_download" | "face_detect_rerun" | "face_recognize_rerun" | "clip_embed_rerun" | "ocr_rerun";
+        JobRunKind: "model_download" | "face_detect_rerun" | "face_recognize_rerun" | "clip_embed_rerun" | "ocr_rerun" | "places_rerun";
         /**
          * @description The lifecycle of a job run: `queued` from creation until the
          *     driver picks it up, `running` while it works, then
@@ -3705,6 +3809,66 @@ export interface components {
              * @description The cluster the face occupies after the move.
              */
             clusterId: string;
+        };
+        /**
+         * @description One city group of the caller's places list: a GeoNames place
+         *     holding at least one caller-visible live asset. The count and
+         *     the covers are the caller's honest view -- the same place can
+         *     show different counts to different accounts.
+         */
+        PlaceSummary: {
+            /**
+             * Format: int32
+             * @description The GeoNames geonameid of the place -- the `places` row's
+             *     primary key and the `assets.place_id` foreign key the
+             *     ingestion pipeline's resolution writes.
+             * @example 2988507
+             */
+            placeId: number;
+            /**
+             * @description The display name in the request's locale: the
+             *     `place_names` row of that locale when the reference data
+             *     carries one, the GeoNames canonical (English or
+             *     romanized) name otherwise. A locale switch changes this
+             *     join only, never an asset row.
+             * @example Paris
+             * @example 巴黎
+             */
+            name: string;
+            /**
+             * @description The place's ISO 3166-1 alpha-2 country code. The display
+             *     country name is the client's business (its own locale
+             *     table maps the code).
+             * @example FR
+             */
+            country: string;
+            /**
+             * @description The place's caller-visible live assets -- the honest
+             *     per-caller count, not the global member count.
+             */
+            assetCount: number;
+            /**
+             * @description The place's cover candidates: its (up to) four most
+             *     recent caller-visible live members, taken_at descending
+             *     with the asset id as the tiebreak -- the wall's
+             *     derived-cover discipline applied to city groups, newest
+             *     first.
+             */
+            representativeCoverAssetIds: string[];
+        };
+        /**
+         * @description The identifier of one place re-resolution run: the
+         *     `job_runs` row the re-resolution job drives and the
+         *     `job.*` events announce.
+         */
+        PlacesRerunResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the run's `job_runs` row. `202`
+             *     carries the freshly created run; `200` the in-flight one
+             *     the request joined instead.
+             */
+            jobRunId: string;
         };
         /**
          * @description The caller's album wall: the own group followed by the shared
@@ -7353,6 +7517,72 @@ export interface operations {
             };
         };
     };
+    listPlaces: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The display locale of the place names: `en` or `zh-Hans`,
+                 *     the instance's UI language set. Absent means `en`. A
+                 *     value outside the set answers 400 `VALIDATION_FAILED`.
+                 * @example zh-Hans
+                 */
+                locale?: "en" | "zh-Hans";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The caller's city grouping, ordered by asset count
+             *     descending (the place id ascending as the tiebreak). The
+             *     array is empty when no visible asset of the caller
+             *     carries a resolved place.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSummary"][];
+                };
+            };
+            /**
+             * @description The locale parameter carries a value outside the
+             *     instance's language set.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listInstanceUsers: {
         parameters: {
             query?: never;
@@ -7980,6 +8210,84 @@ export interface operations {
              *     `admin`.
              */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    reresolvePlaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description A place re-resolution run is already in flight (`queued`
+             *     or `running`); its identifier is returned and NO new run
+             *     is created or enqueued.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacesRerunResponse"];
+                };
+            };
+            /**
+             * @description The re-resolution run was created (state `queued`,
+             *     `total` carrying the GPS-bearing asset count) and its
+             *     job enqueued. The worker flips the run to `running`
+             *     when the walk begins.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacesRerunResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The run could not be started: no job queue is wired to
+             *     the API surface, or this server runs without the place
+             *     reference data (no GeoNames bake, so no grid to resolve
+             *     against), or creating the run failed. The run itself,
+             *     once started, reports its own failures through its
+             *     `job_runs` row (state `failed`).
+             */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

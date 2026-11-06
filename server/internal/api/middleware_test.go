@@ -194,6 +194,7 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"POST /api/v1/people/merge",
 		"POST /api/v1/faces/{faceId}/move",
 		"GET /api/v1/faces/{faceId}/thumbnail",
+		"GET /api/v1/places",
 		"GET /api/v1/admin/users",
 		"POST /api/v1/admin/users",
 		"PATCH /api/v1/admin/users/{id}",
@@ -202,6 +203,7 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"PATCH /api/v1/admin/models/{id}",
 		"POST /api/v1/admin/models/{id}/rerun",
 		"POST /api/v1/admin/models/scan",
+		"POST /api/v1/admin/places/reresolve",
 		"GET /api/v1/admin/jobs",
 	}
 	for _, route := range want {

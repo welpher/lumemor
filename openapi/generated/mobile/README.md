@@ -93,6 +93,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**listJobs**](doc/AdminApi.md#listjobs) | **GET** /admin/jobs | List the job runs of the task panel.
 [*AdminApi*](doc/AdminApi.md) | [**listModels**](doc/AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [*AdminApi*](doc/AdminApi.md) | [**listUsers**](doc/AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
+[*AdminApi*](doc/AdminApi.md) | [**reresolvePlaces**](doc/AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
@@ -137,6 +138,7 @@ Class | Method | HTTP request | Description
 [*PeopleApi*](doc/PeopleApi.md) | [**moveFace**](doc/PeopleApi.md#moveface) | **POST** /faces/{faceId}/move | Move one face onto an existing face cluster.
 [*PeopleApi*](doc/PeopleApi.md) | [**setPersonHidden**](doc/PeopleApi.md#setpersonhidden) | **PUT** /people/{clusterId}/hidden | Flip the caller&#39;s hidden switch of one face cluster.
 [*PeopleApi*](doc/PeopleApi.md) | [**unlabelPerson**](doc/PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
+[*PlacesApi*](doc/PlacesApi.md) | [**listPlaces**](doc/PlacesApi.md#listplaces) | **GET** /places | The caller&#39;s city grouping.
 [*ServerApi*](doc/ServerApi.md) | [**createAdmin**](doc/ServerApi.md#createadmin) | **POST** /server/setup/admin | Create the first administrator account.
 [*ServerApi*](doc/ServerApi.md) | [**getServerInfo**](doc/ServerApi.md#getserverinfo) | **GET** /server/info | Report instance version and feature switches.
 [*UsersApi*](doc/UsersApi.md) | [**listInstanceUsers**](doc/UsersApi.md#listinstanceusers) | **GET** /users | The instance&#39;s member list.
@@ -202,6 +204,8 @@ Class | Method | HTTP request | Description
  - [PersonLabel](doc/PersonLabel.md)
  - [PersonLabelResponse](doc/PersonLabelResponse.md)
  - [PersonSummary](doc/PersonSummary.md)
+ - [PlaceSummary](doc/PlaceSummary.md)
+ - [PlacesRerunResponse](doc/PlacesRerunResponse.md)
  - [RemoveAlbumItemsResponse](doc/RemoveAlbumItemsResponse.md)
  - [ServerInfo](doc/ServerInfo.md)
  - [SessionInfo](doc/SessionInfo.md)

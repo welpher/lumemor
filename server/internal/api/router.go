@@ -86,6 +86,12 @@ type Deps struct {
 	// wiring order); production passes the jobs queue, which
 	// implements it structurally.
 	MlReruns MlRerunEnqueuer
+	// PlacesReruns starts the place re-resolution runs: the
+	// re-resolution endpoint enqueues the places rerun job through
+	// this seam. Nil keeps the endpoint answering 500 INTERNAL (no
+	// queue wired -- tests, wiring order); production passes the jobs
+	// queue, which implements it structurally.
+	PlacesReruns PlacesRerunEnqueuer
 }
 
 // AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
@@ -127,6 +133,18 @@ type MlRerunEnqueuer interface {
 	// River driver job in one transaction, returning the run's
 	// identifier.
 	EnqueueMlRerun(ctx context.Context, slot ml.Slot) (uuid.UUID, error)
+}
+
+// PlacesRerunEnqueuer starts one place re-resolution run. It is the
+// seam between the re-resolution endpoint and the job queue:
+// production passes the jobs package's Queue, which implements it
+// structurally.
+type PlacesRerunEnqueuer interface {
+	// EnqueuePlacesRerun creates the run's job_runs row and enqueues
+	// the River job in one transaction, returning the run's
+	// identifier. The enqueue refuses a server without the place
+	// reference data: there is no grid to re-resolve against.
+	EnqueuePlacesRerun(ctx context.Context) (uuid.UUID, error)
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
@@ -184,6 +202,9 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		modelsDir: deps.ModelsDir,
 		// The rerun enqueue seam: nil is a valid (no queue) wiring.
 		mlReruns: deps.MlReruns,
+		// The places re-resolution enqueue seam: nil is a valid (no
+		// queue) wiring.
+		placesReruns: deps.PlacesReruns,
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
@@ -358,6 +379,12 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/people", wrapper.ListPeople)
 				r.Get("/people/unnamed", wrapper.ListUnnamedPeople)
 				r.Get("/people/{clusterId}", wrapper.GetPersonCluster)
+				// The places surface read (M3d Task 1): the caller's city
+				// grouping -- two bounded row reads (the grouping with its
+				// honest per-caller counts, then at most four cover
+				// candidates per listed place), the same cost class as the
+				// people listing.
+				r.Get("/places", wrapper.ListPlaces)
 				// The people surface writes (M3b Task 2): the caller's
 				// label and hidden switches, the cluster merge and the
 				// single face move. All are bounded row reads and
@@ -406,6 +433,11 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Patch("/admin/models/{id}", wrapper.ActivateModel)
 				r.Post("/admin/models/{id}/rerun", wrapper.RerunModel)
 				r.Post("/admin/models/scan", wrapper.ScanModels)
+				// The places re-resolution trigger (M3d Task 1): the
+				// places-data-update path's run start. The handler is
+				// one bounded row read plus one enqueue; the walk over
+				// every GPS-bearing asset lives on the queue.
+				r.Post("/admin/places/reresolve", wrapper.ReresolvePlaces)
 				r.Get("/admin/jobs", wrapper.ListJobs)
 			})
 
@@ -505,6 +537,10 @@ type server struct {
 	// is wired and the rerun endpoint answers the generic internal
 	// error.
 	mlReruns MlRerunEnqueuer
+	// placesReruns starts the place re-resolution runs; nil means no
+	// queue is wired and the re-resolution endpoint answers the
+	// generic internal error.
+	placesReruns PlacesRerunEnqueuer
 }
 
 // writeJSON emits v as the JSON response body with the given status.

@@ -285,6 +285,7 @@ const (
 	FaceRecognizeRerun JobRunKind = "face_recognize_rerun"
 	ModelDownload      JobRunKind = "model_download"
 	OcrRerun           JobRunKind = "ocr_rerun"
+	PlacesRerun        JobRunKind = "places_rerun"
 )
 
 // Valid indicates whether the value is a known member of the JobRunKind enum.
@@ -299,6 +300,8 @@ func (e JobRunKind) Valid() bool {
 	case ModelDownload:
 		return true
 	case OcrRerun:
+		return true
+	case PlacesRerun:
 		return true
 	default:
 		return false
@@ -500,6 +503,24 @@ func (e GetAssetThumbnailParamsSize) Valid() bool {
 	case Tile:
 		return true
 	case View:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListPlacesParamsLocale.
+const (
+	En     ListPlacesParamsLocale = "en"
+	ZhHans ListPlacesParamsLocale = "zh-Hans"
+)
+
+// Valid indicates whether the value is a known member of the ListPlacesParamsLocale enum.
+func (e ListPlacesParamsLocale) Valid() bool {
+	switch e {
+	case En:
+		return true
+	case ZhHans:
 		return true
 	default:
 		return false
@@ -1385,7 +1406,8 @@ type FaceDetail struct {
 
 // JobRunKind The kinds of job runs the instance records. The model
 // download is one run; each machine learning slot's rerun is
-// its own kind, named after the slot it redoes.
+// its own kind, named after the slot it redoes; the place
+// re-resolution is the places-data-update path's kind.
 type JobRunKind string
 
 // JobRunListResponse The task panel listing: the instance's job runs, newest
@@ -1417,7 +1439,8 @@ type JobRunResponse struct {
 
 	// Kind The kinds of job runs the instance records. The model
 	// download is one run; each machine learning slot's rerun is
-	// its own kind, named after the slot it redoes.
+	// its own kind, named after the slot it redoes; the place
+	// re-resolution is the places-data-update path's kind.
 	Kind JobRunKind `json:"kind"`
 
 	// StartedAt When the run's driver first picked it up (RFC 3339
@@ -1751,6 +1774,59 @@ type PersonSummary struct {
 	//
 	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
 	Thumbnail string `json:"thumbnail"`
+}
+
+// PlaceSummary One city group of the caller's places list: a GeoNames place
+// holding at least one caller-visible live asset. The count and
+// the covers are the caller's honest view -- the same place can
+// show different counts to different accounts.
+type PlaceSummary struct {
+	// AssetCount The place's caller-visible live assets -- the honest
+	// per-caller count, not the global member count.
+	AssetCount int `json:"assetCount"`
+
+	// Country The place's ISO 3166-1 alpha-2 country code. The display
+	// country name is the client's business (its own locale
+	// table maps the code).
+	//
+	//
+	// Examples: FR
+	Country string `json:"country"`
+
+	// Name The display name in the request's locale: the
+	// `place_names` row of that locale when the reference data
+	// carries one, the GeoNames canonical (English or
+	// romanized) name otherwise. A locale switch changes this
+	// join only, never an asset row.
+	//
+	//
+	// Examples: Paris, 巴黎
+	Name string `json:"name"`
+
+	// PlaceId The GeoNames geonameid of the place -- the `places` row's
+	// primary key and the `assets.place_id` foreign key the
+	// ingestion pipeline's resolution writes.
+	//
+	//
+	// Examples: 2988507
+	PlaceId int32 `json:"placeId"`
+
+	// RepresentativeCoverAssetIds The place's cover candidates: its (up to) four most
+	// recent caller-visible live members, taken_at descending
+	// with the asset id as the tiebreak -- the wall's
+	// derived-cover discipline applied to city groups, newest
+	// first.
+	RepresentativeCoverAssetIds []openapi_types.UUID `json:"representativeCoverAssetIds"`
+}
+
+// PlacesRerunResponse The identifier of one place re-resolution run: the
+// `job_runs` row the re-resolution job drives and the
+// `job.*` events announce.
+type PlacesRerunResponse struct {
+	// JobRunId UUIDv7 identifier of the run's `job_runs` row. `202`
+	// carries the freshly created run; `200` the in-flight one
+	// the request joined instead.
+	JobRunId openapi_types.UUID `json:"jobRunId"`
 }
 
 // RemoveAlbumItemsResponse The honest report of one membership remove over the
@@ -2334,6 +2410,17 @@ type ListUnnamedPeopleParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListPlacesParams defines parameters for ListPlaces.
+type ListPlacesParams struct {
+	// Locale The display locale of the place names: `en` or `zh-Hans`,
+	// the instance's UI language set. Absent means `en`. A
+	// value outside the set answers 400 `VALIDATION_FAILED`.
+	Locale *ListPlacesParamsLocale `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// ListPlacesParamsLocale defines parameters for ListPlaces.
+type ListPlacesParamsLocale string
+
 // ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
 type ActivateModelJSONRequestBody = ActivateModelJSONBody
 
@@ -2411,6 +2498,9 @@ type ServerInterface interface {
 	// RerunModel Start a manual rerun of the active model's slot.
 	// (POST /admin/models/{id}/rerun)
 	RerunModel(w http.ResponseWriter, r *http.Request, id string)
+	// ReresolvePlaces Start a full place re-resolution run.
+	// (POST /admin/places/reresolve)
+	ReresolvePlaces(w http.ResponseWriter, r *http.Request)
 	// ListUsers List the instance's accounts.
 	// (GET /admin/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -2537,6 +2627,9 @@ type ServerInterface interface {
 	// LabelPerson Name one face cluster (the caller's private label).
 	// (PUT /people/{clusterId}/label)
 	LabelPerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
+	// ListPlaces The caller's city grouping.
+	// (GET /places)
+	ListPlaces(w http.ResponseWriter, r *http.Request, params ListPlacesParams)
 	// GetServerInfo Report instance version and feature switches.
 	// (GET /server/info)
 	GetServerInfo(w http.ResponseWriter, r *http.Request)
@@ -2591,6 +2684,12 @@ func (_ Unimplemented) ActivateModel(w http.ResponseWriter, r *http.Request, id 
 // RerunModel Start a manual rerun of the active model's slot.
 // (POST /admin/models/{id}/rerun)
 func (_ Unimplemented) RerunModel(w http.ResponseWriter, r *http.Request, id string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReresolvePlaces Start a full place re-resolution run.
+// (POST /admin/places/reresolve)
+func (_ Unimplemented) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2846,6 +2945,12 @@ func (_ Unimplemented) LabelPerson(w http.ResponseWriter, r *http.Request, clust
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListPlaces The caller's city grouping.
+// (GET /places)
+func (_ Unimplemented) ListPlaces(w http.ResponseWriter, r *http.Request, params ListPlacesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetServerInfo Report instance version and feature switches.
 // (GET /server/info)
 func (_ Unimplemented) GetServerInfo(w http.ResponseWriter, r *http.Request) {
@@ -3003,6 +3108,20 @@ func (siw *ServerInterfaceWrapper) RerunModel(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RerunModel(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReresolvePlaces operation middleware
+func (siw *ServerInterfaceWrapper) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReresolvePlaces(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4110,6 +4229,39 @@ func (siw *ServerInterfaceWrapper) LabelPerson(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListPlaces operation middleware
+func (siw *ServerInterfaceWrapper) ListPlaces(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlacesParams
+
+	// ------------- Optional query parameter "locale" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "locale", r.URL.Query(), &params.Locale, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "locale"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "locale", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlaces(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetServerInfo operation middleware
 func (siw *ServerInterfaceWrapper) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 
@@ -4435,6 +4587,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/faces/{faceId}/thumbnail", wrapper.GetFaceThumbnail)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/places", wrapper.ListPlaces)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/users", wrapper.ListInstanceUsers)
 	})
 	r.Group(func(r chi.Router) {
@@ -4460,6 +4615,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/models/scan", wrapper.ScanModels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/places/reresolve", wrapper.ReresolvePlaces)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/jobs", wrapper.ListJobs)

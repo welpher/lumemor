@@ -21,22 +21,22 @@ import (
 // (the longitude ring widens there), and dense clusters.
 func archipelago() []Centroid {
 	return []Centroid{
-		{ID: 1, Lat: 48.85341, Lon: 2.3488},    // Paris
-		{ID: 2, Lat: 51.50722, Lon: -0.1275},   // London
-		{ID: 3, Lat: 39.9075, Lon: 116.39723},  // Beijing
-		{ID: 4, Lat: 1.35208, Lon: 103.81984},  // Singapore (equator)
-		{ID: 5, Lat: 78.2186, Lon: 15.6401},    // Longyearbyen (Svalbard)
-		{ID: 6, Lat: -33.8688, Lon: 151.2093},  // Sydney
-		{ID: 7, Lat: 64.1466, Lon: -21.9426},   // Reykjavik
-		{ID: 8, Lat: 0.0, Lon: 179.9},          // antimeridian west side
-		{ID: 9, Lat: 0.0, Lon: -179.9},         // antimeridian east side
-		{ID: 10, Lat: 89.0, Lon: 45.0},         // near the pole
-		{ID: 11, Lat: 48.0, Lon: 2.0},          // ~90 km south of Paris
-		{ID: 12, Lat: 48.0, Lon: 3.0},          // ~100 km south-east of Paris
-		{ID: 13, Lat: -0.5, Lon: -78.5},        // Quito region (south, wrap-free)
-		{ID: 20, Lat: 40.0, Lon: 179.95},       // antimeridian mid-latitude
-		{ID: 21, Lat: 40.0, Lon: -179.95},      // its wrap partner
-		{ID: 22, Lat: 0.0, Lon: 179.99},        // a hair east of the antimeridian
+		{ID: 1, Lat: 48.85341, Lon: 2.3488},   // Paris
+		{ID: 2, Lat: 51.50722, Lon: -0.1275},  // London
+		{ID: 3, Lat: 39.9075, Lon: 116.39723}, // Beijing
+		{ID: 4, Lat: 1.35208, Lon: 103.81984}, // Singapore (equator)
+		{ID: 5, Lat: 78.2186, Lon: 15.6401},   // Longyearbyen (Svalbard)
+		{ID: 6, Lat: -33.8688, Lon: 151.2093}, // Sydney
+		{ID: 7, Lat: 64.1466, Lon: -21.9426},  // Reykjavik
+		{ID: 8, Lat: 0.0, Lon: 179.9},         // antimeridian west side
+		{ID: 9, Lat: 0.0, Lon: -179.9},        // antimeridian east side
+		{ID: 10, Lat: 89.0, Lon: 45.0},        // near the pole
+		{ID: 11, Lat: 48.0, Lon: 2.0},         // ~90 km south of Paris
+		{ID: 12, Lat: 48.0, Lon: 3.0},         // ~100 km south-east of Paris
+		{ID: 13, Lat: -0.5, Lon: -78.5},       // Quito region (south, wrap-free)
+		{ID: 20, Lat: 40.0, Lon: 179.95},      // antimeridian mid-latitude
+		{ID: 21, Lat: 40.0, Lon: -179.95},     // its wrap partner
+		{ID: 22, Lat: 0.0, Lon: 179.99},       // a hair east of the antimeridian
 	}
 }
 
@@ -115,8 +115,15 @@ func TestIndexResolvesKnownPoints(t *testing.T) {
 		{"Longyearbyen", 78.2232, 15.6467, 5},
 		{"Sydney", -33.865, 151.2099, 6},
 		{"Reykjavik", 64.1466, -21.9426, 7},
-		{"antimeridian wrap", 0.0, -179.95, 8},
-		{"antimeridian wrap reverse", 0.0, 179.95, 9},
+		// The equatorial pair: the query hugs the -180 side, so the
+		// same-side city (9) is nearer than the wrap partner (8) --
+		// and the mirrored query on the +180 side answers 8.
+		{"antimeridian same side", 0.0, -179.95, 9},
+		{"antimeridian same side reverse", 0.0, 179.93, 8},
+		// The discriminating wrap case: the query west of -180 finds
+		// city 22 EAST of +180 across the line -- without the column
+		// wrap its cell sits outside the window and 9 would win.
+		{"antimeridian nearest across the line", 0.0, -179.995, 22},
 		{"mid-latitude wrap", 40.0, 179.99, 20},
 		{"mid-latitude wrap reverse", 40.0, -179.99, 21},
 	}
@@ -138,15 +145,17 @@ func TestIndexResolvesKnownPoints(t *testing.T) {
 // country-polygon fallback, no widening).
 func TestIndexBeyondThresholdIsNull(t *testing.T) {
 	ix := NewIndex(archipelago())
-	// ~(48.0, 2.0) is ~90 km from Paris (id 1) and ~100 km from id 12:
-	// far beyond 25 km with no other city near.
+	// (47.0, 2.0) sits ~111 km south of id 11 (the Paris-region
+	// fixture city at (48, 2)), ~134 km from id 12 and ~207 km from
+	// Paris itself: far beyond 25 km with nothing else near.
 	if id, _, ok := ix.NearestWithin(47.0, 2.0, ResolutionRadiusKm); ok {
 		t.Errorf("NearestWithin(47.0, 2.0) = %d, want nothing within 25 km", id)
 	}
 	// The same point DOES resolve once the radius is widened past the
-	// nearest distance -- the threshold is the only gate.
-	if id, dist, ok := ix.NearestWithin(47.0, 2.0, 150); !ok || id != 1 {
-		t.Errorf("NearestWithin(47.0, 2.0, 150) = (%d, %v, %v), want Paris (1)", id, dist, ok)
+	// nearest distance -- id 11 at ~111 km -- the threshold is the
+	// only gate.
+	if id, dist, ok := ix.NearestWithin(47.0, 2.0, 150); !ok || id != 11 {
+		t.Errorf("NearestWithin(47.0, 2.0, 150) = (%d, %v, %v), want 11 (the ~111 km-nearest fixture city)", id, dist, ok)
 	}
 }
 

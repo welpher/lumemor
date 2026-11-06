@@ -66,6 +66,9 @@ doc/PeopleApi.md
 doc/PersonLabel.md
 doc/PersonLabelResponse.md
 doc/PersonSummary.md
+doc/PlaceSummary.md
+doc/PlacesApi.md
+doc/PlacesRerunResponse.md
 doc/RemoveAlbumItemsResponse.md
 doc/ServerApi.md
 doc/ServerInfo.md
@@ -90,6 +93,7 @@ lib/src/api/assets_api.dart
 lib/src/api/auth_api.dart
 lib/src/api/events_api.dart
 lib/src/api/people_api.dart
+lib/src/api/places_api.dart
 lib/src/api/server_api.dart
 lib/src/api/users_api.dart
 lib/src/api_util.dart
@@ -158,6 +162,8 @@ lib/src/model/pairing_token_response.dart
 lib/src/model/person_label.dart
 lib/src/model/person_label_response.dart
 lib/src/model/person_summary.dart
+lib/src/model/place_summary.dart
+lib/src/model/places_rerun_response.dart
 lib/src/model/remove_album_items_response.dart
 lib/src/model/server_info.dart
 lib/src/model/session_info.dart
@@ -238,6 +244,9 @@ test/people_api_test.dart
 test/person_label_response_test.dart
 test/person_label_test.dart
 test/person_summary_test.dart
+test/place_summary_test.dart
+test/places_api_test.dart
+test/places_rerun_response_test.dart
 test/remove_album_items_response_test.dart
 test/server_api_test.dart
 test/server_info_test.dart
