@@ -48,12 +48,17 @@ test('renders one labeled stop per month with the navigation label', () => {
 	const nav = document.body.querySelector('nav.scrubber');
 	expect(nav?.getAttribute('aria-label')).toBe('Jump to month');
 	const stops = document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop');
-	// The proportional axis: short month labels, the year appears
-	// once at the head of its run (all four months are 2026).
-	const labels = document.body.querySelectorAll('.scrubber__label');
-	expect(Array.from(labels).map((label) => label.textContent)).toEqual(['Nov', 'Oct', 'Sep', 'Aug']);
+	// The year-only resting axis: the year labels the rail once per
+	// year run (all four months are 2026); the months ride as dots
+	// whose accessible names carry the full labels.
 	const years = document.body.querySelectorAll('.scrubber__year');
 	expect(Array.from(years).map((year) => year.textContent)).toEqual(['2026']);
+	expect(Array.from(stops).map((stop) => stop.getAttribute('aria-label'))).toEqual(
+		months.map((month) => month.label)
+	);
+	// No resting month labels and no readout at rest.
+	expect(document.body.querySelector('.scrubber__label')).toBeNull();
+	expect(document.body.querySelector('.scrubber__readout')).toBeNull();
 	// The stops sit at data-proportional offsets: four months of
 	// equal count divide the usable span evenly (0, 1/4, 1/2, 3/4 of
 	// a 140px rail minus the stop height: 0/31/62/93px).

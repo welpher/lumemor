@@ -1,14 +1,13 @@
 <script lang="ts">
-	// The right-edge timeline scrubber: a proportional month axis.
-	// One stop per LOADED month, positioned by the month's share of
-	// the loaded photo mass -- a month with many photos occupies more
-	// rail than a sparse one, so the rail reads like the timeline it
-	// navigates instead of an even list. Labels are short month names
-	// (the year appears once, at each year boundary, as a faint
-	// prefix). Clicking a stop jumps to its group; dragging anywhere
-	// on the rail scrubs continuously -- the pointer's height maps
-	// onto the nearest stop's center. v0 scrubs within the loaded
-	// data only; deep jumps with date filters arrive with the M3
+	// The right-edge timeline scrubber: a proportional year axis with
+	// hover-revealed months. At rest only the years label the axis;
+	// each month still rides it as a dot positioned by the month's
+	// share of the loaded photo mass (a month with many photos
+	// occupies more rail). Hovering or focusing the rail reveals the
+	// pointer-nearest month's full label; dragging scrubs
+	// continuously with the same label as the live readout. Clicking
+	// a stop jumps to its group. v0 scrubs within the loaded data
+	// only; deep jumps with date filters arrive with the M3
 	// timeline.
 	import { _, locale } from 'svelte-i18n';
 
@@ -23,7 +22,7 @@
 
 	type Props = {
 		months: readonly MonthEntry[];
-		/** The month the wall currently shows (the highlighted stop). */
+		/** The month the wall currently shows (the highlighted dot). */
 		activeKey?: string | null;
 		/** Jump callback: the page scrolls the month group into view. */
 		onjump: (key: string) => void;
@@ -43,15 +42,15 @@
 
 	type Stop = {
 		key: string;
-		short: string;
-		/** The faint year prefix, only where the year changes. */
+		label: string;
+		/** The faint year label, only where the year changes. */
 		year: string | null;
 		top: number;
 		center: number;
 	};
 
 	/** The positioned stops: data-proportional first, then a forward
-	 * relaxation pass keeps every label legible, and a final
+	 * relaxation pass keeps every dot legible, and a final
 	 * proportional squeeze fits a dense history into the capped
 	 * rail. Deterministic -- the same months always pack the same. */
 	const stops = $derived.by(() => {
@@ -63,20 +62,20 @@
 		const usable = Math.max(STOP_HEIGHT, railHeight - STOP_HEIGHT);
 		let cumulative = 0;
 		const laid: Stop[] = months.map((month, index) => {
-			const [year, monthNumber] = month.key.split('-');
+			const [year] = month.key.split('-');
 			const previous = months[index - 1];
 			const yearChanges = previous === undefined || previous.key.split('-')[0] !== year;
 			const byData = (cumulative / total) * usable;
 			cumulative += counts[index];
 			return {
 				key: month.key,
-				short: shortMonth(Number(monthNumber) - 1, $locale),
+				label: month.label,
 				year: yearChanges ? year : null,
 				top: byData,
 				center: byData + STOP_HEIGHT / 2
 			};
 		});
-		// The relaxation pass: no label may ride onto the one above.
+		// The relaxation pass: no dot may ride onto the one above.
 		for (let i = 1; i < laid.length; i += 1) {
 			laid[i].top = Math.max(laid[i].top, laid[i - 1].top + STOP_HEIGHT);
 			laid[i].center = laid[i].top + STOP_HEIGHT / 2;
@@ -94,20 +93,20 @@
 		return laid;
 	});
 
-	/** The locale's short month name ("Nov" / "11月"). */
-	function shortMonth(monthIndex: number, activeLocale: string | null | undefined): string {
-		const formatter = new Intl.DateTimeFormat(activeLocale ?? 'en', {
-			month: 'short',
-			timeZone: 'UTC'
-		});
-		return formatter.format(new Date(Date.UTC(2026, monthIndex, 1)));
-	}
-
 	let rail: HTMLElement | undefined = $state();
 	let dragging = false;
-	// A rail pointerdown already jumped; the click that follows it on
-	// the button underneath must not jump again.
+	// A rail pointerdown already jumped; the click that follows the
+	// release lands on the PRESSED button (the pointer capture) whose
+	// month may differ from the drag's destination -- it must not
+	// jump back.
 	let suppressClick = false;
+	// The month whose label the rail reveals (hover or keyboard
+	// focus); the drag keeps the last jumped month revealed as the
+	// live readout.
+	let revealedKey: string | null = $state(null);
+
+	/** The revealed stop, for its label's position. */
+	const revealed = $derived(stops.find((stop) => stop.key === revealedKey) ?? null);
 
 	/** The stop whose center is nearest the pointer's height. The
 	 * comparison runs in rail fractions (the pointer's fraction of
@@ -135,6 +134,7 @@
 
 	function jumpTo(key: string | null): void {
 		if (key !== null) {
+			revealedKey = key;
 			onjump(key);
 		}
 	}
@@ -157,7 +157,10 @@
 	}
 
 	function handlePointerMove(event: PointerEvent): void {
+		// A hover (not pressed) reveals the nearest month's label;
+		// a drag jumps to it -- both read the same geometry.
 		if (!dragging) {
+			revealedKey = nearestKey(event.clientY);
 			return;
 		}
 		jumpTo(nearestKey(event.clientY));
@@ -174,6 +177,19 @@
 		suppressClick = false;
 	}
 
+	function handlePointerLeave(): void {
+		// Leaving the rail clears the hover readout; the active month
+		// stays marked by its dot, not a label.
+		if (!dragging) {
+			revealedKey = null;
+		}
+	}
+
+	function handleFocus(key: string): void {
+		// The keyboard path sees the same reveal the pointer does.
+		revealedKey = key;
+	}
+
 	function handleClick(key: string): void {
 		if (suppressClick) {
 			suppressClick = false;
@@ -187,38 +203,52 @@
 	<nav class="scrubber fixed top-1/2 right-3 -translate-y-1/2 z-(--z-page)" aria-label={$_('timeline_scrubber_label')}>
 		<!-- The drag owns the pointer: no touch scrolling fights it.
 		     The rail is transparent: its gutter is its background. -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -- the rail is a pointer surface of the labeled nav above it; its buttons carry the semantics. -->
 		<div
-			class="scrubber__rail relative touch-none"
+			class="scrubber__rail relative w-10 touch-none"
 			bind:this={rail}
 			style="height: {railHeight}px"
+			onpointermove={handlePointerMove}
+			onpointerleave={handlePointerLeave}
+			onpointerup={handlePointerUp}
+			onpointercancel={handlePointerCancel}
 		>
-			<!-- The axis spine the stops ride on. -->
-			<span class="scrubber__spine absolute top-1 bottom-1 right-[13px] w-px bg-border" aria-hidden="true"></span>
+			<!-- The axis spine the years and dots ride on. -->
+			<span class="scrubber__spine absolute top-1 bottom-1 right-[5px] w-px bg-border" aria-hidden="true"></span>
 			{#each stops as stop (stop.key)}
+				{#if stop.year !== null}
+					<span
+						class="scrubber__year absolute right-2.5 font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
+						style="top: {stop.top}px"
+						aria-hidden="true"
+					>{stop.year}</span>
+				{/if}
 				<button
-					class="scrubber__stop absolute right-1 flex items-center gap-1.5 h-[16px] pr-1.5 font-body font-semibold text-[10px] leading-[1] whitespace-nowrap cursor-pointer transition-[color] duration-(--motion-fast) ease-standard hover:text-accent-soft-text"
+					class="scrubber__stop absolute right-1 flex items-center justify-center w-[11px] h-[16px] cursor-pointer"
 					class:scrubber__stop--active={activeKey === stop.key}
-					class:text-accent-soft-text={activeKey === stop.key}
-					class:text-text-soft={activeKey !== stop.key}
 					style="top: {stop.top}px"
 					type="button"
+					aria-label={stop.label}
 					aria-current={activeKey === stop.key ? 'true' : undefined}
 					onpointerdown={(event) => handlePointerDown(event, stop.key)}
-					onpointermove={handlePointerMove}
-					onpointerup={handlePointerUp}
-					onpointercancel={handlePointerCancel}
+					onfocus={() => handleFocus(stop.key)}
 					onclick={() => handleClick(stop.key)}
 				>
-					{#if stop.year !== null}
-						<span class="scrubber__year text-[9px] font-normal text-text-faint tabular-nums">{stop.year}</span>
-					{/if}
-					<span class="scrubber__label">{stop.short}</span>
 					<span
 						class="scrubber__dot w-[5px] h-[5px] rounded-full {activeKey === stop.key ? 'bg-accent' : 'bg-border-strong'}"
 						aria-hidden="true"
 					></span>
 				</button>
 			{/each}
+			{#if revealed !== null}
+				<!-- The hover/drag readout: the nearest month's full label,
+				     riding the spine at the revealed stop's height. -->
+				<span
+					class="scrubber__readout absolute right-2.5 font-body font-semibold text-[11px] leading-[16px] whitespace-nowrap text-text"
+					style="top: {revealed.top}px"
+					aria-hidden="true"
+				>{revealed.label}</span>
+			{/if}
 		</div>
 	</nav>
 {/if}

@@ -76,8 +76,8 @@ ARG APT_MIRROR=""
 # carries: libvips-dev for the thumbnail pipeline, libheif-dev for the
 # HEIC decode and AVIF encode, and pkg-config to locate them (the
 # golang image already ships pkg-config; naming it keeps the line
-# correct even if the base image ever drops it). curl joins the list
-# for the onnxruntime fetch below.
+# correct even if the base image ever drops it). curl and unzip join
+# the list for the onnxruntime and GeoNames fetches below.
 RUN if [ -n "$APT_MIRROR" ]; then \
         sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; \
     fi \
@@ -86,6 +86,7 @@ RUN if [ -n "$APT_MIRROR" ]; then \
         libheif-dev \
         pkg-config \
         curl \
+        unzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -135,6 +136,59 @@ RUN set -eux; \
     tar -xzf /tmp/onnxruntime.tgz -C /tmp; \
     mv "/tmp/onnxruntime-linux-${ort_arch}-1.31.0/lib/libonnxruntime.so.1.31.0" /out/; \
     rm -rf /tmp/onnxruntime.tgz "/tmp/onnxruntime-linux-${ort_arch}-1.31.0"
+
+# The GeoNames reference data (M3d places), fetched and verified here
+# so the runtime stage below receives exactly the bytes this build
+# checked -- the places distribution discipline: build-time bake,
+# sha256-pinned, ZERO runtime network. The three sources:
+#
+# - cities500.zip: every populated place of population >= 500
+#   (~237k rows, the resolution grid's centroids);
+# - admin1CodesASCII.txt: the first-level administrative divisions
+#   (the admin1_code column of places and the locale names of the
+#   admin1 entities);
+# - alternateNamesV2.zip: the multilingual names. Only the zh rows
+#   of the known geoname ids survive the bake (the en display names
+#   come from the canonical names by the data model's uniform rule,
+#   so the en alternates would be dead weight; the loader re-applies
+#   both filters, so the staged subset parses to exactly the dataset
+#   the unfiltered dump would).
+#
+# The staged result under /out/geo is what the loader reads: the
+# server's startup import replaces the places/place_names tables with
+# it when its data-version marker (the sha256 digest of the three
+# staged files) changes, and the in-memory resolution grid builds
+# from the imported rows -- no runtime download, no external call,
+# the zero-cloud promise kept. The dumps update upstream over time:
+# a changed dump fails the pinned digest on the next build (drift
+# detection, same as the model pins), and re-pinning is the
+# maintainer's deliberate act. GeoNames data is CC BY 4.0
+# (attribution: geonames.org).
+#
+# GEONAMES_MIRROR overrides the base URL (https://download.geonames
+# .org/export/dump) for restricted networks -- a mirror of the same
+# byte paths; the per-file sha256 stays pinned either way, so
+# anything but the pinned bytes fails the build. The download can go
+# through a proxy via the predefined https_proxy build arg (same as
+# the onnxruntime fetch above).
+ARG GEONAMES_MIRROR=""
+RUN set -eux; \
+    geo_base="https://download.geonames.org/export/dump"; \
+    if [ -n "$GEONAMES_MIRROR" ]; then geo_base="${GEONAMES_MIRROR}"; fi; \
+    mkdir -p /out/geo /tmp/geo; \
+    curl -fsSL --retry 3 -o /tmp/geo/cities500.zip "${geo_base}/cities500.zip"; \
+    echo "e3bdf6424014c5f29ad6601df97f8f63120770946370b5ba16ddb2ceeda64436  /tmp/geo/cities500.zip" | sha256sum -c -; \
+    curl -fsSL --retry 3 -o /out/geo/admin1CodesASCII.txt "${geo_base}/admin1CodesASCII.txt"; \
+    echo "2e4867f5397acb056ea26377601b57af37cb4c81399770225018e9e439e91ad3  /out/geo/admin1CodesASCII.txt" | sha256sum -c -; \
+    curl -fsSL --retry 3 -o /tmp/geo/alternateNamesV2.zip "${geo_base}/alternateNamesV2.zip"; \
+    echo "f639c143e2cd6c0df494b34c429d32fefaebfab4b43b9df6d34bc186d300c09c  /tmp/geo/alternateNamesV2.zip" | sha256sum -c -; \
+    unzip -o -q /tmp/geo/cities500.zip -d /out/geo; \
+    unzip -o -q /tmp/geo/alternateNamesV2.zip -d /tmp/geo; \
+    awk -F'\t' '{print $1}' /out/geo/cities500.txt > /tmp/geo/ids.txt; \
+    awk -F'\t' 'NF >= 4 && $4 ~ /^[0-9]+$/ {print $4}' /out/geo/admin1CodesASCII.txt >> /tmp/geo/ids.txt; \
+    sort -u /tmp/geo/ids.txt -o /tmp/geo/ids.txt; \
+    awk -F'\t' 'NR == FNR {ids[$1]; next} $3 == "zh" && ($2 in ids)' /tmp/geo/ids.txt /tmp/geo/alternateNamesV2.txt > /out/geo/alternateNames-zh.txt; \
+    rm -rf /tmp/geo
 
 # Runtime stage: Debian slim of the same release as the builder,
 # carrying the full media toolchain the server drives:
@@ -187,6 +241,17 @@ COPY --from=builder /out/lumemor /lumemor
 # ldconfig.
 COPY --from=builder /out/libonnxruntime.so.1.31.0 /usr/local/lib/libonnxruntime.so.1.31.0
 RUN ldconfig
+
+# The GeoNames reference data from the builder stage: the exact bytes
+# the builder verified and filtered (cities500, admin1 codes, the zh
+# alternate names of the known ids -- see the builder stage's bake
+# block). LUMEMOR_GEODATA_DIR points the server's startup load at it:
+# the idempotent import lands the places/place_names rows and the
+# in-memory resolution grid builds over them. The local development
+# default of the variable is empty (the feature honestly off); this
+# image always carries the data, so the runtime always resolves.
+COPY --from=builder /out/geo /usr/local/share/lumemor/geo
+ENV LUMEMOR_GEODATA_DIR=/usr/local/share/lumemor/geo
 
 # Fixed unprivileged uid/gid 10001. The fixed (not auto-allocated) id
 # is what makes the documented host-side preparation of the bind
