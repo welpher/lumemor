@@ -24,6 +24,7 @@ import (
 
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/geodata"
 	"github.com/welpher/lumemor/server/internal/ml"
 )
 
@@ -99,6 +100,13 @@ type Config struct {
 	// queue). Production leaves it nil and the queue wires its own
 	// dispatcher; the rerun tests inject fakes of the same contract.
 	MlRerunDispatch MlRerunDispatchFunc
+	// Places is the in-memory place grid the metadata job's GPS step
+	// and the places re-resolution run resolve against, built once at
+	// boot from the baked GeoNames data (geodata.Prepare). Nil is the
+	// feature-off wiring (no reference data): the metadata job leaves
+	// assets.place_id untouched and the places rerun enqueue refuses
+	// to start.
+	Places *geodata.Index
 	// Workers is the size of the worker pool. A non-positive value
 	// falls back to min(GOMAXPROCS, maxWorkers).
 	Workers int
@@ -120,6 +128,9 @@ type Queue struct {
 	// registry resolves the ML readiness seam's active models, pinned
 	// at Start: EnqueueMlJobs consults it on every dispatch.
 	registry *ml.Registry
+	// places is the in-memory place grid (the bake's centroids, built
+	// at boot); the places rerun enqueue refuses to start without it.
+	places *geodata.Index
 }
 
 // Start applies River's own migrations (idempotent: applied versions
@@ -179,6 +190,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		pool:    cfg.Pool,
 		bus:     cfg.Bus,
 		dataDir: cfg.DataDir,
+		places:  cfg.Places,
 		logger:  logger,
 	}
 	river.AddWorker(workers, metadataWorker)
@@ -221,6 +233,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		logger: logger,
 	}
 	river.AddWorker(workers, mlRerunWorker)
+	river.AddWorker(workers, &PlacesRerunWorker{
+		pool:   cfg.Pool,
+		bus:    cfg.Bus,
+		places: cfg.Places,
+		logger: logger,
+	})
 	faceDetectWorker := &FaceDetectWorker{
 		pool:     cfg.Pool,
 		dataDir:  cfg.DataDir,
@@ -287,7 +305,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		return nil, fmt.Errorf("jobs: create river client: %w", err)
 	}
 
-	queue := &Queue{client: client, pool: cfg.Pool, models: models, registry: registry}
+	queue := &Queue{client: client, pool: cfg.Pool, models: models, registry: registry, places: cfg.Places}
 
 	// Wire the ML readiness seam into the three pipeline workers: the
 	// dispatch is the queue's EnqueueMlJobs method value, and the

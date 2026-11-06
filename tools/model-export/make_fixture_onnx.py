@@ -181,6 +181,68 @@ def ocr_rec_graph() -> onnx.ModelProto:
     return finalize(graph)
 
 
+def text_embed_graph() -> onnx.GraphProto:
+    """Build text_embed.onnx, the CLIP text-tower fixture (M3d Task 3).
+
+    A stand-in for the Chinese-CLIP text tower with the real graph's
+    input/output contract: three named int64 inputs
+    (input_ids/attention_mask/token_type_ids) of shape [batch,
+    tokens] -- the token extent dynamic, like the pinned tower's --
+    answered by one [batch, 512] float32 feature named
+    text_features. The feature is a DETERMINISTIC function of the
+    token ids so the wiring tests stay sharp: feature d of row n is
+    input_ids[n][d mod CONTEXT] + 1 (the gather wraps the context
+    length; the +1 keeps every component nonzero so the wrapper's L2
+    normalization is observable over a deliberately non-unit norm).
+
+    The three inputs are consumed by name: attention_mask and
+    token_type_ids feed a ReduceSum that the output adds as a zero
+    broadcast (attention/token_type tensors of the wrapper's shape sum
+    to a constant the arithmetic cancels), keeping the input contract
+    honest without masking the token dependence.
+    """
+    CONTEXT = 52
+    DIM = 512
+    inp_ids = helper.make_tensor_value_info(
+        "input_ids", TensorProto.INT64, ["n", "t"]
+    )
+    inp_mask = helper.make_tensor_value_info(
+        "attention_mask", TensorProto.INT64, ["n", "t"]
+    )
+    inp_types = helper.make_tensor_value_info(
+        "token_type_ids", TensorProto.INT64, ["n", "t"]
+    )
+    out = helper.make_tensor_value_info(
+        "text_features", TensorProto.FLOAT, ["n", DIM]
+    )
+    indices = helper.make_tensor(
+        "gather_indices", TensorProto.INT64, [DIM], [i % CONTEXT for i in range(DIM)]
+    )
+    one = helper.make_tensor("one", TensorProto.FLOAT, [], [1.0])
+    zero = helper.make_tensor("zero", TensorProto.FLOAT, [], [0.0])
+    nodes = [
+        helper.make_node("Gather", ["input_ids", "gather_indices"], ["gathered"], axis=1),
+        helper.make_node("Cast", ["gathered"], ["ids_f"], to=TensorProto.FLOAT),
+        helper.make_node("Add", ["ids_f", "one"], ["plus_one"]),
+        helper.make_node("ReduceSum", ["attention_mask"], ["mask_sum"], keepdims=1),
+        helper.make_node("Cast", ["mask_sum"], ["mask_f"], to=TensorProto.FLOAT),
+        helper.make_node("Mul", ["mask_f", "zero"], ["mask_zeroed"]),
+        helper.make_node("ReduceSum", ["token_type_ids"], ["types_sum"], keepdims=1),
+        helper.make_node("Cast", ["types_sum"], ["types_f"], to=TensorProto.FLOAT),
+        helper.make_node("Mul", ["types_f", "zero"], ["types_zeroed"]),
+        helper.make_node("Add", ["plus_one", "mask_zeroed"], ["with_mask"]),
+        helper.make_node("Add", ["with_mask", "types_zeroed"], ["text_features"]),
+    ]
+    graph = helper.make_graph(
+        nodes,
+        "text_embed_fixture",
+        [inp_ids, inp_mask, inp_types],
+        [out],
+        initializer=[indices, one, zero],
+    )
+    return finalize(graph)
+
+
 def finalize(graph: onnx.GraphProto) -> onnx.ModelProto:
     """Stamp the shared opset/IR, validate, and return the model."""
     model = helper.make_model(
@@ -201,6 +263,7 @@ def main() -> None:
         "const768.onnx": const_graph(768),
         "ocr_det.onnx": ocr_det_graph(),
         "ocr_rec.onnx": ocr_rec_graph(),
+        "text_embed.onnx": text_embed_graph(),
     }
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for name, model in fixtures.items():

@@ -103,15 +103,15 @@ test('closed renders nothing; open renders the eight content items in IA order',
 	expect(iconClasses.size).toBe(8);
 
 	// The live links: the timeline, the M3c albums wall, the people,
-	// favorites, hidden and trash routes.
+	// the M3d places grid, favorites, hidden and trash routes.
 	const links = [...document.body.querySelectorAll<HTMLAnchorElement>('a.drawer__item')].map(
 		(link) => link.getAttribute('href')
 	);
-	expect(links).toEqual(['/timeline', '/albums', '/people', '/favorites', '/hidden', '/trash']);
+	expect(links).toEqual(['/timeline', '/albums', '/people', '/places', '/favorites', '/hidden', '/trash']);
 
-	// The M3 placeholders: present, visible, disabled.
+	// The M3 placeholder: present, visible, disabled.
 	const disabled = [...document.body.querySelectorAll<HTMLButtonElement>('button.drawer__item--disabled')];
-	expect(disabled.map((button) => button.textContent?.trim())).toEqual(['Places', 'Memories']);
+	expect(disabled.map((button) => button.textContent?.trim())).toEqual(['Memories']);
 	expect(disabled.every((button) => button.disabled)).toBe(true);
 	expect(disabled.every((button) => button.title !== '')).toBe(true);
 

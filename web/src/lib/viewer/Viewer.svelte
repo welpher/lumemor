@@ -75,6 +75,7 @@
 	import {
 		assetThumbnailUrl,
 		assetPlayUrl,
+		assetOriginalUrl,
 		type AssetDetail,
 		type AssetFaceSummary
 	} from '$lib/api/assets';
@@ -83,6 +84,7 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Star from '@lucide/svelte/icons/star';
+	import Download from '@lucide/svelte/icons/download';
 	import Info from '@lucide/svelte/icons/info';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -130,6 +132,11 @@
 		onaction: (action: BatchAction) => Promise<boolean>;
 		/** Open the page's assign dialog for one face (the drawer's People section). */
 		onassignface: (face: AssetFaceSummary) => void;
+		/**
+		 * Open the page's add-tag dialog over the current asset (the
+		 * drawer's tags row; per-user state, every viewer's own write).
+		 */
+		onassigntag: () => void;
 	};
 
 	let {
@@ -149,7 +156,8 @@
 		onprobe,
 		onedit,
 		onaction,
-		onassignface
+		onassignface,
+		onassigntag
 	}: Props = $props();
 
 	// The panel's open-preference persistence (R2-9): one key, default
@@ -440,7 +448,7 @@
 			     overlay over the right edge and would cover these
 			     buttons without the shift; at lg+ the split layout owns
 			     the clearance (lg:me-0) and the shift is inert. -->
-			<div class="viewer__bar-actions flex gap-1 {drawerOpen ? 'me-[calc(min(360px,92vw)+1rem)] lg:me-0' : ''}">
+			<div class="viewer__bar-actions flex flex-nowrap gap-1 {drawerOpen ? 'me-[calc(min(360px,92vw)+1rem)] lg:me-0' : ''}">
 				<button
 					class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
 					type="button"
@@ -503,6 +511,17 @@
 						<Maximize size={20} />
 					</button>
 				{/if}
+				<!-- The original download: an ACTION, not metadata -- the
+				     bar owns it beside the zoom utilities (the anchor
+				     form keeps the native download, no script). -->
+				<a
+					class="viewer__icon viewer__download inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+					href={assetOriginalUrl(detail.id)}
+					download
+					aria-label={$_('viewer_download')}
+				>
+					<Download size={20} />
+				</a>
 				<button
 					class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 					type="button"
@@ -733,6 +752,7 @@
 			onclose={() => (drawerOpen = false)}
 			{onedit}
 			{onassignface}
+			{onassigntag}
 		/>
 	{/if}
 </div>

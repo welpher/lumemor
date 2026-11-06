@@ -20,6 +20,7 @@ import (
 
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/geodata"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
 
@@ -34,7 +35,7 @@ func (MetadataArgs) Kind() string { return "metadata" }
 
 // MetadataWorker runs the metadata job: exiftool over the asset's
 // content-addressed file, the exif sidecar row filled from the output,
-// the asset row refined (taken-at, dimensions, duration), and the
+// the asset row refined (taken-at, dimensions, duration, place), and the
 // pipeline completion recorded -- the completion that empties the
 // asset's pending-jobs counter publishes asset.ready through the
 // shared completion step (announceAssetReady in face_detect.go), which
@@ -47,6 +48,13 @@ type MetadataWorker struct {
 	dataDir    string
 	logger     *slog.Logger
 	mlDispatch mlDispatchFunc
+	// places is the in-memory place grid (M3d): the GPS step resolves
+	// the extraction's coordinates against it -- the nearest city
+	// within geodata.ResolutionRadiusKm writes assets.place_id,
+	// anything farther or no GPS at all writes NULL. Nil is the
+	// feature-off wiring (no reference data): the step leaves the
+	// column untouched.
+	places *geodata.Index
 }
 
 // Work executes one metadata job. Every step runs before the database
@@ -89,6 +97,16 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	// upload's value stands (see resolveExifTime).
 	exifTime, ok := resolveExifTime(tags, deviceTimeZone(row.Exif))
 
+	// The GPS resolution (M3d): the extraction's coordinates resolve
+	// against the in-memory grid -- the nearest city within the
+	// threshold writes place_id, anything farther or no GPS at all
+	// writes NULL (the honest absence; no country-polygon fallback).
+	// Without the grid (a deployment without the reference data) the
+	// column keeps whatever it held: place_resolved stays false and
+	// the refinement leaves it alone.
+	gpsLat, gpsLon := exifParamsLatLon(tags)
+	placeID, placeResolved := resolvePlace(w.places, gpsLat, gpsLon)
+
 	tx, err := w.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin metadata transaction: %w", err)
@@ -99,7 +117,7 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	if err := queries.UpdateExifFromMetadata(ctx, exifParams(pgUUID(assetID), tags, rawObject, exifTime)); err != nil {
 		return fmt.Errorf("write exif row: %w", err)
 	}
-	if err := queries.RefineAssetFromMetadata(ctx, refineParams(pgUUID(assetID), tags, exifTime, ok)); err != nil {
+	if err := queries.RefineAssetFromMetadata(ctx, refineParams(pgUUID(assetID), tags, exifTime, ok, placeID, placeResolved)); err != nil {
 		return fmt.Errorf("refine asset row: %w", err)
 	}
 	// A Live Photo component row's counter counts its transcode alone
@@ -307,21 +325,56 @@ func exifParams(assetID pgtype.UUID, tags map[string]any, raw []byte, exifTime r
 // moves the value and flips taken_at_source to 'exif', and a NULL
 // leaves the upload's chain untouched.
 //
+// place_id carries the GPS resolution's answer (M3d): when
+// placeResolved is true, the value -- the resolved city or NULL for
+// no GPS / beyond threshold -- is the file's truth and the SQL lands
+// it unconditionally; when the grid was not wired, placeResolved is
+// false and the SQL leaves the column alone.
+//
 // Dimensions are stored in sensor order, deliberately NOT
 // orientation-corrected: the file reports them that way, and the
 // serving copies handle orientation themselves at render time
 // (libvips auto-rotates when it derives the thumbnails).
-func refineParams(assetID pgtype.UUID, tags map[string]any, exifTime resolvedTime, ok bool) dbgen.RefineAssetFromMetadataParams {
+func refineParams(assetID pgtype.UUID, tags map[string]any, exifTime resolvedTime, ok bool, placeID pgtype.Int4, placeResolved bool) dbgen.RefineAssetFromMetadataParams {
 	params := dbgen.RefineAssetFromMetadataParams{
-		ID:         assetID,
-		Width:      firstTagInt4(tags, "ImageWidth", "ExifImageWidth"),
-		Height:     firstTagInt4(tags, "ImageHeight", "ExifImageHeight"),
-		DurationMs: videoDuration(tags),
+		ID:            assetID,
+		Width:         firstTagInt4(tags, "ImageWidth", "ExifImageWidth"),
+		Height:        firstTagInt4(tags, "ImageHeight", "ExifImageHeight"),
+		DurationMs:    videoDuration(tags),
+		PlaceID:       placeID,
+		PlaceResolved: placeResolved,
 	}
 	if ok {
 		params.TakenAt = pgtype.Timestamptz{Time: exifTime.when.UTC(), Valid: true}
 	}
 	return params
+}
+
+// resolvePlace answers the GPS step of one extraction: the grid's
+// nearest city within the threshold as the place to write, and
+// whether the step resolved at all. No grid (nil) answers
+// (NULL, false) -- the feature-off wiring; a grid with no GPS in the
+// tags or nothing within the threshold answers (NULL, true) -- the
+// honest absence, written.
+func resolvePlace(places *geodata.Index, lat, lon pgtype.Float8) (pgtype.Int4, bool) {
+	if places == nil {
+		return pgtype.Int4{}, false
+	}
+	if !lat.Valid || !lon.Valid {
+		return pgtype.Int4{}, true
+	}
+	if id, _, ok := places.NearestWithin(lat.Float64, lon.Float64, geodata.ResolutionRadiusKm); ok {
+		return pgtype.Int4{Int32: id, Valid: true}, true
+	}
+	return pgtype.Int4{}, true
+}
+
+// exifParamsLatLon answers the extraction's GPS coordinates as the
+// exif row will store them -- the same flattening exifParams applies
+// (including the CHECK-bound refusal of corrupted values), so the
+// resolution runs on exactly the coordinates the sidecar row lands.
+func exifParamsLatLon(tags map[string]any) (pgtype.Float8, pgtype.Float8) {
+	return coordFloat8(tags, "GPSLatitude", 90), coordFloat8(tags, "GPSLongitude", 180)
 }
 
 // videoDuration flattens the container duration of a video file into

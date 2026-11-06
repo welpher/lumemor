@@ -14,6 +14,12 @@
 	// query parameter (the album detail's add-photos handoff) arms
 	// the select mode and preselects that album in the dialog.
 	//
+	// THE ADD-TAG FLOW (M3d Task 4): the batch bar's second dialog
+	// tags the selection with one of the caller's existing tags, or
+	// creates the tag first (idempotently) -- the same honest
+	// report. Tag writes are per-user state and publish nothing, so
+	// the report is the outcome and the wall never converges.
+	//
 	// The SSE subscriptions live for the page's lifetime: the first
 	// subscriber opens the stream, leaving the page closes it, and
 	// every asset event converges through the client. The album
@@ -33,6 +39,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { createTimelineClient, type BatchAction } from '$lib/api/timeline';
 	import { addAlbumItems, createAlbum, listAlbums, type AlbumSummary } from '$lib/api/albums';
+	import { addTagAssets, createTag, listTags, type TagSummary } from '$lib/api/tags';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
 	import { groupTimelineItems } from '$lib/timeline/grouping';
@@ -41,6 +48,7 @@
 	import MonthScrubber from '$lib/timeline/MonthScrubber.svelte';
 	import BatchBar from '$lib/timeline/BatchBar.svelte';
 	import AddToAlbumDialog from '$lib/albums/AddToAlbumDialog.svelte';
+	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 
 	const timeline = createTimelineClient();
@@ -69,6 +77,17 @@
 	let addReport = $state<{ added: number; skipped: number } | null>(null);
 	let createdAlbumId = $state('');
 
+	// The add-tag flow's state (M3d, the batch bar's second dialog):
+	// the vocabulary fetched on open, the honest report of the last
+	// landed add. The create is idempotent (a name the caller owns
+	// converges on the existing row), so no created-id bookkeeping.
+	let tagOpen = $state(false);
+	let tagBusy = $state(false);
+	let tagErrorKey = $state('');
+	let tagList = $state<TagSummary[]>([]);
+	let tagLoading = $state(false);
+	let tagReport = $state<{ added: number; skipped: number } | null>(null);
+
 	// The ?album= handoff: the album detail's add-photos action sends
 	// the caller here to pick photos for that album -- the select
 	// mode arms and the dialog preselects it.
@@ -81,7 +100,13 @@
 	});
 
 	const groups = $derived(groupTimelineItems($timeline.items, $locale ?? 'en'));
-	const months = $derived(groups.map((group) => ({ key: group.key, label: group.label })));
+	const months = $derived(
+		groups.map((group) => ({
+			key: group.key,
+			label: group.label,
+			count: group.days.reduce((total, day) => total + day.items.length, 0)
+		}))
+	);
 	const selectable = $derived(selectMode || selection.size > 0);
 	const selectedItems = $derived($timeline.items.filter((timelineItem) => selection.has(timelineItem.id)));
 	const allSelectedFavorite = $derived(
@@ -221,6 +246,83 @@
 		selection.clear();
 	}
 
+	// The add-tag flow: open the dialog over the current selection
+	// with the caller's vocabulary fetched fresh -- the pick list is
+	// the server's. Tag writes are per-user state (B4) and publish
+	// nothing, so nothing here converges the wall: the report IS the
+	// outcome.
+	function openTagDialog(): void {
+		if (selection.size === 0) {
+			return;
+		}
+		tagErrorKey = '';
+		tagReport = null;
+		tagOpen = true;
+		tagList = [];
+		tagLoading = true;
+		void (async () => {
+			const outcome = await listTags();
+			if (!tagOpen) {
+				return;
+			}
+			tagLoading = false;
+			if (outcome.ok) {
+				tagList = outcome.tags;
+			} else {
+				tagErrorKey = outcome.errorKey;
+			}
+		})();
+	}
+
+	// The existing-tag path: the honest {added, skipped} report of
+	// the write's own answer lands in the dialog.
+	async function addToExistingTag(tagId: string): Promise<void> {
+		if (tagBusy || selection.size === 0) {
+			return;
+		}
+		tagBusy = true;
+		tagErrorKey = '';
+		const outcome = await addTagAssets(tagId, [...selection]);
+		tagBusy = false;
+		if (!outcome.ok) {
+			tagErrorKey = outcome.errorKey;
+			return;
+		}
+		tagReport = outcome.report;
+	}
+
+	// The new-tag path: create the tag (idempotently -- a retry
+	// converges on the same row), then tag the selection with it.
+	async function addToNewTag(name: string): Promise<void> {
+		if (tagBusy || selection.size === 0) {
+			return;
+		}
+		tagBusy = true;
+		tagErrorKey = '';
+		const created = await createTag(name);
+		if (!created.ok) {
+			tagBusy = false;
+			tagErrorKey = created.errorKey;
+			return;
+		}
+		const outcome = await addTagAssets(created.tag.id, [...selection]);
+		tagBusy = false;
+		if (!outcome.ok) {
+			tagErrorKey = outcome.errorKey;
+			return;
+		}
+		tagReport = outcome.report;
+	}
+
+	// The tag report's done: close the dialog and clear the
+	// selection -- the caller's own tags landed, no wall convergence
+	// follows (per-user state, silent by contract).
+	function finishTag(): void {
+		tagOpen = false;
+		tagReport = null;
+		selection.clear();
+	}
+
 	/** Scroll one month group into view (the scrubber jump target). */
 	function jumpToMonth(key: string): void {
 		const element = document.querySelector<HTMLElement>(`[data-month-key="${key}"]`);
@@ -262,6 +364,35 @@
 		activeMonthKey = current;
 	}
 
+	/** The wall's scroll progress (0-1) for the axis's position
+	 * indicator: the scroll root's own fraction, read alongside the
+	 * active-month tracking. */
+	let scrollProgress = $state(0);
+
+	function updateScrollProgress(): void {
+		const scroller = document.querySelector<HTMLElement>('main');
+		if (scroller === null) {
+			return;
+		}
+		const span = scroller.scrollHeight - scroller.clientHeight;
+		scrollProgress = span > 0 ? Math.min(1, Math.max(0, scroller.scrollTop / span)) : 0;
+	}
+
+	/** THE TRUE DRAG: the month axis IS a scrollbar -- the pointer's
+	 * rail fraction maps directly onto the wall's continuous scroll
+	 * position (within months), applied frame-accurate with no
+	 * smoothing (direct manipulation). */
+	function handleRailScrub(fraction: number): void {
+		const scroller = document.querySelector<HTMLElement>('main');
+		if (scroller === null) {
+			return;
+		}
+		const span = scroller.scrollHeight - scroller.clientHeight;
+		if (span > 0) {
+			scroller.scrollTop = fraction * span;
+		}
+	}
+
 	/** The rAF-collapsed scroll notification (one pass per frame). */
 	function handleScrollEvent(): void {
 		if (scrollScheduled) {
@@ -271,6 +402,7 @@
 		requestAnimationFrame(() => {
 			scrollScheduled = false;
 			updateActiveMonth();
+			updateScrollProgress();
 		});
 	}
 
@@ -285,6 +417,18 @@
 		document.addEventListener('scroll', handleScrollEvent, { capture: true, passive: true });
 		return () => {
 			document.removeEventListener('scroll', handleScrollEvent, { capture: true });
+		};
+	});
+
+	// The month axis IS the timeline's scrollbar: while this page
+	// lives, the scroll root's own bar hides (the axis's indicator
+	// carries the position feedback). Other pages keep the thin
+	// custom bar.
+	$effect(() => {
+		const scroller = document.querySelector('main');
+		scroller?.classList.add('timeline-rail-scroll');
+		return () => {
+			scroller?.classList.remove('timeline-rail-scroll');
 		};
 	});
 
@@ -355,7 +499,10 @@
 	<title>Timeline · lumemor</title>
 </svelte:head>
 
-<section class="timeline max-w-[1200px] mx-auto" aria-busy={$timeline.status === 'loading'}>
+<!-- The reserved month-axis gutter: the wall centers in the width
+     LEFT of the rail's own strip, never under it. -->
+<div class="timeline__gutter pe-[72px]">
+	<section class="timeline px-2" aria-busy={$timeline.status === 'loading'}>
 	<!-- No toolbar (R2-11): the timeline's header carries nothing but
 	     what the top bar already owns (upload, search). The hidden
 	     view's entry moved to the navigation drawer; the selection
@@ -398,15 +545,17 @@
 	{/if}
 
 	<div class="timeline__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
-</section>
+	</section>
+</div>
 
-<MonthScrubber {months} activeKey={activeMonthKey} onjump={jumpToMonth} />
+<MonthScrubber {months} activeKey={activeMonthKey} progress={scrollProgress} onjump={jumpToMonth} onscrub={handleRailScrub} />
 <BatchBar
 	count={selectedItems.length}
 	allFavorite={allSelectedFavorite}
 	errorKey={batchErrorKey}
 	busy={batchBusy}
 	onaddtoalbum={openAddDialog}
+	onaddtag={openTagDialog}
 	onaction={runAction}
 	onclear={exitSelection}
 />
@@ -421,4 +570,15 @@
 	onpick={(albumId) => void addToExisting(albumId)}
 	oncreate={(title) => void addToNew(title)}
 	ondone={finishAdd}
+/>
+<AddTagDialog
+	bind:open={tagOpen}
+	tags={tagList}
+	loading={tagLoading}
+	busy={tagBusy}
+	errorKey={tagErrorKey}
+	report={tagReport}
+	onpick={(tagId) => void addToExistingTag(tagId)}
+	oncreate={(name) => void addToNewTag(name)}
+	ondone={finishTag}
 />

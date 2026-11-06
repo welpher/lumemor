@@ -199,7 +199,7 @@
 	<title>Trash · lumemor</title>
 </svelte:head>
 
-<section class="trash max-w-[1200px] mx-auto" aria-busy={status === 'loading'}>
+<section class="trash max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
 	<header class="trash__header mb-4">
 		<h1 class="mb-1 font-display font-bold text-[26px] text-text">{$_('nav_trash')}</h1>
 		<p class="trash__note font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('trash_note')}</p>

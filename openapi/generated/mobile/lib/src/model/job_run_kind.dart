@@ -9,7 +9,7 @@ import 'package:built_value/serializer.dart';
 
 part 'job_run_kind.g.dart';
 
-/// The kinds of job runs the instance records. The model download is one run; each machine learning slot's rerun is its own kind, named after the slot it redoes. 
+/// The kinds of job runs the instance records. The model download is one run; each machine learning slot's rerun is its own kind, named after the slot it redoes; the place re-resolution is the places-data-update path's kind. 
 class JobRunKind extends EnumClass {
 
   @BuiltValueEnumConst(wireName: r'model_download')
@@ -22,6 +22,8 @@ class JobRunKind extends EnumClass {
   static const JobRunKind clipEmbedRerun = _$clipEmbedRerun;
   @BuiltValueEnumConst(wireName: r'ocr_rerun')
   static const JobRunKind ocrRerun = _$ocrRerun;
+  @BuiltValueEnumConst(wireName: r'places_rerun')
+  static const JobRunKind placesRerun = _$placesRerun;
 
   static Serializer<JobRunKind> get serializer => _$jobRunKindSerializer;
 

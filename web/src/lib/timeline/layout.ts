@@ -45,8 +45,8 @@ export const WALL_ROW_TARGET = 216;
 /** Mirrors `--wall-row-tolerance` (0.25) of theme.css. */
 export const WALL_ROW_TOLERANCE = 0.25;
 
-/** Mirrors `--wall-tile-seam` (3px) of theme.css. */
-export const WALL_TILE_SEAM = 3;
+/** Mirrors `--wall-tile-seam` (2px) of theme.css. */
+export const WALL_TILE_SEAM = 2;
 
 /** Mirrors `--wall-fallback-aspect` (1.5) of theme.css. */
 export const WALL_FALLBACK_ASPECT = 1.5;
@@ -72,12 +72,6 @@ export type PackedRow = {
 	tiles: PackedTile[];
 	/** The row's rendered height in CSS pixels. */
 	height: number;
-	/**
-	 * Whether the row fills the container width (a row closed by the
-	 * floor rule). The clamped tail row of a group answers false and
-	 * renders left-aligned at true aspects.
-	 */
-	justified: boolean;
 };
 
 /**
@@ -110,19 +104,18 @@ function naturalHeight(count: number, aspectSum: number, containerWidth: number)
 	return usable / aspectSum;
 }
 
-/** Close one row: tiles at height * aspect, or the clamped tail. */
-function closeRow(
-	items: readonly TimelineItem[],
-	aspectSum: number,
-	containerWidth: number,
-	isLast: boolean
-): PackedRow {
+/** Close one row: tiles at height * aspect. A CLOSED row fills the
+ * container width exactly (the justified invariant); a group's TAIL
+ * row renders at the TARGET height with its natural widths --
+ * never stretched, never grown (the reference's last-row behavior:
+ * a day with two photos shows two ordinary-sized ones, and the day
+ * BLOCK flows beside its neighbors). */
+function closeRow(items: readonly TimelineItem[], aspectSum: number, containerWidth: number, isLast: boolean): PackedRow {
 	const natural = naturalHeight(items.length, aspectSum, containerWidth);
-	const height = isLast && natural > WALL_ROW_TARGET ? WALL_ROW_TARGET : natural;
+	const height = isLast ? Math.min(natural, WALL_ROW_TARGET) : natural;
 	return {
 		tiles: items.map((item) => ({ item, width: height * aspectOf(item) })),
-		height,
-		justified: height === natural
+		height
 	};
 }
 
@@ -141,11 +134,10 @@ export function packRows(
 	}
 	if (containerWidth <= WALL_TILE_SEAM) {
 		// Nothing to justify against: every item stands alone at the
-		// target height (the clamped-tail shape).
+		// target height.
 		return items.map((item) => ({
 			tiles: [{ item, width: WALL_ROW_TARGET * aspectOf(item) }],
-			height: WALL_ROW_TARGET,
-			justified: false
+			height: WALL_ROW_TARGET
 		}));
 	}
 
@@ -179,6 +171,15 @@ export type PackedDay = {
 	key: string;
 	label: string;
 	rows: PackedRow[];
+	/**
+	 * The day BLOCK's rendered width: a day whose rows all closed
+	 * spans the container (its rows filled it); a day that never
+	 * closed answers its single tail row's natural extent. Day
+	 * blocks flow horizontally and wrap -- the wall reads as a
+	 * gallery of days, sparse dates side by side instead of a hole
+	 * on the right (the reference timeline's shape).
+	 */
+	width: number;
 };
 
 /** One month group carrying its packed day groups. */
@@ -201,10 +202,14 @@ export function packWall(
 	return groups.map((group) => ({
 		key: group.key,
 		label: group.label,
-		days: group.days.map((day) => ({
-			key: day.key,
-			label: day.label,
-			rows: packRows(day.items, containerWidth)
-		}))
+		days: group.days.map((day) => {
+			const rows = packRows(day.items, containerWidth);
+			const width =
+				rows.length > 1
+					? containerWidth
+					: (rows[0]?.tiles.reduce((sum, tile) => sum + tile.width, 0) ?? 0) +
+						Math.max(0, (rows[0]?.tiles.length ?? 1) - 1) * WALL_TILE_SEAM;
+			return { key: day.key, label: day.label, rows, width };
+		})
 	}));
 }

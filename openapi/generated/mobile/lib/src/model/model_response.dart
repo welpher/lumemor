@@ -35,7 +35,7 @@ abstract class ModelResponse implements Built<ModelResponse, ModelResponseBuilde
 
   @BuiltValueField(wireName: r'slot')
   ModelSlot get slot;
-  // enum slotEnum {  face_detect,  face_recognize,  clip_embed,  ocr,  };
+  // enum slotEnum {  face_detect,  face_recognize,  clip_embed,  clip_text,  ocr,  };
 
   /// The upstream release tag of the model family, as the manifest declares it. 
   @BuiltValueField(wireName: r'version')

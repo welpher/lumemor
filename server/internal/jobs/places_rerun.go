@@ -1,0 +1,248 @@
+// The places re-resolution run (M3d Task 1): the places-data-update
+// path. The startup import of a changed GeoNames bake replaces the
+// reference tables and -- through the schema's ON DELETE SET NULL --
+// releases every stale resolution; this run is the deliberate step
+// that refills them: one walk over every GPS-bearing asset row,
+// resolving each against the process's in-memory grid (the same grid
+// the metadata job's GPS step uses, loaded once per process) and
+// writing the answer -- the nearest city within the threshold, or
+// NULL when the grid answers nothing.
+//
+// Unlike the ML rerun driver there is no per-asset dispatch: place
+// resolution is a microsecond in-memory query plus one bounded row
+// write, so the walk itself IS the work. The run's job_runs row
+// carries the protocol the task panel and the activity stream read
+// (started, throttled progress, finished; done/failed counting
+// assets), and an interruption (the envelope expiring, the process
+// dying) leaves the row running and the work resumable: River retries
+// the job and the re-walk converges -- every write is the same
+// deterministic function of the same GPS coordinates, so re-running
+// rows is a no-op and the counts re-climb from zero.
+//
+// The enqueue refuses a queue whose process runs without the place
+// reference data: there is no grid to re-resolve against, and a run
+// that would null every resolution is not a run worth recording.
+package jobs
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/riverqueue/river"
+
+	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/geodata"
+)
+
+// PlacesRerunKind is the job_runs kind of the place re-resolution
+// runs, pinned by the milestone plan's vocabulary (the rerun family's
+// naming, applied to the places domain). The River job kind carries
+// the same string: one driver, no per-asset dispatch.
+const PlacesRerunKind = "places_rerun"
+
+// placesRerunTimeout raises the worker's execution envelope above
+// River's one minute default: the walk over a large library's
+// GPS-bearing rows (one bounded page read per 500 assets plus one
+// row write per asset) legitimately outlasts a small envelope, and
+// an expired attempt hands the job to the retry, whose re-walk
+// converges over the same deterministic answers.
+const placesRerunTimeout = 30 * time.Minute
+
+// placesRerunPageSize bounds one page of the walk: the scope's asset
+// ids and coordinates ride in memory one page at a time, so a rerun
+// over a large library never holds the whole set at once.
+const placesRerunPageSize = 500
+
+// placesRerunProgressInterval paces the run's progress events onto
+// the activity stream: at most one per interval, read off the walk's
+// own clock. The job_runs row itself updates on every page (a cheap
+// bounded write), so the panel's truth stays page-fresh.
+const placesRerunProgressInterval = time.Second
+
+// PlacesRerunArgs identifies the run the worker walks. The scope
+// (every GPS-bearing asset) needs no payload: the walk reads it from
+// the database, so a retry after new GPS-bearing assets arriving
+// simply includes them.
+type PlacesRerunArgs struct {
+	JobRunID uuid.UUID `json:"jobRunId"`
+}
+
+// Kind is River's stable job kind identifier.
+func (PlacesRerunArgs) Kind() string { return PlacesRerunKind }
+
+// PlacesRerunWorker runs the place re-resolution walk.
+type PlacesRerunWorker struct {
+	river.WorkerDefaults[PlacesRerunArgs]
+
+	pool   *pgxpool.Pool
+	bus    *events.Bus
+	places *geodata.Index
+	logger *slog.Logger
+}
+
+// Timeout is the worker's execution envelope; see placesRerunTimeout.
+func (w *PlacesRerunWorker) Timeout(job *river.Job[PlacesRerunArgs]) time.Duration {
+	return placesRerunTimeout
+}
+
+// Work executes one re-resolution run: the row flips to running and
+// job.started fires, the walk resolves every GPS-bearing asset page
+// by page against the grid (each write the deterministic function of
+// the row's coordinates -- the nearest city within the threshold,
+// else NULL), the throttled progress events ride the pages, and the
+// run closes with the converged counts and job.finished -- failed
+// when any write failed, succeeded otherwise.
+func (w *PlacesRerunWorker) Work(ctx context.Context, job *river.Job[PlacesRerunArgs]) error {
+	jobRunID := job.Args.JobRunID
+	queries := dbgen.New(w.pool)
+
+	if err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID)); err != nil {
+		return fmt.Errorf("mark the places rerun run %s running: %w", jobRunID, err)
+	}
+	// The started event echoes the row's enqueue-time total -- the
+	// durable truth the endpoint handed out -- not a recount.
+	run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
+	if err != nil {
+		return fmt.Errorf("load the places rerun run %s: %w", jobRunID, err)
+	}
+	total := int(run.Total)
+	w.bus.Publish("job.started", jobEventPayload(jobRunID, PlacesRerunKind, total, 0, 0, dbgen.JobStateRunning))
+
+	// The resolution seam: no grid wired means the run cannot do its
+	// work. The enqueue refuses this state; only a directly
+	// constructed worker (a wiring bug) gets here, and the run closes
+	// failed instead of pretending to have resolved anything.
+	if w.places == nil {
+		w.logger.Error("places rerun run started without the place reference data",
+			"job_run_id", jobRunID, "total", total)
+		return w.finishRerun(ctx, jobRunID, total, 0, 0, dbgen.JobStateFailed)
+	}
+
+	done, failed := 0, 0
+	lastEvent := time.Now()
+	cursor := pgUUID(uuid.Nil) // the zero value starts the walk
+	for {
+		rows, err := queries.ListGpsAssetPage(ctx, dbgen.ListGpsAssetPageParams{
+			Cursor:     cursor,
+			LimitCount: placesRerunPageSize,
+		})
+		if err != nil {
+			return fmt.Errorf("list the places rerun scope of run %s: %w", jobRunID, err)
+		}
+		if len(rows) == 0 {
+			break
+		}
+		for _, row := range rows {
+			cursor = row.ID
+			assetID := uuid.UUID(row.ID.Bytes)
+			// The same deterministic resolution the metadata job's
+			// GPS step applies: the grid's nearest city within the
+			// threshold, else NULL (no country-polygon fallback).
+			placeID := pgtype.Int4{}
+			if id, _, ok := w.places.NearestWithin(row.Lat.Float64, row.Lon.Float64, geodata.ResolutionRadiusKm); ok {
+				placeID.Int32, placeID.Valid = id, true
+			}
+			if err := queries.SetAssetPlace(ctx, dbgen.SetAssetPlaceParams{
+				ID:      row.ID,
+				PlaceID: placeID,
+			}); err != nil {
+				failed++
+				w.logger.Warn("places rerun write failed", "job_run_id", jobRunID,
+					"asset_id", assetID, "error", err)
+				continue
+			}
+			done++
+		}
+		if err := queries.UpdateJobRunProgress(ctx, dbgen.UpdateJobRunProgressParams{
+			ID:   pgUUID(jobRunID),
+			Done: int32(done),
+		}); err != nil {
+			return fmt.Errorf("record the places rerun progress of run %s: %w", jobRunID, err)
+		}
+		if now := time.Now(); now.Sub(lastEvent) >= placesRerunProgressInterval {
+			lastEvent = now
+			w.bus.Publish("job.progress",
+				jobEventPayload(jobRunID, PlacesRerunKind, total, done, failed, dbgen.JobStateRunning))
+		}
+	}
+
+	state := dbgen.JobStateSucceeded
+	if failed > 0 {
+		state = dbgen.JobStateFailed
+	}
+	return w.finishRerun(ctx, jobRunID, total, done, failed, state)
+}
+
+// finishRerun converges the row and announces the close. The final
+// bookkeeping runs detached from the job context so the row and the
+// finished event land even when the run consumed the context's last
+// moments; a failure here returns the error and River retries the
+// job, whose re-walk re-converges the row.
+func (w *PlacesRerunWorker) finishRerun(ctx context.Context, jobRunID uuid.UUID, total, done, failed int, state dbgen.JobState) error {
+	finishCtx := context.WithoutCancel(ctx)
+	if err := dbgen.New(w.pool).FinishJobRun(finishCtx, dbgen.FinishJobRunParams{
+		ID:     pgUUID(jobRunID),
+		State:  state,
+		Done:   int32(done),
+		Failed: int32(failed),
+	}); err != nil {
+		return fmt.Errorf("finish the places rerun run %s: %w", jobRunID, err)
+	}
+	w.bus.Publish("job.finished", jobEventPayload(jobRunID, PlacesRerunKind, total, done, failed, state))
+	return nil
+}
+
+// EnqueuePlacesRerun starts one re-resolution run: the job_runs row
+// (the places rerun kind, the GPS-bearing scope's asset count as its
+// total) and the River job land in ONE transaction, so an enqueue
+// that fails halfway leaves neither behind. The row starts queued;
+// the worker flips it to running when the walk begins. A queue whose
+// process runs without the place reference data refuses the enqueue:
+// there is no grid to re-resolve against, and the endpoint maps the
+// refusal to the same 500 the broken-transaction arm answers (the
+// log line carries the reason).
+func (q *Queue) EnqueuePlacesRerun(ctx context.Context) (uuid.UUID, error) {
+	if q.places == nil {
+		return uuid.Nil, fmt.Errorf("jobs: the place resolver is not wired (no reference data)")
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("generate the places rerun run id: %w", err)
+	}
+	tx, err := q.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("begin the places rerun enqueue: %w", err)
+	}
+	// The rollback is a no-op after a successful commit; arguments
+	// are captured while the request context is still live.
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// The scope's count, read inside the same transaction as the
+	// insert: the total the row announces is exactly the scope the
+	// enqueue saw.
+	queries := dbgen.New(tx)
+	total, err := queries.CountGpsAssets(ctx)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("count the places rerun scope: %w", err)
+	}
+	if err := queries.InsertJobRun(ctx, dbgen.InsertJobRunParams{
+		ID:    pgUUID(id),
+		Kind:  PlacesRerunKind,
+		Total: int32(total),
+	}); err != nil {
+		return uuid.Nil, fmt.Errorf("insert the places rerun run row: %w", err)
+	}
+	if _, err := q.client.InsertTx(ctx, tx, PlacesRerunArgs{JobRunID: id}, nil); err != nil {
+		return uuid.Nil, fmt.Errorf("insert the places rerun job: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, fmt.Errorf("commit the places rerun enqueue: %w", err)
+	}
+	return id, nil
+}

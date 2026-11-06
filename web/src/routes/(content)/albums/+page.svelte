@@ -146,7 +146,7 @@
 	<title>{$_('albums_title')} · lumemor</title>
 </svelte:head>
 
-<section class="albums max-w-[1200px] mx-auto" aria-busy={status === 'loading'}>
+<section class="albums max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
 	<!-- The one toolbar of the wall: the virtual-album creation, the
 	     web IA's primary action. -->
 	<div class="albums__toolbar flex justify-end items-center mb-3">

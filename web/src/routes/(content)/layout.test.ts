@@ -1,6 +1,7 @@
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
+import { goto } from '$app/navigation';
 import Layout from './+layout.svelte';
 
 // The content shell's app frame (R2-1): the h-dvh root pins the top
@@ -161,6 +162,41 @@ test('the top bar carries the lucide chrome icons (menu, search, account)', () =
 	// The account avatar: an icon-only button with its aria-label.
 	const avatar = document.body.querySelector<HTMLButtonElement>('button[aria-label="Account"]');
 	expect(avatar?.querySelector('svg.lucide-circle-user')).not.toBeNull();
+	unmount(app);
+	flushSync();
+});
+
+test('the top bar search box navigates to the search page on commit (Enter)', () => {
+	const app = mountLayout();
+	flushSync();
+
+	// The box rides a search form: typing and committing (Enter)
+	// navigates to /search with the typed text as the query -- a
+	// navigation trigger, not live search; the search page owns the
+	// query state from there.
+	const form = document.body.querySelector<HTMLFormElement>('form.topbar-search-wrap');
+	expect(form?.getAttribute('role')).toBe('search');
+	const box = form?.querySelector<HTMLInputElement>('input.topbar-search');
+	if (form === null || box === null) {
+		throw new Error('missing topbar search form');
+	}
+
+	box!.value = '海边 日落';
+	box!.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+	form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+	// The navigation carries the encoded query.
+	expect(goto).toHaveBeenCalledWith(`/search?query=${encodeURIComponent('海边 日落')}`);
+
+	// An empty commit lands on the bare search page (the filter
+	// browse's own face).
+	box!.value = '   ';
+	box!.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+	form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+	expect(goto).toHaveBeenLastCalledWith('/search');
+
 	unmount(app);
 	flushSync();
 });
