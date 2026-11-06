@@ -339,13 +339,13 @@
 			{/if}
 			{#if readout !== null}
 				<!-- The readout bubble: the nearest (or active-while-scrolling)
-				     month's full label on a fully-rounded opaque card with
-				     the accent underline -- its vertical CENTER rides the
+				     month's full label on a fully-rounded opaque card -- its
+				     vertical CENTER rides the
 				     pointer while present, the indicator tick while the
 				     wall alone scrolls; left of the dots, wholly inside the
 				     reserved gutter. -->
 				<span
-					class="scrubber__readout absolute right-[18px] inline-flex items-center h-[20px] max-w-[88px] truncate px-1.5 font-body font-semibold text-[11px] leading-none whitespace-nowrap text-text bg-card border border-border border-b-2 border-b-accent rounded-control shadow-card"
+					class="scrubber__readout absolute right-[18px] inline-flex items-center h-[20px] max-w-[88px] truncate px-1.5 font-body font-semibold text-[11px] leading-none whitespace-nowrap text-text bg-card border border-border rounded-control shadow-card"
 					style="top: {readout.top - 10}px"
 					aria-hidden="true"
 				>{readout.stop.label}</span>

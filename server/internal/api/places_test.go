@@ -396,7 +396,12 @@ func TestReresolvePlaces(t *testing.T) {
 		t.Errorf("enqueue calls after the in-flight join = %d, want 1 (no second enqueue)", stub.calls)
 	}
 
-	// A wired-but-failing enqueue maps to the 500 envelope.
+	// A wired-but-failing enqueue maps to the 500 envelope. The
+	// in-flight row closes first, or the join arm would keep
+	// answering 200 (the stub's failure can only surface when no run
+	// is in flight).
+	e := &assetEnv{pool: pool}
+	e.exec(t, "UPDATE job_runs SET state = 'succeeded' WHERE id = $1", pgUUID(inFlight))
 	stub.err = errPlacesRerunRefused
 	rec = authedRequest(router, http.MethodPost, "/api/v1/admin/places/reresolve", adminCookie)
 	if rec.Code != http.StatusInternalServerError {
