@@ -36,6 +36,7 @@ func archipelago() []Centroid {
 		{ID: 13, Lat: -0.5, Lon: -78.5},        // Quito region (south, wrap-free)
 		{ID: 20, Lat: 40.0, Lon: 179.95},       // antimeridian mid-latitude
 		{ID: 21, Lat: 40.0, Lon: -179.95},      // its wrap partner
+		{ID: 22, Lat: 0.0, Lon: 179.99},        // a hair east of the antimeridian
 	}
 }
 
