@@ -282,6 +282,21 @@
 		scrollProgress = span > 0 ? Math.min(1, Math.max(0, scroller.scrollTop / span)) : 0;
 	}
 
+	/** THE TRUE DRAG: the month axis IS a scrollbar -- the pointer's
+	 * rail fraction maps directly onto the wall's continuous scroll
+	 * position (within months), applied frame-accurate with no
+	 * smoothing (direct manipulation). */
+	function handleRailScrub(fraction: number): void {
+		const scroller = document.querySelector<HTMLElement>('main');
+		if (scroller === null) {
+			return;
+		}
+		const span = scroller.scrollHeight - scroller.clientHeight;
+		if (span > 0) {
+			scroller.scrollTop = fraction * span;
+		}
+	}
+
 	/** The rAF-collapsed scroll notification (one pass per frame). */
 	function handleScrollEvent(): void {
 		if (scrollScheduled) {
@@ -306,6 +321,18 @@
 		document.addEventListener('scroll', handleScrollEvent, { capture: true, passive: true });
 		return () => {
 			document.removeEventListener('scroll', handleScrollEvent, { capture: true });
+		};
+	});
+
+	// The month axis IS the timeline's scrollbar: while this page
+	// lives, the scroll root's own bar hides (the axis's indicator
+	// carries the position feedback). Other pages keep the thin
+	// custom bar.
+	$effect(() => {
+		const scroller = document.querySelector('main');
+		scroller?.classList.add('timeline-rail-scroll');
+		return () => {
+			scroller?.classList.remove('timeline-rail-scroll');
 		};
 	});
 
@@ -425,7 +452,7 @@
 	</section>
 </div>
 
-<MonthScrubber {months} activeKey={activeMonthKey} progress={scrollProgress} onjump={jumpToMonth} />
+<MonthScrubber {months} activeKey={activeMonthKey} progress={scrollProgress} onjump={jumpToMonth} onscrub={handleRailScrub} />
 <BatchBar
 	count={selectedItems.length}
 	allFavorite={allSelectedFavorite}
