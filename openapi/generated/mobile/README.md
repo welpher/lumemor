@@ -139,6 +139,7 @@ Class | Method | HTTP request | Description
 [*PeopleApi*](doc/PeopleApi.md) | [**setPersonHidden**](doc/PeopleApi.md#setpersonhidden) | **PUT** /people/{clusterId}/hidden | Flip the caller&#39;s hidden switch of one face cluster.
 [*PeopleApi*](doc/PeopleApi.md) | [**unlabelPerson**](doc/PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
 [*PlacesApi*](doc/PlacesApi.md) | [**listPlaces**](doc/PlacesApi.md#listplaces) | **GET** /places | The caller&#39;s city grouping.
+[*SearchApi*](doc/SearchApi.md) | [**searchAssets**](doc/SearchApi.md#searchassets) | **GET** /search | The unified search, one text box, two merged paths, filter facets.
 [*ServerApi*](doc/ServerApi.md) | [**createAdmin**](doc/ServerApi.md#createadmin) | **POST** /server/setup/admin | Create the first administrator account.
 [*ServerApi*](doc/ServerApi.md) | [**getServerInfo**](doc/ServerApi.md#getserverinfo) | **GET** /server/info | Report instance version and feature switches.
 [*TagsApi*](doc/TagsApi.md) | [**addTagAssets**](doc/TagsApi.md#addtagassets) | **POST** /tags/{tagId}/assets | Tag assets in one batch.
@@ -160,6 +161,7 @@ Class | Method | HTTP request | Description
  - [AdminUserResponse](doc/AdminUserResponse.md)
  - [AlbumCreateRequest](doc/AlbumCreateRequest.md)
  - [AlbumDetail](doc/AlbumDetail.md)
+ - [AlbumFacetCount](doc/AlbumFacetCount.md)
  - [AlbumItem](doc/AlbumItem.md)
  - [AlbumItemAsset](doc/AlbumItemAsset.md)
  - [AlbumItemsRequest](doc/AlbumItemsRequest.md)
@@ -180,6 +182,7 @@ Class | Method | HTTP request | Description
  - [BatchRequest](doc/BatchRequest.md)
  - [BatchResponse](doc/BatchResponse.md)
  - [BearerSession](doc/BearerSession.md)
+ - [CameraFacetCount](doc/CameraFacetCount.md)
  - [ClusterDetail](doc/ClusterDetail.md)
  - [CreateAdminRequest](doc/CreateAdminRequest.md)
  - [Error](doc/Error.md)
@@ -190,8 +193,10 @@ Class | Method | HTTP request | Description
  - [JobRunListResponse](doc/JobRunListResponse.md)
  - [JobRunResponse](doc/JobRunResponse.md)
  - [JobRunState](doc/JobRunState.md)
+ - [KindFacetCount](doc/KindFacetCount.md)
  - [LabelPersonRequest](doc/LabelPersonRequest.md)
  - [LoginRequest](doc/LoginRequest.md)
+ - [MediaKind](doc/MediaKind.md)
  - [MergePeopleRequest](doc/MergePeopleRequest.md)
  - [MergePeopleResponse](doc/MergePeopleResponse.md)
  - [ModelActivateResponse](doc/ModelActivateResponse.md)
@@ -209,17 +214,22 @@ Class | Method | HTTP request | Description
  - [MoveFaceResponse](doc/MoveFaceResponse.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
  - [PairingTokenResponse](doc/PairingTokenResponse.md)
+ - [PersonFacetCount](doc/PersonFacetCount.md)
  - [PersonLabel](doc/PersonLabel.md)
  - [PersonLabelResponse](doc/PersonLabelResponse.md)
  - [PersonSummary](doc/PersonSummary.md)
+ - [PlaceFacetCount](doc/PlaceFacetCount.md)
  - [PlaceSummary](doc/PlaceSummary.md)
  - [PlacesRerunResponse](doc/PlacesRerunResponse.md)
  - [RemoveAlbumItemsResponse](doc/RemoveAlbumItemsResponse.md)
  - [RemoveTagAssetsResponse](doc/RemoveTagAssetsResponse.md)
+ - [SearchFacets](doc/SearchFacets.md)
+ - [SearchResponse](doc/SearchResponse.md)
  - [ServerInfo](doc/ServerInfo.md)
  - [SessionInfo](doc/SessionInfo.md)
  - [SetPersonHiddenRequest](doc/SetPersonHiddenRequest.md)
  - [TagAssetsRequest](doc/TagAssetsRequest.md)
+ - [TagFacetCount](doc/TagFacetCount.md)
  - [TagNameRequest](doc/TagNameRequest.md)
  - [TagSummary](doc/TagSummary.md)
  - [TimelineItem](doc/TimelineItem.md)
@@ -232,6 +242,7 @@ Class | Method | HTTP request | Description
  - [UserListResponse](doc/UserListResponse.md)
  - [UserRole](doc/UserRole.md)
  - [UserSummary](doc/UserSummary.md)
+ - [YearFacetCount](doc/YearFacetCount.md)
 
 
 ## Documentation For Authorization

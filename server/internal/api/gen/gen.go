@@ -338,9 +338,28 @@ func (e JobRunState) Valid() bool {
 	}
 }
 
+// Defines values for MediaKind.
+const (
+	MediaKindImage MediaKind = "image"
+	MediaKindVideo MediaKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the MediaKind enum.
+func (e MediaKind) Valid() bool {
+	switch e {
+	case MediaKindImage:
+		return true
+	case MediaKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ModelSlot.
 const (
 	ClipEmbed     ModelSlot = "clip_embed"
+	ClipText      ModelSlot = "clip_text"
 	FaceDetect    ModelSlot = "face_detect"
 	FaceRecognize ModelSlot = "face_recognize"
 	Ocr           ModelSlot = "ocr"
@@ -350,6 +369,8 @@ const (
 func (e ModelSlot) Valid() bool {
 	switch e {
 	case ClipEmbed:
+		return true
+	case ClipText:
 		return true
 	case FaceDetect:
 		return true
@@ -517,16 +538,34 @@ func (e GetAssetThumbnailParamsSize) Valid() bool {
 
 // Defines values for ListPlacesParamsLocale.
 const (
-	En     ListPlacesParamsLocale = "en"
-	ZhHans ListPlacesParamsLocale = "zh-Hans"
+	ListPlacesParamsLocaleEn     ListPlacesParamsLocale = "en"
+	ListPlacesParamsLocaleZhHans ListPlacesParamsLocale = "zh-Hans"
 )
 
 // Valid indicates whether the value is a known member of the ListPlacesParamsLocale enum.
 func (e ListPlacesParamsLocale) Valid() bool {
 	switch e {
-	case En:
+	case ListPlacesParamsLocaleEn:
 		return true
-	case ZhHans:
+	case ListPlacesParamsLocaleZhHans:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SearchAssetsParamsLocale.
+const (
+	SearchAssetsParamsLocaleEn     SearchAssetsParamsLocale = "en"
+	SearchAssetsParamsLocaleZhHans SearchAssetsParamsLocale = "zh-Hans"
+)
+
+// Valid indicates whether the value is a known member of the SearchAssetsParamsLocale enum.
+func (e SearchAssetsParamsLocale) Valid() bool {
+	switch e {
+	case SearchAssetsParamsLocaleEn:
+		return true
+	case SearchAssetsParamsLocaleZhHans:
 		return true
 	default:
 		return false
@@ -711,6 +750,19 @@ type AlbumDetailCallerRole string
 
 // AlbumDetailType The album's type; sync albums never reach this shape.
 type AlbumDetailType string
+
+// AlbumFacetCount One album of the albums facet.
+type AlbumFacetCount struct {
+	// AssetCount The number of members of the current filtered set (minus
+	// the album filter) this album holds.
+	AssetCount int `json:"assetCount"`
+
+	// Id The album id (the round-trip filter value).
+	Id openapi_types.UUID `json:"id"`
+
+	// Title The album's title.
+	Title string `json:"title"`
+}
 
 // AlbumItem One live member of the album: the membership's identity and
 // the minimal asset context the detail grid renders.
@@ -1323,6 +1375,24 @@ type BearerSession struct {
 	Token string `json:"token"`
 }
 
+// CameraFacetCount One camera of the cameras facet.
+type CameraFacetCount struct {
+	// AssetCount The number of assets of the current filtered set (minus
+	// the camera filter) shot with this camera.
+	AssetCount int `json:"assetCount"`
+
+	// Id The round-trip filter value: `make|model` with both
+	// halves trimmed, empty where the EXIF row carries no
+	// value.
+	Id string `json:"id"`
+
+	// Make The EXIF camera make, null when absent.
+	Make *string `json:"make,omitempty"`
+
+	// Model The EXIF camera model, null when absent.
+	Model *string `json:"model,omitempty"`
+}
+
 // ClusterDetail One face cluster's detail as the calling user sees it: the
 // caller's own label state and the cluster's faces on
 // caller-visible assets, strongest score first.
@@ -1511,6 +1581,18 @@ type JobRunResponse struct {
 // `succeeded` or `failed`.
 type JobRunState string
 
+// KindFacetCount One media family of the kinds facet.
+type KindFacetCount struct {
+	// AssetCount The number of assets of the current filtered set (minus
+	// the kind filter) of this family.
+	AssetCount int `json:"assetCount"`
+
+	// Kind The media family of an asset. A Live Photo is an `image`
+	// whose linked component video row never appears in the
+	// timeline or the search.
+	Kind MediaKind `json:"kind"`
+}
+
 // LabelPersonRequest The caller's name for one face cluster. The server trims the
 // value and requires 1-64 characters; duplicate names are
 // allowed (no NAME_TAKEN -- families have real duplicates).
@@ -1529,6 +1611,11 @@ type LoginRequest struct {
 	// Examples: correct horse battery staple
 	Password string `json:"password"`
 }
+
+// MediaKind The media family of an asset. A Live Photo is an `image`
+// whose linked component video row never appears in the
+// timeline or the search.
+type MediaKind string
 
 // MergePeopleRequest One merge: 1-50 source clusters folded into one target
 // cluster. The source clusters dissolve with their labels (the
@@ -1614,8 +1701,12 @@ type ModelRef struct {
 
 	// Slot The functional slot a model fills. `face_detect`,
 	// `face_recognize`, `clip_embed` and `ocr` are the machine
-	// learning slots of this milestone; a speech slot arrives with
-	// a later one.
+	// learning slots of the pipeline; `clip_text` is the search's
+	// semantic arm -- the CLIP text tower that embeds queries into
+	// the vision tower's joint embedding space (it produces no
+	// per-asset rows, so its rerun endpoint answers 400
+	// `MODEL_INVALID`); a speech slot arrives with a later
+	// milestone.
 	Slot ModelSlot `json:"slot"`
 }
 
@@ -1682,8 +1773,12 @@ type ModelResponse struct {
 
 	// Slot The functional slot a model fills. `face_detect`,
 	// `face_recognize`, `clip_embed` and `ocr` are the machine
-	// learning slots of this milestone; a speech slot arrives with
-	// a later one.
+	// learning slots of the pipeline; `clip_text` is the search's
+	// semantic arm -- the CLIP text tower that embeds queries into
+	// the vision tower's joint embedding space (it produces no
+	// per-asset rows, so its rerun endpoint answers 400
+	// `MODEL_INVALID`); a speech slot arrives with a later
+	// milestone.
 	Slot ModelSlot `json:"slot"`
 
 	// Source Where a model's registration came from: `downloaded` models
@@ -1707,8 +1802,12 @@ type ModelScanResponse struct {
 
 // ModelSlot The functional slot a model fills. `face_detect`,
 // `face_recognize`, `clip_embed` and `ocr` are the machine
-// learning slots of this milestone; a speech slot arrives with
-// a later one.
+// learning slots of the pipeline; `clip_text` is the search's
+// semantic arm -- the CLIP text tower that embeds queries into
+// the vision tower's joint embedding space (it produces no
+// per-asset rows, so its rerun endpoint answers 400
+// `MODEL_INVALID`); a speech slot arrives with a later
+// milestone.
 type ModelSlot string
 
 // ModelSource Where a model's registration came from: `downloaded` models
@@ -1759,6 +1858,19 @@ type PairingTokenResponse struct {
 	// string. Render it as a QR code and never store or log it;
 	// the server keeps only its hash.
 	Token string `json:"token"`
+}
+
+// PersonFacetCount One named person of the people facet.
+type PersonFacetCount struct {
+	// AssetCount The number of assets of the current filtered set (minus
+	// the person filter) carrying a face of this cluster.
+	AssetCount int `json:"assetCount"`
+
+	// Id The face cluster id (the people surface's id).
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The CALLER's label of the cluster.
+	Name string `json:"name"`
 }
 
 // PersonLabel The calling user's private label of one face cluster.
@@ -1822,6 +1934,22 @@ type PersonSummary struct {
 	//
 	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
 	Thumbnail string `json:"thumbnail"`
+}
+
+// PlaceFacetCount One place of the places facet.
+type PlaceFacetCount struct {
+	// AssetCount The number of assets of the current filtered set (minus
+	// the place filter) resolved to this place.
+	AssetCount int `json:"assetCount"`
+
+	// Country The ISO country code.
+	Country string `json:"country"`
+
+	// Name The locale display name, canonical fallback.
+	Name string `json:"name"`
+
+	// PlaceId The GeoNames id (the round-trip filter value).
+	PlaceId int32 `json:"placeId"`
 }
 
 // PlaceSummary One city group of the caller's places list: a GeoNames place
@@ -1901,6 +2029,84 @@ type RemoveTagAssetsResponse struct {
 	// Skipped The distinct ids that carried no assignment of this tag
 	// -- never tagged, or already untagged.
 	Skipped int `json:"skipped"`
+}
+
+// SearchFacets The filter bar's counts over the current filtered set minus
+// each dimension: a facet entry's `assetCount` answers "how
+// many results would I have if I added this value ON TOP of
+// the current query and filters" (the dimension's own filter
+// parameters excluded). Every facet is caller-scoped exactly
+// like the surface it summarizes: places count visible assets,
+// tags and people are the caller's own (B4), albums are the
+// ones the caller can see. The lists are ordered by
+// `assetCount` descending with a deterministic per-dimension
+// tiebreak; they are not paginated (bounded by the family
+// instance's vocabulary sizes, the tags listing's own shape).
+type SearchFacets struct {
+	// Albums The caller-visible albums (own and shared, never the sync
+	// albums -- the timeline is their face) holding members of
+	// the current set.
+	Albums []AlbumFacetCount `json:"albums"`
+
+	// Cameras The EXIF camera makes/models of the current set. The `id`
+	// is the round-trip filter value (`make|model`); `make` and
+	// `model` are the display halves, null exactly when the
+	// EXIF row carries no value there.
+	Cameras []CameraFacetCount `json:"cameras"`
+
+	// Kinds The media families of the current set.
+	Kinds []KindFacetCount `json:"kinds"`
+
+	// People The caller's named, non-hidden people: one entry per
+	// labeled face cluster with a face on the current set.
+	// Hidden labels never list (the B4 hidden switch removes
+	// the person from every face position).
+	People []PersonFacetCount `json:"people"`
+
+	// Places The resolved places of the current set with the locale
+	// display name (`locale` parameter, the `GET /places` join).
+	Places []PlaceFacetCount `json:"places"`
+
+	// Tags The CALLER's tags with members in the current set (B4:
+	// another account's tags never surface).
+	Tags []TagFacetCount `json:"tags"`
+
+	// Years The taken-at years of the current set, newest first: the
+	// time-range facet (the `from`/`to` filters are the
+	// dimension the year counts exclude).
+	Years []YearFacetCount `json:"years"`
+}
+
+// SearchResponse One page of the unified search: the keyset-paged items (the
+// timeline item shape -- the search results page renders the
+// same wall the timeline does) plus the facet counts of the
+// current filtered set minus each dimension. `nextCursor` is
+// present exactly when another page follows; the cursor is
+// mode-tagged (the fused-rank order of a text query, or the
+// timeline order of the filter browse).
+type SearchResponse struct {
+	// Facets The filter bar's counts over the current filtered set minus
+	// each dimension: a facet entry's `assetCount` answers "how
+	// many results would I have if I added this value ON TOP of
+	// the current query and filters" (the dimension's own filter
+	// parameters excluded). Every facet is caller-scoped exactly
+	// like the surface it summarizes: places count visible assets,
+	// tags and people are the caller's own (B4), albums are the
+	// ones the caller can see. The lists are ordered by
+	// `assetCount` descending with a deterministic per-dimension
+	// tiebreak; they are not paginated (bounded by the family
+	// instance's vocabulary sizes, the tags listing's own shape).
+	Facets SearchFacets `json:"facets"`
+
+	// Items The page's assets, ordered by the fused score descending
+	// with the asset id ascending as the tiebreak (a text
+	// query), or by taken-at descending with the id descending
+	// (the filter browse -- the timeline's own order).
+	Items []TimelineItem `json:"items"`
+
+	// NextCursor The continuation token of the page: present exactly when
+	// another page follows. Opaque; pass it back as `cursor`.
+	NextCursor *string `json:"nextCursor,omitempty"`
 }
 
 // ServerInfo Instance capability report served by `GET /server/info`.
@@ -1999,6 +2205,19 @@ type TagAssetsRequest struct {
 	// that is not caller-visible or that already carries the
 	// tag; the remove skips the ids that carry no assignment.
 	AssetIds []openapi_types.UUID `json:"assetIds"`
+}
+
+// TagFacetCount One tag of the tags facet.
+type TagFacetCount struct {
+	// AssetCount The number of assets of the current filtered set (minus
+	// the tag filter) carrying this tag.
+	AssetCount int `json:"assetCount"`
+
+	// Id The CALLER's tag id (the round-trip filter value).
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The caller's tag name.
+	Name string `json:"name"`
 }
 
 // TagNameRequest The name-carrying body of the tag create and rename writes:
@@ -2378,6 +2597,16 @@ type UserSummary struct {
 	Role UserRole `json:"role"`
 }
 
+// YearFacetCount One year of the time-range facet.
+type YearFacetCount struct {
+	// AssetCount The number of assets of the current filtered set (minus
+	// the time-range filter) taken in this year.
+	AssetCount int `json:"assetCount"`
+
+	// Year The taken-at year.
+	Year int32 `json:"year"`
+}
+
 // ListJobsParams defines parameters for ListJobs.
 type ListJobsParams struct {
 	// Limit Page size: the number of job runs one response carries at
@@ -2537,6 +2766,74 @@ type ListPlacesParams struct {
 
 // ListPlacesParamsLocale defines parameters for ListPlaces.
 type ListPlacesParamsLocale string
+
+// SearchAssetsParams defines parameters for SearchAssets.
+type SearchAssetsParams struct {
+	// Query The free-text query: a literal substring matched
+	// (unaccented, case-insensitively) against the filename,
+	// the description, the OCR text and the caller's tag,
+	// album-title and person-name vocabularies, and embedded
+	// through the CLIP text tower for the semantic path. A
+	// value of fewer than two characters (after trimming) takes
+	// no text path: the request is the pure filter browse. The
+	// length is capped at 256 characters.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// PersonIds Restrict the results to assets carrying a face of one of
+	// these face clusters (the caller's people surface's
+	// cluster ids).
+	PersonIds *[]openapi_types.UUID `form:"personIds,omitempty" json:"personIds,omitempty"`
+
+	// PlaceIds Restrict the results to assets resolved to one of these
+	// places (the places facet's GeoNames ids).
+	PlaceIds *[]int32 `form:"placeIds,omitempty" json:"placeIds,omitempty"`
+
+	// From The inclusive lower bound of the taken-at range.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The EXCLUSIVE upper bound of the taken-at range. A `to`
+	// at or before `from` answers 400 `VALIDATION_FAILED`.
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+
+	// Cameras Restrict the results to assets whose EXIF camera matches
+	// one of these camera facet ids (`make|model`).
+	Cameras *[]string `form:"cameras,omitempty" json:"cameras,omitempty"`
+
+	// Kinds Restrict the results to these media families. A value
+	// outside `image`/`video` answers 400.
+	Kinds *[]MediaKind `form:"kinds,omitempty" json:"kinds,omitempty"`
+
+	// AlbumIds Restrict the results to members of these albums. Albums
+	// the caller cannot see drop out of the filter: they
+	// contribute nothing, they never empty the result.
+	AlbumIds *[]openapi_types.UUID `form:"albumIds,omitempty" json:"albumIds,omitempty"`
+
+	// TagIds Restrict the results to assets carrying one of the
+	// CALLER's tags. Another account's tag ids drop out of the
+	// filter (B4: tags are per-user state).
+	TagIds *[]openapi_types.UUID `form:"tagIds,omitempty" json:"tagIds,omitempty"`
+
+	// Locale The display locale of the places facet's names, exactly
+	// the `GET /places` locale join. Absent means `en`. A value
+	// outside the set answers 400 `VALIDATION_FAILED`.
+	Locale *SearchAssetsParamsLocale `form:"locale,omitempty" json:"locale,omitempty"`
+
+	// Cursor The `nextCursor` of the previous page; absent on the first
+	// page. The cursor carries the page's ordering mode (the
+	// fused rank of a text query, or the timeline order of the
+	// filter browse): a cursor of the other mode answers 400
+	// `VALIDATION_FAILED`, and so does any value this endpoint
+	// did not produce.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size: the number of items one response carries at
+	// most. Defaults to 100; values over 200 are answered with
+	// 200, values below 1 answer 400.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// SearchAssetsParamsLocale defines parameters for SearchAssets.
+type SearchAssetsParamsLocale string
 
 // ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
 type ActivateModelJSONRequestBody = ActivateModelJSONBody
@@ -2759,6 +3056,9 @@ type ServerInterface interface {
 	// ListPlaces The caller's city grouping.
 	// (GET /places)
 	ListPlaces(w http.ResponseWriter, r *http.Request, params ListPlacesParams)
+	// SearchAssets The unified search, one text box, two merged paths, filter facets.
+	// (GET /search)
+	SearchAssets(w http.ResponseWriter, r *http.Request, params SearchAssetsParams)
 	// GetServerInfo Report instance version and feature switches.
 	// (GET /server/info)
 	GetServerInfo(w http.ResponseWriter, r *http.Request)
@@ -3095,6 +3395,12 @@ func (_ Unimplemented) LabelPerson(w http.ResponseWriter, r *http.Request, clust
 // ListPlaces The caller's city grouping.
 // (GET /places)
 func (_ Unimplemented) ListPlaces(w http.ResponseWriter, r *http.Request, params ListPlacesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SearchAssets The unified search, one text box, two merged paths, filter facets.
+// (GET /search)
+func (_ Unimplemented) SearchAssets(w http.ResponseWriter, r *http.Request, params SearchAssetsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4445,6 +4751,182 @@ func (siw *ServerInterfaceWrapper) ListPlaces(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// SearchAssets operation middleware
+func (siw *ServerInterfaceWrapper) SearchAssets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchAssetsParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "personIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "personIds", r.URL.Query(), &params.PersonIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "personIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "personIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "placeIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "placeIds", r.URL.Query(), &params.PlaceIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "placeIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "placeIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cameras" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "cameras", r.URL.Query(), &params.Cameras, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cameras"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cameras", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kinds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "kinds", r.URL.Query(), &params.Kinds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kinds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kinds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "albumIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "albumIds", r.URL.Query(), &params.AlbumIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "albumIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "tagIds", r.URL.Query(), &params.TagIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "locale" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "locale", r.URL.Query(), &params.Locale, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "locale"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "locale", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchAssets(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetServerInfo operation middleware
 func (siw *ServerInterfaceWrapper) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 
@@ -4903,6 +5385,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/places", wrapper.ListPlaces)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/search", wrapper.SearchAssets)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/tags", wrapper.ListTags)
