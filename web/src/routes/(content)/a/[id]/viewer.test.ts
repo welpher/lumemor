@@ -719,11 +719,13 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 	]);
 	await settle();
 
-	// The reads render: the stored description text, the file facts,
-	// the download affordance.
+	// The reads render: the stored description text, the file facts;
+	// the download affordance lives in the ACTION BAR now (an action,
+	// not metadata -- available to any viewer, owner or sharee).
 	openDrawer();
 	expect(element('.info__description').textContent).toBe('Original caption.');
-	expect(() => element('.info__download')).not.toThrow();
+	expect(() => element('a.viewer__download')).not.toThrow();
+	expect(element('a.viewer__download').getAttribute('href')).toBe('/api/v1/assets/a2/original');
 
 	// The owner-only writes never render (read-only is visual, never
 	// grayed out -- the web IA's pinned rule): no trash in the bar,
