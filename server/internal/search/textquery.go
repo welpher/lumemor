@@ -129,6 +129,7 @@ func createTextHits(ctx context.Context, tx pgx.Tx, caller uuid.UUID, pattern, p
 		               FROM album_items ai
 		               JOIN albums al ON al.id = ai.album_id
 		               WHERE ai.asset_id = a.id
+		                 AND al.type <> 'sync'
 		                 AND (al.owner_id = $1 OR EXISTS (
 		                     SELECT 1 FROM album_shares s
 		                     WHERE s.album_id = al.id AND s.user_id = $1
@@ -168,6 +169,7 @@ func createTextHits(ctx context.Context, tx pgx.Tx, caller uuid.UUID, pattern, p
 		          SELECT 1 FROM album_items ai
 		          JOIN albums al ON al.id = ai.album_id
 		          WHERE ai.asset_id = a.id
+		            AND al.type <> 'sync'
 		            AND (al.owner_id = $1 OR EXISTS (
 		                SELECT 1 FROM album_shares s
 		                WHERE s.album_id = al.id AND s.user_id = $1
