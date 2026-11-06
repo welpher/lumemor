@@ -26,7 +26,7 @@
 //  2. The CTA drives the default group's download: the progress
 //     region takes over, the bar advances (observed; a warm models
 //     dir may legitimately complete before an intermediate sample
-//     lands), the run completes, and the four default models render
+//     lands), the run completes, and the five default models render
 //     with their Active badges.
 //  3. The task panel lists the succeeded model_download row with its
 //     converged byte counts.
@@ -66,12 +66,14 @@ const BASE_URL = 'http://localhost:8244';
 const ADMIN_EMAIL = 'admin@m3a-e2e.invalid';
 const ADMIN_PASSWORD = 'correct-horse-battery';
 
-// The four default models of the manifest, by the row identity the
-// page renders (article[data-model-id]).
+// The five default models of the manifest, by the row identity the
+// page renders (article[data-model-id]) -- the vision tower, the
+// search's text tower, the face pair and the OCR pair.
 const DEFAULT_MODEL_IDS = [
 	'yunet-2023mar',
 	'sface-2021dec',
 	'cnclip-vit-b16-vision',
+	'cnclip-vit-b16-text',
 	'ppocr-v4-mobile-ch'
 ] as const;
 
@@ -82,8 +84,8 @@ const FIXTURE_512_ID = 'clip-fixture-512';
 const FIXTURE_768_ID = 'clip-fixture-768';
 
 // The download progress bound: the cold upstream transfer of the
-// group (about 351 MB) is minutes, the warm re-verification is
-// seconds; the scene allows the cold bound.
+// group (about 771 MB with the search's text tower) is minutes, the
+// warm re-verification is seconds; the scene allows the cold bound.
 const DOWNLOAD_TIMEOUT_MS = 900_000;
 
 // The storage-state file scene 1 writes and every later scene replays
@@ -123,8 +125,10 @@ test('scene 1: signing in through the form lands on the empty models page', asyn
 		page.getByRole('button', { name: 'Download the default models', exact: true })
 	).toBeVisible();
 
-	// Every slot section reports its emptiness.
-	await expect(page.getByText('No model registered for this slot.')).toHaveCount(4);
+	// Every slot section reports its emptiness (the five slots:
+	// detection, recognition, the embedding and text towers of the
+	// semantic arm, and OCR).
+	await expect(page.getByText('No model registered for this slot.')).toHaveCount(5);
 
 	// Hand the session to every later scene: the storage state rides
 	// the login cookie (the fresh contexts replay it).
@@ -137,7 +141,7 @@ test('scene 1: signing in through the form lands on the empty models page', asyn
 test.describe('the signed-in scenes', () => {
 	test.use({ storageState: authStatePath });
 
-	test('scene 2: the download CTA completes and activates the four models', async ({ page }) => {
+	test('scene 2: the download CTA completes and activates the five models', async ({ page }) => {
 		test.setTimeout(DOWNLOAD_TIMEOUT_MS + 60_000);
 		await page.goto('/admin/models');
 		const cta = page.getByRole('button', { name: 'Download the default models', exact: true });
@@ -150,7 +154,7 @@ test.describe('the signed-in scenes', () => {
 		// may complete before any intermediate sample is possible, so
 		// the honest convergence is: the region carries the run, and
 		// either the bar advances or the run completes outright; either
-		// way the four model rows land.
+		// way the five model rows land.
 		const bar = page.getByRole('progressbar');
 		let peak = -1;
 		let sawAdvance = false;
@@ -167,7 +171,7 @@ test.describe('the signed-in scenes', () => {
 						}
 						return false;
 					}
-					return (await page.locator('article[data-model-id]').count()) === 4;
+					return (await page.locator('article[data-model-id]').count()) === 5;
 				},
 				{ timeout: DOWNLOAD_TIMEOUT_MS, intervals: [200, 500, 1000, 2000] }
 			)
@@ -194,11 +198,12 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.getByRole('heading', { level: 1, name: 'Jobs', exact: true })).toBeVisible();
 
 		// The model download's row: the succeeded state and the
-		// converged byte counts (the group's pinned bytes).
+		// converged byte counts (the group's pinned bytes, the text
+		// tower included: 808,972,863 bytes = 771.5 MB).
 		const row = page.locator('article.jobs__row').filter({ hasText: 'Model download' }).first();
 		await expect(row).toBeVisible();
 		await expect(row.getByText('Succeeded', { exact: true })).toBeVisible();
-		await expect(row.getByText(/of 381\.8 MB/)).toBeVisible();
+		await expect(row.getByText(/of 771\.5 MB/)).toBeVisible();
 	});
 
 	test('scene 4: the scan registers the fixture models as inactive customs', async ({ page }) => {
