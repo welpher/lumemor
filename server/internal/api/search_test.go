@@ -459,6 +459,20 @@ func TestSearchTextPath(t *testing.T) {
 	env.seedPersonCluster(t, cluster, face)
 	env.labelPersonCluster(t, owner, cluster, "海边的人", false)
 
+	t.Run("SyncAlbumTitleIsNotATextSource", func(t *testing.T) {
+		// Every fixture asset lands in the owner's auto-created "Sync"
+		// album (the production invariant); an unguarded album-title
+		// arm would answer the WHOLE library for any substring of
+		// "Sync" (sync, ync, nc, ...). Only genuine text hits may
+		// answer: no fixture text contains "sync", so the honest page
+		// is empty and the years facet domain is empty with it.
+		page := env.getSearch(t, env.cookie, "query="+url.QueryEscape("sync"))
+		if got := searchItemsIDs(page); len(got) != 0 {
+			t.Errorf("the sync query answered %d assets, want 0 (the sync album's title is not a text source)", len(got))
+		}
+		requireFacetYears(t, page.Facets.Years)
+	})
+
 	t.Run("EverySourceHitsAndDedups", func(t *testing.T) {
 		page := env.getSearch(t, env.cookie, "query="+url.QueryEscape("海边"))
 		got := searchItemsIDs(page)
