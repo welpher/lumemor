@@ -51,14 +51,22 @@ test('renders one labeled stop per month with the navigation label', () => {
 	// The year-only resting axis: the year labels the rail once per
 	// year run (all four months are 2026); the months ride as dots
 	// whose accessible names carry the full labels.
-	const years = document.body.querySelectorAll('.scrubber__year');
-	expect(Array.from(years).map((year) => year.textContent)).toEqual(['2026']);
+	// At REST only the spine and dots carry the rail: no years, no
+	// month labels, no readout.
+	expect(document.body.querySelector('.scrubber__year')).toBeNull();
+	expect(document.body.querySelector('.scrubber__label')).toBeNull();
+	expect(document.body.querySelector('.scrubber__readout')).toBeNull();
 	expect(Array.from(stops).map((stop) => stop.getAttribute('aria-label'))).toEqual(
 		months.map((month) => month.label)
 	);
-	// No resting month labels and no readout at rest.
-	expect(document.body.querySelector('.scrubber__label')).toBeNull();
-	expect(document.body.querySelector('.scrubber__readout')).toBeNull();
+	// The wall's scrolling wakes the rail: the years appear and the
+	// active month rides the readout chip.
+	document.dispatchEvent(new Event('scroll'));
+	flushSync();
+	const years = document.body.querySelectorAll('.scrubber__year');
+	expect(Array.from(years).map((year) => year.textContent)).toEqual(['2026']);
+	const readout = document.body.querySelector('.scrubber__readout');
+	expect(readout?.textContent).toBe('Oct 2026');
 	// The stops sit at data-proportional offsets: four months of
 	// equal count divide the usable span evenly (0, 1/4, 1/2, 3/4 of
 	// a 140px rail minus the stop height: 0/31/62/93px).
