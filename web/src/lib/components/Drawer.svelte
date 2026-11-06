@@ -2,15 +2,16 @@
 	// The navigation drawer of the content shell (web IA: the
 	// hamburger opens it; Escape and a click outside close it). It
 	// carries the IA's content sections in route-table order (the
-	// albums wall's entry live since the M3c surface), plus the
-	// hidden view's entry, which moved here from the timeline's
-	// toolbar in R2-11 -- it sits with the other list views
-	// (favorites/trash). Below the content list, behind a divider,
-	// the admin panel's entry renders only for an admin's session
-	// (the identity seam's role arm, the M2d deferred item: a member
-	// account never sees the management surface's door). Places and
-	// Memories stay visible-but-disabled placeholders until their M3
-	// domains arrive.
+	// albums wall's entry live since the M3c surface; the places
+	// grid's entry live since the M3d surface), plus the hidden
+	// view's entry, which moved here from the timeline's toolbar in
+	// R2-11 -- it sits with the other list views (favorites/trash).
+	// Below the content list, behind a divider, the admin panel's
+	// entry renders only for an admin's session (the identity seam's
+	// role arm, the M2d deferred item: a member account never sees
+	// the management surface's door). Memories stays a
+	// visible-but-disabled placeholder until its polish-block
+	// domain arrives.
 	//
 	// THE LEADING ICONS (R2-5): every item LEADS with its lucide icon
 	// (24-grid, 2px round caps, currentColor -- the icon language of
@@ -44,7 +45,7 @@
 		{ labelKey: 'nav_timeline', href: '/timeline', disabled: false, icon: Images },
 		{ labelKey: 'nav_albums', href: '/albums', disabled: false, icon: BookImage },
 		{ labelKey: 'nav_people', href: '/people', disabled: false, icon: Users },
-		{ labelKey: 'nav_places', href: '/places', disabled: true, icon: MapPin },
+		{ labelKey: 'nav_places', href: '/places', disabled: false, icon: MapPin },
 		{ labelKey: 'nav_memories', href: '/memories', disabled: true, icon: Sparkles },
 		{ labelKey: 'nav_favorites', href: '/favorites', disabled: false, icon: Star },
 		{ labelKey: 'hidden_title', href: '/hidden', disabled: false, icon: EyeOff },

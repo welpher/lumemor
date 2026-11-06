@@ -132,6 +132,11 @@
 		onaction: (action: BatchAction) => Promise<boolean>;
 		/** Open the page's assign dialog for one face (the drawer's People section). */
 		onassignface: (face: AssetFaceSummary) => void;
+		/**
+		 * Open the page's add-tag dialog over the current asset (the
+		 * drawer's tags row; per-user state, every viewer's own write).
+		 */
+		onassigntag: () => void;
 	};
 
 	let {
@@ -151,7 +156,8 @@
 		onprobe,
 		onedit,
 		onaction,
-		onassignface
+		onassignface,
+		onassigntag
 	}: Props = $props();
 
 	// The panel's open-preference persistence (R2-9): one key, default
@@ -746,6 +752,7 @@
 			onclose={() => (drawerOpen = false)}
 			{onedit}
 			{onassignface}
+			{onassigntag}
 		/>
 	{/if}
 </div>

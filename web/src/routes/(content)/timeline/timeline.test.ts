@@ -943,3 +943,151 @@ test('an album membership event restarts the walk: the fresh page one applies', 
 	unmount(page);
 	flushSync();
 });
+
+const tagsBody = [
+	{
+		id: 't1',
+		name: 'Beach',
+		assetCount: 2,
+		createdAt: '2026-11-06T09:00:00Z',
+		updatedAt: '2026-11-06T09:00:00Z'
+	},
+	{
+		id: 't2',
+		name: 'Sunrise',
+		assetCount: 0,
+		createdAt: '2026-11-06T09:30:00Z',
+		updatedAt: '2026-11-06T09:30:00Z'
+	}
+];
+
+test('add tag: picking an existing tag POSTs the selection, the report lands', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/tags': () => jsonResponse(200, tagsBody),
+			'/api/v1/tags/t1/assets': () => jsonResponse(200, { added: 2, skipped: 0 })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	selectTwoTiles();
+	buttonByText('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const dialog = modal();
+	expect(dialog?.getAttribute('aria-label')).toBe('Add tag');
+	// The pick list offers the caller's vocabulary.
+	const options = Array.from(dialog?.querySelectorAll('option') ?? []);
+	expect(options.map((option) => option.value)).toEqual(['t1', 't2']);
+	expect(dialog?.textContent).toContain('Beach');
+
+	chooseDialogOption(dialog as ParentNode, 't1');
+	buttonByText('Add tag', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/tags/t1/assets');
+	expect(posts).toHaveLength(1);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ assetIds: ['a1', 'a2'] });
+	// The honest report renders inside the dialog.
+	expect(modal()?.textContent).toContain('Added 2, skipped 0.');
+	buttonByText('Done', modal() as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	// The successful add cleared the selection: the bar is gone. The
+	// tag write publishes nothing (per-user state), so the wall
+	// itself never re-fetches.
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+	expect(fetchMock).toHaveBeenCalledTimes(3);
+	unmount(page);
+	flushSync();
+});
+
+test('add tag: the create-new path creates the tag idempotently, then tags the selection', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/tags': (init?: RequestInit) => {
+				if (init?.method === 'POST') {
+					return jsonResponse(201, {
+						id: 't-new',
+						name: 'Roadtrip',
+						assetCount: 0,
+						createdAt: '2026-11-06T11:00:00Z',
+						updatedAt: '2026-11-06T11:00:00Z'
+					});
+				}
+				return jsonResponse(200, tagsBody);
+			},
+			'/api/v1/tags/t-new/assets': () => jsonResponse(200, { added: 2, skipped: 0 })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	selectTwoTiles();
+	buttonByText('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const dialog = modal();
+	const radios = Array.from(dialog?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? []);
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
+		new MouseEvent('click', { bubbles: true, cancelable: true })
+	);
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
+		new Event('change', { bubbles: true })
+	);
+	flushSync();
+	fillDialogField(dialog as ParentNode, 'Roadtrip');
+	buttonByText('Create and add', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/tags' && init?.method === 'POST'
+	);
+	expect(posts).toHaveLength(1);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ name: 'Roadtrip' });
+	const adds = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/tags/t-new/assets');
+	expect(adds).toHaveLength(1);
+	expect(JSON.parse(String(adds[0]?.[1]?.body))).toEqual({ assetIds: ['a1', 'a2'] });
+	expect(modal()?.textContent).toContain('Added 2, skipped 0.');
+	unmount(page);
+	flushSync();
+});
+
+test('add tag: a failed write keeps the selection and surfaces the message in the dialog', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/tags': () => jsonResponse(200, tagsBody),
+			'/api/v1/tags/t1/assets': () =>
+				jsonResponse(404, { code: 'TAG_NOT_FOUND', message: 'no such tag for this caller' })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	selectTwoTiles();
+	buttonByText('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const dialog = modal();
+	chooseDialogOption(dialog as ParentNode, 't1');
+	buttonByText('Add tag', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	expect(modal()?.textContent).toContain('This tag does not exist or is not visible to you.');
+	// The dialog stays on its choice; the selection survives.
+	expect(modal()?.querySelector('select')).not.toBeNull();
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('2 selected');
+	unmount(page);
+	flushSync();
+});
