@@ -18,8 +18,8 @@
 # Phase 2 (the real-model full chain): the default model group
 # downloads through the production download service (POST
 # /api/v1/admin/models/download, the job_runs row polled to
-# succeeded), the listing shows all four models active with their
-# files present, and three fixtures upload -- the face portrait, its
+# succeeded), the listing shows all five models active with their
+# files present (the M3d text tower among them), and three fixtures upload -- the face portrait, its
 # EXIF-orientation twin of the SAME person, and the text-bearing OCR
 # image -- after which the ML products are asserted inside the
 # database container (docker compose exec db psql): faces with
@@ -202,6 +202,8 @@ prepare_offline_source() {
         face_detection_yunet_2023mar.onnx \
         face_recognition_sface_2021dec.onnx \
         cn_clip_vision.onnx \
+        zihuv_text.onnx \
+        cn_clip_vocab.txt \
         ch_PP-OCRv4_det_infer.onnx \
         ch_PP-OCRv4_rec_infer.onnx; do
         [ -f "$models_cache/$weight" ] \
@@ -212,8 +214,9 @@ prepare_offline_source() {
     command -v openssl >/dev/null 2>&1 \
         || fail "the offline mode needs openssl to mint the mirror certificate"
 
-    # The five pinned upstream artifacts at their Hugging Face URL
-    # paths: what the mirror rewrite makes the download resolve.
+    # The seven pinned upstream artifacts at their Hugging Face URL
+    # paths (the M3d text tower and its tokenizer vocabulary among
+    # them): what the mirror rewrite makes the download resolve.
     link_offline_file \
         "opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" \
         "face_detection_yunet_2023mar.onnx"
@@ -223,6 +226,12 @@ prepare_offline_source() {
     link_offline_file \
         "felixdu/chinese-clip-vit-base-patch16-onnx/resolve/main/cn_clip_vision.onnx" \
         "cn_clip_vision.onnx"
+    link_offline_file \
+        "zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/text.onnx" \
+        "zihuv_text.onnx"
+    link_offline_file \
+        "zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/vocab.txt" \
+        "cn_clip_vocab.txt"
     link_offline_file \
         "SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx" \
         "ch_PP-OCRv4_det_infer.onnx"
@@ -234,6 +243,8 @@ prepare_offline_source() {
         "opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" \
         "opencv/opencv_zoo/resolve/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx" \
         "felixdu/chinese-clip-vit-base-patch16-onnx/resolve/main/cn_clip_vision.onnx" \
+        "zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/text.onnx" \
+        "zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/vocab.txt" \
         "SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx" \
         "SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_rec_infer.onnx"; do
         [ -e "$offline_root/$url_path" ] \
@@ -605,23 +616,23 @@ while :; do
 done
 echo "    the download run succeeded after $(elapsed)s: $row"
 
-echo "==> GET /api/v1/admin/models must list the four default models active"
+echo "==> GET /api/v1/admin/models must list the five default models active"
 status="$(curl -sS -o "$work_dir/models_body" -b "$cookie_jar" -w '%{http_code}' \
     "$base_url/api/v1/admin/models")" \
     || fail "GET /api/v1/admin/models request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/admin/models returned status $status, want 200: $(cat "$work_dir/models_body")"
 active_count="$(grep -o '"isActive":true' "$work_dir/models_body" | wc -l | tr -d ' ')"
-[ "$active_count" = "4" ] \
-    || fail "the model listing shows $active_count active models, want 4: $(cat "$work_dir/models_body")"
+[ "$active_count" = "5" ] \
+    || fail "the model listing shows $active_count active models, want 5: $(cat "$work_dir/models_body")"
 files_present="$(grep -o '"filesPresent":true' "$work_dir/models_body" | wc -l | tr -d ' ')"
-[ "$files_present" = "4" ] \
-    || fail "the model listing shows $files_present models with files present, want 4: $(cat "$work_dir/models_body")"
-for model_id in yunet-2023mar sface-2021dec cnclip-vit-b16-vision ppocr-v4-mobile-ch; do
+[ "$files_present" = "5" ] \
+    || fail "the model listing shows $files_present models with files present, want 5: $(cat "$work_dir/models_body")"
+for model_id in yunet-2023mar sface-2021dec cnclip-vit-b16-vision cnclip-vit-b16-text ppocr-v4-mobile-ch; do
     grep -q "\"id\":\"$model_id\"" "$work_dir/models_body" \
         || fail "the model listing does not carry $model_id: $(cat "$work_dir/models_body")"
 done
-echo "    four models active with their files present"
+echo "    five models active with their files present (the text tower among them)"
 
 echo "==> uploading the portrait, its same-person orientation twin, and the text image"
 [ -f "$face_portrait" ] || fail "fixture missing: $face_portrait"

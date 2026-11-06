@@ -207,6 +207,8 @@ prepare_offline_source() {
         face_detection_yunet_2023mar.onnx \
         face_recognition_sface_2021dec.onnx \
         cn_clip_vision.onnx \
+        zihuv_text.onnx \
+        cn_clip_vocab.txt \
         ch_PP-OCRv4_det_infer.onnx \
         ch_PP-OCRv4_rec_infer.onnx; do
         [ -f "$models_cache/$weight" ] \
@@ -217,8 +219,9 @@ prepare_offline_source() {
     command -v openssl >/dev/null 2>&1 \
         || fail "the offline mode needs openssl to mint the mirror certificate"
 
-    # The five pinned upstream artifacts at their Hugging Face URL
-    # paths: what the mirror rewrite makes the download resolve.
+    # The seven pinned upstream artifacts at their Hugging Face URL
+    # paths (the M3d text tower and its tokenizer vocabulary among
+    # them): what the mirror rewrite makes the download resolve.
     link_offline_file \
         "opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" \
         "face_detection_yunet_2023mar.onnx"
@@ -228,6 +231,12 @@ prepare_offline_source() {
     link_offline_file \
         "felixdu/chinese-clip-vit-base-patch16-onnx/resolve/main/cn_clip_vision.onnx" \
         "cn_clip_vision.onnx"
+    link_offline_file \
+        "zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/text.onnx" \
+        "zihuv_text.onnx"
+    link_offline_file \
+        "zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/vocab.txt" \
+        "cn_clip_vocab.txt"
     link_offline_file \
         "SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx" \
         "ch_PP-OCRv4_det_infer.onnx"
@@ -239,6 +248,8 @@ prepare_offline_source() {
         "opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" \
         "opencv/opencv_zoo/resolve/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx" \
         "felixdu/chinese-clip-vit-base-patch16-onnx/resolve/main/cn_clip_vision.onnx" \
+        "zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/text.onnx" \
+        "zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/vocab.txt" \
         "SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx" \
         "SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_rec_infer.onnx"; do
         [ -e "$offline_root/$url_path" ] \
