@@ -361,7 +361,7 @@
 	<title>Timeline · lumemor</title>
 </svelte:head>
 
-<section class="timeline px-2" aria-busy={$timeline.status === 'loading'}>
+<section class="timeline max-w-[1440px] mx-auto px-4" aria-busy={$timeline.status === 'loading'}>
 	<!-- No toolbar (R2-11): the timeline's header carries nothing but
 	     what the top bar already owns (upload, search). The hidden
 	     view's entry moved to the navigation drawer; the selection

@@ -204,7 +204,7 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<section class="wall px-2" aria-busy={$wall.status === 'loading'}>
+<section class="wall max-w-[1440px] mx-auto px-4" aria-busy={$wall.status === 'loading'}>
 	{#if $wall.items.length > 0}
 		<div class="wall__toolbar flex justify-end mb-2">
 			<Button
