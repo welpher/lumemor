@@ -55,6 +55,12 @@ services:
         PNPM_REGISTRY: ${LUMEMOR_BUILD_PNPM_REGISTRY:-}
         ONNXRUNTIME_URL: ${LUMEMOR_BUILD_ONNXRUNTIME_URL:-}
         GEONAMES_MIRROR: ${LUMEMOR_BUILD_GEONAMES_MIRROR:-}
+        # The predefined proxy build args carry the fetches (GeoNames
+        # dumps, the onnxruntime release) through a restricted
+        # network's forward proxy; Docker Desktop builds reach the
+        # host's proxy at host.docker.internal.
+        https_proxy: ${LUMEMOR_BUILD_HTTPS_PROXY:-}
+        http_proxy: ${LUMEMOR_BUILD_HTTP_PROXY:-}
     ports:
       # 8244 binds all interfaces so family devices can run the wizard from the LAN; this unauthenticated pre-setup window closes once the first admin exists.
       - "8244:8244"
