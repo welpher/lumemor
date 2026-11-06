@@ -36,6 +36,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/db/dbtest"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/geodata"
 	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/ml"
 	"github.com/welpher/lumemor/server/internal/storage"
@@ -98,7 +99,7 @@ func newEnv(t *testing.T) *env {
 // default group, which those tests never download.
 func newEnvManifest(t *testing.T, manifest *ml.Manifest) *env {
 	t.Helper()
-	return newEnvLogger(t, manifest, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	return newEnvLogger(t, manifest, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
 }
 
 // newEnvRerun is newEnv with the ML rerun dispatch seam injected: the
@@ -106,14 +107,24 @@ func newEnvManifest(t *testing.T, manifest *ml.Manifest) *env {
 // in for the per-asset ML workers of the milestone's later tasks.
 func newEnvRerun(t *testing.T, dispatch MlRerunDispatchFunc) *env {
 	t.Helper()
-	return newEnvLogger(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), dispatch)
+	return newEnvLogger(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), dispatch, nil)
 }
 
-// newEnvLogger is newEnv with the manifest, the queue's logger and the
-// ML rerun dispatch seam injected: the sweep tests capture the queue's
-// log output to pin the one-log-line-per-run discipline of the requeue
-// sweep; the rerun tests inject their fake per-asset dispatch.
-func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, rerunDispatch MlRerunDispatchFunc) *env {
+// newEnvPlaces is newEnv with the place grid injected: the places
+// tests drive the metadata job's GPS step and the re-resolution run
+// against a fixture grid (the places table rows are each test's own
+// seeding -- the grid only answers ids the table carries).
+func newEnvPlaces(t *testing.T, places *geodata.Index) *env {
+	t.Helper()
+	return newEnvLogger(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, places)
+}
+
+// newEnvLogger is newEnv with the manifest, the queue's logger, the
+// ML rerun dispatch seam and the place grid injected: the sweep tests
+// capture the queue's log output to pin the one-log-line-per-run
+// discipline of the requeue sweep; the rerun tests inject their fake
+// per-asset dispatch; the places tests inject their fixture grid.
+func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, rerunDispatch MlRerunDispatchFunc, places *geodata.Index) *env {
 	t.Helper()
 
 	pool := dbtest.New(t)
@@ -140,6 +151,7 @@ func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, reru
 		Registry:        registry,
 		ModelsManifest:  manifest,
 		MlRerunDispatch: rerunDispatch,
+		Places:          places,
 	})
 	if err != nil {
 		t.Fatalf("start queue: %v", err)
