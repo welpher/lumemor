@@ -151,6 +151,26 @@ func TestPlacesCityGrouping(t *testing.T) {
 	})
 
 	t.Run("ZhHansLocaleJoin", func(t *testing.T) {
+		// The locale switch must not move asset rows: capture the
+		// updated_at of every fixture asset before the join and
+		// assert it after (the review focus's determinism pin -- the
+		// display name is a JOIN, never a denormalized rewrite).
+		var before []time.Time
+		rows, err := e.pool.Query(context.Background(), `
+			SELECT updated_at FROM assets WHERE owner_id = $1 ORDER BY id`,
+			pgUUID(adminID))
+		if err != nil {
+			t.Fatalf("read asset updated_at: %v", err)
+		}
+		for rows.Next() {
+			var at time.Time
+			if err := rows.Scan(&at); err != nil {
+				t.Fatalf("scan updated_at: %v", err)
+			}
+			before = append(before, at)
+		}
+		rows.Close()
+
 		places := decodePlaces(t, listPlaces(env.router, env.cookie, "zh-Hans"))
 		if len(places) != 3 {
 			t.Fatalf("places = %d entries, want 3", len(places))
@@ -159,6 +179,30 @@ func TestPlacesCityGrouping(t *testing.T) {
 		requirePlace(t, places[1], placeBeijingID, "北京", "CN", 2, 2)
 		// No zh-Hans row: the canonical name answers the fallback.
 		requirePlace(t, places[2], placeHighlandID, "Highland Falls", "US", 1, 1)
+
+		var after []time.Time
+		rows, err = e.pool.Query(context.Background(), `
+			SELECT updated_at FROM assets WHERE owner_id = $1 ORDER BY id`,
+			pgUUID(adminID))
+		if err != nil {
+			t.Fatalf("re-read asset updated_at: %v", err)
+		}
+		for rows.Next() {
+			var at time.Time
+			if err := rows.Scan(&at); err != nil {
+				t.Fatalf("scan updated_at: %v", err)
+			}
+			after = append(after, at)
+		}
+		rows.Close()
+		if len(before) != len(after) {
+			t.Fatalf("asset count moved: %d before, %d after", len(before), len(after))
+		}
+		for i := range before {
+			if !before[i].Equal(after[i]) {
+				t.Errorf("asset updated_at[%d] moved across the locale switch: %s -> %s", i, before[i], after[i])
+			}
+		}
 	})
 
 	t.Run("UnknownLocaleRejected", func(t *testing.T) {
