@@ -72,12 +72,6 @@ export type PackedRow = {
 	tiles: PackedTile[];
 	/** The row's rendered height in CSS pixels. */
 	height: number;
-	/**
-	 * Whether the row fills the container width (a row closed by the
-	 * floor rule). The clamped tail row of a group answers false and
-	 * renders left-aligned at true aspects.
-	 */
-	justified: boolean;
 };
 
 /**
@@ -110,19 +104,24 @@ function naturalHeight(count: number, aspectSum: number, containerWidth: number)
 	return usable / aspectSum;
 }
 
-/** Close one row: tiles at height * aspect, or the clamped tail. */
-function closeRow(
-	items: readonly TimelineItem[],
-	aspectSum: number,
-	containerWidth: number,
-	isLast: boolean
-): PackedRow {
+/** The tail's growth cap: a group's last row fills the width, but a
+ * LONE photo never grows past twice the target height (one panorama
+ * widening to a full page reads as a bug, not a statement). Derived
+ * from the target -- no separate token. */
+const tailCap = WALL_ROW_TARGET * 2;
+
+/** Close one row: tiles at height * aspect. Rows fill the container
+ * width exactly; a group's tail GROWS to fill (the widow handling: a
+ * day with two photos shows two large ones, never a shrunken pair
+ * with a hole on the right) up to the cap, past which it renders
+ * left-aligned at the cap's height. The grouping carries the
+ * structure; the row math carries only density. */
+function closeRow(items: readonly TimelineItem[], aspectSum: number, containerWidth: number, isLast: boolean): PackedRow {
 	const natural = naturalHeight(items.length, aspectSum, containerWidth);
-	const height = isLast && natural > WALL_ROW_TARGET ? WALL_ROW_TARGET : natural;
+	const height = isLast ? Math.min(natural, tailCap) : natural;
 	return {
 		tiles: items.map((item) => ({ item, width: height * aspectOf(item) })),
-		height,
-		justified: height === natural
+		height
 	};
 }
 
@@ -141,11 +140,10 @@ export function packRows(
 	}
 	if (containerWidth <= WALL_TILE_SEAM) {
 		// Nothing to justify against: every item stands alone at the
-		// target height (the clamped-tail shape).
+		// target height.
 		return items.map((item) => ({
 			tiles: [{ item, width: WALL_ROW_TARGET * aspectOf(item) }],
-			height: WALL_ROW_TARGET,
-			justified: false
+			height: WALL_ROW_TARGET
 		}));
 	}
 
