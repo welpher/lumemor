@@ -119,9 +119,51 @@
 	// focus); the drag keeps the last jumped month revealed as the
 	// live readout.
 	let revealedKey: string | null = $state(null);
+	// The rail is ACTIVE (years + readout visible) while the pointer
+	// is over it, a drag is in flight, or the wall is scrolling.
+	let hovering = $state(false);
+	let scrollActive = $state(false);
+	let scrollQuietTimer: ReturnType<typeof setTimeout> | undefined;
 
-	/** The revealed stop, for its label's position. */
-	const revealed = $derived(stops.find((stop) => stop.key === revealedKey) ?? null);
+	// The wall's scrolling wakes the rail: element scrolls do not
+	// bubble, so the capture phase at the document reaches every
+	// scroll root (the timeline page's own listener established the
+	// pattern). Eight hundred milliseconds of quiet settles it.
+	$effect(() => {
+		const onScroll = () => {
+			scrollActive = true;
+			if (scrollQuietTimer !== undefined) {
+				clearTimeout(scrollQuietTimer);
+			}
+			scrollQuietTimer = setTimeout(() => {
+				scrollActive = false;
+			}, 800);
+		};
+		document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+		return () => {
+			document.removeEventListener('scroll', onScroll, { capture: true });
+			if (scrollQuietTimer !== undefined) {
+				clearTimeout(scrollQuietTimer);
+			}
+		};
+	});
+
+	/** The rail's active state: any presence reveals the years and
+	 * the readout; at rest only the spine and dots remain. */
+	const railActive = $derived(hovering || dragging || scrollActive);
+
+	/** The readout's stop: the hover/drag's month, falling back to
+	 * the active month while the wall scrolls under it. */
+	const readout = $derived.by(() => {
+		if (!railActive) {
+			return null;
+		}
+		const revealedStop = stops.find((stop) => stop.key === revealedKey);
+		if (revealedStop !== undefined) {
+			return revealedStop;
+		}
+		return stops.find((stop) => stop.key === activeKey) ?? null;
+	});
 
 	/** The stop whose center is nearest the pointer's height. The
 	 * comparison runs in rail fractions (the pointer's fraction of
@@ -174,6 +216,7 @@
 	function handlePointerMove(event: PointerEvent): void {
 		// A hover (not pressed) reveals the nearest month's label;
 		// a drag jumps to it -- both read the same geometry.
+		hovering = true;
 		if (!dragging) {
 			revealedKey = nearestKey(event.clientY);
 			return;
@@ -195,6 +238,7 @@
 	function handlePointerLeave(): void {
 		// Leaving the rail clears the hover readout; the active month
 		// stays marked by its dot, not a label.
+		hovering = false;
 		if (!dragging) {
 			revealedKey = null;
 		}
@@ -230,14 +274,20 @@
 		>
 			<!-- The axis spine the years and dots ride on. -->
 			<span class="scrubber__spine absolute top-1 bottom-1 right-[6px] w-px bg-border" aria-hidden="true"></span>
+			{#if railActive}
+				<!-- The years wake with the rail (hover, drag, or the wall's
+				     scrolling); at rest the spine and dots carry it alone. -->
+				{#each stops as stop (stop.key)}
+					{#if stop.year !== null}
+						<span
+							class="scrubber__year absolute right-[18px] font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
+							style="top: {stop.top}px"
+							aria-hidden="true"
+						>{stop.year}</span>
+					{/if}
+				{/each}
+			{/if}
 			{#each stops as stop (stop.key)}
-				{#if stop.year !== null}
-					<span
-						class="scrubber__year absolute right-[18px] font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
-						style="top: {stop.top}px"
-						aria-hidden="true"
-					>{stop.year}</span>
-				{/if}
 				<button
 					class="scrubber__stop absolute right-0 flex items-center justify-center w-[12px] h-[16px] cursor-pointer"
 					class:scrubber__stop--active={activeKey === stop.key}
@@ -255,14 +305,15 @@
 					></span>
 				</button>
 			{/each}
-			{#if revealed !== null}
-				<!-- The hover/drag readout: the nearest month's full label,
-				     riding the spine at the revealed stop's height. -->
+			{#if readout !== null}
+				<!-- The readout chip: the nearest (or active-while-scrolling)
+				     month's compact label on an opaque card -- left of the
+				     dots, wholly inside the reserved gutter. -->
 				<span
-					class="scrubber__readout absolute right-[18px] font-body font-semibold text-[11px] leading-[16px] whitespace-nowrap text-text"
-					style="top: {revealed.top}px"
+					class="scrubber__readout absolute right-[18px] inline-flex items-center h-[18px] px-1.5 font-body font-semibold text-[11px] leading-none whitespace-nowrap text-text bg-card border border-border rounded-control shadow-card"
+					style="top: {readout.top - 1}px"
 					aria-hidden="true"
-				>{revealed.compact}</span>
+				>{readout.compact}</span>
 			{/if}
 		</div>
 	</nav>

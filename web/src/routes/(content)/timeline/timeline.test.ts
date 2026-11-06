@@ -220,11 +220,10 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 		'/api/v1/assets/a1/thumbnail?size=tile'
 	);
 
-	// The scrubber's year-only axis: one year label for the run,
-	// the months as dots with full accessible names.
+	// The scrubber at rest: dots with full accessible names; the
+	// years sleep until the rail is active.
 	const stops = Array.from(document.body.querySelectorAll('.scrubber__stop'));
-	const years = Array.from(document.body.querySelectorAll('.scrubber__year'));
-	expect(years.map((year) => year.textContent)).toEqual(['2026']);
+	expect(document.body.querySelectorAll('.scrubber__year')).toHaveLength(0);
 	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual([
 		'November 2026',
 		'October 2026'
