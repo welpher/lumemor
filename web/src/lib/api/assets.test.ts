@@ -38,6 +38,8 @@ const detailBody = {
 	durationMs: null,
 	blurhash: 'UHL6aAof00WBWB00ayWB00',
 	livePhotoVideoId: null,
+	// The caller's tags array (M3d): part of the detail's fixed shape.
+	tags: [],
 	faces: [
 		{
 			id: 'f1',
@@ -137,6 +139,25 @@ test('the detail validator rejects broken faces arrays', async () => {
 	expect(empty.ok).toBe(true);
 	if (empty.ok) {
 		expect(empty.detail.faces).toEqual([]);
+	}
+	// The tags array joined the fixed shape (M3d): absent, null or a
+	// malformed entry is not a detail.
+	expect(
+		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, tags: null })))
+	).toEqual({ ok: false, errorKey: 'internal' });
+	expect(
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(200, { ...detailBody, tags: [{ id: 't1', name: 7 }] }))
+		)
+	).toEqual({ ok: false, errorKey: 'internal' });
+	const tagged = await fetchAssetDetail(
+		'a1',
+		vi.fn(async () => jsonResponse(200, { ...detailBody, tags: [{ id: 't1', name: 'Beach' }] }))
+	);
+	expect(tagged.ok).toBe(true);
+	if (tagged.ok) {
+		expect(tagged.detail.tags).toEqual([{ id: 't1', name: 'Beach' }]);
 	}
 });
 

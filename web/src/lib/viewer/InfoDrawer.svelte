@@ -7,11 +7,13 @@
 	// section (one face chip per face of the detail's faces array,
 	// the caller's label state per cluster, the click delegating to
 	// the page's assign dialog), the EXIF hot fields folded into
-	// collapsible groups, the file facts, and the places placeholder
-	// pinned to its M3 domain. The curation actions and the permanent
-	// delete are GONE from this surface: the action bar over the
-	// media carries the favorite and the trash/restore pair, and the
-	// permanent delete lives on the trash page alone.
+	// collapsible groups, the file facts with the tags row (the
+	// caller's own tags as chips plus the assign affordance, M3d),
+	// and the places placeholder pinned to its M3 domain. The
+	// curation actions and the permanent delete are GONE from this
+	// surface: the action bar over the media carries the favorite
+	// and the trash/restore pair, and the permanent delete lives on
+	// the trash page alone.
 	//
 	// THE FORM (R2-10): the same markup serves the two shapes the
 	// viewer composes it into -- the right DOCKED split region at lg+
@@ -64,9 +66,16 @@
 		 * page owns the dialog and the writes).
 		 */
 		onassignface: (face: AssetFaceSummary) => void;
+		/**
+		 * Open the add-tag dialog over this asset (the page owns the
+		 * dialog and the writes). Tags are per-user state (B4): every
+		 * caller tags with their own vocabulary, so the affordance is
+		 * every viewer's, never the owner's alone.
+		 */
+		onassigntag: () => void;
 	};
 
-	let { detail, isOwner, onclose, onedit, onassignface }: Props = $props();
+	let { detail, isOwner, onclose, onedit, onassignface, onassigntag }: Props = $props();
 
 	let editing = $state(false);
 	let draft = $state('');
@@ -311,6 +320,33 @@
 						<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
 					</div>
 				{/each}
+				<!-- The tags row (M3d): the CALLER's tags on the asset as
+				     chips, plus the assign affordance (the add-tag dialog
+				     the batch bar's flow reuses). Per-user state (B4): the
+				     chips are the caller's own rows, the write is the
+				     caller's own, so the affordance is every viewer's. -->
+				<div class="info__tags flex items-center justify-between gap-3 py-[7px]">
+					<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{$_('viewer_tags_label')}</dt>
+					<dd class="info__tag-values flex flex-wrap justify-end items-center gap-1.5 m-0">
+						{#if detail.tags.length === 0}
+							<span class="info__tags-empty font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_tags_empty')}</span>
+						{:else}
+							{#each detail.tags as tag (tag.id)}
+								<span class="info__tag-chip inline-flex items-center px-2 py-0.5 font-body font-medium text-[12px] leading-[1.4] text-text bg-transparent border border-border rounded-full whitespace-nowrap" data-tag-id={tag.id}>{tag.name}</span>
+							{/each}
+						{/if}
+						<button
+							class="info__tag-add inline-flex items-center gap-1 px-2 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-soft bg-transparent border border-border rounded-full cursor-pointer whitespace-nowrap transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text hover:text-accent-soft-text"
+							type="button"
+							onclick={onassigntag}
+						>
+							<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
+								<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+							</svg>
+							{$_('action_add_tag')}
+						</button>
+					</dd>
+				</div>
 			</dl>
 		</section>
 

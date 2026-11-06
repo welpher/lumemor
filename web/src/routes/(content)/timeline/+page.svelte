@@ -14,6 +14,12 @@
 	// query parameter (the album detail's add-photos handoff) arms
 	// the select mode and preselects that album in the dialog.
 	//
+	// THE ADD-TAG FLOW (M3d Task 4): the batch bar's second dialog
+	// tags the selection with one of the caller's existing tags, or
+	// creates the tag first (idempotently) -- the same honest
+	// report. Tag writes are per-user state and publish nothing, so
+	// the report is the outcome and the wall never converges.
+	//
 	// The SSE subscriptions live for the page's lifetime: the first
 	// subscriber opens the stream, leaving the page closes it, and
 	// every asset event converges through the client. The album
@@ -33,6 +39,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { createTimelineClient, type BatchAction } from '$lib/api/timeline';
 	import { addAlbumItems, createAlbum, listAlbums, type AlbumSummary } from '$lib/api/albums';
+	import { addTagAssets, createTag, listTags, type TagSummary } from '$lib/api/tags';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
 	import { groupTimelineItems } from '$lib/timeline/grouping';
@@ -41,6 +48,7 @@
 	import MonthScrubber from '$lib/timeline/MonthScrubber.svelte';
 	import BatchBar from '$lib/timeline/BatchBar.svelte';
 	import AddToAlbumDialog from '$lib/albums/AddToAlbumDialog.svelte';
+	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 
 	const timeline = createTimelineClient();
@@ -68,6 +76,17 @@
 	let addLoading = $state(false);
 	let addReport = $state<{ added: number; skipped: number } | null>(null);
 	let createdAlbumId = $state('');
+
+	// The add-tag flow's state (M3d, the batch bar's second dialog):
+	// the vocabulary fetched on open, the honest report of the last
+	// landed add. The create is idempotent (a name the caller owns
+	// converges on the existing row), so no created-id bookkeeping.
+	let tagOpen = $state(false);
+	let tagBusy = $state(false);
+	let tagErrorKey = $state('');
+	let tagList = $state<TagSummary[]>([]);
+	let tagLoading = $state(false);
+	let tagReport = $state<{ added: number; skipped: number } | null>(null);
 
 	// The ?album= handoff: the album detail's add-photos action sends
 	// the caller here to pick photos for that album -- the select
@@ -224,6 +243,83 @@
 	function finishAdd(): void {
 		addOpen = false;
 		addReport = null;
+		selection.clear();
+	}
+
+	// The add-tag flow: open the dialog over the current selection
+	// with the caller's vocabulary fetched fresh -- the pick list is
+	// the server's. Tag writes are per-user state (B4) and publish
+	// nothing, so nothing here converges the wall: the report IS the
+	// outcome.
+	function openTagDialog(): void {
+		if (selection.size === 0) {
+			return;
+		}
+		tagErrorKey = '';
+		tagReport = null;
+		tagOpen = true;
+		tagList = [];
+		tagLoading = true;
+		void (async () => {
+			const outcome = await listTags();
+			if (!tagOpen) {
+				return;
+			}
+			tagLoading = false;
+			if (outcome.ok) {
+				tagList = outcome.tags;
+			} else {
+				tagErrorKey = outcome.errorKey;
+			}
+		})();
+	}
+
+	// The existing-tag path: the honest {added, skipped} report of
+	// the write's own answer lands in the dialog.
+	async function addToExistingTag(tagId: string): Promise<void> {
+		if (tagBusy || selection.size === 0) {
+			return;
+		}
+		tagBusy = true;
+		tagErrorKey = '';
+		const outcome = await addTagAssets(tagId, [...selection]);
+		tagBusy = false;
+		if (!outcome.ok) {
+			tagErrorKey = outcome.errorKey;
+			return;
+		}
+		tagReport = outcome.report;
+	}
+
+	// The new-tag path: create the tag (idempotently -- a retry
+	// converges on the same row), then tag the selection with it.
+	async function addToNewTag(name: string): Promise<void> {
+		if (tagBusy || selection.size === 0) {
+			return;
+		}
+		tagBusy = true;
+		tagErrorKey = '';
+		const created = await createTag(name);
+		if (!created.ok) {
+			tagBusy = false;
+			tagErrorKey = created.errorKey;
+			return;
+		}
+		const outcome = await addTagAssets(created.tag.id, [...selection]);
+		tagBusy = false;
+		if (!outcome.ok) {
+			tagErrorKey = outcome.errorKey;
+			return;
+		}
+		tagReport = outcome.report;
+	}
+
+	// The tag report's done: close the dialog and clear the
+	// selection -- the caller's own tags landed, no wall convergence
+	// follows (per-user state, silent by contract).
+	function finishTag(): void {
+		tagOpen = false;
+		tagReport = null;
 		selection.clear();
 	}
 
@@ -459,6 +555,7 @@
 	errorKey={batchErrorKey}
 	busy={batchBusy}
 	onaddtoalbum={openAddDialog}
+	onaddtag={openTagDialog}
 	onaction={runAction}
 	onclear={exitSelection}
 />
@@ -473,4 +570,15 @@
 	onpick={(albumId) => void addToExisting(albumId)}
 	oncreate={(title) => void addToNew(title)}
 	ondone={finishAdd}
+/>
+<AddTagDialog
+	bind:open={tagOpen}
+	tags={tagList}
+	loading={tagLoading}
+	busy={tagBusy}
+	errorKey={tagErrorKey}
+	report={tagReport}
+	onpick={(tagId) => void addToExistingTag(tagId)}
+	oncreate={(name) => void addToNewTag(name)}
+	ondone={finishTag}
 />

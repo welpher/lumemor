@@ -18,6 +18,7 @@ function mountBar(
 		busy?: boolean;
 		actions?: readonly BatchAction[];
 		onaddtoalbum?: () => void;
+		onaddtag?: () => void;
 	} = {}
 ) {
 	const onaction = vi.fn();
@@ -31,6 +32,7 @@ function mountBar(
 			busy: props.busy ?? false,
 			actions: props.actions,
 			onaddtoalbum: props.onaddtoalbum,
+			onaddtag: props.onaddtag,
 			onaction,
 			onclear
 		}
@@ -179,6 +181,31 @@ test('an add-to-album affordance renders only when the page offers it', () => {
 
 	const busy = mountBar({ count: 2, busy: true, onaddtoalbum });
 	expect(buttonByLabel('Add to album').disabled).toBe(true);
+	unmount(busy.bar);
+	flushSync();
+});
+
+test('an add-tag affordance renders only when the page offers it', () => {
+	// Without the callback (the curated walls, the search wall) the
+	// bar carries no tag action.
+	const plain = mountBar({ count: 2, actions: ['favorite'] });
+	expect(() => buttonByLabel('Add tag')).toThrow();
+	unmount(plain.bar);
+	flushSync();
+
+	// With it, the button sits beside the album affordance and fires
+	// the callback; a busy run disables it like every other.
+	const onaddtag = vi.fn();
+	const offering = mountBar({ count: 2, actions: ['favorite'], onaddtag });
+	const add = buttonByLabel('Add tag');
+	expect(add.disabled).toBe(false);
+	add.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	expect(onaddtag).toHaveBeenCalledTimes(1);
+	unmount(offering.bar);
+	flushSync();
+
+	const busy = mountBar({ count: 2, busy: true, onaddtag });
+	expect(buttonByLabel('Add tag').disabled).toBe(true);
 	unmount(busy.bar);
 	flushSync();
 });
