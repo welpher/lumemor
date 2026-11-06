@@ -1,16 +1,19 @@
-# Continuous integration for the end-to-end acceptance: the full M3c
+# Continuous integration for the end-to-end acceptance: the full M3d
 # chain on a real compose stack. The job installs the web toolchain
-# and Playwright's chromium, then runs scripts/acceptance_m3c.sh,
-# which chains the entire M1/M2/M3a/M3b acceptance line (the M2d
+# and Playwright's chromium, then runs scripts/acceptance_m3d.sh,
+# which chains the entire M1/M2/M3a/M3b/M3c acceptance line (the M2d
 # chain, including the M2 web story through a real browser, the M3a
-# model pipeline acceptance, and the M3b people story) and then walks
-# the M3c albums and sharing story itself: the sharing surface's API
-# walkthrough on a fresh stack (two accounts, the album curation, the
-# share grant, the member's whole shared surface -- wall, timeline
-# union, read-only detail, per-user favorite, the timeline-exclusion
-# retraction, the people surface's B4 sharing arm, the revoke's full
-# retraction, the album delete cascade) and the M3c sharing story of
-# the web app through a real browser. The path filters keep this
+# model pipeline acceptance, the M3b people story and the M3c albums
+# and sharing story) and then walks the M3d search and places story
+# itself: the search surface's API walkthrough on a fresh stack (two
+# accounts, the member's seeded library -- the Beijing GPS photo, the
+# Chinese OCR photo, the face pair, the wildcard decoy and the
+# private photo -- the FTS and semantic arms, the deterministic
+# rank-fusion merge with its mode-tagged cursor pages, the facet
+# counts, the person and place filters, the tags domain's idempotent
+# create and honest batch skips, the sharee's visibility over both
+# arms, and the places locale join) and the M3d search story of the
+# web app through a real browser. The path filters keep this
 # workflow from running on changes that cannot affect it; the
 # workflow also runs when its own definition changes.
 
@@ -76,8 +79,8 @@ jobs:
       - name: Install Playwright's chromium
         run: cd web && pnpm exec playwright install --with-deps chromium
 
-      - name: Run the M3c acceptance
-        run: scripts/acceptance_m3c.sh
+      - name: Run the M3d acceptance
+        run: scripts/acceptance_m3d.sh
 
       # The suite's failure artifacts (traces, screenshots, videos of
       # the scenes) land under web/test-results/.
