@@ -81,7 +81,13 @@
 	});
 
 	const groups = $derived(groupTimelineItems($timeline.items, $locale ?? 'en'));
-	const months = $derived(groups.map((group) => ({ key: group.key, label: group.label })));
+	const months = $derived(
+		groups.map((group) => ({
+			key: group.key,
+			label: group.label,
+			count: group.days.reduce((total, day) => total + day.items.length, 0)
+		}))
+	);
 	const selectable = $derived(selectMode || selection.size > 0);
 	const selectedItems = $derived($timeline.items.filter((timelineItem) => selection.has(timelineItem.id)));
 	const allSelectedFavorite = $derived(
