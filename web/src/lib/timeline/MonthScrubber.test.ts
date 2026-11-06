@@ -17,12 +17,13 @@ const months = [
 
 function mountScrubber(activeKey: string | null = null) {
 	const onjump = vi.fn();
+	const onscrub = vi.fn();
 	const scrubber = mount(MonthScrubber, {
 		target: document.body,
-		props: { months, activeKey, onjump }
+		props: { months, activeKey, onjump, onscrub }
 	});
 	flushSync();
-	return { scrubber, onjump };
+	return { scrubber, onjump, onscrub };
 }
 
 function rail(): HTMLElement {
@@ -96,8 +97,8 @@ test('clicking a stop jumps to its month (the keyboard path)', () => {
 	flushSync();
 });
 
-test('dragging the rail scrubs by pointer height, and the trailing click is suppressed', () => {
-	const { scrubber, onjump } = mountScrubber();
+test('dragging the rail scrubs continuously by pointer height, and the trailing click is suppressed', () => {
+	const { scrubber, onjump, onscrub } = mountScrubber();
 
 	const element = rail();
 	element.getBoundingClientRect = () =>
@@ -105,57 +106,79 @@ test('dragging the rail scrubs by pointer height, and the trailing click is supp
 
 	const stops = document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop');
 
-	// Pointer down on the second stop (a quarter down the rail).
+	// THE TRUE DRAG: pressing at a quarter of the rail scrubs the
+	// wall to a quarter of its scroll span -- the rail IS a
+	// scrollbar; months never jump mid-drag.
 	stops[1]?.dispatchEvent(pointerEvent('pointerdown', 25));
-	expect(onjump).toHaveBeenCalledWith('2026-10');
+	expect(onscrub).toHaveBeenCalledWith(0.25);
+	expect(onjump).not.toHaveBeenCalled();
 
-	// Drag to three quarters: the fourth month (index 3). Without a
-	// pointer capture implementation the moves land on the stop the
-	// test drives -- the handler computes from the rail rect either
-	// way.
+	// Dragging to three quarters scrubs there (the moves land on the
+	// pressed stop without a pointer capture implementation -- the
+	// handler computes from the rail rect either way).
 	stops[1]?.dispatchEvent(pointerEvent('pointermove', 75));
-	expect(onjump).toHaveBeenCalledWith('2026-08');
-	expect(onjump).toHaveBeenCalledTimes(2);
+	expect(onscrub).toHaveBeenCalledWith(0.75);
+	expect(onjump).not.toHaveBeenCalled();
 
-	// The click that follows the pointerup on a stop must not jump.
+	// The click that follows a MOVED drag must not jump: the release
+	// position is the drag's destination, not a tap's intent.
 	stops[1]?.dispatchEvent(pointerEvent('pointerup', 75));
 	stops[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-	expect(onjump).toHaveBeenCalledTimes(2);
+	expect(onjump).not.toHaveBeenCalled();
 	unmount(scrubber);
 	flushSync();
 });
 
-test('a layout-less rail (zero height) answers the first month on drag', () => {
-	const { scrubber, onjump } = mountScrubber();
+test('a pure tap (press and release without moving) jumps to the month', () => {
+	const { scrubber, onjump, onscrub } = mountScrubber();
+
+	const element = rail();
+	element.getBoundingClientRect = () =>
+		({ top: 0, bottom: 100, height: 100, left: 0, right: 20, width: 20, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
 
 	const stops = document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop');
-	// The press jumps to its own stop; the drag across a rail with no
-	// layout falls back to the top month.
-	stops[2]?.dispatchEvent(pointerEvent('pointerdown', 50));
-	expect(onjump).toHaveBeenCalledWith('2026-09');
-	stops[2]?.dispatchEvent(pointerEvent('pointermove', 50));
-	expect(onjump).toHaveBeenCalledWith('2026-11');
 
+	// A press without any move scrubs once (from its own position)
+	// but stays a TAP: the trailing click jumps.
+	stops[2]?.dispatchEvent(pointerEvent('pointerdown', 50));
+	expect(onscrub).toHaveBeenCalledWith(0.5);
+	stops[2]?.dispatchEvent(pointerEvent('pointerup', 50));
+	stops[2]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	expect(onjump).toHaveBeenCalledWith('2026-09');
+	unmount(scrubber);
+	flushSync();
+});
+
+test('a layout-less rail (zero height) scrubs to the top and reveals the first month', () => {
+	const { scrubber, onjump, onscrub } = mountScrubber();
+
+	const stops = document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop');
+	// A rail with no layout scrubs to the very top; the bubble's
+	// fallback names the first month. No month jumps happen.
+	stops[2]?.dispatchEvent(pointerEvent('pointerdown', 50));
+	expect(onscrub).toHaveBeenCalledWith(0);
+	expect(onjump).not.toHaveBeenCalled();
+	stops[2]?.dispatchEvent(pointerEvent('pointermove', 50));
+	expect(onscrub).toHaveBeenCalledTimes(2);
+	expect(onjump).not.toHaveBeenCalled();
 	unmount(scrubber);
 	flushSync();
 });
 
 test('a cancelled press does not swallow the next genuine tap', () => {
 	const { scrubber, onjump } = mountScrubber();
-
 	const stops = document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop');
 
-	// The press jumps, then the host cancels the drag (a scroll
-	// appropriation, say): no click follows a cancel.
+	// The press scrubs (not jumps), then the host cancels the drag
+	// (a scroll appropriation, say): no click follows a cancel.
 	stops[1]?.dispatchEvent(pointerEvent('pointerdown', 25));
-	expect(onjump).toHaveBeenCalledWith('2026-10');
 	stops[1]?.dispatchEvent(pointerEvent('pointercancel', 25));
 
 	// The next genuine tap must still jump (a sticky suppressClick
 	// would swallow it exactly once).
 	stops[2]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	expect(onjump).toHaveBeenCalledWith('2026-09');
-	expect(onjump).toHaveBeenCalledTimes(2);
+	expect(onjump).toHaveBeenCalledTimes(1);
 	unmount(scrubber);
 	flushSync();
 });

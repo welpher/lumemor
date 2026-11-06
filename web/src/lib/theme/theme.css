@@ -483,3 +483,15 @@ html.dark {
 		scroll-behavior: auto !important;
 	}
 }
+
+/* The timeline's rail-as-scrollbar mode: while the month axis page
+ * lives, the scroll root's own bar hides -- the axis's position
+ * indicator carries the feedback (the shared thin bar stays for
+ * every other page). */
+.timeline-rail-scroll {
+	scrollbar-width: none;
+}
+
+.timeline-rail-scroll::-webkit-scrollbar {
+	display: none;
+}

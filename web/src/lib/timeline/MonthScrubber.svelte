@@ -1,14 +1,14 @@
 <script lang="ts">
-	// The right-edge timeline scrubber: a proportional year axis with
-	// hover-revealed months. At rest only the years label the axis;
-	// each month still rides it as a dot positioned by the month's
-	// share of the loaded photo mass (a month with many photos
-	// occupies more rail). Hovering or focusing the rail reveals the
-	// pointer-nearest month's full label; dragging scrubs
-	// continuously with the same label as the live readout. Clicking
-	// a stop jumps to its group. v0 scrubs within the loaded data
-	// only; deep jumps with date filters arrive with the M3
-	// timeline.
+	// The right-edge timeline scrubber: a proportional year axis that
+	// IS a scrollbar. At rest the years (one per year run), the
+	// month dots (positioned by each month's share of the loaded
+	// photo mass), and the position indicator carry the rail. A drag
+	// scrubs the wall CONTINUOUSLY -- the pointer's rail fraction
+	// maps onto the scroll position, within months, not between
+	// them -- with the bubble naming the month under the pointer; a
+	// pure tap (or the keyboard) jumps to a month group. v0 scrubs
+	// within the loaded data only; deep jumps with date filters
+	// arrive with the M3 timeline.
 	import { _, locale } from 'svelte-i18n';
 
 	type MonthEntry = {
@@ -27,11 +27,16 @@
 		/** The wall's overall scroll progress (0-1) -- the position
 		 * indicator's truth. */
 		progress?: number;
-		/** Jump callback: the page scrolls the month group into view. */
+		/** Jump callback (a tap or the keyboard): the page scrolls the
+		 * month group into view. */
 		onjump: (key: string) => void;
+		/** Scrub callback (the drag): the pointer's rail fraction,
+		 * mapped by the page onto the wall's continuous scroll
+		 * position -- the rail IS a scrollbar. */
+		onscrub?: (fraction: number) => void;
 	};
 
-	let { months, activeKey = null, progress = 0, onjump }: Props = $props();
+	let { months, activeKey = null, progress = 0, onjump, onscrub }: Props = $props();
 
 	// One stop row's height on the rail (the anti-overlap unit).
 	const STOP_HEIGHT = 16;
@@ -211,9 +216,35 @@
 		}
 	}
 
-	function handlePointerDown(event: PointerEvent, key: string): void {
+	/** The pointer's rail fraction (0-1, clamped); 0 when the host
+	 * answers no layout (the tests' stand-ins scrub to the top). */
+	function pointerFraction(event: PointerEvent): number {
+		if (rail === undefined) {
+			return 0;
+		}
+		const rect = rail.getBoundingClientRect();
+		if (rect.height <= 0) {
+			return 0;
+		}
+		return Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+	}
+
+	/** THE TRUE DRAG: the wall scrolls continuously with the pointer
+	 * -- the rail IS a scrollbar. The press scrubs from its own
+	 * position; every move scrubs again; the bubble names the month
+	 * under the pointer while the wall's own scroll tracking moves
+	 * the active dot. */
+	function scrub(event: PointerEvent): void {
+		onscrub?.(pointerFraction(event));
+		revealedKey = nearestKey(event.clientY);
+	}
+
+	function handlePointerDown(event: PointerEvent): void {
 		dragging = true;
-		suppressClick = true;
+		// A press that never moves is a TAP: its trailing click jumps
+		// to the month (the button semantics). A drag that moved
+		// suppresses the trailing click.
+		suppressClick = false;
 		// Capture keeps the moves arriving on the pressed stop even
 		// while the pointer travels past its neighbors; hosts without
 		// the method (jsdom) simply deliver moves where they land.
@@ -225,13 +256,13 @@
 				// A lost pointer id just means no capture.
 			}
 		}
-		jumpTo(key);
+		scrub(event);
 	}
 
 	function handlePointerMove(event: PointerEvent): void {
 		// A hover (not pressed) reveals the nearest month's label;
-		// a drag jumps to it -- both read the same geometry. The
-		// bubble rides the pointer's own height.
+		// a drag scrubs the wall to it. The bubble rides the
+		// pointer's own height either way.
 		hovering = true;
 		if (rail !== undefined) {
 			const rect = rail.getBoundingClientRect();
@@ -243,7 +274,8 @@
 			revealedKey = nearestKey(event.clientY);
 			return;
 		}
-		jumpTo(nearestKey(event.clientY));
+		suppressClick = true;
+		scrub(event);
 	}
 
 	function handlePointerUp(): void {
@@ -289,6 +321,7 @@
 			class="scrubber__rail relative w-[72px] touch-none"
 			bind:this={rail}
 			style="height: {railHeight}px"
+			onpointerdown={handlePointerDown}
 			onpointermove={handlePointerMove}
 			onpointerleave={handlePointerLeave}
 			onpointerup={handlePointerUp}
@@ -316,7 +349,6 @@
 					type="button"
 					aria-label={stop.label}
 					aria-current={activeKey === stop.key ? 'true' : undefined}
-					onpointerdown={(event) => handlePointerDown(event, stop.key)}
 					onfocus={() => handleFocus(stop.key)}
 					onclick={() => handleClick(stop.key)}
 				>
