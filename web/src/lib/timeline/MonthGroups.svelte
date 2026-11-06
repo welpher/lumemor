@@ -93,10 +93,15 @@
 		     (the band is 38px: py-1.5's 12px + the 26px line at
 		     text-[20px]/1.3, probe-verified). -->
 		<section class="wall__month scroll-mt-[92px]" data-month-key={month.key}>
-			<h2 class="wall__month-header sticky top-0 z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 px-3 text-[20px] bg-page">{month.label}</h2>
+			<h2 class="wall__month-header sticky top-0 z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page">{month.label}</h2>
+			<!-- The day blocks flow horizontally and wrap (the reference
+			     timeline's shape): a day is a header plus its justified
+			     stack at its own width, and sparse dates sit beside their
+			     neighbors instead of leaving a hole. -->
+			<div class="wall__day-flow flex flex-wrap gap-3">
 			{#each month.days as day (day.key)}
-				<div class="wall__day" data-day-key={day.key}>
-					<h3 class="wall__day-header sticky top-[38px] z-(--z-sticky-sub) mt-3 mb-1.5 py-1 px-2 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft bg-page">{day.label}</h3>
+				<div class="wall__day shrink-0" data-day-key={day.key} style="width:{day.width}px">
+					<h3 class="wall__day-header mt-1 mb-1.5 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft">{day.label}</h3>
 					{#each day.rows as row, rowIndex (rowIndex)}
 						<!-- The row's height is the engine's exact math; the
 						     seam rides the row's gap so the widths plus the
@@ -123,6 +128,7 @@
 					{/each}
 				</div>
 			{/each}
+			</div>
 		</section>
 	{/each}
 </div>

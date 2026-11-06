@@ -1,0 +1,4 @@
+AD.06	Sant Julià de Loria	Sant Julia de Loria	3039162
+FR.11	Île-de-France	Ile-de-France	3012874
+CN.22	Beijing Shi	Beijing Shi	2038349
+NZ.99	Unmapped Region	Unmapped Region	0

@@ -27,6 +27,7 @@ var pinnedDefaultGroup = map[string]struct {
 	"yunet-2023mar":         {slot: "face-detect", dim: 0, files: 1},
 	"sface-2021dec":         {slot: "face-recognize", dim: 128, files: 1},
 	"cnclip-vit-b16-vision": {slot: "clip-embed", dim: 512, files: 1},
+	"cnclip-vit-b16-text":   {slot: "clip-text", dim: 512, files: 2},
 	"ppocr-v4-mobile-ch":    {slot: "ocr", dim: 0, files: 2},
 }
 
@@ -40,9 +41,9 @@ func TestDefaultManifestIsCommitted(t *testing.T) {
 }
 
 // TestDefaultManifestPinsTheDefaultGroup pins the group shape: schema
-// revision 1, exactly the four pinned model ids, every slot filled by
+// revision 1, exactly the five pinned model ids, every slot filled by
 // exactly one model, and the embedding dimensions the storage layer
-// is built around (clip 512, face recognition 128).
+// is built around (both CLIP towers 512, face recognition 128).
 func TestDefaultManifestPinsTheDefaultGroup(t *testing.T) {
 	manifest, err := LoadManifest(defaultManifestPath)
 	if err != nil {
@@ -152,8 +153,8 @@ func TestDefaultManifestFilesAreChecksummed(t *testing.T) {
 
 // TestDefaultManifestURLsAreHTTPS pins that every download URL (and
 // every fallback) is https, and that the community-converted CLIP
-// vision tower has no fallback URL: no second source exists for it,
-// so the HF domain mirror is its only redundancy.
+// towers have no fallback URL: no second source exists for either,
+// so the HF domain mirror is their only redundancy.
 func TestDefaultManifestURLsAreHTTPS(t *testing.T) {
 	manifest, err := LoadManifest(defaultManifestPath)
 	if err != nil {
@@ -171,6 +172,45 @@ func TestDefaultManifestURLsAreHTTPS(t *testing.T) {
 	if clip.FallbackURL != nil {
 		t.Errorf("cnclip-vit-b16-vision fallbackUrl = %q, want null (no natural fallback exists)",
 			*clip.FallbackURL)
+	}
+	text := modelByID(t, manifest, "cnclip-vit-b16-text")
+	if text.FallbackURL != nil {
+		t.Errorf("cnclip-vit-b16-text fallbackUrl = %q, want null (no natural fallback exists)",
+			*text.FallbackURL)
+	}
+}
+
+// TestDefaultManifestPinsTheTextTower pins the search milestone's
+// text tower: it fills the clip-text slot, emits the same 512-dim
+// joint space the vision tower writes, and carries the tokenizer
+// vocabulary as its second file (the same upstream directory, the
+// multi-file discipline the OCR model set). The vocabulary is the
+// canonical Chinese-CLIP table -- byte-identical to the upstream
+// weights card's vocab.txt -- which the wrapper's tokenizer consumes.
+func TestDefaultManifestPinsTheTextTower(t *testing.T) {
+	manifest, err := LoadManifest(defaultManifestPath)
+	if err != nil {
+		t.Fatalf("LoadManifest(%q) = %v, want no error", defaultManifestPath, err)
+	}
+
+	text := modelByID(t, manifest, "cnclip-vit-b16-text")
+	if text.Slot != "clip-text" {
+		t.Errorf("cnclip-vit-b16-text slot = %q, want clip-text", text.Slot)
+	}
+	if text.Dim != 512 {
+		t.Errorf("cnclip-vit-b16-text dim = %d, want 512 (the joint space the vision tower writes)", text.Dim)
+	}
+	if len(text.Files) != 2 {
+		t.Fatalf("cnclip-vit-b16-text lists %d files, want 2 (the tower and the vocabulary)", len(text.Files))
+	}
+	if text.Files[0].Name != "text.onnx" {
+		t.Errorf("cnclip-vit-b16-text files[0] = %q, want text.onnx (the primary weights)", text.Files[0].Name)
+	}
+	if text.Files[1].Name != "vocab.txt" {
+		t.Errorf("cnclip-vit-b16-text files[1] = %q, want vocab.txt (the tokenizer table)", text.Files[1].Name)
+	}
+	if text.Files[1].SHA256 != "45bbac6b341c319adc98a532532882e91a9cefc0329aa57bac9ae761c27b291c" {
+		t.Errorf("cnclip-vit-b16-text vocab sha256 = %q, want the canonical Chinese-CLIP table's digest", text.Files[1].SHA256)
 	}
 }
 

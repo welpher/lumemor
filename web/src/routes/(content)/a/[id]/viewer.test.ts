@@ -106,6 +106,7 @@ function detailBodyOf(
 		isHidden: false,
 		exif: {},
 		faces: [],
+		tags: [],
 		...source,
 		...overrides
 	};
@@ -719,11 +720,13 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 	]);
 	await settle();
 
-	// The reads render: the stored description text, the file facts,
-	// the download affordance.
+	// The reads render: the stored description text, the file facts;
+	// the download affordance lives in the ACTION BAR now (an action,
+	// not metadata -- available to any viewer, owner or sharee).
 	openDrawer();
 	expect(element('.info__description').textContent).toBe('Original caption.');
-	expect(() => element('.info__download')).not.toThrow();
+	expect(() => element('a.viewer__download')).not.toThrow();
+	expect(element('a.viewer__download').getAttribute('href')).toBe('/api/v1/assets/a2/original');
 
 	// The owner-only writes never render (read-only is visual, never
 	// grayed out -- the web IA's pinned rule): no trash in the bar,
@@ -1591,4 +1594,193 @@ test('leaving the viewer unsubscribes from the person event stream', async () =>
 	unmount(app);
 	flushSync();
 	expect(personHandlers).toHaveLength(0);
+});
+
+/** One entry of the detail's tags array (the contract's shape). */
+function tagEntry(id: string, name: string): Record<string, unknown> {
+	return { id, name };
+}
+
+/** One tag of the add-tag dialog's vocabulary list. */
+function tagSummary(id: string, name: string): Record<string, unknown> {
+	return {
+		id,
+		name,
+		assetCount: 0,
+		createdAt: '2026-11-06T09:00:00Z',
+		updatedAt: '2026-11-06T09:00:00Z'
+	};
+}
+
+/** One button by exact text, scoped INSIDE one dialog or panel (the
+ * file's own buttonByText is document-wide and cannot be scoped). */
+function scopedButtonByText(scope: ParentNode, text: string): HTMLButtonElement {
+	const found = Array.from(scope.querySelectorAll<HTMLButtonElement>('button')).find(
+		(button) => button.textContent?.trim() === text
+	);
+	if (found === undefined) {
+		throw new Error(`missing button ${text}`);
+	}
+	return found;
+}
+
+test('the drawer\'s file section renders the tags row: the caller\'s chips, the empty note, the assign affordance', async () => {
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () =>
+			jsonResponse(200, detailBodyOf(sequence[1]!, { tags: [tagEntry('t1', 'Beach')] }))
+		)
+	]);
+	await settle();
+
+	openDrawer();
+	const info = element('.info');
+	// The caller's own tag renders as a chip in the file section.
+	const chip = info.querySelector<HTMLElement>('.info__tag-chip');
+	expect(chip?.textContent?.trim()).toBe('Beach');
+	expect(chip?.dataset.tagId).toBe('t1');
+	// The assign affordance rides the row (per-user state: every
+	// viewer's own write).
+	expect(scopedButtonByText(info, 'Add tag')).toBeTruthy();
+
+	unmount(app);
+	flushSync();
+
+	// The first part left the panel's open preference behind (R2-9):
+	// drop it so the bare mount starts from the default (closed).
+	localStorage.removeItem('lumemor:viewer:info-panel');
+	// No tag yet: the honest empty note, the affordance still there.
+	const { app: bare } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+	openDrawer();
+	expect(element('.info').textContent).toContain('No tags yet.');
+	expect(element('.info').querySelectorAll('.info__tag-chip')).toHaveLength(0);
+	unmount(bare);
+	flushSync();
+});
+
+test('the tag assign flow: picking an existing tag writes the single id, the report lands, Done converges the row', async () => {
+	let detailCalls = 0;
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () => {
+			detailCalls += 1;
+			return jsonResponse(
+				200,
+				detailBodyOf(sequence[1]!, { tags: detailCalls > 1 ? [tagEntry('t1', 'Beach')] : [] })
+			);
+		}),
+		get('/api/v1/tags', () =>
+			jsonResponse(200, [tagSummary('t1', 'Beach'), tagSummary('t2', 'Sunrise')])
+		),
+		post('/api/v1/tags/t1/assets', () => jsonResponse(200, { added: 1, skipped: 0 }))
+	]);
+	await settle();
+
+	openDrawer();
+	click(scopedButtonByText(element('.info'), 'Add tag'));
+	await settle();
+
+	// The dialog offers the caller's vocabulary; picking the first
+	// tag submits the single-asset batch.
+	const dialog = element('.modal__panel');
+	expect(dialog.getAttribute('aria-label')).toBe('Add tag');
+	const options = Array.from(dialog.querySelectorAll('option'));
+	expect(options.map((option) => option.value)).toEqual(['t1', 't2']);
+	click(scopedButtonByText(dialog, 'Add tag'));
+	await settle();
+
+	// The write posted exactly this asset's id.
+	const posts = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/tags/t1/assets' && init?.method === 'POST'
+	);
+	expect(posts).toHaveLength(1);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ assetIds: ['a2'] });
+	// The honest report renders inside the dialog.
+	expect(element('.modal__panel').textContent).toContain('Added 1, skipped 0.');
+
+	click(scopedButtonByText(element('.modal__panel'), 'Done'));
+	await settle();
+
+	// The done closed the dialog and converged through the detail
+	// refetch: the tags array IS the row's truth.
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
+	expect(element('.info__tag-chip').textContent?.trim()).toBe('Beach');
+
+	unmount(app);
+	flushSync();
+});
+
+test('the tag assign flow: the create-new path creates the tag idempotently, then tags the asset', async () => {
+	const { app, fetchMock } = mountViewer('a2', [
+		...viewerRoutes('a2'),
+		get('/api/v1/tags', () => jsonResponse(200, [tagSummary('t1', 'Beach')])),
+		post('/api/v1/tags', () => jsonResponse(201, tagSummary('t-new', 'Roadtrip'))),
+		post('/api/v1/tags/t-new/assets', () => jsonResponse(200, { added: 1, skipped: 0 }))
+	]);
+	await settle();
+
+	openDrawer();
+	click(scopedButtonByText(element('.info'), 'Add tag'));
+	await settle();
+
+	const dialog = element('.modal__panel');
+	const radios = Array.from(dialog.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
+		new MouseEvent('click', { bubbles: true, cancelable: true })
+	);
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
+		new Event('change', { bubbles: true })
+	);
+	flushSync();
+	const field = dialog.querySelector<HTMLInputElement>('input:not([type="radio"])');
+	if (field === null) {
+		throw new Error('missing tag name field');
+	}
+	field.value = 'Roadtrip';
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+	click(scopedButtonByText(dialog, 'Create and add'));
+	await settle();
+
+	const creates = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/tags' && init?.method === 'POST'
+	);
+	expect(creates).toHaveLength(1);
+	expect(JSON.parse(String(creates[0]?.[1]?.body))).toEqual({ name: 'Roadtrip' });
+	const adds = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/tags/t-new/assets' && init?.method === 'POST'
+	);
+	expect(adds).toHaveLength(1);
+	expect(JSON.parse(String(adds[0]?.[1]?.body))).toEqual({ assetIds: ['a2'] });
+	expect(element('.modal__panel').textContent).toContain('Added 1, skipped 0.');
+
+	unmount(app);
+	flushSync();
+});
+
+test('the tags row\'s assign affordance is every viewer\'s own write (per-user state, never the owner\'s alone)', async () => {
+	// A sharee's drawer: the description edit never renders (the
+	// identity seam's read-only arm), but the tags affordance does
+	// -- the tag write is the CALLER's own per-user row, and the
+	// union deliberately carries it (B4).
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2', () =>
+			jsonResponse(
+				200,
+				detailBodyOf(sequence[1]!, {
+					ownerId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70',
+					tags: [tagEntry('t2', 'Sunrise')]
+				})
+			)
+		)
+	]);
+	await settle();
+
+	openDrawer();
+	const info = element('.info');
+	expect(info.textContent).not.toContain('Edit');
+	expect(info.querySelector('.info__tag-chip')?.textContent?.trim()).toBe('Sunrise');
+	expect(scopedButtonByText(info, 'Add tag')).toBeTruthy();
+
+	unmount(app);
+	flushSync();
 });

@@ -6,7 +6,9 @@
 	// the selected count, a clear action (Escape does the same from
 	// the page) and the last failed action's message. The bar owns
 	// presentation only: the page runs the actions and owns the
-	// selection.
+	// selection. The add-to-album and add-tag affordances ride
+	// optional callbacks (their flows carry dialogs and endpoints of
+	// their own, not batch actions).
 	//
 	// THE LAYERING: the bar paints above the upload queue's panel
 	// (--z-panel, the bottom-right status surface) -- the curation
@@ -45,6 +47,14 @@
 		 * action set.
 		 */
 		onaddtoalbum?: () => void;
+		/**
+		 * Open the add-tag dialog over the current selection (the
+		 * timeline's bar offers it; the curated walls do not). The tag
+		 * flow is not a batch action -- it carries its own dialog and
+		 * endpoint, exactly the album flow's shape -- so it rides this
+		 * callback instead of the action set.
+		 */
+		onaddtag?: () => void;
 		/** Run one batch action over the current selection. */
 		onaction: (action: BatchAction) => void;
 		/** Clear the selection. */
@@ -58,6 +68,7 @@
 		busy,
 		actions,
 		onaddtoalbum,
+		onaddtag,
 		onaction,
 		onclear
 	}: Props = $props();
@@ -91,6 +102,10 @@
 
 		{#if onaddtoalbum !== undefined}
 			<Button variant="ghost" disabled={busy} onclick={onaddtoalbum}>{$_('action_add_to_album')}</Button>
+		{/if}
+
+		{#if onaddtag !== undefined}
+			<Button variant="ghost" disabled={busy} onclick={onaddtag}>{$_('action_add_tag')}</Button>
 		{/if}
 
 		{#if offers('favorite')}

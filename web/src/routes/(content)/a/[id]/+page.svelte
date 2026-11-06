@@ -74,6 +74,7 @@
 	import { _ } from 'svelte-i18n';
 	import Viewer from '$lib/viewer/Viewer.svelte';
 	import ClusterPickerDialog from '$lib/people/ClusterPickerDialog.svelte';
+	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import { wallItems } from '$lib/timeline/wall.svelte';
 	import type { BatchAction } from '$lib/api/timeline';
 	import {
@@ -84,6 +85,7 @@
 		type AssetDetail,
 		type AssetFaceSummary
 	} from '$lib/api/assets';
+	import { addTagAssets, createTag, listTags, type TagSummary } from '$lib/api/tags';
 	import {
 		labelPerson,
 		listPeople,
@@ -156,6 +158,10 @@
 		// the rest of the asset-scoped state.
 		assignFaceId = null;
 		assignErrorKey = '';
+		// The tag dialog is asset-scoped the same way.
+		tagOpen = false;
+		tagErrorKey = '';
+		tagReport = null;
 		let current = true;
 		void (async () => {
 			const outcome = await fetchAssetDetail(id);
@@ -465,6 +471,95 @@
 		void refetchDetail();
 	}
 
+	// The tag assign flow (M3d, the drawer's tags row): the dialog
+	// (the batch bar's own, reused) over THIS asset's single id. The
+	// write is the caller's own per-user state (B4) -- every viewer
+	// holds it, never the owner alone -- and the convergence is the
+	// detail refetch: the detail's tags array IS the row's truth.
+	/** The add-tag dialog's open state. */
+	let tagOpen = $state(false);
+	let tagBusy = $state(false);
+	/** The error-code i18n key of the last failed tag write ('' when none). */
+	let tagErrorKey = $state('');
+	let tagList = $state<TagSummary[]>([]);
+	let tagLoading = $state(false);
+	let tagReport = $state<{ added: number; skipped: number } | null>(null);
+
+	/** Open the add-tag dialog: fresh list, fresh report state. */
+	function openTagDialog(): void {
+		if (detail === null) {
+			return;
+		}
+		tagErrorKey = '';
+		tagReport = null;
+		tagOpen = true;
+		tagList = [];
+		tagLoading = true;
+		void (async () => {
+			const outcome = await listTags();
+			if (!tagOpen) {
+				// Closed mid-flight: the next open refetches.
+				return;
+			}
+			tagLoading = false;
+			if (outcome.ok) {
+				tagList = outcome.tags;
+			} else {
+				tagErrorKey = outcome.errorKey;
+			}
+		})();
+	}
+
+	/** The existing-tag path: the honest report of the single-id add. */
+	async function addToExistingTag(tagId: string): Promise<void> {
+		const current = detail;
+		if (current === null || tagBusy) {
+			return;
+		}
+		tagBusy = true;
+		tagErrorKey = '';
+		const outcome = await addTagAssets(tagId, [current.id]);
+		tagBusy = false;
+		if (!outcome.ok) {
+			tagErrorKey = outcome.errorKey;
+			return;
+		}
+		tagReport = outcome.report;
+	}
+
+	/**
+	 * The new-tag path: create (idempotently -- a retry converges on
+	 * the same row, no created-id bookkeeping) then add.
+	 */
+	async function addToNewTag(name: string): Promise<void> {
+		const current = detail;
+		if (current === null || tagBusy) {
+			return;
+		}
+		tagBusy = true;
+		tagErrorKey = '';
+		const created = await createTag(name);
+		if (!created.ok) {
+			tagBusy = false;
+			tagErrorKey = created.errorKey;
+			return;
+		}
+		const outcome = await addTagAssets(created.tag.id, [current.id]);
+		tagBusy = false;
+		if (!outcome.ok) {
+			tagErrorKey = outcome.errorKey;
+			return;
+		}
+		tagReport = outcome.report;
+	}
+
+	/** The report's done: close and converge through the detail refetch. */
+	function finishTag(): void {
+		tagOpen = false;
+		tagReport = null;
+		void refetchDetail();
+	}
+
 	function navigateTo(id: string): void {
 		// Replace, never push: the arrows must not stack history
 		// entries, so Escape's history-back stays the one-step
@@ -580,7 +675,7 @@
 	{videoPlayable}
 	{busy}
 	actionErrorKey={actionErrorKey}
-	modalOpen={assignFaceId !== null}
+	modalOpen={assignFaceId !== null || tagOpen}
 	onnavigate={navigateTo}
 	onexit={exitViewer}
 	onretry={retryDetail}
@@ -588,6 +683,7 @@
 	onedit={editDescription}
 	onaction={runAction}
 	onassignface={startAssign}
+	onassigntag={openTagDialog}
 />
 
 <!-- The assign dialog of the drawer's People section: pick an
@@ -609,4 +705,20 @@
 	errorKey={assignErrorKey}
 	onclose={() => (assignFaceId = null)}
 	onsubmit={(targetId) => void assignMove(targetId)}
+/>
+
+<!-- The add-tag dialog of the drawer's tags row: the batch bar's
+     own dialog reused, over this asset's single id. The write is
+     the caller's own per-user state; the convergence is the detail
+     refetch (the tags array IS the row's truth). -->
+<AddTagDialog
+	bind:open={tagOpen}
+	tags={tagList}
+	loading={tagLoading}
+	busy={tagBusy}
+	errorKey={tagErrorKey}
+	report={tagReport}
+	onpick={(tagId) => void addToExistingTag(tagId)}
+	oncreate={(name) => void addToNewTag(name)}
+	ondone={finishTag}
 />

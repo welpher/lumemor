@@ -607,10 +607,13 @@ export interface paths {
          *     -- dimensions, duration, blurhash, the EXIF hot fields, and
          *     readiness -- the two owner-level editable attributes
          *     (`description`, `isHidden`), which the asset detail view
-         *     renders and the `PATCH` endpoint edits, and the asset's faces
+         *     renders and the `PATCH` endpoint edits, the asset's faces
          *     with the caller's own label of each face's cluster (`faces`),
          *     which the detail view's people section renders and the people
-         *     write endpoints maintain.
+         *     write endpoints maintain, and the caller's own tags on the
+         *     asset (`tags`, name ascending), which the detail view's tag
+         *     section renders and the tags endpoints maintain -- another
+         *     account's tags on the same asset never surface here (B4).
          *
          *     Access is the caller-visible gate: the asset's owner, and
          *     every member of an album the caller sees -- their own sync
@@ -702,7 +705,10 @@ export interface paths {
          *     every viewer of the shared timeline and the detail panel.
          *     The description alone has no timeline effect -- it is
          *     detail-panel content -- but it is asset state the event
-         *     covers all the same.
+         *     covers all the same. The response serves the caller's tags
+         *     on the asset beside the faces, both unchanged by this edit
+         *     (the tags endpoints maintain them): the full detail shape
+         *     `GET /assets/{id}` serves.
          *
          *     Access is owner-only, the attribute-editing row of the
          *     permission matrix: there is deliberately no administrator
@@ -1865,6 +1871,342 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's city grouping.
+         * @description The places surface: every place of the GeoNames reference data
+         *     that holds at least one asset the caller can see -- the city
+         *     grouping the places page renders as its grid. A place joins
+         *     the list when it carries a caller-visible live asset (the
+         *     album union of the caller's own sync and directory albums
+         *     plus every album shared to them, and the timeline's live-row
+         *     filters: not trashed, not hidden, no Live Photo component
+         *     row); `assetCount` counts exactly those assets, so the same
+         *     place can show different counts to different accounts -- the
+         *     honest per-caller counting discipline the people surface
+         *     pins, applied to cities.
+         *
+         *     `name` is the locale-joined display name: the
+         *     `place_names` row of the requested locale when the reference
+         *     data carries one, the GeoNames canonical (English or
+         *     romanized) name otherwise. Locale is a REQUEST parameter
+         *     (the web app owns the active locale and passes it along);
+         *     `en` is the default. A locale switch changes the join only
+         *     -- the assets rows never carry locale strings, so switching
+         *     languages never rewrites asset data.
+         *
+         *     `representativeCoverAssetIds` is the wall's derived-cover
+         *     discipline applied to city groups: the place's (up to) four
+         *     most recent caller-visible live members, taken_at descending
+         *     with the asset id as the tiebreak -- the cover tiles the
+         *     places page renders from. A listed place always carries at
+         *     least one candidate (the listing itself proved a visible
+         *     member exists).
+         *
+         *     The list is ordered by `assetCount` descending, the place id
+         *     ascending as the deterministic tiebreak. It is not paginated:
+         *     the same single-document shape the named-people listing
+         *     uses, sized for a family instance's few thousand places.
+         *
+         *     Place resolution itself (which asset belongs to which city)
+         *     is the ingestion pipeline's business -- the metadata job's
+         *     GPS step and the admin re-resolution run -- and follows the
+         *     reference data baked into the server image; this endpoint
+         *     only reads what those wrote.
+         */
+        get: operations["listPlaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unified search, one text box, two merged paths, filter facets.
+         * @description The unified search over the caller-visible asset domain (the
+         *     album union of the caller's own sync and directory albums plus
+         *     every album shared to them, and the timeline's live-row
+         *     filters: not trashed, not hidden, no Live Photo component
+         *     row). One optional text box drives TWO backend paths that
+         *     merge deterministically; the optional filter parameters
+         *     narrow both paths and the pure-filter mode (no text) is the
+         *     filter browse the search page opens with.
+         *
+         *     The TEXT path is unaccented case-insensitive SUBSTRING
+         *     matching over the asset's own text sources -- the original
+         *     filename, the description, and the extracted OCR text -- plus
+         *     the caller's relational vocabularies joined at query time:
+         *     the caller's own tags, the titles of albums the caller can
+         *     see (own albums and albums shared to them; the sync album is
+         *     the timeline's face, not a filter), and the caller's own
+         *     non-hidden person labels. The query is a LITERAL substring,
+         *     never a pattern: the engine escapes its own wildcard
+         *     characters, so `50%` matches the literal text `50%` and never
+         *     globs. Word semantics, stemming and segmentation are out of
+         *     scope by design (the v1 boundary: the match is containment,
+         *     which is language-agnostic by construction; a tokenizing
+         *     engine is the v1.x upgrade path). The path's weak rank
+         *     signal is the trigram similarity of the best matched source.
+         *
+         *     The SEMANTIC path embeds the query through the active CLIP
+         *     text tower (the model registry's clip-text slot) and ranks
+         *     the caller-visible assets by cosine similarity over the
+         *     image embeddings the active clip-embed model produced -- the
+         *     same joint space both towers share. The semantic path needs
+         *     the model machinery: when no text tower is active (or the
+         *     tower's dimension disagrees with the embeddings column) the
+         *     semantic path honestly answers EMPTY and the text path still
+         *     serves -- the degradation the model admin page resolves by
+         *     downloading and activating the text tower.
+         *
+         *     The MERGE: both paths answer at most their top 500 ranked
+         *     hits; an asset's fused score is the sum over the paths it
+         *     appears in of (500 minus its zero-based position in that
+         *     path), so an asset hit by both paths outranks the single-path
+         *     hits around it; the page orders by the fused score descending
+         *     with the asset id ascending as the total-order tiebreak, and
+         *     one asset hit through many sources or both paths appears
+         *     exactly once. The rule is deterministic: the same query over
+         *     unchanged data answers the same page, and cursors page
+         *     through that stable order.
+         *
+         *     A query of fewer than two characters (after trimming), or
+         *     only whitespace, takes NO text path and NO semantic path: the
+         *     request is the pure filter browse. An empty `from`/`to` pair
+         *     with no other filter is the whole visible timeline.
+         *
+         *     The FACETS count the current filtered set minus their own
+         *     dimension: `people` lists the caller's named, non-hidden
+         *     people with the number of assets of the current set (query
+         *     and every filter applied EXCEPT personIds) that carry a face
+         *     of that cluster; `places`, `years`, `cameras`, `kinds`,
+         *     `albums` and `tags` follow the same rule for their own
+         *     dimension. Facet ids the caller cannot resolve (an album they
+         *     cannot see, another account's tag) DROP OUT of the filter
+         *     parameters rather than emptying the result -- filters narrow,
+         *     they never probe.
+         *
+         *     `personIds`, `albumIds` and `tagIds` are comma-separated id
+         *     lists; `placeIds` is a comma-separated integer list;
+         *     `cameras` is a comma-separated list of the camera facet ids
+         *     (`make|model`). Every id list is capped at 200 entries; a
+         *     longer list answers 400 `VALIDATION_FAILED`. `from` is
+         *     inclusive, `to` is EXCLUSIVE; an inverted range answers 400.
+         *     `locale` picks the places facet's display names exactly the
+         *     way `GET /places` does.
+         */
+        get: operations["searchAssets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's tags, the search vocabulary.
+         * @description Every tag the calling user owns, one array sorted by name
+         *     case-insensitively with the tag id as the deterministic
+         *     tiebreak (the named-people listing's own ordering discipline):
+         *     the vocabulary the search's tag facet, the batch bar's "add
+         *     tag" and the info panel's tag section consume. Unpaginated
+         *     like the places listing -- a family instance's vocabulary is
+         *     a bounded set, one document.
+         *
+         *     Tags are per-user state (B4, the favorites' privacy shape):
+         *     the tags' owner is always the caller, and no tag, name or
+         *     count of another account ever surfaces here. The listing
+         *     carries the vocabulary in full -- a tag whose every member is
+         *     trashed or hidden still lists, with its honest count of zero
+         *     (the assignment rows survive, exactly like a favorite row,
+         *     and the count returns with the restore or unhide).
+         *
+         *     `assetCount` counts the tag's assignment rows joined to
+         *     CALLER-VISIBLE LIVE assets: the album union (the caller's
+         *     own sync and directory albums plus every album shared to
+         *     them) and the timeline's live filters -- not trashed, not
+         *     hidden, no Live Photo component -- the honest-counts
+         *     discipline of the people and places surfaces. A sharee's
+         *     count covers the shared members they can see; a revoked
+         *     share retracts them while the assignment rows survive
+         *     underneath.
+         */
+        get: operations["listTags"];
+        put?: never;
+        /**
+         * Create one tag, idempotently.
+         * @description Creates one tag owned by the caller. The name is trimmed
+         *     server-side and must span 1-64 Unicode characters after the
+         *     trim (the count is over runes, so multi-byte names stay
+         *     within the bound at the same length); anything else answers
+         *     400 `VALIDATION_FAILED`.
+         *
+         *     Creation is IDEMPOTENT, the assignment face's set semantics
+         *     applied to the vocabulary: a name the caller already owns
+         *     converges on the tag that already exists. A fresh name
+         *     answers 201 with the new row; a name that already exists
+         *     answers 200 with the EXISTING tag -- the same id, nothing
+         *     written, `updatedAt` untouched -- never a 409, because the
+         *     vocabulary is a set and the duplicate ask is the same ask.
+         *     Two concurrent creators converge on one row the same way
+         *     (the unique constraint is the race guard). Names are
+         *     distinct when their characters differ; the duplicate check
+         *     is the constraint's own equality.
+         *
+         *     The response is the tag's summary exactly as `GET /tags`
+         *     lists it. The write publishes nothing: tags are per-user
+         *     state, the only view that changes is the caller's own, and
+         *     the response itself carries it.
+         */
+        post: operations["createTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{tagId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete one tag.
+         * @description Deletes the caller's tag and every assignment row with it:
+         *     the schema's `ON DELETE CASCADE` removes the asset_tags rows
+         *     in the same statement, so a deleted tag leaves no orphans
+         *     behind -- on any account's view, because the rows were the
+         *     caller's own to begin with. The answer is 204 with no body.
+         *
+         *     Repeating the request answers 404 `TAG_NOT_FOUND`: the tag
+         *     is gone exactly like an unknown id (the album delete's
+         *     discipline -- a resource delete, not a set removal). The tag
+         *     must be the caller's own; another account's tag folds into
+         *     the same single-shape 404. The write publishes nothing
+         *     (per-user state, the create's reasoning).
+         */
+        delete: operations["deleteTag"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename one tag.
+         * @description Renames the caller's tag. The name validation is the
+         *     create's own: trimmed server-side, 1-64 Unicode characters
+         *     after the trim, else 400 `VALIDATION_FAILED`.
+         *
+         *     Renaming to the name the row already carries is the
+         *     idempotent no-op: 200 with the row's current state, nothing
+         *     written (not even `updatedAt`). Renaming to a name ANOTHER
+         *     of the caller's tags carries answers 409 `TAG_NAME_TAKEN`:
+         *     the vocabulary keeps one row per name, and the honest answer
+         *     for a collision is the conflict, not a silent merge into the
+         *     other tag. (The create's idempotence does not extend here:
+         *     the URL already names one tag, and converging on the other
+         *     row would substitute the resource instead of answering.)
+         *
+         *     The response is the tag's summary after the edit, exactly as
+         *     `GET /tags` lists it. The write publishes nothing (per-user
+         *     state, the create's reasoning). The tag must be the caller's
+         *     own: an unknown id and another account's tag answer the same
+         *     404 `TAG_NOT_FOUND`, byte for byte, so tag ids cannot be
+         *     probed for existence.
+         */
+        patch: operations["renameTag"];
+        trace?: never;
+    };
+    "/tags/{tagId}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tag assets in one batch.
+         * @description Adds the caller's tag to a list of at most 200 asset ids
+         *     with the batch surface's set semantics: one request, one
+         *     honest report `{added, skipped}`.
+         *
+         *     Skip semantics (the missing-ids discipline, the
+         *     album-items precedent widened to the union): every id must
+         *     address an asset the CALLER CAN SEE -- the album union (the
+         *     caller's own sync and directory albums plus every album
+         *     shared to them), the same resolution the favorites arms of
+         *     the batch endpoint apply. The union deliberately carries
+         *     tags: a sharee tags what they see with THEIR OWN tag, and
+         *     the owner's tag on the same asset stays untouched (B4 -- the
+         *     assignment rows are per-user). An unknown id, another
+         *     account's unshared asset, and any id the caller cannot see
+         *     are silently skipped, never errors. An id that already
+         *     carries this tag is skipped too: assignment is a set, the
+         *     add is idempotent. NO live-state filter applies to the
+         *     resolution: the assignment row is per-user state written
+         *     whatever the asset's live state (a trashed or hidden asset
+         *     carries the tag underneath the view's filters and the count
+         *     returns with the restore or unhide, exactly like a favorite
+         *     row). An all-skipped request still answers 200 with `added`
+         *     0. Repeated ids collapse to one application; the counts
+         *     cover the distinct ids.
+         *
+         *     The tag must be the caller's own: an unknown id and another
+         *     account's tag answer the same 404 `TAG_NOT_FOUND`. The write
+         *     publishes nothing: the only view that changes is the
+         *     caller's own tags, which the response itself reports.
+         */
+        post: operations["addTagAssets"];
+        /**
+         * Untag assets in one batch.
+         * @description Removes the caller's assignment rows of one tag:
+         *     `{removed, skipped}`, the same batch semantics as the add.
+         *     An id that carries no assignment of this tag -- never was,
+         *     or already removed -- is skipped; an all-skipped request
+         *     still answers 200 with `removed` 0. Repeated ids collapse;
+         *     the counts cover the distinct ids.
+         *
+         *     The removal carries no visibility predicate: it tidies the
+         *     caller's own set, so the rows leave whatever the assets'
+         *     live state (a trashed member's assignment row still leaves,
+         *     the honest cleanup of the set itself). The tag must be the
+         *     caller's own: an unknown id and another account's tag answer
+         *     the same 404 `TAG_NOT_FOUND`. The write publishes nothing
+         *     (per-user state, the add's reasoning).
+         */
+        delete: operations["removeTagAssets"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -2234,6 +2576,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/places/reresolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a full place re-resolution run.
+         * @description The places-data-update path of the admin surface: one run
+         *     that re-resolves the place of EVERY asset whose exif row
+         *     carries GPS coordinates, against the reference data the
+         *     server currently runs on. The run that refills resolutions
+         *     after the baked GeoNames data changed -- the startup import
+         *     of a rebuilt image replaces the reference tables and, through
+         *     the schema's ON DELETE SET NULL, releases every stale
+         *     resolution; this run is the deliberate step that refills
+         *     them. (The metadata job resolves every NEW upload on its
+         *     own; this run only matters for re-resolving what already
+         *     exists.)
+         *
+         *     The scope is every GPS-bearing asset row whatever its
+         *     lifecycle state -- place resolution is metadata, not
+         *     visibility. `total` and `done` of the run's `job_runs` row
+         *     count those assets and `failed` the ones whose re-resolution
+         *     write failed.
+         *
+         *     The endpoint is idempotent the way the model rerun is: a
+         *     place re-resolution run still in flight (`queued` or
+         *     `running`) answers 200 with its identifier and starts
+         *     nothing; a finished (or failed) run never blocks a new one.
+         *
+         *     The run is API-only in this milestone: no admin page button
+         *     is wired to it yet (the job panel's listing shows its
+         *     progress like any other run).
+         */
+        post: operations["reresolvePlaces"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/jobs": {
         parameters: {
             query?: never;
@@ -2519,11 +2906,15 @@ export interface components {
         /**
          * @description The functional slot a model fills. `face_detect`,
          *     `face_recognize`, `clip_embed` and `ocr` are the machine
-         *     learning slots of this milestone; a speech slot arrives with
-         *     a later one.
+         *     learning slots of the pipeline; `clip_text` is the search's
+         *     semantic arm -- the CLIP text tower that embeds queries into
+         *     the vision tower's joint embedding space (it produces no
+         *     per-asset rows, so its rerun endpoint answers 400
+         *     `MODEL_INVALID`); a speech slot arrives with a later
+         *     milestone.
          * @enum {string}
          */
-        ModelSlot: "face_detect" | "face_recognize" | "clip_embed" | "ocr";
+        ModelSlot: "face_detect" | "face_recognize" | "clip_embed" | "clip_text" | "ocr";
         /**
          * @description Where a model's registration came from: `downloaded` models
          *     landed through the download endpoint's manifest-pinned
@@ -2606,10 +2997,11 @@ export interface components {
         /**
          * @description The kinds of job runs the instance records. The model
          *     download is one run; each machine learning slot's rerun is
-         *     its own kind, named after the slot it redoes.
+         *     its own kind, named after the slot it redoes; the place
+         *     re-resolution is the places-data-update path's kind.
          * @enum {string}
          */
-        JobRunKind: "model_download" | "face_detect_rerun" | "face_recognize_rerun" | "clip_embed_rerun" | "ocr_rerun";
+        JobRunKind: "model_download" | "face_detect_rerun" | "face_recognize_rerun" | "clip_embed_rerun" | "ocr_rerun" | "places_rerun";
         /**
          * @description The lifecycle of a job run: `queued` from creation until the
          *     driver picks it up, `running` while it works, then
@@ -2835,8 +3227,9 @@ export interface components {
          * @description One asset as the detail endpoint returns it: the upload
          *     response's identity and storage fields, the pipeline's
          *     refinements, the two owner-level attributes the PATCH
-         *     endpoint edits (`description`, `isHidden`), and the asset's
-         *     faces as the calling user sees them (`faces`). The shape is
+         *     endpoint edits (`description`, `isHidden`), the asset's
+         *     faces as the calling user sees them (`faces`), and the
+         *     CALLER's tags on the asset (`tags`). The shape is
          *     fixed -- every property is always present -- and the
          *     pipeline-dependent values (`width`, `height`, `durationMs`,
          *     `blurhash` and the fields inside `exif`) are null until the
@@ -2981,6 +3374,19 @@ export interface components {
              *     it.
              */
             faces: components["schemas"]["AssetFaceSummary"][];
+            /**
+             * @description The CALLER's tags on this asset (B4): the caller's own
+             *     assignment rows joined to their own tag rows, sorted by
+             *     name case-insensitively with the tag id as the tiebreak
+             *     (the vocabulary listing's own ordering). Another
+             *     account's tags on the same asset never surface, so the
+             *     same shared asset answers different arrays for the owner
+             *     and the sharee (each sees their own, or none). Always
+             *     present, empty when the caller tagged the asset with
+             *     nothing. The PATCH response serves the same array,
+             *     exactly as the GET serves it.
+             */
+            tags: components["schemas"]["AssetTagSummary"][];
         };
         /**
          * @description One face of the asset detail's `faces` array: the crop's
@@ -3024,6 +3430,22 @@ export interface components {
              *     label.
              */
             label: components["schemas"]["PersonLabel"] | null;
+        };
+        /**
+         * @description One entry of the asset detail's `tags` array: the caller's
+         *     own tag as it rides the asset -- identity and name only, the
+         *     vocabulary's listing face carries the counts. Per-user state
+         *     (B4): the entry exists exactly because the CALLER's
+         *     assignment row does.
+         */
+        AssetTagSummary: {
+            /**
+             * Format: uuid
+             * @description Identifier of the tag (the caller's own row).
+             */
+            id: string;
+            /** @description The tag's name, the caller's own vocabulary. */
+            name: string;
         };
         /**
          * @description The EXIF hot fields of an asset, flattened from the raw
@@ -3707,6 +4129,361 @@ export interface components {
             clusterId: string;
         };
         /**
+         * @description One city group of the caller's places list: a GeoNames place
+         *     holding at least one caller-visible live asset. The count and
+         *     the covers are the caller's honest view -- the same place can
+         *     show different counts to different accounts.
+         */
+        PlaceSummary: {
+            /**
+             * Format: int32
+             * @description The GeoNames geonameid of the place -- the `places` row's
+             *     primary key and the `assets.place_id` foreign key the
+             *     ingestion pipeline's resolution writes.
+             * @example 2988507
+             */
+            placeId: number;
+            /**
+             * @description The display name in the request's locale: the
+             *     `place_names` row of that locale when the reference data
+             *     carries one, the GeoNames canonical (English or
+             *     romanized) name otherwise. A locale switch changes this
+             *     join only, never an asset row.
+             * @example Paris
+             * @example 巴黎
+             */
+            name: string;
+            /**
+             * @description The place's ISO 3166-1 alpha-2 country code. The display
+             *     country name is the client's business (its own locale
+             *     table maps the code).
+             * @example FR
+             */
+            country: string;
+            /**
+             * @description The place's caller-visible live assets -- the honest
+             *     per-caller count, not the global member count.
+             */
+            assetCount: number;
+            /**
+             * @description The place's cover candidates: its (up to) four most
+             *     recent caller-visible live members, taken_at descending
+             *     with the asset id as the tiebreak -- the wall's
+             *     derived-cover discipline applied to city groups, newest
+             *     first.
+             */
+            representativeCoverAssetIds: string[];
+        };
+        /**
+         * @description The identifier of one place re-resolution run: the
+         *     `job_runs` row the re-resolution job drives and the
+         *     `job.*` events announce.
+         */
+        PlacesRerunResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the run's `job_runs` row. `202`
+             *     carries the freshly created run; `200` the in-flight one
+             *     the request joined instead.
+             */
+            jobRunId: string;
+        };
+        /**
+         * @description The media family of an asset. A Live Photo is an `image`
+         *     whose linked component video row never appears in the
+         *     timeline or the search.
+         * @enum {string}
+         */
+        MediaKind: "image" | "video";
+        /**
+         * @description One page of the unified search: the keyset-paged items (the
+         *     timeline item shape -- the search results page renders the
+         *     same wall the timeline does) plus the facet counts of the
+         *     current filtered set minus each dimension. `nextCursor` is
+         *     present exactly when another page follows; the cursor is
+         *     mode-tagged (the fused-rank order of a text query, or the
+         *     timeline order of the filter browse).
+         */
+        SearchResponse: {
+            /**
+             * @description The page's assets, ordered by the fused score descending
+             *     with the asset id ascending as the tiebreak (a text
+             *     query), or by taken-at descending with the id descending
+             *     (the filter browse -- the timeline's own order).
+             */
+            items: components["schemas"]["TimelineItem"][];
+            /**
+             * @description The continuation token of the page: present exactly when
+             *     another page follows. Opaque; pass it back as `cursor`.
+             */
+            nextCursor?: string;
+            facets: components["schemas"]["SearchFacets"];
+        };
+        /**
+         * @description The filter bar's counts over the current filtered set minus
+         *     each dimension: a facet entry's `assetCount` answers "how
+         *     many results would I have if I added this value ON TOP of
+         *     the current query and filters" (the dimension's own filter
+         *     parameters excluded). Every facet is caller-scoped exactly
+         *     like the surface it summarizes: places count visible assets,
+         *     tags and people are the caller's own (B4), albums are the
+         *     ones the caller can see. The lists are ordered by
+         *     `assetCount` descending with a deterministic per-dimension
+         *     tiebreak; they are not paginated (bounded by the family
+         *     instance's vocabulary sizes, the tags listing's own shape).
+         */
+        SearchFacets: {
+            /**
+             * @description The caller's named, non-hidden people: one entry per
+             *     labeled face cluster with a face on the current set.
+             *     Hidden labels never list (the B4 hidden switch removes
+             *     the person from every face position).
+             */
+            people: components["schemas"]["PersonFacetCount"][];
+            /**
+             * @description The resolved places of the current set with the locale
+             *     display name (`locale` parameter, the `GET /places` join).
+             */
+            places: components["schemas"]["PlaceFacetCount"][];
+            /**
+             * @description The taken-at years of the current set, newest first: the
+             *     time-range facet (the `from`/`to` filters are the
+             *     dimension the year counts exclude).
+             */
+            years: components["schemas"]["YearFacetCount"][];
+            /**
+             * @description The EXIF camera makes/models of the current set. The `id`
+             *     is the round-trip filter value (`make|model`); `make` and
+             *     `model` are the display halves, null exactly when the
+             *     EXIF row carries no value there.
+             */
+            cameras: components["schemas"]["CameraFacetCount"][];
+            /** @description The media families of the current set. */
+            kinds: components["schemas"]["KindFacetCount"][];
+            /**
+             * @description The caller-visible albums (own and shared, never the sync
+             *     albums -- the timeline is their face) holding members of
+             *     the current set.
+             */
+            albums: components["schemas"]["AlbumFacetCount"][];
+            /**
+             * @description The CALLER's tags with members in the current set (B4:
+             *     another account's tags never surface).
+             */
+            tags: components["schemas"]["TagFacetCount"][];
+        };
+        /** @description One named person of the people facet. */
+        PersonFacetCount: {
+            /**
+             * Format: uuid
+             * @description The face cluster id (the people surface's id).
+             */
+            id: string;
+            /** @description The CALLER's label of the cluster. */
+            name: string;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the person filter) carrying a face of this cluster.
+             */
+            assetCount: number;
+        };
+        /** @description One place of the places facet. */
+        PlaceFacetCount: {
+            /**
+             * Format: int32
+             * @description The GeoNames id (the round-trip filter value).
+             */
+            placeId: number;
+            /** @description The locale display name, canonical fallback. */
+            name: string;
+            /** @description The ISO country code. */
+            country: string;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the place filter) resolved to this place.
+             */
+            assetCount: number;
+        };
+        /** @description One year of the time-range facet. */
+        YearFacetCount: {
+            /**
+             * Format: int32
+             * @description The taken-at year.
+             */
+            year: number;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the time-range filter) taken in this year.
+             */
+            assetCount: number;
+        };
+        /** @description One camera of the cameras facet. */
+        CameraFacetCount: {
+            /**
+             * @description The round-trip filter value: `make|model` with both
+             *     halves trimmed, empty where the EXIF row carries no
+             *     value.
+             */
+            id: string;
+            /** @description The EXIF camera make, null when absent. */
+            make?: string | null;
+            /** @description The EXIF camera model, null when absent. */
+            model?: string | null;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the camera filter) shot with this camera.
+             */
+            assetCount: number;
+        };
+        /** @description One media family of the kinds facet. */
+        KindFacetCount: {
+            kind: components["schemas"]["MediaKind"];
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the kind filter) of this family.
+             */
+            assetCount: number;
+        };
+        /** @description One album of the albums facet. */
+        AlbumFacetCount: {
+            /**
+             * Format: uuid
+             * @description The album id (the round-trip filter value).
+             */
+            id: string;
+            /** @description The album's title. */
+            title: string;
+            /**
+             * @description The number of members of the current filtered set (minus
+             *     the album filter) this album holds.
+             */
+            assetCount: number;
+        };
+        /** @description One tag of the tags facet. */
+        TagFacetCount: {
+            /**
+             * Format: uuid
+             * @description The CALLER's tag id (the round-trip filter value).
+             */
+            id: string;
+            /** @description The caller's tag name. */
+            name: string;
+            /**
+             * @description The number of assets of the current filtered set (minus
+             *     the tag filter) carrying this tag.
+             */
+            assetCount: number;
+        };
+        /**
+         * @description One tag of the caller's vocabulary as every tags-face
+         *     response answers it: the identity, the name, the honest
+         *     count and the timestamps. The write faces (create, rename)
+         *     answer this same shape, so a write's answer is the entry the
+         *     listing lists.
+         */
+        TagSummary: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the tag (the caller's own row).
+             */
+            id: string;
+            /**
+             * @description The tag's display name, unique within the caller's
+             *     vocabulary. Trimmed on write; 1-64 Unicode characters
+             *     (counted over runes).
+             */
+            name: string;
+            /**
+             * @description The tag's assignment rows joined to caller-visible live
+             *     assets: the album union plus the timeline's live filters
+             *     (not trashed, not hidden, no Live Photo component). A
+             *     trashed or hidden member stops counting until it
+             *     returns; the assignment row survives underneath, exactly
+             *     like a favorite row.
+             */
+            assetCount: number;
+            /**
+             * Format: date-time
+             * @description When the tag row was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the tag's name last truly changed (RFC 3339 UTC).
+             *     The idempotent create and the no-op rename leave it
+             *     untouched -- only a real rename moves it.
+             */
+            updatedAt: string;
+        };
+        /**
+         * @description The name-carrying body of the tag create and rename writes:
+         *     one field, required. The name is trimmed server-side and
+         *     must span 1-64 Unicode characters after the trim (the count
+         *     is over runes, so multi-byte names stay within the bound at
+         *     the same length).
+         */
+        TagNameRequest: {
+            /**
+             * @description The tag's name, trimmed server-side. On create a name
+             *     the caller already owns converges on the existing tag;
+             *     on rename a name another tag carries answers 409
+             *     `TAG_NAME_TAKEN`, the row's own name the idempotent
+             *     no-op.
+             */
+            name: string;
+        };
+        /**
+         * @description The assignment write body: the list of asset ids to tag with
+         *     or untag from the caller's tag. Repeated ids collapse to one
+         *     application; the report's counts cover the distinct ids.
+         */
+        TagAssetsRequest: {
+            /**
+             * @description The asset ids of the assignment write, between 1 and 200
+             *     entries. The add skips -- never errors on -- every id
+             *     that is not caller-visible or that already carries the
+             *     tag; the remove skips the ids that carry no assignment.
+             */
+            assetIds: string[];
+        };
+        /**
+         * @description The honest report of one assignment add over the request's
+         *     distinct ids: what landed and what was skipped, invisible
+         *     and already-tagged ids alike.
+         */
+        AddTagAssetsResponse: {
+            /**
+             * @description The assignment rows the request inserted. Zero for an
+             *     all-skipped request, which is still a 200 -- batch
+             *     semantics, never an error.
+             */
+            added: number;
+            /**
+             * @description The distinct ids that did not land: unknown ids,
+             *     another account's unshared assets, any id the caller
+             *     cannot see, and the ids already carrying the tag (the
+             *     idempotent add).
+             */
+            skipped: number;
+        };
+        /**
+         * @description The honest report of one assignment remove over the
+         *     request's distinct ids: the rows that left and the ids that
+         *     carried no assignment of the tag.
+         */
+        RemoveTagAssetsResponse: {
+            /**
+             * @description The assignment rows the request deleted. Zero for an
+             *     all-skipped request, which is still a 200.
+             */
+            removed: number;
+            /**
+             * @description The distinct ids that carried no assignment of this tag
+             *     -- never tagged, or already untagged.
+             */
+            skipped: number;
+        };
+        /**
          * @description The caller's album wall: the own group followed by the shared
          *     group, concatenated into one array.
          */
@@ -4182,7 +4959,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_LOCKED";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_LOCKED" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -5117,6 +5894,10 @@ export interface operations {
              *     descending with the face id as the tiebreak, each entry
              *     carrying the caller's own label state of the face's
              *     cluster; the `person.*` events on the stream converge it.
+             *     `tags` is always present, the caller's own tags on the
+             *     asset sorted by name case-insensitively with the tag id
+             *     as the tiebreak; the tags writes' own responses carry the
+             *     converged state, so no event needs to.
              */
             200: {
                 headers: {
@@ -5241,9 +6022,9 @@ export interface operations {
             /**
              * @description The asset detail after the edit -- the same shape `GET
              *     /assets/{id}` serves, with the applied values (the
-             *     `faces` array included, unchanged by the edit). The
-             *     idempotent no-op answers it too, with the row's current
-             *     state unchanged.
+             *     `faces` and `tags` arrays included, unchanged by the
+             *     edit). The idempotent no-op answers it too, with the
+             *     row's current state unchanged.
              */
             200: {
                 headers: {
@@ -7353,6 +8134,634 @@ export interface operations {
             };
         };
     };
+    listPlaces: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The display locale of the place names: `en` or `zh-Hans`,
+                 *     the instance's UI language set. Absent means `en`. A
+                 *     value outside the set answers 400 `VALIDATION_FAILED`.
+                 * @example zh-Hans
+                 */
+                locale?: "en" | "zh-Hans";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The caller's city grouping, ordered by asset count
+             *     descending (the place id ascending as the tiebreak). The
+             *     array is empty when no visible asset of the caller
+             *     carries a resolved place.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSummary"][];
+                };
+            };
+            /**
+             * @description The locale parameter carries a value outside the
+             *     instance's language set.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    searchAssets: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The free-text query: a literal substring matched
+                 *     (unaccented, case-insensitively) against the filename,
+                 *     the description, the OCR text and the caller's tag,
+                 *     album-title and person-name vocabularies, and embedded
+                 *     through the CLIP text tower for the semantic path. A
+                 *     value of fewer than two characters (after trimming) takes
+                 *     no text path: the request is the pure filter browse. The
+                 *     length is capped at 256 characters.
+                 * @example 海边
+                 */
+                query?: string;
+                /**
+                 * @description Restrict the results to assets carrying a face of one of
+                 *     these face clusters (the caller's people surface's
+                 *     cluster ids).
+                 */
+                personIds?: string[];
+                /**
+                 * @description Restrict the results to assets resolved to one of these
+                 *     places (the places facet's GeoNames ids).
+                 */
+                placeIds?: number[];
+                /**
+                 * @description The inclusive lower bound of the taken-at range.
+                 * @example 2024-01-01T00:00:00Z
+                 */
+                from?: string;
+                /**
+                 * @description The EXCLUSIVE upper bound of the taken-at range. A `to`
+                 *     at or before `from` answers 400 `VALIDATION_FAILED`.
+                 * @example 2025-01-01T00:00:00Z
+                 */
+                to?: string;
+                /**
+                 * @description Restrict the results to assets whose EXIF camera matches
+                 *     one of these camera facet ids (`make|model`).
+                 */
+                cameras?: string[];
+                /**
+                 * @description Restrict the results to these media families. A value
+                 *     outside `image`/`video` answers 400.
+                 */
+                kinds?: components["schemas"]["MediaKind"][];
+                /**
+                 * @description Restrict the results to members of these albums. Albums
+                 *     the caller cannot see drop out of the filter: they
+                 *     contribute nothing, they never empty the result.
+                 */
+                albumIds?: string[];
+                /**
+                 * @description Restrict the results to assets carrying one of the
+                 *     CALLER's tags. Another account's tag ids drop out of the
+                 *     filter (B4: tags are per-user state).
+                 */
+                tagIds?: string[];
+                /**
+                 * @description The display locale of the places facet's names, exactly
+                 *     the `GET /places` locale join. Absent means `en`. A value
+                 *     outside the set answers 400 `VALIDATION_FAILED`.
+                 * @example zh-Hans
+                 */
+                locale?: "en" | "zh-Hans";
+                /**
+                 * @description The `nextCursor` of the previous page; absent on the first
+                 *     page. The cursor carries the page's ordering mode (the
+                 *     fused rank of a text query, or the timeline order of the
+                 *     filter browse): a cursor of the other mode answers 400
+                 *     `VALIDATION_FAILED`, and so does any value this endpoint
+                 *     did not produce.
+                 * @example GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w
+                 */
+                cursor?: string;
+                /**
+                 * @description Page size: the number of items one response carries at
+                 *     most. Defaults to 100; values over 200 are answered with
+                 *     200, values below 1 answer 400.
+                 * @example 100
+                 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description One page of the merged search (or the filter browse),
+             *     plus the facet counts over the current filtered set minus
+             *     each dimension. `nextCursor` is present exactly when
+             *     another page follows.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /**
+             * @description The parameters are invalid: a mangled or mode-mismatched
+             *     cursor, `limit` below 1, an inverted or unparseable time
+             *     range, a `kinds` value outside the media families, a
+             *     negative `placeIds` entry, an id list over 200 entries, a
+             *     `locale` outside the language set, or a `query` over 256
+             *     characters.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The caller's vocabulary, sorted by name case-insensitively
+             *     with the tag id as the tiebreak. Empty when the caller
+             *     owns no tag.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"][];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagNameRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The name already belongs to the caller: the answer is
+             *     the EXISTING tag's summary, the idempotent convergence
+             *     (nothing was written, `updatedAt` untouched).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"];
+                };
+            };
+            /**
+             * @description The tag exists now; the response is its summary with the
+             *     creation-time zero count.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, or
+             *     the name is missing, empty, whitespace-only, or spans
+             *     more than 64 characters.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the tag. */
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tag and every assignment row are gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such tag for this caller: the id is unknown, was
+             *     already deleted, or belongs to another account --
+             *     indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    renameTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the tag. */
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagNameRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The tag's summary after the edit. The idempotent no-op
+             *     answers it too, with the row's current state unchanged.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, or
+             *     the name is missing, empty, whitespace-only, or spans
+             *     more than 64 characters.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such tag for this caller: the id is unknown or
+             *     belongs to another account -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Another of the caller's tags already carries the
+             *     requested name: the vocabulary keeps one row per name.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addTagAssets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the tag. */
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagAssetsRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The report over the request's distinct ids: `added`
+             *     counts the assignment rows the request inserted,
+             *     `skipped` the rest -- already-tagged ids and ids the
+             *     caller cannot see alike.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddTagAssetsResponse"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, the
+             *     list is empty, or it carries more than 200 ids.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such tag for this caller: the id is unknown or
+             *     belongs to another account -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeTagAssets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the tag. */
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagAssetsRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The report over the request's distinct ids: `removed`
+             *     counts the assignment rows the request deleted,
+             *     `skipped` the ids that carried no assignment of this
+             *     tag.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoveTagAssetsResponse"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, the
+             *     list is empty, or it carries more than 200 ids.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such tag for this caller: the id is unknown or
+             *     belongs to another account -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listInstanceUsers: {
         parameters: {
             query?: never;
@@ -7980,6 +9389,84 @@ export interface operations {
              *     `admin`.
              */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    reresolvePlaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description A place re-resolution run is already in flight (`queued`
+             *     or `running`); its identifier is returned and NO new run
+             *     is created or enqueued.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacesRerunResponse"];
+                };
+            };
+            /**
+             * @description The re-resolution run was created (state `queued`,
+             *     `total` carrying the GPS-bearing asset count) and its
+             *     job enqueued. The worker flips the run to `running`
+             *     when the walk begins.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacesRerunResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The run could not be started: no job queue is wired to
+             *     the API surface, or this server runs without the place
+             *     reference data (no GeoNames bake, so no grid to resolve
+             *     against), or creating the run failed. The run itself,
+             *     once started, reports its own failures through its
+             *     `job_runs` row (state `failed`).
+             */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

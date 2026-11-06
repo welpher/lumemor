@@ -26,6 +26,16 @@ const EnvConfigDir = "LUMEMOR_CONFIG_DIR"
 // maximum accepted size of a single uploaded file.
 const EnvUploadLimitBytes = "LUMEMOR_UPLOAD_LIMIT_BYTES"
 
+// EnvGeodataDir is the environment variable pointing the server at
+// the baked GeoNames reference directory (cities500.txt,
+// admin1CodesASCII.txt, alternateNames-zh.txt): the startup load
+// imports it into places/place_names and the in-memory place grid
+// builds from the imported rows. Unset or empty keeps the feature
+// honestly absent -- no import, no GPS resolution, the places rerun
+// refuses to start -- which is the local-development default (the
+// Docker image sets it to the bake it carries).
+const EnvGeodataDir = "LUMEMOR_GEODATA_DIR"
+
 // DefaultListen is the listen address used when EnvListen is unset or empty.
 const DefaultListen = ":8244"
 
@@ -53,6 +63,11 @@ type Config struct {
 	// ConfigDir is the root directory holding instance configuration:
 	// ML models today, settings files later.
 	ConfigDir string
+	// GeodataDir is the baked GeoNames reference directory the startup
+	// load imports (places/place_names) and the place grid builds
+	// from; empty keeps the place resolution feature off (the
+	// local-development default -- the Docker image sets it).
+	GeodataDir string
 	// UploadLimitBytes is the maximum accepted size in bytes of a
 	// single uploaded file.
 	UploadLimitBytes int64
@@ -94,6 +109,7 @@ func Load() (Config, error) {
 		DatabaseURL:      databaseURL,
 		DataDir:          dataDir,
 		ConfigDir:        configDir,
+		GeodataDir:       os.Getenv(EnvGeodataDir),
 		UploadLimitBytes: uploadLimitBytes,
 	}, nil
 }

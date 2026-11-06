@@ -133,5 +133,11 @@ void main() {
       // TODO
     });
 
+    // The CALLER's tags on this asset (B4): the caller's own assignment rows joined to their own tag rows, sorted by name case-insensitively with the tag id as the tiebreak (the vocabulary listing's own ordering). Another account's tags on the same asset never surface, so the same shared asset answers different arrays for the owner and the sharee (each sees their own, or none). Always present, empty when the caller tagged the asset with nothing. The PATCH response serves the same array, exactly as the GET serves it. 
+    // BuiltList<AssetTagSummary> tags
+    test('to test the property `tags`', () async {
+      // TODO
+    });
+
   });
 }

@@ -4,8 +4,10 @@
 	// upload action and the account avatar. The avatar opens the
 	// dropdown that carries the two appearance toggles (theme and
 	// language, from the shared wiring task) and the logout action.
-	// The drawer carries the IA's seven content sections; search and
-	// upload stay placeholders wired by later tasks.
+	// The drawer carries the IA's content sections; the search box
+	// navigates to the search page (M3d: the commit is Enter, the
+	// search page owns the query state from there) and the upload
+	// action drives the queue overlay.
 	//
 	// THE APP FRAME (R2-1): the shell is an h-dvh flex column with
 	// overflow hidden -- the top bar is pinned by the frame itself
@@ -91,6 +93,20 @@
 		}
 	});
 
+	// The top bar's search entry (M3d): typing in the box is a
+	// NAVIGATION trigger, not live search -- the commit (Enter)
+	// lands on /search with the typed text as the query parameter,
+	// and the search page owns the query state from there (URL
+	// synced, deep-linkable). An empty commit lands on the bare
+	// /search (the filter browse's own face).
+	let searchDraft = $state('');
+
+	function handleSearchSubmit(event: SubmitEvent): void {
+		event.preventDefault();
+		const value = searchDraft.trim();
+		goto(value === '' ? '/search' : `/search?query=${encodeURIComponent(value)}`);
+	}
+
 	function pickFiles(): void {
 		picker?.click();
 	}
@@ -167,16 +183,18 @@
 		<!-- Push the search box away from the brand; the upload and
 		     account marks stay pinned to the right end. The leading
 		     magnifier is decorative (the field's own aria-label names
-		     it) and never takes the pointer. -->
-		<span class="topbar-search-wrap relative flex-1 max-w-[420px] ml-auto">
+		     it) and never takes the pointer. The box is a form so the
+		     keyboard's Enter commits the navigation to /search. -->
+		<form class="topbar-search-wrap relative flex-1 max-w-[420px] ml-auto" role="search" onsubmit={handleSearchSubmit}>
 			<Search size={16} class="absolute start-3 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
 			<input
-				class="topbar-search w-full box-content ps-9 pe-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+				class="topbar-search w-full ps-9 pe-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 				type="search"
 				placeholder={$_('nav_search')}
 				aria-label={$_('nav_search')}
+				bind:value={searchDraft}
 			/>
-		</span>
+		</form>
 		<span class="topbar-upload-wrap">
 			<!-- The hidden input of the top bar's Upload button; picked
 			     files join the upload queue through enqueueUploadFiles. -->
@@ -252,7 +270,7 @@
 	     order while staying focusable (the navigation focus rule
 	     above keeps the browser's keyboard scrolling on it); the
 	     outline suppression keeps that focus visually silent. -->
-	<main bind:this={main} tabindex="-1" class="shell-main flex-1 min-h-0 overflow-y-auto p-6 focus-visible:outline-none">
+	<main bind:this={main} tabindex="-1" class="shell-main flex-1 min-h-0 overflow-y-auto p-0 focus-visible:outline-none">
 		{@render children()}
 	</main>
 </div>

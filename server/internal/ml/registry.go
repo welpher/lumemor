@@ -38,12 +38,13 @@ import (
 // names (face-detect and friends) map onto them below.
 type Slot string
 
-// The four M3a slots. The database enum also carries stt, which stays
-// unclaimed until a later milestone adds a speech model.
+// The five M3a/M3d slots. The database enum also carries stt, which
+// stays unclaimed until a later milestone adds a speech model.
 const (
 	SlotFaceDetect    Slot = "face_detect"
 	SlotFaceRecognize Slot = "face_recognize"
 	SlotClipEmbed     Slot = "clip_embed"
+	SlotClipText      Slot = "clip_text"
 	SlotOcr           Slot = "ocr"
 )
 
@@ -54,6 +55,7 @@ var manifestSlotValues = map[string]Slot{
 	"face-detect":    SlotFaceDetect,
 	"face-recognize": SlotFaceRecognize,
 	"clip-embed":     SlotClipEmbed,
+	"clip-text":      SlotClipText,
 	"ocr":            SlotOcr,
 }
 

@@ -96,7 +96,7 @@
 	<title>{$_('nav_people')} · lumemor</title>
 </svelte:head>
 
-<section class="people max-w-[1200px] mx-auto" aria-busy={status === 'loading'}>
+<section class="people max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
 	<!-- The one toolbar of the region: the unnamed region's entry
 	     point (the naming main path lives there), the timeline's
 	     hidden-link pattern. -->

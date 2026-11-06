@@ -19,6 +19,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/geodata"
 	"github.com/welpher/lumemor/server/internal/jobs"
 	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/ml"
@@ -130,6 +131,25 @@ func run(logger *slog.Logger) error {
 	// in M2a) and every connected stream follows them.
 	bus := events.NewBus(eventRetention, time.Now)
 
+	// The place reference plane (M3d): the baked GeoNames data loads
+	// and imports here, idempotently -- the data-version marker skips
+	// the import on an unchanged dataset, so the normal reboot only
+	// reads the rows back. The in-memory grid the metadata job's GPS
+	// step and the places rerun resolve against builds from the
+	// database's rows, so the resolver can only answer ids the places
+	// table actually carries. An empty LUMEMOR_GEODATA_DIR (the
+	// local-development default) keeps the feature honestly absent;
+	// a configured but unreadable directory is a deployment error the
+	// boot surfaces.
+	placeIndex, geoImported, err := geodata.Prepare(ctx, pool, cfg.GeodataDir)
+	if err != nil {
+		return fmt.Errorf("prepare the place reference data: %w", err)
+	}
+	if placeIndex != nil {
+		logger.Info("place reference data ready",
+			"places", placeIndex.Len(), "imported", geoImported, "geodata_dir", cfg.GeodataDir)
+	}
+
 	// The model store: the ML models live under the instance
 	// configuration root, each model in its own directory. The registry
 	// over it is the instance's SHARED registry -- the job queue's
@@ -154,6 +174,9 @@ func run(logger *slog.Logger) error {
 		ModelsDir:      modelsDir,
 		ModelsHfMirror: os.Getenv(envModelsHfMirror),
 		Registry:       registry,
+		// The place grid the metadata job's GPS step and the places
+		// rerun resolve against (nil without the reference data).
+		Places: placeIndex,
 	})
 	if err != nil {
 		return err
@@ -221,6 +244,9 @@ func run(logger *slog.Logger) error {
 			Models:    registry,
 			ModelsDir: modelsDir,
 			MlReruns:  queue,
+			// The places re-resolution endpoint enqueues through the
+			// same queue.
+			PlacesReruns: queue,
 			Initialized: func(ctx context.Context) bool {
 				admins, err := queries.CountAdmins(ctx)
 				if err != nil {

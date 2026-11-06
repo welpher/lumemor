@@ -197,30 +197,37 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	expect(monthHeader?.className).toContain('mt-(--wall-month-gap)');
 	const dayHeader = document.body.querySelector('.wall__day-header');
 	expect(dayHeader?.className).not.toContain('border-b');
-	expect(dayHeader?.className).toContain('sticky');
-	expect(dayHeader?.className).toContain('bg-page');
-	// The day header stacks under the tightened month band exactly
-	// (44px -> 38px: py-2.5 -> py-1.5 over the same 26px line).
-	expect(dayHeader?.className).toContain('top-[38px]');
+	// The day header rides its day block (the day-block flow layout):
+	// no stickiness, no band -- the block's own top line.
+	expect(dayHeader?.className).not.toContain('sticky');
 	const monthHeaders = Array.from(document.body.querySelectorAll('.wall__month-header'));
+	// The rich date labels: the day header carries the weekday; the
+	// month header stays the bare month label.
 	expect(monthHeaders.map((header) => header.textContent)).toEqual([
 		'November 2026',
 		'October 2026'
 	]);
 	const dayHeaders = Array.from(document.body.querySelectorAll('.wall__day-header'));
 	expect(dayHeaders.map((header) => header.textContent)).toEqual([
-		'November 2',
-		'November 1',
-		'October 13'
+		'Monday, November 2',
+		'Sunday, November 1',
+		'Tuesday, October 13'
 	]);
 	expect(tiles()).toHaveLength(3);
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
 		'/api/v1/assets/a1/thumbnail?size=tile'
 	);
 
-	// The scrubber carries the loaded months.
+	// The scrubber at rest: faint years, dots with full accessible
+	// names, the position indicator -- no year-month bubble.
 	const stops = Array.from(document.body.querySelectorAll('.scrubber__stop'));
-	expect(stops.map((stop) => stop.textContent)).toEqual(['November 2026', 'October 2026']);
+	const years = Array.from(document.body.querySelectorAll('.scrubber__year'));
+	expect(years.map((year) => year.textContent)).toEqual(['2026']);
+	expect(document.body.querySelector('.scrubber__readout')).toBeNull();
+	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual([
+		'November 2026',
+		'October 2026'
+	]);
 
 	unmount(page);
 	flushSync();
@@ -233,14 +240,14 @@ test('tiles pack into justified rows at the engine-computed sizes', async () => 
 
 	// jsdom has neither a ResizeObserver nor box metrics, so the wall
 	// packs against the content-column fallback width (1200px): every
-	// day group holds ONE 4:3 item, whose natural row height (900px)
-	// is above the 216px target, so each row is the clamped tail --
-	// height exactly the target, tile width 216 * 4/3 = 288px.
+	// day group holds ONE 4:3 item -- a single tail row at the TARGET
+	// height (216px), tile width 216 * 4/3 = 288px, and the day BLOCK
+	// its natural width (the tile's width).
 	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.wall__row'));
 	expect(rows).toHaveLength(3);
 	for (const row of rows) {
 		expect(row.style.height).toBe('216px');
-		expect(row.style.gap).toBe('3px');
+		expect(row.style.gap).toBe('2px');
 	}
 	const cells = Array.from(document.body.querySelectorAll<HTMLElement>('.wall__cell'));
 	expect(cells).toHaveLength(3);
@@ -633,7 +640,7 @@ test('the scrubber tracking observes the scroll root through the capture phase',
 	flushSync();
 
 	const active = document.body.querySelector('.scrubber__stop[aria-current="true"]');
-	expect(active?.textContent).toBe('October 2026');
+	expect(active?.getAttribute('aria-label')).toBe('October 2026');
 	unmount(page);
 	flushSync();
 });
@@ -933,6 +940,154 @@ test('an album membership event restarts the walk: the fresh page one applies', 
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
 		'/api/v1/assets/s1/thumbnail?size=tile'
 	);
+	unmount(page);
+	flushSync();
+});
+
+const tagsBody = [
+	{
+		id: 't1',
+		name: 'Beach',
+		assetCount: 2,
+		createdAt: '2026-11-06T09:00:00Z',
+		updatedAt: '2026-11-06T09:00:00Z'
+	},
+	{
+		id: 't2',
+		name: 'Sunrise',
+		assetCount: 0,
+		createdAt: '2026-11-06T09:30:00Z',
+		updatedAt: '2026-11-06T09:30:00Z'
+	}
+];
+
+test('add tag: picking an existing tag POSTs the selection, the report lands', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/tags': () => jsonResponse(200, tagsBody),
+			'/api/v1/tags/t1/assets': () => jsonResponse(200, { added: 2, skipped: 0 })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	selectTwoTiles();
+	buttonByText('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const dialog = modal();
+	expect(dialog?.getAttribute('aria-label')).toBe('Add tag');
+	// The pick list offers the caller's vocabulary.
+	const options = Array.from(dialog?.querySelectorAll('option') ?? []);
+	expect(options.map((option) => option.value)).toEqual(['t1', 't2']);
+	expect(dialog?.textContent).toContain('Beach');
+
+	chooseDialogOption(dialog as ParentNode, 't1');
+	buttonByText('Add tag', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/tags/t1/assets');
+	expect(posts).toHaveLength(1);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ assetIds: ['a1', 'a2'] });
+	// The honest report renders inside the dialog.
+	expect(modal()?.textContent).toContain('Added 2, skipped 0.');
+	buttonByText('Done', modal() as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	// The successful add cleared the selection: the bar is gone. The
+	// tag write publishes nothing (per-user state), so the wall
+	// itself never re-fetches.
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+	expect(fetchMock).toHaveBeenCalledTimes(3);
+	unmount(page);
+	flushSync();
+});
+
+test('add tag: the create-new path creates the tag idempotently, then tags the selection', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/tags': (init?: RequestInit) => {
+				if (init?.method === 'POST') {
+					return jsonResponse(201, {
+						id: 't-new',
+						name: 'Roadtrip',
+						assetCount: 0,
+						createdAt: '2026-11-06T11:00:00Z',
+						updatedAt: '2026-11-06T11:00:00Z'
+					});
+				}
+				return jsonResponse(200, tagsBody);
+			},
+			'/api/v1/tags/t-new/assets': () => jsonResponse(200, { added: 2, skipped: 0 })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	selectTwoTiles();
+	buttonByText('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const dialog = modal();
+	const radios = Array.from(dialog?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? []);
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
+		new MouseEvent('click', { bubbles: true, cancelable: true })
+	);
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
+		new Event('change', { bubbles: true })
+	);
+	flushSync();
+	fillDialogField(dialog as ParentNode, 'Roadtrip');
+	buttonByText('Create and add', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/tags' && init?.method === 'POST'
+	);
+	expect(posts).toHaveLength(1);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ name: 'Roadtrip' });
+	const adds = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/tags/t-new/assets');
+	expect(adds).toHaveLength(1);
+	expect(JSON.parse(String(adds[0]?.[1]?.body))).toEqual({ assetIds: ['a1', 'a2'] });
+	expect(modal()?.textContent).toContain('Added 2, skipped 0.');
+	unmount(page);
+	flushSync();
+});
+
+test('add tag: a failed write keeps the selection and surfaces the message in the dialog', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/tags': () => jsonResponse(200, tagsBody),
+			'/api/v1/tags/t1/assets': () =>
+				jsonResponse(404, { code: 'TAG_NOT_FOUND', message: 'no such tag for this caller' })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	selectTwoTiles();
+	buttonByText('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const dialog = modal();
+	chooseDialogOption(dialog as ParentNode, 't1');
+	buttonByText('Add tag', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	expect(modal()?.textContent).toContain('This tag does not exist or is not visible to you.');
+	// The dialog stays on its choice; the selection survives.
+	expect(modal()?.querySelector('select')).not.toBeNull();
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('2 selected');
 	unmount(page);
 	flushSync();
 });

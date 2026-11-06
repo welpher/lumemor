@@ -381,16 +381,16 @@ test.describe('the member viewer scenes', () => {
 		await expect(page.getByText(PHOTO_A_NAME)).toBeVisible();
 
 		// The info drawer plus the action bar (the R2-3 rework: the
-		// drawer is metadata-only, the per-user favorite rides the
-		// bar's icon button): the reads render (the file facts, the
-		// download affordance) and the favorite stays, while every
-		// owner-only write affordance is absent (the identity seam's
-		// browser proof -- the session's userId is not the asset's
-		// owner).
+		// drawer is metadata-only, the per-user favorite and the
+		// original download ride the bar's icon affordances): the reads
+		// render (the file facts, the download affordance) and the
+		// favorite stays, while every owner-only write affordance is
+		// absent (the identity seam's browser proof -- the session's
+		// userId is not the asset's owner).
 		await page.getByRole('button', { name: 'Photo information' }).click();
 		const drawer = page.getByRole('complementary', { name: 'Photo information' });
 		await expect(drawer).toBeVisible();
-		await expect(drawer.getByRole('link', { name: 'Download the original' })).toBeVisible();
+		await expect(page.getByRole('link', { name: 'Download the original' })).toBeVisible();
 		const favorite = page.getByRole('button', { name: 'Favorite', exact: true });
 		await expect(favorite).toBeVisible();
 		for (const label of [

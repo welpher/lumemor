@@ -284,7 +284,7 @@
 	                              above the target (the packer trades up for
 	                              width exactness), and a group's tail row
 	                              clamps back to the target */
-	--wall-tile-seam: 3px; /* gap between the tiles of one row */
+	--wall-tile-seam: 2px; /* gap between the tiles of one row (the photo-first density) */
 	--wall-month-gap: 16px; /* breathing room above a month group */
 	--wall-select-scale: 0.85; /* the selected tile's retreat */
 	--wall-select-ring: 3px; /* the selected tile's accent ring */
@@ -482,4 +482,16 @@ html.dark {
 		transition-delay: 0ms !important;
 		scroll-behavior: auto !important;
 	}
+}
+
+/* The timeline's rail-as-scrollbar mode: while the month axis page
+ * lives, the scroll root's own bar hides -- the axis's position
+ * indicator carries the feedback (the shared thin bar stays for
+ * every other page). */
+.timeline-rail-scroll {
+	scrollbar-width: none;
+}
+
+.timeline-rail-scroll::-webkit-scrollbar {
+	display: none;
 }

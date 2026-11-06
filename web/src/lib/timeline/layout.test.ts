@@ -75,7 +75,6 @@ describe('packRows: row math', () => {
 		expect(rows).toHaveLength(2);
 		for (const row of rows) {
 			expect(row.tiles).toHaveLength(4);
-			expect(row.justified).toBe(true);
 			// The exact-fill invariant: widths + seams = container.
 			expect(rowExtent(row)).toBeCloseTo(WIDTH, 9);
 			// Every tile renders at its true aspect.
@@ -84,37 +83,48 @@ describe('packRows: row math', () => {
 			}
 			// The closed height sits in the accepted band.
 			expect(row.height).toBeGreaterThanOrEqual(162);
-			expect(row.height).toBeCloseTo(1191 / 6, 9); // (1200 - 3 seams) / 6
+			expect(row.height).toBeCloseTo(1194 / 6, 9); // (1200 - 3 seams of 2px) / (4 * 1.5)
 		}
 	});
 
 	test('the floor closes the row: the over-densifying item opens the next one', () => {
-		// Four squares close at (1200 - 3) / 4 = 299.25 -- above the
+		// Four squares close at (1200 - 6) / 4 = 298.5 -- above the
 		// floor, so the row keeps accepting until a tile would drop it
 		// below 162px: with squares that is the fifth tile
-		// ((1200 - 4*3) / 5 = 237.6, still legal) ... the seventh is
+		// ((1200 - 4*2) / 5 = 238.4, still legal) ... the seventh is
 		// ((1200 - 6*3) / 7 = 168.86, legal) and the eighth is
 		// ((1200 - 7*3) / 8 = 147.4 -- below the floor).
 		const rows = packRows(Array.from({ length: 8 }, (_, i) => itemAt(`t${i}`, 1)), WIDTH);
 		expect(rows.map((row) => row.tiles.length)).toEqual([7, 1]);
 		// The closed row's height is the exact fill of its seven tiles.
 		expect(rows[0]?.height).toBeCloseTo((1200 - 6 * WALL_TILE_SEAM) / 7, 9);
-		// The leftover single square is the group's last row: clamped.
-		expect(rows[1]?.justified).toBe(false);
+		// The leftover single square is the group's last row: the tail
+		// renders at the target height, natural width.
 		expect(rows[1]?.height).toBe(WALL_ROW_TARGET);
 		expect(rows[1]?.tiles[0]?.width).toBe(WALL_ROW_TARGET);
 	});
 
-	test('a sparse tail row clamps to the target and stays left-aligned', () => {
+	test('a sparse tail sits at the target height with its natural width', () => {
 		// One panorama alone: natural height 1200/4 = 300 -- above the
-		// 216px target, so the tail clamps instead of rendering huge.
+		// 216px target, and the tail SITS at the target: ordinary
+		// height, natural width (the day block flows beside its
+		// neighbors; the reference's last-row behavior).
 		const rows = packRows([itemAt('pano', 4)], WIDTH);
 		expect(rows).toHaveLength(1);
 		const row = rows[0];
-		expect(row?.justified).toBe(false);
 		expect(row?.height).toBe(WALL_ROW_TARGET);
 		expect(row?.tiles[0]?.width).toBe(WALL_ROW_TARGET * 4);
 		expect(rowExtent(row as never)).toBeLessThan(WIDTH);
+	});
+
+	test('a lone item is a tail at the target height with its natural width', () => {
+		// A lone portrait: the tail renders at the target height (never
+		// grown, never filling the page) with its natural width.
+		const rows = packRows([itemAt('lone', 0.75)], WIDTH);
+		expect(rows).toHaveLength(1);
+		const row = rows[0];
+		expect(row?.height).toBe(WALL_ROW_TARGET);
+		expect(row?.tiles[0]?.width).toBe(WALL_ROW_TARGET * 0.75);
 	});
 
 	test('a dense tail row keeps its natural exact fill', () => {
@@ -122,14 +132,15 @@ describe('packRows: row math', () => {
 		// natural height 198.5 -- inside the band, no clamp.
 		const rows = packRows(Array.from({ length: 4 }, (_, i) => itemAt(`t${i}`, 1.5)), WIDTH);
 		expect(rows).toHaveLength(1);
-		expect(rows[0]?.justified).toBe(true);
-		expect(rows[0]?.height).toBeCloseTo(1191 / 6, 9);
+		expect(rows[0]?.height).toBeCloseTo(1194 / 6, 9);
 		expect(rowExtent(rows[0] as never)).toBeCloseTo(WIDTH, 9);
 	});
 
 	test('unrefined dimensions pack at the fallback aspect', () => {
 		const notReady = { ...itemDefaults, id: 'fresh', width: 0, height: 0 } as TimelineItem;
 		const rows = packRows([notReady], WIDTH);
+		// A lone fallback-aspect item is a tail at the target height.
+		expect(rows[0]?.height).toBe(WALL_ROW_TARGET);
 		expect(rows[0]?.tiles[0]?.width).toBe(WALL_ROW_TARGET * WALL_FALLBACK_ASPECT);
 	});
 
@@ -143,7 +154,6 @@ describe('packRows: row math', () => {
 		for (const row of rows) {
 			expect(row.tiles).toHaveLength(1);
 			expect(row.height).toBe(WALL_ROW_TARGET);
-			expect(row.justified).toBe(false);
 		}
 		expect(rows[0]?.tiles[0]?.width).toBe(WALL_ROW_TARGET * 2);
 	});
@@ -163,14 +173,17 @@ describe('packRows: determinism and resize', () => {
 		const narrow = packRows(items, 480);
 		expect(narrow.length).toBeGreaterThan(wide.length);
 		for (const row of narrow) {
-			if (row.justified) {
-				expect(rowExtent(row)).toBeCloseTo(480, 9);
-				for (const tile of row.tiles) {
-					expect(tile.width / row.height).toBeCloseTo(
-						tile.item.width / tile.item.height,
-						7
-					);
-				}
+			// A row either fills the container exactly or is a tail
+			// sitting at the target height (natural widths); either
+			// way the aspects hold.
+			if (Math.abs(rowExtent(row) - 480) > 1) {
+				expect(row.height).toBe(WALL_ROW_TARGET);
+			}
+			for (const tile of row.tiles) {
+				expect(tile.width / row.height).toBeCloseTo(
+					tile.item.width / tile.item.height,
+					7
+				);
 			}
 		}
 	});
@@ -208,11 +221,15 @@ describe('packWall: group boundaries', () => {
 		];
 		const packed = packWall(groups, WIDTH);
 		expect(packed).toHaveLength(1);
-		// One month, two days, each with its own clamped tail row.
+		// One month, two days, each a single tail row at the TARGET
+		// height -- and each day BLOCK its natural width (two 3:2
+		// tiles at 216px: 216*3 + 2 seam = 650px), the blocks flowing
+		// side by side.
 		expect(packed[0]?.days).toHaveLength(2);
 		for (const day of packed[0]?.days ?? []) {
 			expect(day.rows).toHaveLength(1);
 			expect(day.rows[0]?.height).toBe(WALL_ROW_TARGET);
+			expect(day.width).toBe(WALL_ROW_TARGET * 3 + WALL_TILE_SEAM);
 		}
 		// No row mixes the two groups' items.
 		const rowIds = (packed[0]?.days ?? []).flatMap((day) =>

@@ -141,6 +141,20 @@ function detailFrom(body: unknown): AssetDetail | null {
 			return null;
 		}
 	}
+	// The caller's tags array joined the fixed shape (M3d): absent,
+	// null or a malformed entry is not a detail.
+	if (!Array.isArray(candidate.tags)) {
+		return null;
+	}
+	for (const entry of candidate.tags) {
+		if (entry === null || typeof entry !== 'object') {
+			return null;
+		}
+		const tag = entry as { id?: unknown; name?: unknown };
+		if (typeof tag.id !== 'string' || typeof tag.name !== 'string') {
+			return null;
+		}
+	}
 	return body as AssetDetail;
 }
 

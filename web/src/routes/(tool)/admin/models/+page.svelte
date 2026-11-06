@@ -33,11 +33,15 @@
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-	/** The slot sections, the contract enum's declaration order. */
+	/** The slot sections, the contract enum's declaration order. The
+	 * clip_text slot (the search's semantic arm -- the CLIP text
+	 * tower) sits between the embedding slot and OCR, exactly where
+	 * the contract's enum declares it. */
 	const SLOT_ORDER: ReadonlyArray<{ slot: ModelSlotId; labelKey: string }> = [
 		{ slot: 'face_detect', labelKey: 'admin_models_slot_face_detect' },
 		{ slot: 'face_recognize', labelKey: 'admin_models_slot_face_recognize' },
 		{ slot: 'clip_embed', labelKey: 'admin_models_slot_clip_embed' },
+		{ slot: 'clip_text', labelKey: 'admin_models_slot_clip_text' },
 		{ slot: 'ocr', labelKey: 'admin_models_slot_ocr' }
 	];
 

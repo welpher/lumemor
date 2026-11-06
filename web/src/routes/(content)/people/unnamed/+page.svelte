@@ -323,7 +323,7 @@
 	<title>{$_('people_unnamed_title')} · lumemor</title>
 </svelte:head>
 
-<section class="unnamed max-w-[1200px] mx-auto" aria-busy={status === 'loading'}>
+<section class="unnamed max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
 	<!-- The toolbar: the way back to the named region, and the
 	     selection-mode toggle once clusters exist. -->
 	<div class="unnamed__toolbar flex justify-end items-center gap-3 mb-2">

@@ -72,16 +72,23 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 		return
 	}
 
-	// The faces ride on the detail's own permission: the row above
-	// proved the caller can see the asset, so its faces (each joined
-	// with the caller's label state) need no gate of their own.
+	// The faces and the caller's tags ride on the detail's own
+	// permission: the row above proved the caller can see the asset,
+	// so its faces (each joined with the caller's label state) and
+	// its tags (the caller's own rows only, B4) need no gate of
+	// their own.
 	faces, err := s.assetFacesForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
 	if err != nil {
 		s.internalError(w, r, "load asset faces", err)
 		return
 	}
+	tags, err := s.assetTagsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
+	if err != nil {
+		s.internalError(w, r, "load asset tags", err)
+		return
+	}
 
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(row, faces))
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(row, faces, tags))
 }
 
 // GetAssetThumbnail implements GET /api/v1/assets/{id}/thumbnail: the
@@ -415,8 +422,9 @@ func (s *server) assetFacesForCaller(ctx context.Context, assetID, callerID pgty
 // editable attributes (description, isHidden) cross as the row
 // carries them -- the PATCH response reuses this mapper, so the
 // applied values surface exactly as the GET endpoint serves them,
-// faces included (the caller passes the same read's answer).
-func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary) apigen.AssetDetail {
+// faces and tags included (the caller passes the same reads'
+// answers).
+func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary, tags []apigen.AssetTagSummary) apigen.AssetDetail {
 	return apigen.AssetDetail{
 		Id:               uuid.UUID(row.ID.Bytes),
 		OwnerId:          uuid.UUID(row.OwnerID.Bytes),
@@ -439,6 +447,7 @@ func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummar
 		LivePhotoVideoId: uuidValue(row.LivePhotoVideoID),
 		Exif:             exifSummaryFrom(row),
 		Faces:            faces,
+		Tags:             tags,
 	}
 }
 
