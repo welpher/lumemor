@@ -37,6 +37,15 @@ import (
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 )
 
+const (
+	// placesRerunJobKind is the job_runs kind the re-resolution runs
+	// record -- the jobs package's pinned vocabulary, mirrored here
+	// the way the model rerun kinds mirror theirs (the endpoint's
+	// in-flight join and the rerun test's seeded row drive the two
+	// against each other, so they cannot drift apart).
+	placesRerunJobKind = "places_rerun"
+)
+
 // ListPlaces implements GET /api/v1/places: the caller's city
 // grouping -- every place holding at least one caller-visible live
 // asset, ordered by that count descending. Names resolve through the
@@ -100,10 +109,11 @@ func (s *server) ListPlaces(w http.ResponseWriter, r *http.Request, params apige
 		if candidates == nil {
 			// The count row proved a visible member; a missing cover
 			// here can only mean the member left between the two
-			// reads. The empty array keeps the response honest rather
-			// than fabricating a cover from an asset the caller may
-			// no longer see; the web renders a name tile then.
-			candidates = []uuid.UUID{}
+			// reads. The place no longer holds a visible member, so
+			// it leaves the listing exactly as the next request's
+			// grouping would leave it -- an honest stale-read drop,
+			// never a place card without a cover.
+			continue
 		}
 		places = append(places, apigen.PlaceSummary{
 			PlaceId:                     row.ID,
@@ -134,7 +144,7 @@ func (s *server) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
 	// A run of the kind still in flight answers 200 with its
 	// identifier: the request joins the running re-resolution instead
 	// of starting a second one.
-	if run, err := s.queries.FindInFlightJobRunByKind(ctx, dbgen.PlacesRerunKind); err == nil {
+	if run, err := s.queries.FindInFlightJobRunByKind(ctx, placesRerunJobKind); err == nil {
 		s.writeJSON(w, http.StatusOK, apigen.PlacesRerunResponse{JobRunId: uuid.UUID(run.ID.Bytes)})
 		return
 	} else if !errors.Is(err, pgx.ErrNoRows) {

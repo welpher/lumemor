@@ -104,7 +104,8 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	// Without the grid (a deployment without the reference data) the
 	// column keeps whatever it held: place_resolved stays false and
 	// the refinement leaves it alone.
-	placeID, placeResolved := resolvePlace(w.places, exifParamsLatLon(tags))
+	gpsLat, gpsLon := exifParamsLatLon(tags)
+	placeID, placeResolved := resolvePlace(w.places, gpsLat, gpsLon)
 
 	tx, err := w.pool.Begin(ctx)
 	if err != nil {

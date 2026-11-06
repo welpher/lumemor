@@ -24,11 +24,14 @@
 		months: readonly MonthEntry[];
 		/** The month the wall currently shows (the highlighted dot). */
 		activeKey?: string | null;
+		/** The wall's overall scroll progress (0-1) -- the position
+		 * indicator's truth. */
+		progress?: number;
 		/** Jump callback: the page scrolls the month group into view. */
 		onjump: (key: string) => void;
 	};
 
-	let { months, activeKey = null, onjump }: Props = $props();
+	let { months, activeKey = null, progress = 0, onjump }: Props = $props();
 
 	// One stop row's height on the rail (the anti-overlap unit).
 	const STOP_HEIGHT = 16;
@@ -109,7 +112,7 @@
 	}
 
 	let rail: HTMLElement | undefined = $state();
-	let dragging = false;
+	let dragging = $state(false);
 	// A rail pointerdown already jumped; the click that follows the
 	// release lands on the PRESSED button (the pointer capture) whose
 	// month may differ from the drag's destination -- it must not
@@ -119,11 +122,16 @@
 	// focus); the drag keeps the last jumped month revealed as the
 	// live readout.
 	let revealedKey: string | null = $state(null);
-	// The rail is ACTIVE (years + readout visible) while the pointer
-	// is over it, a drag is in flight, or the wall is scrolling.
+	// The rail is ACTIVE (the readout bubble visible) while the
+	// pointer is over it, a drag is in flight, or the wall is
+	// scrolling. The faint years and the position indicator rest on
+	// the rail permanently.
 	let hovering = $state(false);
 	let scrollActive = $state(false);
 	let scrollQuietTimer: ReturnType<typeof setTimeout> | undefined;
+	// The pointer's height inside the rail -- the bubble rides it,
+	// not the stop's position (the reference behavior).
+	let hoverY = $state(0);
 
 	// The wall's scrolling wakes the rail: element scrolls do not
 	// bubble, so the capture phase at the document reaches every
@@ -148,21 +156,28 @@
 		};
 	});
 
-	/** The rail's active state: any presence reveals the years and
-	 * the readout; at rest only the spine and dots remain. */
+	/** The rail's active state: any presence wakes the readout
+	 * bubble; the years and the indicator rest permanently. */
 	const railActive = $derived(hovering || dragging || scrollActive);
 
-	/** The readout's stop: the hover/drag's month, falling back to
-	 * the active month while the wall scrolls under it. */
+	/** The position indicator's top: the wall's scroll progress
+	 * mapped onto the rail's usable span. */
+	const indicatorTop = $derived(Math.min(1, Math.max(0, progress)) * Math.max(0, railHeight - STOP_HEIGHT));
+
+	/** The readout bubble's stop (which month it names) and top
+	 * (where it rides): the pointer's height while present, the
+	 * indicator's height while the wall alone scrolls. */
 	const readout = $derived.by(() => {
 		if (!railActive) {
 			return null;
 		}
 		const revealedStop = stops.find((stop) => stop.key === revealedKey);
-		if (revealedStop !== undefined) {
-			return revealedStop;
+		const stop = revealedStop ?? stops.find((candidate) => candidate.key === activeKey) ?? null;
+		if (stop === null) {
+			return null;
 		}
-		return stops.find((stop) => stop.key === activeKey) ?? null;
+		const top = hovering || dragging ? Math.min(Math.max(hoverY, 0), Math.max(0, railHeight - STOP_HEIGHT)) : indicatorTop;
+		return { stop, top };
 	});
 
 	/** The stop whose center is nearest the pointer's height. The
@@ -215,8 +230,15 @@
 
 	function handlePointerMove(event: PointerEvent): void {
 		// A hover (not pressed) reveals the nearest month's label;
-		// a drag jumps to it -- both read the same geometry.
+		// a drag jumps to it -- both read the same geometry. The
+		// bubble rides the pointer's own height.
 		hovering = true;
+		if (rail !== undefined) {
+			const rect = rail.getBoundingClientRect();
+			if (rect.height > 0) {
+				hoverY = event.clientY - rect.top - STOP_HEIGHT / 2;
+			}
+		}
 		if (!dragging) {
 			revealedKey = nearestKey(event.clientY);
 			return;
@@ -274,19 +296,18 @@
 		>
 			<!-- The axis spine the years and dots ride on. -->
 			<span class="scrubber__spine absolute top-1 bottom-1 right-[6px] w-px bg-border" aria-hidden="true"></span>
-			{#if railActive}
-				<!-- The years wake with the rail (hover, drag, or the wall's
-				     scrolling); at rest the spine and dots carry it alone. -->
-				{#each stops as stop (stop.key)}
-					{#if stop.year !== null}
-						<span
-							class="scrubber__year absolute right-[18px] font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
-							style="top: {stop.top}px"
-							aria-hidden="true"
-						>{stop.year}</span>
-					{/if}
-				{/each}
-			{/if}
+			<!-- The years rest on the rail permanently (faint, one per
+			     year run); the year-MONTH readout is the presence-driven
+			     bubble below. -->
+			{#each stops as stop (stop.key)}
+				{#if stop.year !== null}
+					<span
+						class="scrubber__year absolute right-[18px] font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
+						style="top: {stop.top}px"
+						aria-hidden="true"
+					>{stop.year}</span>
+				{/if}
+			{/each}
 			{#each stops as stop (stop.key)}
 				<button
 					class="scrubber__stop absolute right-0 flex items-center justify-center w-[12px] h-[16px] cursor-pointer"
@@ -305,15 +326,28 @@
 					></span>
 				</button>
 			{/each}
-			{#if readout !== null}
-				<!-- The readout chip: the nearest (or active-while-scrolling)
-				     month's compact label on an opaque card -- left of the
-				     dots, wholly inside the reserved gutter. -->
+			{#if !dragging && months.length > 0}
+				<!-- The position indicator: the wall's scroll progress as an
+				     accent tick crossing the spine -- the rail's resting
+				     answer to "where am I" (hidden mid-drag: the bubble is
+				     the feedback then). -->
 				<span
-					class="scrubber__readout absolute right-[18px] inline-flex items-center h-[18px] px-1.5 font-body font-semibold text-[11px] leading-none whitespace-nowrap text-text bg-card border border-border rounded-control shadow-card"
-					style="top: {readout.top - 1}px"
+					class="scrubber__indicator absolute right-0 w-6 h-[2px] rounded-full bg-accent"
+					style="top: {indicatorTop + 7}px"
 					aria-hidden="true"
-				>{readout.compact}</span>
+				></span>
+			{/if}
+			{#if readout !== null}
+				<!-- The readout bubble: the nearest (or active-while-scrolling)
+				     month's full label on an opaque card with the accent
+				     underline -- riding the pointer while present, the
+				     indicator while the wall alone scrolls, left of the dots
+				     and wholly inside the reserved gutter. -->
+				<span
+					class="scrubber__readout absolute right-[18px] inline-flex items-center h-[20px] max-w-[88px] truncate px-1.5 font-body font-semibold text-[11px] leading-none whitespace-nowrap text-text bg-card border border-border border-b-2 border-b-accent rounded-t-control rounded-b-none shadow-card"
+					style="top: {readout.top - 2}px"
+					aria-hidden="true"
+				>{readout.stop.label}</span>
 			{/if}
 		</div>
 	</nav>
