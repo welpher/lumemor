@@ -104,21 +104,15 @@ function naturalHeight(count: number, aspectSum: number, containerWidth: number)
 	return usable / aspectSum;
 }
 
-/** The tail's growth cap: a group's last row fills the width, but a
- * LONE photo never grows past twice the target height (one panorama
- * widening to a full page reads as a bug, not a statement). Derived
- * from the target -- no separate token. */
-const tailCap = WALL_ROW_TARGET * 2;
-
-/** Close one row: tiles at height * aspect. Rows fill the container
- * width exactly; a group's tail GROWS to fill (the widow handling: a
- * day with two photos shows two large ones, never a shrunken pair
- * with a hole on the right) up to the cap, past which it renders
- * left-aligned at the cap's height. The grouping carries the
- * structure; the row math carries only density. */
+/** Close one row: tiles at height * aspect. A CLOSED row fills the
+ * container width exactly (the justified invariant); a group's TAIL
+ * row renders at the TARGET height with its natural widths --
+ * never stretched, never grown (the reference's last-row behavior:
+ * a day with two photos shows two ordinary-sized ones, and the day
+ * BLOCK flows beside its neighbors). */
 function closeRow(items: readonly TimelineItem[], aspectSum: number, containerWidth: number, isLast: boolean): PackedRow {
 	const natural = naturalHeight(items.length, aspectSum, containerWidth);
-	const height = isLast ? Math.min(natural, tailCap) : natural;
+	const height = isLast ? Math.min(natural, WALL_ROW_TARGET) : natural;
 	return {
 		tiles: items.map((item) => ({ item, width: height * aspectOf(item) })),
 		height
@@ -177,6 +171,15 @@ export type PackedDay = {
 	key: string;
 	label: string;
 	rows: PackedRow[];
+	/**
+	 * The day BLOCK's rendered width: a day whose rows all closed
+	 * spans the container (its rows filled it); a day that never
+	 * closed answers its single tail row's natural extent. Day
+	 * blocks flow horizontally and wrap -- the wall reads as a
+	 * gallery of days, sparse dates side by side instead of a hole
+	 * on the right (the reference timeline's shape).
+	 */
+	width: number;
 };
 
 /** One month group carrying its packed day groups. */
@@ -199,10 +202,14 @@ export function packWall(
 	return groups.map((group) => ({
 		key: group.key,
 		label: group.label,
-		days: group.days.map((day) => ({
-			key: day.key,
-			label: day.label,
-			rows: packRows(day.items, containerWidth)
-		}))
+		days: group.days.map((day) => {
+			const rows = packRows(day.items, containerWidth);
+			const width =
+				rows.length > 1
+					? containerWidth
+					: (rows[0]?.tiles.reduce((sum, tile) => sum + tile.width, 0) ?? 0) +
+						Math.max(0, (rows[0]?.tiles.length ?? 1) - 1) * WALL_TILE_SEAM;
+			return { key: day.key, label: day.label, rows, width };
+		})
 	}));
 }
