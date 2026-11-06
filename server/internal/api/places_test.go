@@ -156,7 +156,7 @@ func TestPlacesCityGrouping(t *testing.T) {
 		// assert it after (the review focus's determinism pin -- the
 		// display name is a JOIN, never a denormalized rewrite).
 		var before []time.Time
-		rows, err := e.pool.Query(context.Background(), `
+		rows, err := env.pool.Query(context.Background(), `
 			SELECT updated_at FROM assets WHERE owner_id = $1 ORDER BY id`,
 			pgUUID(adminID))
 		if err != nil {
@@ -181,7 +181,7 @@ func TestPlacesCityGrouping(t *testing.T) {
 		requirePlace(t, places[2], placeHighlandID, "Highland Falls", "US", 1, 1)
 
 		var after []time.Time
-		rows, err = e.pool.Query(context.Background(), `
+		rows, err = env.pool.Query(context.Background(), `
 			SELECT updated_at FROM assets WHERE owner_id = $1 ORDER BY id`,
 			pgUUID(adminID))
 		if err != nil {
