@@ -363,7 +363,7 @@
 
 <!-- The reserved month-axis gutter: the wall centers in the width
      LEFT of the rail's own strip, never under it. -->
-<div class="timeline__gutter pe-16">
+<div class="timeline__gutter pe-[72px]">
 	<section class="timeline max-w-[1440px] mx-auto px-4" aria-busy={$timeline.status === 'loading'}>
 	<!-- No toolbar (R2-11): the timeline's header carries nothing but
 	     what the top bar already owns (upload, search). The hidden

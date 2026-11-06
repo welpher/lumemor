@@ -43,6 +43,8 @@
 	type Stop = {
 		key: string;
 		label: string;
+		/** The compact year-month readout ("Nov 2026" / "2026年11月"). */
+		compact: string;
 		/** The faint year label, only where the year changes. */
 		year: string | null;
 		top: number;
@@ -62,7 +64,7 @@
 		const usable = Math.max(STOP_HEIGHT, railHeight - STOP_HEIGHT);
 		let cumulative = 0;
 		const laid: Stop[] = months.map((month, index) => {
-			const [year] = month.key.split('-');
+			const [year, monthNumber] = month.key.split('-');
 			const previous = months[index - 1];
 			const yearChanges = previous === undefined || previous.key.split('-')[0] !== year;
 			const byData = (cumulative / total) * usable;
@@ -70,6 +72,7 @@
 			return {
 				key: month.key,
 				label: month.label,
+				compact: compactMonth(Number(monthNumber) - 1, year, $locale),
 				year: yearChanges ? year : null,
 				top: byData,
 				center: byData + STOP_HEIGHT / 2
@@ -92,6 +95,18 @@
 		}
 		return laid;
 	});
+
+	/** The locale's compact year-month readout ("Nov 2026" /
+	 * "2026年11月") -- narrow enough to live wholly in the reserved
+	 * gutter, left of the dots. */
+	function compactMonth(monthIndex: number, year: string, activeLocale: string | null | undefined): string {
+		const formatter = new Intl.DateTimeFormat(activeLocale ?? 'en', {
+			month: 'short',
+			year: 'numeric',
+			timeZone: 'UTC'
+		});
+		return formatter.format(new Date(Date.UTC(Number(year), monthIndex, 1)));
+	}
 
 	let rail: HTMLElement | undefined = $state();
 	let dragging = false;
@@ -205,7 +220,7 @@
 		     The rail is transparent: its gutter is its background. -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -- the rail is a pointer surface of the labeled nav above it; its buttons carry the semantics. -->
 		<div
-			class="scrubber__rail relative w-10 touch-none"
+			class="scrubber__rail relative w-[72px] touch-none"
 			bind:this={rail}
 			style="height: {railHeight}px"
 			onpointermove={handlePointerMove}
@@ -214,17 +229,17 @@
 			onpointercancel={handlePointerCancel}
 		>
 			<!-- The axis spine the years and dots ride on. -->
-			<span class="scrubber__spine absolute top-1 bottom-1 right-[5px] w-px bg-border" aria-hidden="true"></span>
+			<span class="scrubber__spine absolute top-1 bottom-1 right-[6px] w-px bg-border" aria-hidden="true"></span>
 			{#each stops as stop (stop.key)}
 				{#if stop.year !== null}
 					<span
-						class="scrubber__year absolute right-2.5 font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
+						class="scrubber__year absolute right-[18px] font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
 						style="top: {stop.top}px"
 						aria-hidden="true"
 					>{stop.year}</span>
 				{/if}
 				<button
-					class="scrubber__stop absolute right-1 flex items-center justify-center w-[11px] h-[16px] cursor-pointer"
+					class="scrubber__stop absolute right-0 flex items-center justify-center w-[12px] h-[16px] cursor-pointer"
 					class:scrubber__stop--active={activeKey === stop.key}
 					style="top: {stop.top}px"
 					type="button"
@@ -244,10 +259,10 @@
 				<!-- The hover/drag readout: the nearest month's full label,
 				     riding the spine at the revealed stop's height. -->
 				<span
-					class="scrubber__readout absolute right-2.5 font-body font-semibold text-[11px] leading-[16px] whitespace-nowrap text-text"
+					class="scrubber__readout absolute right-[18px] font-body font-semibold text-[11px] leading-[16px] whitespace-nowrap text-text"
 					style="top: {revealed.top}px"
 					aria-hidden="true"
-				>{revealed.label}</span>
+				>{revealed.compact}</span>
 			{/if}
 		</div>
 	</nav>
