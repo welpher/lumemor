@@ -328,7 +328,7 @@
 			onpointercancel={handlePointerCancel}
 		>
 			<!-- The axis spine the years and dots ride on. -->
-			<span class="scrubber__spine absolute top-1 bottom-1 right-[6px] w-px bg-border" aria-hidden="true"></span>
+			<span class="scrubber__spine absolute top-1 bottom-1 right-[5.5px] w-px bg-border" aria-hidden="true"></span>
 			<!-- The years rest on the rail permanently (faint, one per
 			     year run); the year-MONTH readout is the presence-driven
 			     bubble below. -->
