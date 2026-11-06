@@ -44,7 +44,6 @@
 	import { assetOriginalUrl, type AssetDetail, type AssetFaceSummary } from '$lib/api/assets';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import X from '@lucide/svelte/icons/x';
-	import Download from '@lucide/svelte/icons/download';
 
 	type Props = {
 		/** The current asset's detail (the page's local, optimistic copy). */
@@ -313,14 +312,6 @@
 					</div>
 				{/each}
 			</dl>
-			<a
-				class="info__download inline-flex items-center gap-2 mt-2 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-link no-underline border border-border-strong rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
-				href={assetOriginalUrl(detail.id)}
-				download
-			>
-				<Download size={16} />
-				{$_('viewer_download')}
-			</a>
 		</section>
 
 		<section class="info__section mt-4">
