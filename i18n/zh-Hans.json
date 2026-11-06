@@ -59,7 +59,6 @@
   "album_pref_not_excludable": "这个相册无法从您的时间线中排除。",
   "timeline_loading": "正在加载时间线…",
   "timeline_empty": "时间线还没有照片。上传后会出现在这里。",
-  "timeline_month_count": "{count} 张照片",
   "timeline_load_more": "加载更多",
   "timeline_scrubber_label": "跳转到月份",
   "action_retry": "重试",

@@ -1,0 +1,4 @@
+3038832	Vila	Vila	Casas Vila,Vila	42.53176	1.56654	P	PPL	AD		06		Parroquia de la Massana?		1418		1318	Europe/Andorra	2024-11-04
+2988507	Paris	Paris	Pari,Ω Παρίσι	48.85341	2.3488	P	PPL	FR		11		Paris,75			2138551	35	80	Europe/Paris	2025-06-12
+1816670	Beijing	Beijing	Peking,北京	39.9075	116.39723	P	PPL	CN		22		Beijing,11			18960744	44	49	Asia/Shanghai	2025-06-12
+2208623	Nowhere	Somewhere-ASCII		-45.03333	166.48333	P	PPL	NZ		N		Southland District			3807		18	Pacific/Auckland	2025-06-12
