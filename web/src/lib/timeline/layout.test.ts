@@ -84,15 +84,15 @@ describe('packRows: row math', () => {
 			}
 			// The closed height sits in the accepted band.
 			expect(row.height).toBeGreaterThanOrEqual(162);
-			expect(row.height).toBeCloseTo(1191 / 6, 9); // (1200 - 3 seams) / 6
+			expect(row.height).toBeCloseTo(1194 / 6, 9); // (1200 - 3 seams of 2px) / (4 * 1.5)
 		}
 	});
 
 	test('the floor closes the row: the over-densifying item opens the next one', () => {
-		// Four squares close at (1200 - 3) / 4 = 299.25 -- above the
+		// Four squares close at (1200 - 6) / 4 = 298.5 -- above the
 		// floor, so the row keeps accepting until a tile would drop it
 		// below 162px: with squares that is the fifth tile
-		// ((1200 - 4*3) / 5 = 237.6, still legal) ... the seventh is
+		// ((1200 - 4*2) / 5 = 238.4, still legal) ... the seventh is
 		// ((1200 - 6*3) / 7 = 168.86, legal) and the eighth is
 		// ((1200 - 7*3) / 8 = 147.4 -- below the floor).
 		const rows = packRows(Array.from({ length: 8 }, (_, i) => itemAt(`t${i}`, 1)), WIDTH);
@@ -123,7 +123,7 @@ describe('packRows: row math', () => {
 		const rows = packRows(Array.from({ length: 4 }, (_, i) => itemAt(`t${i}`, 1.5)), WIDTH);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.justified).toBe(true);
-		expect(rows[0]?.height).toBeCloseTo(1191 / 6, 9);
+		expect(rows[0]?.height).toBeCloseTo(1194 / 6, 9);
 		expect(rowExtent(rows[0] as never)).toBeCloseTo(WIDTH, 9);
 	});
 

@@ -45,8 +45,8 @@ export const WALL_ROW_TARGET = 216;
 /** Mirrors `--wall-row-tolerance` (0.25) of theme.css. */
 export const WALL_ROW_TOLERANCE = 0.25;
 
-/** Mirrors `--wall-tile-seam` (3px) of theme.css. */
-export const WALL_TILE_SEAM = 3;
+/** Mirrors `--wall-tile-seam` (2px) of theme.css. */
+export const WALL_TILE_SEAM = 2;
 
 /** Mirrors `--wall-fallback-aspect` (1.5) of theme.css. */
 export const WALL_FALLBACK_ASPECT = 1.5;

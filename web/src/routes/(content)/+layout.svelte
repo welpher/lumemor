@@ -252,7 +252,7 @@
 	     order while staying focusable (the navigation focus rule
 	     above keeps the browser's keyboard scrolling on it); the
 	     outline suppression keeps that focus visually silent. -->
-	<main bind:this={main} tabindex="-1" class="shell-main flex-1 min-h-0 overflow-y-auto p-6 focus-visible:outline-none">
+	<main bind:this={main} tabindex="-1" class="shell-main flex-1 min-h-0 overflow-y-auto p-0 focus-visible:outline-none">
 		{@render children()}
 	</main>
 </div>
