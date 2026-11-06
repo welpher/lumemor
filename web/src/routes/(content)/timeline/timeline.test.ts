@@ -197,11 +197,9 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	expect(monthHeader?.className).toContain('mt-(--wall-month-gap)');
 	const dayHeader = document.body.querySelector('.wall__day-header');
 	expect(dayHeader?.className).not.toContain('border-b');
-	expect(dayHeader?.className).toContain('sticky');
-	expect(dayHeader?.className).toContain('bg-page');
-	// The day header stacks under the tightened month band exactly
-	// (44px -> 38px: py-2.5 -> py-1.5 over the same 26px line).
-	expect(dayHeader?.className).toContain('top-[38px]');
+	// The day header rides its day block (the day-block flow layout):
+	// no stickiness, no band -- the block's own top line.
+	expect(dayHeader?.className).not.toContain('sticky');
 	const monthHeaders = Array.from(document.body.querySelectorAll('.wall__month-header'));
 	// The rich date labels: the day header carries the weekday; the
 	// month header stays the bare month label.
@@ -242,19 +240,18 @@ test('tiles pack into justified rows at the engine-computed sizes', async () => 
 
 	// jsdom has neither a ResizeObserver nor box metrics, so the wall
 	// packs against the content-column fallback width (1200px): every
-	// day group holds ONE 4:3 item, whose natural row height (900px)
-	// is above even the tail's growth cap (2x the 216px target), so
-	// each row is the CAPPED tail -- height exactly 432px, tile width
-	// 432 * 4/3 = 576px.
+	// day group holds ONE 4:3 item -- a single tail row at the TARGET
+	// height (216px), tile width 216 * 4/3 = 288px, and the day BLOCK
+	// its natural width (the tile's width).
 	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.wall__row'));
 	expect(rows).toHaveLength(3);
 	for (const row of rows) {
-		expect(row.style.height).toBe('432px');
+		expect(row.style.height).toBe('216px');
 		expect(row.style.gap).toBe('2px');
 	}
 	const cells = Array.from(document.body.querySelectorAll<HTMLElement>('.wall__cell'));
 	expect(cells).toHaveLength(3);
-	expect(cells[0]?.style.width).toBe('576px');
+	expect(cells[0]?.style.width).toBe('288px');
 
 	// The tiles fill their cells at the true aspect: the engine's
 	// width over the row height is the item's sensor ratio.
@@ -264,7 +261,7 @@ test('tiles pack into justified rows at the engine-computed sizes', async () => 
 	// The wall passes the engine's exact cell width as the tile's
 	// sizes hint (the srcset's honest width source).
 	const image = cells[0]?.querySelector('img');
-	expect(image?.getAttribute('sizes')).toBe('576px');
+	expect(image?.getAttribute('sizes')).toBe('288px');
 	unmount(page);
 	flushSync();
 });
