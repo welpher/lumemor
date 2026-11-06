@@ -306,6 +306,7 @@ NON_ERROR_KEYS = {
     "admin_models_slot_face_detect",
     "admin_models_slot_face_recognize",
     "admin_models_slot_clip_embed",
+    "admin_models_slot_clip_text",
     "admin_models_slot_ocr",
     "admin_models_slot_empty",
     "admin_models_empty_title",

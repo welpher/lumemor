@@ -25,7 +25,15 @@ export type AdminModel = components['schemas']['ModelResponse'];
 /** The functional slots a model fills, the contract's ModelSlot enum. */
 export type ModelSlotId = components['schemas']['ModelSlot'];
 
-const MODEL_SLOTS: readonly string[] = ['face_detect', 'face_recognize', 'clip_embed', 'ocr'];
+// The clip_text slot is the search's semantic arm (the CLIP text
+// tower); it rides the same contract enum as the pipeline's slots.
+const MODEL_SLOTS: readonly string[] = [
+	'face_detect',
+	'face_recognize',
+	'clip_embed',
+	'clip_text',
+	'ocr'
+];
 
 const MODEL_SOURCES: readonly string[] = ['downloaded', 'custom'];
 

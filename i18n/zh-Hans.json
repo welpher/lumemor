@@ -187,6 +187,7 @@
   "admin_models_slot_face_detect": "人脸检测",
   "admin_models_slot_face_recognize": "人脸识别",
   "admin_models_slot_clip_embed": "语义嵌入",
+  "admin_models_slot_clip_text": "搜索文本编码",
   "admin_models_slot_ocr": "文字识别",
   "admin_models_slot_empty": "该槽位还没有注册模型。",
   "admin_models_empty_title": "还没有模型",

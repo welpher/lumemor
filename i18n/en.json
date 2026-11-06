@@ -187,6 +187,7 @@
   "admin_models_slot_face_detect": "Face detection",
   "admin_models_slot_face_recognize": "Face recognition",
   "admin_models_slot_clip_embed": "Semantic embeddings",
+  "admin_models_slot_clip_text": "Search text encoder",
   "admin_models_slot_ocr": "Text recognition",
   "admin_models_slot_empty": "No model registered for this slot.",
   "admin_models_empty_title": "No models yet",

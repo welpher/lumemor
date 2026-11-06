@@ -66,6 +66,14 @@ function model(id: string, overrides: Record<string, unknown> = {}) {
 const clipA = model('clip-a', { isActive: true, params: { scoreThreshold: 0.6 } });
 const clipB = model('clip-b', { version: 'alt-2024' });
 const clipWide = model('clip-wide', { dim: 768 });
+// The search's text tower: the clip_text slot the semantic arm embeds
+// queries through (the manifest's fifth default model).
+const textTower = model('cnclip-vit-b16-text', {
+	slot: 'clip_text',
+	inputSize: { width: 52, height: 1 },
+	isActive: true,
+	params: { contextLength: 52 }
+});
 const detector = model('detect-fx', {
 	id: 'detect-fx',
 	slot: 'face_detect',
@@ -193,15 +201,17 @@ afterEach(() => {
 test('the listing renders slot-grouped cards with every model fact', async () => {
 	vi.stubGlobal(
 		'fetch',
-		stubFetch(modelsRoutes([detector, clipA, clipB]))
+		stubFetch(modelsRoutes([detector, clipA, clipB, textTower]))
 	);
 	const page = mountPage();
 	await settle();
 
 	const text = document.body.textContent ?? '';
-	// The slot sections, in the enum's declaration order.
+	// The slot sections, in the enum's declaration order (the
+	// clip_text slot between the embedding slot and OCR).
 	expect(text).toContain('Face detection');
 	expect(text).toContain('Semantic embeddings');
+	expect(text).toContain('Search text encoder');
 	// The empty slots say so honestly.
 	expect(text).toContain('No model registered for this slot.');
 	// The detector's facts: id, version, license badge, source label,
@@ -220,6 +230,12 @@ test('the listing renders slot-grouped cards with every model fact', async () =>
 	const clipText = modelCard('clip-a').textContent ?? '';
 	expect(clipText).toContain('Dimension 512');
 	expect(clipText).toContain('scoreThreshold 0.6');
+	// The text tower's own card: the token geometry (52×1 -- the
+	// context length, not pixels) and its params summary.
+	const towerText = modelCard('cnclip-vit-b16-text').textContent ?? '';
+	expect(towerText).toContain('52×1');
+	expect(towerText).toContain('contextLength 52');
+	expect(towerText).toContain('Active');
 	// An inactive model offers the activation switch.
 	expect(modelCard('clip-b').textContent).toContain('Activate');
 
