@@ -66,9 +66,9 @@ describe('groupTimelineItems', () => {
 		const chinese = groupTimelineItems(items, 'zh-Hans');
 
 		expect(english[0]?.label).toBe('October 2026');
-		expect(english[0]?.days[0]?.label).toBe('October 13');
+		expect(english[0]?.days[0]?.label).toBe('Tuesday, October 13');
 		expect(chinese[0]?.label).toBe('2026年10月');
-		expect(chinese[0]?.days[0]?.label).toBe('10月13日');
+		expect(chinese[0]?.days[0]?.label).toBe('10月13日星期二');
 	});
 
 	test('the grouping date is the UTC date of the wire value', () => {

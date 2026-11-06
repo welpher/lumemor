@@ -66,6 +66,9 @@ export function groupTimelineItems(items: readonly TimelineItem[], locale: strin
 	const dayFormatter = new Intl.DateTimeFormat(locale, {
 		month: 'long',
 		day: 'numeric',
+		// The weekday turns a bare date into a memory cue (the rich
+		// date labels: "11月1日星期日" / "Sunday, November 1").
+		weekday: 'long',
 		timeZone: 'UTC'
 	});
 

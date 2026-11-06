@@ -203,15 +203,17 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	// (44px -> 38px: py-2.5 -> py-1.5 over the same 26px line).
 	expect(dayHeader?.className).toContain('top-[38px]');
 	const monthHeaders = Array.from(document.body.querySelectorAll('.wall__month-header'));
+	// The rich date labels: the month header carries the month's
+	// photo count, the day header carries the weekday.
 	expect(monthHeaders.map((header) => header.textContent)).toEqual([
-		'November 2026',
-		'October 2026'
+		'November 2026 2 photos',
+		'October 2026 1 photos'
 	]);
 	const dayHeaders = Array.from(document.body.querySelectorAll('.wall__day-header'));
 	expect(dayHeaders.map((header) => header.textContent)).toEqual([
-		'November 2',
-		'November 1',
-		'October 13'
+		'Monday, November 2',
+		'Sunday, November 1',
+		'Tuesday, October 13'
 	]);
 	expect(tiles()).toHaveLength(3);
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
@@ -394,10 +396,10 @@ test('without an observer the manual pager loads the next page', async () => {
 	// headers of every wall.)
 	const months = Array.from(document.body.querySelectorAll('.wall__month-header'));
 	expect(months.map((header) => header.textContent)).toEqual([
-		'November 2026',
-		'October 2026',
-		'September 2026',
-		'August 2026'
+		'November 2026 2 photos',
+		'October 2026 1 photos',
+		'September 2026 1 photos',
+		'August 2026 1 photos'
 	]);
 	// The last page carries no cursor: the pager is gone.
 	expect(() => buttonByText('Load more')).toThrow();
