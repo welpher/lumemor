@@ -229,6 +229,8 @@ const (
 	PAIRINGTOKENINVALID    ErrorCode = "PAIRING_TOKEN_INVALID"
 	PERSONNOTFOUND         ErrorCode = "PERSON_NOT_FOUND"
 	SETUPALREADYCOMPLETED  ErrorCode = "SETUP_ALREADY_COMPLETED"
+	TAGNAMETAKEN           ErrorCode = "TAG_NAME_TAKEN"
+	TAGNOTFOUND            ErrorCode = "TAG_NOT_FOUND"
 	USEREMAILTAKEN         ErrorCode = "USER_EMAIL_TAKEN"
 	USERNOTFOUND           ErrorCode = "USER_NOT_FOUND"
 	VALIDATIONFAILED       ErrorCode = "VALIDATION_FAILED"
@@ -266,6 +268,10 @@ func (e ErrorCode) Valid() bool {
 	case PERSONNOTFOUND:
 		return true
 	case SETUPALREADYCOMPLETED:
+		return true
+	case TAGNAMETAKEN:
+		return true
+	case TAGNOTFOUND:
 		return true
 	case USEREMAILTAKEN:
 		return true
@@ -540,6 +546,22 @@ type AddAlbumItemsResponse struct {
 	// account's assets, trashed, hidden or component rows, and
 	// the ids already sitting in the album (the idempotent
 	// add).
+	Skipped int `json:"skipped"`
+}
+
+// AddTagAssetsResponse The honest report of one assignment add over the request's
+// distinct ids: what landed and what was skipped, invisible
+// and already-tagged ids alike.
+type AddTagAssetsResponse struct {
+	// Added The assignment rows the request inserted. Zero for an
+	// all-skipped request, which is still a 200 -- batch
+	// semantics, never an error.
+	Added int `json:"added"`
+
+	// Skipped The distinct ids that did not land: unknown ids,
+	// another account's unshared assets, any id the caller
+	// cannot see, and the ids already carrying the tag (the
+	// idempotent add).
 	Skipped int `json:"skipped"`
 }
 
@@ -939,8 +961,9 @@ type AlbumWallResponse struct {
 // AssetDetail One asset as the detail endpoint returns it: the upload
 // response's identity and storage fields, the pipeline's
 // refinements, the two owner-level attributes the PATCH
-// endpoint edits (`description`, `isHidden`), and the asset's
-// faces as the calling user sees them (`faces`). The shape is
+// endpoint edits (`description`, `isHidden`), the asset's
+// faces as the calling user sees them (`faces`), and the
+// CALLER's tags on the asset (`tags`). The shape is
 // fixed -- every property is always present -- and the
 // pipeline-dependent values (`width`, `height`, `durationMs`,
 // `blurhash` and the fields inside `exif`) are null until the
@@ -1039,6 +1062,18 @@ type AssetDetail struct {
 
 	// OwnerId UUIDv7 identifier of the owning account.
 	OwnerId openapi_types.UUID `json:"ownerId"`
+
+	// Tags The CALLER's tags on this asset (B4): the caller's own
+	// assignment rows joined to their own tag rows, sorted by
+	// name case-insensitively with the tag id as the tiebreak
+	// (the vocabulary listing's own ordering). Another
+	// account's tags on the same asset never surface, so the
+	// same shared asset answers different arrays for the owner
+	// and the sharee (each sees their own, or none). Always
+	// present, empty when the caller tagged the asset with
+	// nothing. The PATCH response serves the same array,
+	// exactly as the GET serves it.
+	Tags []AssetTagSummary `json:"tags"`
 
 	// TakenAt Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
 	// the upload time when absent) and refined from EXIF by the
@@ -1194,6 +1229,19 @@ type AssetResponseKind string
 // identical live asset) or `trashed` (200, an identical asset
 // in the trash).
 type AssetResponseState string
+
+// AssetTagSummary One entry of the asset detail's `tags` array: the caller's
+// own tag as it rides the asset -- identity and name only, the
+// vocabulary's listing face carries the counts. Per-user state
+// (B4): the entry exists exactly because the CALLER's
+// assignment row does.
+type AssetTagSummary struct {
+	// Id Identifier of the tag (the caller's own row).
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The tag's name, the caller's own vocabulary.
+	Name string `json:"name"`
+}
 
 // BatchRequest One batch action over a list of asset ids. The action applies
 // to every id that resolves to a caller-owned asset; the rest
@@ -1842,6 +1890,19 @@ type RemoveAlbumItemsResponse struct {
 	Skipped int `json:"skipped"`
 }
 
+// RemoveTagAssetsResponse The honest report of one assignment remove over the
+// request's distinct ids: the rows that left and the ids that
+// carried no assignment of the tag.
+type RemoveTagAssetsResponse struct {
+	// Removed The assignment rows the request deleted. Zero for an
+	// all-skipped request, which is still a 200.
+	Removed int `json:"removed"`
+
+	// Skipped The distinct ids that carried no assignment of this tag
+	// -- never tagged, or already untagged.
+	Skipped int `json:"skipped"`
+}
+
 // ServerInfo Instance capability report served by `GET /server/info`.
 type ServerInfo struct {
 	// Features Instance feature switches (model slots, search modes, pairing).
@@ -1927,6 +1988,62 @@ type SetPersonHiddenRequest struct {
 	// IsHidden true hides the person for the caller (a badge on their
 	// people list, not a filter); false unhides.
 	IsHidden bool `json:"isHidden"`
+}
+
+// TagAssetsRequest The assignment write body: the list of asset ids to tag with
+// or untag from the caller's tag. Repeated ids collapse to one
+// application; the report's counts cover the distinct ids.
+type TagAssetsRequest struct {
+	// AssetIds The asset ids of the assignment write, between 1 and 200
+	// entries. The add skips -- never errors on -- every id
+	// that is not caller-visible or that already carries the
+	// tag; the remove skips the ids that carry no assignment.
+	AssetIds []openapi_types.UUID `json:"assetIds"`
+}
+
+// TagNameRequest The name-carrying body of the tag create and rename writes:
+// one field, required. The name is trimmed server-side and
+// must span 1-64 Unicode characters after the trim (the count
+// is over runes, so multi-byte names stay within the bound at
+// the same length).
+type TagNameRequest struct {
+	// Name The tag's name, trimmed server-side. On create a name
+	// the caller already owns converges on the existing tag;
+	// on rename a name another tag carries answers 409
+	// `TAG_NAME_TAKEN`, the row's own name the idempotent
+	// no-op.
+	Name string `json:"name"`
+}
+
+// TagSummary One tag of the caller's vocabulary as every tags-face
+// response answers it: the identity, the name, the honest
+// count and the timestamps. The write faces (create, rename)
+// answer this same shape, so a write's answer is the entry the
+// listing lists.
+type TagSummary struct {
+	// AssetCount The tag's assignment rows joined to caller-visible live
+	// assets: the album union plus the timeline's live filters
+	// (not trashed, not hidden, no Live Photo component). A
+	// trashed or hidden member stops counting until it
+	// returns; the assignment row survives underneath, exactly
+	// like a favorite row.
+	AssetCount int `json:"assetCount"`
+
+	// CreatedAt When the tag row was created (RFC 3339 UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id UUIDv7 identifier of the tag (the caller's own row).
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The tag's display name, unique within the caller's
+	// vocabulary. Trimmed on write; 1-64 Unicode characters
+	// (counted over runes).
+	Name string `json:"name"`
+
+	// UpdatedAt When the tag's name last truly changed (RFC 3339 UTC).
+	// The idempotent create and the no-op rename leave it
+	// untouched -- only a real rename moves it.
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // TimelineItem One asset of the timeline: the asset detail's fields minus the
@@ -2478,6 +2595,18 @@ type LabelPersonJSONRequestBody = LabelPersonRequest
 // CreateAdminJSONRequestBody defines body for CreateAdmin for application/json ContentType.
 type CreateAdminJSONRequestBody = CreateAdminRequest
 
+// CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
+type CreateTagJSONRequestBody = TagNameRequest
+
+// RenameTagJSONRequestBody defines body for RenameTag for application/json ContentType.
+type RenameTagJSONRequestBody = TagNameRequest
+
+// RemoveTagAssetsJSONRequestBody defines body for RemoveTagAssets for application/json ContentType.
+type RemoveTagAssetsJSONRequestBody = TagAssetsRequest
+
+// AddTagAssetsJSONRequestBody defines body for AddTagAssets for application/json ContentType.
+type AddTagAssetsJSONRequestBody = TagAssetsRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListJobs List the job runs of the task panel.
@@ -2636,6 +2765,24 @@ type ServerInterface interface {
 	// CreateAdmin Create the first administrator account.
 	// (POST /server/setup/admin)
 	CreateAdmin(w http.ResponseWriter, r *http.Request)
+	// ListTags The caller's tags, the search vocabulary.
+	// (GET /tags)
+	ListTags(w http.ResponseWriter, r *http.Request)
+	// CreateTag Create one tag, idempotently.
+	// (POST /tags)
+	CreateTag(w http.ResponseWriter, r *http.Request)
+	// DeleteTag Delete one tag.
+	// (DELETE /tags/{tagId})
+	DeleteTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID)
+	// RenameTag Rename one tag.
+	// (PATCH /tags/{tagId})
+	RenameTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID)
+	// RemoveTagAssets Untag assets in one batch.
+	// (DELETE /tags/{tagId}/assets)
+	RemoveTagAssets(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID)
+	// AddTagAssets Tag assets in one batch.
+	// (POST /tags/{tagId}/assets)
+	AddTagAssets(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID)
 	// GetTrash List the caller's trashed assets with their retention countdown.
 	// (GET /trash)
 	GetTrash(w http.ResponseWriter, r *http.Request)
@@ -2960,6 +3107,42 @@ func (_ Unimplemented) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 // CreateAdmin Create the first administrator account.
 // (POST /server/setup/admin)
 func (_ Unimplemented) CreateAdmin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTags The caller's tags, the search vocabulary.
+// (GET /tags)
+func (_ Unimplemented) ListTags(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTag Create one tag, idempotently.
+// (POST /tags)
+func (_ Unimplemented) CreateTag(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteTag Delete one tag.
+// (DELETE /tags/{tagId})
+func (_ Unimplemented) DeleteTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RenameTag Rename one tag.
+// (PATCH /tags/{tagId})
+func (_ Unimplemented) RenameTag(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RemoveTagAssets Untag assets in one batch.
+// (DELETE /tags/{tagId}/assets)
+func (_ Unimplemented) RemoveTagAssets(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AddTagAssets Tag assets in one batch.
+// (POST /tags/{tagId}/assets)
+func (_ Unimplemented) AddTagAssets(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4290,6 +4473,138 @@ func (siw *ServerInterfaceWrapper) CreateAdmin(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListTags operation middleware
+func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTag operation middleware
+func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTag(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTag operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", chi.URLParam(r, "tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTag(w, r, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameTag operation middleware
+func (siw *ServerInterfaceWrapper) RenameTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", chi.URLParam(r, "tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameTag(w, r, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveTagAssets operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTagAssets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", chi.URLParam(r, "tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTagAssets(w, r, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddTagAssets operation middleware
+func (siw *ServerInterfaceWrapper) AddTagAssets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", chi.URLParam(r, "tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddTagAssets(w, r, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTrash operation middleware
 func (siw *ServerInterfaceWrapper) GetTrash(w http.ResponseWriter, r *http.Request) {
 
@@ -4588,6 +4903,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/places", wrapper.ListPlaces)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/tags", wrapper.ListTags)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tags", wrapper.CreateTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tags/{tagId}", wrapper.DeleteTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/tags/{tagId}", wrapper.RenameTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/tags/{tagId}/assets", wrapper.RemoveTagAssets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tags/{tagId}/assets", wrapper.AddTagAssets)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/users", wrapper.ListInstanceUsers)

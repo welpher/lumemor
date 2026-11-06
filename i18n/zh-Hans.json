@@ -57,6 +57,8 @@
   "album_share_to_owner": "这个相册本来就是您的，无需共享给相册所有者。",
   "album_share_user_invalid": "该账号无法被共享。",
   "album_pref_not_excludable": "这个相册无法从您的时间线中排除。",
+  "tag_not_found": "该标签不存在或对您不可见。",
+  "tag_name_taken": "您已有一个同名标签。",
   "timeline_loading": "正在加载时间线…",
   "timeline_empty": "时间线还没有照片。上传后会出现在这里。",
   "timeline_load_more": "加载更多",

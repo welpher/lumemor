@@ -177,5 +177,10 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		s.internalError(w, r, "load patched asset faces", err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces))
+	tags, err := s.assetTagsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
+	if err != nil {
+		s.internalError(w, r, "load patched asset tags", err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces, tags))
 }
