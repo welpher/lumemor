@@ -90,3 +90,26 @@ All license facts below were verified against the upstream sources on
 One-time downloads for checksum computation and offline testing live
 under `tools/models/cache/` (git-ignored). Nothing there is committed;
 the manifest links above are the only distribution channel.
+
+## Bundled data — GeoNames place reference (M3d)
+
+Not a model, but the same release-check surface: the server image
+BAKES the GeoNames place reference data at build time (the places
+distribution discipline — zero runtime network), so the artifact
+ships inside the image and the attribution must ship with it.
+
+- Sources (pinned by sha256 in `docker/server.Dockerfile`):
+  `https://download.geonames.org/export/dump/cities500.zip`,
+  `.../dump/admin1CodesASCII.txt`,
+  `.../dump/alternateNamesV2.zip` (filtered at build time to the zh
+  rows of the baked geoname ids).
+- Attribution: [GeoNames](https://www.geonames.org/) gazetteer data,
+  compiled by the GeoNames community.
+- License: **CC BY 4.0** (the dump readme's header) — redistribution
+  with attribution is permitted; the attribution lives in the
+  Dockerfile bake block and here. Commercial use: permitted.
+- The dumps are re-generated upstream over time; the build's pinned
+  digests fail on drift (the same discipline as the model pins), and
+  re-pinning is the maintainer's deliberate act (verified live: a
+  same-day upstream refresh was caught exactly this way).
+
