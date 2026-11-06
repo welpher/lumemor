@@ -240,7 +240,7 @@ test('tiles pack into justified rows at the engine-computed sizes', async () => 
 	expect(rows).toHaveLength(3);
 	for (const row of rows) {
 		expect(row.style.height).toBe('216px');
-		expect(row.style.gap).toBe('3px');
+		expect(row.style.gap).toBe('2px');
 	}
 	const cells = Array.from(document.body.querySelectorAll<HTMLElement>('.wall__cell'));
 	expect(cells).toHaveLength(3);

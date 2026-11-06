@@ -352,7 +352,7 @@
 	<title>{titleText} · lumemor</title>
 </svelte:head>
 
-<section class="person-detail max-w-[1200px] mx-auto" aria-busy={status === 'loading'}>
+<section class="person-detail max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
 	<div class="person-detail__top flex items-center gap-2 mb-1">
 		<a
 			class="person-detail__back inline-flex items-center px-2.5 py-1.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft no-underline rounded-control transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
