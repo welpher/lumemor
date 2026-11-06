@@ -13,6 +13,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("LUMEMOR_DATA_DIR", "")
 	t.Setenv("LUMEMOR_CONFIG_DIR", "")
 	t.Setenv("LUMEMOR_UPLOAD_LIMIT_BYTES", "")
+	t.Setenv("LUMEMOR_GEODATA_DIR", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -33,6 +34,12 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.UploadLimitBytes != 2147483648 {
 		t.Errorf("cfg.UploadLimitBytes = %d, want %d", cfg.UploadLimitBytes, 2147483648)
+	}
+	// The geodata override defaults to empty: the local-development
+	// default keeps the place resolution honestly off (the Docker
+	// image sets the variable to the bake it carries).
+	if cfg.GeodataDir != "" {
+		t.Errorf("cfg.GeodataDir = %q, want empty", cfg.GeodataDir)
 	}
 }
 
@@ -62,6 +69,7 @@ func TestLoadStorageDirOverrides(t *testing.T) {
 	t.Setenv("LUMEMOR_DATABASE_URL", "postgres://lumemor:lumemor@localhost:5432/lumemor")
 	t.Setenv("LUMEMOR_DATA_DIR", "/srv/photos/data")
 	t.Setenv("LUMEMOR_CONFIG_DIR", "/srv/lumemor-config")
+	t.Setenv("LUMEMOR_GEODATA_DIR", "/usr/local/share/lumemor/geo")
 
 	cfg, err := Load()
 	if err != nil {
@@ -72,6 +80,9 @@ func TestLoadStorageDirOverrides(t *testing.T) {
 	}
 	if cfg.ConfigDir != "/srv/lumemor-config" {
 		t.Errorf("cfg.ConfigDir = %q, want %q", cfg.ConfigDir, "/srv/lumemor-config")
+	}
+	if cfg.GeodataDir != "/usr/local/share/lumemor/geo" {
+		t.Errorf("cfg.GeodataDir = %q, want %q", cfg.GeodataDir, "/usr/local/share/lumemor/geo")
 	}
 }
 
