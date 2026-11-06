@@ -16,6 +16,7 @@ export 'package:lumemor_api/src/api/assets_api.dart';
 export 'package:lumemor_api/src/api/auth_api.dart';
 export 'package:lumemor_api/src/api/events_api.dart';
 export 'package:lumemor_api/src/api/people_api.dart';
+export 'package:lumemor_api/src/api/places_api.dart';
 export 'package:lumemor_api/src/api/server_api.dart';
 export 'package:lumemor_api/src/api/users_api.dart';
 
@@ -77,6 +78,8 @@ export 'package:lumemor_api/src/model/pairing_token_response.dart';
 export 'package:lumemor_api/src/model/person_label.dart';
 export 'package:lumemor_api/src/model/person_label_response.dart';
 export 'package:lumemor_api/src/model/person_summary.dart';
+export 'package:lumemor_api/src/model/place_summary.dart';
+export 'package:lumemor_api/src/model/places_rerun_response.dart';
 export 'package:lumemor_api/src/model/remove_album_items_response.dart';
 export 'package:lumemor_api/src/model/server_info.dart';
 export 'package:lumemor_api/src/model/session_info.dart';

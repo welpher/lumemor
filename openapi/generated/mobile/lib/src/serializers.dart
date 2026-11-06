@@ -72,6 +72,8 @@ import 'package:lumemor_api/src/model/pairing_token_response.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
 import 'package:lumemor_api/src/model/person_label_response.dart';
 import 'package:lumemor_api/src/model/person_summary.dart';
+import 'package:lumemor_api/src/model/place_summary.dart';
+import 'package:lumemor_api/src/model/places_rerun_response.dart';
 import 'package:lumemor_api/src/model/remove_album_items_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
@@ -148,6 +150,8 @@ part 'serializers.g.dart';
   PersonLabel,
   PersonLabelResponse,
   PersonSummary,
+  PlaceSummary,
+  PlacesRerunResponse,
   RemoveAlbumItemsResponse,
   ServerInfo,
   SessionInfo,
@@ -171,6 +175,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(TimelineItem)]),
         () => ListBuilder<TimelineItem>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(PlaceSummary)]),
+        () => ListBuilder<PlaceSummary>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AlbumSummary)]),

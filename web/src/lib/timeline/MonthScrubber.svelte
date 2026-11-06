@@ -185,9 +185,10 @@
 
 {#if months.length > 0}
 	<nav class="scrubber fixed top-1/2 right-3 -translate-y-1/2 z-(--z-page)" aria-label={$_('timeline_scrubber_label')}>
-		<!-- The drag owns the pointer: no touch scrolling fights it. -->
+		<!-- The drag owns the pointer: no touch scrolling fights it.
+		     The rail is transparent: its gutter is its background. -->
 		<div
-			class="scrubber__rail relative rounded-full bg-[color-mix(in_srgb,var(--color-card)_80%,transparent)] px-1.5 touch-none"
+			class="scrubber__rail relative touch-none"
 			bind:this={rail}
 			style="height: {railHeight}px"
 		>

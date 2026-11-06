@@ -57,6 +57,10 @@ tags:
     description: 'The people surface: named people, unnamed face clusters,
       per-cluster detail and face crop thumbnails, every view scoped to
       the calling user''s visible assets and private labels.'
+  - name: places
+    description: 'The places surface: the caller''s city grouping over
+      GeoNames reference data, every count and cover scoped to the
+      calling user''s visible assets.'
   - name: server
     description: Instance discovery and first-run setup.
   - name: users
@@ -5224,6 +5228,140 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /places:
+    get:
+      operationId: listPlaces
+      tags:
+        - places
+      summary: The caller's city grouping.
+      description: |
+        The places surface: every place of the GeoNames reference data
+        that holds at least one asset the caller can see -- the city
+        grouping the places page renders as its grid. A place joins
+        the list when it carries a caller-visible live asset (the
+        album union of the caller's own sync and directory albums
+        plus every album shared to them, and the timeline's live-row
+        filters: not trashed, not hidden, no Live Photo component
+        row); `assetCount` counts exactly those assets, so the same
+        place can show different counts to different accounts -- the
+        honest per-caller counting discipline the people surface
+        pins, applied to cities.
+
+        `name` is the locale-joined display name: the
+        `place_names` row of the requested locale when the reference
+        data carries one, the GeoNames canonical (English or
+        romanized) name otherwise. Locale is a REQUEST parameter
+        (the web app owns the active locale and passes it along);
+        `en` is the default. A locale switch changes the join only
+        -- the assets rows never carry locale strings, so switching
+        languages never rewrites asset data.
+
+        `representativeCoverAssetIds` is the wall's derived-cover
+        discipline applied to city groups: the place's (up to) four
+        most recent caller-visible live members, taken_at descending
+        with the asset id as the tiebreak -- the cover tiles the
+        places page renders from. A listed place always carries at
+        least one candidate (the listing itself proved a visible
+        member exists).
+
+        The list is ordered by `assetCount` descending, the place id
+        ascending as the deterministic tiebreak. It is not paginated:
+        the same single-document shape the named-people listing
+        uses, sized for a family instance's few thousand places.
+
+        Place resolution itself (which asset belongs to which city)
+        is the ingestion pipeline's business -- the metadata job's
+        GPS step and the admin re-resolution run -- and follows the
+        reference data baked into the server image; this endpoint
+        only reads what those wrote.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: locale
+          in: query
+          required: false
+          description: |
+            The display locale of the place names: `en` or `zh-Hans`,
+            the instance's UI language set. Absent means `en`. A
+            value outside the set answers 400 `VALIDATION_FAILED`.
+          schema:
+            type: string
+            enum:
+              - en
+              - zh-Hans
+            default: en
+          example: zh-Hans
+      responses:
+        '200':
+          description: |
+            The caller's city grouping, ordered by asset count
+            descending (the place id ascending as the tiebreak). The
+            array is empty when no visible asset of the caller
+            carries a resolved place.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlaceSummary'
+              examples:
+                twoPlaces:
+                  summary: Two cities, the names in the zh-Hans locale.
+                  value:
+                    - placeId: 1816670
+                      name: 北京
+                      country: CN
+                      assetCount: 42
+                      representativeCoverAssetIds:
+                        - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+                    - placeId: 2988507
+                      name: 巴黎
+                      country: FR
+                      assetCount: 17
+                      representativeCoverAssetIds:
+                        - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72
+                empty:
+                  summary: Nothing resolved (or nothing visible) yet.
+                  value: []
+        '400':
+          description: |
+            The locale parameter carries a value outside the
+            instance's language set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidLocale:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: 'locale must be one of: en, zh-Hans'
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
   /users:
     get:
       operationId: listInstanceUsers
@@ -6249,6 +6387,115 @@ paths:
                   value:
                     code: AUTH_FORBIDDEN
                     message: administrator role required
+  /admin/places/reresolve:
+    post:
+      operationId: reresolvePlaces
+      tags:
+        - admin
+      summary: Start a full place re-resolution run.
+      description: |
+        The places-data-update path of the admin surface: one run
+        that re-resolves the place of EVERY asset whose exif row
+        carries GPS coordinates, against the reference data the
+        server currently runs on. The run that refills resolutions
+        after the baked GeoNames data changed -- the startup import
+        of a rebuilt image replaces the reference tables and, through
+        the schema's ON DELETE SET NULL, releases every stale
+        resolution; this run is the deliberate step that refills
+        them. (The metadata job resolves every NEW upload on its
+        own; this run only matters for re-resolving what already
+        exists.)
+
+        The scope is every GPS-bearing asset row whatever its
+        lifecycle state -- place resolution is metadata, not
+        visibility. `total` and `done` of the run's `job_runs` row
+        count those assets and `failed` the ones whose re-resolution
+        write failed.
+
+        The endpoint is idempotent the way the model rerun is: a
+        place re-resolution run still in flight (`queued` or
+        `running`) answers 200 with its identifier and starts
+        nothing; a finished (or failed) run never blocks a new one.
+
+        The run is API-only in this milestone: no admin page button
+        is wired to it yet (the job panel's listing shows its
+        progress like any other run).
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            A place re-resolution run is already in flight (`queued`
+            or `running`); its identifier is returned and NO new run
+            is created or enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacesRerunResponse'
+              examples:
+                inFlight:
+                  summary: The run currently re-resolving places.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '202':
+          description: |
+            The re-resolution run was created (state `queued`,
+            `total` carrying the GPS-bearing asset count) and its
+            job enqueued. The worker flips the run to `running`
+            when the walk begins.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlacesRerunResponse'
+              examples:
+                started:
+                  summary: The freshly created run.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: |
+            The run could not be started: no job queue is wired to
+            the API surface, or this server runs without the place
+            reference data (no GeoNames bake, so no grid to resolve
+            against), or creating the run failed. The run itself,
+            once started, reports its own failures through its
+            `job_runs` row (state `failed`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: the re-resolution could not be started
   /admin/jobs:
     get:
       operationId: listJobs
@@ -6781,13 +7028,15 @@ components:
       description: |
         The kinds of job runs the instance records. The model
         download is one run; each machine learning slot's rerun is
-        its own kind, named after the slot it redoes.
+        its own kind, named after the slot it redoes; the place
+        re-resolution is the places-data-update path's kind.
       enum:
         - model_download
         - face_detect_rerun
         - face_recognize_rerun
         - clip_embed_rerun
         - ocr_rerun
+        - places_rerun
     JobRunState:
       type: string
       description: |
@@ -8199,6 +8448,82 @@ components:
           type: string
           format: uuid
           description: The cluster the face occupies after the move.
+    PlaceSummary:
+      type: object
+      description: |
+        One city group of the caller's places list: a GeoNames place
+        holding at least one caller-visible live asset. The count and
+        the covers are the caller's honest view -- the same place can
+        show different counts to different accounts.
+      required:
+        - placeId
+        - name
+        - country
+        - assetCount
+        - representativeCoverAssetIds
+      properties:
+        placeId:
+          type: integer
+          format: int32
+          description: |
+            The GeoNames geonameid of the place -- the `places` row's
+            primary key and the `assets.place_id` foreign key the
+            ingestion pipeline's resolution writes.
+          examples:
+            - 2988507
+        name:
+          type: string
+          description: |
+            The display name in the request's locale: the
+            `place_names` row of that locale when the reference data
+            carries one, the GeoNames canonical (English or
+            romanized) name otherwise. A locale switch changes this
+            join only, never an asset row.
+          examples:
+            - Paris
+            - 巴黎
+        country:
+          type: string
+          description: |
+            The place's ISO 3166-1 alpha-2 country code. The display
+            country name is the client's business (its own locale
+            table maps the code).
+          examples:
+            - FR
+        assetCount:
+          type: integer
+          description: |
+            The place's caller-visible live assets -- the honest
+            per-caller count, not the global member count.
+        representativeCoverAssetIds:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            type: string
+            format: uuid
+          description: |
+            The place's cover candidates: its (up to) four most
+            recent caller-visible live members, taken_at descending
+            with the asset id as the tiebreak -- the wall's
+            derived-cover discipline applied to city groups, newest
+            first.
+    PlacesRerunResponse:
+      type: object
+      description: |
+        The identifier of one place re-resolution run: the
+        `job_runs` row the re-resolution job drives and the
+        `job.*` events announce.
+      required:
+        - jobRunId
+      properties:
+        jobRunId:
+          type: string
+          format: uuid
+          description: |
+            UUIDv7 identifier of the run's `job_runs` row. `202`
+            carries the freshly created run; `200` the in-flight one
+            the request joined instead.
     AlbumWallResponse:
       type: object
       description: |

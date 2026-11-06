@@ -138,19 +138,16 @@ func TestImportReplacesReleasesAssetPlaces(t *testing.T) {
 
 	var assetID string
 	if err := pool.QueryRow(context.Background(), `
-		WITH a AS (
-			INSERT INTO assets (
-				id, owner_id, storage_kind, file_path, checksum, original_filename,
-				file_size, mime_type, media_kind, width, height, taken_at, taken_at_source
-			) VALUES (
-				gen_random_uuid(), $1, 'blob', 'originals/x/a.jpg', 'ck',
-				'a.jpg', 1, 'image/jpeg', 'image', 1, 1, now(), 'import'
-			)
-			RETURNING id
+		INSERT INTO assets (
+			id, owner_id, storage_kind, file_path, checksum, original_filename,
+			file_size, mime_type, media_kind, width, height, taken_at, taken_at_source,
+			place_id
+		) VALUES (
+			gen_random_uuid(), $1, 'blob', 'originals/x/a.jpg', 'ck',
+			'a.jpg', 1, 'image/jpeg', 'image', 1, 1, now(), 'import',
+			2988507
 		)
-		UPDATE assets SET place_id = 2988507
-		WHERE id IN (SELECT id FROM a)
-		RETURNING id`).Scan(&assetID); err != nil {
+		RETURNING id`, ownerID).Scan(&assetID); err != nil {
 		t.Fatalf("seed asset with a place: %v", err)
 	}
 
