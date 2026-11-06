@@ -126,6 +126,16 @@ func TestImportReplacesReleasesAssetPlaces(t *testing.T) {
 		t.Fatalf("Import: %v", err)
 	}
 
+	// A user row first: the asset's owner foreign key needs one, and
+	// the walk below never depends on its identity.
+	var ownerID string
+	if err := pool.QueryRow(context.Background(), `
+		INSERT INTO users (id, name, email, password_hash)
+		VALUES (gen_random_uuid(), 'Owner', 'owner@example.test', 'x')
+		RETURNING id`).Scan(&ownerID); err != nil {
+		t.Fatalf("seed owner: %v", err)
+	}
+
 	var assetID string
 	if err := pool.QueryRow(context.Background(), `
 		WITH a AS (
@@ -133,7 +143,7 @@ func TestImportReplacesReleasesAssetPlaces(t *testing.T) {
 				id, owner_id, storage_kind, file_path, checksum, original_filename,
 				file_size, mime_type, media_kind, width, height, taken_at, taken_at_source
 			) VALUES (
-				gen_random_uuid(), gen_random_uuid(), 'blob', 'originals/x/a.jpg', 'ck',
+				gen_random_uuid(), $1, 'blob', 'originals/x/a.jpg', 'ck',
 				'a.jpg', 1, 'image/jpeg', 'image', 1, 1, now(), 'import'
 			)
 			RETURNING id
@@ -214,7 +224,7 @@ func TestPrepareWiresTheIndexToTheDatabase(t *testing.T) {
 
 	// The second boot skips the import (the marker matches) but
 	// still answers a working index.
-	ix, imported, err := Prepare(context.Background(), pool, writeFixtureGeoDir(t))
+	ix, imported, err = Prepare(context.Background(), pool, writeFixtureGeoDir(t))
 	if err != nil {
 		t.Fatalf("second Prepare: %v", err)
 	}

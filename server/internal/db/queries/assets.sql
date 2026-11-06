@@ -191,6 +191,15 @@ ON CONFLICT (asset_id) DO UPDATE SET
 -- for the directory-album importer that reads files in place.
 -- Dimensions refine from the same extraction (COALESCE keeps the
 -- existing value when the file reports none).
+--
+-- place_id is the GPS resolution's write (M3d): when the job resolved
+-- the place (the in-memory grid is wired), the value -- the nearest
+-- city within the threshold or NULL for no GPS / beyond threshold --
+-- is the file's truth and lands unconditionally; when the grid is NOT
+-- wired (a deployment without the reference data), the gate flag
+-- stays false and the column keeps whatever it held, so a
+-- data-less boot never destroys resolutions a data-carrying boot
+-- produced.
 UPDATE assets SET
     taken_at        = COALESCE(sqlc.narg('taken_at'), taken_at),
     taken_at_source = CASE WHEN sqlc.narg('taken_at') IS NULL THEN taken_at_source
@@ -198,6 +207,8 @@ UPDATE assets SET
     width           = COALESCE(sqlc.narg('width'), width),
     height          = COALESCE(sqlc.narg('height'), height),
     duration_ms     = COALESCE(sqlc.narg('duration_ms'), duration_ms),
+    place_id        = CASE WHEN sqlc.arg('place_resolved')::boolean THEN sqlc.narg('place_id')
+                           ELSE place_id END,
     updated_at      = now()
 WHERE id = sqlc.arg('id');
 

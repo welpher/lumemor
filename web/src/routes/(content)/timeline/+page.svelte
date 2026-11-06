@@ -361,7 +361,10 @@
 	<title>Timeline · lumemor</title>
 </svelte:head>
 
-<section class="timeline max-w-[1440px] mx-auto px-4" aria-busy={$timeline.status === 'loading'}>
+<!-- The reserved month-axis gutter: the wall centers in the width
+     LEFT of the rail's own strip, never under it. -->
+<div class="timeline__gutter pe-16">
+	<section class="timeline max-w-[1440px] mx-auto px-4" aria-busy={$timeline.status === 'loading'}>
 	<!-- No toolbar (R2-11): the timeline's header carries nothing but
 	     what the top bar already owns (upload, search). The hidden
 	     view's entry moved to the navigation drawer; the selection
@@ -404,7 +407,8 @@
 	{/if}
 
 	<div class="timeline__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
-</section>
+	</section>
+</div>
 
 <MonthScrubber {months} activeKey={activeMonthKey} onjump={jumpToMonth} />
 <BatchBar

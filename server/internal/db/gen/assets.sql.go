@@ -677,16 +677,20 @@ UPDATE assets SET
     width           = COALESCE($2, width),
     height          = COALESCE($3, height),
     duration_ms     = COALESCE($4, duration_ms),
+    place_id        = CASE WHEN $5::boolean THEN $6
+                           ELSE place_id END,
     updated_at      = now()
-WHERE id = $5
+WHERE id = $7
 `
 
 type RefineAssetFromMetadataParams struct {
-	TakenAt    pgtype.Timestamptz `json:"taken_at"`
-	Width      pgtype.Int4        `json:"width"`
-	Height     pgtype.Int4        `json:"height"`
-	DurationMs pgtype.Int4        `json:"duration_ms"`
-	ID         pgtype.UUID        `json:"id"`
+	TakenAt       pgtype.Timestamptz `json:"taken_at"`
+	Width         pgtype.Int4        `json:"width"`
+	Height        pgtype.Int4        `json:"height"`
+	DurationMs    pgtype.Int4        `json:"duration_ms"`
+	PlaceResolved bool               `json:"place_resolved"`
+	PlaceID       pgtype.Int4        `json:"place_id"`
+	ID            pgtype.UUID        `json:"id"`
 }
 
 // The metadata job's refinement of the asset row. taken_at moves ONLY
@@ -700,12 +704,23 @@ type RefineAssetFromMetadataParams struct {
 // for the directory-album importer that reads files in place.
 // Dimensions refine from the same extraction (COALESCE keeps the
 // existing value when the file reports none).
+//
+// place_id is the GPS resolution's write (M3d): when the job resolved
+// the place (the in-memory grid is wired), the value -- the nearest
+// city within the threshold or NULL for no GPS / beyond threshold --
+// is the file's truth and lands unconditionally; when the grid is NOT
+// wired (a deployment without the reference data), the gate flag
+// stays false and the column keeps whatever it held, so a
+// data-less boot never destroys resolutions a data-carrying boot
+// produced.
 func (q *Queries) RefineAssetFromMetadata(ctx context.Context, arg RefineAssetFromMetadataParams) error {
 	_, err := q.db.Exec(ctx, refineAssetFromMetadata,
 		arg.TakenAt,
 		arg.Width,
 		arg.Height,
 		arg.DurationMs,
+		arg.PlaceResolved,
+		arg.PlaceID,
 		arg.ID,
 	)
 	return err
