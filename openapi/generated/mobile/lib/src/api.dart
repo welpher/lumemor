@@ -17,6 +17,7 @@ import 'package:lumemor_api/src/api/events_api.dart';
 import 'package:lumemor_api/src/api/people_api.dart';
 import 'package:lumemor_api/src/api/places_api.dart';
 import 'package:lumemor_api/src/api/server_api.dart';
+import 'package:lumemor_api/src/api/tags_api.dart';
 import 'package:lumemor_api/src/api/users_api.dart';
 
 class LumemorApi {
@@ -159,6 +160,12 @@ class LumemorApi {
   /// by doing that all interceptors will not be executed
   ServerApi getServerApi() {
     return ServerApi(dio, serializers);
+  }
+
+  /// Get TagsApi instance, base route and serializer can be overridden by a given but be careful,
+  /// by doing that all interceptors will not be executed
+  TagsApi getTagsApi() {
+    return TagsApi(dio, serializers);
   }
 
   /// Get UsersApi instance, base route and serializer can be overridden by a given but be careful,

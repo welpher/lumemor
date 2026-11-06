@@ -15,6 +15,7 @@ import 'package:lumemor_api/src/date_serializer.dart';
 import 'package:lumemor_api/src/model/date.dart';
 
 import 'package:lumemor_api/src/model/add_album_items_response.dart';
+import 'package:lumemor_api/src/model/add_tag_assets_response.dart';
 import 'package:lumemor_api/src/model/admin_create_user_request.dart';
 import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
@@ -37,6 +38,7 @@ import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_face_summary.dart';
 import 'package:lumemor_api/src/model/asset_patch.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
+import 'package:lumemor_api/src/model/asset_tag_summary.dart';
 import 'package:lumemor_api/src/model/batch_request.dart';
 import 'package:lumemor_api/src/model/batch_response.dart';
 import 'package:lumemor_api/src/model/bearer_session.dart';
@@ -75,9 +77,13 @@ import 'package:lumemor_api/src/model/person_summary.dart';
 import 'package:lumemor_api/src/model/place_summary.dart';
 import 'package:lumemor_api/src/model/places_rerun_response.dart';
 import 'package:lumemor_api/src/model/remove_album_items_response.dart';
+import 'package:lumemor_api/src/model/remove_tag_assets_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
 import 'package:lumemor_api/src/model/set_person_hidden_request.dart';
+import 'package:lumemor_api/src/model/tag_assets_request.dart';
+import 'package:lumemor_api/src/model/tag_name_request.dart';
+import 'package:lumemor_api/src/model/tag_summary.dart';
 import 'package:lumemor_api/src/model/timeline_item.dart';
 import 'package:lumemor_api/src/model/timeline_response.dart';
 import 'package:lumemor_api/src/model/trash_item.dart';
@@ -93,6 +99,7 @@ part 'serializers.g.dart';
 
 @SerializersFor([
   AddAlbumItemsResponse,
+  AddTagAssetsResponse,
   AdminCreateUserRequest,
   AdminUserListResponse,
   AdminUserPatch,
@@ -115,6 +122,7 @@ part 'serializers.g.dart';
   AssetFaceSummary,
   AssetPatch,
   AssetResponse,
+  AssetTagSummary,
   BatchRequest,
   BatchResponse,
   BearerSession,
@@ -153,9 +161,13 @@ part 'serializers.g.dart';
   PlaceSummary,
   PlacesRerunResponse,
   RemoveAlbumItemsResponse,
+  RemoveTagAssetsResponse,
   ServerInfo,
   SessionInfo,
   SetPersonHiddenRequest,
+  TagAssetsRequest,
+  TagNameRequest,
+  TagSummary,
   TimelineItem,
   TimelineResponse,
   TrashItem,
@@ -209,6 +221,10 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<AdminUserResponse>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AssetTagSummary)]),
+        () => ListBuilder<AssetTagSummary>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AlbumItem)]),
         () => ListBuilder<AlbumItem>(),
       )
@@ -219,6 +235,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltMap, [FullType(String), FullType.nullable(JsonObject)]),
         () => MapBuilder<String, JsonObject?>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(TagSummary)]),
+        () => ListBuilder<TagSummary>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(UserSummary)]),

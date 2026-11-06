@@ -141,12 +141,19 @@ Class | Method | HTTP request | Description
 [*PlacesApi*](doc/PlacesApi.md) | [**listPlaces**](doc/PlacesApi.md#listplaces) | **GET** /places | The caller&#39;s city grouping.
 [*ServerApi*](doc/ServerApi.md) | [**createAdmin**](doc/ServerApi.md#createadmin) | **POST** /server/setup/admin | Create the first administrator account.
 [*ServerApi*](doc/ServerApi.md) | [**getServerInfo**](doc/ServerApi.md#getserverinfo) | **GET** /server/info | Report instance version and feature switches.
+[*TagsApi*](doc/TagsApi.md) | [**addTagAssets**](doc/TagsApi.md#addtagassets) | **POST** /tags/{tagId}/assets | Tag assets in one batch.
+[*TagsApi*](doc/TagsApi.md) | [**createTag**](doc/TagsApi.md#createtag) | **POST** /tags | Create one tag, idempotently.
+[*TagsApi*](doc/TagsApi.md) | [**deleteTag**](doc/TagsApi.md#deletetag) | **DELETE** /tags/{tagId} | Delete one tag.
+[*TagsApi*](doc/TagsApi.md) | [**listTags**](doc/TagsApi.md#listtags) | **GET** /tags | The caller&#39;s tags, the search vocabulary.
+[*TagsApi*](doc/TagsApi.md) | [**removeTagAssets**](doc/TagsApi.md#removetagassets) | **DELETE** /tags/{tagId}/assets | Untag assets in one batch.
+[*TagsApi*](doc/TagsApi.md) | [**renameTag**](doc/TagsApi.md#renametag) | **PATCH** /tags/{tagId} | Rename one tag.
 [*UsersApi*](doc/UsersApi.md) | [**listInstanceUsers**](doc/UsersApi.md#listinstanceusers) | **GET** /users | The instance&#39;s member list.
 
 
 ## Documentation For Models
 
  - [AddAlbumItemsResponse](doc/AddAlbumItemsResponse.md)
+ - [AddTagAssetsResponse](doc/AddTagAssetsResponse.md)
  - [AdminCreateUserRequest](doc/AdminCreateUserRequest.md)
  - [AdminUserListResponse](doc/AdminUserListResponse.md)
  - [AdminUserPatch](doc/AdminUserPatch.md)
@@ -169,6 +176,7 @@ Class | Method | HTTP request | Description
  - [AssetFaceSummary](doc/AssetFaceSummary.md)
  - [AssetPatch](doc/AssetPatch.md)
  - [AssetResponse](doc/AssetResponse.md)
+ - [AssetTagSummary](doc/AssetTagSummary.md)
  - [BatchRequest](doc/BatchRequest.md)
  - [BatchResponse](doc/BatchResponse.md)
  - [BearerSession](doc/BearerSession.md)
@@ -207,9 +215,13 @@ Class | Method | HTTP request | Description
  - [PlaceSummary](doc/PlaceSummary.md)
  - [PlacesRerunResponse](doc/PlacesRerunResponse.md)
  - [RemoveAlbumItemsResponse](doc/RemoveAlbumItemsResponse.md)
+ - [RemoveTagAssetsResponse](doc/RemoveTagAssetsResponse.md)
  - [ServerInfo](doc/ServerInfo.md)
  - [SessionInfo](doc/SessionInfo.md)
  - [SetPersonHiddenRequest](doc/SetPersonHiddenRequest.md)
+ - [TagAssetsRequest](doc/TagAssetsRequest.md)
+ - [TagNameRequest](doc/TagNameRequest.md)
+ - [TagSummary](doc/TagSummary.md)
  - [TimelineItem](doc/TimelineItem.md)
  - [TimelineResponse](doc/TimelineResponse.md)
  - [TrashItem](doc/TrashItem.md)

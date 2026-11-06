@@ -607,10 +607,13 @@ export interface paths {
          *     -- dimensions, duration, blurhash, the EXIF hot fields, and
          *     readiness -- the two owner-level editable attributes
          *     (`description`, `isHidden`), which the asset detail view
-         *     renders and the `PATCH` endpoint edits, and the asset's faces
+         *     renders and the `PATCH` endpoint edits, the asset's faces
          *     with the caller's own label of each face's cluster (`faces`),
          *     which the detail view's people section renders and the people
-         *     write endpoints maintain.
+         *     write endpoints maintain, and the caller's own tags on the
+         *     asset (`tags`, name ascending), which the detail view's tag
+         *     section renders and the tags endpoints maintain -- another
+         *     account's tags on the same asset never surface here (B4).
          *
          *     Access is the caller-visible gate: the asset's owner, and
          *     every member of an album the caller sees -- their own sync
@@ -702,7 +705,10 @@ export interface paths {
          *     every viewer of the shared timeline and the detail panel.
          *     The description alone has no timeline effect -- it is
          *     detail-panel content -- but it is asset state the event
-         *     covers all the same.
+         *     covers all the same. The response serves the caller's tags
+         *     on the asset beside the faces, both unchanged by this edit
+         *     (the tags endpoints maintain them): the full detail shape
+         *     `GET /assets/{id}` serves.
          *
          *     Access is owner-only, the attribute-editing row of the
          *     permission matrix: there is deliberately no administrator
@@ -1923,6 +1929,194 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's tags, the search vocabulary.
+         * @description Every tag the calling user owns, one array sorted by name
+         *     case-insensitively with the tag id as the deterministic
+         *     tiebreak (the named-people listing's own ordering discipline):
+         *     the vocabulary the search's tag facet, the batch bar's "add
+         *     tag" and the info panel's tag section consume. Unpaginated
+         *     like the places listing -- a family instance's vocabulary is
+         *     a bounded set, one document.
+         *
+         *     Tags are per-user state (B4, the favorites' privacy shape):
+         *     the tags' owner is always the caller, and no tag, name or
+         *     count of another account ever surfaces here. The listing
+         *     carries the vocabulary in full -- a tag whose every member is
+         *     trashed or hidden still lists, with its honest count of zero
+         *     (the assignment rows survive, exactly like a favorite row,
+         *     and the count returns with the restore or unhide).
+         *
+         *     `assetCount` counts the tag's assignment rows joined to
+         *     CALLER-VISIBLE LIVE assets: the album union (the caller's
+         *     own sync and directory albums plus every album shared to
+         *     them) and the timeline's live filters -- not trashed, not
+         *     hidden, no Live Photo component -- the honest-counts
+         *     discipline of the people and places surfaces. A sharee's
+         *     count covers the shared members they can see; a revoked
+         *     share retracts them while the assignment rows survive
+         *     underneath.
+         */
+        get: operations["listTags"];
+        put?: never;
+        /**
+         * Create one tag, idempotently.
+         * @description Creates one tag owned by the caller. The name is trimmed
+         *     server-side and must span 1-64 Unicode characters after the
+         *     trim (the count is over runes, so multi-byte names stay
+         *     within the bound at the same length); anything else answers
+         *     400 `VALIDATION_FAILED`.
+         *
+         *     Creation is IDEMPOTENT, the assignment face's set semantics
+         *     applied to the vocabulary: a name the caller already owns
+         *     converges on the tag that already exists. A fresh name
+         *     answers 201 with the new row; a name that already exists
+         *     answers 200 with the EXISTING tag -- the same id, nothing
+         *     written, `updatedAt` untouched -- never a 409, because the
+         *     vocabulary is a set and the duplicate ask is the same ask.
+         *     Two concurrent creators converge on one row the same way
+         *     (the unique constraint is the race guard). Names are
+         *     distinct when their characters differ; the duplicate check
+         *     is the constraint's own equality.
+         *
+         *     The response is the tag's summary exactly as `GET /tags`
+         *     lists it. The write publishes nothing: tags are per-user
+         *     state, the only view that changes is the caller's own, and
+         *     the response itself carries it.
+         */
+        post: operations["createTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{tagId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete one tag.
+         * @description Deletes the caller's tag and every assignment row with it:
+         *     the schema's `ON DELETE CASCADE` removes the asset_tags rows
+         *     in the same statement, so a deleted tag leaves no orphans
+         *     behind -- on any account's view, because the rows were the
+         *     caller's own to begin with. The answer is 204 with no body.
+         *
+         *     Repeating the request answers 404 `TAG_NOT_FOUND`: the tag
+         *     is gone exactly like an unknown id (the album delete's
+         *     discipline -- a resource delete, not a set removal). The tag
+         *     must be the caller's own; another account's tag folds into
+         *     the same single-shape 404. The write publishes nothing
+         *     (per-user state, the create's reasoning).
+         */
+        delete: operations["deleteTag"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename one tag.
+         * @description Renames the caller's tag. The name validation is the
+         *     create's own: trimmed server-side, 1-64 Unicode characters
+         *     after the trim, else 400 `VALIDATION_FAILED`.
+         *
+         *     Renaming to the name the row already carries is the
+         *     idempotent no-op: 200 with the row's current state, nothing
+         *     written (not even `updatedAt`). Renaming to a name ANOTHER
+         *     of the caller's tags carries answers 409 `TAG_NAME_TAKEN`:
+         *     the vocabulary keeps one row per name, and the honest answer
+         *     for a collision is the conflict, not a silent merge into the
+         *     other tag. (The create's idempotence does not extend here:
+         *     the URL already names one tag, and converging on the other
+         *     row would substitute the resource instead of answering.)
+         *
+         *     The response is the tag's summary after the edit, exactly as
+         *     `GET /tags` lists it. The write publishes nothing (per-user
+         *     state, the create's reasoning). The tag must be the caller's
+         *     own: an unknown id and another account's tag answer the same
+         *     404 `TAG_NOT_FOUND`, byte for byte, so tag ids cannot be
+         *     probed for existence.
+         */
+        patch: operations["renameTag"];
+        trace?: never;
+    };
+    "/tags/{tagId}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tag assets in one batch.
+         * @description Adds the caller's tag to a list of at most 200 asset ids
+         *     with the batch surface's set semantics: one request, one
+         *     honest report `{added, skipped}`.
+         *
+         *     Skip semantics (the missing-ids discipline, the
+         *     album-items precedent widened to the union): every id must
+         *     address an asset the CALLER CAN SEE -- the album union (the
+         *     caller's own sync and directory albums plus every album
+         *     shared to them), the same resolution the favorites arms of
+         *     the batch endpoint apply. The union deliberately carries
+         *     tags: a sharee tags what they see with THEIR OWN tag, and
+         *     the owner's tag on the same asset stays untouched (B4 -- the
+         *     assignment rows are per-user). An unknown id, another
+         *     account's unshared asset, and any id the caller cannot see
+         *     are silently skipped, never errors. An id that already
+         *     carries this tag is skipped too: assignment is a set, the
+         *     add is idempotent. NO live-state filter applies to the
+         *     resolution: the assignment row is per-user state written
+         *     whatever the asset's live state (a trashed or hidden asset
+         *     carries the tag underneath the view's filters and the count
+         *     returns with the restore or unhide, exactly like a favorite
+         *     row). An all-skipped request still answers 200 with `added`
+         *     0. Repeated ids collapse to one application; the counts
+         *     cover the distinct ids.
+         *
+         *     The tag must be the caller's own: an unknown id and another
+         *     account's tag answer the same 404 `TAG_NOT_FOUND`. The write
+         *     publishes nothing: the only view that changes is the
+         *     caller's own tags, which the response itself reports.
+         */
+        post: operations["addTagAssets"];
+        /**
+         * Untag assets in one batch.
+         * @description Removes the caller's assignment rows of one tag:
+         *     `{removed, skipped}`, the same batch semantics as the add.
+         *     An id that carries no assignment of this tag -- never was,
+         *     or already removed -- is skipped; an all-skipped request
+         *     still answers 200 with `removed` 0. Repeated ids collapse;
+         *     the counts cover the distinct ids.
+         *
+         *     The removal carries no visibility predicate: it tidies the
+         *     caller's own set, so the rows leave whatever the assets'
+         *     live state (a trashed member's assignment row still leaves,
+         *     the honest cleanup of the set itself). The tag must be the
+         *     caller's own: an unknown id and another account's tag answer
+         *     the same 404 `TAG_NOT_FOUND`. The write publishes nothing
+         *     (per-user state, the add's reasoning).
+         */
+        delete: operations["removeTagAssets"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -2939,8 +3133,9 @@ export interface components {
          * @description One asset as the detail endpoint returns it: the upload
          *     response's identity and storage fields, the pipeline's
          *     refinements, the two owner-level attributes the PATCH
-         *     endpoint edits (`description`, `isHidden`), and the asset's
-         *     faces as the calling user sees them (`faces`). The shape is
+         *     endpoint edits (`description`, `isHidden`), the asset's
+         *     faces as the calling user sees them (`faces`), and the
+         *     CALLER's tags on the asset (`tags`). The shape is
          *     fixed -- every property is always present -- and the
          *     pipeline-dependent values (`width`, `height`, `durationMs`,
          *     `blurhash` and the fields inside `exif`) are null until the
@@ -3085,6 +3280,19 @@ export interface components {
              *     it.
              */
             faces: components["schemas"]["AssetFaceSummary"][];
+            /**
+             * @description The CALLER's tags on this asset (B4): the caller's own
+             *     assignment rows joined to their own tag rows, sorted by
+             *     name case-insensitively with the tag id as the tiebreak
+             *     (the vocabulary listing's own ordering). Another
+             *     account's tags on the same asset never surface, so the
+             *     same shared asset answers different arrays for the owner
+             *     and the sharee (each sees their own, or none). Always
+             *     present, empty when the caller tagged the asset with
+             *     nothing. The PATCH response serves the same array,
+             *     exactly as the GET serves it.
+             */
+            tags: components["schemas"]["AssetTagSummary"][];
         };
         /**
          * @description One face of the asset detail's `faces` array: the crop's
@@ -3128,6 +3336,22 @@ export interface components {
              *     label.
              */
             label: components["schemas"]["PersonLabel"] | null;
+        };
+        /**
+         * @description One entry of the asset detail's `tags` array: the caller's
+         *     own tag as it rides the asset -- identity and name only, the
+         *     vocabulary's listing face carries the counts. Per-user state
+         *     (B4): the entry exists exactly because the CALLER's
+         *     assignment row does.
+         */
+        AssetTagSummary: {
+            /**
+             * Format: uuid
+             * @description Identifier of the tag (the caller's own row).
+             */
+            id: string;
+            /** @description The tag's name, the caller's own vocabulary. */
+            name: string;
         };
         /**
          * @description The EXIF hot fields of an asset, flattened from the raw
@@ -3871,6 +4095,115 @@ export interface components {
             jobRunId: string;
         };
         /**
+         * @description One tag of the caller's vocabulary as every tags-face
+         *     response answers it: the identity, the name, the honest
+         *     count and the timestamps. The write faces (create, rename)
+         *     answer this same shape, so a write's answer is the entry the
+         *     listing lists.
+         */
+        TagSummary: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the tag (the caller's own row).
+             */
+            id: string;
+            /**
+             * @description The tag's display name, unique within the caller's
+             *     vocabulary. Trimmed on write; 1-64 Unicode characters
+             *     (counted over runes).
+             */
+            name: string;
+            /**
+             * @description The tag's assignment rows joined to caller-visible live
+             *     assets: the album union plus the timeline's live filters
+             *     (not trashed, not hidden, no Live Photo component). A
+             *     trashed or hidden member stops counting until it
+             *     returns; the assignment row survives underneath, exactly
+             *     like a favorite row.
+             */
+            assetCount: number;
+            /**
+             * Format: date-time
+             * @description When the tag row was created (RFC 3339 UTC).
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the tag's name last truly changed (RFC 3339 UTC).
+             *     The idempotent create and the no-op rename leave it
+             *     untouched -- only a real rename moves it.
+             */
+            updatedAt: string;
+        };
+        /**
+         * @description The name-carrying body of the tag create and rename writes:
+         *     one field, required. The name is trimmed server-side and
+         *     must span 1-64 Unicode characters after the trim (the count
+         *     is over runes, so multi-byte names stay within the bound at
+         *     the same length).
+         */
+        TagNameRequest: {
+            /**
+             * @description The tag's name, trimmed server-side. On create a name
+             *     the caller already owns converges on the existing tag;
+             *     on rename a name another tag carries answers 409
+             *     `TAG_NAME_TAKEN`, the row's own name the idempotent
+             *     no-op.
+             */
+            name: string;
+        };
+        /**
+         * @description The assignment write body: the list of asset ids to tag with
+         *     or untag from the caller's tag. Repeated ids collapse to one
+         *     application; the report's counts cover the distinct ids.
+         */
+        TagAssetsRequest: {
+            /**
+             * @description The asset ids of the assignment write, between 1 and 200
+             *     entries. The add skips -- never errors on -- every id
+             *     that is not caller-visible or that already carries the
+             *     tag; the remove skips the ids that carry no assignment.
+             */
+            assetIds: string[];
+        };
+        /**
+         * @description The honest report of one assignment add over the request's
+         *     distinct ids: what landed and what was skipped, invisible
+         *     and already-tagged ids alike.
+         */
+        AddTagAssetsResponse: {
+            /**
+             * @description The assignment rows the request inserted. Zero for an
+             *     all-skipped request, which is still a 200 -- batch
+             *     semantics, never an error.
+             */
+            added: number;
+            /**
+             * @description The distinct ids that did not land: unknown ids,
+             *     another account's unshared assets, any id the caller
+             *     cannot see, and the ids already carrying the tag (the
+             *     idempotent add).
+             */
+            skipped: number;
+        };
+        /**
+         * @description The honest report of one assignment remove over the
+         *     request's distinct ids: the rows that left and the ids that
+         *     carried no assignment of the tag.
+         */
+        RemoveTagAssetsResponse: {
+            /**
+             * @description The assignment rows the request deleted. Zero for an
+             *     all-skipped request, which is still a 200.
+             */
+            removed: number;
+            /**
+             * @description The distinct ids that carried no assignment of this tag
+             *     -- never tagged, or already untagged.
+             */
+            skipped: number;
+        };
+        /**
          * @description The caller's album wall: the own group followed by the shared
          *     group, concatenated into one array.
          */
@@ -4346,7 +4679,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_LOCKED";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_LOCKED" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -5281,6 +5614,10 @@ export interface operations {
              *     descending with the face id as the tiebreak, each entry
              *     carrying the caller's own label state of the face's
              *     cluster; the `person.*` events on the stream converge it.
+             *     `tags` is always present, the caller's own tags on the
+             *     asset sorted by name case-insensitively with the tag id
+             *     as the tiebreak; the tags writes' own responses carry the
+             *     converged state, so no event needs to.
              */
             200: {
                 headers: {
@@ -5405,9 +5742,9 @@ export interface operations {
             /**
              * @description The asset detail after the edit -- the same shape `GET
              *     /assets/{id}` serves, with the applied values (the
-             *     `faces` array included, unchanged by the edit). The
-             *     idempotent no-op answers it too, with the row's current
-             *     state unchanged.
+             *     `faces` and `tags` arrays included, unchanged by the
+             *     edit). The idempotent no-op answers it too, with the
+             *     row's current state unchanged.
              */
             200: {
                 headers: {
@@ -7565,6 +7902,425 @@ export interface operations {
              *     or bearer token is absent, expired or revoked.
              */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The caller's vocabulary, sorted by name case-insensitively
+             *     with the tag id as the tiebreak. Empty when the caller
+             *     owns no tag.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"][];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagNameRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The name already belongs to the caller: the answer is
+             *     the EXISTING tag's summary, the idempotent convergence
+             *     (nothing was written, `updatedAt` untouched).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"];
+                };
+            };
+            /**
+             * @description The tag exists now; the response is its summary with the
+             *     creation-time zero count.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, or
+             *     the name is missing, empty, whitespace-only, or spans
+             *     more than 64 characters.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the tag. */
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tag and every assignment row are gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such tag for this caller: the id is unknown, was
+             *     already deleted, or belongs to another account --
+             *     indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    renameTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the tag. */
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagNameRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The tag's summary after the edit. The idempotent no-op
+             *     answers it too, with the row's current state unchanged.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagSummary"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, or
+             *     the name is missing, empty, whitespace-only, or spans
+             *     more than 64 characters.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such tag for this caller: the id is unknown or
+             *     belongs to another account -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Another of the caller's tags already carries the
+             *     requested name: the vocabulary keeps one row per name.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addTagAssets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the tag. */
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagAssetsRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The report over the request's distinct ids: `added`
+             *     counts the assignment rows the request inserted,
+             *     `skipped` the rest -- already-tagged ids and ids the
+             *     caller cannot see alike.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddTagAssetsResponse"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, the
+             *     list is empty, or it carries more than 200 ids.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such tag for this caller: the id is unknown or
+             *     belongs to another account -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeTagAssets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the tag. */
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagAssetsRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The report over the request's distinct ids: `removed`
+             *     counts the assignment rows the request deleted,
+             *     `skipped` the ids that carried no assignment of this
+             *     tag.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoveTagAssetsResponse"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, the
+             *     list is empty, or it carries more than 200 ids.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such tag for this caller: the id is unknown or
+             *     belongs to another account -- indistinguishable by
+             *     design.
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

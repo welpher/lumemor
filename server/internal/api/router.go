@@ -385,6 +385,21 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// candidates per listed place), the same cost class as the
 				// people listing.
 				r.Get("/places", wrapper.ListPlaces)
+				// The tags surface (M3d Task 2): the caller's private
+				// vocabulary and its batch assignment. The listing is
+				// one bounded read (a family instance's vocabulary);
+				// every write is a bounded row write (the
+				// assignment lists are capped at 200 ids by the
+				// contract, the cascades ride the row deletes).
+				// Self-affecting per-user state: no events, and the
+				// /tags/{tagId}/assets segment never contends with
+				// the /tags/{tagId} routes (a longer path shape).
+				r.Get("/tags", wrapper.ListTags)
+				r.Post("/tags", wrapper.CreateTag)
+				r.Patch("/tags/{tagId}", wrapper.RenameTag)
+				r.Delete("/tags/{tagId}", wrapper.DeleteTag)
+				r.Post("/tags/{tagId}/assets", wrapper.AddTagAssets)
+				r.Delete("/tags/{tagId}/assets", wrapper.RemoveTagAssets)
 				// The people surface writes (M3b Task 2): the caller's
 				// label and hidden switches, the cluster merge and the
 				// single face move. All are bounded row reads and

@@ -3,6 +3,7 @@
 README.md
 analysis_options.yaml
 doc/AddAlbumItemsResponse.md
+doc/AddTagAssetsResponse.md
 doc/AdminApi.md
 doc/AdminCreateUserRequest.md
 doc/AdminUserListResponse.md
@@ -27,6 +28,7 @@ doc/AssetDetail.md
 doc/AssetFaceSummary.md
 doc/AssetPatch.md
 doc/AssetResponse.md
+doc/AssetTagSummary.md
 doc/AssetsApi.md
 doc/AuthApi.md
 doc/BatchRequest.md
@@ -70,10 +72,15 @@ doc/PlaceSummary.md
 doc/PlacesApi.md
 doc/PlacesRerunResponse.md
 doc/RemoveAlbumItemsResponse.md
+doc/RemoveTagAssetsResponse.md
 doc/ServerApi.md
 doc/ServerInfo.md
 doc/SessionInfo.md
 doc/SetPersonHiddenRequest.md
+doc/TagAssetsRequest.md
+doc/TagNameRequest.md
+doc/TagSummary.md
+doc/TagsApi.md
 doc/TimelineItem.md
 doc/TimelineResponse.md
 doc/TrashItem.md
@@ -95,6 +102,7 @@ lib/src/api/events_api.dart
 lib/src/api/people_api.dart
 lib/src/api/places_api.dart
 lib/src/api/server_api.dart
+lib/src/api/tags_api.dart
 lib/src/api/users_api.dart
 lib/src/api_util.dart
 lib/src/auth/api_key_auth.dart
@@ -104,6 +112,7 @@ lib/src/auth/bearer_auth.dart
 lib/src/auth/oauth.dart
 lib/src/date_serializer.dart
 lib/src/model/add_album_items_response.dart
+lib/src/model/add_tag_assets_response.dart
 lib/src/model/admin_create_user_request.dart
 lib/src/model/admin_user_list_response.dart
 lib/src/model/admin_user_patch.dart
@@ -126,6 +135,7 @@ lib/src/model/asset_detail.dart
 lib/src/model/asset_face_summary.dart
 lib/src/model/asset_patch.dart
 lib/src/model/asset_response.dart
+lib/src/model/asset_tag_summary.dart
 lib/src/model/batch_request.dart
 lib/src/model/batch_response.dart
 lib/src/model/bearer_session.dart
@@ -165,9 +175,13 @@ lib/src/model/person_summary.dart
 lib/src/model/place_summary.dart
 lib/src/model/places_rerun_response.dart
 lib/src/model/remove_album_items_response.dart
+lib/src/model/remove_tag_assets_response.dart
 lib/src/model/server_info.dart
 lib/src/model/session_info.dart
 lib/src/model/set_person_hidden_request.dart
+lib/src/model/tag_assets_request.dart
+lib/src/model/tag_name_request.dart
+lib/src/model/tag_summary.dart
 lib/src/model/timeline_item.dart
 lib/src/model/timeline_response.dart
 lib/src/model/trash_item.dart
@@ -181,6 +195,7 @@ lib/src/model/user_summary.dart
 lib/src/serializers.dart
 pubspec.yaml
 test/add_album_items_response_test.dart
+test/add_tag_assets_response_test.dart
 test/admin_api_test.dart
 test/admin_create_user_request_test.dart
 test/admin_user_list_response_test.dart
@@ -205,6 +220,7 @@ test/asset_detail_test.dart
 test/asset_face_summary_test.dart
 test/asset_patch_test.dart
 test/asset_response_test.dart
+test/asset_tag_summary_test.dart
 test/assets_api_test.dart
 test/auth_api_test.dart
 test/batch_request_test.dart
@@ -248,10 +264,15 @@ test/place_summary_test.dart
 test/places_api_test.dart
 test/places_rerun_response_test.dart
 test/remove_album_items_response_test.dart
+test/remove_tag_assets_response_test.dart
 test/server_api_test.dart
 test/server_info_test.dart
 test/session_info_test.dart
 test/set_person_hidden_request_test.dart
+test/tag_assets_request_test.dart
+test/tag_name_request_test.dart
+test/tag_summary_test.dart
+test/tags_api_test.dart
 test/timeline_item_test.dart
 test/timeline_response_test.dart
 test/trash_item_test.dart

@@ -57,6 +57,8 @@
   "album_share_to_owner": "This album is already yours -- it cannot be shared to its own owner.",
   "album_share_user_invalid": "That account cannot be shared to.",
   "album_pref_not_excludable": "This album cannot be excluded from your timeline.",
+  "tag_not_found": "This tag does not exist or is not visible to you.",
+  "tag_name_taken": "You already have another tag with this name.",
   "timeline_loading": "Loading your timeline…",
   "timeline_empty": "Your timeline is empty. Photos you upload appear here.",
   "timeline_load_more": "Load more",
