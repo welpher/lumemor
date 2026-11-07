@@ -890,9 +890,17 @@ status="$(curl -sS -o "$work_dir/member_wall_body" -b "$member_jar" -w '%{http_c
     || fail "GET /api/v1/albums (member, revoked) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/albums (member, revoked) returned status $status, want 200: $(cat "$work_dir/member_wall_body")"
-grep -q '"albums":\[\]' "$work_dir/member_wall_body" \
-    || fail "the member's wall still lists an album after the revoke: $(cat "$work_dir/member_wall_body")"
-echo "    the wall card is gone"
+# The revoke's honest remainder: the member's own default album (the
+# pinned sync card carrying their own upload) survives -- the shared
+# card must be gone. The wall answers exactly one album, the member's
+# own sync card, with the shared album's id absent.
+shared_gone="$(grep -c "\"id\":\"$album_id\"" "$work_dir/member_wall_body" || true)"
+[ "$shared_gone" = "0" ] \
+    || fail "the member's wall still lists the revoked album: $(cat "$work_dir/member_wall_body")"
+sync_only="$(grep -c '"type":"sync"' "$work_dir/member_wall_body" || true)"
+[ "$sync_only" = "1" ] \
+    || fail "the member's wall after the revoke should carry exactly their own sync card, found $sync_only: $(cat "$work_dir/member_wall_body")"
+echo "    the shared card is gone; the member's own default album remains"
 
 status="$(curl -sS -o "$work_dir/member_timeline_body" -b "$member_jar" -w '%{http_code}' \
     "$base_url/api/v1/assets/timeline")" \
