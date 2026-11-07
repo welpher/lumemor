@@ -43,25 +43,62 @@ ON CONFLICT DO NOTHING;
 -- component is never a tile of its own).
 
 -- name: ListWallAlbumsForCaller :many
--- The wall of the calling user in one statement: the own group (the
--- caller's virtual and directory albums, updated_at descending) UNION
--- ALL the shared group (the albums shared to the caller, the
--- caller's grant time descending), each group breaking ties on the
--- album id descending. The arm_rank column is the group
--- discriminator the ORDER BY pins -- own first, shared second -- and
--- the per-arm sort key rides as sort_at (the album's updated_at for
--- own cards, the caller's granted_at for shared ones).
+-- The wall of the calling user in one statement: the pinned sync
+-- card (the caller's own core stream, the default "My photos"
+-- album) UNION ALL the own group (the caller's virtual and
+-- directory albums, updated_at descending) UNION ALL the shared
+-- group (the albums shared to the caller, the caller's grant time
+-- descending), each group breaking ties on the album id descending.
+-- The arm_rank column is the group discriminator the ORDER BY pins
+-- -- sync first (the pin is structural: no own album's updated_at
+-- outranks it), own second, shared last -- and the per-arm sort key
+-- rides as sort_at (the album's updated_at for the sync and own
+-- cards, the caller's granted_at for shared ones).
 --
--- Sync albums never appear in either arm: the sync album is the
--- account's timeline, not a wall artifact -- the caller's own sync
--- album is invisible on every album face, and a sync album another
--- account shared feeds the timeline's shared arm, not the wall.
+-- A sync album of ANOTHER account never appears: the sync arm is
+-- owner-scoped and the shared arm admits virtual and directory
+-- albums only (a sync album a share row names -- nothing can
+-- produce one -- feeds no wall card for the sharee).
 --
 -- in_timeline is the caller's raw timeline preference row of the
 -- card's album (the exclusion toggle's stored state): NULL means no
 -- row, which the handler maps to the default of feeding the timeline
 -- -- except on the caller's own virtual cards, where the field stays
--- absent entirely (they never feed the caller's own timeline).
+-- absent entirely (they never feed the caller's own timeline), and
+-- on the sync card (the handler omits it there too: the core stream
+-- is never excludable, so the stored value -- always NULL, the
+-- preference face refuses sync -- never surfaces).
+SELECT sqlc.embed(al),
+       'owner'::text AS caller_role,
+       NULL::uuid AS owner_user_id,
+       NULL::text AS owner_email,
+       -- The sync card's is_shared holds the same honest EXISTS the
+       -- own arm computes: no share row can name a sync album (the
+       -- sharing face refuses them), so the answer is false -- but
+       -- a defensive row would report true rather than lie.
+       EXISTS (
+           SELECT 1 FROM album_shares s WHERE s.album_id = al.id
+       ) AS is_shared,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+       ) AS item_count,
+       p.in_timeline,
+       0::int AS arm_rank,
+       al.updated_at AS sort_at
+FROM albums al
+LEFT JOIN user_album_prefs p
+       ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
+WHERE al.owner_id = sqlc.arg('user_id')
+  AND al.type = 'sync'
+
+UNION ALL
+
 SELECT sqlc.embed(al),
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
@@ -79,7 +116,7 @@ SELECT sqlc.embed(al),
              AND a.is_component = false
        ) AS item_count,
        p.in_timeline,
-       0::int AS arm_rank,
+       1::int AS arm_rank,
        al.updated_at AS sort_at
 FROM albums al
 LEFT JOIN user_album_prefs p
@@ -106,7 +143,7 @@ SELECT sqlc.embed(al),
              AND a.is_component = false
        ) AS item_count,
        p.in_timeline,
-       1::int AS arm_rank,
+       2::int AS arm_rank,
        s.granted_at AS sort_at
 FROM albums al
 JOIN album_shares s ON s.album_id = al.id AND s.user_id = sqlc.arg('user_id')
@@ -146,14 +183,20 @@ ORDER BY ranked.album_id, ranked.recency_rank;
 -- The album the caller may see, with the caller's role, the live
 -- member count and the caller's timeline preference. The visibility
 -- check is the whole point: the caller owns the album or an
--- album_shares row grants it, and the album is no sync album (the
--- sync album is the timeline's, whoever owns it -- the detail face
--- answers 404 for it through the handler's no-row mapping, which is
--- what keeps unknown, invisible and sync ids indistinguishable).
+-- album_shares row grants it -- and a sync album resolves ONLY for
+-- its owner: the caller's own sync album is the default album's
+-- read-only detail, while a sync album of another account (whatever
+-- share rows name it) answers no row -- the handler's no-row
+-- mapping keeps unknown, invisible and foreign-sync ids
+-- indistinguishable. The WRITE faces keep their own gate
+-- (GetAlbumForWrite answers no row for every sync album, whoever
+-- owns it): this read admitting the caller's own sync opens no
+-- write path.
 -- in_timeline is the caller's raw preference row (NULL = no row);
 -- the handler maps it to the excludable cards' field -- present for
 -- the own directory albums and the shared albums, absent for the
--- caller's own virtual albums, true when no row exists.
+-- caller's own virtual albums and for the caller's own sync album
+-- (the core stream is never excludable), true when no row exists.
 SELECT sqlc.embed(al),
        CASE
            WHEN al.owner_id = sqlc.arg('user_id') THEN 'owner'::text
@@ -173,7 +216,7 @@ FROM albums al
 LEFT JOIN user_album_prefs p
        ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
 WHERE al.id = sqlc.arg('album_id')
-  AND al.type IN ('virtual', 'directory')
+  AND (al.type <> 'sync' OR al.owner_id = sqlc.arg('user_id'))
   AND (
       al.owner_id = sqlc.arg('user_id')
       OR EXISTS (

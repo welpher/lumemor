@@ -238,6 +238,7 @@
   "admin_jobs_finished": "Finished {time}",
   "admin_jobs_not_started": "Not started",
   "albums_title": "Albums",
+  "album_all_photos": "My photos",
   "albums_loading": "Loading your albums…",
   "albums_empty": "No albums yet. Create one to gather photos around a moment.",
   "albums_new": "New album",

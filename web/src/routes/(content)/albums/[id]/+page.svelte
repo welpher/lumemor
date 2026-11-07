@@ -17,8 +17,12 @@
 	//   albums arrive with their own milestone); a viewer holds the
 	//   exclusion toggle (their own preference) and the leave
 	//   affordance (the revoke of their own share row, the identity
-	//   seam's departure). Read-only is VISUAL: a sharee never sees a
-	//   write affordance, the server keeps refusing them.
+	//   seam's departure). The owner of a SYNC album (the default
+	//   "My photos" album) holds NOTHING: system-managed, read-only
+	//   -- the explicit empty arm below, zero write affordances, and
+	//   the server refuses every write face of the id anyway.
+	//   Read-only is VISUAL: a sharee never sees a write affordance,
+	//   the server keeps refusing them.
 	// - The locked gate is visual too: while locked, the curation and
 	//   property actions disable (the unlock is the lock toggle
 	//   itself, never gated), while the delete and the share stay
@@ -396,7 +400,14 @@
 		return resolveErrorText($_, key);
 	}
 
-	const titleText = $derived(detail?.title ?? $_('albums_title'));
+	// The page's display title: the localized default-album name for
+	// the caller's own sync album, the stored title for every other
+	// album -- the contract's client-side display-name convention
+	// (the sync album's stored title is the system's internal label
+	// and never renders).
+	const titleText = $derived(
+		detail?.type === 'sync' ? $_('album_all_photos') : (detail?.title ?? $_('albums_title'))
+	);
 </script>
 
 <svelte:head>
@@ -424,7 +435,7 @@
 		</div>
 	{:else if detail !== null}
 		<header class="album-detail__header flex flex-wrap items-center gap-3 mb-2">
-			<h1 class="album-detail__title m-0 font-display font-bold text-[24px] leading-[1.3] text-text">{detail.title}</h1>
+			<h1 class="album-detail__title m-0 font-display font-bold text-[24px] leading-[1.3] text-text">{titleText}</h1>
 			{#if locked}
 				<span class="album-detail__badge album-detail__badge--locked inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">
 					<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
@@ -450,9 +461,10 @@
 			<!-- The action set, per callerRole x type: the owner of a
 			     virtual album holds the full write set; the owner of a
 			     directory album the properties / exclusion / rescan
-			     placeholder; a viewer the exclusion toggle and the
-			     leave affordance -- both self-affecting writes the
-			     share holds. -->
+			     placeholder; the owner of the sync album (the default
+			     album) holds nothing -- system-managed; a viewer the
+			     exclusion toggle and the leave affordance -- both
+			     self-affecting writes the share holds. -->
 			<div class="album-detail__actions ml-auto flex flex-wrap items-center gap-2">
 				{#if owner && virtual}
 					<Button variant="ghost" disabled={writeBusy || locked} onclick={() => { propertiesErrorKey = ''; propertiesOpen = true; }}>{$_('albums_action_rename')}</Button>
@@ -474,6 +486,13 @@
 					     directory album's own flow arrives with a later
 					     milestone, and the tooltip says so. -->
 					<Button variant="ghost" disabled title={$_('albums_rescan_note')} aria-describedby="album-detail-rescan-note">{$_('albums_rescan_action')}</Button>
+				{:else if owner && detail.type === 'sync'}
+					<!-- The default album's arm: NOTHING. The sync album is
+					     system-managed -- no rename, no cover, no lock, no
+					     share, no add-photos, no delete, no exclusion
+					     toggle. The arm renders zero affordances, and the
+					     server refuses every write face of the id anyway;
+					     the grid below is the whole page. -->
 				{:else if !owner}
 					<!-- The read-only share's own writes: the timeline
 					     exclusion (the caller's preference) and the
@@ -509,7 +528,7 @@
 			path="/api/v1/assets/timeline"
 			view="timeline"
 			albumId={albumId}
-			heading={detail.title}
+			heading={titleText}
 			loadingKey="albums_detail_loading"
 			emptyKey="albums_detail_empty"
 			actions={['favorite']}

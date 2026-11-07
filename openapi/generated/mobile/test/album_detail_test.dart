@@ -25,7 +25,7 @@ void main() {
       // TODO
     });
 
-    // The album's type; sync albums never reach this shape.
+    // The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
     // String type
     test('to test the property `type`', () async {
       // TODO
@@ -73,7 +73,7 @@ void main() {
       // TODO
     });
 
-    // The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `virtual` album omits the field (it never feeds the caller's own timeline). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
+    // The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `virtual` album omits the field (it never feeds the caller's own timeline), and the caller's own `sync` album omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
     // bool inTimeline
     test('to test the property `inTimeline`', () async {
       // TODO

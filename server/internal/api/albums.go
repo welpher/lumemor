@@ -1,12 +1,21 @@
-// The album surface reads (M3c Task 1): the wall behind GET /albums
-// (the caller's own group then the shared group, one concatenated
+// The album surface reads (M3c Task 1, the M3d default-album pin):
+// the wall behind GET /albums (the caller's pinned sync card first,
+// then the own group, then the shared group -- one concatenated
 // array the web client sections off the callerRole discriminator)
-// and one album's detail behind GET /albums/{albumId} (metadata plus
-// one keyset page of the live items). Sync albums never surface
-// through either face -- the timeline IS the sync album -- and the
-// detail's 404 is single-shape: unknown, invisible and sync ids
-// answer the same byte-identical envelope, the anti-enumeration
-// discipline of ASSET_NOT_FOUND on the album face.
+// and one album's detail behind GET /albums/{albumId} (metadata
+// plus one keyset page of the live items). The caller's OWN sync
+// album surfaces through BOTH faces, read-only: it is the default
+// "My photos" album every upload lands in, so a fresh account's
+// wall is never empty -- the stored title is the system's internal
+// label and the client renders the localized display name keyed by
+// the type. A sync album of another account stays invisible on
+// every face, and the detail's 404 is single-shape: unknown,
+// invisible and foreign-sync ids answer the same byte-identical
+// envelope, the anti-enumeration discipline of ASSET_NOT_FOUND on
+// the album face. The WRITE gates (albums_write.go,
+// albumshares.go, albumprefs.go) keep refusing every sync album,
+// whoever owns it: the read admitting the caller's own sync opens
+// no write path.
 package api
 
 import (
@@ -71,9 +80,10 @@ func (s *server) albumPageParams(w http.ResponseWriter, limit *int, cursor *stri
 
 // writeAlbumNotFound emits the album surface's single-shape 404: the
 // same envelope every read and write answers for an album the caller
-// cannot see -- unknown, foreign-unshared, revoked, sync -- so the
-// two faces stay byte-identical and album ids cannot be probed for
-// existence.
+// cannot see -- unknown, foreign-unshared, revoked, another
+// account's sync (and every sync id through the write faces,
+// whoever owns it) -- so the faces stay byte-identical and album ids
+// cannot be probed for existence.
 func (s *server) writeAlbumNotFound(w http.ResponseWriter) {
 	s.writeError(w, http.StatusNotFound, apigen.ALBUMNOTFOUND,
 		"no such album for this caller", nil)
@@ -105,11 +115,17 @@ func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role ap
 // card's field: the excludable cards (the caller's own directory
 // albums and every shared album) carry the switch -- the stored
 // value, or true when no row exists (the default of feeding the
-// timeline) -- while the caller's own virtual albums omit the field
-// entirely: they never feed the caller's own timeline, so there is
-// nothing to exclude. The role rides along because the write face's
-// cards are always the owner's.
+// timeline) -- while the cards that never feed an excludable
+// timeline omit the field entirely: the caller's own virtual albums
+// (in-stream curation would be pure duplication) and every sync
+// card (the core stream is never excludable; the sync arm is
+// owner-scoped, so the role is always owner when the type is sync).
+// The role rides along because the write face's cards are always
+// the owner's.
 func timelinePrefField(albumType dbgen.AlbumType, role string, stored pgtype.Bool) *bool {
+	if albumType == dbgen.AlbumTypeSync {
+		return nil
+	}
 	if albumType == dbgen.AlbumTypeVirtual && role == "owner" {
 		return nil
 	}
@@ -143,12 +159,15 @@ func coverAssetIds(pinned pgtype.UUID, derived []uuid.UUID) []uuid.UUID {
 }
 
 // ListAlbums implements GET /api/v1/albums: the caller's wall. The
-// query answers both groups in one statement -- the own group (the
-// caller's virtual and directory albums, updated_at descending)
-// first, then the shared group (the albums shared to the caller, the
-// grant time descending) with the owner attribution joined in. The
-// albums without a pinned cover derive their collage from their most
-// recent live members in one bounded follow-up query.
+// query answers all three groups in one statement -- the pinned
+// sync card (the caller's own core stream, the default album)
+// first, then the own group (the caller's virtual and directory
+// albums, updated_at descending), then the shared group (the albums
+// shared to the caller, the grant time descending) with the owner
+// attribution joined in. The albums without a pinned cover derive
+// their collage from their most recent live members in one bounded
+// follow-up query (the sync card included: live members, same as
+// any album).
 func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -206,11 +225,15 @@ func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 
 // GetAlbum implements GET /api/v1/albums/{albumId}: the album's
 // metadata with the caller's role and one keyset page of its live
-// items. The visibility gate is structural: GetAlbumForCaller answers
-// no row for an unknown id, an album the caller neither owns nor
-// holds a share of, and every sync album (the caller's own included
-// -- the timeline is its face), so all of them fold into the one
-// byte-identical 404 and album ids cannot be probed for existence.
+// items. The visibility gate is structural: GetAlbumForCaller
+// answers no row for an unknown id, an album the caller neither
+// owns nor holds a share of, and every sync album of ANOTHER
+// account -- so all of them fold into the one byte-identical 404
+// and album ids cannot be probed for existence. The caller's OWN
+// sync album resolves: the default album's read-only detail (the
+// handler answers it exactly like any album's -- the owner role,
+// the live members keyset-paged -- while the write gates keep
+// their own refusals of the same id).
 func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.UUID, params apigen.GetAlbumParams) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
