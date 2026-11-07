@@ -17,7 +17,7 @@ part 'album_detail.g.dart';
 /// * [id] - Identifier of the album.
 /// * [title] - The album's display title.
 /// * [description] - The album's free-text description (empty when unset).
-/// * [type] - The album's type; sync albums never reach this shape.
+/// * [type] - The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
 /// * [locked] - The owner's lock (metadata to a viewer).
 /// * [coverAssetId] - The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
 /// * [callerRole] - The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
@@ -25,7 +25,7 @@ part 'album_detail.g.dart';
 /// * [items] - One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
 /// * [nextCursor] - The opaque continuation cursor: pass it back as the `cursor` query parameter to fetch the next page. Absent exactly when this is the last page. 
 /// * [shares] - The album's grantee list, riding ONLY the owner's view: one entry per `album_shares` row in the grant order (`grantedAt` ascending) -- the share management dialog's list. The owner's response always carries the field, an empty array when the album holds no grants; viewer responses never carry it at all. 
-/// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `virtual` album omits the field (it never feeds the caller's own timeline). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
+/// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `virtual` album omits the field (it never feeds the caller's own timeline), and the caller's own `sync` album omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
 @BuiltValue()
 abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   /// Identifier of the album.
@@ -40,10 +40,10 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   @BuiltValueField(wireName: r'description')
   String get description;
 
-  /// The album's type; sync albums never reach this shape.
+  /// The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
   @BuiltValueField(wireName: r'type')
   AlbumDetailTypeEnum get type;
-  // enum typeEnum {  virtual,  directory,  };
+  // enum typeEnum {  virtual,  directory,  sync,  };
 
   /// The owner's lock (metadata to a viewer).
   @BuiltValueField(wireName: r'locked')
@@ -74,7 +74,7 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   @BuiltValueField(wireName: r'shares')
   BuiltList<AlbumShareEntry>? get shares;
 
-  /// The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `virtual` album omits the field (it never feeds the caller's own timeline). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
+  /// The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `virtual` album omits the field (it never feeds the caller's own timeline), and the caller's own `sync` album omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
   @BuiltValueField(wireName: r'inTimeline')
   bool? get inTimeline;
 
@@ -308,13 +308,15 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
 }
 
 
-/// The album's type; sync albums never reach this shape.
+/// The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
 class AlbumDetailTypeEnum extends EnumClass {
 
   @BuiltValueEnumConst(wireName: r'virtual')
   static const AlbumDetailTypeEnum virtual = _$albumDetailTypeEnum_virtual;
   @BuiltValueEnumConst(wireName: r'directory')
   static const AlbumDetailTypeEnum directory = _$albumDetailTypeEnum_directory;
+  @BuiltValueEnumConst(wireName: r'sync')
+  static const AlbumDetailTypeEnum sync_ = _$albumDetailTypeEnum_sync_;
 
   static Serializer<AlbumDetailTypeEnum> get serializer => _$albumDetailTypeEnumSerializer;
 

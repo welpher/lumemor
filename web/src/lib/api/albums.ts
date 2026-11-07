@@ -18,10 +18,14 @@
 // errorKey, so the honest message renders through the same
 // resolveErrorText path every code takes.
 //
-// The wall's two groups arrive concatenated (own first, shared
-// after); the page sections them off each item's `callerRole`. The
-// media URLs (every `thumbnail` field) arrive as strings from the
-// server; no URL is assembled here.
+// The wall's two groups arrive concatenated (the pinned sync card
+// first, then the own group, shared after); the page sections them
+// off each item's `callerRole`. The media URLs (every `thumbnail`
+// field) arrive as strings from the server; no URL is assembled
+// here. A `type: 'sync'` card is the caller's own default album:
+// its `title` is the system's internal label and the UI renders the
+// localized display name (album_all_photos) keyed by the type --
+// never the stored title.
 
 import { apiFetch } from '$lib/auth/api';
 import type { components } from '../../../../openapi/generated/web/api';
@@ -156,7 +160,7 @@ function summaryFrom(body: unknown): AlbumSummary | null {
 	if (typeof candidate.description !== 'string') {
 		return null;
 	}
-	if (candidate.type !== 'virtual' && candidate.type !== 'directory') {
+	if (candidate.type !== 'virtual' && candidate.type !== 'directory' && candidate.type !== 'sync') {
 		return null;
 	}
 	if (candidate.locked !== true && candidate.locked !== false) {
@@ -216,7 +220,7 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 	if (typeof candidate.description !== 'string') {
 		return null;
 	}
-	if (candidate.type !== 'virtual' && candidate.type !== 'directory') {
+	if (candidate.type !== 'virtual' && candidate.type !== 'directory' && candidate.type !== 'sync') {
 		return null;
 	}
 	if (candidate.locked !== true && candidate.locked !== false) {
@@ -272,8 +276,9 @@ function userSummaryFrom(body: unknown): UserSummary | null {
 }
 
 /**
- * GET /api/v1/albums: the caller's wall, the own group followed by
- * the shared group in one array. The page sections them off each
+ * GET /api/v1/albums: the caller's wall, the pinned sync card (the
+ * default "My photos" album) followed by the own group and the
+ * shared group in one array. The page sections them off each
  * item's `callerRole` (the server's ordering owns each group).
  */
 export async function listAlbums(
@@ -307,8 +312,9 @@ export async function listAlbums(
  * GET /api/v1/albums/{albumId}: the album's metadata as the caller
  * sees it -- `callerRole` decides the write affordances, `shares`
  * rides the owner's view alone, `inTimeline` the excludable kinds.
- * A 404 is the anti-enumeration pair (unknown id, another account's
- * unshared album, every sync album).
+ * The caller's OWN sync album answers here (read-only, the default
+ * album); a 404 is the anti-enumeration pair (unknown id, another
+ * account's unshared album, every foreign sync album).
  */
 export async function fetchAlbumDetail(
 	albumId: string,

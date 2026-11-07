@@ -1013,21 +1013,26 @@ export interface paths {
          *     web client renders its sections off the `callerRole`
          *     discriminator each item carries.
          *
-         *     The own group comes first: the albums the caller owns of type
-         *     `virtual` or `directory`, the most recently updated first
-         *     (the album id descending as the tiebreak). The shared group
-         *     follows: every album shared to the caller through an
-         *     `album_shares` row, the caller's most recently granted share
-         *     first (the album id descending as the tiebreak). Shared items
-         *     carry `owner` -- the honest attribution of another account's
-         *     album: the owner's id and email.
+         *     The caller's sync album is pinned FIRST, before the own
+         *     group: the one card of type `sync`, the caller's own core
+         *     upload stream surfaced as the default "My photos" album --
+         *     every upload lands in it, so a fresh account's wall is never
+         *     empty. The own group follows: the albums the caller owns of
+         *     type `virtual` or `directory`, the most recently updated
+         *     first (the album id descending as the tiebreak). The shared
+         *     group follows last: every album shared to the caller through
+         *     an `album_shares` row, the caller's most recently granted
+         *     share first (the album id descending as the tiebreak).
+         *     Shared items carry `owner` -- the honest attribution of
+         *     another account's album: the owner's id and email.
          *
-         *     Sync albums NEVER appear on the wall, in either group. The
-         *     sync album is the account's core backup stream and lives as
-         *     the timeline (`GET /assets/timeline`), not as an album
-         *     resource; a sync album another account shared is likewise no
-         *     wall card. The caller's own sync album is invisible here and
-         *     answers 404 through `GET /albums/{albumId}`.
+         *     A sync album of ANOTHER account never appears, in either
+         *     group: the shared arm carries `virtual` and `directory`
+         *     albums only, whatever share rows exist. The pinned card's
+         *     `title` is the system's internal fixed label ('Sync') -- the
+         *     display name is the CLIENT's: `type: 'sync'` keys the
+         *     localized default-album name (en "My photos", zh-Hans
+         *     "我的照片"), and the stored title never renders.
          *
          *     `coverAssetIds` is the wall card's collage source: the
          *     pinned `coverAssetId` as a single-element list when the
@@ -1049,7 +1054,9 @@ export interface paths {
          *     timeline preference of that album, true when no preference
          *     row exists (the default of feeding the timeline). The own
          *     `virtual` items omit the field: they never feed the caller's
-         *     own timeline. The field is the toggle's source of truth for
+         *     own timeline. The pinned `sync` card omits it too: the core
+         *     stream is never excludable (the preference face answers 400
+         *     for it). The field is the toggle's source of truth for
          *     the wall's "excluded" badge, kept current by the
          *     `PUT/DELETE /albums/{albumId}/timeline-preference` endpoints.
          */
@@ -1097,17 +1104,29 @@ export interface paths {
          *     owns it, or it is shared to the caller through an
          *     `album_shares` row. `callerRole` says which -- `owner` for
          *     the owner's write affordances, `viewer` for the read-only
-         *     share.
+         *     share -- with the one exception below.
          *
-         *     Sync albums are not album resources: the id of a sync album
-         *     -- the caller's own or anyone else's -- answers the same 404
-         *     as an unknown id. The sync album is the timeline
-         *     (`GET /assets/timeline`); its stream surfaces there, never
-         *     through this face.
+         *     The caller's OWN sync album answers 200: the default album's
+         *     read-only detail. `callerRole` is `owner`, the live members
+         *     page through the same keyset as any album's (the grid and
+         *     the viewer work like any album's), but the album is
+         *     system-managed: NO write affordance applies to it -- the
+         *     property patch, the membership curation, the sharing face,
+         *     the timeline preference and the delete all keep refusing a
+         *     sync album with their unchanged 404/400 answers, whatever
+         *     this read admits. `inTimeline` is absent (the core stream is
+         *     never excludable) and the owner's `shares` list rides the
+         *     response always empty (no share row can name a sync album).
+         *     The client renders the localized display name (en "My
+         *     photos", zh-Hans "我的照片") keyed by `type: 'sync'` -- the
+         *     stored title is the internal system label and never renders.
+         *
+         *     A sync album of ANOTHER account answers the same 404 as an
+         *     unknown id, whatever share rows exist: invisible by design.
          *
          *     404 is single-shape by design: an unknown id, another
-         *     account's unshared album, and a sync album all answer the
-         *     same `ALBUM_NOT_FOUND` byte for byte -- the
+         *     account's unshared album, and another account's sync album
+         *     all answer the same `ALBUM_NOT_FOUND` byte for byte -- the
          *     anti-enumeration discipline of `ASSET_NOT_FOUND` applied to
          *     the album face. An album whose share to the caller was
          *     revoked before the request simply sits in that same invisible
@@ -4489,12 +4508,14 @@ export interface components {
          */
         AlbumWallResponse: {
             /**
-             * @description Every wall album: the own group first (the caller's
-             *     virtual and directory albums, `updatedAt` descending),
-             *     then the shared group (the albums shared to the caller,
-             *     the caller's grant time descending). Each group breaks
-             *     ties on the album id, descending. Sync albums never
-             *     appear in either group.
+             * @description Every wall album: the pinned sync card first (the
+             *     caller's own core upload stream, the default "My
+             *     photos" album), then the own group (the caller's virtual
+             *     and directory albums, `updatedAt` descending), then the
+             *     shared group (the albums shared to the caller, the
+             *     caller's grant time descending). Each group breaks ties
+             *     on the album id, descending. A sync album another
+             *     account owns never appears.
              */
             albums: components["schemas"]["AlbumSummary"][];
         };
@@ -4517,11 +4538,15 @@ export interface components {
             description: string;
             /**
              * @description The album's type. `virtual` albums are curated by their
-             *     owner; `directory` albums mirror a filesystem path. Sync
-             *     albums never reach this shape.
+             *     owner; `directory` albums mirror a filesystem path. The
+             *     one `sync` card, when present, is the caller's own
+             *     default album pinned first (never another account's):
+             *     its `title` is the internal system label ('Sync') and
+             *     clients render the localized display name instead (en
+             *     "My photos", zh-Hans "我的照片").
              * @enum {string}
              */
-            type: "virtual" | "directory";
+            type: "virtual" | "directory" | "sync";
             /**
              * @description The owner's lock: a locked album refuses its owner's
              *     curation and property writes until unlocked. It is
@@ -4572,8 +4597,10 @@ export interface components {
              *     the excludable cards -- the own `directory` items and
              *     every shared item; the own `virtual` items omit it
              *     (they never feed the caller's own timeline, so there is
-             *     nothing to exclude). The value is the preference row's
-             *     switch, true when no row exists (the default).
+             *     nothing to exclude), and the pinned `sync` card omits it
+             *     too (the core stream is never excludable). The value is
+             *     the preference row's switch, true when no row exists
+             *     (the default).
              */
             inTimeline?: boolean;
         };
@@ -4609,10 +4636,15 @@ export interface components {
             /** @description The album's free-text description (empty when unset). */
             description: string;
             /**
-             * @description The album's type; sync albums never reach this shape.
+             * @description The album's type; `sync` is the caller's own default
+             *     album -- a read-only, system-managed detail (no write
+             *     affordance applies, the display name is the client's
+             *     localized one keyed by the type). Another account's sync
+             *     album never reaches this shape: it answers the
+             *     single-shape 404.
              * @enum {string}
              */
-            type: "virtual" | "directory";
+            type: "virtual" | "directory" | "sync";
             /** @description The owner's lock (metadata to a viewer). */
             locked: boolean;
             /**
@@ -4658,8 +4690,10 @@ export interface components {
              *     the album is excludable for the caller -- an own
              *     `directory` album or an album shared to them; an own
              *     `virtual` album omits the field (it never feeds the
-             *     caller's own timeline). The value is the preference
-             *     row's switch, true when no row exists (the default).
+             *     caller's own timeline), and the caller's own `sync`
+             *     album omits it too (the core stream is never
+             *     excludable). The value is the preference row's
+             *     switch, true when no row exists (the default).
              *     The preference scopes the aggregated timeline only: it
              *     never filters this album's own items, whatever the
              *     switch says.
@@ -6596,9 +6630,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /**
-             * @description The caller's wall, the own group followed by the shared
-             *     group. The array is empty when the caller owns no virtual
-             *     or directory album and no album is shared to them.
+             * @description The caller's wall: the pinned sync card, then the own
+             *     group, then the shared group. The array is empty only
+             *     when the caller's account predates the sync-album
+             *     wiring (no sync album exists) and no virtual or
+             *     directory album is theirs and no album is shared to
+             *     them -- the sync card otherwise always leads.
              */
             200: {
                 headers: {
@@ -6763,8 +6800,9 @@ export interface operations {
             /**
              * @description No such album for this caller: the id is unknown, the
              *     album belongs to another account without a share to the
-             *     caller, or it is a sync album -- indistinguishable by
-             *     design.
+             *     caller, or it is a sync album another account owns --
+             *     indistinguishable by design (the caller's own sync album
+             *     answers 200, read-only).
              */
             404: {
                 headers: {

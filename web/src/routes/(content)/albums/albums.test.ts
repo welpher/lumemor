@@ -6,15 +6,18 @@ import type { AlbumSummary } from '$lib/api/albums';
 import Page from './+page.svelte';
 
 // The album wall (web IA §2-§3): the cover-card grid in its two
-// sections -- the caller's own albums, then the albums shared to
-// them -- with the collage covers (one full-bleed, two split, three
-// 2+1, four quad), the locked / shared / excluded badges, the counts
-// and the honest owner attribution on the shared cards. The "New
-// album" dialog creates one virtual album; every album.* SSE event
-// converges through ONE fresh wall fetch (the collapsed single-flight
-// of the people page), and the refetched SERVER answer decides what
-// changed. The events module is mocked with a captured handler
-// registry, the people page's pattern.
+// sections -- the caller's own albums (the pinned sync card of the
+// default "My photos" album first, its localized display name keyed
+// by `type === 'sync'`), then the albums shared to them (with the
+// honest owner attribution) -- with the collage covers (one
+// full-bleed, two split, three 2+1, four quad), the locked / shared
+// / excluded badges, the counts and the honest owner attribution on
+// the shared cards. The "New album" dialog creates one virtual
+// album; every album.* SSE event converges through ONE fresh wall
+// fetch (the collapsed single-flight of the people page), and the
+// refetched SERVER answer decides what changed. The events module
+// is mocked with a captured handler registry, the people page's
+// pattern.
 
 const { handlers } = vi.hoisted(() => ({
 	handlers: [] as Array<(event: unknown) => void>
@@ -55,6 +58,15 @@ const roadTrip = summary('al1', {
 	itemCount: 128,
 	isShared: true
 });
+// The pinned default card: the caller's own sync album, exactly the
+// server's shape (the internal title 'Sync', the type the display
+// name keys on, no excludable field).
+const myPhotos = summary('sync1', {
+	title: 'Sync',
+	type: 'sync',
+	coverAssetIds: ['s1', 's2'],
+	itemCount: 1204
+});
 const familyArchive = summary('al2', {
 	title: 'Family archive',
 	type: 'directory',
@@ -78,7 +90,7 @@ const graceHighlights = summary('al4', {
 
 // The server's current answer; the convergence tests mutate it to
 // stand for the server's post-event truth.
-let wallState: AlbumSummary[] = [roadTrip, familyArchive, quickPicks, graceHighlights];
+let wallState: AlbumSummary[] = [myPhotos, roadTrip, familyArchive, quickPicks, graceHighlights];
 
 function jsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
@@ -96,13 +108,20 @@ function wallRoutes(overrides: FetchRoute = {}): FetchRoute {
 			if (init?.method === 'POST') {
 				const body = JSON.parse(String(init.body)) as { title: string };
 				const created = summary('al-new', { title: body.title, itemCount: 0 });
-				wallState = [created, ...wallState];
+				gainOwnCard(created);
 				return jsonResponse(201, created);
 			}
 			return jsonResponse(200, { albums: wallState });
 		},
 		...overrides
 	};
+}
+
+/** Mirror the server's answer: the pinned sync card stays first, the
+ * new own card heads the curated rest of the own group. */
+function gainOwnCard(album: AlbumSummary): void {
+	const pin = wallState[0]?.type === 'sync' ? [wallState[0]] : [];
+	wallState = [...pin, album, ...wallState.slice(pin.length)];
 }
 
 function stubFetch(route: FetchRoute): ReturnType<typeof vi.fn> {
@@ -166,7 +185,7 @@ beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
 	vi.clearAllMocks();
-	wallState = [roadTrip, familyArchive, quickPicks, graceHighlights];
+	wallState = [myPhotos, roadTrip, familyArchive, quickPicks, graceHighlights];
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
 	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
@@ -193,7 +212,7 @@ test('the wall sections the albums off the callerRole: own first, shared after',
 
 	const ownCards = Array.from(ownSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
 	const sharedCards = Array.from(sharedSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
-	expect(ownCards).toHaveLength(3);
+	expect(ownCards).toHaveLength(4);
 	expect(sharedCards).toHaveLength(1);
 	expect(sharedCards[0]?.querySelector('.album-card__title')?.textContent).toBe(
 		"Grace's highlights"
@@ -203,8 +222,44 @@ test('the wall sections the albums off the callerRole: own first, shared after',
 		'Shared by grace@example.com'
 	);
 	// Cards link into the album's detail.
-	expect(ownCards[0]?.getAttribute('href')).toBe('/albums/al1');
+	expect(ownCards[1]?.getAttribute('href')).toBe('/albums/al1');
 	expect(sharedCards[0]?.getAttribute('href')).toBe('/albums/al4');
+
+	unmount(page);
+	flushSync();
+});
+
+test('the pinned sync card leads the own group with the localized display name', async () => {
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	const ownSection = document.body.querySelector('.albums__own-section');
+	const ownCards = Array.from(ownSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
+
+	// The first own card is the caller's sync album: the display
+	// name is the i18n key's, the stored internal title never
+	// renders.
+	expect(ownCards[0]?.querySelector('.album-card__title')?.textContent).toBe('My photos');
+	expect(ownCards[0]?.textContent).not.toContain('Sync');
+	expect(ownCards[0]?.getAttribute('href')).toBe('/albums/sync1');
+	// The honest count and the derived cover, same as any album.
+	expect(ownCards[0]?.textContent).toContain('1,204 photos');
+	const syncCoverImgs = Array.from(ownCards[0]?.querySelectorAll('img') ?? []).map(
+		(img) => img.getAttribute('src') ?? ''
+	);
+	expect(syncCoverImgs).toEqual([
+		'/api/v1/assets/s1/thumbnail?size=tile',
+		'/api/v1/assets/s2/thumbnail?size=tile'
+	]);
+	expect(
+		ownCards[0]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--split')
+	).toBe(true);
+	// No badges: no lock, no share, no exclusion -- the default
+	// album is system-managed and never excludable.
+	expect(ownCards[0]?.querySelector('.album-card__badge--locked')).toBeNull();
+	expect(ownCards[0]?.querySelector('.album-card__badge--shared')).toBeNull();
+	expect(ownCards[0]?.querySelector('.album-card__badge--excluded')).toBeNull();
 
 	unmount(page);
 	flushSync();
@@ -221,28 +276,28 @@ test('the collage cover renders per the member count: 4 quad, 2 split, 1 full-bl
 			: [];
 
 	// Four covers: the quad collage, tile-size serving copies.
-	expect(coverImgs(0)).toEqual([
+	expect(coverImgs(1)).toEqual([
 		'/api/v1/assets/a1/thumbnail?size=tile',
 		'/api/v1/assets/a2/thumbnail?size=tile',
 		'/api/v1/assets/a3/thumbnail?size=tile',
 		'/api/v1/assets/a4/thumbnail?size=tile'
 	]);
-	expect(cards()[0]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--quad')).toBe(true);
+	expect(cards()[1]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--quad')).toBe(true);
 
 	// Zero covers: the bare placeholder, no requests.
-	expect(coverImgs(1)).toEqual([]);
-	expect(cards()[1]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--empty')).toBe(true);
+	expect(coverImgs(2)).toEqual([]);
+	expect(cards()[2]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--empty')).toBe(true);
 
 	// One cover: the full-bleed pin.
-	expect(coverImgs(2)).toEqual(['/api/v1/assets/a9/thumbnail?size=tile']);
-	expect(cards()[2]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--single')).toBe(true);
+	expect(coverImgs(3)).toEqual(['/api/v1/assets/a9/thumbnail?size=tile']);
+	expect(cards()[3]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--single')).toBe(true);
 
 	// Two covers: the split pair.
-	expect(coverImgs(3)).toEqual([
+	expect(coverImgs(4)).toEqual([
 		'/api/v1/assets/g1/thumbnail?size=tile',
 		'/api/v1/assets/g2/thumbnail?size=tile'
 	]);
-	expect(cards()[3]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--split')).toBe(true);
+	expect(cards()[4]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--split')).toBe(true);
 
 	unmount(page);
 	flushSync();
@@ -268,12 +323,12 @@ test('the badges ride the cards: locked, shared, excluded', async () => {
 	const page = mountPage();
 	await settle();
 
-	const roadTripCard = cards()[0];
+	const roadTripCard = cards()[1];
 	expect(roadTripCard?.querySelector('.album-card__badge--shared')?.textContent?.trim()).toBe('Shared');
 	expect(roadTripCard?.querySelector('.album-card__badge--locked')).toBeNull();
 	expect(roadTripCard?.textContent).toContain('128 photos');
 
-	const archiveCard = cards()[1];
+	const archiveCard = cards()[2];
 	expect(archiveCard?.querySelector('.album-card__badge--locked')?.textContent?.trim()).toBe('Locked');
 	// The exclusion badge rides the excludable cards only: the own
 	// directory item here, and every shared item.
@@ -281,13 +336,13 @@ test('the badges ride the cards: locked, shared, excluded', async () => {
 		'Not in timeline'
 	);
 
-	const sharedCard = cards()[3];
+	const sharedCard = cards()[4];
 	expect(sharedCard?.querySelector('.album-card__badge--excluded')).toBeNull();
 	expect(sharedCard?.textContent).toContain('17 photos');
 
 	// The own virtual card carries no exclusion badge: it never feeds
 	// the caller's own timeline.
-	expect(cards()[2]?.querySelector('.album-card__badge--excluded')).toBeNull();
+	expect(cards()[3]?.querySelector('.album-card__badge--excluded')).toBeNull();
 
 	unmount(page);
 	flushSync();
@@ -328,7 +383,7 @@ test('a failed load shows the error box with a working retry', async () => {
 	buttonByText('Try again').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	expect(cards()).toHaveLength(4);
+	expect(cards()).toHaveLength(5);
 	unmount(page);
 	flushSync();
 });
@@ -353,7 +408,7 @@ test('the create dialog POSTs the title and the refetched wall gains the card', 
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
-	expect(cards()).toHaveLength(4);
+	expect(cards()).toHaveLength(5);
 
 	buttonByText('New album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
@@ -373,10 +428,12 @@ test('the create dialog POSTs the title and the refetched wall gains the card', 
 		title: 'Weekend in the hills',
 		description: ''
 	});
-	// The refetch placed the created card at the head of the own group.
-	expect(cards()[0]?.querySelector('.album-card__title')?.textContent).toBe(
+	// The refetch placed the created card after the pinned sync card,
+	// at the head of the curated own group.
+	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe(
 		'Weekend in the hills'
 	);
+	expect(cards()[0]?.querySelector('.album-card__title')?.textContent).toBe('My photos');
 	expect(modal()).toBeNull();
 	unmount(page);
 	flushSync();
@@ -412,13 +469,16 @@ test('SSE album.created converges: the refetched wall gains the card', async () 
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
-	expect(cards()).toHaveLength(4);
+	expect(cards()).toHaveLength(5);
 
-	wallState = [summary('al9', { title: 'Fresh event album' }), ...wallState];
+	gainOwnCard(summary('al9', { title: 'Fresh event album' }));
 	fireAlbumEvent({ id: 2, name: 'album.created', albumId: 'al9', userId: 'u1' });
 	await settle();
 
-	expect(cards()[0]?.querySelector('.album-card__title')?.textContent).toBe('Fresh event album');
+	// The pinned card still leads; the fresh card heads the curated
+	// own group behind it.
+	expect(cards()[0]?.querySelector('.album-card__title')?.textContent).toBe('My photos');
+	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe('Fresh event album');
 	unmount(page);
 	flushSync();
 });
@@ -428,13 +488,14 @@ test('SSE album.deleted converges: the refetched wall drops the card', async () 
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
-	expect(cards()).toHaveLength(4);
+	expect(cards()).toHaveLength(5);
 
 	wallState = wallState.filter((album) => album.id !== 'al1');
 	fireAlbumEvent({ id: 3, name: 'album.deleted', albumId: 'al1', userId: 'u1' });
 	await settle();
 
 	expect(cards().map((card) => card.getAttribute('href'))).toEqual([
+		'/albums/sync1',
 		'/albums/al2',
 		'/albums/al3',
 		'/albums/al4'
@@ -455,7 +516,7 @@ test('a foreign write that moves nothing the server does not move changes nothin
 	fireAlbumEvent({ id: 4, name: 'album.items-changed', albumId: 'al-elsewhere', userId: 'u2' });
 	await settle();
 
-	expect(cards()).toHaveLength(4);
+	expect(cards()).toHaveLength(5);
 	expect(fetchMock.mock.calls.length).toBe(initial + 1);
 	unmount(page);
 	flushSync();

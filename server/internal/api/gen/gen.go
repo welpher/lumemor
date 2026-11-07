@@ -35,6 +35,7 @@ func (e AlbumDetailCallerRole) Valid() bool {
 // Defines values for AlbumDetailType.
 const (
 	AlbumDetailTypeDirectory AlbumDetailType = "directory"
+	AlbumDetailTypeSync      AlbumDetailType = "sync"
 	AlbumDetailTypeVirtual   AlbumDetailType = "virtual"
 )
 
@@ -42,6 +43,8 @@ const (
 func (e AlbumDetailType) Valid() bool {
 	switch e {
 	case AlbumDetailTypeDirectory:
+		return true
+	case AlbumDetailTypeSync:
 		return true
 	case AlbumDetailTypeVirtual:
 		return true
@@ -89,6 +92,7 @@ func (e AlbumSummaryCallerRole) Valid() bool {
 // Defines values for AlbumSummaryType.
 const (
 	AlbumSummaryTypeDirectory AlbumSummaryType = "directory"
+	AlbumSummaryTypeSync      AlbumSummaryType = "sync"
 	AlbumSummaryTypeVirtual   AlbumSummaryType = "virtual"
 )
 
@@ -96,6 +100,8 @@ const (
 func (e AlbumSummaryType) Valid() bool {
 	switch e {
 	case AlbumSummaryTypeDirectory:
+		return true
+	case AlbumSummaryTypeSync:
 		return true
 	case AlbumSummaryTypeVirtual:
 		return true
@@ -706,8 +712,10 @@ type AlbumDetail struct {
 	// the album is excludable for the caller -- an own
 	// `directory` album or an album shared to them; an own
 	// `virtual` album omits the field (it never feeds the
-	// caller's own timeline). The value is the preference
-	// row's switch, true when no row exists (the default).
+	// caller's own timeline), and the caller's own `sync`
+	// album omits it too (the core stream is never
+	// excludable). The value is the preference row's
+	// switch, true when no row exists (the default).
 	// The preference scopes the aggregated timeline only: it
 	// never filters this album's own items, whatever the
 	// switch says.
@@ -740,7 +748,12 @@ type AlbumDetail struct {
 	// Title The album's display title.
 	Title string `json:"title"`
 
-	// Type The album's type; sync albums never reach this shape.
+	// Type The album's type; `sync` is the caller's own default
+	// album -- a read-only, system-managed detail (no write
+	// affordance applies, the display name is the client's
+	// localized one keyed by the type). Another account's sync
+	// album never reaches this shape: it answers the
+	// single-shape 404.
 	Type AlbumDetailType `json:"type"`
 }
 
@@ -748,7 +761,12 @@ type AlbumDetail struct {
 // write affordances, a viewer is read-only.
 type AlbumDetailCallerRole string
 
-// AlbumDetailType The album's type; sync albums never reach this shape.
+// AlbumDetailType The album's type; `sync` is the caller's own default
+// album -- a read-only, system-managed detail (no write
+// affordance applies, the display name is the client's
+// localized one keyed by the type). Another account's sync
+// album never reaches this shape: it answers the
+// single-shape 404.
 type AlbumDetailType string
 
 // AlbumFacetCount One album of the albums facet.
@@ -927,8 +945,10 @@ type AlbumSummary struct {
 	// the excludable cards -- the own `directory` items and
 	// every shared item; the own `virtual` items omit it
 	// (they never feed the caller's own timeline, so there is
-	// nothing to exclude). The value is the preference row's
-	// switch, true when no row exists (the default).
+	// nothing to exclude), and the pinned `sync` card omits it
+	// too (the core stream is never excludable). The value is
+	// the preference row's switch, true when no row exists
+	// (the default).
 	InTimeline *bool `json:"inTimeline,omitempty"`
 
 	// IsShared True when the album carries at least one `album_shares`
@@ -955,8 +975,12 @@ type AlbumSummary struct {
 	Title string `json:"title"`
 
 	// Type The album's type. `virtual` albums are curated by their
-	// owner; `directory` albums mirror a filesystem path. Sync
-	// albums never reach this shape.
+	// owner; `directory` albums mirror a filesystem path. The
+	// one `sync` card, when present, is the caller's own
+	// default album pinned first (never another account's):
+	// its `title` is the internal system label ('Sync') and
+	// clients render the localized display name instead (en
+	// "My photos", zh-Hans "我的照片").
 	Type AlbumSummaryType `json:"type"`
 
 	// UpdatedAt When the album row last changed (RFC 3339 UTC).
@@ -969,8 +993,12 @@ type AlbumSummary struct {
 type AlbumSummaryCallerRole string
 
 // AlbumSummaryType The album's type. `virtual` albums are curated by their
-// owner; `directory` albums mirror a filesystem path. Sync
-// albums never reach this shape.
+// owner; `directory` albums mirror a filesystem path. The
+// one `sync` card, when present, is the caller's own
+// default album pinned first (never another account's):
+// its `title` is the internal system label ('Sync') and
+// clients render the localized display name instead (en
+// "My photos", zh-Hans "我的照片").
 type AlbumSummaryType string
 
 // AlbumTimelinePreferenceRequest The caller's timeline preference write: the per-user switch
@@ -1001,12 +1029,14 @@ type AlbumTimelinePreferenceResponse struct {
 // AlbumWallResponse The caller's album wall: the own group followed by the shared
 // group, concatenated into one array.
 type AlbumWallResponse struct {
-	// Albums Every wall album: the own group first (the caller's
-	// virtual and directory albums, `updatedAt` descending),
-	// then the shared group (the albums shared to the caller,
-	// the caller's grant time descending). Each group breaks
-	// ties on the album id, descending. Sync albums never
-	// appear in either group.
+	// Albums Every wall album: the pinned sync card first (the
+	// caller's own core upload stream, the default "My
+	// photos" album), then the own group (the caller's virtual
+	// and directory albums, `updatedAt` descending), then the
+	// shared group (the albums shared to the caller, the
+	// caller's grant time descending). Each group breaks ties
+	// on the album id, descending. A sync album another
+	// account owns never appears.
 	Albums []AlbumSummary `json:"albums"`
 }
 

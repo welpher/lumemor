@@ -238,6 +238,7 @@
   "admin_jobs_finished": "完成于 {time}",
   "admin_jobs_not_started": "尚未开始",
   "albums_title": "相册",
+  "album_all_photos": "我的照片",
   "albums_loading": "正在加载相册…",
   "albums_empty": "还没有相册。创建一个，把某个瞬间的照片聚在一起。",
   "albums_new": "新建相册",
