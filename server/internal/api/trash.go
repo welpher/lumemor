@@ -6,11 +6,12 @@
 // byte-identical with an unknown one -- while the explicit permanent
 // delete also admits administrators, the application layer of the
 // spec's two-layer delete gate. The file half of every permanent
-// delete is the shared-blob rule: content addressing stores identical
-// bytes of any owner under one physical file, so the original is
-// removed only when no other row references it (see
-// CountAssetFileReferences); the derived copies are keyed by the
-// asset id alone and always go.
+// delete is the shared-file rule, which spans both storage eras:
+// legacy content-addressed rows store identical bytes of any owner
+// under one physical file (the original goes only when no other row
+// references it -- see CountAssetFileReferences), while
+// template-era rows are per-owner and unique; the derived copies are
+// keyed by the asset id alone and always go.
 package api
 
 import (

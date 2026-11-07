@@ -406,6 +406,8 @@ func TestTemplateCompileRejectsMalformedTexts(t *testing.T) {
 		{"unterminated if", "{{#if album}}x", "unterminated"},
 		{"else without a closing if", "{{#if album}}x{{else}}y", "unterminated"},
 		{"control rune in the text", "{{y}}/\x01", "control"},
+		{"literal trailing separator", "{{y}}/{{MM}}/", "trailing separator"},
+		{"whitespace-only template", "   ", "empty"},
 		{"template over the length bound", "{{y}}/" + strings.Repeat("x", 520), "exceed"},
 	}
 	for _, tt := range cases {
@@ -477,14 +479,16 @@ func TestTemplateRenderRejectsUnsafePaths(t *testing.T) {
 
 // TestTemplateCollapsesAndTrimsSeparators pins the separator hygiene:
 // doubled slashes collapse, edge slashes trim away -- the album
-// conditional's trailing slash must not become a dot segment.
+// conditional's trailing slash must not become a dot segment. (A
+// LITERAL trailing separator is a compile error -- it would
+// reinterpret the last segment as the file stem -- but a rendered
+// one, like a conditional branch ending in /, still trims.)
 func TestTemplateCollapsesAndTrimsSeparators(t *testing.T) {
 	vars := sampleRenderVars()
 	cases := []struct{ template, want string }{
 		{"{{y}}//{{MM}}/{{filename}}", "2023/07/IMG_1234"},
 		{"{{y}}///{{MM}}", "2023/07"},
 		{"/{{y}}/{{MM}}", "2023/07"},
-		{"{{y}}/{{MM}}/", "2023/07"},
 		{"{{#if album}}{{album}}/{{else}}{{y}}/{{MM}}/{{/if}}{{filename}}", "2023/07/IMG_1234"},
 	}
 	for _, tt := range cases {
