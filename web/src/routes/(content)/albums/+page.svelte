@@ -1,12 +1,17 @@
 <script lang="ts">
 	// The album wall (web IA §2-§3): the cover-card grid in its two
-	// sections -- the caller's own albums (virtual and directory,
-	// the server's own-group order) then the albums shared to them
-	// (with the honest owner attribution) -- with the collage covers
-	// (the pinned cover full-bleed, otherwise the newest members: two
-	// split, three the 2+1 fall, four the quad), the locked / shared
-	// / excluded badges, and the "New album" creation dialog. Card
-	// clicks open the album's detail.
+	// sections -- the caller's own albums (the pinned sync card of
+	// the default "My photos" album first, then the virtual and
+	// directory albums in the server's own-group order) then the
+	// albums shared to them (with the honest owner attribution) --
+	// with the collage covers (the pinned cover full-bleed,
+	// otherwise the newest members: two split, three the 2+1 fall,
+	// four the quad), the locked / shared / excluded badges, and the
+	// "New album" creation dialog. Card clicks open the album's
+	// detail. The sync card's title is the system's internal label
+	// and never renders: `type === 'sync'` keys the localized
+	// display name (album_all_photos), the contract's client-side
+	// convention.
 	//
 	// SSE CONVERGENCE: every album.* event converges through ONE
 	// fresh wall fetch, collapsed single-flight (a burst parks in a
@@ -90,6 +95,14 @@
 	// reactive `$_` keeps the text locale-tracked.
 	function errorText(key: string): string {
 		return resolveErrorText($_, key);
+	}
+
+	// The card's display title: the localized default-album name for
+	// the pinned sync card, the stored title for every other album
+	// (the client-side display-name convention of the contract -- no
+	// guessing beyond the type).
+	function cardTitle(album: AlbumSummary): string {
+		return album.type === 'sync' ? $_('album_all_photos') : album.title;
 	}
 
 	// The cover layout class of one card: the pinned cover and the
@@ -240,7 +253,7 @@
 			{/if}
 		</span>
 		<span class="album-card__caption flex flex-col gap-0.5 px-3 py-2.5">
-			<span class="album-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate">{album.title}</span>
+			<span class="album-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate">{cardTitle(album)}</span>
 			{#if album.owner !== undefined}
 				<span class="album-card__owner font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate">{$_('albums_shared_by', { values: { email: album.owner.email } })}</span>
 			{/if}

@@ -31,7 +31,9 @@
 // THE SCENES (the M3c sharing surface, in order):
 //
 //  1. The administrator signs in through the form and lands on the
-//     empty albums wall.
+//     albums wall holding exactly the pinned "My photos" card (the
+//     default sync album -- a fresh account's wall is never empty;
+//     the count is honest at zero until the library bootstrap).
 //  2. The library bootstrap, all through the API (the M2 story's
 //     seeding pattern): the model group's download run is driven to
 //     succeeded and two photos upload, converging to ready timeline
@@ -139,7 +141,7 @@ test.beforeAll(async ({ playwright }) => {
 	await api.dispose();
 });
 
-test('scene 1: the administrator signs in and lands on the empty albums wall', async ({
+test('scene 1: the administrator signs in and lands on the pinned My photos card', async ({
 	page
 }) => {
 	await page.goto('/login?redirectTo=%2Falbums');
@@ -151,10 +153,15 @@ test('scene 1: the administrator signs in and lands on the empty albums wall', a
 	await expect(page).toHaveURL(/\/albums$/);
 	await expect(page).toHaveTitle('Albums · lumemor');
 
-	// The empty state carries the honest copy and the create action.
-	await expect(
-		page.getByText('No albums yet. Create one to gather photos around a moment.')
-	).toBeVisible();
+	// The wall is never empty on a fresh account: the pinned default
+	// album leads the "Your albums" section with the localized
+	// display name (the stored internal title never renders) and the
+	// honest zero count, and the create action stays beside it.
+	const myPhotos = page.locator('a.album-card').filter({ hasText: 'My photos' });
+	await expect(myPhotos).toBeVisible();
+	await expect(myPhotos).toContainText('0 photos');
+	await expect(page.locator('a.album-card')).toHaveCount(1);
+	await expect(page.getByText('No albums yet. Create one to gather photos around a moment.')).toBeHidden();
 	await expect(page.getByRole('button', { name: 'New album', exact: true })).toBeVisible();
 
 	// Hand the admin session to every later admin scene: the storage

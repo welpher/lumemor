@@ -127,6 +127,34 @@ test('listAlbums reads the wall: the own group then the shared group', async () 
 	expect(outcome).toEqual({ ok: true, albums: [ownCard, sharedCard] });
 });
 
+test('listAlbums reads the pinned sync card of the default album', async () => {
+	// The caller's own sync album leads the wall: the internal
+	// 'Sync' title rides the card, the type keys the display name.
+	const syncCard: AlbumSummary = {
+		id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6061',
+		title: 'Sync',
+		description: '',
+		type: 'sync',
+		locked: false,
+		isShared: false,
+		coverAssetIds: [
+			'0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6076',
+			'0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6077'
+		],
+		itemCount: 1204,
+		updatedAt: '2026-11-05T07:30:00Z',
+		callerRole: 'owner'
+	};
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({ '/api/v1/albums': () => jsonResponse(200, { albums: [syncCard, ownCard] }) })
+	);
+
+	const outcome = await listAlbums();
+
+	expect(outcome).toEqual({ ok: true, albums: [syncCard, ownCard] });
+});
+
 test('listAlbums maps a dead session to the session key', async () => {
 	vi.stubGlobal(
 		'fetch',
@@ -170,6 +198,32 @@ test('fetchAlbumDetail reads the metadata page with the lean limit', async () =>
 		expect(outcome.detail.callerRole).toBe('owner');
 		expect(outcome.detail.shares).toHaveLength(1);
 	}
+});
+
+test('fetchAlbumDetail reads the caller own sync album read-only', async () => {
+	// The default album's detail: the type 'sync' with the owner
+	// role, no excludable field, and the owner's always-empty shares
+	// list (no share row can name a sync album).
+	const syncDetail = {
+		id: ownCard.id,
+		title: 'Sync',
+		description: '',
+		type: 'sync',
+		locked: false,
+		coverAssetId: null,
+		callerRole: 'owner',
+		itemCount: 1204,
+		items: [],
+		shares: []
+	};
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({ [`/api/v1/albums/${ownCard.id}?limit=1`]: () => jsonResponse(200, syncDetail) })
+	);
+
+	const outcome = await fetchAlbumDetail(ownCard.id);
+
+	expect(outcome).toEqual({ ok: true, detail: syncDetail });
 });
 
 test('fetchAlbumDetail maps the single-shape 404', async () => {
