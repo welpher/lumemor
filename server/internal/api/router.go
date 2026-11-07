@@ -438,6 +438,12 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/admin/users", wrapper.ListUsers)
 				r.Post("/admin/users", wrapper.CreateUser)
 				r.Patch("/admin/users/{id}", wrapper.UpdateUser)
+				// The storage settings face (the storage-template
+				// feature): the template read and the three-stage
+				// validated save -- one bounded setting row read or
+				// write plus in-memory renders.
+				r.Get("/admin/settings/storage", wrapper.GetStorageSettings)
+				r.Put("/admin/settings/storage", wrapper.UpdateStorageSettings)
 				// The model download trigger (M3a Task 3): the
 				// default group's first-boot download. The handler is
 				// one bounded row read plus one enqueue; the heavy

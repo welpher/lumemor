@@ -212,6 +212,8 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"POST /api/v1/admin/models/scan",
 		"POST /api/v1/admin/places/reresolve",
 		"GET /api/v1/admin/jobs",
+		"GET /api/v1/admin/settings/storage",
+		"PUT /api/v1/admin/settings/storage",
 	}
 	for _, route := range want {
 		if !got[route] {

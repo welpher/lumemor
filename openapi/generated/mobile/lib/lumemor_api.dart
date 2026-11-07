@@ -97,6 +97,8 @@ export 'package:lumemor_api/src/model/search_response.dart';
 export 'package:lumemor_api/src/model/server_info.dart';
 export 'package:lumemor_api/src/model/session_info.dart';
 export 'package:lumemor_api/src/model/set_person_hidden_request.dart';
+export 'package:lumemor_api/src/model/storage_settings_response.dart';
+export 'package:lumemor_api/src/model/storage_settings_update_request.dart';
 export 'package:lumemor_api/src/model/tag_assets_request.dart';
 export 'package:lumemor_api/src/model/tag_facet_count.dart';
 export 'package:lumemor_api/src/model/tag_name_request.dart';
