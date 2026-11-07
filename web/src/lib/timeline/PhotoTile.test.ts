@@ -38,7 +38,7 @@ function item(overrides: Partial<TimelineItem> = {}): TimelineItem {
 
 function mountTile(
 	overrides: Partial<TimelineItem>,
-	props: { selected?: boolean; selectable?: boolean; sizes?: string } = {}
+	props: { selected?: boolean; selectable?: boolean; sizes?: string; withSelect?: boolean } = {}
 ) {
 	const onselect = vi.fn();
 	const tile = mount(PhotoTile, {
@@ -47,8 +47,7 @@ function mountTile(
 			item: item(overrides),
 			selected: props.selected ?? false,
 			selectable: props.selectable ?? false,
-			sizes: props.sizes,
-			onselect
+			onselect: props.withSelect === false ? undefined : onselect
 		}
 	});
 	flushSync();
@@ -76,10 +75,10 @@ beforeEach(async () => {
 	await initI18n();
 });
 
-test('a ready asset requests the tile-size thumbnail over the blurhash placeholder', () => {
+test('a ready asset requests the view-size derivative over the blurhash placeholder', () => {
 	const { tile } = mountTile({});
 	const image = tileRoot().querySelector('img.tile__image');
-	expect(image?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=tile');
+	expect(image?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=view');
 	// The accessible name lives on the anchor; the image itself is
 	// the anchor's visual content (an empty alt would repeat it).
 	expect(image?.getAttribute('alt')).toBe('');
@@ -92,30 +91,22 @@ test('a ready asset requests the tile-size thumbnail over the blurhash placehold
 	flushSync();
 });
 
-test('the tile serves the tile and view derivatives through a DPR srcset', () => {
-	// R2-2: the 250px tile box feeding a Retina-density wall tile
-	// reads soft, so the tile offers the view derivative as its 2x
-	// candidate. The x descriptors are the honest pair for the
-	// endpoint's aspect-variable files (a w descriptor would have to
-	// lie about the file's intrinsic width); the src stays the 1x
-	// candidate as the no-srcset fallback.
+test('the tile serves the view derivative alone: no srcset, no sizes', () => {
+	// The 2026-11-07 blurry fix (owner pin 2): the tile/view DPR pair
+	// is GONE. The pair relied on the browser re-evaluating a
+	// responsive-image candidate after the justified engine re-packed
+	// and the sizes hint changed on an already-loaded <img> -- which
+	// it does not reliably do, so a resize left soft tiles behind.
+	// The wall now always serves the view derivative (the tile box's
+	// 250px uniform-grid derivative never matched the justified
+	// wall's 200-500px cells anyway; a self-hosted LAN app's
+	// bandwidth cost is negligible and photos are always sharp).
+	// The viewer's image branch keeps its own view/original pair.
 	const { tile } = mountTile({});
 	const image = tileRoot().querySelector('img.tile__image');
-	expect(image?.getAttribute('srcset')).toBe(
-		'/api/v1/assets/a1/thumbnail?size=tile 1x, /api/v1/assets/a1/thumbnail?size=view 2x'
-	);
-	// The width hint: the justified wall passes the row engine's
-	// exact cell width; the default covers the callers that do not
-	// know it (the trash grid's fluid cells).
-	expect(image?.getAttribute('sizes')).toBe('240px');
-	unmount(tile);
-	flushSync();
-});
-
-test('a caller that knows the rendered width passes it as the sizes hint', () => {
-	const { tile } = mountTile({}, { sizes: '288px' });
-	const image = tileRoot().querySelector('img.tile__image');
-	expect(image?.getAttribute('sizes')).toBe('288px');
+	expect(image?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=view');
+	expect(image?.getAttribute('srcset')).toBeNull();
+	expect(image?.getAttribute('sizes')).toBeNull();
 	unmount(tile);
 	flushSync();
 });
@@ -147,6 +138,21 @@ test('a not-ready asset renders the placeholder only, no thumbnail request', () 
 test('the tile anchors into the viewer while selection is inactive', () => {
 	const { tile, onselect } = mountTile({});
 	expect(tileLink().getAttribute('href')).toBe('/a/a1');
+
+	tileLink().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
+	expect(onselect).not.toHaveBeenCalled();
+	unmount(tile);
+	flushSync();
+});
+
+test('a tile with no onselect renders no checkbox: pure navigation', () => {
+	// The album detail's wall (R5): the callback's absence IS the
+	// no-selection contract -- no check circle renders at all (not
+	// even the hover reveal), and the tile body stays the viewer
+	// anchor. The caller never wires a dead affordance.
+	const { tile, onselect } = mountTile({}, { withSelect: false });
+	expect(tileRoot().querySelector('.tile__check')).toBeNull();
 
 	tileLink().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	flushSync();

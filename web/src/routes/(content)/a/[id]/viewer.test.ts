@@ -2,7 +2,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import { sessionStatus } from '$lib/auth/session.svelte';
-import { clearWallItems, publishWallItems } from '$lib/timeline/wall.svelte';
+import { clearWallItems, publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
 

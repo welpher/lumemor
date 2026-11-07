@@ -20,6 +20,8 @@
 		type StorageSettings
 	} from '$lib/api/adminSettings';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import Check from '@lucide/svelte/icons/check';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -135,7 +137,7 @@
 	{:else if status === 'error'}
 		<div class="settings__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready' && settings !== null}
 		<header class="settings__header">
@@ -188,7 +190,7 @@
 						</div>
 					{/if}
 					<div class="settings__form-actions flex justify-end mt-1">
-						<Button type="submit" disabled={saving}>{$_('admin_settings_submit')}</Button>
+						<Button type="submit" disabled={saving}><Check size={20} aria-hidden="true" />{$_('admin_settings_submit')}</Button>
 					</div>
 				</form>
 				<p class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint">{$_('admin_settings_contract_note')}</p>

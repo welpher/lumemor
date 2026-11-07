@@ -28,6 +28,11 @@
 		type AdminUser
 	} from '$lib/api/adminUsers';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import UserX from '@lucide/svelte/icons/user-x';
+	import Check from '@lucide/svelte/icons/check';
+	import X from '@lucide/svelte/icons/x';
+	import Plus from '@lucide/svelte/icons/plus';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -207,7 +212,7 @@
 	{:else if status === 'error'}
 		<div class="users__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready'}
 		<section class="users__list" aria-label={$_('admin_users_title')}>
@@ -256,10 +261,12 @@
 							<td class="users__actions px-3.5 py-2.5 text-right font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">
 								{#if user.isDisabled}
 									<Button variant="ghost" disabled={busy} onclick={() => void enable(user)}>
+										<Check size={20} aria-hidden="true" />
 										{$_('admin_users_enable')}
 									</Button>
 								{:else}
 									<Button variant="danger" disabled={busy} onclick={() => askDisable(user)}>
+										<UserX size={20} aria-hidden="true" />
 										{$_('admin_users_disable')}
 									</Button>
 								{/if}
@@ -315,7 +322,7 @@
 							<p class="users__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(createErrorKey)}</p>
 						{/if}
 						<div class="users__form-actions flex justify-end mt-1">
-							<Button type="submit" disabled={creating}>{$_('admin_users_create_submit')}</Button>
+							<Button type="submit" disabled={creating}><Plus size={20} aria-hidden="true" />{$_('admin_users_create_submit')}</Button>
 						</div>
 					</form>
 				</Card>
@@ -334,8 +341,12 @@
 		{/if}
 	{/snippet}
 	{#snippet footer()}
-		<Button variant="ghost" disabled={busy} onclick={cancelDisable}>{$_('common_cancel')}</Button>
+		<Button variant="ghost" disabled={busy} onclick={cancelDisable}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_cancel')}
+		</Button>
 		<Button variant="danger" disabled={busy} onclick={() => void confirmDisable()}>
+			<UserX size={20} aria-hidden="true" />
 			{$_('admin_users_disable_confirm')}
 		</Button>
 	{/snippet}

@@ -6,9 +6,10 @@ import BatchBar from './BatchBar.svelte';
 
 // The batch bar contract: it renders only with a selection, shows
 // the count and the six batch actions (favorite/unfavorite collapsed
-// into a state-labeled toggle), disables everything while an action
-// runs, shows the mapped failure message inline, and clears through
-// the clear action.
+// into a state-labeled toggle) as ICON-ONLY buttons named by their
+// aria-labels (the icon-first rule -- the bar is a toolbar), disables
+// everything while an action runs, shows the mapped failure message
+// inline, and clears through the clear action.
 
 function mountBar(
 	props: {
@@ -42,9 +43,12 @@ function mountBar(
 }
 
 function buttonByLabel(label: string): HTMLButtonElement {
-	const buttons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.batchbar button'));
-	const found = buttons.find((button) => button.textContent?.includes(label));
-	if (found === undefined) {
+	// The bar's actions are icon-only (the icon-first rule): the
+	// accessible name rides the aria-label.
+	const found = document.body.querySelector<HTMLButtonElement>(
+		`.batchbar button[aria-label="${label}"]`
+	);
+	if (found === null) {
 		throw new Error(`missing batch button ${label}`);
 	}
 	return found;
@@ -73,7 +77,9 @@ test('an action subset renders only the named actions (the curated walls)', () =
 	const favoriteButtons = Array.from(
 		document.body.querySelectorAll<HTMLButtonElement>('.batchbar button:not(.batchbar__clear)')
 	);
-	expect(favoriteButtons.map((button) => button.textContent?.trim())).toEqual(['Unfavorite']);
+	expect(favoriteButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
+		'Unfavorite'
+	]);
 	favoriteButtons[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	expect(favoriteAction).toHaveBeenCalledWith('unfavorite');
 	unmount(favoriteBar);
@@ -83,7 +89,7 @@ test('an action subset renders only the named actions (the curated walls)', () =
 	const hiddenButtons = Array.from(
 		document.body.querySelectorAll<HTMLButtonElement>('.batchbar button:not(.batchbar__clear)')
 	);
-	expect(hiddenButtons.map((button) => button.textContent?.trim())).toEqual(['Unhide']);
+	expect(hiddenButtons.map((button) => button.getAttribute('aria-label'))).toEqual(['Unhide']);
 	unmount(hiddenBar);
 	flushSync();
 });
@@ -98,6 +104,9 @@ test('the bar shows the selected count and the six batch actions', () => {
 	for (const label of ['Favorite', 'Hide', 'Unhide', 'Trash', 'Restore']) {
 		const button = buttonByLabel(label);
 		expect(button.disabled, label).toBe(false);
+		// The icon-first rule: every action carries its lucide glyph
+		// (20px, decorative -- the aria-label stays the name).
+		expect(button.querySelector('svg'), label).not.toBeNull();
 		button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	}
 	expect(onaction).toHaveBeenCalledTimes(5);

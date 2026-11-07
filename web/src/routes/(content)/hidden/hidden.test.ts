@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
-import { clearWallItems, wallItems } from '$lib/timeline/wall.svelte';
+import { clearWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 
 // The hidden page through its curated wall: the listing renders and
 // publishes the wall sequence, the selection bar carries exactly the
@@ -127,6 +127,19 @@ function hasButton(text: string): boolean {
 	);
 }
 
+/** The icon-only actions (the bar, the toolbar toggle) name themselves by aria-label. */
+function buttonByLabel(label: string): HTMLButtonElement {
+	const found = document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (found === null) {
+		throw new Error(`missing button labeled ${label}`);
+	}
+	return found;
+}
+
+function hasButtonByLabel(label: string): boolean {
+	return document.body.querySelector(`button[aria-label="${label}"]`) !== null;
+}
+
 function clickTile(index: number): void {
 	const link = tiles()[index]?.querySelector('a.tile__link');
 	link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -192,18 +205,20 @@ test('the selection bar carries exactly the unhide action, and it ends the membe
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	// Enter the select mode and pick the first tile (the toolbar's
+	// toggle is icon-only, named by its aria-label).
+	buttonByLabel('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	clickTile(0);
 	expect(document.body.querySelector('.batchbar')).not.toBeNull();
 	// The subset: only the unhide action of the timeline's set.
-	expect(hasButton('Unhide')).toBe(true);
-	expect(hasButton('Favorite')).toBe(false);
-	expect(hasButton('Hide')).toBe(false);
-	expect(hasButton('Trash')).toBe(false);
-	expect(hasButton('Restore')).toBe(false);
+	expect(hasButtonByLabel('Unhide')).toBe(true);
+	expect(hasButtonByLabel('Favorite')).toBe(false);
+	expect(hasButtonByLabel('Hide')).toBe(false);
+	expect(hasButtonByLabel('Trash')).toBe(false);
+	expect(hasButtonByLabel('Restore')).toBe(false);
 
-	buttonByText('Unhide').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Unhide').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	expect(bodies).toEqual([{ action: 'unhide', ids: ['a1'] }]);
 	// The membership ended: the tile returned to the live views and

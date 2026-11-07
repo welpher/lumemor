@@ -13,6 +13,9 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import X from '@lucide/svelte/icons/x';
+	import Check from '@lucide/svelte/icons/check';
+	import Plus from '@lucide/svelte/icons/plus';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import type { AlbumSummary } from '$lib/api/albums';
 
@@ -169,13 +172,25 @@
 	</div>
 	{#snippet footer()}
 		{#if report !== null}
-			<Button onclick={ondone}>{$_('albums_add_done')}</Button>
+			<Button onclick={ondone}>
+				<Check size={20} aria-hidden="true" />
+				{$_('albums_add_done')}
+			</Button>
 		{:else}
-			<Button variant="ghost" onclick={close}>{$_('common_cancel')}</Button>
+			<Button variant="ghost" onclick={close}>
+				<X size={20} aria-hidden="true" />
+				{$_('common_cancel')}
+			</Button>
 			{#if mode === 'new'}
-				<Button disabled={busy} onclick={submit}>{$_('albums_add_create_submit')}</Button>
+				<Button disabled={busy} onclick={submit}>
+					<Plus size={20} aria-hidden="true" />
+					{$_('albums_add_create_submit')}
+				</Button>
 			{:else}
-				<Button disabled={busy || loading || optionIds.length === 0} onclick={submit}>{$_('albums_add_submit')}</Button>
+				<Button disabled={busy || loading || optionIds.length === 0} onclick={submit}>
+					<Check size={20} aria-hidden="true" />
+					{$_('albums_add_submit')}
+				</Button>
 			{/if}
 		{/if}
 	{/snippet}

@@ -22,6 +22,7 @@
 	import { subscribePersonEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -117,7 +118,7 @@
 	{:else if status === 'error' && people.length === 0}
 		<div class="people__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else}
 		<div class="people__grid grid grid-cols-[repeat(auto-fill,minmax(min(180px,100%),1fr))] gap-3">
@@ -158,7 +159,7 @@
 		     next event retries; the box keeps the retry affordance. -->
 		<div class="people__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{/if}
 </section>

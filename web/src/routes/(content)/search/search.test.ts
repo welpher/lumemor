@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n, setLocale } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
-import { clearWallItems, wallItems } from '$lib/timeline/wall.svelte';
+import { clearWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 
 // The search page: the URL owns the state (the deep-link contract),
 // the two result modes render through the wall vocabulary (QUERY

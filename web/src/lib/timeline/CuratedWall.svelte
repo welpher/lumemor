@@ -1,83 +1,64 @@
 <script lang="ts">
-	// The curated wall the favorites and hidden pages render (M2d
-	// Task 8): the timeline's own machinery -- the pagination client
-	// (driven with the view's membership semantics), month and day
-	// groups, PhotoTile, the selection bar, the SSE convergence and
-	// the wallItems publication the asset viewer navigates --
-	// assembled for a view whose rows are a membership question
-	// rather than the aggregate stream. The page tells the wall its
+	// The curated wall wrapper the favorites and hidden pages
+	// compose (M2d Task 8): the page-level concerns of a membership
+	// view -- the pagination client (driven with the view's
+	// membership semantics), the SSE convergence, the sentinel walk,
+	// the selection state with its batch bar, the wallItems
+	// publication the asset viewer navigates -- assembled around the
+	// shared Wall's pure rendering. The page tells the wall its
 	// endpoint, its view, its strings and its action subset; the
-	// timeline page itself keeps its richer layout (the month
-	// scrubber, the scroll tracking) and does not use this component.
-	//
-	// THE ALBUM WALL (M3c Task 5): the album detail's grid reuses
-	// this wall over the timeline endpoint's `albumId` narrow -- the
-	// album's own live items in the timeline's exact shape, paged and
-	// converged the same way. The `resetKey` prop is the album's
-	// membership convergence: an album.items-changed event lands with
-	// ids only, so the wall restarts its walk and the fresh answer
-	// owns the truth.
+	// RENDERING is the one Wall component every photo surface
+	// composes (the timeline page keeps its richer layout -- the
+	// month scrubber, the scroll tracking -- and owns the same
+	// concerns inline; the album detail owns its own no-selection
+	// walk). The wall here IS selectable: the tiles' check
+	// affordance and the toolbar's touch-friendly select-mode toggle
+	// enter the curation pass whose actions end rows' memberships.
 	import { _ } from 'svelte-i18n';
-	import { locale } from 'svelte-i18n';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { untrack } from 'svelte';
 	import { createTimelineClient, type BatchAction, type WallView } from '$lib/api/timeline';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
-	import { groupTimelineItems } from '$lib/timeline/grouping';
-	import { publishWallItems } from '$lib/timeline/wall.svelte';
-	import MonthGroups from '$lib/timeline/MonthGroups.svelte';
+	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
+	import Wall from '$lib/timeline/Wall.svelte';
 	import BatchBar from '$lib/timeline/BatchBar.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import Check from '@lucide/svelte/icons/check';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	type Props = {
 		/** The timeline-shaped endpoint the wall walks. */
 		path: string;
 		/** Which membership view the client serves (see WallView). */
 		view: WallView;
-		/**
-		 * The album whose own timeline this wall walks (the endpoint's
-		 * `albumId` narrow). Absent on the favorites and hidden walls.
-		 */
-		albumId?: string;
 		/** The i18n key of the view's name (the empty state's heading). */
 		titleKey?: string;
-		/**
-		 * The empty state's heading as direct text -- the album wall
-		 * passes the album's title; it overrides `titleKey`.
-		 */
-		heading?: string;
 		/** The i18n key of the view's loading line. */
 		loadingKey: string;
 		/** The i18n key of the view's empty state text. */
 		emptyKey: string;
 		/** Which batch actions the selection bar offers (see BatchBar). */
 		actions: readonly BatchAction[];
-		/**
-		 * The membership convergence: a change drops the loaded pages
-		 * and restarts the walk from page one (the album wall's
-		 * items-changed restart).
-		 */
-		resetKey?: number | string;
 	};
 
 	let {
 		path,
 		view,
-		albumId,
 		titleKey = '',
-		heading = '',
 		loadingKey,
 		emptyKey,
-		actions,
-		resetKey = 0
+		actions
 	}: Props = $props();
 
 	// The client is constructed ONCE per wall: a route's endpoint and
 	// view never change while its wall is mounted (a route change
 	// remounts the component), so the props are read through untrack
 	// and the client owns exactly this wall for its lifetime.
-	const wall = untrack(() => createTimelineClient({ path, view, albumId }));
+	const wall = untrack(() => createTimelineClient({ path, view }));
 
 	// The selection is a reactive id set: checkbox and tile clicks
 	// toggle it, Esc and the bar's clear drop it, and the select mode
@@ -87,7 +68,6 @@
 	let batchErrorKey = $state('');
 	let batchBusy = $state(false);
 
-	const groups = $derived(groupTimelineItems($wall.items, $locale ?? 'en'));
 	const selectable = $derived(selectMode || selection.size > 0);
 	const selectedItems = $derived($wall.items.filter((timelineItem) => selection.has(timelineItem.id)));
 	const allSelectedFavorite = $derived(
@@ -97,9 +77,6 @@
 	const settledEmpty = $derived(
 		$wall.items.length === 0 && $wall.status === 'ready' && !$wall.hasMore
 	);
-	// The empty state's heading: the album wall passes the album's
-	// title as direct text; the curated views pass an i18n key.
-	const emptyHeading = $derived(heading !== '' ? heading : titleKey !== '' ? $_(titleKey) : '');
 
 	// IntersectionObserver exists in every browser jsdom is not; the
 	// manual load-more button is the fallback surface (and the error
@@ -161,13 +138,11 @@
 		publishWallItems($wall.items);
 	});
 
-	// The walk itself: the first load and every resetKey change (the
-	// album wall's membership convergence). A reset while a page load
-	// is in flight discards the stale response (the client's
+	// The walk itself: the first load on mount. A reset while a page
+	// load is in flight discards the stale response (the client's
 	// generation guard), so the fresh walk's answer is the only one
 	// that lands.
 	$effect(() => {
-		void resetKey;
 		untrack(() => {
 			wall.reset();
 			void wall.loadMore();
@@ -207,13 +182,20 @@
 <section class="wall px-2" aria-busy={$wall.status === 'loading'}>
 	{#if $wall.items.length > 0}
 		<div class="wall__toolbar flex justify-end mb-2">
-			<Button
-				variant="ghost"
+			<!-- The touch-friendly select-mode entry (icon-only, the
+			     icon-first rule; the check affordance on the tiles is
+			     the pointer/keyboard entry). -->
+			<IconButton
 				aria-pressed={selectMode}
+				aria-label={selectMode ? $_('action_done') : $_('action_select')}
 				onclick={() => (selectMode = !selectMode)}
 			>
-				{selectMode ? $_('action_done') : $_('action_select')}
-			</Button>
+				{#if selectMode}
+					<Check size={20} aria-hidden="true" />
+				{:else}
+					<ListChecks size={20} aria-hidden="true" />
+				{/if}
+			</IconButton>
 		</div>
 	{/if}
 
@@ -221,31 +203,37 @@
 		<p class="wall__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_(loadingKey)}</p>
 	{:else if settledEmpty}
 		<div class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
-			<h1 class="text-[22px] mb-2">{emptyHeading}</h1>
+			<h1 class="text-[22px] mb-2">{titleKey !== '' ? $_(titleKey) : ''}</h1>
 			<p class="text-text-soft">{$_(emptyKey)}</p>
 		</div>
 	{:else if $wall.status === 'error' && $wall.items.length === 0}
 		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($wall.errorKey)}</p>
-			<Button variant="primary" onclick={() => void wall.loadMore()}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void wall.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else}
-		<!-- The month-grouped justified wall (the shared renderer): the
-		     curated views render exactly the timeline's own wall -- the
-		     one density language for every photo surface. -->
-		<MonthGroups {groups} isSelected={(id) => selection.has(id)} {selectable} onselect={toggleSelected} />
+		<!-- The unified wall (pure rendering): this wrapper owns the
+		     walk and the selection around it; the groups, the sticky
+		     headers and the packed rows are the one wall component
+		     every view renders. -->
+		<Wall
+			items={$wall.items}
+			{selectable}
+			isSelected={(id) => selection.has(id)}
+			onselect={toggleSelected}
+		/>
 	{/if}
 
 	{#if $wall.status === 'error' && $wall.items.length > 0}
 		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($wall.errorKey)}</p>
-			<Button variant="primary" onclick={() => void wall.loadMore()}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void wall.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{/if}
 
 	{#if !observerAvailable && $wall.hasMore && $wall.status === 'ready'}
 		<div class="wall__pager flex justify-center my-5">
-			<Button variant="ghost" onclick={() => void wall.loadMore()}>{$_('timeline_load_more')}</Button>
+			<Button variant="ghost" onclick={() => void wall.loadMore()}><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button>
 		</div>
 	{/if}
 

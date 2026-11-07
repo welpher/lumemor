@@ -46,6 +46,8 @@
 	import { assetOriginalUrl, type AssetDetail, type AssetFaceSummary } from '$lib/api/assets';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import X from '@lucide/svelte/icons/x';
+	import Check from '@lucide/svelte/icons/check';
+	import PenLine from '@lucide/svelte/icons/pen-line';
 
 	type Props = {
 		/** The current asset's detail (the page's local, optimistic copy). */
@@ -291,9 +293,11 @@
 				{/if}
 				<div class="info__row flex flex-wrap gap-2 mb-2">
 					<Button variant="primary" disabled={saving} onclick={() => void saveEdit()}>
+						<Check size={20} aria-hidden="true" />
 						{$_('viewer_description_save')}
 					</Button>
 					<Button variant="ghost" disabled={saving} onclick={cancelEdit}>
+						<X size={20} aria-hidden="true" />
 						{$_('common_cancel')}
 					</Button>
 				</div>
@@ -302,7 +306,7 @@
 					{detail.description !== '' ? detail.description : $_('viewer_description_empty')}
 				</p>
 				{#if isOwner}
-					<Button variant="ghost" onclick={startEdit}>{$_('viewer_description_edit')}</Button>
+					<Button variant="ghost" onclick={startEdit}><PenLine size={20} aria-hidden="true" />{$_('viewer_description_edit')}</Button>
 				{/if}
 			{/if}
 		</section>
