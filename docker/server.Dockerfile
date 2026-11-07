@@ -181,7 +181,7 @@ RUN set -eux; \
     curl -fsSL --retry 3 -o /out/geo/admin1CodesASCII.txt "${geo_base}/admin1CodesASCII.txt"; \
     echo "2e4867f5397acb056ea26377601b57af37cb4c81399770225018e9e439e91ad3  /out/geo/admin1CodesASCII.txt" | sha256sum -c -; \
     curl -fsSL --retry 3 -o /tmp/geo/alternateNamesV2.zip "${geo_base}/alternateNamesV2.zip"; \
-    echo "6caa9b37dcf1695cc8b56fda1d29eab64741ff5bbe4e0bb9ea6ea69ce8602464  /tmp/geo/alternateNamesV2.zip" | sha256sum -c -; \
+    echo "182b0c04bf88b834125af59d4b96f6ae6bf0bb444c330ef453ffedb5ade4d6ee  /tmp/geo/alternateNamesV2.zip" | sha256sum -c -; \
     unzip -o -q /tmp/geo/cities500.zip -d /out/geo; \
     unzip -o -q /tmp/geo/alternateNamesV2.zip -d /tmp/geo; \
     awk -F'\t' '{print $1}' /out/geo/cities500.txt > /tmp/geo/ids.txt; \
