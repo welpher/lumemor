@@ -310,11 +310,18 @@ func TestCreateAlbum(t *testing.T) {
 			t.Errorf("stored album rows = %d, want 1", got)
 		}
 
-		// The wall lists exactly the new card (the caller's sync
-		// album never counts).
+		// The wall lists the new card after the pinned sync card
+		// (the default album always leads the own group).
 		wall := env.getAlbumWall(t, env.cookie)
-		if len(wall.Albums) != 1 || uuid.UUID(wall.Albums[0].Id) != uuid.UUID(summary.Id) {
-			t.Fatalf("wall = %v, want exactly the created album", wall.Albums)
+		if len(wall.Albums) != 2 {
+			t.Fatalf("GET /albums holds %d items, want 2 (the pinned sync + the created album; got %v)",
+				len(wall.Albums), wall.Albums)
+		}
+		if wall.Albums[0].Type != apigen.AlbumSummaryTypeSync {
+			t.Errorf("wall[0].type = %q, want the pinned sync card first", wall.Albums[0].Type)
+		}
+		if uuid.UUID(wall.Albums[1].Id) != uuid.UUID(summary.Id) {
+			t.Fatalf("wall[1].id = %s, want the created album %s", wall.Albums[1].Id, summary.Id)
 		}
 		detail := env.getAlbumDetail(t, env.cookie, uuid.UUID(summary.Id), "")
 		if detail.Title != "Road trip 2026" || detail.ItemCount != 0 {
@@ -497,6 +504,26 @@ func TestUpdateAlbum(t *testing.T) {
 		if rec.Body.String() != reference.Body.String() {
 			t.Fatalf("patch 404 body = %q, want byte-identical to the read's %q",
 				rec.Body.String(), reference.Body.String())
+		}
+	})
+
+	t.Run("RefusesSyncAlbum", func(t *testing.T) {
+		// The own sync album's read now answers 200 (the default
+		// album's detail) -- the write face keeps its refusal
+		// exactly as before: the album is system-managed, and the
+		// patch folds into the single-shape 404, byte-identical to
+		// the unknown id's, with nothing stored.
+		ownSync := env.syncAlbumIDOf(t, adminID)
+		reference := env.getAlbumsRaw(t, env.cookie, "/api/v1/albums/"+fixtureWallAlbumID("ff").String())
+		requireAlbumNotFound(t, reference)
+		rec := env.patchAlbumRaw(t, env.cookie, ownSync, `{"title":"Rename the stream"}`)
+		requireAlbumNotFound(t, rec)
+		if rec.Body.String() != reference.Body.String() {
+			t.Fatalf("patch-own-sync 404 body = %q, want byte-identical to the unknown id's %q",
+				rec.Body.String(), reference.Body.String())
+		}
+		if got := env.queryText(t, "SELECT title FROM albums WHERE id = $1", pgUUID(ownSync)); got != "Sync" {
+			t.Errorf("stored sync title = %q, want the untouched %q", got, "Sync")
 		}
 	})
 }

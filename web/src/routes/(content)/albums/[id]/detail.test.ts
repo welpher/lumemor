@@ -11,7 +11,9 @@ import Page from './+page.svelte';
 // callerRole x type action set -- the owner of a virtual album holds
 // rename / set cover / lock / share management / add photos / delete,
 // the owner of a directory album the properties / exclusion toggle /
-// disabled rescan placeholder, a viewer the exclusion toggle alone
+// disabled rescan placeholder, the owner of the sync album (the
+// default album) NOTHING -- system-managed, read-only, the localized
+// display name for the title -- a viewer the exclusion toggle alone
 // (read-only is visual: no write affordance renders) -- over the
 // CuratedWall grid that pages the album's own timeline. Every write
 // adopts its own response or converges through the detail refetch;
@@ -337,6 +339,57 @@ test('the directory detail: properties, the exclusion toggle and the disabled re
 	// The virtual album's write set is gone, and the directory album
 	// holds neither curation nor removal.
 	for (const label of ['Rename', 'Set cover…', 'Lock', 'Share…', 'Add photos', 'Delete album']) {
+		expect(() => buttonByText(label), label).toThrow();
+	}
+	unmount(page);
+	flushSync();
+});
+
+test('the sync album detail: the localized title, the grid, and zero write affordances', async () => {
+	// The caller's own sync album -- the default album. The stored
+	// title is the internal system label; the header (and the
+	// document title) render the localized display name. The action
+	// set's sync arm renders NOTHING: system-managed, no write
+	// affordance of any arm, absent never disabled.
+	detailState = {
+		...detailState,
+		title: 'Sync',
+		description: '',
+		type: 'sync',
+		coverAssetId: null,
+		shares: []
+	};
+	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
+	const page = mountPage();
+	await settle();
+
+	expect(document.body.querySelector('.album-detail__title')?.textContent).toBe('My photos');
+	expect(document.body.textContent).not.toContain('Sync');
+	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
+	// The item grid works like any album's: the tiles come from the
+	// album-narrowed timeline page.
+	expect(tiles()).toHaveLength(2);
+	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
+		'/api/v1/assets/a1/thumbnail?size=tile'
+	);
+	// No badges: never locked, never excluded (not excludable).
+	expect(document.body.querySelector('.album-detail__badge--locked')).toBeNull();
+	expect(document.body.querySelector('.album-detail__badge--excluded')).toBeNull();
+
+	for (const label of [
+		'Rename',
+		'Set cover…',
+		'Lock',
+		'Unlock',
+		'Share…',
+		'Add photos',
+		'Delete album',
+		'Properties',
+		'Rescan',
+		'Keep out of timeline',
+		'Keep in timeline',
+		'Leave album'
+	]) {
 		expect(() => buttonByText(label), label).toThrow();
 	}
 	unmount(page);

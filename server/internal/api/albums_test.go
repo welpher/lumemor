@@ -149,22 +149,53 @@ func requireAlbumNotFound(t *testing.T, rec *httptest.ResponseRecorder) {
 }
 
 // TestAlbumWallEmptyDB walks the album reads against an empty
-// instance: the wall is an empty array, the detail 404s, and nothing
-// answers without a session. The caller's sync album exists (the
-// wizard seeds it with the account) and still never surfaces -- the
-// sync album is the timeline, not a wall card.
+// instance: the wall holds exactly the caller's pinned sync card
+// (the default album every account carries), the detail 404s for an
+// unknown id, and nothing answers without a session. The sync card
+// IS the wall's floor -- a fresh account's wall is never empty.
 func TestAlbumWallEmptyDB(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
-	env.syncAlbumIDOf(t, env.sessionUserID(t)) // exists; never listed
+	ownSync := env.syncAlbumIDOf(t, env.sessionUserID(t))
 
-	t.Run("WallIsEmptyArray", func(t *testing.T) {
+	t.Run("WallIsTheSyncCardAlone", func(t *testing.T) {
 		wall := env.getAlbumWall(t, env.cookie)
 		if wall.Albums == nil {
-			t.Fatalf("GET /albums body = null, want an (empty) array")
+			t.Fatalf("GET /albums body = null, want an array")
 		}
-		if len(wall.Albums) != 0 {
-			t.Fatalf("GET /albums holds %d items, want 0 (the sync album never counts; got %v)",
+		if len(wall.Albums) != 1 {
+			t.Fatalf("GET /albums holds %d items, want 1 (the pinned sync card; got %v)",
 				len(wall.Albums), wall.Albums)
+		}
+		card := wall.Albums[0]
+		if uuid.UUID(card.Id) != ownSync {
+			t.Errorf("wall[0].id = %s, want the caller's sync album %s", card.Id, ownSync)
+		}
+		if card.Type != apigen.AlbumSummaryTypeSync {
+			t.Errorf("wall[0].type = %q, want sync", card.Type)
+		}
+		if card.Title != "Sync" {
+			// The stored title is the system's internal label; the
+			// CLIENT renders the localized display name off the type
+			// (the contract's convention, pinned here).
+			t.Errorf("wall[0].title = %q, want the internal label %q", card.Title, "Sync")
+		}
+		if card.CallerRole != apigen.AlbumSummaryCallerRoleOwner {
+			t.Errorf("wall[0].callerRole = %q, want owner", card.CallerRole)
+		}
+		if card.IsShared {
+			t.Error("wall[0].isShared = true, want false (no share can name a sync album)")
+		}
+		if card.ItemCount != 0 {
+			t.Errorf("wall[0].itemCount = %d, want 0 (no members yet)", card.ItemCount)
+		}
+		if card.CoverAssetIds == nil || len(card.CoverAssetIds) != 0 {
+			t.Errorf("wall[0].coverAssetIds = %v, want an empty array", card.CoverAssetIds)
+		}
+		if card.InTimeline != nil {
+			t.Errorf("wall[0].inTimeline = %v, want absent (the core stream is never excludable)", card.InTimeline)
+		}
+		if card.Owner != nil {
+			t.Errorf("wall[0].owner = %+v, want absent on an own card", card.Owner)
 		}
 	})
 
@@ -188,18 +219,18 @@ func TestAlbumWallEmptyDB(t *testing.T) {
 	})
 }
 
-// TestAlbumWall pins the brief's seeded wall: the caller owns one
-// virtual and one directory album, another account's virtual album is
-// shared to the caller. The wall answers the own group first
-// (updated_at descending), then the shared group (the caller's grant
-// time descending) with owner attribution and the viewer role. The
-// sync albums (the caller's own from setup, and another account's
-// carrying a share row) never appear; an unshared foreign album never
-// appears.
+// TestAlbumWall pins the brief's seeded wall: the caller's sync
+// album pinned first, then the caller's own virtual and directory
+// albums (updated_at descending), then another account's virtual
+// album shared to the caller (the caller's grant time descending)
+// with owner attribution and the viewer role. A foreign sync album
+// (even carrying a share row) never appears; an unshared foreign
+// album never appears.
 func TestAlbumWall(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
 	graceID, _ := env.createSecondUser(t, "wall-grace@example.com")
+	ownSync := env.syncAlbumIDOf(t, adminID)
 
 	// The caller's own two albums. VA carries a share to Grace (the
 	// owner's isShared view) and two live members; DA is empty.
@@ -245,106 +276,138 @@ func TestAlbumWall(t *testing.T) {
 	env.shareWallAlbum(t, graceSync, adminID, graceID, time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC))
 
 	wall := env.getAlbumWall(t, env.cookie)
-	if len(wall.Albums) != 3 {
-		t.Fatalf("GET /albums holds %d items, want 3 (own virtual + own directory + one shared; got %v)",
+	if len(wall.Albums) != 4 {
+		t.Fatalf("GET /albums holds %d items, want 4 (the pinned sync + own virtual + own directory + one shared; got %v)",
 			len(wall.Albums), wall.Albums)
 	}
-	virtual, directory, sharedItem := wall.Albums[0], wall.Albums[1], wall.Albums[2]
+	syncCard, virtual, directory, sharedItem := wall.Albums[0], wall.Albums[1], wall.Albums[2], wall.Albums[3]
+
+	// The pinned default card: the caller's own sync album, first,
+	// with the internal title and the excludable field absent.
+	if uuid.UUID(syncCard.Id) != ownSync {
+		t.Errorf("wall[0].id = %s, want the caller's sync album %s", syncCard.Id, ownSync)
+	}
+	if syncCard.Type != apigen.AlbumSummaryTypeSync {
+		t.Errorf("wall[0].type = %q, want sync (the default album)", syncCard.Type)
+	}
+	if syncCard.Title != "Sync" {
+		t.Errorf("wall[0].title = %q, want the internal system label %q (the client renders the display name)", syncCard.Title, "Sync")
+	}
+	if syncCard.CallerRole != apigen.AlbumSummaryCallerRoleOwner {
+		t.Errorf("wall[0].callerRole = %q, want owner", syncCard.CallerRole)
+	}
+	if syncCard.IsShared {
+		t.Error("wall[0].isShared = true, want false (no share can name a sync album)")
+	}
+	if syncCard.ItemCount != 0 {
+		t.Errorf("wall[0].itemCount = %d, want 0 (this fixture holds no sync members)", syncCard.ItemCount)
+	}
+	if syncCard.CoverAssetIds == nil || len(syncCard.CoverAssetIds) != 0 {
+		t.Errorf("wall[0].coverAssetIds = %v, want an empty array", syncCard.CoverAssetIds)
+	}
+	if syncCard.InTimeline != nil {
+		t.Errorf("wall[0].inTimeline = %v, want absent (the core stream is never excludable)", syncCard.InTimeline)
+	}
+	if syncCard.Owner != nil {
+		t.Errorf("wall[0].owner = %+v, want absent on an own card", syncCard.Owner)
+	}
 
 	if uuid.UUID(virtual.Id) != ownVirtual {
-		t.Errorf("wall[0].id = %s, want the own virtual %s", virtual.Id, ownVirtual)
+		t.Errorf("wall[1].id = %s, want the own virtual %s", virtual.Id, ownVirtual)
 	}
 	if virtual.CallerRole != apigen.AlbumSummaryCallerRoleOwner {
-		t.Errorf("wall[0].callerRole = %q, want owner", virtual.CallerRole)
+		t.Errorf("wall[1].callerRole = %q, want owner", virtual.CallerRole)
 	}
 	if virtual.Title != "Trip to the coast" || virtual.Description != "The van week." {
-		t.Errorf("wall[0].title/description = %q/%q, want the stored values", virtual.Title, virtual.Description)
+		t.Errorf("wall[1].title/description = %q/%q, want the stored values", virtual.Title, virtual.Description)
 	}
 	if virtual.Type != apigen.AlbumSummaryTypeVirtual {
-		t.Errorf("wall[0].type = %q, want virtual", virtual.Type)
+		t.Errorf("wall[1].type = %q, want virtual", virtual.Type)
 	}
 	if virtual.Locked {
-		t.Error("wall[0].locked = true, want false")
+		t.Error("wall[1].locked = true, want false")
 	}
 	// The share to Grace: the owner's isShared view.
 	if !virtual.IsShared {
-		t.Error("wall[0].isShared = false, want true (the album carries a share row)")
+		t.Error("wall[1].isShared = false, want true (the album carries a share row)")
 	}
 	if virtual.ItemCount != 2 {
-		t.Errorf("wall[0].itemCount = %d, want 2", virtual.ItemCount)
+		t.Errorf("wall[1].itemCount = %d, want 2", virtual.ItemCount)
 	}
 	// No pinned cover: the two most recent live members, newest first.
 	if len(virtual.CoverAssetIds) != 2 ||
 		uuid.UUID(virtual.CoverAssetIds[0]) != ownNewer ||
 		uuid.UUID(virtual.CoverAssetIds[1]) != ownOlder {
-		t.Errorf("wall[0].coverAssetIds = %v, want [%s %s] (the derived cover, newest first)",
+		t.Errorf("wall[1].coverAssetIds = %v, want [%s %s] (the derived cover, newest first)",
 			virtual.CoverAssetIds, ownNewer, ownOlder)
 	}
 	if want := time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC); !virtual.UpdatedAt.Truncate(time.Microsecond).Equal(want) {
-		t.Errorf("wall[0].updatedAt = %v, want %v", virtual.UpdatedAt, want)
+		t.Errorf("wall[1].updatedAt = %v, want %v", virtual.UpdatedAt, want)
 	}
 	if virtual.Owner != nil {
-		t.Errorf("wall[0].owner = %+v, want absent on an own item", virtual.Owner)
+		t.Errorf("wall[1].owner = %+v, want absent on an own item", virtual.Owner)
 	}
 
 	if uuid.UUID(directory.Id) != ownDirectory {
-		t.Errorf("wall[1].id = %s, want the own directory %s", directory.Id, ownDirectory)
+		t.Errorf("wall[2].id = %s, want the own directory %s", directory.Id, ownDirectory)
 	}
 	if directory.Type != apigen.AlbumSummaryTypeDirectory {
-		t.Errorf("wall[1].type = %q, want directory", directory.Type)
+		t.Errorf("wall[2].type = %q, want directory", directory.Type)
 	}
 	if directory.CallerRole != apigen.AlbumSummaryCallerRoleOwner {
-		t.Errorf("wall[1].callerRole = %q, want owner", directory.CallerRole)
+		t.Errorf("wall[2].callerRole = %q, want owner", directory.CallerRole)
 	}
 	if directory.IsShared {
-		t.Error("wall[1].isShared = true, want false (no share row)")
+		t.Error("wall[2].isShared = true, want false (no share row)")
 	}
 	if directory.ItemCount != 0 {
-		t.Errorf("wall[1].itemCount = %d, want 0", directory.ItemCount)
+		t.Errorf("wall[2].itemCount = %d, want 0", directory.ItemCount)
 	}
 	if directory.CoverAssetIds == nil || len(directory.CoverAssetIds) != 0 {
-		t.Errorf("wall[1].coverAssetIds = %v, want an empty array (no members)", directory.CoverAssetIds)
+		t.Errorf("wall[2].coverAssetIds = %v, want an empty array (no members)", directory.CoverAssetIds)
 	}
 
 	if uuid.UUID(sharedItem.Id) != shared {
-		t.Errorf("wall[2].id = %s, want the shared virtual %s", sharedItem.Id, shared)
+		t.Errorf("wall[3].id = %s, want the shared virtual %s", sharedItem.Id, shared)
 	}
 	if sharedItem.CallerRole != apigen.AlbumSummaryCallerRoleViewer {
-		t.Errorf("wall[2].callerRole = %q, want viewer", sharedItem.CallerRole)
+		t.Errorf("wall[3].callerRole = %q, want viewer", sharedItem.CallerRole)
 	}
 	if !sharedItem.IsShared {
-		t.Error("wall[2].isShared = false, want true by construction (the caller's share row)")
+		t.Error("wall[3].isShared = false, want true by construction (the caller's share row)")
 	}
 	if sharedItem.ItemCount != 1 {
-		t.Errorf("wall[2].itemCount = %d, want 1", sharedItem.ItemCount)
+		t.Errorf("wall[3].itemCount = %d, want 1", sharedItem.ItemCount)
 	}
 	if len(sharedItem.CoverAssetIds) != 1 || uuid.UUID(sharedItem.CoverAssetIds[0]) != sharedAsset {
-		t.Errorf("wall[2].coverAssetIds = %v, want [%s]", sharedItem.CoverAssetIds, sharedAsset)
+		t.Errorf("wall[3].coverAssetIds = %v, want [%s]", sharedItem.CoverAssetIds, sharedAsset)
 	}
 	// The honest attribution of another account's album.
 	if sharedItem.Owner == nil {
-		t.Fatal("wall[2].owner = null, want the owner attribution of the shared item")
+		t.Fatal("wall[3].owner = null, want the owner attribution of the shared item")
 	}
 	if uuid.UUID(sharedItem.Owner.Id) != graceID {
-		t.Errorf("wall[2].owner.id = %s, want %s", sharedItem.Owner.Id, graceID)
+		t.Errorf("wall[3].owner.id = %s, want %s", sharedItem.Owner.Id, graceID)
 	}
 	if string(sharedItem.Owner.Email) != "wall-grace@example.com" {
-		t.Errorf("wall[2].owner.email = %q, want the owner's address", sharedItem.Owner.Email)
+		t.Errorf("wall[3].owner.email = %q, want the owner's address", sharedItem.Owner.Email)
 	}
 }
 
-// TestAlbumWallOrdering pins both groups' ordering keys: the own
-// group by updated_at descending with the album id as the tiebreak
-// (descending), the shared group by the caller's grant time
-// descending.
+// TestAlbumWallOrdering pins the wall's ordering keys: the pinned
+// sync card first, then the own group by updated_at descending with
+// the album id as the tiebreak (descending), then the shared group
+// by the caller's grant time descending.
 func TestAlbumWallOrdering(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
+	ownSync := env.syncAlbumIDOf(t, adminID)
 	graceID, _ := env.createSecondUser(t, "wall-order-grace@example.com")
 
-	// Two own albums sharing one updated_at: the id tiebreak walks the
-	// higher id first.
-	tie := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	// Two own albums sharing one updated_at far in the future of the
+	// sync row: the pin must lead them anyway (the pin is structural,
+	// not recency), and the id tiebreak walks the higher id first.
+	tie := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
 	env.insertWallAlbum(t, fixtureWallAlbumID("61"), adminID, "virtual", "A", wallAlbumOpts{updatedAt: tie})
 	env.insertWallAlbum(t, fixtureWallAlbumID("62"), adminID, "virtual", "B", wallAlbumOpts{updatedAt: tie})
 
@@ -361,6 +424,7 @@ func TestAlbumWallOrdering(t *testing.T) {
 
 	wall := env.getAlbumWall(t, env.cookie)
 	want := []uuid.UUID{
+		ownSync,                  // the pinned default card, first
 		fixtureWallAlbumID("62"), // own tie, higher id
 		fixtureWallAlbumID("61"), // own tie, lower id
 		fixtureWallAlbumID("63"), // shared, later grant
@@ -379,10 +443,38 @@ func TestAlbumWallOrdering(t *testing.T) {
 // TestAlbumWallCoversAndCounts pins the wall's honesty: covers and
 // counts see live members only (hidden and trashed members excluded
 // everywhere, A5; Live Photo component rows excluded like every live
-// view), and a pinned cover wins over the derived one.
+// view), and a pinned cover wins over the derived one. The pinned
+// sync card obeys the same honesty over its own members.
 func TestAlbumWallCoversAndCounts(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
+	ownSync := env.syncAlbumIDOf(t, adminID)
+
+	// The sync album's own members: three live plus the three
+	// non-live newest of all -- the pinned card's count and derived
+	// cover must be exactly as honest as any album's.
+	syncBase := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	syncLive := []uuid.UUID{
+		fixtureWallAssetID("51"),
+		fixtureWallAssetID("52"),
+		fixtureWallAssetID("53"),
+	}
+	for i, id := range syncLive {
+		env.insertTimelineAsset(t, id, adminID, syncBase.Add(time.Duration(3-i)*time.Hour), timelineAssetOpts{})
+		env.addTimelineItem(t, ownSync, id, adminID)
+	}
+	for _, row := range []struct {
+		id   uuid.UUID
+		opts timelineAssetOpts
+	}{
+		{fixtureWallAssetID("61"), timelineAssetOpts{isHidden: true}},
+		{fixtureWallAssetID("62"), timelineAssetOpts{deleted: true}},
+		{fixtureWallAssetID("63"), timelineAssetOpts{isComponent: true}},
+	} {
+		env.insertTimelineAsset(t, row.id, adminID,
+			syncBase.Add(time.Duration(10)*time.Hour), row.opts)
+		env.addTimelineItem(t, ownSync, row.id, adminID)
+	}
 
 	// The derived-cover album: the hidden, trashed and component
 	// members are the NEWEST -- an implementation that let any of them
@@ -463,6 +555,31 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 	if len(pinnedAlbum.CoverAssetIds) != 1 || uuid.UUID(pinnedAlbum.CoverAssetIds[0]) != pinnedCover {
 		t.Errorf("pinned-cover coverAssetIds = %v, want exactly [%s] (the pin, not the recency)",
 			pinnedAlbum.CoverAssetIds, pinnedCover)
+	}
+
+	// The pinned sync card: the same honesty over its own members --
+	// three live count, the three newest live as the derived cover
+	// (the non-live members are the newest of all and must lead
+	// nowhere).
+	syncAlbum, ok := byID[ownSync]
+	if !ok {
+		t.Fatalf("the caller's sync album is missing from the wall (got %v)", wall.Albums)
+	}
+	if syncAlbum.Type != apigen.AlbumSummaryTypeSync {
+		t.Errorf("sync card type = %q, want sync", syncAlbum.Type)
+	}
+	if syncAlbum.ItemCount != 3 {
+		t.Errorf("sync card itemCount = %d, want 3 (the live members only)", syncAlbum.ItemCount)
+	}
+	if len(syncAlbum.CoverAssetIds) != len(syncLive) {
+		t.Fatalf("sync card coverAssetIds = %v, want the 3 newest live %v",
+			syncAlbum.CoverAssetIds, syncLive)
+	}
+	for i, id := range syncLive {
+		if uuid.UUID(syncAlbum.CoverAssetIds[i]) != id {
+			t.Errorf("sync card coverAssetIds[%d] = %s, want %s (all %v)",
+				i, syncAlbum.CoverAssetIds[i], id, syncAlbum.CoverAssetIds)
+		}
 	}
 
 	// The detail carries the raw pin (the wall derives, the detail
@@ -632,10 +749,11 @@ func TestAlbumDetail(t *testing.T) {
 }
 
 // TestAlbumDetailNotFound pins the single-shape 404: an unknown id,
-// another account's unshared album, the caller's own sync album,
-// another account's sync album (even carrying a share row), and an
-// album whose share to the caller was revoked all answer the same
-// byte-identical ALBUM_NOT_FOUND.
+// another account's unshared album, another account's sync album
+// (even carrying a share row), and an album whose share to the
+// caller was revoked all answer the same byte-identical
+// ALBUM_NOT_FOUND. The caller's OWN sync album is no longer in this
+// region: it answers the read-only 200 of TestSyncAlbumDetail.
 func TestAlbumDetailNotFound(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -655,7 +773,6 @@ func TestAlbumDetailNotFound(t *testing.T) {
 		pgUUID(revoked), pgUUID(adminID))
 
 	unknown := fixtureWallAlbumID("ff")
-	ownSync := env.syncAlbumIDOf(t, adminID)
 
 	recorder := func(id uuid.UUID) *httptest.ResponseRecorder {
 		return env.getAlbumsRaw(t, env.cookie, "/api/v1/albums/"+id.String())
@@ -666,7 +783,6 @@ func TestAlbumDetailNotFound(t *testing.T) {
 	for name, id := range map[string]uuid.UUID{
 		"unknown":             unknown,
 		"unshared-foreign":    unshared,
-		"own-sync":            ownSync,
 		"foreign-sync-shared": graceSync,
 		"revoked-share":       revoked,
 	} {
@@ -679,6 +795,147 @@ func TestAlbumDetailNotFound(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSyncAlbumDetail pins the caller's own sync album's detail: the
+// read-only default-album face. The read answers 200 with the owner
+// role, the live members keyset-paged exactly like any album's, the
+// excludable field absent, and the owner's shares list present and
+// empty (no share row can name a sync album). Another account's sync
+// album stays in the 404 region. The WRITE faces' refusals of the
+// same album are pinned where they live: TestUpdateAlbum's
+// RefusesSyncAlbum (PATCH), TestAddAlbumItems / TestRemoveAlbumItems
+// (the membership pair), TestGrantAlbumShareAlbumTypes (the share
+// grant), TestSetAlbumTimelinePreference's SyncAndOwnVirtualRefused
+// (the preference), and TestDeleteAlbum (the delete) -- the read
+// admitting the caller's own sync changes none of them.
+func TestSyncAlbumDetail(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "sync-detail-grace@example.com")
+	ownSync := env.syncAlbumIDOf(t, adminID)
+	// Grace's own sync album (the fixture insert: createSecondUser
+	// writes a bare user row, no wizard).
+	graceSync := fixtureWallAlbumID("78")
+	env.insertWallAlbum(t, graceSync, graceID, "sync", "Sync", wallAlbumOpts{})
+
+	// Five live members plus the non-live newest of all: the count
+	// and the pages see the live ones only.
+	base := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	wantOrder := make([]uuid.UUID, 0, 5)
+	for i := 0; i < 5; i++ {
+		id := fixtureWallAssetID(fmt.Sprintf("7%d", i))
+		env.insertTimelineAsset(t, id, adminID, base.Add(time.Duration(5-i)*time.Hour), timelineAssetOpts{})
+		env.addTimelineItem(t, ownSync, id, adminID)
+		wantOrder = append(wantOrder, id)
+	}
+	for _, row := range []struct {
+		id   uuid.UUID
+		opts timelineAssetOpts
+	}{
+		{fixtureWallAssetID("75"), timelineAssetOpts{isHidden: true}},
+		{fixtureWallAssetID("76"), timelineAssetOpts{deleted: true}},
+		{fixtureWallAssetID("77"), timelineAssetOpts{isComponent: true}},
+	} {
+		env.insertTimelineAsset(t, row.id, adminID, base.Add(time.Duration(9)*time.Hour), row.opts)
+		env.addTimelineItem(t, ownSync, row.id, adminID)
+	}
+
+	t.Run("OwnSyncAnswersReadOnlyDetail", func(t *testing.T) {
+		page := env.getAlbumDetail(t, env.cookie, ownSync, "limit=2")
+		if uuid.UUID(page.Id) != ownSync {
+			t.Errorf("detail id = %s, want the caller's sync album %s", page.Id, ownSync)
+		}
+		// The stored title is the internal system label; the CLIENT
+		// renders the localized display name off the type (the
+		// contract's convention, re-pinned here).
+		if page.Title != "Sync" {
+			t.Errorf("detail title = %q, want the internal label %q", page.Title, "Sync")
+		}
+		if page.Description != "" {
+			t.Errorf("detail description = %q, want the empty default", page.Description)
+		}
+		if page.Type != apigen.AlbumDetailTypeSync {
+			t.Errorf("detail type = %q, want sync (the default album)", page.Type)
+		}
+		if page.Locked {
+			t.Error("detail locked = true, want false (system-managed, never locked)")
+		}
+		if page.CoverAssetId != nil {
+			t.Errorf("detail coverAssetId = %v, want null (no pin can land on a sync album)", *page.CoverAssetId)
+		}
+		if page.CallerRole != apigen.AlbumDetailCallerRoleOwner {
+			t.Errorf("detail callerRole = %q, want owner (the caller's own stream)", page.CallerRole)
+		}
+		if page.ItemCount != 5 {
+			t.Errorf("detail itemCount = %d, want 5 (the live members only)", page.ItemCount)
+		}
+		if page.InTimeline != nil {
+			t.Errorf("detail inTimeline = %v, want absent (the core stream is never excludable)", page.InTimeline)
+		}
+		// The owner's view carries the grantee list, always empty
+		// here: no share row can name a sync album.
+		if page.Shares == nil || len(*page.Shares) != 0 {
+			t.Errorf("detail shares = %v, want the owner's present empty list", page.Shares)
+		}
+
+		// The keyset walk: 5 live members at 2 per page.
+		seen := make([]uuid.UUID, 0, 5)
+		cursor := ""
+		pages := 0
+		for {
+			rawQuery := "limit=2"
+			if cursor != "" {
+				rawQuery += "&cursor=" + cursor
+			}
+			page := env.getAlbumDetail(t, env.cookie, ownSync, rawQuery)
+			seen = append(seen, idsOfDetailItems(page)...)
+			pages++
+			if page.NextCursor == nil {
+				break
+			}
+			cursor = *page.NextCursor
+		}
+		if pages != 3 {
+			t.Fatalf("walked %d pages, want 3 (5 items at 2 per page)", pages)
+		}
+		if len(seen) != len(wantOrder) {
+			t.Fatalf("walked %d items, want %d", len(seen), len(wantOrder))
+		}
+		for i, want := range wantOrder {
+			if seen[i] != want {
+				t.Fatalf("walked order[%d] = %s, want %s (walked %v)", i, seen[i], want, seen)
+			}
+		}
+	})
+
+	t.Run("ForeignSyncStaysNotFound", func(t *testing.T) {
+		// Grace's own sync album, seen by the admin: the same
+		// byte-identical 404 as an unknown id -- and Grace herself
+		// reads her own (the read is owner-scoped, not type-blind).
+		reference := env.getAlbumsRaw(t, env.cookie,
+			"/api/v1/albums/"+fixtureWallAlbumID("ff").String())
+		requireAlbumNotFound(t, reference)
+		rec := env.getAlbumsRaw(t, env.cookie, "/api/v1/albums/"+graceSync.String())
+		requireAlbumNotFound(t, rec)
+		if rec.Body.String() != reference.Body.String() {
+			t.Fatalf("the foreign sync's 404 body %q differs from the unknown id's %q",
+				rec.Body.String(), reference.Body.String())
+		}
+		own := env.getAlbumDetail(t, graceCookie, graceSync, "")
+		if uuid.UUID(own.Id) != graceSync || own.Type != apigen.AlbumDetailTypeSync {
+			t.Errorf("grace's own sync detail = %s/%q, want her own sync album", own.Id, own.Type)
+		}
+	})
+}
+
+// idsOfDetailItems collects one detail page's item asset ids.
+func idsOfDetailItems(page apigen.AlbumDetail) []uuid.UUID {
+	ids := make([]uuid.UUID, 0, len(page.Items))
+	for _, item := range page.Items {
+		ids = append(ids, uuid.UUID(item.AssetId))
+	}
+	return ids
 }
 
 // TestAlbumDetailViewer walks the detail of an album shared to the
