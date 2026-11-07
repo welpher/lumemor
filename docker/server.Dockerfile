@@ -177,7 +177,7 @@ RUN set -eux; \
     if [ -n "$GEONAMES_MIRROR" ]; then geo_base="${GEONAMES_MIRROR}"; fi; \
     mkdir -p /out/geo /tmp/geo; \
     curl -fsSL --retry 3 -o /tmp/geo/cities500.zip "${geo_base}/cities500.zip"; \
-    echo "1ca1b74933840ae80de3a1845f1dea20323790ec492272e7ced9fe568d125587  /tmp/geo/cities500.zip" | sha256sum -c -; \
+    echo "bf2516f404ceefd24e099e48c8cd91730c9b1ab85158dd77eb9d943275d6b072  /tmp/geo/cities500.zip" | sha256sum -c -; \
     curl -fsSL --retry 3 -o /out/geo/admin1CodesASCII.txt "${geo_base}/admin1CodesASCII.txt"; \
     echo "2e4867f5397acb056ea26377601b57af37cb4c81399770225018e9e439e91ad3  /out/geo/admin1CodesASCII.txt" | sha256sum -c -; \
     curl -fsSL --retry 3 -o /tmp/geo/alternateNamesV2.zip "${geo_base}/alternateNamesV2.zip"; \
