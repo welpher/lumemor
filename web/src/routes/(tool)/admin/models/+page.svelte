@@ -30,6 +30,11 @@
 	import { formatMegabytes } from '$lib/format';
 	import { subscribeJobEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import Download from '@lucide/svelte/icons/download';
+	import Check from '@lucide/svelte/icons/check';
+	import X from '@lucide/svelte/icons/x';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -314,7 +319,7 @@
 	{:else if status === 'error'}
 		<div class="models__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready'}
 		<header class="models__header">
@@ -344,6 +349,7 @@
 					disabled={downloading}
 					onclick={() => void startDownload()}
 				>
+					<Download size={20} aria-hidden="true" />
 					{$_('admin_models_download_cta')}
 				</Button>
 			</section>
@@ -353,6 +359,7 @@
 			<div class="models__download-error flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 				<p>{errorText(downloadErrorKey)}</p>
 				<Button variant="primary" disabled={downloading} onclick={() => void startDownload()}>
+					<RotateCcw size={20} aria-hidden="true" />
 					{$_('action_retry')}
 				</Button>
 			</div>
@@ -382,6 +389,7 @@
 						})}
 					</p>
 					<Button variant="primary" disabled={downloading} onclick={() => void startDownload()}>
+						<RotateCcw size={20} aria-hidden="true" />
 						{$_('action_retry')}
 					</Button>
 				{/if}
@@ -456,6 +464,7 @@
 											disabled={busy}
 											onclick={() => askActivate(model)}
 										>
+											<Check size={20} aria-hidden="true" />
 											{$_('admin_models_activate')}
 										</Button>
 									{:else}
@@ -464,6 +473,7 @@
 											disabled={busy}
 											onclick={() => askRerun(model)}
 										>
+											<RefreshCw size={20} aria-hidden="true" />
 											{$_('admin_models_rerun')}
 										</Button>
 									{/if}
@@ -495,13 +505,18 @@
 		{/if}
 	{/snippet}
 	{#snippet footer()}
-		<Button variant="ghost" disabled={busy} onclick={cancelActivate}>{$_('common_cancel')}</Button>
+		<Button variant="ghost" disabled={busy} onclick={cancelActivate}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_cancel')}
+		</Button>
 		{#if pendingActivate !== null && needsDimWarning(pendingActivate)}
 			<Button variant="danger" disabled={busy} onclick={() => void confirmActivate()}>
+				<Check size={20} aria-hidden="true" />
 				{$_('admin_models_activate_confirm')}
 			</Button>
 		{:else}
 			<Button variant="primary" disabled={busy} onclick={() => void confirmActivate()}>
+				<Check size={20} aria-hidden="true" />
 				{$_('admin_models_activate_confirm')}
 			</Button>
 		{/if}
@@ -520,8 +535,12 @@
 		{/if}
 	{/snippet}
 	{#snippet footer()}
-		<Button variant="ghost" disabled={busy} onclick={cancelRerun}>{$_('common_cancel')}</Button>
+		<Button variant="ghost" disabled={busy} onclick={cancelRerun}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_cancel')}
+		</Button>
 		<Button variant="primary" disabled={busy} onclick={() => void confirmRerun()}>
+			<RefreshCw size={20} aria-hidden="true" />
 			{$_('admin_models_rerun_confirm')}
 		</Button>
 	{/snippet}

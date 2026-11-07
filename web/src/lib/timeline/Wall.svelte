@@ -1,14 +1,28 @@
 <script lang="ts">
-	// The month-grouped justified wall (the web polish batch one
-	// rework): the grouping of the loaded items, the sticky month and
-	// day headers, and the row layout engine's output, assembled once
-	// for every wall -- the timeline page (its scrubber and scroll
-	// tracking stay its own) and the curated walls (favorites, hidden,
-	// the album detail's grid) render exactly this tree so the wall's
-	// density language is one component, not four copies.
+	// THE UNIFIED WALL (the 2026-11-07 owner pin 1): ONE pure
+	// rendering component every photo surface composes -- the
+	// timeline (its scrubber, its selection and its batch bar stay
+	// the page's own overlays), the album detail (a pure-navigation
+	// wall, no selection), the favorites and hidden wrappers, the
+	// search browse mode. The component takes bare ITEMS: the
+	// month/day fold, the row layout engine, the ResizeObserver
+	// re-pack and the PhotoTile tree all live inside -- the wall's
+	// density language is one component, not four copies. The
+	// page-level concerns (the data walk, the selection state, the
+	// batch bar, the toolbar, the scrubber, the timeline prefs)
+	// never enter: a page composes `<Wall items />` plus whatever it
+	// overlays.
 	//
-	// THE ROWS: each day group packs independently (rows never span a
-	// group boundary -- the pinned rule), rows fill the container
+	// THE SELECTION CONTRACT: `onselect`'s PRESENCE is the
+	// capability. A wall whose caller wired the callback renders the
+	// tiles' check affordance (the hover-reveal entry, the
+	// select-mode reveal, the mid-selection tile-toggle); a wall
+	// with no callback renders NO check at all -- the tiles are pure
+	// click-to-viewer navigation (the album detail's wall, owner pin
+	// 5). No page ever wires a dead affordance.
+	//
+	// THE ROWS: each day group packs independently (rows never span
+	// a group boundary -- the pinned rule), rows fill the container
 	// width at true tile aspects with the tile seam between them, and
 	// a group's tail row clamps to the target height left-aligned.
 	// The pack re-derives whenever the container resizes (a
@@ -24,28 +38,51 @@
 	// scroll under them. The month gap token above each group is the
 	// breathing room the density contrast reads on.
 	//
+	// THE PINNED OFFSET: a page whose own contextual chrome pins over
+	// the wall (the album detail's sticky bar) sets
+	// `--wall-sticky-offset` on an ancestor -- the month headers
+	// then stick BELOW that bar instead of the scroll root's top
+	// edge; every other page leaves the var unset and the headers
+	// stick at 0 like they always did.
+	//
 	// PERFORMANCE: every row carries content-visibility with its
 	// height known from the engine's math, so offscreen rows skip
 	// their tiles' layout and paint while the scrollbar stays honest
 	// (the row-level windowing the justified math makes exact); the
 	// tiles keep their own content-visibility inside a partially
 	// visible row.
+	import { locale } from 'svelte-i18n';
 	import { packWall, WALL_MAX_WIDTH, WALL_TILE_SEAM, type PackedMonth } from './layout';
-	import type { MonthGroup } from './grouping';
+	import { groupTimelineItems } from './grouping';
+	import type { TimelineItem } from '$lib/api/timeline';
 	import PhotoTile from './PhotoTile.svelte';
 
 	type Props = {
-		/** The grouped items (see groupTimelineItems). */
-		groups: readonly MonthGroup[];
+		/** The loaded items, newest first (the page owns the walk that fills this). */
+		items: readonly TimelineItem[];
+		/** Whether checkboxes show and tile clicks toggle (a select mode or an active selection). */
+		selectable?: boolean;
 		/** Whether one item is in the current selection. */
-		isSelected: (id: string) => boolean;
-		/** Whether checkboxes show and tile clicks toggle. */
-		selectable: boolean;
-		/** Toggle callback; the checkbox and the tile body both call it. */
-		onselect: (id: string, next: boolean) => void;
+		isSelected?: (id: string) => boolean;
+		/**
+		 * The selection toggle. ABSENT = this wall offers no selection:
+		 * no check renders, the tiles are pure navigation (the album
+		 * detail's wall).
+		 */
+		onselect?: (id: string, next: boolean) => void;
 	};
 
-	let { groups, isSelected, selectable, onselect }: Props = $props();
+	let {
+		items,
+		selectable = false,
+		isSelected = () => false,
+		onselect
+	}: Props = $props();
+
+	// The fold is the wall's own: bare items in, locale-aware month
+	// and day groups out. The input order is the rendering order (the
+	// keyset ordering, newest first) and the fold keeps it.
+	const groups = $derived(groupTimelineItems(items, $locale ?? 'en'));
 
 	let wall: HTMLElement | undefined = $state();
 	let measuredWidth = $state(0);
@@ -91,9 +128,11 @@
 		     scroll margin leaves room for them under the scrubber's
 		     jumps. The day header stacks under the month band exactly
 		     (the band is 38px: py-1.5's 12px + the 26px line at
-		     text-[20px]/1.3, probe-verified). -->
+		     text-[20px]/1.3, probe-verified). The month header's top
+		     rides the pinned-offset var (0 unless a page's own bar
+		     pins over the wall). -->
 		<section class="wall__month scroll-mt-[92px]" data-month-key={month.key}>
-			<h2 class="wall__month-header sticky top-0 z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page">{month.label}</h2>
+			<h2 class="wall__month-header sticky top-[var(--wall-sticky-offset,0px)] z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page">{month.label}</h2>
 			<!-- The day blocks flow horizontally and wrap (the reference
 			     timeline's shape): a day is a header plus its justified
 			     stack at its own width, and sparse dates sit beside their
@@ -107,8 +146,7 @@
 						     seam rides the row's gap so the widths plus the
 						     gaps fill the container. Offscreen rows skip their
 						     tiles' layout and paint (the height is style-pinned,
-						     so the scrollbar stays honest). The tile's sizes
-						     hint is the engine's exact cell width (R2-2). -->
+						     so the scrollbar stays honest). -->
 						<div
 							class="wall__row flex [content-visibility:auto]"
 							style="height:{row.height}px; gap:{WALL_TILE_SEAM}px"
@@ -119,7 +157,6 @@
 										item={tile.item}
 										selected={isSelected(tile.item.id)}
 										selectable={selectable}
-										sizes="{tile.width}px"
 										onselect={onselect}
 									/>
 								</div>

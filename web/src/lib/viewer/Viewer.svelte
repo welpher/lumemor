@@ -560,7 +560,7 @@
 			{#if status === 'error'}
 				<div class="viewer__failure flex flex-col items-center gap-3 p-5 text-center" role="alert">
 					<p class="font-body font-medium text-[15px] leading-[1.4] text-cream-text">{errorText(errorKey)}</p>
-					<Button variant="primary" onclick={onretry}>{$_('action_retry')}</Button>
+					<Button variant="primary" onclick={onretry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 				</div>
 			{:else if detail === null}
 				<p class="viewer__status relative z-(--z-stage-chrome) px-5 py-3 font-body font-medium text-[14px] leading-[1.4] text-cream-text text-center rounded-control bg-night/55 backdrop-blur-[2px] animate-loading-in" role="status">{$_('viewer_loading')}</p>

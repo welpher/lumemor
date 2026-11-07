@@ -10,17 +10,30 @@
 	// optional callbacks (their flows carry dialogs and endpoints of
 	// their own, not batch actions).
 	//
+	// THE ICON-FIRST RULE (web IA §7.2, the 2026-11-07 owner pin):
+	// the bar is a TOOLBAR, so every action is an icon-only button
+	// (lucide, 20px, decorative) whose accessible name rides the
+	// aria-label -- the count line beside them carries the context,
+	// and the labels are the actions' own i18n strings.
+	//
 	// THE LAYERING: the bar paints above the upload queue's panel
 	// (--z-panel, the bottom-right status surface) -- the curation
-	// bar is the ACTIVE interaction and its wide row (the
-	// add-to-album affordance grew it past the panel's left edge at
-	// common viewports) must stay clickable while uploads run; the
-	// passive panel yields the overlap. The bar stays below the
-	// info drawer (--z-aside) and every dialog (--z-modal).
+	// bar is the ACTIVE interaction and its row must stay clickable
+	// while uploads run; the passive panel yields the overlap. The
+	// bar stays below the info drawer (--z-aside) and every dialog
+	// (--z-modal).
 	import { _ } from 'svelte-i18n';
-	import Button from '$lib/components/Button.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import type { BatchAction } from '$lib/api/timeline';
+	import FolderPlus from '@lucide/svelte/icons/folder-plus';
+	import Tag from '@lucide/svelte/icons/tag';
+	import Star from '@lucide/svelte/icons/star';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import Eye from '@lucide/svelte/icons/eye';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import X from '@lucide/svelte/icons/x';
 
 	type Props = {
 		/** How many tiles the selection holds. */
@@ -50,9 +63,9 @@
 		/**
 		 * Open the add-tag dialog over the current selection (the
 		 * timeline's bar offers it; the curated walls do not). The tag
-		 * flow is not a batch action -- it carries its own dialog and
-		 * endpoint, exactly the album flow's shape -- so it rides this
-		 * callback instead of the action set.
+		 * flow is not a batch action -- it carries its own dialog
+		 * and endpoint, exactly the album flow's shape -- so it rides
+		 * this callback instead of the action set.
 		 */
 		onaddtag?: () => void;
 		/** Run one batch action over the current selection. */
@@ -101,41 +114,101 @@
 		<p class="batchbar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap tabular-nums">{$_('batch_selected_count', { values: { count } })}</p>
 
 		{#if onaddtoalbum !== undefined}
-			<Button variant="ghost" disabled={busy} onclick={onaddtoalbum}>{$_('action_add_to_album')}</Button>
+			<IconButton
+				class="batchbar__action"
+				variant="ghost"
+				disabled={busy}
+				aria-label={$_('action_add_to_album')}
+				title={$_('action_add_to_album')}
+				onclick={onaddtoalbum}
+			>
+				<FolderPlus size={20} aria-hidden="true" />
+			</IconButton>
 		{/if}
 
 		{#if onaddtag !== undefined}
-			<Button variant="ghost" disabled={busy} onclick={onaddtag}>{$_('action_add_tag')}</Button>
+			<IconButton
+				class="batchbar__action"
+				variant="ghost"
+				disabled={busy}
+				aria-label={$_('action_add_tag')}
+				title={$_('action_add_tag')}
+				onclick={onaddtag}
+			>
+				<Tag size={20} aria-hidden="true" />
+			</IconButton>
 		{/if}
 
 		{#if offers('favorite')}
-			<Button variant="ghost" disabled={busy} onclick={() => onaction(allFavorite ? 'unfavorite' : 'favorite')}>
-				{allFavorite ? $_('action_unfavorite') : $_('action_favorite')}
-			</Button>
+			<IconButton
+				class="batchbar__action batchbar__action--favorite"
+				variant="ghost"
+				disabled={busy}
+				aria-label={allFavorite ? $_('action_unfavorite') : $_('action_favorite')}
+				title={allFavorite ? $_('action_unfavorite') : $_('action_favorite')}
+				onclick={() => onaction(allFavorite ? 'unfavorite' : 'favorite')}
+			>
+				<Star size={20} aria-hidden="true" />
+			</IconButton>
 		{/if}
 		{#if offers('hide')}
-			<Button variant="ghost" disabled={busy} onclick={() => onaction('hide')}>{$_('action_hide')}</Button>
+			<IconButton
+				class="batchbar__action batchbar__action--hide"
+				variant="ghost"
+				disabled={busy}
+				aria-label={$_('action_hide')}
+				title={$_('action_hide')}
+				onclick={() => onaction('hide')}
+			>
+				<EyeOff size={20} aria-hidden="true" />
+			</IconButton>
 		{/if}
 		{#if offers('unhide')}
-			<Button variant="ghost" disabled={busy} onclick={() => onaction('unhide')}>{$_('action_unhide')}</Button>
+			<IconButton
+				class="batchbar__action batchbar__action--unhide"
+				variant="ghost"
+				disabled={busy}
+				aria-label={$_('action_unhide')}
+				title={$_('action_unhide')}
+				onclick={() => onaction('unhide')}
+			>
+				<Eye size={20} aria-hidden="true" />
+			</IconButton>
 		{/if}
 		{#if offers('trash')}
-			<Button variant="danger" disabled={busy} onclick={() => onaction('trash')}>{$_('action_trash')}</Button>
+			<IconButton
+				class="batchbar__action batchbar__action--trash"
+				variant="danger"
+				disabled={busy}
+				aria-label={$_('action_trash')}
+				title={$_('action_trash')}
+				onclick={() => onaction('trash')}
+			>
+				<Trash2 size={20} aria-hidden="true" />
+			</IconButton>
 		{/if}
 		{#if offers('restore')}
-			<Button variant="ghost" disabled={busy} onclick={() => onaction('restore')}>{$_('action_restore')}</Button>
+			<IconButton
+				class="batchbar__action batchbar__action--restore"
+				variant="ghost"
+				disabled={busy}
+				aria-label={$_('action_restore')}
+				title={$_('action_restore')}
+				onclick={() => onaction('restore')}
+			>
+				<RotateCcw size={20} aria-hidden="true" />
+			</IconButton>
 		{/if}
 
-		<button
-			class="batchbar__clear inline-flex items-center justify-center w-[34px] h-[34px] rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
-			type="button"
+		<IconButton
+			class="batchbar__clear"
+			variant="ghost"
 			aria-label={$_('action_clear_selection')}
+			title={$_('action_clear_selection')}
 			onclick={onclear}
 		>
-			<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-				<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
-			</svg>
-		</button>
+			<X size={20} aria-hidden="true" />
+		</IconButton>
 
 		{#if errorKey !== ''}
 			<p class="batchbar__error basis-full font-body font-normal text-[13px] leading-[1.4] text-danger-text text-center" role="alert">{errorText(errorKey)}</p>

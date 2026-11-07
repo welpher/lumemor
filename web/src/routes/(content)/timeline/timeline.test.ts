@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
-import { clearWallItems, wallItems } from '$lib/timeline/wall.svelte';
+import { clearWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 
 // The timeline wall page: first page renders grouped tiles, the
 // empty and error states carry their affordances, the infinite
@@ -140,6 +140,15 @@ function buttonByText(text: string, scope: ParentNode = document.body): HTMLButt
 	return found;
 }
 
+/** The icon-only actions (the batch bar, the toolbars) name themselves by aria-label. */
+function buttonByLabel(label: string, scope: ParentNode = document.body): HTMLButtonElement {
+	const found = scope.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (found === null) {
+		throw new Error(`missing button labeled ${label}`);
+	}
+	return found;
+}
+
 function clickTile(index: number): void {
 	const link = tiles()[index]?.querySelector('a.tile__link');
 	link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -182,9 +191,9 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	const page = mountPage();
 	await settle();
 
-	// The wall's month and day headers: the shared justified wall
-	// renderer (MonthGroups) owns the header classes now -- the
-	// selectors follow the wall__ prefix the curated views always
+	// The wall's month and day headers: the unified wall renderer
+	// (Wall.svelte) owns the header classes now -- the selectors
+	// follow the wall__ prefix the curated views always
 	// used. R2-12: no dividing hairline, the tightened vertical
 	// rhythm (the month band's ~py-1.5/mb-2), the sticky positions
 	// and the opaque bg-page stays.
@@ -215,7 +224,7 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	]);
 	expect(tiles()).toHaveLength(3);
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a1/thumbnail?size=tile'
+		'/api/v1/assets/a1/thumbnail?size=view'
 	);
 
 	// The scrubber at rest: faint years, dots with full accessible
@@ -258,10 +267,12 @@ test('tiles pack into justified rows at the engine-computed sizes', async () => 
 	const tile = cells[0]?.querySelector<HTMLElement>('.tile');
 	expect(tile).not.toBeNull();
 
-	// The wall passes the engine's exact cell width as the tile's
-	// sizes hint (the srcset's honest width source).
+	// The serving copy is the view derivative alone -- no srcset, no
+	// sizes hint (the 2026-11-07 blurry fix: the responsive-image
+	// re-evaluation never reliably re-fetched after a re-pack).
 	const image = cells[0]?.querySelector('img');
-	expect(image?.getAttribute('sizes')).toBe('288px');
+	expect(image?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=view');
+	expect(image?.getAttribute('srcset')).toBeNull();
 	unmount(page);
 	flushSync();
 });
@@ -397,7 +408,7 @@ test('without an observer the manual pager loads the next page', async () => {
 	await settle();
 
 	expect(tiles()).toHaveLength(5);
-	// (The wall__ prefix: the shared MonthGroups renderer owns the
+	// (The wall__ prefix: the unified Wall renderer owns the
 	// headers of every wall.)
 	const months = Array.from(document.body.querySelectorAll('.wall__month-header'));
 	expect(months.map((header) => header.textContent)).toEqual([
@@ -438,14 +449,14 @@ test('selection: the check entry raises the bar, a batch trash removes the tiles
 	const bar = document.body.querySelector('.batchbar');
 	expect(bar?.textContent).toContain('2 selected');
 
-	buttonByText('Trash').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	buttonByLabel('Trash').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/batch');
 	expect(posts).toHaveLength(1);
 	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ action: 'trash', ids: ['a1', 'a2'] });
 	expect(tiles().map((tile) => tile.querySelector('img')?.getAttribute('src'))).toEqual([
-		'/api/v1/assets/a3/thumbnail?size=tile'
+		'/api/v1/assets/a3/thumbnail?size=view'
 	]);
 	// The successful action cleared the selection: the bar is gone.
 	expect(document.body.querySelector('.batchbar')).toBeNull();
@@ -467,7 +478,7 @@ test('a failed batch keeps the tiles, the selection and shows the message', asyn
 	// toolbar).
 	clickTileCheck(0);
 
-	buttonByText('Hide').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	buttonByLabel('Hide').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	await settle();
 
 	expect(tiles()).toHaveLength(3);
@@ -499,7 +510,7 @@ test('favorite toggles the selected tiles optimistically', async () => {
 	// toolbar).
 	clickTileCheck(0);
 
-	buttonByText('Favorite').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	buttonByLabel('Favorite').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	await settle();
 
 	expect(tiles()[0]?.querySelector('.tile__badge--favorite')).not.toBeNull();
@@ -521,8 +532,8 @@ test('SSE events patch the wall: a trashed event removes the tile', async () => 
 	await settle();
 
 	expect(tiles().map((tile) => tile.querySelector('img')?.getAttribute('src'))).toEqual([
-		'/api/v1/assets/a1/thumbnail?size=tile',
-		'/api/v1/assets/a3/thumbnail?size=tile'
+		'/api/v1/assets/a1/thumbnail?size=view',
+		'/api/v1/assets/a3/thumbnail?size=view'
 	]);
 	unmount(page);
 	flushSync();
@@ -553,7 +564,7 @@ test('SSE events patch the wall: a ready event refetches the detail', async () =
 
 	const tile = tiles()[1];
 	expect(tile?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a2/thumbnail?size=tile'
+		'/api/v1/assets/a2/thumbnail?size=view'
 	);
 	unmount(page);
 	flushSync();
@@ -743,7 +754,7 @@ test('add to album: picking an existing album POSTs the selection, the report la
 	await settle();
 
 	selectTwoTiles();
-	buttonByText('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const dialog = modal();
@@ -804,7 +815,7 @@ test('add to album: the create-new path creates the album first, then adds', asy
 	await settle();
 
 	selectTwoTiles();
-	buttonByText('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const dialog = modal();
@@ -854,7 +865,7 @@ test('a failed add keeps the selection and surfaces the message in the dialog', 
 	await settle();
 
 	selectTwoTiles();
-	buttonByText('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	const dialog = modal();
 	chooseDialogOption(dialog as ParentNode, 'al1');
@@ -888,7 +899,7 @@ test('the ?album= param arms the select mode and preselects the album', async ()
 
 	clickTile(0);
 	clickTile(1);
-	buttonByText('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	// The dialog preselected the route's album.
@@ -938,7 +949,7 @@ test('an album membership event restarts the walk: the fresh page one applies', 
 
 	expect(tiles()).toHaveLength(4);
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/s1/thumbnail?size=tile'
+		'/api/v1/assets/s1/thumbnail?size=view'
 	);
 	unmount(page);
 	flushSync();
@@ -973,7 +984,7 @@ test('add tag: picking an existing tag POSTs the selection, the report lands', a
 	await settle();
 
 	selectTwoTiles();
-	buttonByText('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const dialog = modal();
@@ -1031,7 +1042,7 @@ test('add tag: the create-new path creates the tag idempotently, then tags the s
 	await settle();
 
 	selectTwoTiles();
-	buttonByText('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const dialog = modal();
@@ -1075,7 +1086,7 @@ test('add tag: a failed write keeps the selection and surfaces the message in th
 	await settle();
 
 	selectTwoTiles();
-	buttonByText('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	const dialog = modal();
 	chooseDialogOption(dialog as ParentNode, 't1');

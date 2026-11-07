@@ -17,12 +17,19 @@
 	// ring draws at its edge -- the whitespace IS the selected state,
 	// no reflow, no checkbox geometry change.
 	//
-	// THE SERVING PAIR (R2-2): the thumbnail rides a DPR srcset --
-	// the tile derivative as 1x, the view derivative as 2x -- so a
-	// Retina-density wall tile gets real pixels instead of an
-	// upscaled 250px box; the caller passes the rendered width as
-	// the sizes hint (the engine's exact cell width on the justified
-	// wall).
+	// THE SERVING COPY (the 2026-11-07 blurry fix, owner pin 2): the
+	// tile ALWAYS serves the view derivative -- the tile/view DPR
+	// srcset pair is gone. The pair relied on the browser
+	// re-evaluating its responsive-image candidate after the row
+	// engine re-packed and the `sizes` hint changed on an
+	// already-loaded <img>, which it does not reliably do -- so a
+	// window resize re-packed the wall and left the soft candidate
+	// on screen. The tile derivative itself was sized for a uniform
+	// ~250px grid, not the justified wall's 200-500px variable
+	// cells, so the sharper candidate was doing the real work
+	// anyway; a self-hosted LAN app's bandwidth cost is negligible
+	// and the photos are ALWAYS sharp. (The viewer's image branch
+	// keeps its own view/original pair -- untouched.)
 	//
 	// THE PINNED LIVE-PHOTO DECISION: TimelineItem carries
 	// livePhotoVideoId, so a Live Photo tile shows its small live
@@ -41,12 +48,14 @@
 	// instead of overflowing. There is no stack count yet — nothing
 	// invents data the contract does not carry.
 	//
-	// Selection interaction (unchanged): the check circle appears on
-	// hover and whenever a selection or the select mode is active
-	// (the touch-friendly path); with selection active the whole tile
+	// Selection interaction: the check circle appears on hover and
+	// whenever a selection or the select mode is active (the
+	// touch-friendly path); with selection active the whole tile
 	// toggles, otherwise the tile is the anchor into the asset
 	// viewer. `aria-checked` and the keyboard semantics stay exactly
-	// as they were -- only the visuals moved.
+	// as they were -- only the visuals moved. A caller that wires NO
+	// onselect callback gets NO check circle at all (the
+	// no-selection walls: the album detail, the trash grid).
 	import { decode } from 'blurhash';
 	import { _ } from 'svelte-i18n';
 	import type { TimelineItem } from '$lib/api/timeline';
@@ -74,36 +83,23 @@
 		/** Whether checkboxes show and clicks toggle (select mode or an active selection). */
 		selectable: boolean;
 		/**
-		 * The rendered width hint for the srcset (R2-2): the justified
-		 * wall passes the row engine's exact cell width; callers that
-		 * do not know it (the trash grid's fluid cells) fall back to
-		 * the default. The attribute is advisory under x descriptors
-		 * but carries the honest width for any future w migration.
+		 * The selection toggle. ABSENT = the surface offers no
+		 * selection at all (the album detail's wall, the trash grid):
+		 * NO check circle renders -- not even the hover reveal -- and
+		 * the tile body stays the pure viewer anchor. The callback's
+		 * presence is the capability, so no caller ever wires a dead
+		 * affordance.
 		 */
-		sizes?: string;
-		/** Toggle callback; the checkbox and the tile body both call it. */
-		onselect: (id: string, selected: boolean) => void;
+		onselect?: (id: string, selected: boolean) => void;
 	};
 
-	let { item, selected, selectable, sizes = '240px', onselect }: Props = $props();
+	let { item, selected, selectable, onselect }: Props = $props();
 
 	let loaded = $state(false);
 	let canvas: HTMLCanvasElement | undefined = $state();
 
-	/** The tile-size serving copy (the timeline box size). */
-	const thumbnailUrl = $derived(`/api/v1/assets/${encodeURIComponent(item.id)}/thumbnail?size=tile`);
-	/** The view-size serving copy (the 2x candidate of the srcset). */
+	/** The view-size serving copy (always -- see the serving pin above). */
 	const viewUrl = $derived(`/api/v1/assets/${encodeURIComponent(item.id)}/thumbnail?size=view`);
-	/**
-	 * The DPR pair (R2-2): the 250px tile box feeding a Retina-density
-	 * wall tile reads soft, so the view derivative rides as the 2x
-	 * candidate. The x descriptors are the honest pair for the
-	 * endpoint's aspect-variable files -- a w descriptor would have
-	 * to lie about each file's intrinsic width; the browser picks by
-	 * the device pixel ratio, exactly the binary the round-2 feedback
-	 * pins ("srcset tile/view × DPR + sizes").
-	 */
-	const srcset = $derived(`${thumbnailUrl} 1x, ${viewUrl} 2x`);
 
 	// Reset the crossfade when the tile's image identity changes (the
 	// item object is replaced by patches, not mutated).
@@ -137,11 +133,13 @@
 	});
 
 	function toggle(): void {
-		onselect(item.id, !selected);
+		if (onselect !== undefined) {
+			onselect(item.id, !selected);
+		}
 	}
 
 	function handleTileClick(event: MouseEvent): void {
-		if (selectable) {
+		if (selectable && onselect !== undefined) {
 			event.preventDefault();
 			toggle();
 		}
@@ -196,9 +194,7 @@
 				class="tile__image absolute inset-0 w-full h-full object-cover transition-[opacity] duration-(--motion-base) ease-standard"
 				class:opacity-0={!loaded}
 				class:tile__image--loaded={loaded}
-				src={thumbnailUrl}
-				srcset={srcset}
-				sizes={sizes}
+				src={viewUrl}
 				alt=""
 				loading="lazy"
 				decoding="async"
@@ -270,23 +266,29 @@
 		{/if}
 	</a>
 
-	<!-- The selection checkbox: revealed on hover (the group on the
-	     tile, for pointer users) and whenever selection is active
-	     (touch users, mid-selection). An opaque night surface with a
-	     translucent cream rim -- readable over any photo, in both
-	     themes, without a blur in sight. -->
-	<button
-		class="tile__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex items-center justify-center w-[26px] h-[26px] p-0 border border-cream-text/35 rounded-full text-transparent bg-night cursor-pointer transition-[opacity,background-color,border-color,color] duration-(--motion-fast) ease-standard group-hover:opacity-100 group-focus-within:opacity-100 aria-checked:bg-accent aria-checked:border-accent aria-checked:text-accent-on"
-		class:opacity-0={!selectable}
-		class:tile__check--shown={selectable}
-		type="button"
-		role="checkbox"
-		aria-checked={selected}
-		aria-label="{$_('action_select')}: {item.originalFilename}"
-		onclick={toggle}
-	>
-		<svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
-			<path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-		</svg>
-	</button>
+	<!-- The selection checkbox: rendered ONLY on surfaces that wired
+	     a selection callback (the timeline, the curated walls) --
+	     absent on the no-selection walls (the album detail, the
+	     trash grid), which never show a check at all. On the walls
+	     that carry it, the check is revealed on hover (the group on
+	     the tile, for pointer users) and whenever selection is
+	     active (touch users, mid-selection) -- an opaque night
+	     surface with a translucent cream rim, readable over any
+	     photo, in both themes, without a blur in sight. -->
+	{#if onselect !== undefined}
+		<button
+			class="tile__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex items-center justify-center w-[26px] h-[26px] p-0 border border-cream-text/35 rounded-full text-transparent bg-night cursor-pointer transition-[opacity,background-color,border-color,color] duration-(--motion-fast) ease-standard group-hover:opacity-100 group-focus-within:opacity-100 aria-checked:bg-accent aria-checked:border-accent aria-checked:text-accent-on"
+			class:opacity-0={!selectable}
+			class:tile__check--shown={selectable}
+			type="button"
+			role="checkbox"
+			aria-checked={selected}
+			aria-label="{$_('action_select')}: {item.originalFilename}"
+			onclick={toggle}
+		>
+			<svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
+				<path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+			</svg>
+		</button>
+	{/if}
 </div>

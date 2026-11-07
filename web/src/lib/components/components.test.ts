@@ -1,6 +1,7 @@
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
 import { beforeEach, expect, test } from 'vitest';
 import Button from './Button.svelte';
+import IconButton from './IconButton.svelte';
 import Card from './Card.svelte';
 import Input from './Input.svelte';
 import Modal from './Modal.svelte';
@@ -37,6 +38,29 @@ test('Button renders its label with each variant class', () => {
 		unmount(button);
 		flushSync();
 	}
+});
+
+test('IconButton renders a bare icon button whose label rides the aria-label', () => {
+	// The icon-first action rule (web IA §7.2): every action affordance
+	// carries an icon; the icon-ONLY form is a square button whose
+	// accessible name is the aria-label the caller passes (the lucide
+	// glyph itself is decorative). The paper-palette sibling of the
+	// viewer's night icon buttons.
+	const button = mount(IconButton, {
+		target: document.body,
+		props: { 'aria-label': 'Unfavorite' }
+	});
+	flushSync();
+	const element = document.body.querySelector<HTMLButtonElement>('button.icon-btn');
+	expect(element).not.toBeNull();
+	expect(element?.getAttribute('aria-label')).toBe('Unfavorite');
+	expect(element?.type).toBe('button');
+	// The box is the icon's square, never the text button's pill.
+	expect(element?.className).toContain('w-9');
+	expect(element?.className).toContain('h-9');
+	expect(element?.className).toContain('p-0');
+	unmount(button);
+	flushSync();
 });
 
 test('Input ties its label to the field and passes attributes through', () => {

@@ -16,6 +16,8 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import X from '@lucide/svelte/icons/x';
+	import Check from '@lucide/svelte/icons/check';
 	import { resolveErrorText } from '$lib/i18n/errors';
 
 	/** One choosable cluster of a group. */
@@ -213,11 +215,20 @@
 		{/if}
 	</div>
 	{#snippet footer()}
-		<Button variant="ghost" onclick={close}>{$_('common_cancel')}</Button>
+		<Button variant="ghost" onclick={close}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_cancel')}
+		</Button>
 		{#if mode === 'new' && newPerson !== undefined}
-			<Button disabled={busy} onclick={submit}>{$_(newPerson.submitKey)}</Button>
+			<Button disabled={busy} onclick={submit}>
+				<Check size={20} aria-hidden="true" />
+				{$_(newPerson.submitKey)}
+			</Button>
 		{:else}
-			<Button disabled={busy || optionIds.length === 0} onclick={submit}>{$_(submitKey)}</Button>
+			<Button disabled={busy || optionIds.length === 0} onclick={submit}>
+				<Check size={20} aria-hidden="true" />
+				{$_(submitKey)}
+			</Button>
 		{/if}
 	{/snippet}
 </Modal>

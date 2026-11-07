@@ -17,8 +17,11 @@
 	import { locale } from 'svelte-i18n';
 	import Modal from '$lib/components/Modal.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import type { AlbumShareEntry, UserSummary } from '$lib/api/albums';
+	import X from '@lucide/svelte/icons/x';
+	import Share2 from '@lucide/svelte/icons/share-2';
 
 	type Props = {
 		/** Open state; bind it from the caller, the modal closes itself. */
@@ -90,14 +93,18 @@
 						<li class="share-dialog__row flex flex-wrap items-center gap-2 py-1.5 px-3 bg-card border border-border rounded-control">
 							<span class="share-dialog__email font-body font-semibold text-[14px] leading-[1.4] text-text truncate">{share.email}</span>
 							<span class="share-dialog__since font-body font-normal text-[13px] leading-[1.4] text-text-soft">{$_('albums_share_member_since', { values: { date: dateLabel(share.grantedAt) } })}</span>
-							<Button
+							<!-- The row's revoke action is icon-only (the icon-first
+							     rule), named by its aria-label. -->
+							<IconButton
 								class="share-dialog__revoke ml-auto"
 								variant="ghost"
 								disabled={busy}
+								aria-label={$_('albums_share_revoke')}
+								title={$_('albums_share_revoke')}
 								onclick={() => onrevoke(share.userId)}
 							>
-								{$_('albums_share_revoke')}
-							</Button>
+								<X size={20} aria-hidden="true" />
+							</IconButton>
 						</li>
 					{/each}
 				</ul>
@@ -132,7 +139,13 @@
 		{/if}
 	</div>
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (open = false)}>{$_('common_close')}</Button>
-		<Button disabled={busy || loading || pickedId === ''} onclick={grant}>{$_('albums_share_submit')}</Button>
+		<Button variant="ghost" onclick={() => (open = false)}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_close')}
+		</Button>
+		<Button disabled={busy || loading || pickedId === ''} onclick={grant}>
+			<Share2 size={20} aria-hidden="true" />
+			{$_('albums_share_submit')}
+		</Button>
 	{/snippet}
 </Modal>

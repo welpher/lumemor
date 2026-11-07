@@ -267,7 +267,7 @@ test.describe('the administrator scenes', () => {
 		await page.goto(`/albums/${albumId}`);
 		// The detail's header title (the wall's empty state renders the
 		// album title in its own h1 too -- the class scopes the assert).
-		await expect(page.locator('h1.album-detail__title')).toHaveText(ALBUM_TITLE);
+		await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
 		await expect(page.getByText('This album has no photos yet. Add some from your timeline.')).toBeVisible();
 
 		// The handoff: the detail's add-photos action lands on the
@@ -355,7 +355,7 @@ test('scene 6: the member signs in and sees the shared album read-only', async (
 	// affordance do.
 	await card.click();
 	await expect(page).toHaveURL(new RegExp(`/albums/${albumId}$`));
-	await expect(page.locator('h1.album-detail__title')).toHaveText(ALBUM_TITLE);
+	await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
 	for (const label of ['Rename', 'Set cover…', 'Lock', 'Share…', 'Add photos', 'Delete album']) {
 		await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 	}
