@@ -356,6 +356,18 @@ NON_ERROR_KEYS = {
     "admin_jobs_started",
     "admin_jobs_finished",
     "admin_jobs_not_started",
+    # Admin storage settings UI strings (the storage-template
+    # feature): the settings section of the admin surface.
+    "admin_settings_loading",
+    "admin_settings_storage_title",
+    "admin_settings_storage_note",
+    "admin_settings_preset_label",
+    "admin_settings_preset_custom",
+    "admin_settings_template_label",
+    "admin_settings_sample_label",
+    "admin_settings_saved_note",
+    "admin_settings_submit",
+    "admin_settings_contract_note",
     # Albums surface UI strings (M3c Task 5): the wall, the detail,
     # the share dialog and the timeline's add-to-album flow.
     "action_add_to_album",

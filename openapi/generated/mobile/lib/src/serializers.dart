@@ -89,6 +89,8 @@ import 'package:lumemor_api/src/model/search_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
 import 'package:lumemor_api/src/model/set_person_hidden_request.dart';
+import 'package:lumemor_api/src/model/storage_settings_response.dart';
+import 'package:lumemor_api/src/model/storage_settings_update_request.dart';
 import 'package:lumemor_api/src/model/tag_assets_request.dart';
 import 'package:lumemor_api/src/model/tag_facet_count.dart';
 import 'package:lumemor_api/src/model/tag_name_request.dart';
@@ -183,6 +185,8 @@ part 'serializers.g.dart';
   ServerInfo,
   SessionInfo,
   SetPersonHiddenRequest,
+  StorageSettingsResponse,
+  StorageSettingsUpdateRequest,
   TagAssetsRequest,
   TagFacetCount,
   TagNameRequest,

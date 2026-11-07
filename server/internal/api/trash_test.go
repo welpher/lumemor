@@ -97,6 +97,35 @@ func (e *assetEnv) storedFileOf(t *testing.T, row dbgen.Asset) string {
 	return filepath.Join(e.dataDir, filepath.FromSlash(row.FilePath))
 }
 
+// shareBlobBetween rewires two owners' rows of the same bytes onto ONE
+// stored file: the shared-blob state of assets ingested before the
+// storage-template feature, whose content-addressed paths let two
+// owners' identical bytes share one physical file (new uploads render
+// per-owner paths instead). The per-owner files the template flow
+// created are removed, one shared file is materialized at the legacy
+// content-addressed shape, and both rows point at it -- the exact
+// state the delete paths' reference counting still serves.
+func (e *assetEnv) shareBlobBetween(t *testing.T, first, second dbgen.Asset, content []byte) string {
+	t.Helper()
+	checksum := sha256Hex(content)
+	sharedRel := "originals/" + checksum[:2] + "/" + checksum[2:4] + "/" + checksum + ".jpg"
+	shared := filepath.Join(e.dataDir, filepath.FromSlash(sharedRel))
+	if err := os.MkdirAll(filepath.Dir(shared), 0o755); err != nil {
+		t.Fatalf("create shared blob directory: %v", err)
+	}
+	if err := os.WriteFile(shared, content, 0o644); err != nil {
+		t.Fatalf("write shared blob: %v", err)
+	}
+	for _, row := range []dbgen.Asset{first, second} {
+		if err := os.Remove(e.storedFileOf(t, row)); err != nil {
+			t.Fatalf("remove the per-owner file of %s: %v", uuid.UUID(row.ID.Bytes), err)
+		}
+	}
+	e.exec(t, `UPDATE assets SET file_path = $2 WHERE id = $1 OR id = $3`,
+		pgUUID(uuid.UUID(first.ID.Bytes)), sharedRel, pgUUID(uuid.UUID(second.ID.Bytes)))
+	return shared
+}
+
 // requireFileState asserts the existence of a file path.
 func requireFileState(t *testing.T, path string, want bool) {
 	t.Helper()
@@ -234,12 +263,14 @@ func busEventsOf(t *testing.T, bus *events.Bus, name string) []map[string]string
 }
 
 // TestTrashSharedBlobExpiry is the mandated Review Focus 1 case: two
-// owners upload the SAME photo bytes, which content addressing stores
-// as ONE physical file referenced by two rows. The owner who trashes
-// and expires loses the row; the FILE stays (the other owner's row
-// references it), the other owner's timeline keeps the photo, and the
-// other owner's derived files are untouched. The deleting owner's own
-// derived directory goes with the row.
+// owners hold rows over the SAME physical file -- the shared-blob
+// state of assets ingested before the storage-template feature, whose
+// content-addressed paths let identical bytes of any owner share one
+// file. The owner who trashes and expires loses the row; the FILE
+// stays (the other owner's row references it), the other owner's
+// timeline keeps the photo, and the other owner's derived files are
+// untouched. The deleting owner's own derived directory goes with the
+// row.
 func TestTrashSharedBlobExpiry(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -252,11 +283,14 @@ func TestTrashSharedBlobExpiry(t *testing.T) {
 
 	adminRow := env.assetRowOf(t, uuid.UUID(adminAsset.Id))
 	graceRow := env.assetRowOf(t, uuid.UUID(graceAsset.Id))
+	// The two owners' rows land over one shared legacy file.
+	sharedFile := env.shareBlobBetween(t, adminRow, graceRow, shared)
+	adminRow = env.assetRowOf(t, uuid.UUID(adminAsset.Id))
+	graceRow = env.assetRowOf(t, uuid.UUID(graceAsset.Id))
 	if adminRow.FilePath != graceRow.FilePath {
-		t.Fatalf("the two rows of the same bytes store %q and %q, want the one shared file path",
+		t.Fatalf("the two rewired rows store %q and %q, want the one shared file path",
 			adminRow.FilePath, graceRow.FilePath)
 	}
-	sharedFile := env.storedFileOf(t, adminRow)
 	requireFileState(t, sharedFile, true)
 	adminThumbs := env.writeThumbFixture(t, uuid.UUID(adminAsset.Id))
 	graceThumbs := env.writeThumbFixture(t, uuid.UUID(graceAsset.Id))
@@ -611,7 +645,9 @@ func TestDeleteAssetSemantics(t *testing.T) {
 	shared := jpegColorFixture(t, color.RGBA{R: 0x67, G: 0x68, B: 0x69, A: 0xff})
 	adminShared := env.uploadPhotoAs(t, env.cookie, "del-shared-admin", taken.Add(2*time.Minute), shared)
 	graceShared := env.uploadPhotoAs(t, graceCookie, "del-shared-grace", taken.Add(2*time.Minute), shared)
-	sharedFile := env.storedFileOf(t, env.assetRowOf(t, uuid.UUID(adminShared.Id)))
+	adminSharedRow := env.assetRowOf(t, uuid.UUID(adminShared.Id))
+	graceSharedRow := env.assetRowOf(t, uuid.UUID(graceShared.Id))
+	sharedFile := env.shareBlobBetween(t, adminSharedRow, graceSharedRow, shared)
 
 	if rec := env.deleteAsset(t, env.cookie, uuid.UUID(adminShared.Id)); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete of the shared blob's first row status = %d, want %d", rec.Code, http.StatusNoContent)

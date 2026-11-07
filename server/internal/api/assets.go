@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -22,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
@@ -68,22 +70,35 @@ type uploadForm struct {
 	deviceTimeZone     string
 }
 
-// committedUpload is one file part that reached the content-addressed
-// originals tree: everything the database row needs, recorded while
-// the part streamed.
-type committedUpload struct {
+// sealedUpload is one file part that streamed and validated: the
+// receiver holding its sealed staged file, plus everything the path
+// render and the database row need. Nothing is placed yet -- the
+// placement renders from the checksum, the header and the asset
+// identity, which exist only after the whole request validated.
+type sealedUpload struct {
 	// partName is the file part's own file name; the component video
 	// row keeps it as its original filename.
 	partName string
-	// relPath is the content-addressed storage path relative to the
-	// data root, the portable form stored in file_path.
-	relPath string
+	// ext is the canonical (lowercase, dotless) extension the part
+	// carried; the whitelist validated it and the placement
+	// normalizes it (jpeg to jpg, tif to tiff).
+	ext string
+	// header is the EXIF capture context parsed from the sealed file:
+	// the taken-at fallback chain's first link and the camera
+	// variables of the path render.
+	header storage.MediaHeader
+	// receiver holds the sealed staged file until the placement links
+	// it into the originals tree.
+	receiver *storage.Receiver
 	// checksum is the sha256 hex digest of the payload.
 	checksum string
 	// size is the streamed byte count.
 	size int64
 	// format is the whitelisted format the extension mapped to.
 	format storage.UploadFormat
+	// relPath is the placed storage path relative to the data root,
+	// the portable form stored in file_path (set by the placement).
+	relPath string
 }
 
 // UploadAsset implements POST /api/v1/assets: the multipart backup
@@ -91,18 +106,24 @@ type committedUpload struct {
 //
 // The body streams through in one pass: text fields are read as they
 // arrive (they precede the file parts per contract), every file part
-// is handed to a fresh Receiver that stages, validates and
-// content-addresses it, and the database insert -- one row for the
+// is handed to a fresh Receiver that stages, validates and seals it
+// -- the EXIF capture context of the sealed file is parsed for the
+// path render -- and the owner+checksum dedup runs BEFORE any
+// placement: a true duplicate answers through the three-state lookup
+// with nothing placed at all. A fresh upload then renders the
+// instance's storage template per part and places the sealed files
+// into the per-owner originals tree (overwrite-proof links,
+// collision-suffixed), and the database insert -- one row for the
 // photo, plus a linked component row for the Live Photo video --
 // decides the outcome through the unique indexes: a clean insert
 // answers 201 created; a violation routes into the lookup that
 // answers 200 duplicate (the identical asset is live) or 200 trashed
-// (it sits in the trash). The handler validates the fields before the
-// first Receiver exists, so a request that fails validation reaches
-// its terminal state without staging anything; a request rejected
-// only after a file part legitimately committed leaves the
-// content-addressed blob (which may be shared and must not be
-// removed) but never a row.
+// (it sits in the trash), discarding the placed files the loser
+// never got to reference. The handler validates the fields before
+// the first Receiver exists, so a request that fails validation
+// reaches its terminal state without staging anything; a request
+// rejected only after a file part legitimately sealed discards its
+// staged files and leaves no residue at all.
 func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -117,7 +138,7 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fields := make(map[string]string)
-	var photo, liveVideo *committedUpload
+	var photo, liveVideo *sealedUpload
 
 	for {
 		part, err := reader.NextPart()
@@ -135,11 +156,11 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 			// file byte is staged: this is the structural gate the
 			// receiver's contract rides on.
 			if _, invalid := normalizeUploadForm(fields); len(invalid) > 0 {
-				s.writeValidationError(w, "invalid upload fields", invalid)
+				s.rejectUpload(w, photo, liveVideo, "invalid upload fields", invalid)
 				return
 			}
 			if part.FileName() == "" {
-				s.writeValidationError(w, "file parts must carry a file name", []string{name})
+				s.rejectUpload(w, photo, liveVideo, "file parts must carry a file name", []string{name})
 				return
 			}
 			target := &photo
@@ -149,27 +170,27 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 					// cannot hold the video until a later photo part
 					// arrives, so an early liveVideo is refused before
 					// anything is staged.
-					s.writeValidationError(w, "liveVideo must follow the photo part",
+					s.rejectUpload(w, photo, liveVideo, "liveVideo must follow the photo part",
 						[]string{uploadPartLiveVideo})
 					return
 				}
 				target = &liveVideo
 			}
 			if *target != nil {
-				s.writeValidationError(w, "duplicate file part", []string{name})
+				s.rejectUpload(w, photo, liveVideo, "duplicate file part", []string{name})
 				return
 			}
-			committed, handled := s.receiveFilePart(w, r, part)
+			sealed, handled := s.receiveFilePart(w, r, part)
 			if !handled {
 				return
 			}
-			*target = &committed
+			*target = &sealed
 			continue
 		}
 
 		if uploadTextFieldName(name) {
 			if photo != nil || liveVideo != nil {
-				s.writeValidationError(w, "multipart fields must precede file parts", []string{name})
+				s.rejectUpload(w, photo, liveVideo, "multipart fields must precede file parts", []string{name})
 				return
 			}
 			if _, seen := fields[name]; seen {
@@ -185,7 +206,7 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		s.writeValidationError(w, "unknown multipart part", []string{name})
+		s.rejectUpload(w, photo, liveVideo, "unknown multipart part", []string{name})
 		return
 	}
 
@@ -203,10 +224,32 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	// A Live Photo whose video is the photo's own bytes is client
 	// nonsense: the two rows would collide inside one transaction,
-	// so the pair is refused before anything is staged.
+	// so the pair is refused -- nothing was placed yet, the sealed
+	// files are simply discarded.
 	if liveVideo != nil && liveVideo.checksum == photo.checksum {
+		discardUpload(photo, liveVideo)
 		s.writeValidationError(w, "the Live Photo video must differ from the photo",
 			[]string{uploadPartLiveVideo})
+		return
+	}
+
+	// The (owner+checksum) dedup runs FIRST, before any placement: a
+	// re-upload of content the owner already holds -- live or trashed
+	// -- answers through the same three-state lookup the insert's
+	// conflict path uses, with the sealed files discarded and nothing
+	// placed, so a true duplicate never reaches the collision loop.
+	row, state, found, err := s.lookupExistingUpload(r, requester.userID, form, photo, liveVideo)
+	if err != nil {
+		discardUpload(photo, liveVideo)
+		s.internalError(w, r, "lookup existing upload", err)
+		return
+	}
+	if found {
+		discardUpload(photo, liveVideo)
+		s.logger.Info("upload matched an existing asset",
+			"owner_id", requester.userID, "state", state,
+			"checksum", photo.checksum, "asset_id", uuid.UUID(row.ID.Bytes))
+		s.writeJSON(w, http.StatusOK, assetResponseFrom(row, state))
 		return
 	}
 
@@ -267,21 +310,24 @@ func (s *server) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request, devi
 	s.writeJSON(w, http.StatusOK, assetResponseFrom(row, uploadStateOf(row)))
 }
 
-// receiveFilePart streams one file part into the content-addressed
-// originals tree through a fresh Receiver. It reports whether the
-// request was answered (a rejection writes the response itself), and
-// the committed upload on success. The part's own file name carries
-// the extension; a payload inconsistent with it, or a file over the
-// per-file limit, aborts with the file part named in the details.
-func (s *server) receiveFilePart(w http.ResponseWriter, r *http.Request, part *multipart.Part) (committedUpload, bool) {
+// receiveFilePart streams one file part through a fresh Receiver:
+// staged, sniffed, hashed and sealed, with the EXIF capture context
+// of the sealed file parsed for the path render. No placement happens
+// here -- the destination renders from values (the checksum, the
+// header, the asset id) that exist only once the whole request
+// validated. It reports whether the request was answered (a rejection
+// writes the response itself), and the sealed upload on success. The
+// part's own file name carries the extension; a payload inconsistent
+// with it, or a file over the per-file limit, aborts with the file
+// part named in the details.
+func (s *server) receiveFilePart(w http.ResponseWriter, r *http.Request, part *multipart.Part) (sealedUpload, bool) {
 	ext := normalizeExtension(part.FileName())
 	receiver, err := storage.NewReceiver(s.uploadStagingDir(), s.uploadLimit, part)
 	if err != nil {
 		s.internalError(w, r, "stage upload", err)
-		return committedUpload{}, false
+		return sealedUpload{}, false
 	}
-	relPath, err := receiver.Commit(ext)
-	if err != nil {
+	if err := receiver.Seal(ext); err != nil {
 		var rejected *storage.ErrRejected
 		field := part.FormName()
 		details := map[string]interface{}{"fields": []interface{}{field}}
@@ -292,42 +338,296 @@ func (s *server) receiveFilePart(w http.ResponseWriter, r *http.Request, part *m
 		case errors.As(err, &rejected):
 			s.writeValidationError(w, "uploaded file rejected: "+rejected.Reason, []string{field})
 		default:
-			s.internalError(w, r, "commit upload", err)
+			s.internalError(w, r, "seal upload", err)
 		}
-		return committedUpload{}, false
+		return sealedUpload{}, false
 	}
 
 	format, ok := storage.LookupUploadFormat(ext)
 	if !ok {
-		// Commit has already validated the extension against the
+		// Seal has already validated the extension against the
 		// whitelist, so this cannot happen; the guard keeps the
 		// invariant explicit rather than trusting a faraway table.
 		s.internalError(w, r, "resolve upload format",
 			fmt.Errorf("extension %q left the whitelist", ext))
-		return committedUpload{}, false
+		return sealedUpload{}, false
 	}
 
-	return committedUpload{
+	return sealedUpload{
 		partName: part.FileName(),
-		relPath:  relPath,
+		ext:      ext,
+		header:   receiver.Header(),
+		receiver: receiver,
 		checksum: receiver.Checksum(),
 		size:     receiver.Size(),
 		format:   format,
 	}, true
 }
 
-// insertUpload persists the upload: the Live Photo video component
-// row first, then the photo row referencing it, then the EXIF
-// placeholders -- one transaction, all rows or none. The taken-at
-// value is the device-reported capture time or, absent one, the
-// upload time; the metadata pipeline refines it later. A unique index
-// violation is not a failure but the idempotency at work: the
-// transaction rolls back and the conflict resolves through the lookup
-// into the duplicate or trashed state, carried as a normal outcome.
-func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *committedUpload) (dbgen.Asset, apigen.AssetResponseState, error) {
+// lookupExistingUpload answers the upload idempotency BEFORE any
+// placement: the owner+checksum lookups of both parts (live and
+// trashed rows alike, in the photo-then-video order the conflict
+// resolution walks), then the device identity. A hit means the upload
+// is a duplicate or a trashed re-upload -- the caller discards the
+// sealed files and answers through the same three-state mapping the
+// insert's conflict path produces, so the early answer and the race
+// answer agree. The device identity is the remaining collision the
+// pre-check can see: a fresh content under a known deviceAssetId
+// resolves to the existing row exactly as the insert's unique
+// violation would.
+func (s *server) lookupExistingUpload(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *sealedUpload) (dbgen.Asset, apigen.AssetResponseState, bool, error) {
+	lookups := []dbgen.GetAssetByOwnerChecksumParams{{
+		OwnerID:  pgUUID(owner),
+		Checksum: photo.checksum,
+	}}
+	if video != nil {
+		lookups = append(lookups, dbgen.GetAssetByOwnerChecksumParams{
+			OwnerID:  pgUUID(owner),
+			Checksum: video.checksum,
+		})
+	}
+	for _, lookup := range lookups {
+		row, err := s.queries.GetAssetByOwnerChecksum(r.Context(), lookup)
+		if err == nil {
+			return row, uploadStateOf(row), true, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return dbgen.Asset{}, "", false, err
+		}
+	}
+
+	row, err := s.queries.GetAssetByDeviceId(r.Context(), dbgen.GetAssetByDeviceIdParams{
+		OwnerID:       pgUUID(owner),
+		DeviceAssetID: pgtype.Text{String: form.deviceAssetID, Valid: true},
+	})
+	if err == nil {
+		return row, uploadStateOf(row), true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return dbgen.Asset{}, "", false, err
+	}
+	return dbgen.Asset{}, "", false, nil
+}
+
+// discardUpload cleans the sealed files of a request that will never
+// place them (the pre-check's duplicate, a post-stream validation
+// failure), or the placed files of one whose rows never committed
+// (the insert's conflict path): the receiver's Discard removes
+// whichever artifact its state holds.
+func discardUpload(photo, video *sealedUpload) {
+	if photo != nil {
+		photo.receiver.Discard()
+	}
+	if video != nil {
+		video.receiver.Discard()
+	}
+}
+
+// rejectUpload answers a validation failure of the multipart walk and
+// cleans whatever the request sealed so far: a rejection after a file
+// part sealed discards the staged files -- nothing was placed, so
+// nothing else can reference them -- leaving no residue at all.
+func (s *server) rejectUpload(w http.ResponseWriter, photo, liveVideo *sealedUpload, message string, fields []string) {
+	discardUpload(photo, liveVideo)
+	s.writeValidationError(w, message, fields)
+}
+
+// placeSealedPart renders one part's path segment from the instance
+// template and places the sealed file at
+// originals/<ownerID>/<rendered>.<ext> -- the placement normalizes the
+// extension and appends the collision suffix when the target exists.
+func placeSealedPart(receiver *storage.Receiver, template *storage.Template, owner uuid.UUID, vars storage.RenderVars) (string, error) {
+	rendered, err := template.Render(vars)
+	if err != nil {
+		return "", fmt.Errorf("render storage template: %w", err)
+	}
+	return receiver.Place(owner.String(), rendered, vars.Ext)
+}
+
+// uploadTemplate loads the instance's storage template, compiled
+// strictly. A setting that fails to load or to compile falls back to
+// the default with a log line: the admin surface validates a template
+// (compile, sample render, structure) before it saves, so a bad row
+// is a corruption to point at, not an upload to fail.
+func (s *server) uploadTemplate(ctx context.Context) *storage.Template {
+	text, err := db.StorageTemplate(ctx, s.queries)
+	if err != nil {
+		s.logger.Error("read the storage template setting; using the default", "error", err)
+	}
+	compiled, err := storage.CompileTemplate(text)
+	if err == nil {
+		return compiled
+	}
+	s.logger.Error("compile the storage template setting; using the default", "error", err)
+	compiled, err = storage.CompileTemplate(storage.DefaultTemplate)
+	if err != nil {
+		// The default is a compile-time constant of this package's
+		// own grammar; failing to compile it is unreachable.
+		panic(fmt.Sprintf("api: the default storage template does not compile: %v", err))
+	}
+	return compiled
+}
+
+// ingestTakenAt resolves the capture instant the PATH renders from,
+// per the fallback chain: the EXIF wall clock with its own offset
+// (the OffsetTime tag, else the per-tag OffsetTimeOriginal), else the
+// same wall clock read in the device-declared zone, else the
+// device-reported time, else the upload time. The chain mirrors the
+// metadata job's resolveExifTime -- including its refusal to guess a
+// zone for a bare wall clock -- so the folder the path lands in
+// agrees with the taken_at the job later refines. The date tokens
+// render the instant's own zone, so the folder says the wall-clock
+// day the capture happened.
+func ingestTakenAt(header storage.MediaHeader, form uploadForm) time.Time {
+	if wall, ok := parseExifWallClock(header.DateTimeOriginal); ok {
+		if seconds, ok := parseExifOffset(header.OffsetTime); ok {
+			return wallInZone(wall, time.FixedZone("", seconds))
+		}
+		if seconds, ok := parseExifOffset(header.OffsetTimeOriginal); ok {
+			return wallInZone(wall, time.FixedZone("", seconds))
+		}
+		if form.deviceTimeZone != "" {
+			if loc, err := time.LoadLocation(form.deviceTimeZone); err == nil {
+				return wallInZone(wall, loc)
+			}
+		}
+	}
+	if !form.deviceCreatedAt.IsZero() {
+		return form.deviceCreatedAt
+	}
+	return time.Now()
+}
+
+// parseExifWallClock reads the EXIF "2006:01:02 15:04:05" form.
+func parseExifWallClock(raw string) (time.Time, bool) {
+	wall, err := time.Parse("2006:01:02 15:04:05", raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return wall, true
+}
+
+// parseExifOffset reads an EXIF zone offset ("+05:30", "-08:00") as
+// seconds -- the same reading the metadata job applies.
+func parseExifOffset(s string) (int, bool) {
+	if len(s) != 6 || (s[0] != '+' && s[0] != '-') || s[3] != ':' {
+		return 0, false
+	}
+	hours, err := strconv.Atoi(s[1:3])
+	if err != nil || hours < 0 || hours > 23 {
+		return 0, false
+	}
+	minutes, err := strconv.Atoi(s[4:6])
+	if err != nil || minutes < 0 || minutes > 59 {
+		return 0, false
+	}
+	seconds := hours*3600 + minutes*60
+	if s[0] == '-' {
+		seconds = -seconds
+	}
+	return seconds, true
+}
+
+// wallInZone re-reads the EXIF wall clock in the resolved zone: the
+// wall clock read there IS the instant (a plain .In(zone) would
+// convert an already-parsed instant instead).
+func wallInZone(wall time.Time, zone *time.Location) time.Time {
+	return time.Date(wall.Year(), wall.Month(), wall.Day(), wall.Hour(), wall.Minute(), wall.Second(), wall.Nanosecond(), zone)
+}
+
+// insertUpload persists the upload: both parts are placed first (the
+// path rendered from the instance's storage template and linked into
+// the per-owner originals tree, overwrite-proof), then the Live Photo
+// video component row, the photo row referencing it, and the EXIF
+// placeholders land in one transaction -- all rows or none. The
+// taken-at value the ROWS carry is the device-reported capture time
+// or, absent one, the upload time; the metadata pipeline refines it
+// later. The PATH's taken-at is the ingest chain (ingestTakenAt),
+// which mirrors the metadata job's resolution so the folder agrees
+// with the refined value. A unique index violation is not a failure
+// but the idempotency at work: the transaction rolls back, the placed
+// files the loser never got to reference are discarded, and the
+// conflict resolves through the lookup into the duplicate or trashed
+// state, carried as a normal outcome.
+func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *sealedUpload) (dbgen.Asset, apigen.AssetResponseState, error) {
 	ctx := r.Context()
+
+	// The template the paths render from: the instance setting,
+	// compiled strictly. A setting that fails to load or compile
+	// falls back to the default (logged) -- the admin surface
+	// validates before saving, so a bad row is a corruption to log,
+	// not an upload to fail.
+	template := s.uploadTemplate(ctx)
+
+	// The asset ids arrive before the placement: the {{assetId}}
+	// family renders from them, and the rows below reuse them.
+	photoID, err := uuid.NewV7()
+	if err != nil {
+		discardUpload(photo, video)
+		return dbgen.Asset{}, "", err
+	}
+	var videoID pgtype.UUID
+	if video != nil {
+		id, err := uuid.NewV7()
+		if err != nil {
+			discardUpload(photo, video)
+			return dbgen.Asset{}, "", err
+		}
+		videoID = pgUUID(id)
+	}
+
+	// The still's capture context drives BOTH parts' renders: the
+	// taken-at fallback chain over the photo's EXIF header, and the
+	// camera identity of the photo part. The Live Photo's motion
+	// video renders with the still's taken-at (the pair shares its
+	// folder) and its own file name, extension and asset id; its
+	// camera variables come from its own header, which videos do not
+	// carry.
+	takenAt := ingestTakenAt(photo.header, form)
+
+	// Render and place each part. The album variables render empty:
+	// a direct upload joins only the system sync stream, which is not
+	// a naming source; membership joined later never re-paths (the
+	// contract documents this).
+	photoVars := storage.RenderVars{
+		Filename:  form.fileName,
+		Ext:       photo.ext,
+		Video:     photo.format.Video,
+		TakenAt:   takenAt,
+		Make:      photo.header.Make,
+		Model:     photo.header.Model,
+		LensModel: photo.header.LensModel,
+		AssetID:   photoID.String(),
+	}
+	if photo.relPath, err = placeSealedPart(photo.receiver, template, owner, photoVars); err != nil {
+		discardUpload(photo, video)
+		return dbgen.Asset{}, "", fmt.Errorf("place photo: %w", err)
+	}
+	if video != nil {
+		videoVars := storage.RenderVars{
+			Filename: video.partName,
+			Ext:      video.ext,
+			Video:    video.format.Video,
+			TakenAt:  takenAt,
+			AssetID:  uuid.UUID(videoID.Bytes).String(),
+		}
+		if video.relPath, err = placeSealedPart(video.receiver, template, owner, videoVars); err != nil {
+			discardUpload(photo, video)
+			return dbgen.Asset{}, "", fmt.Errorf("place live photo video: %w", err)
+		}
+	}
+
+	// The rows' taken-at, unchanged from the pre-template flow: the
+	// device-reported time or the upload time; the metadata job
+	// refines it from the file's full EXIF.
+	rowTakenAt := form.deviceCreatedAt
+	if rowTakenAt.IsZero() {
+		rowTakenAt = time.Now()
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
+		discardUpload(photo, video)
 		return dbgen.Asset{}, "", err
 	}
 	// The rollback is a no-op after a successful commit; the context
@@ -335,25 +635,19 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := dbgen.New(tx)
 
-	takenAt := form.deviceCreatedAt
-	if takenAt.IsZero() {
-		takenAt = time.Now()
-	}
-
 	// The Live Photo video is a component row: no device identity of
 	// its own, never in the timeline, linked from the photo row.
-	var videoID pgtype.UUID
 	if video != nil {
-		id, err := uuid.NewV7()
-		if err != nil {
-			return dbgen.Asset{}, "", err
-		}
-		videoRow, err := queries.CreateAsset(ctx, assetInsertParams(id, owner, form, *video, takenAt, pgtype.UUID{}, true))
+		videoRow, err := queries.CreateAsset(ctx, assetInsertParams(uuid.UUID(videoID.Bytes), owner, form, *video, rowTakenAt, pgtype.UUID{}, true))
 		if err != nil {
 			// Release the transaction's connection before the lookup
 			// resolves the conflict through the pool; the deferred
 			// rollback afterwards is a no-op.
 			_ = tx.Rollback(ctx)
+			// The rows never commit: the files this request placed are
+			// orphans nothing else can reference (the placement's link
+			// proved each path did not exist before), so they go.
+			discardUpload(photo, video)
 			return s.resolveUploadConflict(r, owner, form, photo, video, err)
 		}
 		videoID = videoRow.ID
@@ -361,24 +655,23 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 			AssetID: videoRow.ID,
 			Exif:    uploadExifPlaceholder(form),
 		}); err != nil {
+			discardUpload(photo, video)
 			return dbgen.Asset{}, "", err
 		}
 	}
 
-	photoID, err := uuid.NewV7()
-	if err != nil {
-		return dbgen.Asset{}, "", err
-	}
-	photoRow, err := queries.CreateAsset(ctx, assetInsertParams(photoID, owner, form, *photo, takenAt, videoID, false))
+	photoRow, err := queries.CreateAsset(ctx, assetInsertParams(photoID, owner, form, *photo, rowTakenAt, videoID, false))
 	if err != nil {
 		// Same as above: the lookup needs a pool connection.
 		_ = tx.Rollback(ctx)
+		discardUpload(photo, video)
 		return s.resolveUploadConflict(r, owner, form, photo, video, err)
 	}
 	if err := queries.CreateExifPlaceholder(ctx, dbgen.CreateExifPlaceholderParams{
 		AssetID: photoRow.ID,
 		Exif:    uploadExifPlaceholder(form),
 	}); err != nil {
+		discardUpload(photo, video)
 		return dbgen.Asset{}, "", err
 	}
 
@@ -398,6 +691,7 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	// from failing this upload.
 	syncAlbumID, err := uuid.NewV7()
 	if err != nil {
+		discardUpload(photo, video)
 		return dbgen.Asset{}, "", err
 	}
 	albumID, err := queries.EnsureSyncAlbum(ctx, dbgen.EnsureSyncAlbumParams{
@@ -405,6 +699,7 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 		OwnerID: pgUUID(owner),
 	})
 	if err != nil {
+		discardUpload(photo, video)
 		return dbgen.Asset{}, "", err
 	}
 	if err := queries.AddAssetToAlbum(ctx, dbgen.AddAssetToAlbumParams{
@@ -412,6 +707,7 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 		AssetID: photoRow.ID,
 		AddedBy: pgUUID(owner),
 	}); err != nil {
+		discardUpload(photo, video)
 		return dbgen.Asset{}, "", err
 	}
 	if videoID.Valid {
@@ -420,11 +716,15 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 			AssetID: videoID,
 			AddedBy: pgUUID(owner),
 		}); err != nil {
+			discardUpload(photo, video)
 			return dbgen.Asset{}, "", err
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		// The commit failed: the rows did not land, so the placed
+		// files are orphans this request owns -- remove them.
+		discardUpload(photo, video)
 		return dbgen.Asset{}, "", err
 	}
 	return photoRow, apigen.Created, nil
@@ -441,7 +741,7 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 // standalone asset) the video's checksum, then the device identity;
 // the first hit decides duplicate (the row is live) or trashed (it is
 // not). Any other insert error stays an internal error.
-func (s *server) resolveUploadConflict(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *committedUpload, insertErr error) (dbgen.Asset, apigen.AssetResponseState, error) {
+func (s *server) resolveUploadConflict(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *sealedUpload, insertErr error) (dbgen.Asset, apigen.AssetResponseState, error) {
 	var pgErr *pgconn.PgError
 	if !errors.As(insertErr, &pgErr) || pgErr.Code != uniqueViolation ||
 		!uploadUniquenessConstraints[pgErr.ConstraintName] {
@@ -501,7 +801,7 @@ func uploadStateOf(row dbgen.Asset) apigen.AssetResponseState {
 // The component row keeps its own file part name as the original
 // filename and carries no device identity; the photo row records the
 // client-declared fileName and the device identity.
-func assetInsertParams(id, owner uuid.UUID, form uploadForm, up committedUpload, takenAt time.Time, videoID pgtype.UUID, isComponent bool) dbgen.CreateAssetParams {
+func assetInsertParams(id, owner uuid.UUID, form uploadForm, up sealedUpload, takenAt time.Time, videoID pgtype.UUID, isComponent bool) dbgen.CreateAssetParams {
 	kind := dbgen.MediaKindImage
 	if up.format.Video {
 		kind = dbgen.MediaKindVideo
@@ -705,7 +1005,7 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 // on: the upload is committed and its idempotent re-upload resolves
 // as duplicate without re-enqueueing, so recovery from a lost job
 // belongs to the requeue sweep, not to the response of this request.
-func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset, liveVideo *committedUpload) {
+func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset, liveVideo *sealedUpload) {
 	if s.jobs == nil {
 		return
 	}

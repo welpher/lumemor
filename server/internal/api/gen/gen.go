@@ -2226,6 +2226,48 @@ type SetPersonHiddenRequest struct {
 	IsHidden bool `json:"isHidden"`
 }
 
+// StorageSettingsResponse The storage settings of `GET /admin/settings/storage` and the
+// successful `PUT`: the instance's upload path template, the
+// sample path it renders, and the built-in presets.
+type StorageSettingsResponse struct {
+	// Presets The built-in preset templates, in the settings section's
+	// dropdown order: date nestings, album layouts, camera
+	// groupings, the type grouping, the asset-id fallback and
+	// the bare file name.
+	//
+	//
+	// Examples: ["{{y}}/{{MM}}/{{filename}}","{{y}}/{{y}}-{{MM}}/{{filename}}"]
+	Presets []string `json:"presets"`
+
+	// SamplePath The template rendered over the fixed sample asset with
+	// the extension appended, as a stored relative path --
+	// exactly the placement a real upload of the sample file
+	// would land at.
+	//
+	//
+	// Examples: originals/0192f8c1-0000-7000-8000-000000000001/2023/07/IMG_1234.jpg
+	SamplePath string `json:"samplePath"`
+
+	// Template The template new uploads render their placement from. A
+	// fresh instance (or a corrupt row) answers the default
+	// `{{y}}/{{MM}}/{{filename}}`.
+	//
+	//
+	// Examples: {{y}}/{{MM}}/{{filename}}
+	Template string `json:"template"`
+}
+
+// StorageSettingsUpdateRequest Payload of `PUT /admin/settings/storage`.
+type StorageSettingsUpdateRequest struct {
+	// Template The template to validate and save. Must compile strictly,
+	// render over the sample asset set, and produce safe
+	// structure; 1 to 512 runes.
+	//
+	//
+	// Examples: {{y}}/{{MM}}/{{filename}}
+	Template string `json:"template"`
+}
+
 // TagAssetsRequest The assignment write body: the list of asset ids to tag with
 // or untag from the caller's tag. Repeated ids collapse to one
 // application; the report's counts cover the distinct ids.
@@ -2868,6 +2910,9 @@ type SearchAssetsParamsLocale string
 // ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
 type ActivateModelJSONRequestBody = ActivateModelJSONBody
 
+// UpdateStorageSettingsJSONRequestBody defines body for UpdateStorageSettings for application/json ContentType.
+type UpdateStorageSettingsJSONRequestBody = StorageSettingsUpdateRequest
+
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = AdminCreateUserRequest
 
@@ -2957,6 +3002,12 @@ type ServerInterface interface {
 	// ReresolvePlaces Start a full place re-resolution run.
 	// (POST /admin/places/reresolve)
 	ReresolvePlaces(w http.ResponseWriter, r *http.Request)
+	// GetStorageSettings Read the storage template setting.
+	// (GET /admin/settings/storage)
+	GetStorageSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateStorageSettings Validate and save the storage template.
+	// (PUT /admin/settings/storage)
+	UpdateStorageSettings(w http.ResponseWriter, r *http.Request)
 	// ListUsers List the instance's accounts.
 	// (GET /admin/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -3167,6 +3218,18 @@ func (_ Unimplemented) RerunModel(w http.ResponseWriter, r *http.Request, id str
 // ReresolvePlaces Start a full place re-resolution run.
 // (POST /admin/places/reresolve)
 func (_ Unimplemented) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetStorageSettings Read the storage template setting.
+// (GET /admin/settings/storage)
+func (_ Unimplemented) GetStorageSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateStorageSettings Validate and save the storage template.
+// (PUT /admin/settings/storage)
+func (_ Unimplemented) UpdateStorageSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3641,6 +3704,34 @@ func (siw *ServerInterfaceWrapper) ReresolvePlaces(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReresolvePlaces(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetStorageSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetStorageSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStorageSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateStorageSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateStorageSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateStorageSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5469,6 +5560,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/jobs", wrapper.ListJobs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/settings/storage", wrapper.GetStorageSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/settings/storage", wrapper.UpdateStorageSettings)
 	})
 
 	return r
