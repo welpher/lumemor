@@ -25,12 +25,16 @@
 	//   reuses the viewer client's deleteAsset.
 	import { _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import PhotoTile from '$lib/timeline/PhotoTile.svelte';
 	import { deleteAsset } from '$lib/api/assets';
 	import { fetchTrash, restoreTrashedAsset, type TrashItem } from '$lib/api/trash';
 	import { subscribeAssetEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import X from '@lucide/svelte/icons/x';
 
 	type TrashStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -184,14 +188,11 @@
 
 	// The tile takes the timeline item shape; a trash row carries
 	// every field of it except the two live-view flags, and no
-	// favorite badge belongs on a recovery tile.
+	// favorite badge belongs on a recovery tile. NO onselect is
+	// wired: the trash view has no selection mode at all, so the
+	// tiles render no check affordance (the no-selection contract).
 	function tileItem(entry: TrashItem) {
 		return { ...entry, isFavorite: false };
-	}
-
-	function noopSelect(): void {
-		// The trash view has no selection mode; PhotoTile's toggle
-		// stays inert (selectable is always false).
 	}
 </script>
 
@@ -214,7 +215,7 @@
 	{:else if status === 'error'}
 		<div class="trash__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else}
 		<div class="trash__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3">
@@ -227,16 +228,33 @@
 					     actions under it: the trash styling carries the
 					     de-emphasized tone of a row on its way out. -->
 					<div class="trash__tile relative aspect-square overflow-hidden rounded-control [outline:1px_solid_var(--color-border)] outline-offset-[-1px] opacity-85">
-						<PhotoTile item={tileItem(entry)} selected={false} selectable={false} onselect={noopSelect} />
+						<PhotoTile item={tileItem(entry)} selected={false} selectable={false} />
 						<p class="trash__days absolute bottom-1.5 left-1.5 z-(--z-tile-chip) py-0.5 px-2 font-body font-semibold text-[12px] leading-[1.5] text-cream-text bg-night rounded-control tabular-nums">{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}</p>
 					</div>
 					<div class="trash__actions flex gap-2">
-						<Button class="flex-1" variant="ghost" disabled={busy} onclick={() => void restore(entry)}>
-							{$_('action_restore')}
-						</Button>
-						<Button class="flex-1" variant="danger" disabled={busy} onclick={() => askDelete(entry)}>
-							{$_('trash_delete_permanently')}
-						</Button>
+						<!-- The row's actions are icon-only (the icon-first rule):
+						     the restore pair's rotate mark and the destructive
+						     delete mark, named by their aria-labels. -->
+						<IconButton
+							class="trash__restore flex-1"
+							variant="ghost"
+							disabled={busy}
+							aria-label={$_('action_restore')}
+							title={$_('action_restore')}
+							onclick={() => void restore(entry)}
+						>
+							<RotateCcw size={20} aria-hidden="true" />
+						</IconButton>
+						<IconButton
+							class="trash__delete flex-1"
+							variant="danger"
+							disabled={busy}
+							aria-label={$_('trash_delete_permanently')}
+							title={$_('trash_delete_permanently')}
+							onclick={() => askDelete(entry)}
+						>
+							<Trash2 size={20} aria-hidden="true" />
+						</IconButton>
 					</div>
 				</div>
 			{/each}
@@ -258,8 +276,12 @@
 		{/if}
 	{/snippet}
 	{#snippet footer()}
-		<Button variant="ghost" disabled={busy} onclick={cancelDelete}>{$_('common_cancel')}</Button>
+		<Button variant="ghost" disabled={busy} onclick={cancelDelete}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_cancel')}
+		</Button>
 		<Button variant="danger" disabled={busy} onclick={() => void confirmDelete()}>
+			<Trash2 size={20} aria-hidden="true" />
 			{$_('trash_delete_confirm')}
 		</Button>
 	{/snippet}

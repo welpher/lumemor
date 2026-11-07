@@ -28,14 +28,23 @@
 		/** The result items, in the page's own order (rank order). */
 		items: readonly TimelineItem[];
 		/** Whether one item is in the current selection. */
-		isSelected: (id: string) => boolean;
-		/** Whether checkboxes show and tile clicks toggle. */
-		selectable: boolean;
-		/** Toggle callback; the checkbox and the tile body both call it. */
-		onselect: (id: string, next: boolean) => void;
+		isSelected?: (id: string) => boolean;
+		/** Whether checkboxes show and clicks toggle (select mode or an active selection). */
+		selectable?: boolean;
+		/**
+		 * The selection toggle. ABSENT = no check renders (the search
+		 * wall wires no selection -- its tiles are pure navigation,
+		 * the same no-selection contract as the album detail's wall).
+		 */
+		onselect?: (id: string, next: boolean) => void;
 	};
 
-	let { items, isSelected, selectable, onselect }: Props = $props();
+	let {
+		items,
+		isSelected = () => false,
+		selectable = false,
+		onselect
+	}: Props = $props();
 
 	let wall: HTMLElement | undefined = $state();
 	let measuredWidth = $state(0);
@@ -92,7 +101,6 @@
 						item={tile.item}
 						selected={isSelected(tile.item.id)}
 						selectable={selectable}
-						sizes="{tile.width}px"
 						onselect={onselect}
 					/>
 				</div>

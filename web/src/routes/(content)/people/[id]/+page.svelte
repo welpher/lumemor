@@ -48,6 +48,11 @@
 	import Button from '$lib/components/Button.svelte';
 	import PersonNameDialog from '$lib/people/PersonNameDialog.svelte';
 	import ClusterPickerDialog from '$lib/people/ClusterPickerDialog.svelte';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import PenLine from '@lucide/svelte/icons/pen-line';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import Eye from '@lucide/svelte/icons/eye';
+	import GitMerge from '@lucide/svelte/icons/git-merge';
 
 	const clusterId = $derived(page.params.id ?? '');
 
@@ -369,7 +374,7 @@
 	{:else if status === 'error'}
 		<div class="person-detail__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void convergeDetail()}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void convergeDetail()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else if detail !== null}
 		<header class="person-detail__header flex flex-wrap items-center gap-3 mb-3">
@@ -381,12 +386,19 @@
 			     the merge-into fold. -->
 			<div class="person-detail__actions ml-auto flex flex-wrap items-center gap-2">
 				{#if detail.label === null}
-					<Button onclick={() => { nameErrorKey = ''; nameDialogOpen = true; }}>{$_('people_detail_name_cta')}</Button>
+					<Button onclick={() => { nameErrorKey = ''; nameDialogOpen = true; }}><PenLine size={20} aria-hidden="true" />{$_('people_detail_name_cta')}</Button>
 				{:else}
-					<Button variant="ghost" onclick={() => { nameErrorKey = ''; nameDialogOpen = true; }}>{$_('people_rename_action')}</Button>
+					<Button variant="ghost" onclick={() => { nameErrorKey = ''; nameDialogOpen = true; }}><PenLine size={20} aria-hidden="true" />{$_('people_rename_action')}</Button>
 				{/if}
-				<Button variant="ghost" disabled={writeBusy} onclick={() => void toggleHidden()}>{hidden ? $_('action_unhide') : $_('action_hide')}</Button>
-				<Button variant="ghost" onclick={() => { mergeIntoErrorKey = ''; mergeIntoOpen = true; }}>{$_('people_merge_into_action')}</Button>
+				<Button variant="ghost" disabled={writeBusy} onclick={() => void toggleHidden()}>
+					{#if hidden}
+						<Eye size={20} aria-hidden="true" />
+					{:else}
+						<EyeOff size={20} aria-hidden="true" />
+					{/if}
+					{hidden ? $_('action_unhide') : $_('action_hide')}
+				</Button>
+				<Button variant="ghost" onclick={() => { mergeIntoErrorKey = ''; mergeIntoOpen = true; }}><GitMerge size={20} aria-hidden="true" />{$_('people_merge_into_action')}</Button>
 			</div>
 		</header>
 		{#if hidden}

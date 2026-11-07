@@ -10,6 +10,8 @@
 	import { locale } from 'svelte-i18n';
 	import Modal from '$lib/components/Modal.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import X from '@lucide/svelte/icons/x';
+	import Check from '@lucide/svelte/icons/check';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import type { TimelineItem } from '$lib/api/timeline';
 
@@ -104,7 +106,13 @@
 		{/if}
 	</div>
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => { open = false; onclose?.(); }}>{$_('common_cancel')}</Button>
-		<Button disabled={busy || items.length === 0 || pickedId === ''} onclick={() => onsubmit(pickedId)}>{$_('albums_cover_submit')}</Button>
+		<Button variant="ghost" onclick={() => { open = false; onclose?.(); }}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_cancel')}
+		</Button>
+		<Button disabled={busy || items.length === 0 || pickedId === ''} onclick={() => onsubmit(pickedId)}>
+			<Check size={20} aria-hidden="true" />
+			{$_('albums_cover_submit')}
+		</Button>
 	{/snippet}
 </Modal>

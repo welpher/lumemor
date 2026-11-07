@@ -38,6 +38,13 @@
 	import { subscribeFaceEvents, subscribePersonEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
+	import Check from '@lucide/svelte/icons/check';
+	import GitMerge from '@lucide/svelte/icons/git-merge';
+	import X from '@lucide/svelte/icons/x';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 	import PersonNameDialog from '$lib/people/PersonNameDialog.svelte';
 	import MergeDialog from '$lib/people/MergeDialog.svelte';
 
@@ -332,9 +339,20 @@
 			href="/people"
 		>{$_('nav_people')}</a>
 		{#if items.length > 0}
-			<Button variant="ghost" aria-pressed={selectMode} onclick={() => (selectMode = !selectMode)}>
-				{selectMode ? $_('action_done') : $_('action_select')}
-			</Button>
+			<!-- The select-mode toggle is icon-only (the icon-first rule),
+			     named by its aria-label. -->
+			<IconButton
+				aria-pressed={selectMode}
+				aria-label={selectMode ? $_('action_done') : $_('action_select')}
+				title={selectMode ? $_('action_done') : $_('action_select')}
+				onclick={() => (selectMode = !selectMode)}
+			>
+				{#if selectMode}
+					<Check size={20} aria-hidden="true" />
+				{:else}
+					<ListChecks size={20} aria-hidden="true" />
+				{/if}
+			</IconButton>
 		{/if}
 	</div>
 
@@ -348,7 +366,7 @@
 	{:else if status === 'error' && items.length === 0}
 		<div class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void loadMore()}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else}
 		<div class="unnamed__grid grid grid-cols-[repeat(auto-fill,minmax(min(180px,100%),1fr))] gap-3">
@@ -403,13 +421,13 @@
 		     the retry re-runs the same cursor (an idempotent position). -->
 		<div class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void loadMore()}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{/if}
 
 	{#if !observerAvailable && hasMore && status === 'ready'}
 		<div class="unnamed__pager flex justify-center my-5">
-			<Button variant="ghost" onclick={() => void loadMore()}>{$_('timeline_load_more')}</Button>
+			<Button variant="ghost" onclick={() => void loadMore()}><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button>
 		</div>
 	{/if}
 
@@ -428,17 +446,28 @@
 		aria-label={$_('batch_selected_count', { values: { count: selection.size } })}
 	>
 		<p class="mergebar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap tabular-nums">{$_('batch_selected_count', { values: { count: selection.size } })}</p>
-		<Button
-			variant="primary"
+		<!-- The bar is a toolbar: its actions are icon-only (the
+		     icon-first rule), named by their aria-labels. -->
+		<IconButton
+			variant="ghost"
 			disabled={selection.size < 2 || mergeBusy}
+			aria-label={$_('people_merge_action')}
+			title={$_('people_merge_action')}
 			onclick={() => {
 				mergeErrorKey = '';
 				mergeOpen = true;
 			}}
 		>
-			{$_('people_merge_action')}
-		</Button>
-		<Button variant="ghost" onclick={exitSelection}>{$_('action_clear_selection')}</Button>
+			<GitMerge size={20} aria-hidden="true" />
+		</IconButton>
+		<IconButton
+			variant="ghost"
+			aria-label={$_('action_clear_selection')}
+			title={$_('action_clear_selection')}
+			onclick={exitSelection}
+		>
+			<X size={20} aria-hidden="true" />
+		</IconButton>
 	</div>
 {/if}
 

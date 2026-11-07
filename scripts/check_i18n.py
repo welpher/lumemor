@@ -372,6 +372,7 @@ NON_ERROR_KEYS = {
     # the share dialog and the timeline's add-to-album flow.
     "action_add_to_album",
     "albums_title",
+    "albums_back",
     "album_all_photos",
     "albums_loading",
     "albums_empty",

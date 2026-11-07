@@ -136,6 +136,15 @@ function buttonByText(text: string, scope: ParentNode = document.body): HTMLButt
 	return found;
 }
 
+/** The icon-only actions (the toolbar toggle, the merge bar) name themselves by aria-label. */
+function buttonByLabel(label: string, scope: ParentNode = document.body): HTMLButtonElement {
+	const found = scope.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (found === null) {
+		throw new Error(`missing button labeled ${label}`);
+	}
+	return found;
+}
+
 function modal(): HTMLElement | null {
 	return document.body.querySelector<HTMLElement>('.modal__panel');
 }
@@ -349,14 +358,14 @@ test('the batch merge folds two selected clusters into an existing person', asyn
 	await settle();
 
 	expect(document.body.querySelector('.mergebar')).toBeNull();
-	buttonByText('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	clickCard(0);
 	clickCard(1);
 
 	const bar = document.body.querySelector('.mergebar');
 	expect(bar?.textContent).toContain('2 selected');
-	buttonByText('Merge').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Merge').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const dialog = modal();
@@ -396,12 +405,12 @@ test('merging into one of the selected names it inline first, then folds the oth
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	clickCard(0);
 	clickCard(1);
 	clickCard(2);
-	buttonByText('Merge').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Merge').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const dialog = modal();

@@ -248,6 +248,7 @@
   "admin_settings_submit": "保存模板",
   "admin_settings_contract_note": "修改模板只影响之后的上传：已存储的文件保持原路径，永不搬移。直传上传的相册变量保持为空。",
   "albums_title": "相册",
+  "albums_back": "返回相册",
   "album_all_photos": "我的照片",
   "albums_loading": "正在加载相册…",
   "albums_empty": "还没有相册。创建一个，把某个瞬间的照片聚在一起。",

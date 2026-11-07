@@ -26,6 +26,9 @@
 		uploadFormatSupported
 	} from '$lib/upload/queue.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import X from '@lucide/svelte/icons/x';
+	import FilePlus from '@lucide/svelte/icons/file-plus';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 
 	// The hint-level front end of the server's upload whitelist:
 	// dropped files whose extension is unknown are parked failed
@@ -194,19 +197,21 @@
 					<div class="row__actions [grid-area:actions] flex items-center gap-1.5 mt-1.5">
 						{#if item.state === 'failed' && uploadFormatSupported(item.fileName)}
 							<button
-								class="row__action py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
+								class="row__action inline-flex items-center gap-1 py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
 								type="button"
 								onclick={() => retryUpload(item.id)}
 							>
+								<RotateCcw size={14} aria-hidden="true" />
 								{$_('action_retry')}
 							</button>
 						{/if}
 						{#if item.state === 'conflict'}
 							<button
-								class="row__action py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
+								class="row__action inline-flex items-center gap-1 py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
 								type="button"
 								onclick={() => openUploadConflict(item.id)}
 							>
+								<FilePlus size={14} aria-hidden="true" />
 								{$_('upload_resolve_conflict')}
 							</button>
 						{/if}
@@ -253,17 +258,17 @@
 		<Button
 			variant="ghost"
 			disabled={resolving}
-			onclick={() => closeUploadConflict()}>{$_('common_cancel')}</Button
+			onclick={() => closeUploadConflict()}><X size={20} aria-hidden="true" />{$_('common_cancel')}</Button
 		>
 		<Button
 			variant="danger"
 			disabled={resolving}
-			onclick={() => void chooseSaveAs()}>{$_('upload_conflict_save_as')}</Button
+			onclick={() => void chooseSaveAs()}><FilePlus size={20} aria-hidden="true" />{$_('upload_conflict_save_as')}</Button
 		>
 		<Button
 			variant="primary"
 			disabled={resolving}
-			onclick={() => void chooseRestore()}>{$_('upload_conflict_restore')}</Button
+			onclick={() => void chooseRestore()}><RotateCcw size={20} aria-hidden="true" />{$_('upload_conflict_restore')}</Button
 		>
 	{/snippet}
 </Modal>

@@ -2,7 +2,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import { probeSession, sessionStatus } from '$lib/auth/session.svelte';
-import { clearWallItems } from '$lib/timeline/wall.svelte';
+import { clearWallItems } from '$lib/timeline/wall-sequence.svelte';
 import type { AlbumDetail, AlbumSummary } from '$lib/api/albums';
 import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
@@ -179,6 +179,15 @@ function buttonByText(text: string, scope: ParentNode = document.body): HTMLButt
 	return found;
 }
 
+/** The icon-only action buttons carry their name on the aria-label. */
+function buttonByLabel(label: string, scope: ParentNode = document.body): HTMLButtonElement {
+	const found = scope.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (found === null) {
+		throw new Error(`missing button labeled ${label}`);
+	}
+	return found;
+}
+
 function fillField(scope: ParentNode, value: string): void {
 	const field = scope.querySelector<HTMLInputElement>('input');
 	if (field === null) {
@@ -238,29 +247,47 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-test('the owner detail renders the header, the count and the items grid', async () => {
+test('the owner detail renders the contextual bar, the count and the items grid', async () => {
 	const fetchMock = stubFetch(detailRoutes());
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
 
-	expect(document.body.querySelector('.album-detail__title')?.textContent).toBe('Road trip 2026');
+	// THE CONTEXTUAL BAR (R3): the page's own chrome replaces the
+	// shell's topbar while the album detail is active -- back, the
+	// title, the badges and count, the type x role icon actions.
+	// Paper palette (bg-card + border), pinned by stickiness over
+	// the wall's own sticky month headers.
+	const bar = document.body.querySelector<HTMLElement>('.album-bar');
+	expect(bar).not.toBeNull();
+	expect(bar?.className).toContain('sticky');
+	expect(bar?.className).toContain('top-0');
+	expect(bar?.className).toContain('z-(--z-sticky-bar)');
+	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('Road trip 2026');
+	// The back affordance: an icon-only anchor into the albums wall.
+	const back = document.body.querySelector<HTMLAnchorElement>('.album-bar__back');
+	expect(back?.getAttribute('href')).toBe('/albums');
+	expect(back?.getAttribute('aria-label')).toBe('Back to albums');
 	expect(document.body.querySelector('.album-detail__description')?.textContent).toBe(
 		'The coastal week in the van.'
 	);
 	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
-	expect(document.body.querySelector('.album-detail__back')?.getAttribute('href')).toBe('/albums');
 
-	// The owner of a virtual album holds the full write set.
+	// The owner of a virtual album holds the full write set -- every
+	// action is an icon-only button named by its aria-label.
 	for (const label of ['Rename', 'Set cover…', 'Lock', 'Share…', 'Add photos', 'Delete album']) {
-		expect(() => buttonByText(label), label).not.toThrow();
+		expect(() => buttonByLabel(label), label).not.toThrow();
 	}
 
-	// The items grid is the album's own timeline: the tiles come from
-	// the album-narrowed page one.
+	// THE NO-SELECTION WALL (R5): the album's tiles are pure
+	// navigation -- no hover checkbox, no select-mode entry, no
+	// batch bar ever rises.
 	expect(tiles()).toHaveLength(2);
+	expect(document.body.querySelector('.tile__check')).toBeNull();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+	expect(document.body.textContent).not.toContain('Select');
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a1/thumbnail?size=tile'
+		'/api/v1/assets/a1/thumbnail?size=view'
 	);
 	const wallCalls = fetchMock.mock.calls.filter(([input]) =>
 		String(input).startsWith('/api/v1/assets/timeline?albumId=al1')
@@ -268,7 +295,7 @@ test('the owner detail renders the header, the count and the items grid', async 
 	expect(wallCalls).toHaveLength(1);
 
 	// The add-photos handoff arms the timeline's selection flow.
-	buttonByText('Add photos').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Add photos').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	expect(vi.mocked(goto)).toHaveBeenCalledWith('/timeline?album=al1');
 
 	unmount(page);
@@ -297,10 +324,10 @@ test('a viewer sees read-only: the exclusion toggle alone, no write affordances'
 		'Add photos',
 		'Delete album'
 	]) {
-		expect(() => buttonByText(label), label).toThrow();
+		expect(() => buttonByLabel(label), label).toThrow();
 	}
 	// The one action a viewer holds: their own timeline preference.
-	expect(() => buttonByText('Keep out of timeline')).not.toThrow();
+	expect(() => buttonByLabel('Keep out of timeline')).not.toThrow();
 	expect(tiles()).toHaveLength(2);
 	unmount(page);
 	flushSync();
@@ -311,8 +338,8 @@ test('the own virtual album offers no exclusion toggle: it never feeds the own t
 	const page = mountPage();
 	await settle();
 
-	expect(() => buttonByText('Keep out of timeline')).toThrow();
-	expect(() => buttonByText('Keep in timeline')).toThrow();
+	expect(() => buttonByLabel('Keep out of timeline')).toThrow();
+	expect(() => buttonByLabel('Keep in timeline')).toThrow();
 	unmount(page);
 	flushSync();
 });
@@ -327,10 +354,10 @@ test('the directory detail: properties, the exclusion toggle and the disabled re
 	const page = mountPage();
 	await settle();
 
-	expect(() => buttonByText('Properties')).not.toThrow();
-	expect(() => buttonByText('Keep out of timeline')).not.toThrow();
+	expect(() => buttonByLabel('Properties')).not.toThrow();
+	expect(() => buttonByLabel('Keep out of timeline')).not.toThrow();
 
-	const rescan = buttonByText('Rescan');
+	const rescan = buttonByLabel('Rescan');
 	expect(rescan.disabled).toBe(true);
 	expect(document.body.querySelector('.album-detail__rescan-note')?.textContent).toContain(
 		'Directory albums arrive in a later update.'
@@ -339,7 +366,7 @@ test('the directory detail: properties, the exclusion toggle and the disabled re
 	// The virtual album's write set is gone, and the directory album
 	// holds neither curation nor removal.
 	for (const label of ['Rename', 'Set cover…', 'Lock', 'Share…', 'Add photos', 'Delete album']) {
-		expect(() => buttonByText(label), label).toThrow();
+		expect(() => buttonByLabel(label), label).toThrow();
 	}
 	unmount(page);
 	flushSync();
@@ -363,14 +390,14 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 	const page = mountPage();
 	await settle();
 
-	expect(document.body.querySelector('.album-detail__title')?.textContent).toBe('My photos');
+	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('My photos');
 	expect(document.body.textContent).not.toContain('Sync');
 	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
 	// The item grid works like any album's: the tiles come from the
 	// album-narrowed timeline page.
 	expect(tiles()).toHaveLength(2);
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a1/thumbnail?size=tile'
+		'/api/v1/assets/a1/thumbnail?size=view'
 	);
 	// No badges: never locked, never excluded (not excludable).
 	expect(document.body.querySelector('.album-detail__badge--locked')).toBeNull();
@@ -390,7 +417,7 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 		'Keep in timeline',
 		'Leave album'
 	]) {
-		expect(() => buttonByText(label), label).toThrow();
+		expect(() => buttonByLabel(label), label).toThrow();
 	}
 	unmount(page);
 	flushSync();
@@ -417,7 +444,7 @@ test('renaming PATCHes the properties and the header adopts the response', async
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('Album properties');
@@ -431,7 +458,7 @@ test('renaming PATCHes the properties and the header adopts the response', async
 		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH'
 	);
 	expect(patches).toHaveLength(1);
-	expect(document.body.querySelector('.album-detail__title')?.textContent).toBe(
+	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe(
 		'Road trip 2026 -- rerun'
 	);
 	expect(modal()).toBeNull();
@@ -452,7 +479,7 @@ test('the lock toggle PATCHes locked; the badge and notice follow and curation d
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Lock').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Lock').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
@@ -467,12 +494,12 @@ test('the lock toggle PATCHes locked; the badge and notice follow and curation d
 	// disable until the unlock, the delete hides until the unlock
 	// (the permission matrix pins deletion to the unlocked state),
 	// while the share stays.
-	expect(buttonByText('Rename').disabled).toBe(true);
-	expect(buttonByText('Set cover…').disabled).toBe(true);
-	expect(buttonByText('Add photos').disabled).toBe(true);
-	expect(() => buttonByText('Delete album')).toThrow();
-	expect(buttonByText('Share…').disabled).toBe(false);
-	expect(() => buttonByText('Unlock')).not.toThrow();
+	expect(buttonByLabel('Rename').disabled).toBe(true);
+	expect(buttonByLabel('Set cover…').disabled).toBe(true);
+	expect(buttonByLabel('Add photos').disabled).toBe(true);
+	expect(() => buttonByLabel('Delete album')).toThrow();
+	expect(buttonByLabel('Share…').disabled).toBe(false);
+	expect(() => buttonByLabel('Unlock')).not.toThrow();
 	unmount(page);
 	flushSync();
 });
@@ -490,7 +517,7 @@ test('the cover dialog picks from the grid members and PATCHes the pin', async (
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Set cover…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Set cover…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('Set the cover');
@@ -526,7 +553,7 @@ test('the cover dialog renders the current pin and the empty state', async () =>
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Set cover…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Set cover…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
 	expect(dialog?.textContent).toContain('This album has no photos yet.');
@@ -579,7 +606,7 @@ test('the share dialog grants and revokes through the detail refetch', async () 
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('Share this album');
@@ -597,7 +624,7 @@ test('the share dialog grants and revokes through the detail refetch', async () 
 
 	// The revoke: the row's button leaves, the refetch drops the row
 	// (the account legitimately re-enters the pick list).
-	const revoke = buttonByText('Revoke', modal() as ParentNode);
+	const revoke = buttonByLabel('Revoke', modal() as ParentNode);
 	revoke.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
@@ -629,7 +656,7 @@ test('the share dialog surfaces the honest owner-target message', async () => {
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	const dialog = modal();
 	chooseOption(dialog as ParentNode, 'u1');
@@ -670,7 +697,7 @@ test("the share pick filters the caller's own account (the identity seam)", asyn
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	const dialog = modal();
 	expect(dialog?.textContent).toContain('grace@example.com');
@@ -702,7 +729,7 @@ test("the sharee's leave affordance revokes their own share row and leaves for t
 	const page = mountPage();
 	await settle();
 
-	const leave = buttonByText('Leave album');
+	const leave = buttonByLabel('Leave album');
 	leave.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
@@ -731,7 +758,7 @@ test("the sharee's failed leave keeps the detail with the mapped error", async (
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Leave album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Leave album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	// Still on the detail (the departure never happened), with the
@@ -755,7 +782,7 @@ test('deleting the album confirms and leaves for the wall', async () => {
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Delete album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Delete album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('Delete this album?');
@@ -789,7 +816,7 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Keep out of timeline').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Keep out of timeline').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const puts = fetchMock.mock.calls.filter(
@@ -803,7 +830,7 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 		'stay out of your timeline'
 	);
 	// The toggle flipped: the action now offers the include.
-	expect(() => buttonByText('Keep in timeline')).not.toThrow();
+	expect(() => buttonByLabel('Keep in timeline')).not.toThrow();
 	unmount(page);
 	flushSync();
 });
@@ -837,7 +864,7 @@ test('an unknown or invisible album renders the not-found error with a retry', a
 	buttonByText('Try again').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	expect(document.body.querySelector('.album-detail__title')?.textContent).toBe('Road trip 2026');
+	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('Road trip 2026');
 	unmount(page);
 	flushSync();
 });
@@ -859,7 +886,7 @@ test('SSE album.updated converges the metadata through the refetch', async () =>
 		fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/albums/al1?limit=1'))
 			.length
 	).toBe(initial + 1);
-	expect(document.body.querySelector('.album-detail__title')?.textContent).toBe(
+	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe(
 		'Road trip 2026 -- rerun'
 	);
 	unmount(page);

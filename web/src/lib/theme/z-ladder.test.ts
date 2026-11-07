@@ -43,6 +43,7 @@ test('the app ladder climbs in exactly the documented order', () => {
 		'z-tile-check',
 		'z-sticky-sub',
 		'z-sticky',
+		'z-sticky-bar',
 		'z-page',
 		'z-menu',
 		'z-toolbar',

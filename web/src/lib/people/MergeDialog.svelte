@@ -13,6 +13,8 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import X from '@lucide/svelte/icons/x';
+	import Check from '@lucide/svelte/icons/check';
 	import { listPeople, type PersonSummary, type UnnamedClusterSummary } from '$lib/api/people';
 	import { resolveErrorText } from '$lib/i18n/errors';
 
@@ -153,7 +155,13 @@
 		{/if}
 	</div>
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (open = false)}>{$_('common_cancel')}</Button>
-		<Button disabled={busy || optionIds.length === 0} onclick={submit}>{$_('people_merge_action')}</Button>
+		<Button variant="ghost" onclick={() => (open = false)}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_cancel')}
+		</Button>
+		<Button disabled={busy || optionIds.length === 0} onclick={submit}>
+			<Check size={20} aria-hidden="true" />
+			{$_('people_merge_action')}
+		</Button>
 	{/snippet}
 </Modal>

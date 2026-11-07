@@ -23,6 +23,7 @@
 	import { formatMegabytes } from '$lib/format';
 	import { subscribeJobEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -176,7 +177,7 @@
 	{:else if status === 'error'}
 		<div class="jobs__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready'}
 		<header class="jobs__header">
