@@ -15,7 +15,9 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -213,8 +215,40 @@ func rejectionOf(err error) *ErrRejected {
 	return rej
 }
 
-func TestCommitAcceptsEveryWhitelistedFormat(t *testing.T) {
-	_, tmpDir := setupLayout(t)
+// testOwnerID is the owner of every placement test's uploads: a fixed
+// uuid whose string form lands in the per-owner originals root.
+const testOwnerID = "0197a1b2-c3d4-4e5f-8a9b-0c1d2e3f4a5b"
+
+// sealReceiver streams payload through a fresh receiver and seals it,
+// failing the test on any error.
+func sealReceiver(t *testing.T, tmpDir string, payload []byte, ext string) *Receiver {
+	t.Helper()
+	rec, err := NewReceiver(tmpDir, 1<<20, bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("NewReceiver() error = %v", err)
+	}
+	if err := rec.Seal(ext); err != nil {
+		t.Fatalf("Seal(%q) error = %v", ext, err)
+	}
+	return rec
+}
+
+// placeSealed seals payload and places it at
+// originals/<ownerID>/<rendered>.<ext>, failing the test on any error;
+// it answers the receiver (for the discard tests) and the stored
+// relative path.
+func placeSealed(t *testing.T, tmpDir string, payload []byte, ext, ownerID, rendered string) (*Receiver, string) {
+	t.Helper()
+	rec := sealReceiver(t, tmpDir, payload, ext)
+	relPath, err := rec.Place(ownerID, rendered, ext)
+	if err != nil {
+		t.Fatalf("Place(%q, %q) error = %v", rendered, ext, err)
+	}
+	return rec, relPath
+}
+
+func TestSealPlaceAcceptsEveryWhitelistedFormat(t *testing.T) {
+	dataDir, tmpDir := setupLayout(t)
 	jpegBytes := jpegFixture(t)
 	pngBytes := pngFixture(t)
 	mp4Bytes := readFixture(t, "minimal.mp4")
@@ -241,38 +275,31 @@ func TestCommitAcceptsEveryWhitelistedFormat(t *testing.T) {
 		{"mkv", "mkv", ebmlFixture("matroska")},
 	}
 
-	for _, tt := range formats {
+	for i, tt := range formats {
 		t.Run(tt.name, func(t *testing.T) {
-			rec, err := NewReceiver(tmpDir, 1<<20, bytes.NewReader(tt.data))
-			if err != nil {
-				t.Fatalf("NewReceiver() error = %v", err)
-			}
-			relPath, err := rec.Commit(tt.ext)
-			if err != nil {
-				t.Fatalf("Commit(%q) error = %v", tt.ext, err)
-			}
+			// Each format places under its own rendered name so the
+			// subtests sharing one layout do not collide.
+			rendered := "2026/01/photo-" + strconv.Itoa(i)
+			rec, relPath := placeSealed(t, tmpDir, tt.data, tt.ext, testOwnerID, rendered)
 
 			checksum := sha256Hex(tt.data)
 			if got := rec.Checksum(); got != checksum {
 				t.Errorf("Checksum() = %q, want %q", got, checksum)
 			}
 
-			// The file lands at the content-addressed original path,
-			// byte-identical to the upload.
-			absPath := OriginalPath(checksum, tt.ext)
-			committed, err := os.ReadFile(absPath)
+			// The file lands at the per-owner template path, with the
+			// normalized extension, byte-identical to the upload.
+			wantExt := NormalizeExt(tt.ext)
+			wantRel := "originals/" + testOwnerID + "/2026/01/photo-" + strconv.Itoa(i) + "." + wantExt
+			if relPath != wantRel {
+				t.Errorf("Place() relPath = %q, want %q", relPath, wantRel)
+			}
+			committed, err := os.ReadFile(filepath.Join(dataDir, filepath.FromSlash(relPath)))
 			if err != nil {
-				t.Fatalf("read committed file %s: %v", absPath, err)
+				t.Fatalf("read placed file %s: %v", relPath, err)
 			}
 			if !bytes.Equal(committed, tt.data) {
-				t.Errorf("committed file differs from the upload (%d vs %d bytes)", len(committed), len(tt.data))
-			}
-
-			// The returned path is the portable form stored in the
-			// database: relative to the data root, slash separated.
-			wantRel := "originals/" + checksum[:2] + "/" + checksum[2:4] + "/" + checksum + "." + tt.ext
-			if relPath != wantRel {
-				t.Errorf("Commit(%q) relPath = %q, want %q", tt.ext, relPath, wantRel)
+				t.Errorf("placed file differs from the upload (%d vs %d bytes)", len(committed), len(tt.data))
 			}
 
 			// A finished upload leaves no staged file behind.
@@ -282,42 +309,39 @@ func TestCommitAcceptsEveryWhitelistedFormat(t *testing.T) {
 }
 
 func TestChecksumMatchesIndependentDigestOnMultiChunkStream(t *testing.T) {
-	_, tmpDir := setupLayout(t)
+	dataDir, tmpDir := setupLayout(t)
 	data := largeJPEGFixture(t)
 
-	rec, err := NewReceiver(tmpDir, 1<<30, bytes.NewReader(data))
-	if err != nil {
-		t.Fatalf("NewReceiver() error = %v", err)
-	}
-	if _, err := rec.Commit("jpg"); err != nil {
-		t.Fatalf("Commit(\"jpg\") error = %v", err)
-	}
+	rec, relPath := placeSealed(t, tmpDir, data, "jpg", testOwnerID, "big/payload")
 
 	if got := rec.Checksum(); got != sha256Hex(data) {
 		t.Errorf("Checksum() = %q, want the sha256 of the payload", got)
 	}
-	committed, err := os.ReadFile(OriginalPath(rec.Checksum(), "jpg"))
+	committed, err := os.ReadFile(filepath.Join(dataDir, filepath.FromSlash(relPath)))
 	if err != nil {
-		t.Fatalf("read committed file: %v", err)
+		t.Fatalf("read placed file: %v", err)
 	}
 	if !bytes.Equal(committed, data) {
-		t.Errorf("committed file differs from the payload (%d vs %d bytes)", len(committed), len(data))
+		t.Errorf("placed file differs from the payload (%d vs %d bytes)", len(committed), len(data))
 	}
 	requireEmptyDir(t, tmpDir)
 }
 
-func TestChecksumEmptyBeforeCommit(t *testing.T) {
+func TestChecksumEmptyBeforeSeal(t *testing.T) {
 	_, tmpDir := setupLayout(t)
 	rec, err := NewReceiver(tmpDir, 1<<20, bytes.NewReader(pngFixture(t)))
 	if err != nil {
 		t.Fatalf("NewReceiver() error = %v", err)
 	}
 	if got := rec.Checksum(); got != "" {
-		t.Errorf("Checksum() before Commit = %q, want empty", got)
+		t.Errorf("Checksum() before Seal = %q, want empty", got)
+	}
+	if got := rec.Size(); got != 0 {
+		t.Errorf("Size() before Seal = %d, want 0", got)
 	}
 }
 
-func TestCommitRejectsDisguisedPayloads(t *testing.T) {
+func TestSealRejectsDisguisedPayloads(t *testing.T) {
 	cases := []struct {
 		name string
 		ext  string
@@ -338,13 +362,10 @@ func TestCommitRejectsDisguisedPayloads(t *testing.T) {
 				t.Fatalf("NewReceiver() error = %v", err)
 			}
 
-			relPath, err := rec.Commit(tt.ext)
+			err = rec.Seal(tt.ext)
 			rej := rejectionOf(err)
 			if rej == nil {
-				t.Fatalf("Commit(%q) error = %v, want *ErrRejected", tt.ext, err)
-			}
-			if relPath != "" {
-				t.Errorf("Commit(%q) relPath = %q, want empty on rejection", tt.ext, relPath)
+				t.Fatalf("Seal(%q) error = %v, want *ErrRejected", tt.ext, err)
 			}
 			if !strings.Contains(rej.Reason, tt.ext) {
 				t.Errorf("rejection reason %q does not name the extension %q", rej.Reason, tt.ext)
@@ -361,14 +382,14 @@ func TestCommitRejectsDisguisedPayloads(t *testing.T) {
 			}
 
 			// The rejection is terminal.
-			if _, err := rec.Commit(tt.ext); err == nil {
-				t.Errorf("Commit(%q) after a rejection succeeded, want failure", tt.ext)
+			if err := rec.Seal(tt.ext); err == nil {
+				t.Errorf("Seal(%q) after a rejection succeeded, want failure", tt.ext)
 			}
 		})
 	}
 }
 
-func TestCommitRejectsUnknownExtensionBeforeReading(t *testing.T) {
+func TestSealRejectsUnknownExtensionBeforeReading(t *testing.T) {
 	_, tmpDir := setupLayout(t)
 	for _, ext := range []string{"exe", "txt", "svg", "zip", "cr2", "JPG"} {
 		t.Run(ext, func(t *testing.T) {
@@ -378,10 +399,10 @@ func TestCommitRejectsUnknownExtensionBeforeReading(t *testing.T) {
 				t.Fatalf("NewReceiver() error = %v", err)
 			}
 
-			_, err = rec.Commit(ext)
+			err = rec.Seal(ext)
 			rej := rejectionOf(err)
 			if rej == nil {
-				t.Fatalf("Commit(%q) error = %v, want *ErrRejected", ext, err)
+				t.Fatalf("Seal(%q) error = %v, want *ErrRejected", ext, err)
 			}
 			if !strings.Contains(rej.Reason, "whitelist") {
 				t.Errorf("rejection reason %q does not mention the whitelist", rej.Reason)
@@ -394,7 +415,7 @@ func TestCommitRejectsUnknownExtensionBeforeReading(t *testing.T) {
 	}
 }
 
-func TestCommitAbortsWhenPayloadExceedsLimit(t *testing.T) {
+func TestSealAbortsWhenPayloadExceedsLimit(t *testing.T) {
 	dataDir, tmpDir := setupLayout(t)
 	const limit = 1024
 	// Four times the limit; the payload itself never needs to be valid
@@ -410,9 +431,9 @@ func TestCommitAbortsWhenPayloadExceedsLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReceiver() error = %v", err)
 	}
-	_, err = rec.Commit("jpg")
+	err = rec.Seal("jpg")
 	if !errors.Is(err, ErrTooLarge) {
-		t.Fatalf("Commit() error = %v, want ErrTooLarge", err)
+		t.Fatalf("Seal() error = %v, want ErrTooLarge", err)
 	}
 	if rejectionOf(err) != nil {
 		t.Errorf("over-limit error also carries *ErrRejected, want a pure size failure")
@@ -437,12 +458,12 @@ func TestCommitAbortsWhenPayloadExceedsLimit(t *testing.T) {
 	}
 
 	// The receiver is terminal after the abort.
-	if _, err := rec.Commit("jpg"); err == nil {
-		t.Error("Commit() after ErrTooLarge succeeded, want failure")
+	if err := rec.Seal("jpg"); err == nil {
+		t.Error("Seal() after ErrTooLarge succeeded, want failure")
 	}
 }
 
-func TestCommitRemovesStagedFileWhenSourceFails(t *testing.T) {
+func TestSealRemovesStagedFileWhenSourceFails(t *testing.T) {
 	dataDir, tmpDir := setupLayout(t)
 	// A stream that delivers a valid JPEG header and then fails, like
 	// a client aborting its request body mid-transfer.
@@ -452,9 +473,9 @@ func TestCommitRemovesStagedFileWhenSourceFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReceiver() error = %v", err)
 	}
-	_, err = rec.Commit("jpg")
+	err = rec.Seal("jpg")
 	if !errors.Is(err, errClientAborted) {
-		t.Fatalf("Commit() error = %v, want the wrapped reader error", err)
+		t.Fatalf("Seal() error = %v, want the wrapped reader error", err)
 	}
 	if rejectionOf(err) != nil {
 		t.Errorf("read failure masquerades as *ErrRejected, want a wrapped transport error")
@@ -470,83 +491,90 @@ func TestCommitRemovesStagedFileWhenSourceFails(t *testing.T) {
 	}
 }
 
-func TestCommitAfterRejectionFails(t *testing.T) {
+func TestSealAfterRejectionFails(t *testing.T) {
 	_, tmpDir := setupLayout(t)
 	rec, err := NewReceiver(tmpDir, 1<<20, bytes.NewReader(textPayload))
 	if err != nil {
 		t.Fatalf("NewReceiver() error = %v", err)
 	}
-	if _, err := rec.Commit("jpg"); rejectionOf(err) == nil {
-		t.Fatalf("Commit(\"jpg\") error = %v, want *ErrRejected", err)
+	if err := rec.Seal("jpg"); rejectionOf(err) == nil {
+		t.Fatalf("Seal(\"jpg\") error = %v, want *ErrRejected", err)
 	}
 
-	_, err = rec.Commit("jpg")
+	err = rec.Seal("jpg")
 	if err == nil {
-		t.Fatal("Commit() after a rejection succeeded, want failure")
+		t.Fatal("Seal() after a rejection succeeded, want failure")
 	}
 	if rejectionOf(err) != nil {
-		t.Errorf("double Commit error = %v, want a state error, not another rejection", err)
+		t.Errorf("double Seal error = %v, want a state error, not another rejection", err)
 	}
 	requireEmptyDir(t, tmpDir)
 }
 
-func TestDoubleCommitFails(t *testing.T) {
+func TestDoubleSealFails(t *testing.T) {
 	_, tmpDir := setupLayout(t)
 	data := pngFixture(t)
 	rec, err := NewReceiver(tmpDir, 1<<20, bytes.NewReader(data))
 	if err != nil {
 		t.Fatalf("NewReceiver() error = %v", err)
 	}
-	if _, err := rec.Commit("png"); err != nil {
-		t.Fatalf("Commit(\"png\") error = %v", err)
+	if err := rec.Seal("png"); err != nil {
+		t.Fatalf("Seal(\"png\") error = %v", err)
 	}
 	checksum := rec.Checksum()
 
-	_, err = rec.Commit("png")
+	err = rec.Seal("png")
 	if err == nil {
-		t.Fatal("second Commit() succeeded, want failure")
+		t.Fatal("second Seal() succeeded, want failure")
 	}
 
-	// The first commit stands: checksum and file are unchanged.
+	// The first seal stands: the checksum is unchanged and the staged
+	// file survives for Place.
 	if rec.Checksum() != checksum {
-		t.Errorf("Checksum() after a double Commit = %q, want %q", rec.Checksum(), checksum)
+		t.Errorf("Checksum() after a double Seal = %q, want %q", rec.Checksum(), checksum)
 	}
-	committed, err := os.ReadFile(OriginalPath(checksum, "png"))
-	if err != nil {
-		t.Fatalf("read committed file: %v", err)
+	if _, err := os.Stat(rec.stagedPath); err != nil {
+		t.Fatalf("staged file did not survive a double Seal: %v", err)
 	}
-	if !bytes.Equal(committed, data) {
-		t.Error("committed file changed after a double Commit")
-	}
-	requireEmptyDir(t, tmpDir)
 }
 
-func TestCommitFailsWhenShardDirectoryCannotBeCreated(t *testing.T) {
+func TestDoublePlaceFails(t *testing.T) {
 	dataDir, tmpDir := setupLayout(t)
 	data := pngFixture(t)
-	checksum := sha256Hex(data)
+	rec := sealReceiver(t, tmpDir, data, "png")
 
-	// A regular file squatting on the shard directory path makes the
-	// finalization fail after the payload already streamed.
-	shard := filepath.Join(dataDir, "originals", checksum[:2])
-	if err := os.WriteFile(shard, []byte("blocked"), 0o644); err != nil {
-		t.Fatalf("block shard directory: %v", err)
-	}
-
-	rec, err := NewReceiver(tmpDir, 1<<20, bytes.NewReader(data))
+	relPath, err := rec.Place(testOwnerID, "2026/01/twin", "png")
 	if err != nil {
-		t.Fatalf("NewReceiver() error = %v", err)
+		t.Fatalf("Place() error = %v", err)
 	}
-	_, err = rec.Commit("png")
+	if _, err := rec.Place(testOwnerID, "2026/01/twin", "png"); err == nil {
+		t.Fatal("second Place() succeeded, want failure")
+	}
+	// The first placement stands.
+	if _, err := os.Stat(filepath.Join(dataDir, filepath.FromSlash(relPath))); err != nil {
+		t.Fatalf("placed file did not survive a double Place: %v", err)
+	}
+}
+
+func TestPlaceFailsWhenOwnerDirectoryCannotBeCreated(t *testing.T) {
+	dataDir, tmpDir := setupLayout(t)
+	data := pngFixture(t)
+
+	// A regular file squatting on the owner directory path makes the
+	// placement fail after the payload already streamed.
+	blocked := filepath.Join(dataDir, "originals", testOwnerID)
+	if err := os.WriteFile(blocked, []byte("blocked"), 0o644); err != nil {
+		t.Fatalf("block owner directory: %v", err)
+	}
+
+	rec := sealReceiver(t, tmpDir, data, "png")
+	_, err := rec.Place(testOwnerID, "2026/01/photo", "png")
 	if err == nil {
-		t.Fatal("Commit() succeeded although the shard directory cannot exist, want failure")
-	}
-	if !strings.Contains(err.Error(), "originals") {
-		t.Errorf("error %q does not name the target directory", err.Error())
+		t.Fatal("Place() succeeded although the owner directory cannot exist, want failure")
 	}
 	requireEmptyDir(t, tmpDir)
 	if got := rec.Checksum(); got != "" {
-		t.Errorf("Checksum() after a failed commit = %q, want empty", got)
+		t.Errorf("Checksum() after a failed Place = %q, want empty", got)
 	}
 }
 
@@ -557,7 +585,7 @@ func TestNewReceiverFailsWhenStagingDirectoryIsUnusable(t *testing.T) {
 	}
 }
 
-func TestCommitPanicsBeforeEnsureLayout(t *testing.T) {
+func TestSealPanicsBeforeEnsureLayout(t *testing.T) {
 	resetDataRoot(t)
 	cr := &countingReader{r: bytes.NewReader(pngFixture(t))}
 	rec, err := NewReceiver(t.TempDir(), 1<<20, cr)
@@ -568,7 +596,7 @@ func TestCommitPanicsBeforeEnsureLayout(t *testing.T) {
 	defer func() {
 		panicValue := recover()
 		if panicValue == nil {
-			t.Fatal("Commit() did not panic, want panic before EnsureLayout has succeeded")
+			t.Fatal("Seal() did not panic, want panic before EnsureLayout has succeeded")
 		}
 		msg, ok := panicValue.(string)
 		if !ok || !strings.Contains(msg, "EnsureLayout") {
@@ -580,5 +608,228 @@ func TestCommitPanicsBeforeEnsureLayout(t *testing.T) {
 	}()
 	// The call must panic before it can return anything worth
 	// checking.
-	_, _ = rec.Commit("png")
+	_ = rec.Seal("png")
+}
+
+// TestPlaceAppendsCollisionSuffixesSequentially pins the collision
+// contract: three uploads of DIFFERENT bytes whose template renders to
+// one target land at the base name, ~1 and ~2 -- no error, no
+// overwrite -- and every stored file holds its own bytes.
+func TestPlaceAppendsCollisionSuffixesSequentially(t *testing.T) {
+	dataDir, tmpDir := setupLayout(t)
+
+	colors := []color.RGBA{
+		{R: 0x10, G: 0x10, B: 0x10, A: 0xff},
+		{R: 0x20, G: 0x20, B: 0x20, A: 0xff},
+		{R: 0x30, G: 0x30, B: 0x30, A: 0xff},
+	}
+	want := []string{
+		"originals/" + testOwnerID + "/2026/01/IMG_0001.jpg",
+		"originals/" + testOwnerID + "/2026/01/IMG_0001~1.jpg",
+		"originals/" + testOwnerID + "/2026/01/IMG_0001~2.jpg",
+	}
+	for i, pixel := range colors {
+		payload := jpegColorUpload(t, pixel)
+		_, relPath := placeSealed(t, tmpDir, payload, "jpg", testOwnerID, "2026/01/IMG_0001")
+		if relPath != want[i] {
+			t.Errorf("placement %d = %q, want %q", i, relPath, want[i])
+		}
+		stored, err := os.ReadFile(filepath.Join(dataDir, filepath.FromSlash(relPath)))
+		if err != nil {
+			t.Fatalf("read placed file %s: %v", relPath, err)
+		}
+		if !bytes.Equal(stored, payload) {
+			t.Errorf("placed file %s holds the wrong bytes", relPath)
+		}
+	}
+	if got := countFiles(t, filepath.Join(dataDir, "originals")); got != len(want) {
+		t.Errorf("originals holds %d files after the collisions, want %d", got, len(want))
+	}
+}
+
+// jpegColorUpload encodes a 1x1 JPEG of one pixel color, a payload
+// distinct per color.
+func jpegColorUpload(t *testing.T, pixel color.RGBA) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, pixel)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatalf("encode JPEG fixture: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// TestPlaceNeverOverwritesAnExistingFile is the safety pin of the
+// placement: a file that already sits at the rendered target -- from
+// an earlier upload or a crash window -- keeps its bytes untouched,
+// and the new upload lands at the ~1 suffix instead. os.Rename would
+// have replaced the existing file silently; the link discipline
+// cannot.
+func TestPlaceNeverOverwritesAnExistingFile(t *testing.T) {
+	dataDir, tmpDir := setupLayout(t)
+
+	// The squatter: an earlier upload's file at the exact target.
+	target := filepath.Join(dataDir, "originals", testOwnerID, "2026", "01", "IMG_9.jpg")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatalf("create target directory: %v", err)
+	}
+	squatter := []byte("the original bytes of the earlier upload")
+	if err := os.WriteFile(target, squatter, 0o644); err != nil {
+		t.Fatalf("write squatter file: %v", err)
+	}
+
+	payload := jpegFixture(t)
+	_, relPath := placeSealed(t, tmpDir, payload, "jpg", testOwnerID, "2026/01/IMG_9")
+	if want := "originals/" + testOwnerID + "/2026/01/IMG_9~1.jpg"; relPath != want {
+		t.Errorf("collision placement = %q, want %q", relPath, want)
+	}
+
+	// The squatter is untouched: content and count of files.
+	stored, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read the squatter file: %v", err)
+	}
+	if !bytes.Equal(stored, squatter) {
+		t.Error("the pre-existing file was overwritten, want its bytes untouched")
+	}
+	newBytes, err := os.ReadFile(filepath.Join(dataDir, filepath.FromSlash(relPath)))
+	if err != nil {
+		t.Fatalf("read the placed file: %v", err)
+	}
+	if !bytes.Equal(newBytes, payload) {
+		t.Error("the placed file does not hold the upload's bytes")
+	}
+}
+
+// TestPlaceConcurrentSameTarget pins the collision handling under
+// concurrency: several placements racing for one rendered target all
+// succeed with DISTINCT paths -- the link's atomicity hands every
+// racer either the base name or its own suffix -- and every stored
+// file holds its own bytes.
+func TestPlaceConcurrentSameTarget(t *testing.T) {
+	dataDir, tmpDir := setupLayout(t)
+	const racers = 8
+
+	colors := make([]color.RGBA, racers)
+	for i := range colors {
+		colors[i] = color.RGBA{R: uint8(0x10 + i*0x10), G: 0x22, B: 0x33, A: 0xff}
+	}
+
+	type outcome struct {
+		relPath string
+		err     error
+	}
+	outcomes := make([]outcome, racers)
+	sealed := make([]*Receiver, racers)
+	for i := range sealed {
+		sealed[i] = sealReceiver(t, tmpDir, jpegColorUpload(t, colors[i]), "jpg")
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range sealed {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			rel, err := sealed[i].Place(testOwnerID, "2026/01/race", "jpg")
+			outcomes[i] = outcome{relPath: rel, err: err}
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	seen := make(map[string]bool)
+	for i, o := range outcomes {
+		if o.err != nil {
+			t.Fatalf("concurrent placement %d failed: %v", i, o.err)
+		}
+		if seen[o.relPath] {
+			t.Errorf("placements %d and an earlier racer share the path %q", i, o.relPath)
+		}
+		seen[o.relPath] = true
+		stored, err := os.ReadFile(filepath.Join(dataDir, filepath.FromSlash(o.relPath)))
+		if err != nil {
+			t.Fatalf("read placed file %s: %v", o.relPath, err)
+		}
+		if !bytes.Equal(stored, jpegColorUpload(t, colors[i])) {
+			t.Errorf("placed file %s holds the wrong racer's bytes", o.relPath)
+		}
+	}
+	if got := countFiles(t, filepath.Join(dataDir, "originals")); got != racers {
+		t.Errorf("originals holds %d files after the race, want %d", got, racers)
+	}
+}
+
+// TestDiscardRemovesTheStagedSealedFile pins the failure-path hygiene
+// before placement: an upload whose request failed between Seal and
+// Place leaves no staged file behind.
+func TestDiscardRemovesTheStagedSealedFile(t *testing.T) {
+	dataDir, tmpDir := setupLayout(t)
+	rec := sealReceiver(t, tmpDir, jpegFixture(t), "jpg")
+
+	rec.Discard()
+
+	requireEmptyDir(t, tmpDir)
+	if got := countFiles(t, filepath.Join(dataDir, "originals")); got != 0 {
+		t.Errorf("originals holds %d files after a discard, want 0", got)
+	}
+	// Discard is idempotent: a second call is a no-op.
+	rec.Discard()
+	requireEmptyDir(t, tmpDir)
+}
+
+// TestDiscardRemovesThePlacedFile pins the failure-path hygiene after
+// placement: an upload whose rows never committed (the unique-index
+// conflict path) removes the file it placed, because the link proved
+// the path did not exist before it -- nothing else can reference it.
+func TestDiscardRemovesThePlacedFile(t *testing.T) {
+	dataDir, tmpDir := setupLayout(t)
+	rec, relPath := placeSealed(t, tmpDir, jpegFixture(t), "jpg", testOwnerID, "2026/01/lost")
+
+	rec.Discard()
+
+	if _, err := os.Stat(filepath.Join(dataDir, filepath.FromSlash(relPath))); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("placed file %s survived the discard (stat error = %v), want it gone", relPath, err)
+	}
+	requireEmptyDir(t, tmpDir)
+	// A discard never removes anything else: the squatter test above
+	// covers the neighbor; here the tree is empty.
+	if got := countFiles(t, filepath.Join(dataDir, "originals")); got != 0 {
+		t.Errorf("originals holds %d files after the discard, want 0", got)
+	}
+}
+
+// TestReceiverHeaderReadsTheSealedFile pins the header plumbing: a
+// sealed JPEG with EXIF answers its capture context, an unsealed
+// receiver answers the zero header.
+func TestReceiverHeaderReadsTheSealedFile(t *testing.T) {
+	_, tmpDir := setupLayout(t)
+	tiff := buildExifTIFF(binary.LittleEndian,
+		[]exifEntry{{tag: tagMake, value: "Lumemor"}},
+		[]exifEntry{
+			{tag: tagDateTimeOriginal, value: "2023:07:14 10:15:30"},
+			{tag: tagOffsetTime, value: "+05:30"},
+		})
+	payload := buildExifJPEG(t, tiff)
+
+	rec, err := NewReceiver(tmpDir, 1<<20, bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("NewReceiver() error = %v", err)
+	}
+	if got := rec.Header(); got.DateTimeOriginal != "" {
+		t.Errorf("Header() before Seal = %+v, want the zero header", got)
+	}
+	if err := rec.Seal("jpg"); err != nil {
+		t.Fatalf("Seal() error = %v", err)
+	}
+	header := rec.Header()
+	if header.DateTimeOriginal != "2023:07:14 10:15:30" || header.OffsetTime != "+05:30" || header.Make != "Lumemor" {
+		t.Errorf("Header() after Seal = %+v, want the fixture's capture context", header)
+	}
+	// The header read leaves the staged file in place for Place.
+	if _, err := rec.Place(testOwnerID, "2026/01/photo", "jpg"); err != nil {
+		t.Fatalf("Place() after Header() error = %v", err)
+	}
 }

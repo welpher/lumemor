@@ -106,22 +106,6 @@ func TestEnsureLayoutReportsRenameProbeFailure(t *testing.T) {
 	}
 }
 
-func TestOriginalPathContentAddressing(t *testing.T) {
-	dataDir := t.TempDir()
-	if err := EnsureLayout(dataDir, t.TempDir()); err != nil {
-		t.Fatalf("EnsureLayout() error = %v, want nil", err)
-	}
-
-	// Hex-encoded digests are lowercase; the first two and the
-	// following two hex characters shard the originals tree.
-	checksum := "c0ffee01a1b2c3d4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8"
-	got := OriginalPath(checksum, "jpg")
-	want := filepath.Join(dataDir, "originals", "c0", "ff", checksum+".jpg")
-	if got != want {
-		t.Errorf("OriginalPath() = %q, want %q", got, want)
-	}
-}
-
 // resetDataRoot simulates a fresh process that has not run a
 // successful EnsureLayout: the recorded data root is cleared for the
 // duration of the test and restored afterwards.
@@ -139,7 +123,6 @@ func TestPathHelpersPanicBeforeEnsureLayout(t *testing.T) {
 		name string
 		call func()
 	}{
-		{"OriginalPath", func() { OriginalPath("c0ffee01a1b2c3d4", "jpg") }},
 		{"ThumbPath", func() { ThumbPath("0197a1b2-c3d4-4e5f-8a9b-0c1d2e3f4a5b", "tile") }},
 	}
 	for _, c := range calls {
@@ -155,36 +138,6 @@ func TestPathHelpersPanicBeforeEnsureLayout(t *testing.T) {
 				}
 			}()
 			c.call()
-		})
-	}
-}
-
-func TestOriginalPathRejectsMalformedArguments(t *testing.T) {
-	if err := EnsureLayout(t.TempDir(), t.TempDir()); err != nil {
-		t.Fatalf("EnsureLayout() error = %v, want nil", err)
-	}
-
-	tests := []struct {
-		name     string
-		checksum string
-		ext      string
-	}{
-		{"checksum shorter than four hex characters", "abc", "jpg"},
-		{"checksum with non-hex characters", "zz1c0ffee01a1b2c3d4", "jpg"},
-		{"uppercase checksum is not canonical", "C0FFEE01A1B2C3D4", "jpg"},
-		{"empty extension", "c0ffee01a1b2c3d4", ""},
-		{"extension with dot", "c0ffee01a1b2c3d4", ".jpg"},
-		{"extension longer than five characters", "c0ffee01a1b2c3d4", "photos"},
-		{"extension with punctuation", "c0ffee01a1b2c3d4", "j!g"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				if recover() == nil {
-					t.Errorf("OriginalPath(%q, %q) did not panic, want panic", tt.checksum, tt.ext)
-				}
-			}()
-			OriginalPath(tt.checksum, tt.ext)
 		})
 	}
 }

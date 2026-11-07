@@ -450,8 +450,12 @@ func TestUploadAssetCreateState(t *testing.T) {
 		t.Error("row is_component = true, want false")
 	}
 
-	// The file lives at the content-addressed path of the checksum.
-	wantPath := "originals/" + checksum[:2] + "/" + checksum[2:4] + "/" + checksum + ".jpg"
+	// The file lands at the template-rendered path under the owner's
+	// originals root: the default template organizes by the capture
+	// wall clock (the device-reported +08:00 time of this fixture is
+	// January 2026 in its own zone), and the file name carries the
+	// sanitized stem plus the normalized extension.
+	wantPath := "originals/" + env.sessionUserID(t).String() + "/2026/01/IMG_1234.jpg"
 	if row.FilePath != wantPath {
 		t.Errorf("row file_path = %q, want %q", row.FilePath, wantPath)
 	}
@@ -955,7 +959,7 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	s.enqueueAssetJobs(req, dbgen.Asset{
 		ID:               pgUUID(assetID),
 		LivePhotoVideoID: pgUUID(componentID),
-	}, &committedUpload{format: storage.UploadFormat{Video: true}})
+	}, &sealedUpload{format: storage.UploadFormat{Video: true}})
 	if len(liveRecorder.metadataIDs) != 2 {
 		t.Errorf("live photo metadata enqueues = %v, want one per row (photo and component)", liveRecorder.metadataIDs)
 	}
@@ -985,7 +989,7 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	s.enqueueAssetJobs(req, dbgen.Asset{
 		ID:               pgUUID(assetID),
 		LivePhotoVideoID: pgUUID(componentID),
-	}, &committedUpload{})
+	}, &sealedUpload{})
 	if len(imagePartRecorder.transcodeIDs) != 0 {
 		t.Errorf("image-family component transcode enqueues = %v, want none (no job can run for it)",
 			imagePartRecorder.transcodeIDs)
@@ -1185,16 +1189,15 @@ func TestUploadAssetClientDisconnectMidStream(t *testing.T) {
 	}
 }
 
-// TestUploadAssetRejectedAfterCommit pins the residue contract of a
-// request that turns invalid only after a file part has legitimately
-// committed: the blob stays (a content-addressed original may be
-// shared with another owner's asset, so removing it is unsafe), but
-// no row is inserted, no event fires, and staging stays clean.
-func TestUploadAssetRejectedAfterCommit(t *testing.T) {
+// TestUploadAssetRejectedAfterSeal verifies the residue discipline of
+// rejections that fire after a file part legitimately sealed: the
+// staged files are discarded, so a rejected upload leaves no rows, no
+// events, no files -- not even the sealed parts.
+func TestUploadAssetRejectedAfterSeal(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	payload := jpegFixture(t)
 
-	// A second photo part after the first committed.
+	// A second photo part after the first sealed.
 	duplicate := env.postUpload(t, map[string]string{
 		"deviceAssetId": "device-1",
 		"fileName":      "IMG_1234.jpg",
@@ -1207,10 +1210,10 @@ func TestUploadAssetRejectedAfterCommit(t *testing.T) {
 	}
 
 	// A text field arriving after the file part breaks the streaming
-	// contract: the handler has validated the fields and committed the
+	// contract: the handler has validated the fields and sealed the
 	// file before the late value arrives, so the request is refused
 	// instead of the value being silently ignored. Distinct bytes keep
-	// this request's blob distinct from the one above.
+	// this request's payload distinct from the one above.
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for field, value := range map[string]string{
@@ -1239,8 +1242,8 @@ func TestUploadAssetRejectedAfterCommit(t *testing.T) {
 		t.Fatalf("late field status = %d, want %d (body %q)", lateField.Code, http.StatusBadRequest, lateField.Body.String())
 	}
 
-	// No rows, no events, clean staging; the two committed blobs
-	// remain as the documented residue.
+	// No rows, no events, no files anywhere: the sealed parts were
+	// discarded, not placed.
 	if got := env.queryInt(t, "SELECT count(*) FROM assets"); got != 0 {
 		t.Errorf("assets rows = %d, want 0", got)
 	}
@@ -1248,9 +1251,7 @@ func TestUploadAssetRejectedAfterCommit(t *testing.T) {
 		t.Errorf("asset.uploaded events = %d, want 0", got)
 	}
 	env.requireStagingEmpty(t)
-	if got := env.countFiles(t, filepath.Join(env.dataDir, "originals")); got != 2 {
-		t.Errorf("originals tree holds %d files, want the 2 committed blobs left as residue", got)
-	}
+	env.requireOriginalsEmpty(t)
 }
 
 // TestUploadRouteOutsideTimeoutAndBodyLimit pins the wiring of the
