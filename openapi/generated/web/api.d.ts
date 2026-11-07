@@ -2671,6 +2671,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/settings/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the storage template setting.
+         * @description The storage settings read of the admin surface: the
+         *     instance's upload path template, the sample path it renders,
+         *     and the built-in preset list the settings section's dropdown
+         *     fills from.
+         *
+         *     The template is the path grammar every NEW upload renders its
+         *     file placement from: `originals/<ownerUserId>/<rendered>.<ext>`,
+         *     with the per-user root pinning one directory tree per account.
+         *     The grammar is variable substitution plus `{{#if
+         *     album}}...{{else}}...{{/if}}` conditionals over the file
+         *     (`{{filename}}`, `{{ext}}`, `{{filetype}}`, `{{filetypefull}}`),
+         *     date (`{{y}} {{yy}} {{M}} {{MM}} {{MMM}} {{MMMM}} {{d}} {{dd}}
+         *     {{W}} {{WW}} {{H}} {{HH}} {{h}} {{hh}} {{m}} {{mm}} {{s}} {{ss}}
+         *     {{SSS}}`), album (`{{album}}`, `{{album-startDate-*}}`,
+         *     `{{album-endDate-*}}`), camera (`{{make}} {{model}}
+         *     {{lensModel}}`) and id (`{{assetId}}`, `{{assetIdShort}}`)
+         *     families. Compilation is strict -- an unknown variable or a
+         *     malformed conditional is an error, never a silent blank.
+         *
+         *     THE RENDERING CONTRACT (what changing the template does and
+         *     never does): the path is rendered exactly once, at ingest,
+         *     from the taken-at fallback chain (the file's EXIF header
+         *     time, else the client-reported `deviceCreatedAt`, else the
+         *     upload time) and the values known at that moment. Later
+         *     metadata refinement NEVER re-paths an asset -- a refined
+         *     taken-at, an album membership joined after upload, none of it
+         *     moves a file. Existing assets keep the paths they were
+         *     ingested under; there is deliberately NO migration of stored
+         *     files when the template changes (moving files after ingest is
+         *     the architecture photo libraries have lost data to; lumemor
+         *     never moves them). New uploads follow the new template from
+         *     the moment it is saved. Album variables render empty for
+         *     direct uploads: the only album an upload joins at ingest is
+         *     the system sync stream, which is not a naming source.
+         *
+         *     The sample path is the current template rendered over a fixed
+         *     sample asset (an image named `IMG_1234.jpg`, taken
+         *     `2023:07:14 10:15:30.123 +05:30`, camera `Acme Alpha 5` with
+         *     the `24-70mm f/2.8` lens, no album, under the sample owner
+         *     `0192f8c1-0000-7000-8000-000000000001`) with the extension
+         *     appended -- exactly the shape a real upload of that file
+         *     would land at under this template. The response never fails
+         *     over a corrupt setting row: the default template answers
+         *     instead, and the server log carries the corruption.
+         */
+        get: operations["getStorageSettings"];
+        /**
+         * Validate and save the storage template.
+         * @description The storage settings save of the admin surface. The template
+         *     passes a three-stage validation before anything is written:
+         *
+         *     1. **Compile** -- strict grammar: every `{{variable}}` must be
+         *     a known member of the variable table, every conditional
+         *     balanced. An unknown variable or a malformed conditional is
+         *     rejected here.
+         *     2. **Sample render** -- the compiled template renders over a
+         *     fixed set of sample assets (an album-less image, an
+         *     album-grouped image, a video), exactly as an upload would: a
+         *     template that renders an empty path (an album-only template
+         *     over the album-less sample) is rejected here.
+         *     3. **Structure** -- the rendered paths must be safe: no `..`
+         *     traversal, no dot segments, bounded depth (10) and bounded
+         *     length, per-segment and total. The engine sanitizes the
+         *     user-influenced values (file name, album, camera) and the
+         *     structural pass guards the literal template text.
+         *
+         *     A template that passes is saved and answers 200 with the
+         *     saved value, its sample render and the presets. A template
+         *     that fails any stage answers 400 `VALIDATION_FAILED` naming
+         *     `template` in the details, with the specific reason in the
+         *     error message; nothing is written. The save takes effect for
+         *     uploads from the next request on: paths already recorded are
+         *     never re-derived and never moved (see GET for the full
+         *     rendering contract).
+         */
+        put: operations["updateStorageSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2908,6 +3000,49 @@ export interface components {
              *     sessions and sign-in; `false` lets it back in.
              */
             isDisabled: boolean;
+        };
+        /**
+         * @description The storage settings of `GET /admin/settings/storage` and the
+         *     successful `PUT`: the instance's upload path template, the
+         *     sample path it renders, and the built-in presets.
+         */
+        StorageSettingsResponse: {
+            /**
+             * @description The template new uploads render their placement from. A
+             *     fresh instance (or a corrupt row) answers the default
+             *     `{{y}}/{{MM}}/{{filename}}`.
+             * @example {{y}}/{{MM}}/{{filename}}
+             */
+            template: string;
+            /**
+             * @description The template rendered over the fixed sample asset with
+             *     the extension appended, as a stored relative path --
+             *     exactly the placement a real upload of the sample file
+             *     would land at.
+             * @example originals/0192f8c1-0000-7000-8000-000000000001/2023/07/IMG_1234.jpg
+             */
+            samplePath: string;
+            /**
+             * @description The built-in preset templates, in the settings section's
+             *     dropdown order: date nestings, album layouts, camera
+             *     groupings, the type grouping, the asset-id fallback and
+             *     the bare file name.
+             * @example [
+             *       "{{y}}/{{MM}}/{{filename}}",
+             *       "{{y}}/{{y}}-{{MM}}/{{filename}}"
+             *     ]
+             */
+            presets: string[];
+        };
+        /** @description Payload of `PUT /admin/settings/storage`. */
+        StorageSettingsUpdateRequest: {
+            /**
+             * @description The template to validate and save. Must compile strictly,
+             *     render over the sample asset set, and produce safe
+             *     structure; 1 to 512 runes.
+             * @example {{y}}/{{MM}}/{{filename}}
+             */
+            template: string;
         };
         /**
          * @description The identifier of one model download run: the `job_runs` row
@@ -9566,6 +9701,140 @@ export interface operations {
              *     `admin`.
              */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getStorageSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The instance's storage template, its sample render and
+             *     the built-in presets.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettingsResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateStorageSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorageSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The template passed the three-stage validation and was
+             *     saved; the response carries the saved value, its sample
+             *     render and the presets.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettingsResponse"];
+                };
+            };
+            /**
+             * @description The template failed a validation stage: it does not
+             *     compile (unknown variable, malformed conditional, empty
+             *     or whitespace-only text, a literal trailing separator),
+             *     its sample render errors, or its structure is unsafe
+             *     (traversal, depth, length). The details name `template`;
+             *     the message carries the specific reason. Nothing was
+             *     written.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The template passed the validation but the write failed. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

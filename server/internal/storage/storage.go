@@ -1,6 +1,7 @@
 // Package storage owns the on-disk layout of the lumemor data and
-// config directories: content-addressed originals, upload staging that
-// shares their filesystem, derived media files, and model storage.
+// config directories: the per-owner originals tree whose file names
+// the storage template renders at ingest, upload staging that shares
+// their filesystem, derived media files, and model storage.
 package storage
 
 import (
@@ -33,12 +34,12 @@ func requireDataRoot(caller string) {
 //	data/    originals/, tmp/, storage/thumbs/, storage/encoded/, storage/sidecars/
 //	config/  models/
 //
-// It then verifies with an actual rename round-trip that upload
+// It then verifies with an actual link round-trip that upload
 // staging shares a filesystem with the originals directory: uploads
-// finalize with an atomic rename, which only works within one
-// filesystem, so a layout that would break every upload fails startup
-// instead of the first upload attempt. On success it records the data
-// root for the OriginalPath and ThumbPath helpers.
+// finalize with a hard link into the originals tree, which only works
+// within one filesystem, so a layout that would break every upload
+// fails startup instead of the first upload attempt. On success it
+// records the data root for the path helpers below.
 func EnsureLayout(dataDir, configDir string) error {
 	originals := filepath.Join(dataDir, "originals")
 	tmp := filepath.Join(dataDir, "tmp")
@@ -84,8 +85,10 @@ func SweepTmp(dataDir string) error {
 	return nil
 }
 
-// renameProbe moves a freshly created file from tmp into originals and
-// removes it again, proving that both directories share a filesystem.
+// renameProbe links a freshly created file from tmp into originals and
+// removes it again, proving that both directories share a filesystem
+// (a hard link, the same primitive the upload placement uses -- it
+// fails with EXDEV across filesystems).
 func renameProbe(tmp, originals string) error {
 	probe, err := os.CreateTemp(tmp, ".layout-probe-*")
 	if err != nil {
@@ -93,42 +96,24 @@ func renameProbe(tmp, originals string) error {
 	}
 	name := probe.Name()
 	if err := probe.Close(); err != nil {
-		// Same hygiene as the rename failure below: do not strand the
+		// Same hygiene as the link failure below: do not strand the
 		// probe file in upload staging.
 		_ = os.Remove(name)
 		return fmt.Errorf("storage layout: close probe file %s: %w", name, err)
 	}
 
 	moved := filepath.Join(originals, filepath.Base(name))
-	if err := os.Rename(name, moved); err != nil {
+	if err := os.Link(name, moved); err != nil {
 		// Best-effort cleanup so a failed probe leaves no file behind
 		// in upload staging.
 		_ = os.Remove(name)
-		return fmt.Errorf("storage layout: upload staging %s and originals %s must share a filesystem so uploads can finalize with an atomic rename: %w", tmp, originals, err)
+		return fmt.Errorf("storage layout: upload staging %s and originals %s must share a filesystem so uploads can finalize with a link: %w", tmp, originals, err)
 	}
 	if err := os.Remove(moved); err != nil {
 		return fmt.Errorf("storage layout: remove probe file %s: %w", moved, err)
 	}
+	_ = os.Remove(name)
 	return nil
-}
-
-// OriginalPath returns the content-addressed path of an original file
-// under the data root: originals/aa/bb/<checksum>.<ext>, where aa and
-// bb are the first two and the following two hex characters of the
-// checksum. It panics when EnsureLayout has not succeeded yet, or when
-// arguments are malformed: checksums arrive as lowercase hex digests
-// computed server side, extensions come from the upload format
-// whitelist, and the data root comes from startup, so all of these are
-// programming errors.
-func OriginalPath(checksum, ext string) string {
-	requireDataRoot("OriginalPath")
-	if !isHex(checksum) {
-		panic(fmt.Sprintf("storage: OriginalPath: checksum %q must be at least four lowercase hex characters", checksum))
-	}
-	if !isExtension(ext) {
-		panic(fmt.Sprintf("storage: OriginalPath: extension %q must be one to five alphanumeric characters without a dot", ext))
-	}
-	return filepath.Join(dataRoot, "originals", checksum[:2], checksum[2:4], checksum+"."+ext)
 }
 
 // ThumbPath returns the path of the AVIF thumbnail of the given size
@@ -144,17 +129,19 @@ func ThumbPath(assetID, size string) string {
 // deleted asset under the shared-blob rule. The derived directories
 // (storage/thumbs/<assetID>/ and storage/encoded/<assetID>/) are
 // keyed by the asset id alone -- no other asset can hold files inside
-// them -- so they are always removed. The content-addressed original
-// the row's file_path names is removed only when references is zero:
-// content addressing stores identical bytes of any owner under ONE
-// physical file, so another row referencing the same file (another
-// owner's upload of the same photo, or a live row) keeps it; the
-// caller passes the count of OTHER rows sharing the file_path. Both
-// removals are best-effort and idempotent: a file already gone is
-// success (the delete that owned it may have run concurrently), and
-// a failure is returned for the caller to log -- the database row is
-// already deleted, so a failure here is a storage leak, never data
-// loss. Unlike the path helpers above it works on any data root, not
+// them -- so they are always removed. The original the row's
+// file_path names is removed only when references is zero. Assets
+// ingested before the storage-template feature live at
+// content-addressed paths where identical bytes of ANY owner share
+// one physical file (another owner's upload of the same photo, or a
+// live row, keeps it); assets ingested since live at per-owner
+// template paths that no other row can reference -- the references
+// count answers both eras with the one rule. Both removals are
+// best-effort and idempotent: a file already gone is success (the
+// delete that owned it may have run concurrently), and a failure is
+// returned for the caller to log -- the database row is already
+// deleted, so a failure here is a storage leak, never data loss.
+// Unlike the path helpers above it works on any data root, not
 // the one recorded by EnsureLayout: the callers hold the data root
 // they were wired with.
 func RemoveAssetFiles(dataDir, relPath, assetID string, references int64) error {
@@ -226,8 +213,9 @@ func EncodedPath(assetID string) string {
 // the portable slash-separated form the upload receiver records in
 // file_path, relative to the data root -- against the given data root
 // and refuses anything that would leave the originals tree. file_path
-// values are server-generated (content-addressed by the upload
-// receiver), so the guard is defense in depth against a corrupted
+// values are server-generated (template-rendered at ingest since the
+// storage-template feature, content-addressed before it), so the
+// guard is defense in depth against a corrupted
 // row, not an input validation layer; the API's media endpoints and
 // both pipeline jobs resolve their input through it. Unlike the path
 // helpers above it works on any data root, not the one recorded by
@@ -239,24 +227,6 @@ func ResolveStoredPath(dataDir, rel string) (string, error) {
 		return "", fmt.Errorf("storage: file path %q escapes the originals tree", rel)
 	}
 	return abs, nil
-}
-
-// isHex reports whether s is a checksum in canonical form: at least
-// four lowercase hexadecimal characters, as produced by hex encoding a
-// digest. Uppercase digests are rejected so every content hash maps to
-// exactly one path.
-func isHex(s string) bool {
-	if len(s) < 4 {
-		return false
-	}
-	for _, c := range s {
-		switch {
-		case c >= '0' && c <= '9', c >= 'a' && c <= 'f':
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 // isExtension reports whether s is a file extension in canonical form:

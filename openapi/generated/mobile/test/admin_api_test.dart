@@ -34,6 +34,15 @@ void main() {
       // TODO
     });
 
+    // Read the storage template setting.
+    //
+    // The storage settings read of the admin surface: the instance's upload path template, the sample path it renders, and the built-in preset list the settings section's dropdown fills from.  The template is the path grammar every NEW upload renders its file placement from: `originals/<ownerUserId>/<rendered>.<ext>`, with the per-user root pinning one directory tree per account. The grammar is variable substitution plus `{{#if album}}...{{else}}...{{/if}}` conditionals over the file (`{{filename}}`, `{{ext}}`, `{{filetype}}`, `{{filetypefull}}`), date (`{{y}} {{yy}} {{M}} {{MM}} {{MMM}} {{MMMM}} {{d}} {{dd}} {{W}} {{WW}} {{H}} {{HH}} {{h}} {{hh}} {{m}} {{mm}} {{s}} {{ss}} {{SSS}}`), album (`{{album}}`, `{{album-startDate-*}}`, `{{album-endDate-*}}`), camera (`{{make}} {{model}} {{lensModel}}`) and id (`{{assetId}}`, `{{assetIdShort}}`) families. Compilation is strict -- an unknown variable or a malformed conditional is an error, never a silent blank.  THE RENDERING CONTRACT (what changing the template does and never does): the path is rendered exactly once, at ingest, from the taken-at fallback chain (the file's EXIF header time, else the client-reported `deviceCreatedAt`, else the upload time) and the values known at that moment. Later metadata refinement NEVER re-paths an asset -- a refined taken-at, an album membership joined after upload, none of it moves a file. Existing assets keep the paths they were ingested under; there is deliberately NO migration of stored files when the template changes (moving files after ingest is the architecture photo libraries have lost data to; lumemor never moves them). New uploads follow the new template from the moment it is saved. Album variables render empty for direct uploads: the only album an upload joins at ingest is the system sync stream, which is not a naming source.  The sample path is the current template rendered over a fixed sample asset (an image named `IMG_1234.jpg`, taken `2023:07:14 10:15:30.123 +05:30`, camera `Acme Alpha 5` with the `24-70mm f/2.8` lens, no album, under the sample owner `0192f8c1-0000-7000-8000-000000000001`) with the extension appended -- exactly the shape a real upload of that file would land at under this template. The response never fails over a corrupt setting row: the default template answers instead, and the server log carries the corruption. 
+    //
+    //Future<StorageSettingsResponse> getStorageSettings() async
+    test('test getStorageSettings', () async {
+      // TODO
+    });
+
     // List the job runs of the task panel.
     //
     // The task panel listing of the admin surface: every job run the instance ever recorded, newest first -- model downloads and ML reruns alike. Each row carries the run's progress as its own work's units: the model download's `total` and `done` count pinned bytes and `failed` counts failed models; a rerun's count the assets of its scope and the assets whose rerun failed. `startedAt` is null while a run sits `queued`, `finishedAt` is null until it closes.  `limit` bounds the page size: absent means the default of 50, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 `VALIDATION_FAILED`. 
@@ -85,6 +94,15 @@ void main() {
     //
     //Future<ModelScanResponse> scanModels() async
     test('test scanModels', () async {
+      // TODO
+    });
+
+    // Validate and save the storage template.
+    //
+    // The storage settings save of the admin surface. The template passes a three-stage validation before anything is written:  1. **Compile** -- strict grammar: every `{{variable}}` must be a known member of the variable table, every conditional balanced. An unknown variable or a malformed conditional is rejected here. 2. **Sample render** -- the compiled template renders over a fixed set of sample assets (an album-less image, an album-grouped image, a video), exactly as an upload would: a template that renders an empty path (an album-only template over the album-less sample) is rejected here. 3. **Structure** -- the rendered paths must be safe: no `..` traversal, no dot segments, bounded depth (10) and bounded length, per-segment and total. The engine sanitizes the user-influenced values (file name, album, camera) and the structural pass guards the literal template text.  A template that passes is saved and answers 200 with the saved value, its sample render and the presets. A template that fails any stage answers 400 `VALIDATION_FAILED` naming `template` in the details, with the specific reason in the error message; nothing is written. The save takes effect for uploads from the next request on: paths already recorded are never re-derived and never moved (see GET for the full rendering contract). 
+    //
+    //Future<StorageSettingsResponse> updateStorageSettings(StorageSettingsUpdateRequest storageSettingsUpdateRequest) async
+    test('test updateStorageSettings', () async {
       // TODO
     });
 

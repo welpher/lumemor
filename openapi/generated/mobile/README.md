@@ -90,12 +90,14 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**activateModel**](doc/AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
+[*AdminApi*](doc/AdminApi.md) | [**getStorageSettings**](doc/AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [*AdminApi*](doc/AdminApi.md) | [**listJobs**](doc/AdminApi.md#listjobs) | **GET** /admin/jobs | List the job runs of the task panel.
 [*AdminApi*](doc/AdminApi.md) | [**listModels**](doc/AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [*AdminApi*](doc/AdminApi.md) | [**listUsers**](doc/AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
 [*AdminApi*](doc/AdminApi.md) | [**reresolvePlaces**](doc/AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
+[*AdminApi*](doc/AdminApi.md) | [**updateStorageSettings**](doc/AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**addAlbumItems**](doc/AlbumsApi.md#addalbumitems) | **POST** /albums/{albumId}/items | Add assets to one virtual album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**createAlbum**](doc/AlbumsApi.md#createalbum) | **POST** /albums | Create one virtual album.
@@ -228,6 +230,8 @@ Class | Method | HTTP request | Description
  - [ServerInfo](doc/ServerInfo.md)
  - [SessionInfo](doc/SessionInfo.md)
  - [SetPersonHiddenRequest](doc/SetPersonHiddenRequest.md)
+ - [StorageSettingsResponse](doc/StorageSettingsResponse.md)
+ - [StorageSettingsUpdateRequest](doc/StorageSettingsUpdateRequest.md)
  - [TagAssetsRequest](doc/TagAssetsRequest.md)
  - [TagFacetCount](doc/TagFacetCount.md)
  - [TagNameRequest](doc/TagNameRequest.md)

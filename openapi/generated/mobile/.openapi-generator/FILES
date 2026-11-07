@@ -86,6 +86,8 @@ doc/ServerApi.md
 doc/ServerInfo.md
 doc/SessionInfo.md
 doc/SetPersonHiddenRequest.md
+doc/StorageSettingsResponse.md
+doc/StorageSettingsUpdateRequest.md
 doc/TagAssetsRequest.md
 doc/TagFacetCount.md
 doc/TagNameRequest.md
@@ -199,6 +201,8 @@ lib/src/model/search_response.dart
 lib/src/model/server_info.dart
 lib/src/model/session_info.dart
 lib/src/model/set_person_hidden_request.dart
+lib/src/model/storage_settings_response.dart
+lib/src/model/storage_settings_update_request.dart
 lib/src/model/tag_assets_request.dart
 lib/src/model/tag_facet_count.dart
 lib/src/model/tag_name_request.dart
@@ -300,6 +304,8 @@ test/server_api_test.dart
 test/server_info_test.dart
 test/session_info_test.dart
 test/set_person_hidden_request_test.dart
+test/storage_settings_response_test.dart
+test/storage_settings_update_request_test.dart
 test/tag_assets_request_test.dart
 test/tag_facet_count_test.dart
 test/tag_name_request_test.dart

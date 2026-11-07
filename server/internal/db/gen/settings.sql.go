@@ -28,3 +28,23 @@ func (q *Queries) GetInstanceSetting(ctx context.Context, key string) ([]byte, e
 	err := row.Scan(&value)
 	return value, err
 }
+
+const setInstanceSetting = `-- name: SetInstanceSetting :exec
+INSERT INTO instance_settings (key, value)
+VALUES ($1, to_jsonb($2::text))
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+`
+
+type SetInstanceSettingParams struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// The typed writer behind every setting's save: the value lands as a
+// jsonb string and the row's updated_at moves with the write. The
+// upsert arm serves the save-over-existing flow; the insert arm
+// serves the first write.
+func (q *Queries) SetInstanceSetting(ctx context.Context, arg SetInstanceSettingParams) error {
+	_, err := q.db.Exec(ctx, setInstanceSetting, arg.Key, arg.Value)
+	return err
+}

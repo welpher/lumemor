@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -182,12 +183,14 @@ func hasFTYPBrand(head []byte, brands map[string]bool) bool {
 }
 
 // receiverState tracks the upload state machine: a fresh receiver is
-// staged, and Commit moves it to a terminal state.
+// staged, Seal validates the payload and seals the staged file, Place
+// links it into the originals tree, and every failure path rejects.
 type receiverState int
 
 const (
 	stateStaged receiverState = iota
-	stateCommitted
+	stateSealed
+	statePlaced
 	stateRejected
 )
 
@@ -195,8 +198,10 @@ func (s receiverState) String() string {
 	switch s {
 	case stateStaged:
 		return "staged"
-	case stateCommitted:
-		return "committed"
+	case stateSealed:
+		return "sealed"
+	case statePlaced:
+		return "placed"
 	case stateRejected:
 		return "rejected"
 	default:
@@ -204,11 +209,19 @@ func (s receiverState) String() string {
 	}
 }
 
+// maxCollisionAttempts bounds the collision suffix search: an owner
+// directory holding a thousand files of one name is a pathological
+// instance, not a placement to keep grinding through.
+const maxCollisionAttempts = 1000
+
 // Receiver stages and finalizes one uploaded file. NewReceiver
-// creates the staged temp file; Commit streams the payload into it
-// while hashing and sniffing, then moves accepted uploads into the
-// content-addressed originals tree. Every failed Commit removes the
-// staged file, so only a successful Commit leaves a file on disk.
+// creates the staged temp file; Seal streams the payload into it
+// while hashing and sniffing; Header reads the EXIF capture context
+// of the sealed file; Place links it into the per-owner originals
+// tree under a template-rendered path, appending collision suffixes
+// when the target exists. Every failed step removes what the receiver
+// had put on disk, so only a placed receiver leaves a file behind --
+// and Discard removes even that for the upload's failure paths.
 type Receiver struct {
 	staged     *os.File
 	stagedPath string
@@ -217,6 +230,9 @@ type Receiver struct {
 	state      receiverState
 	checksum   string
 	size       int64
+	// placedRel is the stored relative path once Place linked the
+	// file; the failure-path cleanup removes it.
+	placedRel string
 }
 
 // NewReceiver prepares to receive one upload: the staged temp file is
@@ -240,30 +256,43 @@ func NewReceiver(tmpDir string, limit int64, r io.Reader) (*Receiver, error) {
 }
 
 // Checksum returns the sha256 hex digest of the uploaded payload. It
-// is valid after a successful Commit and empty before.
+// is valid after a successful Seal and empty before.
 func (rec *Receiver) Checksum() string {
-	if rec.state != stateCommitted {
+	if rec.state != stateSealed && rec.state != statePlaced {
 		return ""
 	}
 	return rec.checksum
 }
 
 // Size returns the byte count of the uploaded payload, as streamed
-// during Commit. It is valid after a successful Commit and zero
-// before; the caller records it as the asset's file_size.
+// during Seal. It is valid after a successful Seal and zero before;
+// the caller records it as the asset's file_size.
 func (rec *Receiver) Size() int64 {
-	if rec.state != stateCommitted {
+	if rec.state != stateSealed && rec.state != statePlaced {
 		return 0
 	}
 	return rec.size
 }
 
-// Commit streams the payload into the staged file, validates it, and
-// finalizes accepted uploads: the staged file is renamed into the
-// content-addressed original path derived from the payload digest.
-// relPath is that path relative to the data root,
-// originals/aa/bb/<checksum>.<ext> — the portable form stored in the
-// database, which must not embed the configurable data root.
+// Header reads the media header -- the EXIF capture wall clock and
+// camera identity -- of the sealed staged file. It is valid between
+// Seal and Place (Place consumes the staged file); outside that
+// window it answers the zero header and the caller's fallback chain
+// governs.
+func (rec *Receiver) Header() MediaHeader {
+	if rec.state != stateSealed {
+		return MediaHeader{}
+	}
+	header, _ := ReadMediaHeader(rec.stagedPath)
+	return header
+}
+
+// Seal streams the payload into the staged file and validates it,
+// leaving the receiver ready for Place: the staged file is closed and
+// the checksum and size are recorded. No placement happens here -- the
+// destination is a template render the caller computes from the
+// checksum, the header and the asset identity, none of which exist
+// before the payload has streamed.
 //
 // ext is the lowercase, dotless file extension. Validation runs in a
 // fixed order: the extension must be in the upload format whitelist
@@ -272,26 +301,27 @@ func (rec *Receiver) Size() int64 {
 // payload larger than the limit aborts mid-stream with an error
 // wrapping ErrTooLarge (the caller should stop consuming the source);
 // and after EOF the content type sniffed from the payload's magic
-// bytes must be consistent with the extension, else Commit returns
+// bytes must be consistent with the extension, else Seal returns
 // *ErrRejected. Source read errors are wrapped. Any failure removes
 // the staged file and leaves the receiver in a terminal rejected
-// state; committing a terminal receiver fails.
+// state; sealing a terminal receiver fails.
 //
-// Commit requires a successful EnsureLayout: the content-addressed
-// path derives from the recorded data root.
-func (rec *Receiver) Commit(ext string) (string, error) {
+// Seal requires a successful EnsureLayout: the layout probe that
+// proved staging and the originals tree share a filesystem is what
+// makes Place's link step safe.
+func (rec *Receiver) Seal(ext string) error {
 	if rec.state != stateStaged {
-		return "", fmt.Errorf("storage: Commit on a receiver that is already %s", rec.state)
+		return fmt.Errorf("storage: Seal on a receiver that is already %s", rec.state)
 	}
 	// A startup-order bug should surface before a single byte is
 	// streamed, not after gigabytes have crossed the wire.
-	requireDataRoot("Receiver.Commit")
+	requireDataRoot("Receiver.Seal")
 
 	// The extension whitelist is the first gate: an unknown extension
 	// fails before the source is read at all.
 	rule, ok := uploadFormats[ext]
 	if !ok {
-		return "", rec.reject(fmt.Sprintf("extension %q is not in the upload format whitelist", ext))
+		return rec.reject(fmt.Sprintf("extension %q is not in the upload format whitelist", ext))
 	}
 
 	// Stream into the staged file while hashing, counting, and
@@ -301,10 +331,10 @@ func (rec *Receiver) Commit(ext string) (string, error) {
 	src := &streamSource{source: rec.source, digest: sha256.New()}
 	copied, err := io.Copy(rec.staged, io.LimitReader(src, rec.limit+1))
 	if err != nil {
-		return "", rec.fail(fmt.Errorf("storage: stream upload: %w", err))
+		return rec.fail(fmt.Errorf("storage: stream upload: %w", err))
 	}
 	if copied > rec.limit {
-		return "", rec.fail(fmt.Errorf("storage: upload of at least %d bytes exceeds the %d byte limit: %w", copied, rec.limit, ErrTooLarge))
+		return rec.fail(fmt.Errorf("storage: upload of at least %d bytes exceeds the %d byte limit: %w", copied, rec.limit, ErrTooLarge))
 	}
 
 	// With the payload complete, the sniffed content type must be
@@ -313,29 +343,113 @@ func (rec *Receiver) Commit(ext string) (string, error) {
 	head := src.head[:src.headLen]
 	sniffed := http.DetectContentType(head)
 	if !rule.consistentWith(sniffed, head) {
-		return "", rec.reject(fmt.Sprintf("sniffed content type %q is not consistent with extension %q", sniffed, ext))
+		return rec.reject(fmt.Sprintf("sniffed content type %q is not consistent with extension %q", sniffed, ext))
 	}
 
 	rec.checksum = hex.EncodeToString(src.digest.Sum(nil))
 	rec.size = copied
-	absPath := OriginalPath(rec.checksum, ext)
-
-	// Finalize with an atomic rename inside the data root. The
-	// original shard directories are created on demand; the rename
-	// itself stays within one filesystem, which the layout rename
-	// probe proved at startup.
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-		return "", rec.fail(fmt.Errorf("storage: commit upload: create %s: %w", filepath.Dir(absPath), err))
-	}
+	// The stream is complete: close the staged file so Header can
+	// read it and Place can link it. The path stays until Place (or
+	// the failure paths) remove it.
 	if err := rec.staged.Close(); err != nil {
-		return "", rec.fail(fmt.Errorf("storage: commit upload: close staged file %s: %w", rec.stagedPath, err))
-	}
-	if err := os.Rename(rec.stagedPath, absPath); err != nil {
-		return "", rec.fail(fmt.Errorf("storage: commit upload: rename %s to %s: %w", rec.stagedPath, absPath, err))
+		return rec.fail(fmt.Errorf("storage: seal upload: close staged file %s: %w", rec.stagedPath, err))
 	}
 	rec.staged = nil
-	rec.state = stateCommitted
-	return relativeToDataRoot(absPath), nil
+	rec.state = stateSealed
+	return nil
+}
+
+// Place finalizes the sealed upload into the per-owner originals
+// tree: originals/<ownerID>/<rendered>.<ext>, where rendered is the
+// template engine's output (slash-separated directories plus the file
+// stem, structurally validated) and ext is normalized. It returns the
+// stored relative path -- the portable slash-separated form recorded
+// in file_path.
+//
+// The placement is OVERWRITE-PROOF: a hard link from the staged file
+// to the target, which fails with EEXIST when anything already sits
+// at the target, never replaces it. A collision bumps the stem with
+// ~1, ~2, ... before the extension and retries; the (owner+checksum)
+// dedup of the upload pipeline runs before any placement, so true
+// duplicates never even reach this loop. os.Rename is deliberately
+// NOT used: on Unix it silently replaces the target, and a template
+// path names a file the owner can recognize -- replacing it would
+// eat a previously committed original.
+//
+// The link and the staged-file removal leave a crash window (the file
+// exists at both paths): boot's staging sweep cleans the staged side,
+// and the placed side is a complete file whose row either commits or
+// leaves an honest orphan.
+func (rec *Receiver) Place(ownerID, rendered, ext string) (string, error) {
+	if rec.state != stateSealed {
+		return "", fmt.Errorf("storage: Place on a receiver that is %s", rec.state)
+	}
+	requireDataRoot("Receiver.Place")
+	ext = NormalizeExt(ext)
+	if !isExtension(ext) {
+		return "", rec.fail(fmt.Errorf("storage: place upload: extension %q must be one to five alphanumeric characters without a dot", ext))
+	}
+	rendered = strings.Trim(rendered, "/")
+	if rendered == "" {
+		return "", rec.fail(fmt.Errorf("storage: place upload: rendered path is empty"))
+	}
+	segments := strings.Split(rendered, "/")
+	stem := segments[len(segments)-1]
+	dir := filepath.Join(append([]string{dataRoot, "originals", ownerID}, segments[:len(segments)-1]...)...)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", rec.fail(fmt.Errorf("storage: place upload: create %s: %w", dir, err))
+	}
+
+	candidate := stem + "." + ext
+	for attempt := 0; ; attempt++ {
+		target := filepath.Join(dir, candidate)
+		err := os.Link(rec.stagedPath, target)
+		if err == nil {
+			// The link landed; the staged copy must go. Failing to
+			// remove it means the receiver cannot guarantee a clean
+			// state, so the link unwinds too and the upload fails.
+			if err := os.Remove(rec.stagedPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				_ = os.Remove(target)
+				return "", rec.fail(fmt.Errorf("storage: place upload: remove staged file %s: %w", rec.stagedPath, err))
+			}
+			rec.placedRel = relativeToDataRoot(target)
+			rec.state = statePlaced
+			return rec.placedRel, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return "", rec.fail(fmt.Errorf("storage: place upload: link %s: %w", target, err))
+		}
+		if attempt >= maxCollisionAttempts {
+			return "", rec.fail(fmt.Errorf("storage: place upload: %s exhausted %d collision suffixes", target, maxCollisionAttempts))
+		}
+		candidate = fmt.Sprintf("%s~%d.%s", stem, attempt+1, ext)
+	}
+}
+
+// Discard removes the receiver's on-disk artifact on the upload's
+// failure paths: the staged file before placement, the placed
+// original after. The placed path is safe to remove because the link
+// only succeeds on a target that did not exist, so no row other than
+// this request's (which never committed, or the caller would not be
+// discarding) can reference it. Already-gone is success -- a
+// concurrent discard may have removed it first.
+func (rec *Receiver) Discard() {
+	switch rec.state {
+	case stateStaged:
+		// A caller that discards before Seal: the staged file goes now
+		// (the boot sweep would have caught it, but no caller should
+		// rely on the next boot).
+		rec.discardStaged()
+		rec.state = stateRejected
+	case stateSealed:
+		rec.discardStaged()
+		rec.state = stateRejected
+	case statePlaced:
+		if abs, err := ResolveStoredPath(dataRoot, rec.placedRel); err == nil {
+			_ = removeFileIfPresent(abs)
+		}
+		rec.state = stateRejected
+	}
 }
 
 // streamSource wraps the upload source so that every byte flowing to
@@ -378,14 +492,17 @@ func (rec *Receiver) fail(err error) error {
 }
 
 // discardStaged closes and removes the staged file so failed and
-// aborted uploads leave no residue in the staging directory.
+// aborted uploads leave no residue in the staging directory. The path
+// removal is unconditional: after Seal the handle is closed and nil
+// while the file itself still sits in staging.
 func (rec *Receiver) discardStaged() {
-	if rec.staged == nil {
-		return
+	if rec.staged != nil {
+		_ = rec.staged.Close()
+		rec.staged = nil
 	}
-	_ = rec.staged.Close()
-	rec.staged = nil
-	_ = os.Remove(rec.stagedPath)
+	if rec.stagedPath != "" {
+		_ = os.Remove(rec.stagedPath)
+	}
 }
 
 // relativeToDataRoot strips the data root from an absolute storage
