@@ -23,6 +23,21 @@ export default defineConfig({
 	server: {
 		fs: {
 			allow: [projectRoot, repositoryRoot]
+		},
+		// The dev proxy: forward the API (REST + SSE events) to a
+		// running instance -- the dogfood stack at 8244 by default, or
+		// any URL in LUMEMOR_DEV_API. The web app uses relative paths
+		// throughout, so the proxy keeps them same-origin (cookies
+		// included) while the browser sees a single origin.
+		proxy: {
+			'/api': {
+				target: process.env.LUMEMOR_DEV_API ?? 'http://localhost:8244',
+				changeOrigin: true,
+				// SSE (the /api/v1/events stream) needs the ws upgrade
+				// + a longer timeout or the proxy drops the stream.
+				ws: true,
+				timeout: 600000
+			}
 		}
 	},
 	// Under vitest, resolve svelte through its browser export so
