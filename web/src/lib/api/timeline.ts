@@ -68,8 +68,9 @@
 // client through the `albumId` option -- the endpoint's album narrow
 // answers the album's own live items in the timeline's exact shape
 // (keyset order, per-user favorite flags), so the grid reuses the
-// wall wholesale. The `resetKey` convergence (CuratedWall) restarts
-// the walk when an album.items-changed event lands for the album.
+// wall wholesale. The album page's own wallResetKey convergence
+// restarts the walk when an album.items-changed event lands for the
+// album.
 
 import { get, writable } from 'svelte/store';
 import { apiFetch, errorEnvelope } from '$lib/auth/api';

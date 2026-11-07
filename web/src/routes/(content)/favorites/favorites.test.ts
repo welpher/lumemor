@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
-import { clearWallItems, wallItems } from '$lib/timeline/wall.svelte';
+import { clearWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 
 // The favorites page through its curated wall: keyset pages stream
 // in through the load-more surface, the selection bar carries
@@ -124,6 +124,19 @@ function hasButton(text: string): boolean {
 	);
 }
 
+/** The icon-only actions (the bar, the toolbar toggle) name themselves by aria-label. */
+function buttonByLabel(label: string): HTMLButtonElement {
+	const found = document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (found === null) {
+		throw new Error(`missing button labeled ${label}`);
+	}
+	return found;
+}
+
+function hasButtonByLabel(label: string): boolean {
+	return document.body.querySelector(`button[aria-label="${label}"]`) !== null;
+}
+
 function clickTile(index: number): void {
 	const link = tiles()[index]?.querySelector('a.tile__link');
 	link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -231,20 +244,21 @@ test('the selection bar carries exactly the unfavorite action, and it ends the m
 	const page = mountPage();
 	await settle();
 
-	// Enter the select mode and pick the first tile.
-	buttonByText('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	// Enter the select mode and pick the first tile (the toolbar's
+	// toggle is icon-only, named by its aria-label).
+	buttonByLabel('Select').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	clickTile(0);
 	expect(document.body.querySelector('.batchbar')).not.toBeNull();
 	// The subset: the unfavorite toggle renders, none of the other
 	// timeline actions.
-	expect(hasButton('Unfavorite')).toBe(true);
-	expect(hasButton('Hide')).toBe(false);
-	expect(hasButton('Unhide')).toBe(false);
-	expect(hasButton('Trash')).toBe(false);
-	expect(hasButton('Restore')).toBe(false);
+	expect(hasButtonByLabel('Unfavorite')).toBe(true);
+	expect(hasButtonByLabel('Hide')).toBe(false);
+	expect(hasButtonByLabel('Unhide')).toBe(false);
+	expect(hasButtonByLabel('Trash')).toBe(false);
+	expect(hasButtonByLabel('Restore')).toBe(false);
 
-	buttonByText('Unfavorite').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Unfavorite').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	expect(bodies).toEqual([{ action: 'unfavorite', ids: ['a1'] }]);
 	// The membership ended: the tile left the wall.

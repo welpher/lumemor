@@ -16,8 +16,14 @@ import Layout from './+layout.svelte';
 // renders (bind:this included), so each test fires its navigation
 // explicitly after the mount.
 
-const { navigationCallbacks } = vi.hoisted(() => ({
-	navigationCallbacks: [] as Array<(navigation: { type: string }) => void>
+const { navigationCallbacks, pageState } = vi.hoisted(() => ({
+	navigationCallbacks: [] as Array<(navigation: { type: string }) => void>,
+	// The route state the layout's topbar-hiding rule reads: the
+	// album detail's route id hides the shell topbar (R3, the page
+	// owns its chrome there); every other route keeps it.
+	pageState: {
+		route: { id: '/(content)/timeline' as string | null }
+	}
 }));
 
 vi.mock('$app/navigation', () => ({
@@ -26,6 +32,7 @@ vi.mock('$app/navigation', () => ({
 		navigationCallbacks.push(callback);
 	}
 }));
+vi.mock('$app/state', () => ({ page: pageState }));
 
 function mountLayout(): ReturnType<typeof mount> {
 	return mount(Layout, {
@@ -135,6 +142,29 @@ test('a push navigation resets the scroll root; a popstate keeps it', () => {
 	navigate('popstate');
 	expect(setter).not.toHaveBeenCalled();
 	unmount(app);
+	flushSync();
+});
+
+test('the top bar hides while the album detail is active (the page owns its chrome)', () => {
+	// R3 (the 2026-11-07 owner pin): the album detail replaces the
+	// shell's global topbar with its own contextual bar -- while the
+	// route is active the shell renders NO topbar (the main region
+	// fills the frame), and every other route keeps it.
+	pageState.route.id = '/(content)/albums/[id]';
+	const album = mountLayout();
+	flushSync();
+	expect(document.body.querySelector('.shell-topbar')).toBeNull();
+	const albumMain = document.body.querySelector<HTMLElement>('main.shell-main');
+	expect(albumMain).not.toBeNull();
+	unmount(album);
+	flushSync();
+
+	// Any other route: the topbar is back.
+	pageState.route.id = '/(content)/timeline';
+	const regular = mountLayout();
+	flushSync();
+	expect(document.body.querySelector('.shell-topbar')).not.toBeNull();
+	unmount(regular);
 	flushSync();
 });
 

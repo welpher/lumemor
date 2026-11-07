@@ -75,7 +75,7 @@
 	import Viewer from '$lib/viewer/Viewer.svelte';
 	import ClusterPickerDialog from '$lib/people/ClusterPickerDialog.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
-	import { wallItems } from '$lib/timeline/wall.svelte';
+	import { wallItems } from '$lib/timeline/wall-sequence.svelte';
 	import type { BatchAction } from '$lib/api/timeline';
 	import {
 		fetchAssetDetail,

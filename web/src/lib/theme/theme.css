@@ -255,6 +255,7 @@
 	/* The app ladder (document-wide). */
 	--z-sticky-sub: 9; /* the wall's sticky day header, under the month header */
 	--z-sticky: 10; /* the wall's sticky month header */
+	--z-sticky-bar: 12; /* a page's pinned contextual bar over the wall's sticky headers (the album detail's) */
 	--z-page: 40; /* page-filling fixed surfaces: the viewer, the scrubber rail */
 	--z-menu: 50; /* the top bar's account dropdown */
 	--z-toolbar: 60; /* a page's floating toolbar (the merge bar) */

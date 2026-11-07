@@ -9,6 +9,7 @@
 	import { goto } from '$app/navigation';
 	import { _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
+	import LogIn from '@lucide/svelte/icons/log-in';
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import { login } from '$lib/auth/session.svelte';
@@ -119,7 +120,7 @@
 						<p class="login__hint font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums">{$_('login_retry_in', { values: { seconds: countdownRemaining } })}</p>
 					{/if}
 					<div class="login__actions flex justify-end mt-1">
-						<Button type="submit" disabled={submitting}>{$_('login_submit')}</Button>
+						<Button type="submit" disabled={submitting}><LogIn size={20} aria-hidden="true" />{$_('login_submit')}</Button>
 					</div>
 				</form>
 			</Card>

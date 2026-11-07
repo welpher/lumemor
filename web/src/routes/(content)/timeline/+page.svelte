@@ -5,7 +5,10 @@
 	// client's in-flight guard collapsing every burst into one
 	// fetch), month and day groups carry sticky headers, the right
 	// rail scrubs the loaded months, and selection turns the wall
-	// into a curation surface with the floating batch bar.
+	// into a curation surface with the floating batch bar. The wall's
+	// rendering itself is the shared Wall component; everything
+	// around it here -- the data walk, the selection state, the
+	// scrubber, the dialogs -- is the page's own concern.
 	//
 	// THE ADD-TO-ALBUM FLOW (M3c Task 5): the batch bar's dialog adds
 	// the selection to one of the caller's own virtual albums, or
@@ -30,8 +33,8 @@
 	// page one owns the truth.
 	//
 	// Render windowing is row-level: every justified row carries
-	// content-visibility with its engine-computed height (see
-	// MonthGroups); full virtualization stays an M3 option if the
+	// content-visibility with its engine-computed height (see the
+	// Wall component); full virtualization stays an M3 option if the
 	// wall outgrows it.
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
@@ -43,13 +46,15 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
 	import { groupTimelineItems } from '$lib/timeline/grouping';
-	import { publishWallItems } from '$lib/timeline/wall.svelte';
-	import MonthGroups from '$lib/timeline/MonthGroups.svelte';
+	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
+	import Wall from '$lib/timeline/Wall.svelte';
 	import MonthScrubber from '$lib/timeline/MonthScrubber.svelte';
 	import BatchBar from '$lib/timeline/BatchBar.svelte';
 	import AddToAlbumDialog from '$lib/albums/AddToAlbumDialog.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	const timeline = createTimelineClient();
 
@@ -99,6 +104,9 @@
 		}
 	});
 
+	// The scrubber's months (the page's own fold -- the wall does
+	// its own grouping internally for the rendering, and the rail
+	// needs the keys, labels and counts here).
 	const groups = $derived(groupTimelineItems($timeline.items, $locale ?? 'en'));
 	const months = $derived(
 		groups.map((group) => ({
@@ -521,26 +529,31 @@
 	{:else if $timeline.status === 'error' && $timeline.items.length === 0}
 		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($timeline.errorKey)}</p>
-			<Button variant="primary" onclick={() => void timeline.loadMore()}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void timeline.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else}
-		<!-- The month-grouped justified wall (the shared renderer): the
-		     page keeps its toolbar, its scrubber and its scroll
-		     tracking; the groups, the sticky headers and the packed
-		     rows are the one wall component every view renders. -->
-		<MonthGroups {groups} isSelected={(id) => selection.has(id)} {selectable} onselect={toggleSelected} />
+		<!-- The unified wall (pure rendering): the page keeps its
+		     toolbar, its scrubber and its scroll tracking as its own
+		     overlays; the grouping, the packed rows and the tiles are
+		     the one wall component every view renders. -->
+		<Wall
+			items={$timeline.items}
+			{selectable}
+			isSelected={(id) => selection.has(id)}
+			onselect={toggleSelected}
+		/>
 	{/if}
 
 	{#if $timeline.status === 'error' && $timeline.items.length > 0}
 		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText($timeline.errorKey)}</p>
-			<Button variant="primary" onclick={() => void timeline.loadMore()}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void timeline.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{/if}
 
 	{#if !observerAvailable && $timeline.hasMore && $timeline.status === 'ready'}
 		<div class="timeline__pager flex justify-center my-5">
-			<Button variant="ghost" onclick={() => void timeline.loadMore()}>{$_('timeline_load_more')}</Button>
+			<Button variant="ghost" onclick={() => void timeline.loadMore()}><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button>
 		</div>
 	{/if}
 

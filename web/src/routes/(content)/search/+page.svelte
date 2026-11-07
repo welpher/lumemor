@@ -39,13 +39,14 @@
 	} from '$lib/api/search';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
-	import { groupTimelineItems } from '$lib/timeline/grouping';
-	import { publishWallItems } from '$lib/timeline/wall.svelte';
-	import MonthGroups from '$lib/timeline/MonthGroups.svelte';
+	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
+	import Wall from '$lib/timeline/Wall.svelte';
 	import FlatWall from '$lib/timeline/FlatWall.svelte';
 	import FacetChips, { type FacetChip } from '$lib/search/FacetChips.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Search from '@lucide/svelte/icons/search';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	const search = createSearchClient();
 
@@ -67,9 +68,9 @@
 		});
 	});
 
-	// BROWSE mode's month/day groups (the timeline's own fold over
-	// the time-ordered items); QUERY mode keeps the flat order.
-	const groups = $derived(groupTimelineItems($search.items, $locale ?? 'en'));
+	// The browse mode's month/day fold lives inside the shared Wall
+	// (the one renderer every photo surface composes); QUERY mode
+	// keeps the flat order.
 
 	const firstLoad = $derived($search.items.length === 0 && $search.status === 'loading');
 	const settledEmpty = $derived(
@@ -317,28 +318,30 @@
 		{:else if $search.status === 'error' && $search.items.length === 0}
 			<div class="search__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 				<p>{errorText($search.errorKey)}</p>
-				<Button variant="primary" onclick={() => void search.run(filters, $locale ?? 'en')}>{$_('action_retry')}</Button>
+				<Button variant="primary" onclick={() => void search.run(filters, $locale ?? 'en')}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 			</div>
 		{:else if queryMode}
 			<!-- QUERY mode: the FLAT justified wall -- rank order
-			     preserved, no grouping. -->
-			<FlatWall items={$search.items} isSelected={() => false} selectable={false} onselect={() => undefined} />
+			     preserved, no grouping, no selection (the tiles are pure
+			     navigation). -->
+			<FlatWall items={$search.items} />
 		{:else}
-			<!-- BROWSE mode: the timeline's exact month-grouped
-			     day-block wall (the same renderer every wall uses). -->
-			<MonthGroups {groups} isSelected={() => false} selectable={false} onselect={() => undefined} />
+			<!-- BROWSE mode: the unified month-grouped day-block wall --
+			     the same renderer every photo surface composes, no
+			     selection here either. -->
+			<Wall items={$search.items} />
 		{/if}
 
 		{#if $search.status === 'error' && $search.items.length > 0}
 			<div class="search__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 				<p>{errorText($search.errorKey)}</p>
-				<Button variant="primary" onclick={() => void search.loadMore()}>{$_('action_retry')}</Button>
+				<Button variant="primary" onclick={() => void search.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 			</div>
 		{/if}
 
 		{#if !observerAvailable && $search.nextCursor !== null && $search.status === 'ready'}
 			<div class="search__pager flex justify-center my-5">
-				<Button variant="ghost" onclick={() => void search.loadMore()}>{$_('timeline_load_more')}</Button>
+				<Button variant="ghost" onclick={() => void search.loadMore()}><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button>
 			</div>
 		{/if}
 

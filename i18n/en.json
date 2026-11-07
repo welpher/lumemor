@@ -248,6 +248,7 @@
   "admin_settings_submit": "Save template",
   "admin_settings_contract_note": "Changing the template only affects uploads from the next one on: files already stored keep their paths, and nothing ever moves. Album variables stay empty for direct uploads.",
   "albums_title": "Albums",
+  "albums_back": "Back to albums",
   "album_all_photos": "My photos",
   "albums_loading": "Loading your albums…",
   "albums_empty": "No albums yet. Create one to gather photos around a moment.",

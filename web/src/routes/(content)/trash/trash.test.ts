@@ -104,6 +104,15 @@ function buttonByText(text: string): HTMLButtonElement {
 	return found;
 }
 
+/** The row actions are icon-only (the icon-first rule): the name is the aria-label. */
+function buttonByLabel(label: string, scope: ParentNode = document.body): HTMLButtonElement {
+	const found = scope.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (found === null) {
+		throw new Error(`missing button labeled ${label}`);
+	}
+	return found;
+}
+
 function cells(): HTMLElement[] {
 	return Array.from(document.body.querySelectorAll<HTMLElement>('.trash__cell'));
 }
@@ -118,11 +127,9 @@ function dayLabels(): string[] {
 function clickRestore(index: number): void {
 	// The actions sit under the tile (whose own checkbox button is
 	// not the target); match the Restore button of the row's action
-	// group.
+	// group by its aria-label (the row actions are icon-only).
 	const actions = cells()[index]?.querySelector<HTMLElement>('.trash__actions');
-	const restore = Array.from(actions?.querySelectorAll<HTMLButtonElement>('button') ?? []).find(
-		(button) => button.textContent?.trim() === 'Restore'
-	);
+	const restore = actions?.querySelector<HTMLButtonElement>('button[aria-label="Restore"]');
 	if (restore === null || restore === undefined) {
 		throw new Error(`missing restore button of cell ${index}`);
 	}
@@ -159,8 +166,8 @@ test('the listing renders each row with its countdown and actions', async () => 
 	expect(cells()).toHaveLength(3);
 	// The countdown is locale-aware plural with the zero arm.
 	expect(dayLabels()).toEqual(['30 days left', '2 days left', 'Expiring soon']);
-	expect(buttonByText('Restore')).toBeTruthy();
-	expect(buttonByText('Delete permanently')).toBeTruthy();
+	expect(() => buttonByLabel('Restore')).not.toThrow();
+	expect(() => buttonByLabel('Delete permanently')).not.toThrow();
 
 	unmount(page);
 	flushSync();
@@ -299,7 +306,7 @@ test('the permanent delete confirms first, then drops the row', async () => {
 
 	// The confirm-first gate: the delete button opens the modal, the
 	// row stays until the confirm.
-	buttonByText('Delete permanently').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Delete permanently').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	expect(document.body.textContent).toContain('Delete permanently?');
 	expect(document.body.textContent).toContain('IMG_0001.jpg');
@@ -312,7 +319,7 @@ test('the permanent delete confirms first, then drops the row', async () => {
 	expect(document.body.textContent).not.toContain('Delete permanently?');
 
 	// The confirm runs the DELETE and drops the row.
-	buttonByText('Delete permanently').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Delete permanently').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	buttonByText('Delete forever').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
@@ -338,7 +345,7 @@ test("the permanent delete's 404 drops the row too (already gone)", async () => 
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Delete permanently').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Delete permanently').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	buttonByText('Delete forever').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
@@ -363,7 +370,7 @@ test('a failed permanent delete keeps the row and the modal message', async () =
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Delete permanently').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Delete permanently').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	buttonByText('Delete forever').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();

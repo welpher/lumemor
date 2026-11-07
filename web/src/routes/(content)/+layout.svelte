@@ -24,6 +24,7 @@
 	//   remounts and refetches on the back-from-viewer return either
 	//   way -- nothing restores a stale offset).
 	import { locale, _ } from 'svelte-i18n';
+	import { page } from '$app/state';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { setLocale, type AppLocale } from '$lib/i18n';
 	import {
@@ -38,10 +39,21 @@
 	import { logout } from '$lib/auth/session.svelte';
 	import Menu from '@lucide/svelte/icons/menu';
 	import Search from '@lucide/svelte/icons/search';
+	import Upload from '@lucide/svelte/icons/upload';
+	import LogOut from '@lucide/svelte/icons/log-out';
 	import CircleUser from '@lucide/svelte/icons/circle-user';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
+
+	// THE ALBUM DETAIL'S OWN CHROME (the 2026-11-07 owner pin): while
+	// an album detail route is active the shell's topbar HIDES -- the
+	// page pins its own contextual bar (back + title + the album's
+	// icon actions) in the topbar's place, and the drawer nav stays
+	// reachable through that bar's back affordance. Every other
+	// route keeps the shell bar (the frame's h-dvh skeleton simply
+	// grows <main> by the bar's height while it is hidden).
+	const albumDetailActive = $derived(page.route.id === '/(content)/albums/[id]');
 
 	let drawerOpen = $state(false);
 	let accountMenuOpen = $state(false);
@@ -167,101 +179,110 @@
 <svelte:window onpointerdown={handleWindowPointerdown} onkeydown={handleWindowKeydown} />
 
 <div class="shell h-dvh flex flex-col overflow-hidden">
-	<header class="shell-topbar flex items-center gap-3 px-4 py-2 border-b border-border bg-card">
-		<button
-			class="topbar-icon inline-flex items-center justify-center w-9 h-9 rounded-control bg-transparent text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
-			type="button"
-			aria-label={$_('nav_open_menu')}
-			aria-expanded={drawerOpen}
-			onclick={() => (drawerOpen = !drawerOpen)}
-		>
-			<Menu size={22} />
-		</button>
-		<!-- Wordmark: Nunito 700 in the text color (Navy 900 light,
-		     Cream dark), per the brand spec. -->
-		<span class="topbar-brand font-display font-bold text-[20px] text-text">{$_('app_name')}</span>
-		<!-- Push the search box away from the brand; the upload and
-		     account marks stay pinned to the right end. The leading
-		     magnifier is decorative (the field's own aria-label names
-		     it) and never takes the pointer. The box is a form so the
-		     keyboard's Enter commits the navigation to /search. -->
-		<form class="topbar-search-wrap relative flex-1 max-w-[420px] ml-auto" role="search" onsubmit={handleSearchSubmit}>
-			<Search size={16} class="absolute start-3 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
-			<input
-				class="topbar-search w-full ps-9 pe-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
-				type="search"
-				placeholder={$_('nav_search')}
-				aria-label={$_('nav_search')}
-				bind:value={searchDraft}
-			/>
-		</form>
-		<span class="topbar-upload-wrap">
-			<!-- The hidden input of the top bar's Upload button; picked
-			     files join the upload queue through enqueueUploadFiles. -->
-			<input
-				bind:this={picker}
-				class="topbar-picker hidden"
-				type="file"
-				multiple
-				accept={PICKER_ACCEPT}
-				onchange={handlePicked}
-			/>
-			<Button class="topbar-upload" onclick={pickFiles}>{$_('action_upload')}</Button>
-		</span>
-		<div class="topbar-account relative" bind:this={accountWrap}>
+	{#if !albumDetailActive}
+		<header class="shell-topbar flex items-center gap-3 px-4 py-2 border-b border-border bg-card">
 			<button
-				class="topbar-avatar inline-flex items-center justify-center w-9 h-9 border border-border-strong rounded-full bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+				class="topbar-icon inline-flex items-center justify-center w-9 h-9 rounded-control bg-transparent text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
 				type="button"
-				aria-label={$_('account_menu')}
-				aria-expanded={accountMenuOpen}
-				onclick={() => (accountMenuOpen = !accountMenuOpen)}
+				aria-label={$_('nav_open_menu')}
+				aria-expanded={drawerOpen}
+				onclick={() => (drawerOpen = !drawerOpen)}
 			>
-				<CircleUser size={20} />
+				<Menu size={22} />
 			</button>
-			{#if accountMenuOpen}
-				<div class="account-menu absolute top-[calc(100%_+_8px)] right-0 z-(--z-menu) min-w-[180px] box-content p-2 bg-card border border-border rounded-overlay shadow-overlay">
-					<p class="account-menu__heading mt-1 mx-2 mb-0.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('theme_label')}</p>
-					<div class="account-menu__options flex flex-col" role="group" aria-label={$_('theme_label')}>
-						{#each themeOptions as option (option.value)}
-							<button
-								class="account-menu__option px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft aria-pressed:font-bold aria-pressed:text-accent-soft-text aria-pressed:bg-accent-soft"
-								type="button"
-								aria-pressed={themePreference() === option.value}
-								onclick={() => setThemePreference(option.value)}
-							>
-								{$_(option.labelKey)}
-							</button>
-						{/each}
+			<!-- Wordmark: Nunito 700 in the text color (Navy 900 light,
+			     Cream dark), per the brand spec. -->
+			<span class="topbar-brand font-display font-bold text-[20px] text-text">{$_('app_name')}</span>
+			<!-- Push the search box away from the brand; the upload and
+			     account marks stay pinned to the right end. The leading
+			     magnifier is decorative (the field's own aria-label names
+			     it) and never takes the pointer. The box is a form so the
+			     keyboard's Enter commits the navigation to /search. -->
+			<form class="topbar-search-wrap relative flex-1 max-w-[420px] ml-auto" role="search" onsubmit={handleSearchSubmit}>
+				<Search size={16} class="absolute start-3 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
+				<input
+					class="topbar-search w-full ps-9 pe-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+					type="search"
+					placeholder={$_('nav_search')}
+					aria-label={$_('nav_search')}
+					bind:value={searchDraft}
+				/>
+			</form>
+			<span class="topbar-upload-wrap">
+				<!-- The hidden input of the top bar's Upload button; picked
+				     files join the upload queue through enqueueUploadFiles. -->
+				<input
+					bind:this={picker}
+					class="topbar-picker hidden"
+					type="file"
+					multiple
+					accept={PICKER_ACCEPT}
+					onchange={handlePicked}
+				/>
+				<!-- The icon-first rule: the primary flow carries its icon
+				     (lucide, 20px, decorative) beside the label. -->
+				<Button class="topbar-upload" onclick={pickFiles}>
+					<Upload size={20} aria-hidden="true" />
+					{$_('action_upload')}
+				</Button>
+			</span>
+			<div class="topbar-account relative" bind:this={accountWrap}>
+				<button
+					class="topbar-avatar inline-flex items-center justify-center w-9 h-9 border border-border-strong rounded-full bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+					type="button"
+					aria-label={$_('account_menu')}
+					aria-expanded={accountMenuOpen}
+					onclick={() => (accountMenuOpen = !accountMenuOpen)}
+				>
+					<CircleUser size={20} />
+				</button>
+				{#if accountMenuOpen}
+					<div class="account-menu absolute top-[calc(100%_+_8px)] right-0 z-(--z-menu) min-w-[180px] box-content p-2 bg-card border border-border rounded-overlay shadow-overlay">
+						<p class="account-menu__heading mt-1 mx-2 mb-0.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('theme_label')}</p>
+						<div class="account-menu__options flex flex-col" role="group" aria-label={$_('theme_label')}>
+							{#each themeOptions as option (option.value)}
+								<button
+									class="account-menu__option px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft aria-pressed:font-bold aria-pressed:text-accent-soft-text aria-pressed:bg-accent-soft"
+									type="button"
+									aria-pressed={themePreference() === option.value}
+									onclick={() => setThemePreference(option.value)}
+								>
+									{$_(option.labelKey)}
+								</button>
+							{/each}
+						</div>
+						<p class="account-menu__heading mt-1 mx-2 mb-0.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('language_label')}</p>
+						<div class="account-menu__options flex flex-col" role="group" aria-label={$_('language_label')}>
+							{#each languageOptions as option (option.value)}
+								<button
+									class="account-menu__option px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft aria-pressed:font-bold aria-pressed:text-accent-soft-text aria-pressed:bg-accent-soft"
+									type="button"
+									aria-pressed={($locale ?? 'en') === option.value}
+									onclick={() => setLocale(option.value)}
+								>
+									{$_(option.labelKey)}
+								</button>
+							{/each}
+						</div>
+						<div class="account-menu__divider h-px my-2 mx-1 bg-border"></div>
+						<!-- The sign-out action closes the account section: the divider
+						     separates it from the appearance toggles, and the label keeps
+						     the regular text color for AA contrast. The icon-first rule:
+						     a menu action leads with its glyph (the drawer's rows do). -->
+						<button
+							class="account-menu__option account-menu__signout flex items-center gap-2 px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft disabled:opacity-55 disabled:cursor-not-allowed"
+							type="button"
+							disabled={signingOut}
+							onclick={handleSignOut}
+						>
+							<LogOut size={16} aria-hidden="true" />
+							{$_('action_sign_out')}
+						</button>
 					</div>
-					<p class="account-menu__heading mt-1 mx-2 mb-0.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('language_label')}</p>
-					<div class="account-menu__options flex flex-col" role="group" aria-label={$_('language_label')}>
-						{#each languageOptions as option (option.value)}
-							<button
-								class="account-menu__option px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft aria-pressed:font-bold aria-pressed:text-accent-soft-text aria-pressed:bg-accent-soft"
-								type="button"
-								aria-pressed={($locale ?? 'en') === option.value}
-								onclick={() => setLocale(option.value)}
-							>
-								{$_(option.labelKey)}
-							</button>
-						{/each}
-					</div>
-					<div class="account-menu__divider h-px my-2 mx-1 bg-border"></div>
-					<!-- The sign-out action closes the account section: the divider
-					     separates it from the appearance toggles, and the label keeps
-					     the regular text color for AA contrast. -->
-					<button
-						class="account-menu__option account-menu__signout px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft disabled:opacity-55 disabled:cursor-not-allowed"
-						type="button"
-						disabled={signingOut}
-						onclick={handleSignOut}
-					>
-						{$_('action_sign_out')}
-					</button>
-				</div>
-			{/if}
-		</div>
-	</header>
+				{/if}
+			</div>
+		</header>
+	{/if}
 	<Drawer bind:open={drawerOpen} />
 	<!-- The frame's one scroll container: the sticky month/day
 	     headers, the scrubber tracking and the batch bar all answer

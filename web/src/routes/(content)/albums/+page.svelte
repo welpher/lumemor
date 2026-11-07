@@ -27,6 +27,8 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
 	import AlbumPropertiesDialog from '$lib/albums/AlbumPropertiesDialog.svelte';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import Plus from '@lucide/svelte/icons/plus';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -163,7 +165,7 @@
 	<!-- The one toolbar of the wall: the virtual-album creation, the
 	     web IA's primary action. -->
 	<div class="albums__toolbar flex justify-end items-center mb-3">
-		<Button onclick={() => { createErrorKey = ''; createOpen = true; }}>{$_('albums_new')}</Button>
+		<Button onclick={() => { createErrorKey = ''; createOpen = true; }}><Plus size={20} aria-hidden="true" />{$_('albums_new')}</Button>
 	</div>
 
 	{#if firstLoad}
@@ -176,7 +178,7 @@
 	{:else if status === 'error' && albums.length === 0}
 		<div class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else}
 		<section class="albums__own-section">
@@ -204,7 +206,7 @@
 		     next event retries; the box keeps the retry affordance. -->
 		<div class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}>{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{/if}
 </section>
