@@ -1,12 +1,13 @@
 // Package trash runs the expiry side of the trash lifecycle (M2c
 // Task 3): the physical deletion of soft-deleted assets whose
 // retention window closed. It closes the M2b hard-gate handoff #2,
-// the shared-blob rule: content addressing stores identical bytes of
-// any owner under one physical file, so before a file is removed the
-// reference count over the assets table decides -- another row on
-// the same file_path (another owner's upload of the same photo, or a
-// live row) keeps the file, and only the row goes. The derived copies
-// (thumbs, encoded) are keyed by the asset id alone and always go.
+// the shared-file rule, spanning both storage eras: legacy
+// content-addressed rows store identical bytes of any owner under one
+// physical file (the reference count over the assets table decides --
+// another row on the same file_path keeps the file, only the row
+// goes), while template-era rows are per-owner and unique. The
+// derived copies (thumbs, encoded) are keyed by the asset id alone
+// and always go.
 //
 // The package is deliberately free of the job queue and the media
 // pipeline: RunExpiry is the pure database-and-filesystem operation

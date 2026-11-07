@@ -7884,8 +7884,9 @@ paths:
         '400':
           description: |
             The template failed a validation stage: it does not
-            compile (unknown variable, malformed conditional), its
-            sample render errors, or its structure is unsafe
+            compile (unknown variable, malformed conditional, empty
+            or whitespace-only text, a literal trailing separator),
+            its sample render errors, or its structure is unsafe
             (traversal, depth, length). The details name `template`;
             the message carries the specific reason. Nothing was
             written.

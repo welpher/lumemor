@@ -172,6 +172,17 @@ func CompileTemplate(text string) (*Template, error) {
 			return nil, fmt.Errorf("storage template: control rune %q is not allowed", r)
 		}
 	}
+	// The literal text's own edges refuse early: a trailing separator
+	// would silently re-cast the last directory segment as the file
+	// stem (the kind re-interpretation the sample preview would show
+	// only after the fact), and whitespace-only text renders nothing.
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return nil, fmt.Errorf("storage template: empty")
+	}
+	if strings.HasSuffix(trimmed, "/") {
+		return nil, fmt.Errorf("storage template: a trailing separator would reinterpret the last segment as the file stem")
+	}
 	nodes, term, _, err := parseNodes(text, false)
 	if err != nil {
 		return nil, err

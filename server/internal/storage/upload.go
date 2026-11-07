@@ -435,12 +435,14 @@ func (rec *Receiver) Place(ownerID, rendered, ext string) (string, error) {
 // concurrent discard may have removed it first.
 func (rec *Receiver) Discard() {
 	switch rec.state {
+	case stateStaged:
+		// A caller that discards before Seal: the staged file goes now
+		// (the boot sweep would have caught it, but no caller should
+		// rely on the next boot).
+		rec.discardStaged()
+		rec.state = stateRejected
 	case stateSealed:
-		if err := os.Remove(rec.stagedPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			// A staged file that cannot be removed leaves crash-debris
-			// for the boot sweep; nothing else references it.
-			_ = err
-		}
+		rec.discardStaged()
 		rec.state = stateRejected
 	case statePlaced:
 		if abs, err := ResolveStoredPath(dataRoot, rec.placedRel); err == nil {
