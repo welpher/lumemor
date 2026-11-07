@@ -605,6 +605,7 @@ type Session struct {
 	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	IpAddress  pgtype.Text        `json:"ip_address"`
 }
 
 type Tag struct {
@@ -616,17 +617,20 @@ type Tag struct {
 }
 
 type User struct {
-	ID           pgtype.UUID        `json:"id"`
-	Name         string             `json:"name"`
-	Email        string             `json:"email"`
-	PasswordHash string             `json:"password_hash"`
-	Role         UserRole           `json:"role"`
-	Locale       string             `json:"locale"`
-	Theme        string             `json:"theme"`
-	IsDisabled   bool               `json:"is_disabled"`
-	TotpSecret   pgtype.Text        `json:"totp_secret"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ID                      pgtype.UUID        `json:"id"`
+	Name                    string             `json:"name"`
+	Email                   string             `json:"email"`
+	PasswordHash            string             `json:"password_hash"`
+	Role                    UserRole           `json:"role"`
+	Locale                  string             `json:"locale"`
+	Theme                   string             `json:"theme"`
+	IsDisabled              bool               `json:"is_disabled"`
+	TotpSecret              pgtype.Text        `json:"totp_secret"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	DownloadFormat          string             `json:"download_format"`
+	DownloadIncludeVideos   bool               `json:"download_include_videos"`
+	DownloadIncludeSidecars bool               `json:"download_include_sidecars"`
 }
 
 type UserAlbumPref struct {

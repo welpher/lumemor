@@ -224,7 +224,7 @@ func TestLogin(t *testing.T) {
 		if info.Id.Version() != 7 {
 			t.Errorf("session id = %s, want a UUIDv7", info.Id)
 		}
-		if info.Kind != apigen.Web {
+		if info.Kind != apigen.SessionInfoKindWeb {
 			t.Errorf("session kind = %q, want web", info.Kind)
 		}
 		if info.DeviceName == nil || *info.DeviceName != "Firefox on macOS" {
@@ -933,7 +933,7 @@ func TestRequireSession(t *testing.T) {
 		}
 		var mobile *apigen.SessionInfo
 		for i := range sessions {
-			if sessions[i].Kind == apigen.Mobile {
+			if sessions[i].Kind == apigen.SessionInfoKindMobile {
 				mobile = &sessions[i]
 			}
 		}

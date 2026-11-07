@@ -8,8 +8,11 @@
 -- kind is web (cookie, sliding 30-day expiry) or mobile (bearer,
 -- revoked explicitly); the caller supplies both timestamps so the
 -- login and pairing flows pin them to the same clock as the response.
-INSERT INTO sessions (id, user_id, token_hash, kind, device_name, device_id, last_seen_at, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+-- ip_address is the creation-time socket peer the device list
+-- renders (the login's and the pairing exchange's own callers
+-- capture it); NULL is the honest unknown for callers that cannot.
+INSERT INTO sessions (id, user_id, token_hash, kind, device_name, device_id, ip_address, last_seen_at, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: GetSessionByTokenHash :one

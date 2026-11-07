@@ -1,10 +1,12 @@
-// The admin storage settings handlers (the storage-template feature):
-// the read and the three-stage validated save of GET/PUT
-// /admin/settings/storage -- the instance's upload path template. The
-// permission model is the admin role itself: both routes sit behind
-// requireSession AND requireAdmin (see the router), so a signed-in
-// caller without the role answers 403 AUTH_FORBIDDEN before any
-// handler runs.
+// The admin settings handlers (the storage-template feature and the
+// settings feature): the storage template's read and three-stage
+// validated save of GET/PUT /admin/settings/storage, the trash
+// retention's GET/PUT /admin/settings/trash, and the video
+// transcoding profile's GET/PUT /admin/settings/transcoding. The
+// permission model is the admin role itself: every route of this
+// surface sits behind requireSession AND requireAdmin (see the
+// router), so a signed-in caller without the role answers 403
+// AUTH_FORBIDDEN before any handler runs.
 package api
 
 import (
@@ -181,4 +183,121 @@ func (s *server) storageSettingsResponse(template string) (apigen.StorageSetting
 // normalized extension -- the same assembly the placement performs.
 func sampleStoredPath(rendered, ext string) string {
 	return "originals/" + storageSampleOwner + "/" + rendered + "." + storage.NormalizeExt(ext)
+}
+
+// GetTrashSettings implements GET /api/v1/admin/settings/trash: the
+// instance's trash retention in days. The accessor's corrupt-row
+// discipline (default + logged error) keeps the read from failing
+// over a row the save endpoint's validation should have kept
+// honest.
+func (s *server) GetTrashSettings(w http.ResponseWriter, r *http.Request) {
+	retention, err := db.TrashRetentionDays(r.Context(), s.queries)
+	if err != nil {
+		s.logger.Error("read the trash retention setting; answering the default", "error", err)
+	}
+	s.writeJSON(w, http.StatusOK, apigen.TrashSettingsResponse{RetentionDays: retention})
+}
+
+// UpdateTrashSettings implements PUT /api/v1/admin/settings/trash:
+// validate the 0-365 bound, persist the retention as a jsonb number
+// (the raw writer -- the expiry job and the trash listing unmarshal
+// an integer), answer the saved value. The write takes effect for
+// the expiry job's NEXT run: the run reads the setting at its start.
+func (s *server) UpdateTrashSettings(w http.ResponseWriter, r *http.Request) {
+	var req apigen.TrashSettingsUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		message := "request body must be valid JSON"
+		var fields []interface{}
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			message = "request body exceeds the size limit"
+			fields = []interface{}{"body"}
+		}
+		var details *map[string]interface{}
+		if fields != nil {
+			details = &map[string]interface{}{"fields": fields}
+		}
+		s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, details)
+		return
+	}
+	if req.RetentionDays < 0 || req.RetentionDays > db.TrashRetentionMax {
+		s.writeValidationError(w, "retentionDays must be between 0 and 365", []string{"retentionDays"})
+		return
+	}
+	if err := db.SaveTrashRetentionDays(r.Context(), s.queries, req.RetentionDays); err != nil {
+		s.internalError(w, r, "save the trash retention", err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, apigen.TrashSettingsResponse(req))
+}
+
+// GetTranscodingSettings implements GET /api/v1/admin/settings/transcoding:
+// the instance's video transcoding profile. The accessor's
+// corrupt-row discipline (per-field default + logged error) keeps
+// the read honest over a broken row.
+func (s *server) GetTranscodingSettings(w http.ResponseWriter, r *http.Request) {
+	profile, err := db.TranscodingSettings(r.Context(), s.queries)
+	if err != nil {
+		s.logger.Error("read the transcoding settings; answering the default", "error", err)
+	}
+	s.writeJSON(w, http.StatusOK, transcodingSettingsResponse(profile))
+}
+
+// UpdateTranscodingSettings implements PUT
+// /api/v1/admin/settings/transcoding: validate every field against
+// its enum, persist the profile as one JSON object, answer the
+// saved value. The profile affects NEW ingests only -- see the
+// contract's scope pin; videos already transcoded are never
+// re-encoded.
+func (s *server) UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request) {
+	var req apigen.TranscodingSettingsUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		message := "request body must be valid JSON"
+		var fields []interface{}
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			message = "request body exceeds the size limit"
+			fields = []interface{}{"body"}
+		}
+		var details *map[string]interface{}
+		if fields != nil {
+			details = &map[string]interface{}{"fields": fields}
+		}
+		s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, details)
+		return
+	}
+	var invalid []string
+	if !db.ValidTranscodingPreset(string(req.Preset)) {
+		invalid = append(invalid, "preset")
+	}
+	if !db.ValidTranscodingConcurrency(int(req.Concurrency)) {
+		invalid = append(invalid, "concurrency")
+	}
+	if len(invalid) > 0 {
+		s.writeValidationError(w, "invalid transcoding settings", invalid)
+		return
+	}
+	profile := db.TranscodingProfile{
+		Preset:         string(req.Preset),
+		Concurrency:    int(req.Concurrency),
+		ThumbnailFrame: req.ThumbnailFrame,
+		KeepOriginal:   req.KeepOriginal,
+	}
+	if err := db.SaveTranscodingSettings(r.Context(), s.queries, profile); err != nil {
+		s.internalError(w, r, "save the transcoding settings", err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, transcodingSettingsResponse(profile))
+}
+
+// transcodingSettingsResponse maps the stored profile onto the API
+// shape (the struct's JSON tags mirror the contract's field names,
+// so the mapping is the enum widening alone).
+func transcodingSettingsResponse(profile db.TranscodingProfile) apigen.TranscodingSettingsResponse {
+	return apigen.TranscodingSettingsResponse{
+		Preset:         apigen.TranscodePreset(profile.Preset),
+		Concurrency:    apigen.TranscodingSettingsResponseConcurrency(profile.Concurrency),
+		ThumbnailFrame: profile.ThumbnailFrame,
+		KeepOriginal:   profile.KeepOriginal,
+	}
 }

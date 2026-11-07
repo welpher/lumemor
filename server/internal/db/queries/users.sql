@@ -63,3 +63,49 @@ WHERE id = $1;
 -- carries the account's role with it, so the paired device knows who
 -- it paired as from the consume response alone.
 SELECT role FROM users WHERE id = $1;
+
+-- name: GetUserSelf :one
+-- The me-scoped profile read (the settings feature): the caller's
+-- own row. The password hash rides along for the password change's
+-- verify step -- the hash never travels past the handler's mapping.
+SELECT id, name, email, password_hash, role, locale, theme,
+       download_format, download_include_videos, download_include_sidecars,
+       is_disabled, totp_secret, created_at, updated_at
+FROM users WHERE id = $1;
+
+-- name: UpdateUserSelf :one
+-- The me-scoped profile patch (the settings feature): every column
+-- is COALESCE'd with the stored value, so an absent field keeps it
+-- and a present one replaces it -- one statement, one round trip,
+-- and the email's unique constraint is the 409's race-free guard.
+-- The handler reads the returned row for the response, so the
+-- answer is the stored state, never the request's echo.
+UPDATE users SET
+    name = COALESCE(sqlc.narg('name'), name),
+    email = COALESCE(sqlc.narg('email'), email),
+    locale = COALESCE(sqlc.narg('locale'), locale),
+    theme = COALESCE(sqlc.narg('theme'), theme),
+    download_format = COALESCE(sqlc.narg('download_format'), download_format),
+    download_include_videos = COALESCE(sqlc.narg('download_include_videos'), download_include_videos),
+    download_include_sidecars = COALESCE(sqlc.narg('download_include_sidecars'), download_include_sidecars),
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+RETURNING id, name, email, password_hash, role, locale, theme,
+          download_format, download_include_videos, download_include_sidecars,
+          is_disabled, totp_secret, created_at, updated_at;
+
+-- name: UpdateUserPassword :execrows
+-- The password change's credential write: a fresh Argon2id hash
+-- over the same row (a rehash with a new salt, never a mutation of
+-- the old hash). The session revocation of the change rides its
+-- own statement so the two writes share one transaction.
+UPDATE users SET password_hash = sqlc.arg('password_hash'), updated_at = now()
+WHERE id = sqlc.arg('id');
+
+-- name: RevokeOtherUserSessions :execrows
+-- The password change's session severance: every session of the
+-- account EXCEPT the one performing the change (the caller stays
+-- signed in on the device they just proved they own; every other
+-- held credential is stale). Revocation is row deletion, the same
+-- rule as the auth surface's single revoke.
+DELETE FROM sessions WHERE user_id = sqlc.arg('user_id') AND id <> sqlc.arg('keep_id');

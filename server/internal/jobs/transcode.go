@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/media"
@@ -26,6 +28,46 @@ type TranscodeArgs struct {
 
 // Kind is River's stable job kind identifier.
 func (TranscodeArgs) Kind() string { return "transcode" }
+
+// transcodeGate bounds how many transcode jobs may run their ffmpeg
+// re-encode at once: the transcoding settings' concurrency, enforced
+// across every worker of the process. The gate is RE-SIZED to the
+// setting each job reads before acquiring, so a saved change governs
+// the jobs that start after it (an in-flight encode finishes under
+// the bound it started under -- a running ffmpeg subprocess is never
+// preempted for a settings change). The process is single-binary and
+// the workers share one pool, so package state is the honest scope.
+var transcodeGate = &dynamicGate{}
+
+// dynamicGate is a counting semaphore whose capacity can move: each
+// acquirer states the size it knows (the setting's current value),
+// the gate swaps its channel when the size changed, and acquirers
+// hold the channel they acquired (a swap never strands a release).
+// Shrinking below the in-flight count is eventual, not instant: the
+// new channel fills, further jobs wait, the in-flight releases land
+// on their own captured channel -- exactly the semantics a
+// settings-driven bound needs.
+type dynamicGate struct {
+	mu   sync.Mutex
+	size int
+	sem  chan struct{}
+}
+
+// enter acquires a slot at the stated size and returns the release.
+func (g *dynamicGate) enter(size int) func() {
+	if size < 1 {
+		size = 1
+	}
+	g.mu.Lock()
+	if g.sem == nil || g.size != size {
+		g.sem = make(chan struct{}, size)
+		g.size = size
+	}
+	sem := g.sem
+	g.mu.Unlock()
+	sem <- struct{}{}
+	return func() { <-sem }
+}
 
 // TranscodeWorker runs the transcode job: the web-safe MP4 of a video
 // asset -- H.264 + AAC, +faststart -- written atomically to
@@ -62,6 +104,11 @@ func (w *TranscodeWorker) Timeout(job *river.Job[TranscodeArgs]) time.Duration {
 // Work executes one transcode job. The derivation (the ffmpeg
 // subprocess, up to its 120s budget) runs before the database
 // transaction opens: no connection is held while media is processed.
+// The job reads the instance's transcoding settings AT RUN TIME --
+// the contract's new-ingest-only pin: the profile the job sees is
+// the profile it obeys, so a saved change governs every video whose
+// job runs after it (videos already transcoded are never
+// re-encoded).
 func (w *TranscodeWorker) Work(ctx context.Context, job *river.Job[TranscodeArgs]) error {
 	assetID := job.Args.AssetID
 
@@ -91,15 +138,60 @@ func (w *TranscodeWorker) Work(ctx context.Context, job *river.Job[TranscodeArgs
 		return nil
 	}
 
+	// The settings read at run time (the new-ingest-only pin). A
+	// corrupt row degrades to the documented default inside the
+	// accessor; the logged error points at the row to fix.
+	profile, settingsErr := db.TranscodingSettings(ctx, dbgen.New(w.pool))
+	if settingsErr != nil {
+		w.logger.Error("transcode job: transcoding settings are corrupt, using the default", "error", settingsErr)
+	}
+
+	// The `off` preset: no re-encode at all. The original stays in
+	// place and downloadable (the original endpoint serves it), the
+	// pipeline still completes below -- a video uploaded under `off`
+	// is a stored original, not a pending derivation.
+	if profile.Preset == "off" {
+		w.logger.Info("transcode job skipped: the transcoding preset is off", "asset_id", assetID)
+		return w.completeTranscode(ctx, assetID, row)
+	}
+
 	path, err := storage.ResolveStoredPath(w.dataDir, row.FilePath)
 	if err != nil {
 		return fmt.Errorf("resolve file of asset %s: %w", assetID, err)
 	}
 
-	if err := media.GenerateTranscode(ctx, path, assetID.String()); err != nil {
+	// The concurrency bound: the gate holds the re-encode slot for
+	// the duration of the ffmpeg subprocess alone -- no database
+	// transaction is held inside it (the derivation runs before any
+	// transaction opens, the standing discipline of this worker).
+	release := transcodeGate.enter(profile.Concurrency)
+	if err := media.GenerateTranscode(ctx, path, assetID.String(), presetHeight(profile.Preset)); err != nil {
+		release()
+		// The failure policy the settings pin: keepOriginal=true
+		// completes the job quietly -- the original file stays in
+		// place and downloadable through the original endpoint, the
+		// video's pipeline still finishes, and the instance does not
+		// burn retries against a source that fails to encode.
+		// keepOriginal=false fails the job: River's retry policy
+		// re-runs it.
+		if profile.KeepOriginal {
+			w.logger.Error("transcode failed; keeping the original and completing the job",
+				"error", err, "asset_id", assetID)
+			return w.completeTranscode(ctx, assetID, row)
+		}
 		return fmt.Errorf("derive playable copy of asset %s: %w", assetID, err)
 	}
+	release()
 
+	return w.completeTranscode(ctx, assetID, row)
+}
+
+// completeTranscode records the pipeline completion of one video:
+// the guarded decrement (idempotent on re-runs) and, when it empties
+// the row's counter, the asset.ready announcement and the ML
+// readiness seam -- the same steps the metadata and thumbnail jobs
+// end with.
+func (w *TranscodeWorker) completeTranscode(ctx context.Context, assetID uuid.UUID, row dbgen.GetAssetForMetadataRow) error {
 	tx, err := w.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transcode transaction: %w", err)
@@ -135,4 +227,21 @@ func (w *TranscodeWorker) Work(ctx context.Context, job *river.Job[TranscodeArgs
 		announceAssetReady(ctx, w.bus, w.logger, w.mlDispatch, assetID, completion.MediaKind, row.IsComponent)
 	}
 	return nil
+}
+
+// presetHeight maps the transcoding settings' preset onto the
+// re-encode's vertical-resolution bound: the numeric presets' own
+// pixel bound, `auto` (and any unknown value) keeping the source
+// resolution.
+func presetHeight(preset string) int {
+	switch preset {
+	case "1080p":
+		return 1080
+	case "720p":
+		return 720
+	case "480p":
+		return 480
+	default:
+		return 0
+	}
 }

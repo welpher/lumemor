@@ -18,3 +18,15 @@ WHERE key = $1;
 INSERT INTO instance_settings (key, value)
 VALUES (sqlc.arg('key'), to_jsonb(sqlc.arg('value')::text))
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+
+-- name: SetInstanceSettingRaw :exec
+-- The jsonb-native writer (the settings feature): the value is
+-- already JSON -- a number for the trash retention, an object for
+-- the transcoding profile -- and lands verbatim, so the typed
+-- readers' unmarshal sees the JSON value they expect (a text-cast
+-- writer would store a JSON string and every int/object reader
+-- would fall back to its default). The upsert arm serves the
+-- save-over-existing flow; the insert arm serves the first write.
+INSERT INTO instance_settings (key, value)
+VALUES (sqlc.arg('key'), sqlc.arg('value')::jsonb)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
