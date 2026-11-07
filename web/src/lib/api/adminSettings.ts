@@ -1,26 +1,34 @@
-// The admin storage settings client (the storage-template feature):
-// the read behind GET /admin/settings/storage and the three-stage
-// validated save behind PUT /admin/settings/storage.
+// The admin settings clients (the storage-template feature and the
+// settings feature): the read and three-stage validated save behind
+// GET/PUT /admin/settings/storage, the trash retention pair behind
+// GET/PUT /admin/settings/trash, and the video transcoding profile
+// pair behind GET/PUT /admin/settings/transcoding.
 //
 // ERROR MAPPING (the repo-wide convention): every failure outcome
 // carries the error code's i18n key -- the envelope code lowercased
 // (auth_forbidden for a signed-in non-admin, validation_failed for a
-// rejected template), 'internal' for a network failure or an
+// rejected value), 'internal' for a network failure or an
 // unparseable body, and 'session_expired' for a 401.
 //
 // The 200 bodies are structurally validated: a drifted or proxied
 // answer must never render as a broken surface -- it maps to the
 // generic failure like any other unparseable body. A 400 carries the
-// server's specific validation reason (the compile or render failure)
-// in the envelope message, which the settings section shows beside
-// the shared i18n text: the reason names the admin's own template
-// text, something no translation table can pre-render.
+// server's specific validation reason (the template's compile or
+// render failure) in the envelope message, which the storage section
+// shows beside the shared i18n text: the reason names the admin's
+// own template text, something no translation table can pre-render.
 
 import { apiFetch, errorEnvelope } from '$lib/auth/api';
 import type { components } from '../../../../openapi/generated/web/api';
 
 /** The settings document, exactly the contract's StorageSettingsResponse shape. */
 export type StorageSettings = components['schemas']['StorageSettingsResponse'];
+
+/** The trash settings, exactly the contract's TrashSettingsResponse shape. */
+export type TrashSettings = components['schemas']['TrashSettingsResponse'];
+
+/** The transcoding settings, exactly the contract's TranscodingSettingsResponse shape. */
+export type TranscodingSettings = components['schemas']['TranscodingSettingsResponse'];
 
 /** The read's outcome: the settings document, or the failure's i18n key. */
 export type StorageSettingsResult =
@@ -31,6 +39,26 @@ export type StorageSettingsResult =
 export type StorageSettingsSaveResult =
 	| { ok: true; settings: StorageSettings }
 	| { ok: false; errorKey: string; reason?: string };
+
+/** The trash read's outcome: the settings, or the failure's i18n key. */
+export type TrashSettingsResult =
+	| { ok: true; settings: TrashSettings }
+	| { ok: false; errorKey: string };
+
+/** The trash save's outcome: the saved settings, or the failure's i18n key. */
+export type TrashSettingsSaveResult =
+	| { ok: true; settings: TrashSettings }
+	| { ok: false; errorKey: string };
+
+/** The transcoding read's outcome: the settings, or the failure's i18n key. */
+export type TranscodingSettingsResult =
+	| { ok: true; settings: TranscodingSettings }
+	| { ok: false; errorKey: string };
+
+/** The transcoding save's outcome: the saved settings, or the failure's i18n key. */
+export type TranscodingSettingsSaveResult =
+	| { ok: true; settings: TranscodingSettings }
+	| { ok: false; errorKey: string };
 
 const SETTINGS_ENDPOINT = '/api/v1/admin/settings/storage';
 
@@ -152,4 +180,176 @@ export async function saveStorageSettings(
 		return { ok: false, errorKey: 'internal' };
 	}
 	return { ok: true, settings };
+}
+
+const TRASH_ENDPOINT = '/api/v1/admin/settings/trash';
+const TRANSCODING_ENDPOINT = '/api/v1/admin/settings/transcoding';
+
+/** Structurally validate one trash settings body; null when it is not one. */
+function trashSettingsFrom(body: unknown): TrashSettings | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<TrashSettings>;
+	if (typeof candidate.retentionDays !== 'number' || !Number.isInteger(candidate.retentionDays)) {
+		return null;
+	}
+	return body as TrashSettings;
+}
+
+/** Structurally validate one transcoding settings body; null when it is not one. */
+function transcodingSettingsFrom(body: unknown): TranscodingSettings | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<TranscodingSettings>;
+	if (
+		typeof candidate.preset !== 'string' ||
+		typeof candidate.concurrency !== 'number' ||
+		typeof candidate.thumbnailFrame !== 'boolean' ||
+		typeof candidate.keepOriginal !== 'boolean'
+	) {
+		return null;
+	}
+	return body as TranscodingSettings;
+}
+
+/**
+ * GET /api/v1/admin/settings/trash: the instance's trash retention
+ * in days. A 403 is the signed-in non-admin caller
+ * (auth_forbidden), not a session failure.
+ */
+export async function getTrashSettings(
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<TrashSettingsResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(TRASH_ENDPOINT, undefined, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const settings = trashSettingsFrom(body);
+	if (settings === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, settings };
+}
+
+/**
+ * PUT /admin/settings/trash: save the retention (whole days, 0 to
+ * 365; 0 is immediate permanent delete on the expiry job's next
+ * run). The 200 body is the saved value; a 400 maps to
+ * validation_failed.
+ */
+export async function saveTrashSettings(
+	retentionDays: number,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<TrashSettingsSaveResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			TRASH_ENDPOINT,
+			{
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ retentionDays })
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const settings = trashSettingsFrom(body);
+	if (settings === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, settings };
+}
+
+/**
+ * GET /api/v1/admin/settings/transcoding: the instance's video
+ * transcoding profile. A 403 is the signed-in non-admin caller
+ * (auth_forbidden), not a session failure.
+ */
+export async function getTranscodingSettings(
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<TranscodingSettingsResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(TRANSCODING_ENDPOINT, undefined, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const settings = transcodingSettingsFrom(body);
+	if (settings === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, settings };
+}
+
+/**
+ * PUT /admin/settings/transcoding: save the video transcoding
+ * profile (the preset, the concurrency bound, the poster-frame
+ * switch, the failure policy). The profile affects NEW ingests only
+ * (the contract's scope pin); a 400 maps to validation_failed.
+ */
+export async function saveTranscodingSettings(
+	settings: TranscodingSettings,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<TranscodingSettingsSaveResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			TRANSCODING_ENDPOINT,
+			{
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(settings)
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const saved = transcodingSettingsFrom(body);
+	if (saved === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, settings: saved };
 }

@@ -360,6 +360,22 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Post("/albums/{albumId}/shares", wrapper.GrantAlbumShare)
 				r.Delete("/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
 				r.Get("/users", wrapper.ListInstanceUsers)
+				// The me-scoped user settings face (the settings
+				// feature): the caller's own profile, password and
+				// signed-in devices. NO userId parameter exists on
+				// any of these routes -- the session IS the identity,
+				// the middleware's authContext decides the row -- and
+				// the static /users/me segment never contends with
+				// the bare /users listing above (a longer path
+				// shape). The password change and the device revoke
+				// are bounded row writes, the device list one bounded
+				// read, so they belong in this group like every
+				// other bounded JSON handler.
+				r.Get("/users/me", wrapper.GetUserSelf)
+				r.Patch("/users/me", wrapper.UpdateUserSelf)
+				r.Put("/users/me/password", wrapper.ChangeUserPassword)
+				r.Get("/users/me/sessions", wrapper.ListUserDevices)
+				r.Delete("/users/me/sessions/{id}", wrapper.RevokeUserDevice)
 				// The timeline-preference face (M3c Task 4): the
 				// caller's per-user "keep this album out of my
 				// timeline" switch -- one bounded row upsert and
@@ -444,6 +460,15 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// write plus in-memory renders.
 				r.Get("/admin/settings/storage", wrapper.GetStorageSettings)
 				r.Put("/admin/settings/storage", wrapper.UpdateStorageSettings)
+				// The trash retention and video transcoding faces
+				// (the settings feature): the same GET/PUT shape over
+				// the instance_settings rows -- bounded reads and
+				// writes plus in-memory validation, the storage
+				// settings face's own discipline.
+				r.Get("/admin/settings/trash", wrapper.GetTrashSettings)
+				r.Put("/admin/settings/trash", wrapper.UpdateTrashSettings)
+				r.Get("/admin/settings/transcoding", wrapper.GetTranscodingSettings)
+				r.Put("/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
 				// The model download trigger (M3a Task 3): the
 				// default group's first-boot download. The handler is
 				// one bounded row read plus one enqueue; the heavy

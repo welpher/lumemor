@@ -202,6 +202,10 @@ func (s *server) ConsumePairingToken(w http.ResponseWriter, r *http.Request) {
 		// session list later shows name and id together.
 		DeviceName: in.deviceName,
 		DeviceID:   pgtype.Text{String: in.deviceId, Valid: true},
+		// The creation-time address the device list renders; the
+		// socket peer of the pairing exchange, never a forwarded
+		// header (the login's own trust rule).
+		IpAddress:  pgtype.Text{String: remoteIP(r), Valid: true},
 		LastSeenAt: pgtype.Timestamptz{Time: now, Valid: true},
 		// Bearer sessions are revoked, not expired: the NOT NULL
 		// column parks at creation and every lookup gates on kind,

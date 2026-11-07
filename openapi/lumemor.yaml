@@ -36,7 +36,9 @@ servers:
 tags:
   - name: admin
     description: 'Instance administration by administrators: account
-      management of the users surface.'
+      management of the users surface, and the instance settings
+      (the storage template, the trash retention and the video
+      transcoding profile).'
   - name: albums
     description: 'The album surface: the wall of the caller''s own and
       shared albums, one album''s detail with its keyset-paged items,
@@ -78,9 +80,12 @@ tags:
       never surface anywhere, and the asset detail''s tags array
       carries the calling user''s own tags only.'
   - name: users
-    description: 'The instance''s member list: the minimal authenticated
-      account enumeration of the family instance -- the share
-      dialog''s pick list.'
+    description: 'The user surface: the caller''s own account through the
+      me-scoped settings endpoints (profile, password, appearance,
+      download preferences and signed-in devices -- the session IS
+      the identity, no userId parameter anywhere), plus the minimal
+      authenticated member enumeration of the family instance -- the
+      share dialog''s pick list.'
 paths:
   /auth/login:
     post:
@@ -6543,6 +6548,460 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /users/me:
+    get:
+      operationId: getUserSelf
+      tags:
+        - users
+      summary: Read the caller's own account.
+      description: |
+        The self-scoped profile read behind the user settings page:
+        the calling session's own account row -- the identity fields
+        of the profile section, the appearance pair (theme and
+        locale) the account persisted, and the download preferences
+        the batch and whole-album download flows will consume. The
+        endpoint is `me`-scoped by construction: the session that
+        authenticates the request IS the identity, there is no
+        userId parameter to get wrong, and one account can never
+        read another's row through it.
+
+        The theme and the locale are the values the account chose on
+        the settings page; a client that applies them (the web app's
+        `.dark` class and i18n store) restores the account's
+        appearance at sign-in. The download preferences are
+        declarative account state: they persist here and every
+        future download flow reads them as the account's default
+        packaging (see `UserSelfPatch` for the honest consumption
+        state).
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The caller's own account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSelfResponse'
+              examples:
+                adminOnDefaults:
+                  summary: A fresh account on the column defaults.
+                  value:
+                    id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                    name: Ada Lovelace
+                    email: ada@example.com
+                    role: admin
+                    theme: auto
+                    locale: en
+                    downloadFormat: zip
+                    downloadIncludeVideos: true
+                    downloadIncludeSidecars: false
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      operationId: updateUserSelf
+      tags:
+        - users
+      summary: Patch the caller's own account.
+      description: |
+        The self-scoped write behind the settings page's profile,
+        appearance and download-preferences sections. Every field is
+        optional: an absent field keeps its stored value, a present
+        one replaces it, and the response is the complete saved
+        account state (the caller adopts it as the fresh state,
+        exactly like the storage settings save).
+
+        THE ME-SCOPING: the endpoint addresses the session's own
+        account row only -- no userId parameter exists, and the
+        session middleware's identity decides the row. The email is
+        the one field whose uniqueness spans accounts: an address
+        another account already owns answers 409 USER_EMAIL_TAKEN
+        and nothing is written.
+
+        The theme and the locale persist for the NEXT sign-in and
+        every client that reads them; the client performing the
+        patch is expected to apply them immediately itself (the web
+        app flips its `.dark` class and reloads its i18n store on
+        the response, not on a re-login).
+
+        THE DOWNLOAD PREFERENCES ARE DECLARATIVE: the batch and
+        whole-album download endpoints do not exist yet (they are a
+        later milestone's surface); the preferences persist here so
+        those flows will read the account's default packaging when
+        they arrive -- a stored preference is never silently
+        dropped, it is simply not consumed yet. This is documented
+        honestly: nothing in the current download-less pipeline
+        reads these fields.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSelfPatch'
+            examples:
+              profileEdit:
+                summary: The profile section's save.
+                value:
+                  name: Ada Lovelace
+                  email: ada@example.com
+              appearanceEdit:
+                summary: The appearance section's save.
+                value:
+                  theme: dark
+                  locale: zh-Hans
+              downloadPrefs:
+                summary: The download preferences section's save.
+                value:
+                  downloadFormat: tar
+                  downloadIncludeVideos: false
+                  downloadIncludeSidecars: true
+      responses:
+        '200':
+          description: |
+            The patch was applied; the response is the complete
+            saved account state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSelfResponse'
+              examples:
+                saved:
+                  summary: The account after an appearance save.
+                  value:
+                    id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                    name: Ada Lovelace
+                    email: ada@example.com
+                    role: admin
+                    theme: dark
+                    locale: zh-Hans
+                    downloadFormat: zip
+                    downloadIncludeVideos: true
+                    downloadIncludeSidecars: false
+        '400':
+          description: |
+            The payload failed validation: a name past 100 runes, a
+            malformed email, a theme, locale or download format
+            outside its enum, or a body that is not valid JSON. The
+            details name the offending field(s); nothing was
+            written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  summary: A field outside its bound.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: invalid profile payload
+                    details:
+                      fields:
+                        - name
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '409':
+          description: |
+            The patch''s email address already belongs to another
+            account; the address is the account identity, unique
+            instance-wide, and the login lookup depends on that
+            uniqueness. Nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                emailTaken:
+                  value:
+                    code: USER_EMAIL_TAKEN
+                    message: an account with this email already exists
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/me/password:
+    put:
+      operationId: changeUserPassword
+      tags:
+        - users
+      summary: Change the caller's own password.
+      description: |
+        The self-scoped password change behind the settings page's
+        change-password section. The current password must verify
+        against the account's stored Argon2id hash; the next one is
+        stored as a fresh Argon2id hash (the same profile every
+        creation path pins -- a rehash with a new salt, never a
+        mutation of the old hash).
+
+        **The revocation contract, pinned:** a successful change
+        revokes EVERY OTHER session of the account, across all
+        devices -- web cookie sessions and mobile bearer sessions
+        alike, their credentials failing authentication with 401
+        from the next request on -- while the session that performed
+        the change STAYS signed in (the caller is not signed out of
+        the device they just proved they own). The rationale is the
+        credential-severance rule: a changed password means every
+        other held credential of the account is stale, and a device
+        that wants back in signs in with the new password.
+
+        A wrong current password answers 400 VALIDATION_FAILED
+        naming `current` -- NOT 401, because the request''s session
+        is valid and healthy; only the request''s own field failed
+        to verify. (Clients must not treat it as a session expiry.)
+        The next password follows the account rules everywhere: 8 to
+        128 runes.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+            examples:
+              change:
+                summary: A routine change.
+                value:
+                  current: correct horse battery staple
+                  next: another fine passphrase here
+      responses:
+        '204':
+          description: |
+            The password was changed and every other session of the
+            account was revoked; the response has no body. The
+            current session stays signed in.
+        '400':
+          description: |
+            The current password does not match (details name
+            `current`), or the next password is outside the 8-128
+            rune bound (details name `next`), or the body is not
+            valid JSON. Nothing was written in any case.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                wrongCurrent:
+                  summary: The current password failed to verify.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: current password does not match
+                    details:
+                      fields:
+                        - current
+                nextTooShort:
+                  summary: The new password is under the bound.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: password must be 8 to 128 runes
+                    details:
+                      fields:
+                        - next
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/me/sessions:
+    get:
+      operationId: listUserDevices
+      tags:
+        - users
+      summary: List the caller's signed-in devices.
+      description: |
+        The device list behind the settings page's devices section:
+        every active session of the calling account across devices,
+        most recently used first, each entry carrying the device
+        rendering's own fields -- and, unlike the auth surface's
+        own `GET /auth/sessions`, the `isCurrent` marker derived by
+        comparing the session id against the credential of THIS
+        request, plus the session's creation-time IP address.
+
+        The list is the account's own sessions only (the `me`
+        scoping again: the session IS the identity); a web session
+        and a paired phone both appear. `ipAddress` is the address
+        the session was created from (the login's or the pairing
+        exchange's socket peer), omitted when the row predates the
+        column or the address was not captured. It is an audit hint,
+        not a geolocation claim.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            The caller's active sessions, most recently used first,
+            with the current one marked.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceSession'
+              examples:
+                browserAndPhone:
+                  summary: This browser and a paired phone.
+                  value:
+                    - id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                      kind: web
+                      deviceName: Firefox on macOS
+                      lastSeenAt: '2026-11-08T14:23:00Z'
+                      ipAddress: 192.168.1.100
+                      isCurrent: true
+                    - id: 0192f3b2-4c5d-7e8f-8a9b-0c1d2e3f4a5b
+                      kind: mobile
+                      deviceName: Pixel 9
+                      lastSeenAt: '2026-11-06T09:15:00Z'
+                      isCurrent: false
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/me/sessions/{id}:
+    delete:
+      operationId: revokeUserDevice
+      tags:
+        - users
+      summary: Revoke one of the caller's other devices.
+      description: |
+        The device list's revoke button: signs out one device by
+        deleting its session row. The endpoint is owner-scoped like
+        the auth surface's own `DELETE /auth/sessions/{id}` -- an id
+        that is unknown, belongs to another account, or is already
+        revoked still answers the same 204, without revealing
+        whether such a session exists.
+
+        THE ONE DIFFERENCE FROM THE AUTH SURFACE: the CURRENT
+        session -- the one authenticating this very request, the
+        row the device list marks `isCurrent` -- answers 400
+        VALIDATION_FAILED instead. The settings page's list is a
+        remote-device manager; the current device's own exit is the
+        sign-out flow (`POST /auth/logout`), and the 400 keeps a
+        stray click on the wrong row from signing the caller out of
+        the very session they are managing from.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identifier of the session to revoke.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: |
+            The session is revoked (or never was); the response has
+            no body.
+        '400':
+          description: |
+            The id is the current session's own (the sign-out flow
+            is that session's exit, not this one), or the path id is
+            not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                currentSession:
+                  summary: The caller tried to revoke the session they are calling from.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: the current session is signed out through the sign-out flow
+                    details:
+                      fields:
+                        - id
+                malformedId:
+                  summary: Malformed session id.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: invalid request parameter
+                    details:
+                      fields:
+                        - id
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /admin/users:
     get:
       operationId: listUsers
@@ -7942,6 +8401,358 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /admin/settings/trash:
+    get:
+      operationId: getTrashSettings
+      tags:
+        - admin
+      summary: Read the trash retention setting.
+      description: |
+        The trash settings read of the admin surface: the instance's
+        trash retention in whole days -- the window a soft-deleted
+        asset stays recoverable before the hourly expiry job purges
+        it (rows, thumbnails, derivatives and orphaned files
+        together). A fresh instance (or a corrupt row) answers the
+        default 30; the read never fails over a row the save
+        endpoint's validation should have kept honest.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The instance's trash retention in days.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrashSettingsResponse'
+              examples:
+                default:
+                  summary: An instance running on the default.
+                  value:
+                    retentionDays: 30
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      operationId: updateTrashSettings
+      tags:
+        - admin
+      summary: Save the trash retention setting.
+      description: |
+        The trash settings save of the admin surface. The retention
+        is a whole number of days, 0 to 365:
+
+        - **0 means immediate permanent delete** -- an asset enters
+        the trash and the NEXT expiry run purges it (the hourly
+        periodic job and the boot run are the runs; nothing is
+        deleted by the save request itself).
+        - The expiry job reads the setting at the START of each run
+        (the boot run and every hourly periodic run alike), so a
+        change takes effect for the next run's window, not
+        retroactively for rows a past run already considered.
+        - An already-trashed asset's fate is decided by the run's
+        own deadline computation: with a SHORTENED retention, rows
+        past the new window leave on the next run; with a LENGTHENED
+        one, every row gains the added days from its own deletion
+        mark.
+
+        The save validates the bound and answers the saved value; a
+        value outside 0-365 answers 400 VALIDATION_FAILED naming
+        `retentionDays`, and nothing is written.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrashSettingsUpdateRequest'
+            examples:
+              immediate:
+                summary: 'Zero retention: the trash becomes a straight delete.'
+                value:
+                  retentionDays: 0
+              year:
+                summary: A full year of recoverability.
+                value:
+                  retentionDays: 365
+      responses:
+        '200':
+          description: The retention was saved; the response carries it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrashSettingsResponse'
+              examples:
+                saved:
+                  summary: The freshly saved retention.
+                  value:
+                    retentionDays: 14
+        '400':
+          description: |
+            The retention is not a whole number of days within 0 to
+            365, or the body is not valid JSON. The details name
+            `retentionDays`; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                outOfRange:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: retentionDays must be between 0 and 365
+                    details:
+                      fields:
+                        - retentionDays
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: The validated retention could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /admin/settings/transcoding:
+    get:
+      operationId: getTranscodingSettings
+      tags:
+        - admin
+      summary: Read the video transcoding settings.
+      description: |
+        The transcoding settings read of the admin surface: the
+        instance's video transcoding profile -- the preset the
+        transcode job re-encodes new video uploads at, the
+        concurrency bound of simultaneous re-encodes, the
+        video-thumbnail frame capture switch, and the
+        keep-original-on-failure policy. A fresh instance (or a
+        corrupt row) answers the documented defaults.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The instance's video transcoding profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranscodingSettingsResponse'
+              examples:
+                default:
+                  summary: An instance running on the defaults.
+                  value:
+                    preset: auto
+                    concurrency: 2
+                    thumbnailFrame: true
+                    keepOriginal: true
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      operationId: updateTranscodingSettings
+      tags:
+        - admin
+      summary: Save the video transcoding settings.
+      description: |
+        The transcoding settings save of the admin surface.
+
+        **The scope pin, documented honestly: the profile affects
+        NEW ingests only.** The transcode job of a video upload
+        reads the profile when it runs, so a saved change governs
+        every video uploaded after it; videos already transcoded
+        keep their existing playable copy and are never re-encoded,
+        and a video whose job is still queued picks up the profile
+        at its run time (the job reads the setting at run time, not
+        enqueue time).
+
+        The fields: `preset` bounds the re-encode's vertical
+        resolution (`auto` keeps the source resolution, the numeric
+        presets scale down to the bound, `off` skips the re-encode
+        entirely -- the original file stays in place and
+        downloadable, and the video's pipeline still completes);
+        `concurrency` bounds how many re-encodes run at once;
+        `thumbnailFrame` turns the video poster-frame capture (the
+        video's thumbnail) on or off; `keepOriginal` decides the
+        failure policy -- a failed re-encode either completes the
+        job quietly (the original stays in place and downloadable
+        through the original endpoint) or fails it for retry.
+
+        The save validates every field against its enum and answers
+        the saved profile; an out-of-enum value answers 400
+        VALIDATION_FAILED naming the field, and nothing is written.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranscodingSettingsUpdateRequest'
+            examples:
+              spaceSaving:
+                summary: A space-conscious profile.
+                value:
+                  preset: 720p
+                  concurrency: 1
+                  thumbnailFrame: true
+                  keepOriginal: false
+              originalOnly:
+                summary: Store originals without re-encoding.
+                value:
+                  preset: 'off'
+                  concurrency: 2
+                  thumbnailFrame: true
+                  keepOriginal: true
+      responses:
+        '200':
+          description: |
+            The profile was saved; the response carries the saved
+            value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranscodingSettingsResponse'
+              examples:
+                saved:
+                  summary: The freshly saved profile.
+                  value:
+                    preset: 720p
+                    concurrency: 1
+                    thumbnailFrame: true
+                    keepOriginal: false
+        '400':
+          description: |
+            A field is outside its enum (`preset`, `concurrency`) or
+            the body is not valid JSON. The details name the
+            offending field; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                badPreset:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: preset must be one of auto, 1080p, 720p, 480p, off
+                    details:
+                      fields:
+                        - preset
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: The validated profile could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     LoginRequest:
@@ -8291,6 +9102,307 @@ components:
           maxLength: 512
           examples:
             - '{{y}}/{{MM}}/{{filename}}'
+    UserTheme:
+      type: string
+      description: |
+        The account's stored appearance preference for the client's
+        color scheme. `auto` follows the device's system
+        preference (the web app maps it to its `system` mode),
+        `light` and `dark` are the manual choices. The value is
+        declarative account state: a client that reads it applies it
+        at sign-in, and the client performing the change applies it
+        immediately.
+      enum:
+        - auto
+        - light
+        - dark
+    UserLocale:
+      type: string
+      description: |
+        The account's stored interface language. The values are the
+        UI's installed locales -- the same table the web and mobile
+        clients share -- and the list grows with that table: a
+        locale file added to the i18n directory is a locale this
+        enum admits next. Clients that cannot render a stored value
+        fall back to their own default.
+      enum:
+        - en
+        - zh-Hans
+    DownloadFormat:
+      type: string
+      description: |
+        The account's preferred archive format of batch and
+        whole-album downloads.
+      enum:
+        - zip
+        - tar
+    UserSelfResponse:
+      type: object
+      description: |
+        The caller's own account as the me-scoped user surface
+        returns it: the identity fields of the profile section, the
+        appearance pair, and the download preferences. The password
+        hash is never part of any response.
+      required:
+        - id
+        - name
+        - email
+        - role
+        - theme
+        - locale
+        - downloadFormat
+        - downloadIncludeVideos
+        - downloadIncludeSidecars
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 identifier of the account.
+        name:
+          type: string
+          description: Display name.
+        email:
+          type: string
+          format: email
+          description: Login address; unique instance-wide.
+        role:
+          $ref: '#/components/schemas/UserRole'
+        theme:
+          $ref: '#/components/schemas/UserTheme'
+        locale:
+          $ref: '#/components/schemas/UserLocale'
+        downloadFormat:
+          $ref: '#/components/schemas/DownloadFormat'
+        downloadIncludeVideos:
+          type: boolean
+          description: |
+            Whether the account's download packaging includes the
+            original video files. Photos are the download's content
+            and always ride along.
+        downloadIncludeSidecars:
+          type: boolean
+          description: |
+            Whether the account's download packaging includes EXIF
+            sidecar files (`.xmp`) beside the media.
+    UserSelfPatch:
+      type: object
+      description: |
+        Payload of `PATCH /users/me`. Every field is optional: an
+        absent field keeps its stored value, a present one replaces
+        it. At least one field must be present.
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          description: |
+            The new display name; 1 to 100 runes after trimming (an
+            empty name is refused -- the profile always carries one).
+          minLength: 1
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          description: |
+            The new login address, parsed and lower-cased like every
+            creation path; an address another account already owns
+            answers 409 USER_EMAIL_TAKEN.
+        theme:
+          $ref: '#/components/schemas/UserTheme'
+        locale:
+          $ref: '#/components/schemas/UserLocale'
+        downloadFormat:
+          $ref: '#/components/schemas/DownloadFormat'
+        downloadIncludeVideos:
+          type: boolean
+          description: The download packaging's video switch.
+        downloadIncludeSidecars:
+          type: boolean
+          description: The download packaging's sidecar switch.
+    PasswordChangeRequest:
+      type: object
+      description: Payload of `PUT /users/me/password`.
+      required:
+        - current
+        - next
+      properties:
+        current:
+          type: string
+          format: password
+          description: |
+            The account's current password; it must verify against
+            the stored Argon2id hash before anything is written.
+        next:
+          type: string
+          format: password
+          description: The new password; 8 to 128 runes, stored as a fresh Argon2id hash.
+          minLength: 8
+          maxLength: 128
+    DeviceSession:
+      type: object
+      description: |
+        One of the caller's active sessions as the device list
+        renders it: the row's identity and rendering fields, the
+        `isCurrent` marker derived against the request's own
+        credential, and the session's creation-time address.
+      required:
+        - id
+        - kind
+        - lastSeenAt
+        - isCurrent
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 identifier of the session.
+        kind:
+          type: string
+          description: |
+            Where the session credential lives: `web` sessions ride
+            the `lumemor_session` cookie, `mobile` sessions ride a
+            bearer token.
+          enum:
+            - web
+            - mobile
+        deviceName:
+          type: string
+          description: |
+            Human-readable device label: the browser's user agent
+            captured at login for web sessions, the name supplied
+            during pairing for mobile ones.
+        lastSeenAt:
+          type: string
+          format: date-time
+          description: When the session was last used (RFC 3339 UTC).
+        ipAddress:
+          type: string
+          description: |
+            The address the session was created from (the login's or
+            pairing exchange's socket peer), captured at creation
+            time. Omitted when the row predates the column or no
+            address was captured; an audit hint, not a geolocation
+            claim.
+          examples:
+            - 192.168.1.100
+        isCurrent:
+          type: boolean
+          description: |
+            Whether this row is the session the request itself
+            authenticates with -- the device the caller is managing
+            from. Exactly one entry of a list carries `true`, and
+            that entry cannot be revoked through
+            `DELETE /users/me/sessions/{id}` (the sign-out flow is
+            its exit).
+    TrashSettingsResponse:
+      type: object
+      description: |
+        The trash settings of `GET /admin/settings/trash` and the
+        successful `PUT`: the instance's trash retention in whole
+        days.
+      required:
+        - retentionDays
+      properties:
+        retentionDays:
+          type: integer
+          description: |
+            The retention window of a soft-deleted asset in whole
+            days, 0 to 365. A fresh instance (or a corrupt row)
+            answers the default 30; 0 means the next expiry run
+            purges everything trashed.
+          minimum: 0
+          maximum: 365
+          examples:
+            - 30
+    TrashSettingsUpdateRequest:
+      type: object
+      description: Payload of `PUT /admin/settings/trash`.
+      required:
+        - retentionDays
+      properties:
+        retentionDays:
+          type: integer
+          description: The retention to save, in whole days, 0 to 365.
+          minimum: 0
+          maximum: 365
+          examples:
+            - 14
+    TranscodePreset:
+      type: string
+      description: |
+        The transcode job's re-encode preset for new video ingests:
+        `auto` keeps the source resolution, the numeric presets
+        scale down to the named vertical bound, and `off` skips the
+        re-encode entirely (the original stays in place and
+        downloadable; the video's pipeline still completes).
+      enum:
+        - auto
+        - 1080p
+        - 720p
+        - 480p
+        - 'off'
+    TranscodingSettingsResponse:
+      type: object
+      description: |
+        The transcoding settings of `GET /admin/settings/transcoding`
+        and the successful `PUT`: the instance's video transcoding
+        profile.
+      required:
+        - preset
+        - concurrency
+        - thumbnailFrame
+        - keepOriginal
+      properties:
+        preset:
+          $ref: '#/components/schemas/TranscodePreset'
+        concurrency:
+          type: integer
+          description: |
+            How many video re-encodes may run at once: 1 (low load),
+            2 (the recommended default) or 4 (high load).
+          enum:
+            - 1
+            - 2
+            - 4
+        thumbnailFrame:
+          type: boolean
+          description: |
+            Whether the video thumbnail job captures a poster frame
+            (the poster IS a video's thumbnail). Off skips the frame
+            capture; the video's pipeline still completes.
+        keepOriginal:
+          type: boolean
+          description: |
+            The re-encode failure policy: on, a failed re-encode
+            completes the job quietly and the original stays in
+            place and downloadable; off, the job fails and retries.
+      examples:
+        - preset: auto
+          concurrency: 2
+          thumbnailFrame: true
+          keepOriginal: true
+    TranscodingSettingsUpdateRequest:
+      type: object
+      description: Payload of `PUT /admin/settings/transcoding`.
+      required:
+        - preset
+        - concurrency
+        - thumbnailFrame
+        - keepOriginal
+      properties:
+        preset:
+          $ref: '#/components/schemas/TranscodePreset'
+        concurrency:
+          type: integer
+          description: 'The concurrency bound to save: 1, 2 or 4.'
+          enum:
+            - 1
+            - 2
+            - 4
+        thumbnailFrame:
+          type: boolean
+          description: The poster-frame capture switch to save.
+        keepOriginal:
+          type: boolean
+          description: The failure policy to save.
     ModelDownloadResponse:
       type: object
       description: |

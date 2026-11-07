@@ -48,3 +48,26 @@ func (q *Queries) SetInstanceSetting(ctx context.Context, arg SetInstanceSetting
 	_, err := q.db.Exec(ctx, setInstanceSetting, arg.Key, arg.Value)
 	return err
 }
+
+const setInstanceSettingRaw = `-- name: SetInstanceSettingRaw :exec
+INSERT INTO instance_settings (key, value)
+VALUES ($1, $2::jsonb)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+`
+
+type SetInstanceSettingRawParams struct {
+	Key   string `json:"key"`
+	Value []byte `json:"value"`
+}
+
+// The jsonb-native writer (the settings feature): the value is
+// already JSON -- a number for the trash retention, an object for
+// the transcoding profile -- and lands verbatim, so the typed
+// readers' unmarshal sees the JSON value they expect (a text-cast
+// writer would store a JSON string and every int/object reader
+// would fall back to its default). The upsert arm serves the
+// save-over-existing flow; the insert arm serves the first write.
+func (q *Queries) SetInstanceSettingRaw(ctx context.Context, arg SetInstanceSettingRawParams) error {
+	_, err := q.db.Exec(ctx, setInstanceSettingRaw, arg.Key, arg.Value)
+	return err
+}
