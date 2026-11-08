@@ -321,7 +321,7 @@ func TestConsumePairingToken(t *testing.T) {
 		if row.ID != pgUUID(bearer.Session.Id) {
 			t.Errorf("bearer session id = %v, want the created row's id", bearer.Session.Id)
 		}
-		if bearer.Session.Kind != apigen.Mobile {
+		if bearer.Session.Kind != apigen.SessionInfoKindMobile {
 			t.Errorf("bearer session kind = %q, want mobile", bearer.Session.Kind)
 		}
 		if bearer.Session.DeviceName == nil || *bearer.Session.DeviceName != "Pixel 9" {
@@ -350,7 +350,7 @@ func TestConsumePairingToken(t *testing.T) {
 		for _, session := range sessions {
 			if session.Id == bearer.Session.Id {
 				found = true
-				if session.Kind != apigen.Mobile {
+				if session.Kind != apigen.SessionInfoKindMobile {
 					t.Errorf("listed session kind = %q, want mobile", session.Kind)
 				}
 			}

@@ -25,7 +25,7 @@ func (q *Queries) CountAdmins(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 
 INSERT INTO users (id, name, email, password_hash, role, locale)
-VALUES ($1, $2, $3, $4, $5, 'en') RETURNING id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, 'en') RETURNING id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at, download_format, download_include_videos, download_include_sidecars
 `
 
 type CreateUserParams struct {
@@ -64,12 +64,15 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.TotpSecret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DownloadFormat,
+		&i.DownloadIncludeVideos,
+		&i.DownloadIncludeSidecars,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at FROM users WHERE email = $1
+SELECT id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at, download_format, download_include_videos, download_include_sidecars FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -87,6 +90,9 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.TotpSecret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DownloadFormat,
+		&i.DownloadIncludeVideos,
+		&i.DownloadIncludeSidecars,
 	)
 	return i, err
 }
@@ -127,6 +133,55 @@ func (q *Queries) GetUserRole(ctx context.Context, id pgtype.UUID) (UserRole, er
 	var role UserRole
 	err := row.Scan(&role)
 	return role, err
+}
+
+const getUserSelf = `-- name: GetUserSelf :one
+SELECT id, name, email, password_hash, role, locale, theme,
+       download_format, download_include_videos, download_include_sidecars,
+       is_disabled, totp_secret, created_at, updated_at
+FROM users WHERE id = $1
+`
+
+type GetUserSelfRow struct {
+	ID                      pgtype.UUID        `json:"id"`
+	Name                    string             `json:"name"`
+	Email                   string             `json:"email"`
+	PasswordHash            string             `json:"password_hash"`
+	Role                    UserRole           `json:"role"`
+	Locale                  string             `json:"locale"`
+	Theme                   string             `json:"theme"`
+	DownloadFormat          string             `json:"download_format"`
+	DownloadIncludeVideos   bool               `json:"download_include_videos"`
+	DownloadIncludeSidecars bool               `json:"download_include_sidecars"`
+	IsDisabled              bool               `json:"is_disabled"`
+	TotpSecret              pgtype.Text        `json:"totp_secret"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+}
+
+// The me-scoped profile read (the settings feature): the caller's
+// own row. The password hash rides along for the password change's
+// verify step -- the hash never travels past the handler's mapping.
+func (q *Queries) GetUserSelf(ctx context.Context, id pgtype.UUID) (GetUserSelfRow, error) {
+	row := q.db.QueryRow(ctx, getUserSelf, id)
+	var i GetUserSelfRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Role,
+		&i.Locale,
+		&i.Theme,
+		&i.DownloadFormat,
+		&i.DownloadIncludeVideos,
+		&i.DownloadIncludeSidecars,
+		&i.IsDisabled,
+		&i.TotpSecret,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const listInstanceUsersMinimal = `-- name: ListInstanceUsersMinimal :many
@@ -220,6 +275,28 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
+const revokeOtherUserSessions = `-- name: RevokeOtherUserSessions :execrows
+DELETE FROM sessions WHERE user_id = $1 AND id <> $2
+`
+
+type RevokeOtherUserSessionsParams struct {
+	UserID pgtype.UUID `json:"user_id"`
+	KeepID pgtype.UUID `json:"keep_id"`
+}
+
+// The password change's session severance: every session of the
+// account EXCEPT the one performing the change (the caller stays
+// signed in on the device they just proved they own; every other
+// held credential is stale). Revocation is row deletion, the same
+// rule as the auth surface's single revoke.
+func (q *Queries) RevokeOtherUserSessions(ctx context.Context, arg RevokeOtherUserSessionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeOtherUserSessions, arg.UserID, arg.KeepID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setUserDisabled = `-- name: SetUserDisabled :one
 UPDATE users
 SET is_disabled = $2, updated_at = now()
@@ -256,6 +333,109 @@ func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams
 		&i.Role,
 		&i.IsDisabled,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :execrows
+UPDATE users SET password_hash = $1, updated_at = now()
+WHERE id = $2
+`
+
+type UpdateUserPasswordParams struct {
+	PasswordHash string      `json:"password_hash"`
+	ID           pgtype.UUID `json:"id"`
+}
+
+// The password change's credential write: a fresh Argon2id hash
+// over the same row (a rehash with a new salt, never a mutation of
+// the old hash). The session revocation of the change rides its
+// own statement so the two writes share one transaction.
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateUserPassword, arg.PasswordHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateUserSelf = `-- name: UpdateUserSelf :one
+UPDATE users SET
+    name = COALESCE($1, name),
+    email = COALESCE($2, email),
+    locale = COALESCE($3, locale),
+    theme = COALESCE($4, theme),
+    download_format = COALESCE($5, download_format),
+    download_include_videos = COALESCE($6, download_include_videos),
+    download_include_sidecars = COALESCE($7, download_include_sidecars),
+    updated_at = now()
+WHERE id = $8
+RETURNING id, name, email, password_hash, role, locale, theme,
+          download_format, download_include_videos, download_include_sidecars,
+          is_disabled, totp_secret, created_at, updated_at
+`
+
+type UpdateUserSelfParams struct {
+	Name                    pgtype.Text `json:"name"`
+	Email                   pgtype.Text `json:"email"`
+	Locale                  pgtype.Text `json:"locale"`
+	Theme                   pgtype.Text `json:"theme"`
+	DownloadFormat          pgtype.Text `json:"download_format"`
+	DownloadIncludeVideos   pgtype.Bool `json:"download_include_videos"`
+	DownloadIncludeSidecars pgtype.Bool `json:"download_include_sidecars"`
+	ID                      pgtype.UUID `json:"id"`
+}
+
+type UpdateUserSelfRow struct {
+	ID                      pgtype.UUID        `json:"id"`
+	Name                    string             `json:"name"`
+	Email                   string             `json:"email"`
+	PasswordHash            string             `json:"password_hash"`
+	Role                    UserRole           `json:"role"`
+	Locale                  string             `json:"locale"`
+	Theme                   string             `json:"theme"`
+	DownloadFormat          string             `json:"download_format"`
+	DownloadIncludeVideos   bool               `json:"download_include_videos"`
+	DownloadIncludeSidecars bool               `json:"download_include_sidecars"`
+	IsDisabled              bool               `json:"is_disabled"`
+	TotpSecret              pgtype.Text        `json:"totp_secret"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+}
+
+// The me-scoped profile patch (the settings feature): every column
+// is COALESCE'd with the stored value, so an absent field keeps it
+// and a present one replaces it -- one statement, one round trip,
+// and the email's unique constraint is the 409's race-free guard.
+// The handler reads the returned row for the response, so the
+// answer is the stored state, never the request's echo.
+func (q *Queries) UpdateUserSelf(ctx context.Context, arg UpdateUserSelfParams) (UpdateUserSelfRow, error) {
+	row := q.db.QueryRow(ctx, updateUserSelf,
+		arg.Name,
+		arg.Email,
+		arg.Locale,
+		arg.Theme,
+		arg.DownloadFormat,
+		arg.DownloadIncludeVideos,
+		arg.DownloadIncludeSidecars,
+		arg.ID,
+	)
+	var i UpdateUserSelfRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Role,
+		&i.Locale,
+		&i.Theme,
+		&i.DownloadFormat,
+		&i.DownloadIncludeVideos,
+		&i.DownloadIncludeSidecars,
+		&i.IsDisabled,
+		&i.TotpSecret,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

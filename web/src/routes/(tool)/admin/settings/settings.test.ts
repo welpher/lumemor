@@ -3,14 +3,17 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 
-// The admin storage settings page: the read renders the saved
-// template, the preset dropdown (the sixteen built-in presets plus
-// the custom marker) and the sample preview line; choosing a preset
-// fills the input; the save maps the 400's validation_failed onto the
-// shared i18n table and shows the server's specific reason beneath,
-// while a successful save adopts the response (the fresh sample
-// render and the saved note). A non-admin caller sees the mapped
-// auth_forbidden message (the page's own read is the probe).
+// The admin settings page: the storage section's read renders the
+// saved template, the preset dropdown (the sixteen built-in presets
+// plus the custom marker) and the sample preview line; choosing a
+// preset fills the input; the save maps the 400's validation_failed
+// onto the shared i18n table and shows the server's specific reason
+// beneath, while a successful save adopts the response (the fresh
+// sample render and the saved note). The trash and transcoding
+// sections (the settings feature) render their read documents, save
+// their PUT bodies, and adopt the saved answers. A non-admin caller
+// sees the mapped auth_forbidden message (the page's own read is
+// the probe).
 
 const presets = [
 	'{{y}}/{{MM}}/{{filename}}',
@@ -28,6 +31,20 @@ function settingsBody(overrides: Record<string, unknown> = {}): Record<string, u
 	};
 }
 
+function trashBody(retentionDays: number): Record<string, unknown> {
+	return { retentionDays };
+}
+
+function transcodingBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		preset: 'auto',
+		concurrency: 2,
+		thumbnailFrame: true,
+		keepOriginal: true,
+		...overrides
+	};
+}
+
 function jsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -37,6 +54,16 @@ function jsonResponse(status: number, body: unknown): Response {
 
 /** Route table for the fetch stub; every test installs its own. */
 type FetchRoute = Record<string, (init?: RequestInit) => Response>;
+
+/** The three read routes every mount fires, with default 200 bodies. */
+function defaultReads(overrides: Partial<FetchRoute> = {}): FetchRoute {
+	return {
+		'/api/v1/admin/settings/storage': () => jsonResponse(200, settingsBody()),
+		'/api/v1/admin/settings/trash': () => jsonResponse(200, trashBody(30)),
+		'/api/v1/admin/settings/transcoding': () => jsonResponse(200, transcodingBody()),
+		...overrides
+	};
+}
 
 /** The mounted page under test, for the afterEach unmount. */
 let page: ReturnType<typeof mount> | null = null;
@@ -93,12 +120,26 @@ function pickPreset(value: string): void {
 	select.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-function submitForm(): void {
-	const form = document.body.querySelector<HTMLFormElement>('form');
-	if (form === null) {
-		throw new Error('missing form');
-	}
+function submitForm(form: HTMLFormElement): void {
 	form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+}
+
+function submitStorageForm(): void {
+	const forms = Array.from(document.body.querySelectorAll<HTMLFormElement>('form'));
+	const form = forms[0];
+	if (form === undefined) {
+		throw new Error('missing storage form');
+	}
+	submitForm(form);
+}
+
+function submitFormBy(testId: string): void {
+	const section = document.body.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+	const form = section?.querySelector<HTMLFormElement>('form');
+	if (form === null || form === undefined) {
+		throw new Error(`missing form of ${testId}`);
+	}
+	submitForm(form);
 }
 
 function samplePath(): string {
@@ -120,10 +161,7 @@ afterEach(() => {
 });
 
 test('the read renders the template, the presets and the sample line', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({ '/api/v1/admin/settings/storage': () => jsonResponse(200, settingsBody()) })
-	);
+	vi.stubGlobal('fetch', stubFetch(defaultReads()));
 	mountPage();
 	await settle();
 
@@ -137,10 +175,7 @@ test('the read renders the template, the presets and the sample line', async () 
 });
 
 test('choosing a preset fills the input and stays editable', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({ '/api/v1/admin/settings/storage': () => jsonResponse(200, settingsBody()) })
-	);
+	vi.stubGlobal('fetch', stubFetch(defaultReads()));
 	mountPage();
 	await settle();
 
@@ -158,22 +193,24 @@ test('choosing a preset fills the input and stays editable', async () => {
 test('a rejected save shows the mapped error and the server reason, writing nothing', async () => {
 	vi.stubGlobal(
 		'fetch',
-		stubFetch({
-			'/api/v1/admin/settings/storage': (init?: RequestInit) =>
-				init?.method === 'PUT'
-					? jsonResponse(400, {
-							code: 'VALIDATION_FAILED',
-							message: 'storage template: unknown variable "category"',
-							details: { fields: ['template'] }
-						})
-					: jsonResponse(200, settingsBody())
-		})
+		stubFetch(
+			defaultReads({
+				'/api/v1/admin/settings/storage': (init?: RequestInit) =>
+					init?.method === 'PUT'
+						? jsonResponse(400, {
+								code: 'VALIDATION_FAILED',
+								message: 'storage template: unknown variable "category"',
+								details: { fields: ['template'] }
+							})
+						: jsonResponse(200, settingsBody())
+			})
+		)
 	);
 	mountPage();
 	await settle();
 
 	fillTemplate('{{category}}/{{filename}}');
-	submitForm();
+	submitStorageForm();
 	await settle();
 
 	expect(document.body.textContent).toContain('Please check your entries and try again.');
@@ -185,21 +222,27 @@ test('a rejected save shows the mapped error and the server reason, writing noth
 });
 
 test('a successful save adopts the response and shows the saved note', async () => {
-	const fetchMock = stubFetch({
-		'/api/v1/admin/settings/storage': (init?: RequestInit) =>
-			init?.method === 'PUT'
-				? jsonResponse(200, settingsBody({
-						template: '{{make}}/{{model}}/{{filename}}',
-						samplePath: 'originals/0192f8c1-0000-7000-8000-000000000001/Acme/Alpha 5/IMG_1234.jpg'
-					}))
-				: jsonResponse(200, settingsBody())
-	});
+	const fetchMock = stubFetch(
+		defaultReads({
+			'/api/v1/admin/settings/storage': (init?: RequestInit) =>
+				init?.method === 'PUT'
+					? jsonResponse(
+							200,
+							settingsBody({
+								template: '{{make}}/{{model}}/{{filename}}',
+								samplePath:
+									'originals/0192f8c1-0000-7000-8000-000000000001/Acme/Alpha 5/IMG_1234.jpg'
+							})
+						)
+					: jsonResponse(200, settingsBody())
+		})
+	);
 	vi.stubGlobal('fetch', fetchMock);
 	mountPage();
 	await settle();
 
 	fillTemplate('{{make}}/{{model}}/{{filename}}');
-	submitForm();
+	submitStorageForm();
 	await settle();
 
 	// The PUT carried the edited template.
@@ -216,13 +259,127 @@ test('a successful save adopts the response and shows the saved note', async () 
 	expect(select?.value).toBe('custom');
 });
 
+test('the trash section renders the retention and saves the PUT body', async () => {
+	const fetchMock = stubFetch(
+		defaultReads({
+			'/api/v1/admin/settings/trash': (init?: RequestInit) =>
+				init?.method === 'PUT' ? jsonResponse(200, trashBody(0)) : jsonResponse(200, trashBody(30))
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	const field = document.body.querySelector<HTMLInputElement>('[data-testid="trash-retention"]');
+	expect(field?.value).toBe('30');
+	// The destructive warning line renders beneath the section.
+	expect(document.body.textContent).toContain('cannot be undone');
+
+	field!.value = '0';
+	field!.dispatchEvent(new Event('input', { bubbles: true }));
+	submitFormBy('admin-settings-trash');
+	await settle();
+
+	const put = fetchMock.mock.calls.find(
+		(call) =>
+			String(call[0]).endsWith('/admin/settings/trash') &&
+			(call[1] as RequestInit | undefined)?.method === 'PUT'
+	);
+	expect(put).toBeDefined();
+	expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({ retentionDays: 0 });
+	// The saved note follows the adopted answer.
+	expect(document.body.textContent).toContain('The next expiry run applies the new window');
+	expect(field?.value).toBe('0');
+});
+
+test('the transcoding section renders the defaults and saves the PUT body', async () => {
+	const fetchMock = stubFetch(
+		defaultReads({
+			'/api/v1/admin/settings/transcoding': (init?: RequestInit) =>
+				init?.method === 'PUT'
+					? jsonResponse(200, transcodingBody({ preset: '720p', concurrency: 1, keepOriginal: false }))
+					: jsonResponse(200, transcodingBody())
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	const preset = document.body.querySelector<HTMLSelectElement>('[data-testid="transcode-preset"]');
+	const concurrency = document.body.querySelector<HTMLSelectElement>(
+		'[data-testid="transcode-concurrency"]'
+	);
+	const thumbnail = document.body.querySelector<HTMLInputElement>('[data-testid="transcode-thumbnail-frame"]');
+	const keep = document.body.querySelector<HTMLInputElement>('[data-testid="transcode-keep-original"]');
+	expect(preset?.value).toBe('auto');
+	expect(concurrency?.value).toBe('2');
+	expect(thumbnail?.checked).toBe(true);
+	expect(keep?.checked).toBe(true);
+
+	preset!.value = '720p';
+	preset!.dispatchEvent(new Event('change', { bubbles: true }));
+	concurrency!.value = '1';
+	concurrency!.dispatchEvent(new Event('change', { bubbles: true }));
+	keep!.checked = false;
+	keep!.dispatchEvent(new Event('change', { bubbles: true }));
+	submitFormBy('admin-settings-transcoding');
+	await settle();
+
+	const put = fetchMock.mock.calls.find(
+		(call) =>
+			String(call[0]).endsWith('/admin/settings/transcoding') &&
+			(call[1] as RequestInit | undefined)?.method === 'PUT'
+	);
+	expect(put).toBeDefined();
+	expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({
+		preset: '720p',
+		concurrency: 1,
+		thumbnailFrame: true,
+		keepOriginal: false
+	});
+	// The scope note renders; the saved note follows the save.
+	expect(document.body.textContent).toContain('never regenerated');
+	expect(document.body.textContent).toContain('Newly uploaded videos follow the new profile');
+});
+
+test('a rejected transcoding save shows the mapped error', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/admin/settings/transcoding': (init?: RequestInit) =>
+					init?.method === 'PUT'
+						? jsonResponse(400, {
+								code: 'VALIDATION_FAILED',
+								message: 'preset must be one of auto, 1080p, 720p, 480p, off',
+								details: { fields: ['preset'] }
+							})
+						: jsonResponse(200, transcodingBody())
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	submitFormBy('admin-settings-transcoding');
+	await settle();
+
+	expect(document.body.textContent).toContain('Please check your entries and try again.');
+});
+
 test('a non-admin read shows the mapped auth_forbidden message', async () => {
 	vi.stubGlobal(
 		'fetch',
-		stubFetch({
-			'/api/v1/admin/settings/storage': () =>
-				jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' })
-		})
+		stubFetch(
+			defaultReads({
+				'/api/v1/admin/settings/storage': () =>
+					jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' }),
+				'/api/v1/admin/settings/trash': () =>
+					jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' }),
+				'/api/v1/admin/settings/transcoding': () =>
+					jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' })
+			})
+		)
 	);
 	mountPage();
 	await settle();
@@ -234,7 +391,7 @@ test('a non-admin read shows the mapped auth_forbidden message', async () => {
 test('an unparseable read maps to the generic failure', async () => {
 	vi.stubGlobal(
 		'fetch',
-		stubFetch({ '/api/v1/admin/settings/storage': () => jsonResponse(200, { nope: true }) })
+		stubFetch(defaultReads({ '/api/v1/admin/settings/storage': () => jsonResponse(200, { nope: true }) }))
 	);
 	mountPage();
 	await settle();

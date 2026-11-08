@@ -253,6 +253,55 @@ func TestThumbnailJobVideoPoster(t *testing.T) {
 	}
 }
 
+// TestThumbnailJobPosterFrameOffSkipsCapture pins the transcoding
+// settings' poster-frame switch (thumbnailFrame=false): the
+// thumbnail job of a video completes without capturing a poster --
+// no derived files, no blurhash -- and the pipeline still drains,
+// exactly like the transcode job's own `off` preset.
+func TestThumbnailJobPosterFrameOffSkipsCapture(t *testing.T) {
+	requirePosterFFmpeg(t)
+	e := newEnv(t)
+
+	if _, err := e.pool.Exec(context.Background(),
+		`INSERT INTO instance_settings (key, value) VALUES ('transcoding_settings', '{"thumbnailFrame":false}'::jsonb)`); err != nil {
+		t.Fatalf("seed the poster-frame-off profile: %v", err)
+	}
+
+	video, err := os.ReadFile(filepath.Join("..", "media", "testdata", "tiny.mp4"))
+	if err != nil {
+		t.Fatalf("read video fixture: %v", err)
+	}
+	deviceTakenAt := time.Date(2022, 2, 2, 2, 2, 2, 0, time.UTC).Truncate(time.Microsecond)
+	id := e.insertAssetKind(t, "originals/video/poster-off.mp4", video, deviceTakenAt, `{}`,
+		dbgen.MediaKindVideo, "video/mp4", 1)
+
+	worker := &ThumbnailWorker{
+		pool:    e.pool,
+		bus:     e.bus,
+		dataDir: e.dataDir,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	job := &river.Job[ThumbnailArgs]{Args: ThumbnailArgs{AssetID: id}}
+	if err := worker.Work(context.Background(), job); err != nil {
+		t.Fatalf("Work under poster-frame-off = %v, want nil", err)
+	}
+
+	if files := e.thumbFiles(t, id); len(files) != 0 {
+		t.Errorf("thumbnail files under poster-frame-off = %v, want none", files)
+	}
+	state := e.assetOf(t, id)
+	if state.pending != 0 {
+		t.Errorf("pending_jobs = %d under poster-frame-off, want the drained 0", state.pending)
+	}
+	if !state.readyAt.Valid {
+		t.Error("ready_at is not stamped under poster-frame-off, want the completed pipeline")
+	}
+	hash := e.blurhashOf(t, id)
+	if hash.Valid {
+		t.Errorf("blurhash = %q under poster-frame-off, want none stored", hash.String)
+	}
+}
+
 // TestThumbnailJobOrientation is the mandated orientation flow: a
 // 200x100 sensor JPEG carrying EXIF orientation 6 renders upright --
 // the tile is 100x200, the sensor dimensions swapped at render.

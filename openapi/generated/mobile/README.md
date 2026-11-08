@@ -91,6 +91,8 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
 [*AdminApi*](doc/AdminApi.md) | [**getStorageSettings**](doc/AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
+[*AdminApi*](doc/AdminApi.md) | [**getTranscodingSettings**](doc/AdminApi.md#gettranscodingsettings) | **GET** /admin/settings/transcoding | Read the video transcoding settings.
+[*AdminApi*](doc/AdminApi.md) | [**getTrashSettings**](doc/AdminApi.md#gettrashsettings) | **GET** /admin/settings/trash | Read the trash retention setting.
 [*AdminApi*](doc/AdminApi.md) | [**listJobs**](doc/AdminApi.md#listjobs) | **GET** /admin/jobs | List the job runs of the task panel.
 [*AdminApi*](doc/AdminApi.md) | [**listModels**](doc/AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [*AdminApi*](doc/AdminApi.md) | [**listUsers**](doc/AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
@@ -98,6 +100,8 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
 [*AdminApi*](doc/AdminApi.md) | [**updateStorageSettings**](doc/AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
+[*AdminApi*](doc/AdminApi.md) | [**updateTranscodingSettings**](doc/AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
+[*AdminApi*](doc/AdminApi.md) | [**updateTrashSettings**](doc/AdminApi.md#updatetrashsettings) | **PUT** /admin/settings/trash | Save the trash retention setting.
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**addAlbumItems**](doc/AlbumsApi.md#addalbumitems) | **POST** /albums/{albumId}/items | Add assets to one virtual album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**createAlbum**](doc/AlbumsApi.md#createalbum) | **POST** /albums | Create one virtual album.
@@ -150,7 +154,12 @@ Class | Method | HTTP request | Description
 [*TagsApi*](doc/TagsApi.md) | [**listTags**](doc/TagsApi.md#listtags) | **GET** /tags | The caller&#39;s tags, the search vocabulary.
 [*TagsApi*](doc/TagsApi.md) | [**removeTagAssets**](doc/TagsApi.md#removetagassets) | **DELETE** /tags/{tagId}/assets | Untag assets in one batch.
 [*TagsApi*](doc/TagsApi.md) | [**renameTag**](doc/TagsApi.md#renametag) | **PATCH** /tags/{tagId} | Rename one tag.
+[*UsersApi*](doc/UsersApi.md) | [**changeUserPassword**](doc/UsersApi.md#changeuserpassword) | **PUT** /users/me/password | Change the caller&#39;s own password.
+[*UsersApi*](doc/UsersApi.md) | [**getUserSelf**](doc/UsersApi.md#getuserself) | **GET** /users/me | Read the caller&#39;s own account.
 [*UsersApi*](doc/UsersApi.md) | [**listInstanceUsers**](doc/UsersApi.md#listinstanceusers) | **GET** /users | The instance&#39;s member list.
+[*UsersApi*](doc/UsersApi.md) | [**listUserDevices**](doc/UsersApi.md#listuserdevices) | **GET** /users/me/sessions | List the caller&#39;s signed-in devices.
+[*UsersApi*](doc/UsersApi.md) | [**revokeUserDevice**](doc/UsersApi.md#revokeuserdevice) | **DELETE** /users/me/sessions/{id} | Revoke one of the caller&#39;s other devices.
+[*UsersApi*](doc/UsersApi.md) | [**updateUserSelf**](doc/UsersApi.md#updateuserself) | **PATCH** /users/me | Patch the caller&#39;s own account.
 
 
 ## Documentation For Models
@@ -187,6 +196,8 @@ Class | Method | HTTP request | Description
  - [CameraFacetCount](doc/CameraFacetCount.md)
  - [ClusterDetail](doc/ClusterDetail.md)
  - [CreateAdminRequest](doc/CreateAdminRequest.md)
+ - [DeviceSession](doc/DeviceSession.md)
+ - [DownloadFormat](doc/DownloadFormat.md)
  - [Error](doc/Error.md)
  - [ExifSummary](doc/ExifSummary.md)
  - [FaceDetail](doc/FaceDetail.md)
@@ -216,6 +227,7 @@ Class | Method | HTTP request | Description
  - [MoveFaceResponse](doc/MoveFaceResponse.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
  - [PairingTokenResponse](doc/PairingTokenResponse.md)
+ - [PasswordChangeRequest](doc/PasswordChangeRequest.md)
  - [PersonFacetCount](doc/PersonFacetCount.md)
  - [PersonLabel](doc/PersonLabel.md)
  - [PersonLabelResponse](doc/PersonLabelResponse.md)
@@ -238,14 +250,23 @@ Class | Method | HTTP request | Description
  - [TagSummary](doc/TagSummary.md)
  - [TimelineItem](doc/TimelineItem.md)
  - [TimelineResponse](doc/TimelineResponse.md)
+ - [TranscodePreset](doc/TranscodePreset.md)
+ - [TranscodingSettingsResponse](doc/TranscodingSettingsResponse.md)
+ - [TranscodingSettingsUpdateRequest](doc/TranscodingSettingsUpdateRequest.md)
  - [TrashItem](doc/TrashItem.md)
  - [TrashResponse](doc/TrashResponse.md)
+ - [TrashSettingsResponse](doc/TrashSettingsResponse.md)
+ - [TrashSettingsUpdateRequest](doc/TrashSettingsUpdateRequest.md)
  - [UnnamedClusterSummary](doc/UnnamedClusterSummary.md)
  - [UnnamedClustersResponse](doc/UnnamedClustersResponse.md)
  - [User](doc/User.md)
  - [UserListResponse](doc/UserListResponse.md)
+ - [UserLocale](doc/UserLocale.md)
  - [UserRole](doc/UserRole.md)
+ - [UserSelfPatch](doc/UserSelfPatch.md)
+ - [UserSelfResponse](doc/UserSelfResponse.md)
  - [UserSummary](doc/UserSummary.md)
+ - [UserTheme](doc/UserTheme.md)
  - [YearFacetCount](doc/YearFacetCount.md)
 
 

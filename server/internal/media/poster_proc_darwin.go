@@ -26,9 +26,11 @@ func ffmpegCommand(ctx context.Context, inputPath, outPath string) *exec.Cmd {
 // transcodeCommand builds the fixed ffmpeg transcode invocation for
 // macOS: the plain template with no wrapper, under the same
 // degradation documented on ffmpegCommand (no address-space cap
-// before exec on this platform).
-func transcodeCommand(ctx context.Context, inputPath, outPath string) *exec.Cmd {
-	return exec.CommandContext(ctx, transcodeBinary, transcodeArgs(inputPath, outPath)...)
+// before exec on this platform). The argument template itself is the
+// shared one (transcode.go); maxHeight is the settings preset's
+// bound.
+func transcodeCommand(ctx context.Context, inputPath, outPath string, maxHeight int) *exec.Cmd {
+	return exec.CommandContext(ctx, transcodeBinary, transcodeArgs(inputPath, outPath, maxHeight)...)
 }
 
 // posterArgs is the fixed argument template beyond the binary: seek to
@@ -43,30 +45,6 @@ func posterArgs(inputPath, outPath string) []string {
 		"-frames:v", "1",
 		"-vf", posterScaleFilter,
 		"-q:v", "5",
-		outPath,
-	}
-}
-
-// transcodeArgs is the fixed argument template beyond the binary: the
-// first video stream and (optionally, the trailing question mark) the
-// first audio stream, re-encoded to the web-safe pair -- libx264 at
-// CRF 23 / preset fast, yuv420p, AAC at 128k -- muxed with +faststart
-// so the index precedes the media bytes and playback starts while the
-// file downloads. Nothing here is user-controlled; the two paths are
-// server-generated (the input is guarded by the job's asset path
-// resolution, the output derived from the asset id).
-func transcodeArgs(inputPath, outPath string) []string {
-	return []string{
-		"-i", inputPath,
-		"-map", "0:v:0",
-		"-map", "0:a:0?",
-		"-c:v", "libx264",
-		"-preset", "fast",
-		"-crf", "23",
-		"-pix_fmt", "yuv420p",
-		"-c:a", "aac",
-		"-b:a", "128k",
-		"-movflags", "+faststart",
 		outPath,
 	}
 }

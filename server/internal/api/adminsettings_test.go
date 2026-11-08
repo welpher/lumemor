@@ -1,11 +1,11 @@
-// The admin storage settings tests (the storage-template feature):
-// the admin-role guard of the surface (403 for a signed-in plain
-// user, 401 without a session), the read's shape (the template, the
-// sample render, the sixteen presets), the default's answer on a
-// fresh instance, and the save's three-stage validation -- a strict
-// compile failure, an empty sample render, and a structural refusal
-// each reject with the specific reason and write nothing, while a
-// valid template persists and answers the saved state.
+// The admin settings tests (the storage-template feature and the
+// settings feature): the storage template's read shape, default,
+// three-stage validation and preset list; the trash retention's
+// default, bounds and the expiry job's reaction to a saved 0 (the
+// immediate-permanent-delete pin); the video transcoding profile's
+// default, enum validation and corrupt-row default. The admin-role
+// guard (403 for a signed-in plain user, 401 without a session) is
+// pinned for every face.
 package api
 
 import (
@@ -13,12 +13,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
+	"github.com/welpher/lumemor/server/internal/trash"
 )
 
 // storageSettingsEnv provisions the storage settings test
@@ -311,5 +316,347 @@ func TestStorageSettingsCorruptRowAnswersDefault(t *testing.T) {
 		if settings := decodeSettings(t, rec); settings.Template != "{{y}}/{{MM}}/{{filename}}" {
 			t.Errorf("template over the corrupt row %q = %q, want the default", value, settings.Template)
 		}
+	}
+}
+
+// getSetting fires the read request at one settings face.
+func (e *storageSettingsEnv) getSetting(t *testing.T, path string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/"+path, nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	e.router.ServeHTTP(rec, req)
+	return rec
+}
+
+// putSetting fires the save request with one JSON body at one
+// settings face.
+func (e *storageSettingsEnv) putSetting(t *testing.T, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings/"+path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	e.router.ServeHTTP(rec, req)
+	return rec
+}
+
+// requireTrashRow asserts the trash_retention_days row's stored
+// form: present with the given number, or absent for the zero value.
+func (e *storageSettingsEnv) requireTrashRow(t *testing.T, want int) {
+	t.Helper()
+	var value int
+	var kind string
+	err := e.pool.QueryRow(context.Background(),
+		`SELECT value::int, jsonb_typeof(value) FROM instance_settings WHERE key = 'trash_retention_days'`).
+		Scan(&value, &kind)
+	if err != nil {
+		t.Fatalf("load the trash_retention_days row: %v", err)
+	}
+	if kind != "number" {
+		t.Errorf("stored trash retention's JSON type = %q, want a number (the raw writer's discipline)", kind)
+	}
+	if value != want {
+		t.Errorf("stored trash retention = %d, want %d", value, want)
+	}
+}
+
+// TestTrashSettingsGetAnswersDefault pins the read of a fresh
+// instance: the documented default retention of 30 days.
+func TestTrashSettingsGetAnswersDefault(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	rec := env.getSetting(t, "trash", env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET trash status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var settings apigen.TrashSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode trash settings %q: %v", rec.Body.String(), err)
+	}
+	if settings.RetentionDays != 30 {
+		t.Errorf("retentionDays = %d, want the default 30", settings.RetentionDays)
+	}
+}
+
+// TestTrashSettingsPutSavesBounds pins the save: the bound's both
+// ends (0 and 365) persist as a jsonb NUMBER and answer the saved
+// value; a value outside the bound answers 400 naming the field and
+// writes nothing.
+func TestTrashSettingsPutSavesBounds(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	for _, days := range []int{0, 365, 14} {
+		rec := env.putSetting(t, "trash", `{"retentionDays":`+strconv.Itoa(days)+`}`, env.cookie)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PUT trash %d status = %d, want %d (body %q)", days, rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var settings apigen.TrashSettingsResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+			t.Fatalf("decode trash settings %q: %v", rec.Body.String(), err)
+		}
+		if settings.RetentionDays != days {
+			t.Errorf("answered retentionDays = %d, want %d", settings.RetentionDays, days)
+		}
+		env.requireTrashRow(t, days)
+	}
+
+	for _, body := range []string{`{"retentionDays":-1}`, `{"retentionDays":366}`, `{"retentionDays":30.5}`, `not json`} {
+		rec := env.putSetting(t, "trash", body, env.cookie)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("PUT trash %q status = %d, want %d (body %q)", body, rec.Code, http.StatusBadRequest, rec.Body.String())
+			continue
+		}
+		apiErr, fields := decodeError(t, rec)
+		if apiErr.Code != apigen.VALIDATIONFAILED {
+			t.Errorf("PUT trash %q code = %q, want VALIDATION_FAILED", body, apiErr.Code)
+		}
+		if body != "not json" && len(fields) > 0 && fields[0] != "retentionDays" {
+			t.Errorf("PUT trash %q fields = %v, want [retentionDays]", body, fields)
+		}
+	}
+	// The last successful save's value survived the refused ones.
+	env.requireTrashRow(t, 14)
+}
+
+// TestTrashSettingsZeroIsImmediateDelete pins THE trash pin: a saved
+// retention of 0 makes the NEXT expiry run purge everything trashed
+// -- rows and files together -- through the same accessor the
+// hourly River job reads at the start of each run.
+func TestTrashSettingsZeroIsImmediateDelete(t *testing.T) {
+	pool := newSetupEnv(t)
+	router := NewRouter(&Deps{Pool: pool, Version: testVersion})
+	rec := postAdmin(t, router, createAdminBody(t, "ada@example.com", testPassword, nil))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create admin: status = %d, want %d", rec.Code, http.StatusCreated)
+	}
+	cookie, info := loginCookie(t, router, "ada@example.com", testPassword, "trash-settings-tests")
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings/trash", strings.NewReader(`{"retentionDays":0}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	put := httptest.NewRecorder()
+	router.ServeHTTP(put, req)
+	if put.Code != http.StatusOK {
+		t.Fatalf("PUT trash 0 status = %d, want %d (body %q)", put.Code, http.StatusOK, put.Body.String())
+	}
+
+	// A trashed asset: a real file on disk, a row soft-deleted an
+	// hour ago -- inside any positive retention window, outside 0.
+	dataDir := t.TempDir()
+	rel := "originals/trash-settings/IMG_0001.jpg"
+	abs := filepath.Join(dataDir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatalf("prepare the fixture directory: %v", err)
+	}
+	if err := os.WriteFile(abs, []byte("trash settings expiry fixture"), 0o644); err != nil {
+		t.Fatalf("write the fixture file: %v", err)
+	}
+	owner := uuid.UUID(info.UserId)
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO assets (id, owner_id, storage_kind, file_path, checksum, original_filename,
+			file_size, mime_type, media_kind, width, height, taken_at, taken_at_source, deleted_at)
+		VALUES ($1, $2, 'blob', $3, 'trash-settings-checksum', 'IMG_0001.jpg', 32, 'image/jpeg',
+			'image', 0, 0, now() - interval '2 hours', 'import', now() - interval '1 hour')`,
+		pgUUID(owner), owner, rel); err != nil {
+		t.Fatalf("insert the trashed fixture asset: %v", err)
+	}
+
+	counts, err := trash.RunExpiry(context.Background(), pool, dataDir, nil)
+	if err != nil {
+		t.Fatalf("run the expiry after the 0 retention: %v", err)
+	}
+	if counts.Expired != 1 {
+		t.Errorf("expiry counts.Expired = %d, want 1 (retention 0 purges everything trashed)", counts.Expired)
+	}
+	if counts.FilesRemoved != 1 {
+		t.Errorf("expiry counts.FilesRemoved = %d, want 1", counts.FilesRemoved)
+	}
+	if _, err := os.Stat(abs); !os.IsNotExist(err) {
+		t.Errorf("the trashed fixture file still exists, want it purged with the row")
+	}
+}
+
+// TestTranscodingSettingsGetAnswersDefault pins the read of a fresh
+// instance: the documented default profile.
+func TestTranscodingSettingsGetAnswersDefault(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	rec := env.getSetting(t, "transcoding", env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET transcoding status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var settings apigen.TranscodingSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode transcoding settings %q: %v", rec.Body.String(), err)
+	}
+	if settings.Preset != apigen.TranscodePresetAuto {
+		t.Errorf("preset = %q, want the default auto", settings.Preset)
+	}
+	if settings.Concurrency != 2 {
+		t.Errorf("concurrency = %d, want the default 2", settings.Concurrency)
+	}
+	if !settings.ThumbnailFrame {
+		t.Error("thumbnailFrame = false, want the default true")
+	}
+	if !settings.KeepOriginal {
+		t.Error("keepOriginal = false, want the default true")
+	}
+}
+
+// TestTranscodingSettingsPutSavesProfile pins the save: a full
+// profile persists (answering the saved value) and the read adopts
+// it; a second save replaces the row (the setting is one value).
+func TestTranscodingSettingsPutSavesProfile(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	body := `{"preset":"720p","concurrency":1,"thumbnailFrame":false,"keepOriginal":true}`
+	rec := env.putSetting(t, "transcoding", body, env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT transcoding status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var settings apigen.TranscodingSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode transcoding settings %q: %v", rec.Body.String(), err)
+	}
+	if settings.Preset != apigen.TranscodePresetN720p || settings.Concurrency != 1 || settings.ThumbnailFrame || !settings.KeepOriginal {
+		t.Errorf("answered settings = %+v, want the saved profile", settings)
+	}
+
+	rec = env.getSetting(t, "transcoding", env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET after the save status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	settings = apigen.TranscodingSettingsResponse{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode transcoding settings %q: %v", rec.Body.String(), err)
+	}
+	if settings.Preset != apigen.TranscodePresetN720p || settings.Concurrency != 1 || settings.ThumbnailFrame || !settings.KeepOriginal {
+		t.Errorf("reread settings = %+v, want the saved profile persisted", settings)
+	}
+
+	// A second save replaces the row.
+	second := env.putSetting(t, "transcoding", `{"preset":"off","concurrency":4,"thumbnailFrame":true,"keepOriginal":false}`, env.cookie)
+	if second.Code != http.StatusOK {
+		t.Fatalf("second PUT transcoding status = %d, want %d", second.Code, http.StatusOK)
+	}
+	settings = apigen.TranscodingSettingsResponse{}
+	if err := json.Unmarshal(second.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode transcoding settings %q: %v", second.Body.String(), err)
+	}
+	if settings.Preset != apigen.TranscodePresetOff || settings.Concurrency != 4 || !settings.ThumbnailFrame || settings.KeepOriginal {
+		t.Errorf("replaced settings = %+v, want the second profile", settings)
+	}
+}
+
+// TestTranscodingSettingsPutRejectsOutOfEnum pins the validation: a
+// preset or concurrency outside its enum answers 400 naming the
+// field, and nothing is written.
+func TestTranscodingSettingsPutRejectsOutOfEnum(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	cases := []struct {
+		name  string
+		body  string
+		field string
+	}{
+		{"unknown preset", `{"preset":"2160p","concurrency":2,"thumbnailFrame":true,"keepOriginal":true}`, "preset"},
+		{"zero concurrency", `{"preset":"auto","concurrency":0,"thumbnailFrame":true,"keepOriginal":true}`, "concurrency"},
+		{"odd concurrency", `{"preset":"auto","concurrency":3,"thumbnailFrame":true,"keepOriginal":true}`, "concurrency"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := env.putSetting(t, "transcoding", tt.body, env.cookie)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("PUT transcoding status = %d, want %d (body %q)", rec.Code, http.StatusBadRequest, rec.Body.String())
+			}
+			apiErr, fields := decodeError(t, rec)
+			if apiErr.Code != apigen.VALIDATIONFAILED {
+				t.Errorf("code = %q, want VALIDATION_FAILED", apiErr.Code)
+			}
+			if len(fields) == 0 || fields[0] != tt.field {
+				t.Errorf("details.fields = %v, want [%s]", fields, tt.field)
+			}
+		})
+	}
+
+	// Nothing was written: the row stays absent (the default reads
+	// back).
+	var count int
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM instance_settings WHERE key = 'transcoding_settings'`).Scan(&count); err != nil {
+		t.Fatalf("count the transcoding settings rows: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("transcoding_settings rows = %d after refused saves, want 0", count)
+	}
+}
+
+// TestTranscodingSettingsCorruptRowAnswersDefault pins the read's
+// corruption discipline: garbage rows (a non-object, an unknown
+// preset, a wrong-typed field) answer the documented default, never
+// an error -- the transcode job depends on the read never failing.
+func TestTranscodingSettingsCorruptRowAnswersDefault(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	for _, value := range []string{`42`, `"auto"`, `{"preset":"2160p"}`, `{"preset":"auto","concurrency":3}`, `{"preset":"auto","thumbnailFrame":"yes"}`} {
+		if _, err := env.pool.Exec(context.Background(),
+			`INSERT INTO instance_settings (key, value) VALUES ('transcoding_settings', $1::jsonb)
+			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, value); err != nil {
+			t.Fatalf("seed corrupt setting %q: %v", value, err)
+		}
+		rec := env.getSetting(t, "transcoding", env.cookie)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET over the corrupt row %q status = %d, want %d", value, rec.Code, http.StatusOK)
+		}
+		var settings apigen.TranscodingSettingsResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+			t.Fatalf("decode transcoding settings %q: %v", rec.Body.String(), err)
+		}
+		if settings.Preset != apigen.TranscodePresetAuto || settings.Concurrency != 2 ||
+			!settings.ThumbnailFrame || !settings.KeepOriginal {
+			t.Errorf("settings over the corrupt row %q = %+v, want the documented default", value, settings)
+		}
+	}
+}
+
+// TestNewSettingsFacesGuardPinsTheAdminRole pins the permission
+// model of the two new faces: the plain signed-in user answers 403,
+// the anonymous caller 401, on every route.
+func TestNewSettingsFacesGuardPinsTheAdminRole(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+	_, plainCookie := seedPlainUser(t, env.pool, "grace@example.com")
+
+	for _, tt := range []struct {
+		name   string
+		method string
+		path   string
+		cookie *http.Cookie
+		want   int
+	}{
+		{"plain user GET trash", http.MethodGet, "trash", plainCookie, http.StatusForbidden},
+		{"plain user PUT trash", http.MethodPut, "trash", plainCookie, http.StatusForbidden},
+		{"anonymous GET trash", http.MethodGet, "trash", nil, http.StatusUnauthorized},
+		{"anonymous PUT trash", http.MethodPut, "trash", nil, http.StatusUnauthorized},
+		{"plain user GET transcoding", http.MethodGet, "transcoding", plainCookie, http.StatusForbidden},
+		{"plain user PUT transcoding", http.MethodPut, "transcoding", plainCookie, http.StatusForbidden},
+		{"anonymous GET transcoding", http.MethodGet, "transcoding", nil, http.StatusUnauthorized},
+		{"anonymous PUT transcoding", http.MethodPut, "transcoding", nil, http.StatusUnauthorized},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var rec *httptest.ResponseRecorder
+			if tt.method == http.MethodGet {
+				rec = env.getSetting(t, tt.path, tt.cookie)
+			} else {
+				rec = env.putSetting(t, tt.path, `{"retentionDays":30}`, tt.cookie)
+			}
+			if rec.Code != tt.want {
+				t.Fatalf("%s status = %d, want %d (body %q)", tt.name, rec.Code, tt.want, rec.Body.String())
+			}
+		})
 	}
 }

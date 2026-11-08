@@ -13,9 +13,9 @@ import (
 
 const createSession = `-- name: CreateSession :one
 
-INSERT INTO sessions (id, user_id, token_hash, kind, device_name, device_id, last_seen_at, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, user_id, token_hash, kind, device_name, device_id, last_seen_at, expires_at, created_at, updated_at
+INSERT INTO sessions (id, user_id, token_hash, kind, device_name, device_id, ip_address, last_seen_at, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, user_id, token_hash, kind, device_name, device_id, last_seen_at, expires_at, created_at, updated_at, ip_address
 `
 
 type CreateSessionParams struct {
@@ -25,6 +25,7 @@ type CreateSessionParams struct {
 	Kind       SessionKind        `json:"kind"`
 	DeviceName string             `json:"device_name"`
 	DeviceID   pgtype.Text        `json:"device_id"`
+	IpAddress  pgtype.Text        `json:"ip_address"`
 	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
 	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 }
@@ -37,6 +38,9 @@ type CreateSessionParams struct {
 // kind is web (cookie, sliding 30-day expiry) or mobile (bearer,
 // revoked explicitly); the caller supplies both timestamps so the
 // login and pairing flows pin them to the same clock as the response.
+// ip_address is the creation-time socket peer the device list
+// renders (the login's and the pairing exchange's own callers
+// capture it); NULL is the honest unknown for callers that cannot.
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
 	row := q.db.QueryRow(ctx, createSession,
 		arg.ID,
@@ -45,6 +49,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		arg.Kind,
 		arg.DeviceName,
 		arg.DeviceID,
+		arg.IpAddress,
 		arg.LastSeenAt,
 		arg.ExpiresAt,
 	)
@@ -60,12 +65,13 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IpAddress,
 	)
 	return i, err
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, user_id, token_hash, kind, device_name, device_id, last_seen_at, expires_at, created_at, updated_at FROM sessions WHERE id = $1
+SELECT id, user_id, token_hash, kind, device_name, device_id, last_seen_at, expires_at, created_at, updated_at, ip_address FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, error) {
@@ -82,6 +88,7 @@ func (q *Queries) GetSession(ctx context.Context, id pgtype.UUID) (Session, erro
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IpAddress,
 	)
 	return i, err
 }
@@ -139,7 +146,7 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (
 }
 
 const listUserSessions = `-- name: ListUserSessions :many
-SELECT id, user_id, token_hash, kind, device_name, device_id, last_seen_at, expires_at, created_at, updated_at FROM sessions
+SELECT id, user_id, token_hash, kind, device_name, device_id, last_seen_at, expires_at, created_at, updated_at, ip_address FROM sessions
 WHERE user_id = $1
   AND (kind = 'mobile' OR expires_at > now())
 ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
@@ -168,6 +175,7 @@ func (q *Queries) ListUserSessions(ctx context.Context, userID pgtype.UUID) ([]S
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IpAddress,
 		); err != nil {
 			return nil, err
 		}

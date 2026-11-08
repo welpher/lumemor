@@ -46,6 +46,8 @@ import 'package:lumemor_api/src/model/bearer_session.dart';
 import 'package:lumemor_api/src/model/camera_facet_count.dart';
 import 'package:lumemor_api/src/model/cluster_detail.dart';
 import 'package:lumemor_api/src/model/create_admin_request.dart';
+import 'package:lumemor_api/src/model/device_session.dart';
+import 'package:lumemor_api/src/model/download_format.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/exif_summary.dart';
 import 'package:lumemor_api/src/model/face_detail.dart';
@@ -75,6 +77,7 @@ import 'package:lumemor_api/src/model/move_face_request.dart';
 import 'package:lumemor_api/src/model/move_face_response.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
 import 'package:lumemor_api/src/model/pairing_token_response.dart';
+import 'package:lumemor_api/src/model/password_change_request.dart';
 import 'package:lumemor_api/src/model/person_facet_count.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
 import 'package:lumemor_api/src/model/person_label_response.dart';
@@ -97,14 +100,23 @@ import 'package:lumemor_api/src/model/tag_name_request.dart';
 import 'package:lumemor_api/src/model/tag_summary.dart';
 import 'package:lumemor_api/src/model/timeline_item.dart';
 import 'package:lumemor_api/src/model/timeline_response.dart';
+import 'package:lumemor_api/src/model/transcode_preset.dart';
+import 'package:lumemor_api/src/model/transcoding_settings_response.dart';
+import 'package:lumemor_api/src/model/transcoding_settings_update_request.dart';
 import 'package:lumemor_api/src/model/trash_item.dart';
 import 'package:lumemor_api/src/model/trash_response.dart';
+import 'package:lumemor_api/src/model/trash_settings_response.dart';
+import 'package:lumemor_api/src/model/trash_settings_update_request.dart';
 import 'package:lumemor_api/src/model/unnamed_cluster_summary.dart';
 import 'package:lumemor_api/src/model/unnamed_clusters_response.dart';
 import 'package:lumemor_api/src/model/user.dart';
 import 'package:lumemor_api/src/model/user_list_response.dart';
+import 'package:lumemor_api/src/model/user_locale.dart';
 import 'package:lumemor_api/src/model/user_role.dart';
+import 'package:lumemor_api/src/model/user_self_patch.dart';
+import 'package:lumemor_api/src/model/user_self_response.dart';
 import 'package:lumemor_api/src/model/user_summary.dart';
+import 'package:lumemor_api/src/model/user_theme.dart';
 import 'package:lumemor_api/src/model/year_facet_count.dart';
 
 part 'serializers.g.dart';
@@ -142,6 +154,8 @@ part 'serializers.g.dart';
   CameraFacetCount,
   ClusterDetail,
   CreateAdminRequest,
+  DeviceSession,
+  DownloadFormat,
   Error,
   ExifSummary,
   FaceDetail,
@@ -171,6 +185,7 @@ part 'serializers.g.dart';
   MoveFaceResponse,
   PairingConsumeRequest,
   PairingTokenResponse,
+  PasswordChangeRequest,
   PersonFacetCount,
   PersonLabel,
   PersonLabelResponse,
@@ -193,14 +208,23 @@ part 'serializers.g.dart';
   TagSummary,
   TimelineItem,
   TimelineResponse,
+  TranscodePreset,
+  TranscodingSettingsResponse,
+  TranscodingSettingsUpdateRequest,
   TrashItem,
   TrashResponse,
+  TrashSettingsResponse,
+  TrashSettingsUpdateRequest,
   UnnamedClusterSummary,
   UnnamedClustersResponse,
   User,
   UserListResponse,
+  UserLocale,
   UserRole,
+  UserSelfPatch,
+  UserSelfResponse,
   UserSummary,
+  UserTheme,
   YearFacetCount,
 ])
 Serializers serializers = (_$serializers.toBuilder()
@@ -243,6 +267,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(SessionInfo)]),
         () => ListBuilder<SessionInfo>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(DeviceSession)]),
+        () => ListBuilder<DeviceSession>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(YearFacetCount)]),

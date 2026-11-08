@@ -462,6 +462,171 @@ func TestTranscodeJobNonVideoIsNoop(t *testing.T) {
 	}
 }
 
+// TestTranscodeJobOffPresetSkipsEncode pins the transcoding settings'
+// `off` preset: the job runs, no re-encode happens (no encoded
+// files), and the video's pipeline still completes -- the original
+// stays in place and downloadable; the row is a stored original, not
+// a pending derivation.
+func TestTranscodeJobOffPresetSkipsEncode(t *testing.T) {
+	requireTranscodeToolchain(t)
+	e := newEnv(t)
+
+	if _, err := e.pool.Exec(context.Background(),
+		`INSERT INTO instance_settings (key, value) VALUES ('transcoding_settings', '{"preset":"off"}'::jsonb)`); err != nil {
+		t.Fatalf("seed the off preset: %v", err)
+	}
+
+	video, err := os.ReadFile(filepath.Join("..", "media", "testdata", "tiny.mp4"))
+	if err != nil {
+		t.Fatalf("read video fixture: %v", err)
+	}
+	deviceTakenAt := time.Date(2021, 5, 6, 7, 8, 9, 0, time.UTC).Truncate(time.Microsecond)
+	id := e.insertAssetKind(t, "originals/video/off-preset.mp4", video, deviceTakenAt, `{}`,
+		dbgen.MediaKindVideo, "video/mp4", 1)
+
+	worker := &TranscodeWorker{
+		pool:    e.pool,
+		bus:     e.bus,
+		dataDir: e.dataDir,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	job := &river.Job[TranscodeArgs]{Args: TranscodeArgs{AssetID: id}}
+	if err := worker.Work(context.Background(), job); err != nil {
+		t.Fatalf("Work under the off preset = %v, want nil", err)
+	}
+
+	if files := e.encodedFiles(t, id); files != nil {
+		t.Errorf("encoded files under the off preset = %v, want none", files)
+	}
+	state := e.assetOf(t, id)
+	if state.pending != 0 {
+		t.Errorf("pending_jobs = %d under the off preset, want the drained 0", state.pending)
+	}
+	if !state.readyAt.Valid {
+		t.Error("ready_at is not stamped under the off preset, want the completed pipeline")
+	}
+}
+
+// TestTranscodeJobKeepOriginalCompletesOnFailure pins the failure
+// policy's both arms over an undecodable video row: keepOriginal=true
+// completes the job quietly (no derived file, the pipeline drains);
+// keepOriginal=false fails the job for retry.
+func TestTranscodeJobKeepOriginalCompletesOnFailure(t *testing.T) {
+	requireTranscodeToolchain(t)
+
+	profile := func(t *testing.T, e *env, keepOriginal string) {
+		t.Helper()
+		if _, err := e.pool.Exec(context.Background(),
+			`INSERT INTO instance_settings (key, value)
+			 VALUES ('transcoding_settings', $1::jsonb)
+			 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+			`{"preset":"auto","keepOriginal":`+keepOriginal+`}`); err != nil {
+			t.Fatalf("seed the keepOriginal=%s profile: %v", keepOriginal, err)
+		}
+	}
+
+	t.Run("KeepOriginalCompletesQuietly", func(t *testing.T) {
+		e := newEnv(t)
+		profile(t, e, "true")
+
+		deviceTakenAt := time.Date(2021, 5, 6, 7, 8, 9, 0, time.UTC).Truncate(time.Microsecond)
+		id := e.insertAssetKind(t, "originals/video/broken.mp4", []byte("definitely not an mp4 container"),
+			deviceTakenAt, `{}`, dbgen.MediaKindVideo, "video/mp4", 1)
+
+		worker := &TranscodeWorker{
+			pool:    e.pool,
+			bus:     e.bus,
+			dataDir: e.dataDir,
+			logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		}
+		job := &river.Job[TranscodeArgs]{Args: TranscodeArgs{AssetID: id}}
+		if err := worker.Work(context.Background(), job); err != nil {
+			t.Fatalf("Work over an undecodable video with keepOriginal = %v, want the quiet completion", err)
+		}
+		if files := e.encodedFiles(t, id); len(files) != 0 {
+			t.Errorf("encoded files = %v, want none (the original stays, nothing derived)", files)
+		}
+		state := e.assetOf(t, id)
+		if state.pending != 0 || !state.readyAt.Valid {
+			t.Errorf("state after the quiet completion = pending %d ready %v, want the drained pipeline", state.pending, state.readyAt.Valid)
+		}
+	})
+
+	t.Run("NoKeepOriginalFailsForRetry", func(t *testing.T) {
+		e := newEnv(t)
+		profile(t, e, "false")
+
+		deviceTakenAt := time.Date(2021, 5, 6, 7, 8, 9, 0, time.UTC).Truncate(time.Microsecond)
+		id := e.insertAssetKind(t, "originals/video/broken.mp4", []byte("definitely not an mp4 container"),
+			deviceTakenAt, `{}`, dbgen.MediaKindVideo, "video/mp4", 1)
+
+		worker := &TranscodeWorker{
+			pool:    e.pool,
+			bus:     e.bus,
+			dataDir: e.dataDir,
+			logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		}
+		job := &river.Job[TranscodeArgs]{Args: TranscodeArgs{AssetID: id}}
+		if err := worker.Work(context.Background(), job); err == nil {
+			t.Fatal("Work over an undecodable video without keepOriginal = nil, want the retryable failure")
+		}
+		state := e.assetOf(t, id)
+		if state.pending != 1 {
+			t.Errorf("pending_jobs = %d after the failed job, want the un-drained 1", state.pending)
+		}
+	})
+}
+
+// TestTranscodeGateBoundsConcurrency pins the settings' concurrency
+// bound at the gate itself: at size one a second acquire blocks until
+// the first releases, and a resize swaps the bound without stranding
+// the in-flight release.
+func TestTranscodeGateBoundsConcurrency(t *testing.T) {
+	gate := &dynamicGate{}
+
+	release := gate.enter(context.Background(), 1)
+	acquired := make(chan struct{})
+	go func() {
+		second := gate.enter(context.Background(), 1)
+		close(acquired)
+		second()
+	}()
+
+	select {
+	case <-acquired:
+		t.Fatal("the second acquire passed a size-one gate, want it blocked")
+	case <-time.After(50 * time.Millisecond):
+		// Still blocked: the bound holds.
+	}
+
+	release()
+	select {
+	case <-acquired:
+		// The release let the second acquire through.
+	case <-time.After(2 * time.Second):
+		t.Fatal("the second acquire stayed blocked after the release, want it admitted")
+	}
+
+	// The resize: a larger bound admits immediately, and the release
+	// of an acquire taken under the OLD channel still returns (the
+	// swap never strands it).
+	old := gate.enter(context.Background(), 1)
+	gate.enter(context.Background(), 2)()
+	old()
+	// Drain determinism: one more acquire at the resized bound must
+	// not block (a stale size-one channel would deadlock it).
+	done := make(chan struct{})
+	go func() {
+		gate.enter(context.Background(), 2)()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("an acquire at the resized bound blocked, want the new size honored")
+	}
+}
+
 // TestTranscodeJobTrashedPairComponentCompletes pins the trashed-pair
 // semantics of the component's transcode job. The verified behavior
 // it matches: the metadata and thumbnail jobs hold NO deleted_at

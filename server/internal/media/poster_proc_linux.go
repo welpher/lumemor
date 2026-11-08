@@ -46,12 +46,14 @@ func ffmpegCommand(ctx context.Context, inputPath, outPath string) *exec.Cmd {
 
 // transcodeCommand builds the fixed ffmpeg transcode invocation for
 // Linux: the same prlimit wrapper as the poster invocation, with the
-// transcode's own (higher) address-space cap and argument template.
-func transcodeCommand(ctx context.Context, inputPath, outPath string) *exec.Cmd {
+// transcode's own (higher) address-space cap and the shared argument
+// template (transcode.go). maxHeight is the settings preset's bound:
+// 0 keeps the source resolution, a positive bound scales down to it.
+func transcodeCommand(ctx context.Context, inputPath, outPath string, maxHeight int) *exec.Cmd {
 	argv := append([]string{
 		"--as=" + strconv.FormatUint(transcodeMemLimitBytes, 10),
 		transcodeBinary,
-	}, transcodeArgs(inputPath, outPath)...)
+	}, transcodeArgs(inputPath, outPath, maxHeight)...)
 	return exec.CommandContext(ctx, "prlimit", argv...)
 }
 
@@ -67,30 +69,6 @@ func posterArgs(inputPath, outPath string) []string {
 		"-frames:v", "1",
 		"-vf", posterScaleFilter,
 		"-q:v", "5",
-		outPath,
-	}
-}
-
-// transcodeArgs is the fixed argument template beyond the binary: the
-// first video stream and (optionally, the trailing question mark) the
-// first audio stream, re-encoded to the web-safe pair -- libx264 at
-// CRF 23 / preset fast, yuv420p, AAC at 128k -- muxed with +faststart
-// so the index precedes the media bytes and playback starts while the
-// file downloads. Nothing here is user-controlled; the two paths are
-// server-generated (the input is guarded by the job's asset path
-// resolution, the output derived from the asset id).
-func transcodeArgs(inputPath, outPath string) []string {
-	return []string{
-		"-i", inputPath,
-		"-map", "0:v:0",
-		"-map", "0:a:0?",
-		"-c:v", "libx264",
-		"-preset", "fast",
-		"-crf", "23",
-		"-pix_fmt", "yuv420p",
-		"-c:a", "aac",
-		"-b:a", "128k",
-		"-movflags", "+faststart",
 		outPath,
 	}
 }

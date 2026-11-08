@@ -5,12 +5,14 @@
 	// albums wall's entry live since the M3c surface; the places
 	// grid's entry live since the M3d surface), plus the hidden
 	// view's entry, which moved here from the timeline's toolbar in
-	// R2-11 -- it sits with the other list views (favorites/trash).
-	// Below the content list, behind a divider, the admin panel's
-	// entry renders only for an admin's session (the identity seam's
-	// role arm, the M2d deferred item: a member account never sees
-	// the management surface's door). Memories stays a
-	// visible-but-disabled placeholder until its polish-block
+	// R2-11 -- it sits with the other list views (favorites/trash) --
+	// and the settings page's entry (the settings feature), which
+	// closes the content list: the account's own surface, above the
+	// admin divider. Below the content list, behind a divider, the
+	// admin panel's entry renders only for an admin's session (the
+	// identity seam's role arm, the M2d deferred item: a member
+	// account never sees the management surface's door). Memories
+	// stays a visible-but-disabled placeholder until its polish-block
 	// domain arrives.
 	//
 	// THE LEADING ICONS (R2-5): every item LEADS with its lucide icon
@@ -29,6 +31,7 @@
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Shield from '@lucide/svelte/icons/shield';
+	import Settings from '@lucide/svelte/icons/settings';
 	import type { Component } from 'svelte';
 
 	type DrawerItem = {
@@ -49,7 +52,8 @@
 		{ labelKey: 'nav_memories', href: '/memories', disabled: true, icon: Sparkles },
 		{ labelKey: 'nav_favorites', href: '/favorites', disabled: false, icon: Star },
 		{ labelKey: 'hidden_title', href: '/hidden', disabled: false, icon: EyeOff },
-		{ labelKey: 'nav_trash', href: '/trash', disabled: false, icon: Trash2 }
+		{ labelKey: 'nav_trash', href: '/trash', disabled: false, icon: Trash2 },
+		{ labelKey: 'nav_settings', href: '/settings', disabled: false, icon: Settings }
 	];
 
 	// The admin panel's entry (the tool shell's door): an
