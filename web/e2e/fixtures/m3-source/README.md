@@ -12,6 +12,14 @@ can list `coastal-week` under it.
   the same known-good face-portrait JPEGs the upload stories seed
   (`server/internal/ml/testdata/`), arriving through the source path
   this time: referenced in place, never uploaded.
+- `trip-2026/` holds the four photos the M3d acceptance story's
+  album gathers (scripts/acceptance_m3d.sh) -- byte-identical copies
+  of the four fixtures that story's member uploads first (the
+  Beijing GPS photo, the Chinese OCR photo, and the same-person face
+  pair), so the scan's owner+checksum dedup answers each file with
+  the honest skip: the EXISTING rows gain the album's membership, no
+  second asset is ever created. The shared surface is therefore
+  exactly the four the member already holds.
 - The bind is `:ro` on purpose: the reference-style ingest writes
   nothing into the source (zero copy, zero move -- the scan that
   tried to would fail loudly against the read-only mount).
