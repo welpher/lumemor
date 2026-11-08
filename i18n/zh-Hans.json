@@ -233,6 +233,8 @@
   "admin_jobs_kind_face_recognize_rerun": "人脸识别重跑",
   "admin_jobs_kind_clip_embed_rerun": "嵌入重跑",
   "admin_jobs_kind_ocr_rerun": "文字识别重跑",
+  "admin_jobs_kind_places_rerun": "地点重跑",
+  "admin_jobs_kind_album_rescan": "相册重扫描",
   "admin_jobs_state_queued": "排队中",
   "admin_jobs_state_running": "运行中",
   "admin_jobs_state_succeeded": "已成功",

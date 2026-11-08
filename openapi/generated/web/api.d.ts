@@ -3962,10 +3962,12 @@ export interface components {
          * @description The kinds of job runs the instance records. The model
          *     download is one run; each machine learning slot's rerun is
          *     its own kind, named after the slot it redoes; the place
-         *     re-resolution is the places-data-update path's kind.
+         *     re-resolution is the places-data-update path's kind; the
+         *     album rescan is the directory album's source-reconciliation
+         *     run.
          * @enum {string}
          */
-        JobRunKind: "model_download" | "face_detect_rerun" | "face_recognize_rerun" | "clip_embed_rerun" | "ocr_rerun" | "places_rerun";
+        JobRunKind: "model_download" | "face_detect_rerun" | "face_recognize_rerun" | "clip_embed_rerun" | "ocr_rerun" | "places_rerun" | "album_rescan";
         /**
          * @description The lifecycle of a job run: `queued` from creation until the
          *     driver picks it up, `running` while it works, then

@@ -233,6 +233,8 @@
   "admin_jobs_kind_face_recognize_rerun": "Face recognition rerun",
   "admin_jobs_kind_clip_embed_rerun": "Embedding rerun",
   "admin_jobs_kind_ocr_rerun": "Text recognition rerun",
+  "admin_jobs_kind_places_rerun": "Places rerun",
+  "admin_jobs_kind_album_rescan": "Album rescan",
   "admin_jobs_state_queued": "Queued",
   "admin_jobs_state_running": "Running",
   "admin_jobs_state_succeeded": "Succeeded",
