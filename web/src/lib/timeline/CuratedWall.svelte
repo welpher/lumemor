@@ -3,26 +3,25 @@
 	// compose (M2d Task 8): the page-level concerns of a membership
 	// view -- the pagination client (driven with the view's
 	// membership semantics), the SSE convergence, the sentinel walk,
-	// the selection state with its batch bar, the wallItems
+	// the touch-friendly select-mode toggle, the wallItems
 	// publication the asset viewer navigates -- assembled around the
-	// shared Wall's pure rendering. The page tells the wall its
-	// endpoint, its view, its strings and its action subset; the
-	// RENDERING is the one Wall component every photo surface
-	// composes (the month axis is the wall's own organ -- the
-	// 2026-11-08 pin -- so it rides along here exactly as it does
-	// on the timeline; the album detail owns its own no-selection
-	// walk). The wall here IS selectable: the tiles' check
-	// affordance and the toolbar's touch-friendly select-mode toggle
-	// enter the curation pass whose actions end rows' memberships.
+	// shared Wall. The RENDERING is the one Wall component every
+	// photo surface composes, and so is the SELECTION FLOW (the
+	// 2026-11-08 pin, web IA §7.4): the month axis, the selection
+	// state, the checks, the Escape exit and the batch bar all ride
+	// the wall here exactly as they do on the timeline. This wrapper
+	// tells the wall its endpoint, its view, its strings and its
+	// action subset, runs the batch writes the wall awaits (through
+	// `onbatch`), and owns the toolbar whose toggle writes the wall's
+	// bound select mode. The album detail owns its own no-selection
+	// walk (no onbatch wired, pure navigation).
 	import { _ } from 'svelte-i18n';
-	import { SvelteSet } from 'svelte/reactivity';
 	import { untrack } from 'svelte';
 	import { createTimelineClient, type BatchAction, type WallView } from '$lib/api/timeline';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
-	import BatchBar from '$lib/timeline/BatchBar.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
@@ -41,7 +40,7 @@
 		loadingKey: string;
 		/** The i18n key of the view's empty state text. */
 		emptyKey: string;
-		/** Which batch actions the selection bar offers (see BatchBar). */
+		/** Which batch actions the wall's bar offers (see BatchBar). */
 		actions: readonly BatchAction[];
 	};
 
@@ -60,19 +59,12 @@
 	// and the client owns exactly this wall for its lifetime.
 	const wall = untrack(() => createTimelineClient({ path, view }));
 
-	// The selection is a reactive id set: checkbox and tile clicks
-	// toggle it, Esc and the bar's clear drop it, and the select mode
-	// (the touch-friendly entry) keeps the checkboxes revealed.
-	const selection = new SvelteSet<string>();
+	// The wall's bound select mode: the toolbar's toggle below writes
+	// it (the touch-friendly entry) and the wall owns the drops
+	// (Escape, the bar's clear) -- the binding carries both
+	// directions.
 	let selectMode = $state(false);
-	let batchErrorKey = $state('');
-	let batchBusy = $state(false);
 
-	const selectable = $derived(selectMode || selection.size > 0);
-	const selectedItems = $derived($wall.items.filter((timelineItem) => selection.has(timelineItem.id)));
-	const allSelectedFavorite = $derived(
-		selectedItems.length > 0 && selectedItems.every((timelineItem) => timelineItem.isFavorite)
-	);
 	const firstLoad = $derived($wall.items.length === 0 && $wall.status === 'loading');
 	const settledEmpty = $derived(
 		$wall.items.length === 0 && $wall.status === 'ready' && !$wall.hasMore
@@ -85,42 +77,13 @@
 	const observerAvailable = typeof IntersectionObserver === 'function';
 	let sentinel: HTMLElement | undefined = $state();
 
-	function toggleSelected(id: string, next: boolean): void {
-		if (next) {
-			selection.add(id);
-		} else {
-			selection.delete(id);
-		}
-	}
-
-	function exitSelection(): void {
-		selection.clear();
-		selectMode = false;
-	}
-
-	function handleWindowKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape' && (selection.size > 0 || selectMode)) {
-			exitSelection();
-		}
-	}
-
-	async function runAction(action: BatchAction): Promise<void> {
-		if (batchBusy || selection.size === 0) {
-			return;
-		}
-		batchBusy = true;
-		batchErrorKey = '';
-		const outcome = await wall.runBatch(action, [...selection]);
-		batchBusy = false;
-		if (outcome.ok) {
-			// A successful action clears the selection; the explicit
-			// select mode persists for the next curation pass.
-			selection.clear();
-		} else {
-			// The failure keeps the selection (a retry affordance) and
-			// surfaces the mapped message in the bar.
-			batchErrorKey = outcome.errorKey;
-		}
+	// The wall's batch runner: this wrapper's walk owns the write
+	// (the client's view-aware optimistic convergence -- unfavorite
+	// on favorites, unhide on hidden ends the selected rows'
+	// memberships); the wall owns the busy/error/clear choreography
+	// around the promise it awaits here.
+	async function runBatch(action: BatchAction, ids: readonly string[]) {
+		return wall.runBatch(action, [...ids]);
 	}
 
 	// The shared unknown-code fallback (a code with no i18n entry
@@ -177,14 +140,13 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} />
-
 <section class="wall px-2" aria-busy={$wall.status === 'loading'}>
 	{#if $wall.items.length > 0}
 		<div class="wall__toolbar flex justify-end mb-2">
 			<!-- The touch-friendly select-mode entry (icon-only, the
 			     icon-first rule; the check affordance on the tiles is
-			     the pointer/keyboard entry). -->
+			     the pointer/keyboard entry): the toggle writes the
+			     wall's bound select mode, the wall owns the drops. -->
 			<IconButton
 				aria-pressed={selectMode}
 				aria-label={selectMode ? $_('action_done') : $_('action_select')}
@@ -212,15 +174,17 @@
 			<Button variant="primary" onclick={() => void wall.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else}
-		<!-- The unified wall (pure rendering): this wrapper owns the
-		     walk and the selection around it; the groups, the sticky
-		     headers and the packed rows are the one wall component
-		     every view renders. -->
+		<!-- The unified wall (rendering AND selection): this wrapper
+		     owns the walk and the toolbar around it; the groups, the
+		     sticky headers, the packed rows, the selection state and
+		     the batch bar are the one wall component every curatable
+		     view renders. The action subset and the batch runner are
+		     this view's own. -->
 		<Wall
 			items={$wall.items}
-			{selectable}
-			isSelected={(id) => selection.has(id)}
-			onselect={toggleSelected}
+			bind:selectMode
+			{actions}
+			onbatch={runBatch}
 		/>
 	{/if}
 
@@ -239,13 +203,3 @@
 
 	<div class="wall__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
 </section>
-
-<BatchBar
-	count={selectedItems.length}
-	allFavorite={allSelectedFavorite}
-	errorKey={batchErrorKey}
-	busy={batchBusy}
-	{actions}
-	onaction={runAction}
-	onclear={exitSelection}
-/>

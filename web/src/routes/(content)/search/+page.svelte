@@ -70,7 +70,10 @@
 
 	// The browse mode's month/day fold lives inside the shared Wall
 	// (the one renderer every photo surface composes); QUERY mode
-	// keeps the flat order.
+	// keeps the flat order. BOTH modes stay pure navigation (web IA
+	// §7.4's refusal): neither wall gets an onbatch runner, so no
+	// check renders and no bar ever rises -- search gaining
+	// curation is a page-level opt-in the owner may make later.
 
 	const firstLoad = $derived($search.items.length === 0 && $search.status === 'loading');
 	const settledEmpty = $derived(
