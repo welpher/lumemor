@@ -13,37 +13,57 @@
 # list both carry the account's userId and role -- the M3c identity
 # seam), and a MEMBER account is provisioned through the admin API
 # and signs in with its own session. The member uploads one photo of
-# their own (their sync stream); the admin uploads the same-person
-# face pair (the B4 people arm's cluster structure). The admin
-# creates a virtual album and curates it: the member's photo answers
-# the honest skip (the curation predicate is owner-based -- a
-# foreign asset is never addable), the admin's own two photos land.
-# The share grant follows, and the member's whole shared surface is
-# asserted: the wall's shared group, the timeline's inclusion (the
-# union's shared arm beside the member's own sync stream), the
+# their own (their sync stream) -- the story's ONLY upload: an E4
+# album is a source, so the admin gathers no photos by upload. The
+# album is created the E4 way: the admin opens the fixture mount in
+# the instance's mount-root allowlist (PUT /admin/settings/
+# mount-roots, the trust boundary -- the path completion then lists
+# the fixture's directories, the completion-domain proof), and POST
+# /albums carries the pinned triple (title, rootPath, audience) with
+# the MEMBER in the audience at create and the admin's own id beside
+# it: the owner id answers the honest skip in the create's audience
+# report (the E4 face of the curation-era honest skip -- the report
+# is per-entry, never an error). The rescan then fills the
+# membership: POST /albums/{id}/rescan answers 202 with the run's
+# id, the album_rescan job run reaches succeeded, and the two
+# fixture photos are ingested BY REFERENCE (storage_kind external,
+# file_path the real source paths, taken_at_source file -- zero
+# copy, zero move; the read-only bind is the pin held by
+# construction) through the same pipeline fan-out an upload's,
+# converging the two faces into the one cluster (the B4 people arm's
+# structure, now over external rows). The member's whole shared
+# surface is asserted: the wall's shared group (the honest zero
+# before the scan, the live count after), the timeline's inclusion
+# (the union's shared arm beside the member's own sync stream), the
 # read-only detail (callerRole viewer), the per-user favorite, the
 # timeline-exclusion toggle with its retraction and re-include, and
 # the people surface's B4 sharing arm (the sharee sees the shared
 # assets' faces as a cluster; labels stay per-user -- the sharee
 # names it, the owner's unnamed region never hears about it). The
-# admin's revoke then retracts EVERYTHING the share gave the member
+# sharee's write attempts answer the refusal matrix (the rescan, the
+# audience write and the delete all refuse the view-only share with
+# 403). The owner's audience write (PUT /albums/{id}/audience, the
+# full empty set) then retracts EVERYTHING the share gave the member
 # (the wall card, the timeline items, the detail read, the favorites
 # view, the people surface -- while the member's own photo and the
-# label row survive), and the album's delete cascades its rows
-# (album_items, album_shares) without touching the photos.
+# label row survive). The closing refusal: the album's delete
+# answers the single-shape 404 (a directory album's removal is its
+# own later flow, never the curation-era cascade) and the refusal
+# moved nothing -- the album, its membership and its now-empty share
+# rows stay, and the referenced photos never leave the source.
 #
 # Phase 2 (the e2e stack): a fresh stack whose models ride the SAME
 # storage bind mount; the Playwright spec web/e2e/m3-albums.spec.ts
-# walks the sharing story of the web app through a real browser --
-# the sign-in, the wall's create flow, the timeline's add-photos
-# handoff, the share dialog (the identity seam's self filter), and
-# the member's read-only perspective (the shared section, the
-# read-only detail with its leave affordance, the timeline
-# inclusion, the viewer drawer's identity-aware read-only state).
-# The spec bootstraps itself (the first-run admin and the member
-# account through the APIs, the model group's download through the
-# admin API), exactly the way every prior e2e spec owns its stack's
-# bootstrap.
+# walks the albums-as-sources story of the web app through a real
+# browser -- the sign-in, the create dialog's closed posture and
+# path completion against the mounted fixture, the rescan's
+# convergence, the edit dialog's audience grant, and the member's
+# read-only perspective (the shared section, the read-only detail,
+# the timeline inclusion, the viewer drawer's identity-aware
+# read-only state). The spec bootstraps itself (the first-run admin
+# and the member account through the APIs, the model group's
+# download through the admin API), exactly the way every prior e2e
+# spec owns its stack's bootstrap.
 #
 # DOWNLOAD SOURCES (two modes, the m3b script's knobs -- the M3c
 # script accepts the same M3B_SOURCE / M3B_HF_MIRROR variables plus
@@ -86,12 +106,24 @@ base_url="http://localhost:8244"
 health_timeout_seconds=120
 download_timeout_seconds=900
 ml_timeout_seconds=420
+rescan_timeout_seconds=180
 
 admin_password="correct-horse-battery"
 member_password="correct-horse-battery"
-face_portrait="$repo_root/server/internal/ml/testdata/face-portrait.jpg"
-face_portrait_orientation="$repo_root/server/internal/ml/testdata/face-portrait-orientation6.jpg"
 member_photo="$repo_root/server/internal/ml/testdata/ocr-text.png"
+
+# The E4 source fixture: the repository's compose file binds the e2e
+# fixture tree (web/e2e/fixtures/m3-source, see its README) into the
+# container read-only at /mnt/e2e-source, and the story's album
+# references coastal-week under it -- the two face-portrait JPEGs the
+# upload stories seed, arriving through the source path this time
+# (referenced in place, never uploaded). The read-only bind is the
+# zero-copy pin held by construction: a scan that tried to write
+# into the source would fail loudly against it.
+mount_root="/mnt/e2e-source"
+source_dir="/mnt/e2e-source/coastal-week"
+fixture_photo_a="IMG_E4_0001.jpg"
+fixture_photo_b="IMG_E4_0002.jpg"
 
 # The download source mode (see the header comment): the M3C_*
 # aliases win over the M3B_* variables so this script stays a
@@ -632,17 +664,173 @@ member_photo_id="$(upload_fixture \
     "m3c-acceptance-${run_stamp}-member" "2026-06-01T12:00:00Z" member-own "$member_jar")"
 wait_asset_ready "$member_photo_id" member-own "$member_jar"
 
-echo "==> the admin uploads the same-person face pair (the people arm's cluster structure)"
-[ -f "$face_portrait" ] || fail "fixture missing: $face_portrait"
-[ -f "$face_portrait_orientation" ] || fail "fixture missing: $face_portrait_orientation"
-portrait_id="$(upload_fixture \
-    "$face_portrait" IMG_M3C_0001.jpg image/jpeg \
-    "m3c-acceptance-${run_stamp}-p1" "2026-05-01T12:00:00Z" portrait "$admin_jar")"
-twin_id="$(upload_fixture \
-    "$face_portrait_orientation" IMG_M3C_0002.jpg image/jpeg \
-    "m3c-acceptance-${run_stamp}-p2-twin" "2026-05-02T12:00:00Z" twin "$admin_jar")"
-wait_asset_ready "$portrait_id" portrait "$admin_jar"
-wait_asset_ready "$twin_id" orientation-twin "$admin_jar"
+echo "==> the member's people surface stays empty (they own no face and nothing is shared yet)"
+status="$(curl -sS -o "$work_dir/member_unnamed_body" -b "$member_jar" -w '%{http_code}' \
+    "$base_url/api/v1/people/unnamed")" \
+    || fail "GET /api/v1/people/unnamed (member, pre-share) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/people/unnamed (member, pre-share) returned status $status, want 200: $(cat "$work_dir/member_unnamed_body")"
+grep -q '"items":\[\]' "$work_dir/member_unnamed_body" \
+    || fail "the member's unnamed region is not empty before the share: $(cat "$work_dir/member_unnamed_body")"
+echo "    the member sees no cluster yet"
+
+echo "==> PUT /api/v1/admin/settings/mount-roots must open the e2e fixture mount (the trust boundary)"
+status="$(curl -sS -o "$work_dir/mount_roots_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PUT -H 'Content-Type: application/json' \
+    -d "{\"roots\":[\"$mount_root\"]}" \
+    "$base_url/api/v1/admin/settings/mount-roots")" \
+    || fail "PUT /api/v1/admin/settings/mount-roots request failed"
+[ "$status" = "200" ] \
+    || fail "PUT /api/v1/admin/settings/mount-roots returned status $status, want 200: $(cat "$work_dir/mount_roots_body")"
+grep -q "\"roots\":\[\"$mount_root\"\]" "$work_dir/mount_roots_body" \
+    || fail "the saved allowlist is not the fixture mount alone: $(cat "$work_dir/mount_roots_body")"
+echo "    the fixture mount ($mount_root) is the instance's one allowed root"
+
+echo "==> GET /api/v1/albums/path-completions must list the fixture's directories (the completion domain)"
+status="$(curl -sS -o "$work_dir/completions_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/path-completions?prefix=$mount_root/")" \
+    || fail "GET /api/v1/albums/path-completions request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/path-completions returned status $status, want 200: $(cat "$work_dir/completions_body")"
+grep -q "\"paths\":\[\"$mount_root/coastal-week\",\"$mount_root/trip-2026\"\]" "$work_dir/completions_body" \
+    || fail "the completion does not list the fixture's directories: $(cat "$work_dir/completions_body")"
+echo "    the drilled-in completion lists coastal-week and trip-2026 (the domain is the opened root)"
+
+echo "==> POST /api/v1/albums must create the admin's directory album (the audience at create, the owner id honestly skipped)"
+status="$(curl -sS -o "$work_dir/album_body" -b "$admin_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"title\":\"M3c Acceptance Album\",\"rootPath\":\"$source_dir\",\"audience\":[\"$member_user_id\",\"$admin_user_id\"]}" \
+    "$base_url/api/v1/albums")" \
+    || fail "POST /api/v1/albums request failed"
+[ "$status" = "201" ] \
+    || fail "POST /api/v1/albums returned status $status, want 201: $(cat "$work_dir/album_body")"
+grep -q '"callerRole":"owner"' "$work_dir/album_body" \
+    || fail "the created album's card is not the owner's: $(cat "$work_dir/album_body")"
+grep -q '"type":"directory"' "$work_dir/album_body" \
+    || fail "the created album is not the directory type: $(cat "$work_dir/album_body")"
+grep -q '"itemCount":0' "$work_dir/album_body" \
+    || fail "the created album's count is not zero: $(cat "$work_dir/album_body")"
+grep -q '"isShared":true' "$work_dir/album_body" \
+    || fail "the created album's card does not carry the landed audience: $(cat "$work_dir/album_body")"
+# The E4 face of the curation-era honest skip: the audience report
+# carries each unusable id with its reason, never an error -- the
+# owner sees the album by construction, so the own id is the skip.
+grep -q "\"userId\":\"$admin_user_id\"" "$work_dir/album_body" \
+    || fail "the create's audience report does not name the skipped owner id: $(cat "$work_dir/album_body")"
+grep -q '"reason":"owner"' "$work_dir/album_body" \
+    || fail "the create's audience report does not carry the owner reason: $(cat "$work_dir/album_body")"
+album_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/album_body")"
+[ -n "$album_id" ] \
+    || fail "the created album carries no id: $(cat "$work_dir/album_body")"
+echo "    the album exists ($album_id), sourced at $source_dir; the member's grant landed, the owner id answered the honest skip"
+
+echo "==> the member's wall must list the album in the shared group with the honest zero count"
+status="$(curl -sS -o "$work_dir/member_wall_body" -b "$member_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums")" \
+    || fail "GET /api/v1/albums (member, pre-scan) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums (member, pre-scan) returned status $status, want 200: $(cat "$work_dir/member_wall_body")"
+grep -q "\"$album_id\"" "$work_dir/member_wall_body" \
+    || fail "the member's wall does not list the shared album: $(cat "$work_dir/member_wall_body")"
+grep -q '"callerRole":"viewer"' "$work_dir/member_wall_body" \
+    || fail "the member's wall card is not the viewer's: $(cat "$work_dir/member_wall_body")"
+grep -q '"itemCount":0' "$work_dir/member_wall_body" \
+    || fail "the member's wall card does not carry the honest zero count: $(cat "$work_dir/member_wall_body")"
+echo "    the shared card lists with the viewer role and the creation-time zero (creation references, it does not scan)"
+
+echo "==> POST /api/v1/albums/{id}/rescan must return 202 with the run's id"
+status="$(curl -sS -o "$work_dir/rescan_body" -b "$admin_jar" -w '%{http_code}' \
+    -X POST "$base_url/api/v1/albums/$album_id/rescan")" \
+    || fail "POST /api/v1/albums/$album_id/rescan request failed"
+[ "$status" = "202" ] \
+    || fail "POST /api/v1/albums/$album_id/rescan returned status $status, want 202: $(cat "$work_dir/rescan_body")"
+grep -q '"jobRunId":"[^"]*"' "$work_dir/rescan_body" \
+    || fail "POST /api/v1/albums/$album_id/rescan carries no jobRunId: $(cat "$work_dir/rescan_body")"
+echo "    the rescan run started: $(cat "$work_dir/rescan_body")"
+
+echo "==> the album_rescan job run must reach succeeded (up to ${rescan_timeout_seconds}s)"
+rescan_row() {
+    grep -o '"kind":"album_rescan"[^}]*' "$work_dir/jobs_body" | head -1
+}
+deadline="$(( $(date +%s) + rescan_timeout_seconds ))"
+while :; do
+    status="$(curl -sS -o "$work_dir/jobs_body" -b "$admin_jar" -w '%{http_code}' \
+        "$base_url/api/v1/admin/jobs")" \
+        || fail "GET /api/v1/admin/jobs request failed"
+    [ "$status" = "200" ] \
+        || fail "GET /api/v1/admin/jobs returned status $status, want 200: $(cat "$work_dir/jobs_body")"
+    row="$(rescan_row)"
+    state="$(printf '%s\n' "$row" | sed -n 's/.*"state":"\([a-z]*\)".*/\1/p')"
+    if [ "$state" = "succeeded" ]; then
+        break
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the album_rescan run did not succeed within ${rescan_timeout_seconds}s (last row: $row)"
+    fi
+    if [ "$state" = "failed" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the album_rescan run failed: $row (see the server logs above)"
+    fi
+    sleep 3
+done
+echo "    the rescan run succeeded after $(elapsed)s: $row"
+
+echo "==> the album's detail must carry the scanned membership and the source's own names"
+status="$(curl -sS -o "$work_dir/album_detail_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$album_id")" \
+    || fail "GET /api/v1/albums/$album_id (admin, scanned) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/$album_id (admin, scanned) returned status $status, want 200: $(cat "$work_dir/album_detail_body")"
+grep -q "\"rootPath\":\"$source_dir\"" "$work_dir/album_detail_body" \
+    || fail "the album's detail does not carry the source path: $(cat "$work_dir/album_detail_body")"
+grep -q '"itemCount":2' "$work_dir/album_detail_body" \
+    || fail "the scanned album's count is not the fixture's two: $(cat "$work_dir/album_detail_body")"
+grep -q "\"originalFilename\":\"$fixture_photo_a\"" "$work_dir/album_detail_body" \
+    || fail "the album's items do not carry $fixture_photo_a (the source tree's own name): $(cat "$work_dir/album_detail_body")"
+grep -q "\"originalFilename\":\"$fixture_photo_b\"" "$work_dir/album_detail_body" \
+    || fail "the album's items do not carry $fixture_photo_b (the source tree's own name): $(cat "$work_dir/album_detail_body")"
+grep -q "\"userId\":\"$member_user_id\"" "$work_dir/album_detail_body" \
+    || fail "the owner's detail does not list the member in the shares: $(cat "$work_dir/album_detail_body")"
+echo "    the detail carries the source path, the two items and the audience row"
+
+echo "==> the scan must ingest the fixture photos by reference (zero copy, zero move)"
+asset_rows="$(psql_query 'SELECT count(*) FROM assets')"
+[ "$asset_rows" = "3" ] \
+    || fail "the instance holds $asset_rows assets, want 3 (the member's upload and the two by-reference ingests)"
+external_rows="$(psql_query "SELECT count(*) FROM assets WHERE storage_kind = 'external' AND deleted_at IS NULL")"
+[ "$external_rows" = "2" ] \
+    || fail "the scan did not land two live external rows: $external_rows"
+taken_file_rows="$(psql_query "SELECT count(*) FROM assets WHERE taken_at_source = 'file'")"
+[ "$taken_file_rows" = "2" ] \
+    || fail "the external rows do not carry the file taken-at source: $taken_file_rows"
+source_paths="$(psql_query "SELECT file_path FROM assets WHERE storage_kind = 'external' ORDER BY file_path" | tr '\n' ' ')"
+[ "$source_paths" = "$source_dir/$fixture_photo_a $source_dir/$fixture_photo_b " ] \
+    || fail "the external rows do not point at the real source paths: [$source_paths]"
+echo "    two external rows at the real source paths (the read-only bind holds: nothing was copied)"
+
+echo "==> the scan's pipeline must converge the two source photos to ready (up to ${ml_timeout_seconds}s)"
+deadline="$(( $(date +%s) + ml_timeout_seconds ))"
+while :; do
+    status="$(curl -sS -o "$work_dir/album_timeline_body" -b "$admin_jar" -w '%{http_code}' \
+        "$base_url/api/v1/assets/timeline?albumId=$album_id")" \
+        || fail "GET /api/v1/assets/timeline (album, scanned) request failed"
+    [ "$status" = "200" ] \
+        || fail "GET /api/v1/assets/timeline (album, scanned) returned status $status, want 200: $(cat "$work_dir/album_timeline_body")"
+    ready_count="$(grep -o '"isReady":true' "$work_dir/album_timeline_body" | wc -l | tr -d ' ')"
+    [ "$ready_count" = "2" ] && break
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the source photos did not become ready within ${ml_timeout_seconds}s (ready: $ready_count)"
+    fi
+    sleep 3
+done
+shared_ids="$(item_ids "$work_dir/album_timeline_body")"
+shared_a_id="$(printf '%s\n' "$shared_ids" | sed -n 1p)"
+shared_b_id="$(printf '%s\n' "$shared_ids" | sed -n 2p)"
+[ -n "$shared_a_id" ] && [ -n "$shared_b_id" ] \
+    || fail "the album's timeline listing does not carry the two source photos: $(cat "$work_dir/album_timeline_body")"
+echo "    both source photos are ready ($shared_a_id, $shared_b_id) -- the reference ingest runs the upload's own fan-out"
 
 echo "==> the recognition must land two embedded faces in one cluster (up to ${ml_timeout_seconds}s)"
 ml_facts() {
@@ -667,72 +855,7 @@ while :; do
 done
 echo "    faces=$faces (embedded $embedded), face_clusters=$clusters (clustered faces $clustered)"
 
-echo "==> the member's people surface stays empty before the share (they own no face)"
-status="$(curl -sS -o "$work_dir/member_unnamed_body" -b "$member_jar" -w '%{http_code}' \
-    "$base_url/api/v1/people/unnamed")" \
-    || fail "GET /api/v1/people/unnamed (member, pre-share) request failed"
-[ "$status" = "200" ] \
-    || fail "GET /api/v1/people/unnamed (member, pre-share) returned status $status, want 200: $(cat "$work_dir/member_unnamed_body")"
-grep -q '"items":\[\]' "$work_dir/member_unnamed_body" \
-    || fail "the member's unnamed region is not empty before the share: $(cat "$work_dir/member_unnamed_body")"
-echo "    the member sees no cluster yet"
-
-echo "==> POST /api/v1/albums must create the admin's virtual album"
-status="$(curl -sS -o "$work_dir/album_body" -b "$admin_jar" -w '%{http_code}' \
-    -H 'Content-Type: application/json' \
-    -d '{"title":"M3c Acceptance Album","description":"The sharing story"}' \
-    "$base_url/api/v1/albums")" \
-    || fail "POST /api/v1/albums request failed"
-[ "$status" = "201" ] \
-    || fail "POST /api/v1/albums returned status $status, want 201: $(cat "$work_dir/album_body")"
-grep -q '"callerRole":"owner"' "$work_dir/album_body" \
-    || fail "the created album's card is not the owner's: $(cat "$work_dir/album_body")"
-grep -q '"itemCount":0' "$work_dir/album_body" \
-    || fail "the created album's count is not zero: $(cat "$work_dir/album_body")"
-album_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/album_body")"
-[ -n "$album_id" ] \
-    || fail "the created album carries no id: $(cat "$work_dir/album_body")"
-echo "    the album exists ($album_id), owned by the admin"
-
-echo "==> POST /api/v1/albums/{id}/items: the member's photo answers the honest skip, the admin's pair lands"
-status="$(curl -sS -o "$work_dir/items_body" -b "$admin_jar" -w '%{http_code}' \
-    -H 'Content-Type: application/json' \
-    -d "{\"assetIds\":[\"$member_photo_id\"]}" \
-    "$base_url/api/v1/albums/$album_id/items")" \
-    || fail "POST /api/v1/albums/$album_id/items (member photo) request failed"
-[ "$status" = "200" ] \
-    || fail "POST /api/v1/albums/$album_id/items (member photo) returned status $status, want 200: $(cat "$work_dir/items_body")"
-grep -q '"added":0' "$work_dir/items_body" \
-    || fail "the member's photo was added to the admin's album: $(cat "$work_dir/items_body")"
-grep -q '"skipped":1' "$work_dir/items_body" \
-    || fail "the member's photo did not answer the honest skip: $(cat "$work_dir/items_body")"
-echo "    the member's photo is never addable (the owner-based curation predicate)"
-status="$(curl -sS -o "$work_dir/items_body" -b "$admin_jar" -w '%{http_code}' \
-    -H 'Content-Type: application/json' \
-    -d "{\"assetIds\":[\"$portrait_id\",\"$twin_id\"]}" \
-    "$base_url/api/v1/albums/$album_id/items")" \
-    || fail "POST /api/v1/albums/$album_id/items (admin pair) request failed"
-[ "$status" = "200" ] \
-    || fail "POST /api/v1/albums/$album_id/items (admin pair) returned status $status, want 200: $(cat "$work_dir/items_body")"
-grep -q '"added":2' "$work_dir/items_body" \
-    || fail "the admin's pair did not land: $(cat "$work_dir/items_body")"
-grep -q '"skipped":0' "$work_dir/items_body" \
-    || fail "the admin's pair was partly skipped: $(cat "$work_dir/items_body")"
-echo "    the admin's two photos are members"
-
-echo "==> POST /api/v1/albums/{id}/shares must grant the member the view"
-status="$(curl -sS -o "$work_dir/share_body" -b "$admin_jar" -w '%{http_code}' \
-    -H 'Content-Type: application/json' \
-    -d "{\"userId\":\"$member_user_id\"}" \
-    "$base_url/api/v1/albums/$album_id/shares")" \
-    || fail "POST /api/v1/albums/$album_id/shares request failed"
-[ "$status" = "200" ] \
-    || fail "POST /api/v1/albums/$album_id/shares returned status $status, want 200: $(cat "$work_dir/share_body")"
-grep -q "\"userId\":\"$member_user_id\"" "$work_dir/share_body" \
-    || fail "the share row does not name the member: $(cat "$work_dir/share_body")"
-echo "    the member holds the view"
-
-echo "==> the member's wall must list the album in the shared group"
+echo "==> the member's wall card must carry the live count"
 status="$(curl -sS -o "$work_dir/member_wall_body" -b "$member_jar" -w '%{http_code}' \
     "$base_url/api/v1/albums")" \
     || fail "GET /api/v1/albums (member) request failed"
@@ -752,14 +875,29 @@ status="$(curl -sS -o "$work_dir/member_timeline_body" -b "$member_jar" -w '%{ht
     || fail "GET /api/v1/assets/timeline (member) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/assets/timeline (member) returned status $status, want 200: $(cat "$work_dir/member_timeline_body")"
-for wanted_id in "$member_photo_id" "$portrait_id" "$twin_id"; do
+for wanted_id in "$member_photo_id" "$shared_a_id" "$shared_b_id"; do
     grep -q "\"$wanted_id\"" "$work_dir/member_timeline_body" \
         || fail "the member's timeline does not list $wanted_id: $(cat "$work_dir/member_timeline_body")"
 done
-member_timeline_ids="$(item_ids "$work_dir/member_timeline_body" | tr '\n' ' ')"
-[ "$member_timeline_ids" = "$(printf '%s ' "$member_photo_id" "$twin_id" "$portrait_id")" ] \
-    || fail "the member's timeline holds [$member_timeline_ids], want the member's photo then the shared pair newest-first: $(cat "$work_dir/member_timeline_body")"
-echo "    three items: the member's own photo and the two shared ones (the union's shared arm)"
+# The pair's own order is the files': the reference ingest's taken-at
+# is the source file's mtime (taken_at_source file) -- the working
+# tree's creation time, newer than the member's mid-2026 upload in
+# any honest run, so the pair leads and the member's own photo
+# closes the timeline. The pair's INTERNAL order rides the id
+# tiebreak (the two fixture files share one mtime second), so the
+# leading two are asserted as a set.
+member_timeline_ids="$(item_ids "$work_dir/member_timeline_body")"
+member_timeline_count="$(printf '%s\n' "$member_timeline_ids" | grep -c . || true)"
+[ "$member_timeline_count" = "3" ] \
+    || fail "the member's timeline holds $member_timeline_count items, want 3: $(cat "$work_dir/member_timeline_body")"
+member_timeline_last="$(printf '%s\n' "$member_timeline_ids" | tail -1)"
+[ "$member_timeline_last" = "$member_photo_id" ] \
+    || fail "the member's timeline's last item is $member_timeline_last, want the member's own photo (the source pair's file mtimes are the newer times): $(cat "$work_dir/member_timeline_body")"
+pair_leading="$(printf '%s\n' "$member_timeline_ids" | head -2 | sort | tr '\n' ' ')"
+pair_sorted="$(printf '%s\n' "$shared_a_id" "$shared_b_id" | sort | tr '\n' ' ')"
+[ "$pair_leading" = "$pair_sorted" ] \
+    || fail "the member's timeline's leading pair is [$pair_leading], want the shared source pair [$pair_sorted]: $(cat "$work_dir/member_timeline_body")"
+echo "    three items: the member's own photo and the two shared ones (the union's shared arm; the source pair leads, the member's photo closes)"
 
 echo "==> the member's album detail must read as viewer"
 status="$(curl -sS -o "$work_dir/member_detail_body" -b "$member_jar" -w '%{http_code}' \
@@ -769,7 +907,7 @@ status="$(curl -sS -o "$work_dir/member_detail_body" -b "$member_jar" -w '%{http
     || fail "GET /api/v1/albums/$album_id (member) returned status $status, want 200: $(cat "$work_dir/member_detail_body")"
 grep -q '"callerRole":"viewer"' "$work_dir/member_detail_body" \
     || fail "the member's detail is not the viewer's: $(cat "$work_dir/member_detail_body")"
-grep -q "\"$portrait_id\"" "$work_dir/member_detail_body" \
+grep -q "\"$shared_a_id\"" "$work_dir/member_detail_body" \
     || fail "the member's detail does not list the shared items: $(cat "$work_dir/member_detail_body")"
 grep -q '"inTimeline":true' "$work_dir/member_detail_body" \
     || fail "the member's detail does not carry the excludable inTimeline field: $(cat "$work_dir/member_detail_body")"
@@ -778,7 +916,7 @@ echo "    the detail answers the viewer role with the items page"
 echo "==> the member favorites a shared asset (per-user state)"
 status="$(curl -sS -o "$work_dir/member_favorite_body" -b "$member_jar" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
-    -d "{\"action\":\"favorite\",\"ids\":[\"$portrait_id\"]}" \
+    -d "{\"action\":\"favorite\",\"ids\":[\"$shared_a_id\"]}" \
     "$base_url/api/v1/assets/batch")" \
     || fail "POST /api/v1/assets/batch (favorite) request failed"
 [ "$status" = "200" ] \
@@ -792,7 +930,7 @@ status="$(curl -sS -o "$work_dir/member_favorites_body" -b "$member_jar" -w '%{h
     || fail "GET /api/v1/assets/favorites (member) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/assets/favorites (member) returned status $status, want 200: $(cat "$work_dir/member_favorites_body")"
-grep -q "\"$portrait_id\"" "$work_dir/member_favorites_body" \
+grep -q "\"$shared_a_id\"" "$work_dir/member_favorites_body" \
     || fail "the member's favorites view does not list the shared asset: $(cat "$work_dir/member_favorites_body")"
 echo "    the shared asset is the member's favorite"
 
@@ -827,7 +965,7 @@ status="$(curl -sS -o "$work_dir/member_timeline_body" -b "$member_jar" -w '%{ht
     || fail "GET /api/v1/assets/timeline (member, re-included) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/assets/timeline (member, re-included) returned status $status, want 200: $(cat "$work_dir/member_timeline_body")"
-for wanted_id in "$member_photo_id" "$portrait_id" "$twin_id"; do
+for wanted_id in "$member_photo_id" "$shared_a_id" "$shared_b_id"; do
     grep -q "\"$wanted_id\"" "$work_dir/member_timeline_body" \
         || fail "the re-included timeline does not list $wanted_id: $(cat "$work_dir/member_timeline_body")"
 done
@@ -878,12 +1016,49 @@ grep -q '^\[\]$' "$work_dir/admin_people_body" \
     || fail "the owner's named region is not empty (the sharee's label leaked): $(cat "$work_dir/admin_people_body")"
 echo "    labels stay per-user: the owner's unnamed region kept the cluster, their named region stayed empty"
 
-echo "==> the admin's revoke must retract everything the share gave the member"
-status="$(curl -sS -o /dev/null -b "$admin_jar" -w '%{http_code}' \
-    -X DELETE "$base_url/api/v1/albums/$album_id/shares/$member_user_id")" \
-    || fail "DELETE /api/v1/albums/$album_id/shares/$member_user_id request failed"
-[ "$status" = "204" ] \
-    || fail "DELETE /api/v1/albums/$album_id/shares/$member_user_id returned status $status, want 204"
+echo "==> the sharee's write attempts must answer the refusal matrix (the read-only share)"
+status="$(curl -sS -o "$work_dir/member_rescan_refusal_body" -b "$member_jar" -w '%{http_code}' \
+    -X POST "$base_url/api/v1/albums/$album_id/rescan")" \
+    || fail "POST /api/v1/albums/$album_id/rescan (member) request failed"
+[ "$status" = "403" ] \
+    || fail "the member's rescan returned status $status, want 403 (the share is view-only): $(cat "$work_dir/member_rescan_refusal_body")"
+grep -q 'AUTH_FORBIDDEN' "$work_dir/member_rescan_refusal_body" \
+    || fail "the member's rescan refusal does not answer AUTH_FORBIDDEN: $(cat "$work_dir/member_rescan_refusal_body")"
+status="$(curl -sS -o "$work_dir/member_audience_refusal_body" -b "$member_jar" -w '%{http_code}' \
+    -X PUT -H 'Content-Type: application/json' \
+    -d "{\"audience\":[\"$member_user_id\"]}" \
+    "$base_url/api/v1/albums/$album_id/audience")" \
+    || fail "PUT /api/v1/albums/$album_id/audience (member) request failed"
+[ "$status" = "403" ] \
+    || fail "the member's audience write returned status $status, want 403 (the share is view-only): $(cat "$work_dir/member_audience_refusal_body")"
+grep -q 'AUTH_FORBIDDEN' "$work_dir/member_audience_refusal_body" \
+    || fail "the member's audience refusal does not answer AUTH_FORBIDDEN: $(cat "$work_dir/member_audience_refusal_body")"
+status="$(curl -sS -o "$work_dir/member_delete_refusal_body" -b "$member_jar" -w '%{http_code}' \
+    -X DELETE "$base_url/api/v1/albums/$album_id")" \
+    || fail "DELETE /api/v1/albums/$album_id (member) request failed"
+[ "$status" = "403" ] \
+    || fail "the member's album delete returned status $status, want 403 (the share is view-only): $(cat "$work_dir/member_delete_refusal_body")"
+grep -q 'AUTH_FORBIDDEN' "$work_dir/member_delete_refusal_body" \
+    || fail "the member's delete refusal does not answer AUTH_FORBIDDEN: $(cat "$work_dir/member_delete_refusal_body")"
+echo "    the rescan, the audience write and the delete all refuse the view-only share"
+
+echo "==> the owner's audience write must retract everything the share gave the member (the full empty set)"
+status="$(curl -sS -o "$work_dir/audience_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PUT -H 'Content-Type: application/json' \
+    -d '{"audience":[]}' \
+    "$base_url/api/v1/albums/$album_id/audience")" \
+    || fail "PUT /api/v1/albums/$album_id/audience request failed"
+[ "$status" = "200" ] \
+    || fail "PUT /api/v1/albums/$album_id/audience returned status $status, want 200: $(cat "$work_dir/audience_body")"
+grep -q "\"revoked\":\[\"$member_user_id\"\]" "$work_dir/audience_body" \
+    || fail "the audience write's report does not name the revoked member: $(cat "$work_dir/audience_body")"
+grep -q '"granted":\[\]' "$work_dir/audience_body" \
+    || fail "the retraction granted rows: $(cat "$work_dir/audience_body")"
+grep -q '"audience":\[\]' "$work_dir/audience_body" \
+    || fail "the resulting audience is not empty: $(cat "$work_dir/audience_body")"
+grep -q '"skipped":\[\]' "$work_dir/audience_body" \
+    || fail "the retraction skipped ids: $(cat "$work_dir/audience_body")"
+echo "    the full empty set revoked the member (the honest report: one revoked, nothing granted, nothing skipped)"
 
 status="$(curl -sS -o "$work_dir/member_wall_body" -b "$member_jar" -w '%{http_code}' \
     "$base_url/api/v1/albums")" \
@@ -959,38 +1134,39 @@ status="$(curl -sS -o /dev/null -b "$member_jar" -w '%{http_code}' \
     || fail "the member's own asset detail returned status $status, want 200 (the sync stream never retracts)"
 echo "    the member's own photo stays readable"
 
-echo "==> the album's delete must cascade its rows without touching the photos"
-status="$(curl -sS -o /dev/null -b "$admin_jar" -w '%{http_code}' \
+echo "==> the album's delete must answer the single-shape 404 (a directory album outlives the curation-era delete)"
+status="$(curl -sS -o "$work_dir/admin_delete_body" -b "$admin_jar" -w '%{http_code}' \
     -X DELETE "$base_url/api/v1/albums/$album_id")" \
-    || fail "DELETE /api/v1/albums/$album_id request failed"
-[ "$status" = "204" ] \
-    || fail "DELETE /api/v1/albums/$album_id returned status $status, want 204"
-status="$(curl -sS -o "$work_dir/admin_detail_body" -b "$admin_jar" -w '%{http_code}' \
-    "$base_url/api/v1/albums/$album_id")" \
-    || fail "GET /api/v1/albums/$album_id (admin, deleted) request failed"
+    || fail "DELETE /api/v1/albums/$album_id (admin) request failed"
 [ "$status" = "404" ] \
-    || fail "the deleted album's detail returned status $status, want 404: $(cat "$work_dir/admin_detail_body")"
+    || fail "DELETE /api/v1/albums/$album_id (admin) returned status $status, want 404 (the directory album's removal is its own later flow): $(cat "$work_dir/admin_delete_body")"
+grep -q 'ALBUM_NOT_FOUND' "$work_dir/admin_delete_body" \
+    || fail "the directory album's delete refusal does not answer ALBUM_NOT_FOUND: $(cat "$work_dir/admin_delete_body")"
+# The refusal moved nothing: the album row, its membership rows and
+# its now-empty share rows all stay -- the audience write above is
+# the only face that ever touched the share rows -- and the
+# referenced photos never leave the source.
 album_rows="$(psql_query "SELECT count(*) FROM albums WHERE id = '$album_id'")"
-[ "$album_rows" = "0" ] \
-    || fail "the album row survived its own delete ($album_rows rows)"
+[ "$album_rows" = "1" ] \
+    || fail "the delete refusal touched the album row ($album_rows rows, want 1)"
 item_rows="$(psql_query "SELECT count(*) FROM album_items WHERE album_id = '$album_id'")"
-[ "$item_rows" = "0" ] \
-    || fail "$item_rows album_items rows survived the delete (the cascade)"
+[ "$item_rows" = "2" ] \
+    || fail "the delete refusal touched the membership rows ($item_rows rows, want 2)"
 share_rows="$(psql_query "SELECT count(*) FROM album_shares WHERE album_id = '$album_id'")"
 [ "$share_rows" = "0" ] \
-    || fail "$share_rows album_shares rows survived the delete (the cascade)"
-admin_assets="$(psql_query "SELECT count(*) FROM assets WHERE id IN ('$portrait_id', '$twin_id') AND deleted_at IS NULL")"
-[ "$admin_assets" = "2" ] \
-    || fail "the album delete touched the photos ($admin_assets of 2 live)"
-echo "    the album, its membership rows and its share rows are gone; the photos stay"
+    || fail "the audience write left share rows behind ($share_rows rows, want 0)"
+external_live="$(psql_query "SELECT count(*) FROM assets WHERE storage_kind = 'external' AND deleted_at IS NULL")"
+[ "$external_live" = "2" ] \
+    || fail "the delete refusal touched the photos ($external_live of 2 live)"
+echo "    the refusal moved nothing: the album, its membership and its empty share rows stay; the photos stay"
 
 status="$(curl -sS -o "$work_dir/admin_unnamed_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/people/unnamed")" \
-    || fail "GET /api/v1/people/unnamed (admin, after delete) request failed"
+    || fail "GET /api/v1/people/unnamed (admin, after the refusal) request failed"
 [ "$status" = "200" ] \
-    || fail "GET /api/v1/people/unnamed (admin, after delete) returned status $status, want 200: $(cat "$work_dir/admin_unnamed_body")"
+    || fail "GET /api/v1/people/unnamed (admin, after the refusal) returned status $status, want 200: $(cat "$work_dir/admin_unnamed_body")"
 grep -q "\"$member_cluster_id\"" "$work_dir/admin_unnamed_body" \
-    || fail "the owner lost the faces when the album left (the photos stay): $(cat "$work_dir/admin_unnamed_body")"
+    || fail "the owner's unnamed region lost the cluster (the photos never left): $(cat "$work_dir/admin_unnamed_body")"
 echo "    the owner's people surface keeps the faces (the photos never left)"
 if compose logs --no-color lumemor 2>/dev/null | grep -q 'panic'; then
     fail "the server panicked during the sharing phase (see compose logs)"
