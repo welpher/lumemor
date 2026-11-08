@@ -259,6 +259,17 @@ func TestGenerateTranscodeScalesToPresetBound(t *testing.T) {
 		t.Errorf("scaled width = %d, want the aspect-kept 160", video.Width)
 	}
 
+	// The no-upscale arm: a 720p bound on a 320x240 source keeps the
+	// source resolution (the min() in the filter is the guard).
+	keptUnderBigBound := "99999999-7777-6666-5555-222222222222"
+	if err := GenerateTranscode(context.Background(), source, keptUnderBigBound, 720); err != nil {
+		t.Fatalf("GenerateTranscode with the 720p bound on a 240px source: %v", err)
+	}
+	bigVideo := probeVideoStream(t, probeOf(t, storage.EncodedPath(keptUnderBigBound)))
+	if bigVideo.Height != 240 {
+		t.Errorf("no-upscale height = %d, want the source's 240 (the min guard prevents upscaling)", bigVideo.Height)
+	}
+
 	kept := "99999999-7777-6666-5555-333333333333"
 	if err := GenerateTranscode(context.Background(), source, kept, 0); err != nil {
 		t.Fatalf("GenerateTranscode with the auto bound: %v", err)

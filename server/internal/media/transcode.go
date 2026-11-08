@@ -167,8 +167,9 @@ func transcodeArgs(inputPath, outPath string, maxHeight int) []string {
 	if maxHeight > 0 {
 		// -2 keeps the aspect ratio and lands on a width the encoder
 		// accepts (a multiple of 2 for yuv420p); the bound is the
-		// height and scale never enlarges past it with this form.
-		argv = append(argv, "-vf", fmt.Sprintf("scale=-2:%d", maxHeight))
+		// height and the min() prevents upscaling a source already
+		// below it (a 320x240 clip stays 320x240 at the 720p bound).
+		argv = append(argv, "-vf", fmt.Sprintf("scale=-2:'min(%d,ih)'", maxHeight))
 	}
 	return append(argv, outPath)
 }

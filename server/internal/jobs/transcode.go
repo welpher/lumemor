@@ -54,7 +54,9 @@ type dynamicGate struct {
 }
 
 // enter acquires a slot at the stated size and returns the release.
-func (g *dynamicGate) enter(size int) func() {
+// The acquire is ctx-aware: a job queued past its timeout does not
+// begin an encode whose ctx is already dead.
+func (g *dynamicGate) enter(ctx context.Context, size int) func() {
 	if size < 1 {
 		size = 1
 	}
@@ -65,7 +67,12 @@ func (g *dynamicGate) enter(size int) func() {
 	}
 	sem := g.sem
 	g.mu.Unlock()
-	sem <- struct{}{}
+	select {
+	case sem <- struct{}{}:
+	case <-ctx.Done():
+		// The release is a no-op: nothing was acquired.
+		return func() {}
+	}
 	return func() { <-sem }
 }
 
@@ -164,7 +171,7 @@ func (w *TranscodeWorker) Work(ctx context.Context, job *river.Job[TranscodeArgs
 	// the duration of the ffmpeg subprocess alone -- no database
 	// transaction is held inside it (the derivation runs before any
 	// transaction opens, the standing discipline of this worker).
-	release := transcodeGate.enter(profile.Concurrency)
+	release := transcodeGate.enter(ctx, profile.Concurrency)
 	if err := media.GenerateTranscode(ctx, path, assetID.String(), presetHeight(profile.Preset)); err != nil {
 		release()
 		// The failure policy the settings pin: keepOriginal=true

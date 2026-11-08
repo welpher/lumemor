@@ -13,7 +13,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
@@ -204,8 +206,13 @@ func (s *server) GetTrashSettings(w http.ResponseWriter, r *http.Request) {
 // an integer), answer the saved value. The write takes effect for
 // the expiry job's NEXT run: the run reads the setting at its start.
 func (s *server) UpdateTrashSettings(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		s.writeValidationError(w, "request body could not be read", []string{"body"})
+		return
+	}
 	var req apigen.TrashSettingsUpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		message := "request body must be valid JSON"
 		var fields []interface{}
 		var maxBytesErr *http.MaxBytesError
@@ -218,6 +225,15 @@ func (s *server) UpdateTrashSettings(w http.ResponseWriter, r *http.Request) {
 			details = &map[string]interface{}{"fields": fields}
 		}
 		s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, details)
+		return
+	}
+	// The field is contract-required: an omitted retentionDays decodes
+	// to 0 (a VALID value meaning immediate permanent delete) — the
+	// presence check guards the destructive silent default.
+	var presence map[string]json.RawMessage
+	_ = json.Unmarshal(body, &presence)
+	if _, ok := presence["retentionDays"]; !ok {
+		s.writeValidationError(w, "retentionDays is required", []string{"retentionDays"})
 		return
 	}
 	if req.RetentionDays < 0 || req.RetentionDays > db.TrashRetentionMax {
@@ -250,8 +266,13 @@ func (s *server) GetTranscodingSettings(w http.ResponseWriter, r *http.Request) 
 // contract's scope pin; videos already transcoded are never
 // re-encoded.
 func (s *server) UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		s.writeValidationError(w, "request body could not be read", []string{"body"})
+		return
+	}
 	var req apigen.TranscodingSettingsUpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		message := "request body must be valid JSON"
 		var fields []interface{}
 		var maxBytesErr *http.MaxBytesError
@@ -264,6 +285,22 @@ func (s *server) UpdateTranscodingSettings(w http.ResponseWriter, r *http.Reques
 			details = &map[string]interface{}{"fields": fields}
 		}
 		s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, details)
+		return
+	}
+	// All four fields are contract-required: the generated types use
+	// zero values for absent fields (false for the booleans, the
+	// zero-enum for the preset), silently writing a destructive or
+	// nonsensical profile.
+	var presence map[string]json.RawMessage
+	_ = json.Unmarshal(body, &presence)
+	var missing []string
+	for _, field := range []string{"preset", "concurrency", "thumbnailFrame", "keepOriginal"} {
+		if _, ok := presence[field]; !ok {
+			missing = append(missing, field)
+		}
+	}
+	if len(missing) > 0 {
+		s.writeValidationError(w, fmt.Sprintf("required fields missing: %s", strings.Join(missing, ", ")), missing)
 		return
 	}
 	var invalid []string
