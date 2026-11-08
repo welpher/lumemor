@@ -31,18 +31,17 @@
 	// their data walks, their action subsets, their batch runs
 	// (through `onbatch`, which the wall awaits while owning the
 	// busy/error/clear choreography) and their dialogs (through the
-	// add-to-album/add-tag openers, which receive the ids CAPTURED
-	// AT OPEN). The capability gate is `onbatch`'s PRESENCE: a wall
-	// whose caller wired the runner renders the tiles' check
-	// affordance (the hover-reveal entry, the select-mode reveal,
-	// the mid-selection tile-toggle) and composes the bar; a wall
-	// with no runner renders NO check at all -- the tiles are pure
-	// click-to-viewer navigation (the album detail's wall, the
-	// sync-album read-only pin). No page ever wires a dead
-	// affordance. `selectMode` is the one bindable: the timeline's
-	// ?album= handoff and the curated toolbar's touch-friendly
-	// toggle write it; the wall owns the drops (Escape, the bar's
-	// clear).
+	// add-tag opener, which receives the ids CAPTURED AT OPEN). The
+	// capability gate is `onbatch`'s PRESENCE: a wall whose caller
+	// wired the runner renders the tiles' check affordance (the
+	// hover-reveal entry, the select-mode reveal, the mid-selection
+	// tile-toggle) and composes the bar; a wall with no runner
+	// renders NO check at all -- the tiles are pure click-to-viewer
+	// navigation (the album detail's wall, the sync-album read-only
+	// pin). No page ever wires a dead affordance. `selectMode` is
+	// the one bindable: a page-level arming writes it; the wall owns
+	// the drops (Escape, the bar's clear). The add-to-album opener
+	// is GONE with its flow (E4, web IA §7.5).
 	//
 	// THE SUCCESS ARM: a landed curation pass -- an `onbatch` run
 	// that resolves ok, or a dialog flow whose `done` continuation
@@ -106,10 +105,9 @@
 		/** The loaded items, newest first (the page owns the walk that fills this). */
 		items: readonly TimelineItem[];
 		/**
-		 * The armed select mode (bindable): the timeline's ?album=
-		 * handoff and the curated toolbar's toggle write it; the wall
-		 * owns the drops (Escape, the bar's clear). An armed mode
-		 * reveals every check (the touch-friendly entry).
+		 * The armed select mode (bindable): a page-level arming writes
+		 * it; the wall owns the drops (Escape, the bar's clear). An
+		 * armed mode reveals every check (the touch-friendly entry).
 		 */
 		selectMode?: boolean;
 		/**
@@ -130,22 +128,15 @@
 		 */
 		actions?: readonly BatchAction[];
 		/**
-		 * Open the add-to-album dialog over the ids CAPTURED AT OPEN
-		 * (the dialogs are modal, so the capture is semantically
-		 * identical to reading the live selection at submit). The
-		 * album flow is not a batch action -- it carries its own
-		 * dialog and endpoint -- so it rides this opener instead of
-		 * the action set. The `done` continuation reports the pass's
-		 * landing: the page fires it from the report's done
-		 * affordance, and the wall applies its success arm (clear the
-		 * selection, persist an armed mode).
-		 */
-		onaddtoalbum?: (ids: readonly string[], done: () => void) => void;
-		/**
-		 * Open the add-tag dialog, exactly the album opener's shape:
-		 * the captured ids, the `done` continuation the pass's
-		 * landing fires. The tag flow is not a batch action either --
-		 * it carries its own dialog and endpoint.
+		 * Open the add-tag dialog over the ids CAPTURED AT OPEN
+		 * (the dialog is modal, so the capture is semantically
+		 * identical to reading the live selection at submit). The tag
+		 * flow is not a batch action -- it carries its own dialog and
+		 * endpoint -- so it rides this opener instead of the action
+		 * set. The `done` continuation reports the pass's landing:
+		 * the page fires it from the report's done affordance, and
+		 * the wall applies its success arm (clear the selection,
+		 * persist an armed mode).
 		 */
 		onaddtag?: (ids: readonly string[], done: () => void) => void;
 	};
@@ -155,7 +146,6 @@
 		selectMode = $bindable(false),
 		onbatch,
 		actions,
-		onaddtoalbum,
 		onaddtag
 	}: Props = $props();
 
@@ -411,18 +401,11 @@
 		}
 	}
 
-	// The dialog openers: the ids are captured at open and handed to
+	// The dialog opener: the ids are captured at open and handed to
 	// the page together with the done continuation the pass's
 	// landing fires (the bar's affordance renders only when the page
-	// wired the opener -- the timeline's bar carries both, the
-	// curated walls carry neither).
-	function openAddToAlbum(): void {
-		if (onaddtoalbum === undefined || selection.size === 0) {
-			return;
-		}
-		onaddtoalbum([...selection], passLanded);
-	}
-
+	// wired the opener -- the timeline's bar carries it, the curated
+	// walls do not).
 	function openAddTag(): void {
 		if (onaddtag === undefined || selection.size === 0) {
 			return;
@@ -498,8 +481,8 @@
      its selection holds at least one tile, feeding it the honest
      count, the all-favorite toggle state, its own busy/error
      choreography and the page's action subset. The dialog
-     affordances render only when the page wired their openers (the
-     ids the openers capture flow to the page's dialogs). -->
+     affordance renders only when the page wired its opener (the
+     ids the opener captures flow to the page's dialogs). -->
 {#if selection.size > 0}
 	<BatchBar
 		count={selection.size}
@@ -507,7 +490,6 @@
 		errorKey={batchErrorKey}
 		busy={batchBusy}
 		{actions}
-		onaddtoalbum={onaddtoalbum !== undefined ? openAddToAlbum : undefined}
 		onaddtag={onaddtag !== undefined ? openAddTag : undefined}
 		onaction={runAction}
 		onclear={exitSelection}

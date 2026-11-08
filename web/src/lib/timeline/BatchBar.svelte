@@ -6,9 +6,11 @@
 	// the selected count, a clear action (Escape does the same from
 	// the page) and the last failed action's message. The bar owns
 	// presentation only: the page runs the actions and owns the
-	// selection. The add-to-album and add-tag affordances ride
-	// optional callbacks (their flows carry dialogs and endpoints of
-	// their own, not batch actions).
+	// selection. The add-tag affordance rides an optional callback
+	// (the flow carries a dialog and an endpoint of its own, not a
+	// batch action); the add-to-album affordance is GONE (E4, web IA
+	// §7.5 -- an album is a source, not a container photos get
+	// curated into).
 	//
 	// THE ICON-FIRST RULE (web IA §7.2, the 2026-11-07 owner pin):
 	// the bar is a TOOLBAR, so every action is an icon-only button
@@ -26,7 +28,6 @@
 	import IconButton from '$lib/components/IconButton.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import type { BatchAction } from '$lib/api/timeline';
-	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Star from '@lucide/svelte/icons/star';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
@@ -53,19 +54,11 @@
 		 */
 		actions?: readonly BatchAction[];
 		/**
-		 * Open the add-to-album dialog over the current selection (the
-		 * timeline's bar offers it; the curated walls do not). The
-		 * album flow is not a batch action -- it carries its own dialog
-		 * and endpoint -- so it rides this callback instead of the
-		 * action set.
-		 */
-		onaddtoalbum?: () => void;
-		/**
 		 * Open the add-tag dialog over the current selection (the
 		 * timeline's bar offers it; the curated walls do not). The tag
 		 * flow is not a batch action -- it carries its own dialog
-		 * and endpoint, exactly the album flow's shape -- so it rides
-		 * this callback instead of the action set.
+		 * and endpoint -- so it rides this callback instead of the
+		 * action set.
 		 */
 		onaddtag?: () => void;
 		/** Run one batch action over the current selection. */
@@ -80,7 +73,6 @@
 		errorKey,
 		busy,
 		actions,
-		onaddtoalbum,
 		onaddtag,
 		onaction,
 		onclear
@@ -112,19 +104,6 @@
 		aria-label={$_('batch_selected_count', { values: { count } })}
 	>
 		<p class="batchbar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap tabular-nums">{$_('batch_selected_count', { values: { count } })}</p>
-
-		{#if onaddtoalbum !== undefined}
-			<IconButton
-				class="batchbar__action"
-				variant="ghost"
-				disabled={busy}
-				aria-label={$_('action_add_to_album')}
-				title={$_('action_add_to_album')}
-				onclick={onaddtoalbum}
-			>
-				<FolderPlus size={20} aria-hidden="true" />
-			</IconButton>
-		{/if}
 
 		{#if onaddtag !== undefined}
 			<IconButton
