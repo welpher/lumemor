@@ -170,6 +170,11 @@ test('no query opens the filter browse: the month-grouped wall, the chips, the c
 	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
 	expect(document.body.querySelectorAll('.wall__day-header')).toHaveLength(3);
 	expect(tiles()).toHaveLength(3);
+	// The refusal (web IA §7.4): the page wires no onbatch runner, so
+	// no check renders and no bar ever rises -- the tiles are pure
+	// navigation.
+	expect(document.body.querySelector('.tile__check')).toBeNull();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
 	// The loaded page items publish as the viewer's sequence.
 	expect(wallItems().map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3']);
 
@@ -222,6 +227,10 @@ test('a text query renders the flat justified wall: rank order, no month or day 
 	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(0);
 	expect(document.body.querySelectorAll('.wall__day-header')).toHaveLength(0);
 	expect(tiles()).toHaveLength(3);
+	// The same refusal as the browse wall: pure navigation, no check,
+	// no bar (the flat wall carries no selection props at all).
+	expect(document.body.querySelector('.tile__check')).toBeNull();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
 	// The rank order is the wall's sequence (the viewer walks it).
 	expect(wallItems().map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3']);
 	// The settled count line drops the "so far".

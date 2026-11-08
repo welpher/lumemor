@@ -1,16 +1,14 @@
 <script lang="ts">
 	// THE UNIFIED WALL (the 2026-11-07 owner pin 1): ONE rendering
-	// component every photo surface composes -- the timeline (its
-	// selection and its batch bar stay the page's own overlays), the
+	// component every photo surface composes -- the timeline, the
 	// album detail (a pure-navigation wall, no selection), the
 	// favorites and hidden wrappers, the search browse mode. The
 	// component takes bare ITEMS: the month/day fold, the row layout
 	// engine, the ResizeObserver re-pack, the PhotoTile tree and the
 	// month axis all live inside -- the wall's density language is
 	// one component, not four copies. The page-level concerns (the
-	// data walk, the selection state, the batch bar, the toolbar,
-	// the timeline prefs) never enter: a page composes `<Wall
-	// items />` plus whatever it overlays.
+	// data walk, the toolbar, the timeline prefs) never enter: a
+	// page composes `<Wall items />` plus whatever it overlays.
 	//
 	// THE AXIS IS THE WALL'S OWN ORGAN (the 2026-11-08 owner pin,
 	// superseding the 2026-11-05 split that kept the scrubber a
@@ -24,13 +22,34 @@
 	// scroll root's native bar hides while a wall lives. An empty
 	// wall renders no rail (the scrubber's own guard).
 	//
-	// THE SELECTION CONTRACT: `onselect`'s PRESENCE is the
-	// capability. A wall whose caller wired the callback renders the
-	// tiles' check affordance (the hover-reveal entry, the
-	// select-mode reveal, the mid-selection tile-toggle); a wall
-	// with no callback renders NO check at all -- the tiles are pure
-	// click-to-viewer navigation (the album detail's wall, owner pin
-	// 5). No page ever wires a dead affordance.
+	// THE SELECTION FLOW IS THE WALL'S OWN ORGAN (the 2026-11-08
+	// owner pin, web IA §7.4, superseding the 2026-11-07 split that
+	// kept the selection and the batch bar page-level overlays):
+	// the hover-reveal check, the selection state (an internal
+	// SvelteSet), the select mode, the Escape exit and the bottom
+	// batch bar are ONE thing with the rendering. The pages keep
+	// their data walks, their action subsets, their batch runs
+	// (through `onbatch`, which the wall awaits while owning the
+	// busy/error/clear choreography) and their dialogs (through the
+	// add-to-album/add-tag openers, which receive the ids CAPTURED
+	// AT OPEN). The capability gate is `onbatch`'s PRESENCE: a wall
+	// whose caller wired the runner renders the tiles' check
+	// affordance (the hover-reveal entry, the select-mode reveal,
+	// the mid-selection tile-toggle) and composes the bar; a wall
+	// with no runner renders NO check at all -- the tiles are pure
+	// click-to-viewer navigation (the album detail's wall, the
+	// sync-album read-only pin). No page ever wires a dead
+	// affordance. `selectMode` is the one bindable: the timeline's
+	// ?album= handoff and the curated toolbar's touch-friendly
+	// toggle write it; the wall owns the drops (Escape, the bar's
+	// clear).
+	//
+	// THE SUCCESS ARM: a landed curation pass -- an `onbatch` run
+	// that resolves ok, or a dialog flow whose `done` continuation
+	// the page fires from its report's done affordance -- clears
+	// the selection but PERSISTS an armed select mode (the next
+	// pass starts immediately); a failure keeps the selection (the
+	// retry affordance) and surfaces the mapped error in the bar.
 	//
 	// THE ROWS: each day group packs independently (rows never span
 	// a group boundary -- the pinned rule), rows fill the container
@@ -67,33 +86,101 @@
 	// tiles keep their own content-visibility inside a partially
 	// visible row.
 	import { locale } from 'svelte-i18n';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { packWall, WALL_MAX_WIDTH, WALL_TILE_SEAM, type PackedMonth } from './layout';
 	import { groupTimelineItems } from './grouping';
-	import type { TimelineItem } from '$lib/api/timeline';
+	import type { BatchAction, TimelineItem } from '$lib/api/timeline';
 	import PhotoTile from './PhotoTile.svelte';
 	import MonthScrubber from './MonthScrubber.svelte';
+	import BatchBar from './BatchBar.svelte';
+
+	/**
+	 * The outcome the wall awaits from a page's batch run. The
+	 * client's richer BatchOutcome (with affected/missing) satisfies
+	 * this structurally; the wall reads nothing but the ok/errorKey
+	 * split -- the choreography is its own.
+	 */
+	type WallBatchOutcome = { ok: true } | { ok: false; errorKey: string };
 
 	type Props = {
 		/** The loaded items, newest first (the page owns the walk that fills this). */
 		items: readonly TimelineItem[];
-		/** Whether checkboxes show and tile clicks toggle (a select mode or an active selection). */
-		selectable?: boolean;
-		/** Whether one item is in the current selection. */
-		isSelected?: (id: string) => boolean;
 		/**
-		 * The selection toggle. ABSENT = this wall offers no selection:
-		 * no check renders, the tiles are pure navigation (the album
-		 * detail's wall).
+		 * The armed select mode (bindable): the timeline's ?album=
+		 * handoff and the curated toolbar's toggle write it; the wall
+		 * owns the drops (Escape, the bar's clear). An armed mode
+		 * reveals every check (the touch-friendly entry).
 		 */
-		onselect?: (id: string, next: boolean) => void;
+		selectMode?: boolean;
+		/**
+		 * Run one batch action over the wall's selection (the page's
+		 * client owns the write and its optimistic convergence). ABSENT
+		 * = this wall offers no curation: no check renders, no bar
+		 * ever rises, the tiles are pure navigation (the album
+		 * detail's wall). The callback's presence is the capability,
+		 * so no caller ever wires a dead affordance.
+		 */
+		onbatch?: (action: BatchAction, ids: readonly string[]) => Promise<WallBatchOutcome>;
+		/**
+		 * Which of the bar's actions render, keyed like the batch API
+		 * ('favorite' names the favorite/unfavorite toggle). The
+		 * default is every action; the curated walls pass the subset
+		 * their view makes sense of (unfavorite on favorites, unhide
+		 * on hidden).
+		 */
+		actions?: readonly BatchAction[];
+		/**
+		 * Open the add-to-album dialog over the ids CAPTURED AT OPEN
+		 * (the dialogs are modal, so the capture is semantically
+		 * identical to reading the live selection at submit). The
+		 * album flow is not a batch action -- it carries its own
+		 * dialog and endpoint -- so it rides this opener instead of
+		 * the action set. The `done` continuation reports the pass's
+		 * landing: the page fires it from the report's done
+		 * affordance, and the wall applies its success arm (clear the
+		 * selection, persist an armed mode).
+		 */
+		onaddtoalbum?: (ids: readonly string[], done: () => void) => void;
+		/**
+		 * Open the add-tag dialog, exactly the album opener's shape:
+		 * the captured ids, the `done` continuation the pass's
+		 * landing fires. The tag flow is not a batch action either --
+		 * it carries its own dialog and endpoint.
+		 */
+		onaddtag?: (ids: readonly string[], done: () => void) => void;
 	};
 
 	let {
 		items,
-		selectable = false,
-		isSelected = () => false,
-		onselect
+		selectMode = $bindable(false),
+		onbatch,
+		actions,
+		onaddtoalbum,
+		onaddtag
 	}: Props = $props();
+
+	// The selection is the wall's own reactive id set: the tiles'
+	// check affordances toggle it (the entry, R2-11: the check
+	// reveals on hover/keyboard focus on every tile, and its first
+	// click enters the selection), Esc and the bar's clear drop it,
+	// and a landed pass clears it (the success arm). It never leaves
+	// the component -- the pages reach its effects through the bar
+	// and the captured ids the openers hand them.
+	const selection = new SvelteSet<string>();
+
+	let batchBusy = $state(false);
+	/** The error-code i18n key of the last failed batch run ('' when none). */
+	let batchErrorKey = $state('');
+
+	// The check affordance renders exactly when the wall can curate
+	// AND the selection is alive: an armed select mode or one checked
+	// tile (the mid-selection reveal, the touch-friendly path).
+	const selectable = $derived(onbatch !== undefined && (selectMode || selection.size > 0));
+
+	const selectedItems = $derived(items.filter((timelineItem) => selection.has(timelineItem.id)));
+	const allFavorite = $derived(
+		selectedItems.length > 0 && selectedItems.every((timelineItem) => timelineItem.isFavorite)
+	);
 
 	// The fold is the wall's own: bare items in, locale-aware month
 	// and day groups out. The input order is the rendering order (the
@@ -274,7 +361,77 @@
 			scroller?.classList.remove('wall-rail-scroll');
 		};
 	});
+
+	function toggleSelected(id: string, next: boolean): void {
+		if (next) {
+			selection.add(id);
+		} else {
+			selection.delete(id);
+		}
+	}
+
+	/** The full exit: the selection drops AND an armed mode disarms. */
+	function exitSelection(): void {
+		selection.clear();
+		selectMode = false;
+	}
+
+	// The Escape exit (the pages' own keydown handlers for this went
+	// with the move): a live selection or an armed select mode drops
+	// -- the same full exit the bar's clear action runs.
+	function handleWindowKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape' && (selection.size > 0 || selectMode)) {
+			exitSelection();
+		}
+	}
+
+	/** The success arm: a landed pass clears the selection; an
+	 * armed select mode persists for the next one. */
+	function passLanded(): void {
+		selection.clear();
+	}
+
+	// The batch run: the page's client owns the write; the wall owns
+	// the choreography around the awaited promise -- busy disables
+	// the bar's buttons, ok clears the selection (the success arm,
+	// an armed mode persists), a failure keeps it (the retry
+	// affordance) and surfaces the mapped error.
+	async function runAction(action: BatchAction): Promise<void> {
+		if (onbatch === undefined || batchBusy || selection.size === 0) {
+			return;
+		}
+		batchBusy = true;
+		batchErrorKey = '';
+		const outcome = await onbatch(action, [...selection]);
+		batchBusy = false;
+		if (outcome.ok) {
+			passLanded();
+		} else {
+			batchErrorKey = outcome.errorKey;
+		}
+	}
+
+	// The dialog openers: the ids are captured at open and handed to
+	// the page together with the done continuation the pass's
+	// landing fires (the bar's affordance renders only when the page
+	// wired the opener -- the timeline's bar carries both, the
+	// curated walls carry neither).
+	function openAddToAlbum(): void {
+		if (onaddtoalbum === undefined || selection.size === 0) {
+			return;
+		}
+		onaddtoalbum([...selection], passLanded);
+	}
+
+	function openAddTag(): void {
+		if (onaddtag === undefined || selection.size === 0) {
+			return;
+		}
+		onaddtag([...selection], passLanded);
+	}
 </script>
+
+<svelte:window onkeydown={handleWindowKeydown} />
 
 <div class="wall__groups" bind:this={wall}>
 	{#each packed as month (month.key)}
@@ -308,11 +465,16 @@
 						>
 							{#each row.tiles as tile (tile.item.id)}
 								<div class="wall__cell shrink-0" style="width:{tile.width}px">
+									<!-- The capability gate rides the onselect hand-off: a
+									     wall with no onbatch runner passes no toggle, so
+									     PhotoTile renders no check at all (the pure
+									     navigation walls); a curatable wall always passes
+									     it and the reveal rides the selectable state. -->
 									<PhotoTile
 										item={tile.item}
-										selected={isSelected(tile.item.id)}
+										selected={selection.has(tile.item.id)}
 										selectable={selectable}
-										onselect={onselect}
+										onselect={onbatch !== undefined ? toggleSelected : undefined}
 									/>
 								</div>
 							{/each}
@@ -330,3 +492,24 @@
      viewport-fixed, so it renders from any wall depth; its empty
      months guard hides it for an empty wall. -->
 <MonthScrubber {months} activeKey={activeMonthKey} progress={scrollProgress} onjump={jumpToMonth} onscrub={handleRailScrub} />
+
+<!-- THE BOTTOM BATCH BAR (the 2026-11-08 selection pin's last
+     organ): the wall composes the presentation-only bar whenever
+     its selection holds at least one tile, feeding it the honest
+     count, the all-favorite toggle state, its own busy/error
+     choreography and the page's action subset. The dialog
+     affordances render only when the page wired their openers (the
+     ids the openers capture flow to the page's dialogs). -->
+{#if selection.size > 0}
+	<BatchBar
+		count={selection.size}
+		allFavorite={allFavorite}
+		errorKey={batchErrorKey}
+		busy={batchBusy}
+		{actions}
+		onaddtoalbum={onaddtoalbum !== undefined ? openAddToAlbum : undefined}
+		onaddtag={onaddtag !== undefined ? openAddTag : undefined}
+		onaction={runAction}
+		onclear={exitSelection}
+	/>
+{/if}
