@@ -335,10 +335,12 @@
 	// pairing supplied. An unrecognized agent falls back to the raw
 	// string (honest over clever).
 	function deviceLabel(device: DeviceSession): string {
-		if (device.kind !== 'web' || device.deviceName === undefined) {
-			return device.deviceName ?? $_('settings_devices_kind_mobile');
+		if (device.kind === 'web' && device.deviceName !== undefined && device.deviceName !== '') {
+			return condenseUserAgent(device.deviceName);
 		}
-		return condenseUserAgent(device.deviceName);
+		// The fallback keys by kind: a web session with no stored
+		// label is a browser, not a paired device.
+		return device.deviceName ?? $_(device.kind === 'web' ? 'settings_devices_kind_web' : 'settings_devices_kind_mobile');
 	}
 
 	function condenseUserAgent(agent: string): string {

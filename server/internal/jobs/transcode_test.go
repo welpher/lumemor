@@ -584,10 +584,10 @@ func TestTranscodeJobKeepOriginalCompletesOnFailure(t *testing.T) {
 func TestTranscodeGateBoundsConcurrency(t *testing.T) {
 	gate := &dynamicGate{}
 
-	release := gate.enter(1)
+	release := gate.enter(context.Background(), 1)
 	acquired := make(chan struct{})
 	go func() {
-		second := gate.enter(1)
+		second := gate.enter(context.Background(), 1)
 		close(acquired)
 		second()
 	}()
@@ -610,14 +610,14 @@ func TestTranscodeGateBoundsConcurrency(t *testing.T) {
 	// The resize: a larger bound admits immediately, and the release
 	// of an acquire taken under the OLD channel still returns (the
 	// swap never strands it).
-	old := gate.enter(1)
-	gate.enter(2)()
+	old := gate.enter(context.Background(), 1)
+	gate.enter(context.Background(), 2)()
 	old()
 	// Drain determinism: one more acquire at the resized bound must
 	// not block (a stale size-one channel would deadlock it).
 	done := make(chan struct{})
 	go func() {
-		gate.enter(2)()
+		gate.enter(context.Background(), 2)()
 		close(done)
 	}()
 	select {
