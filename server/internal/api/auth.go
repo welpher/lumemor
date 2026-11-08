@@ -136,6 +136,10 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 		TokenHash:  hash,
 		Kind:       dbgen.SessionKindWeb,
 		DeviceName: deviceLabel(r),
+		// The creation-time address the device list renders; the
+		// socket peer, never a forwarded header (the same trust rule
+		// as the rate-limit key).
+		IpAddress:  pgtype.Text{String: remoteIP(r), Valid: true},
 		LastSeenAt: pgtype.Timestamptz{Time: now, Valid: true},
 		ExpiresAt:  pgtype.Timestamptz{Time: now.Add(webSessionTTL), Valid: true},
 	})

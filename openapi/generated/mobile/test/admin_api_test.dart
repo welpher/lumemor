@@ -43,6 +43,24 @@ void main() {
       // TODO
     });
 
+    // Read the video transcoding settings.
+    //
+    // The transcoding settings read of the admin surface: the instance's video transcoding profile -- the preset the transcode job re-encodes new video uploads at, the concurrency bound of simultaneous re-encodes, the video-thumbnail frame capture switch, and the keep-original-on-failure policy. A fresh instance (or a corrupt row) answers the documented defaults. 
+    //
+    //Future<TranscodingSettingsResponse> getTranscodingSettings() async
+    test('test getTranscodingSettings', () async {
+      // TODO
+    });
+
+    // Read the trash retention setting.
+    //
+    // The trash settings read of the admin surface: the instance's trash retention in whole days -- the window a soft-deleted asset stays recoverable before the hourly expiry job purges it (rows, thumbnails, derivatives and orphaned files together). A fresh instance (or a corrupt row) answers the default 30; the read never fails over a row the save endpoint's validation should have kept honest. 
+    //
+    //Future<TrashSettingsResponse> getTrashSettings() async
+    test('test getTrashSettings', () async {
+      // TODO
+    });
+
     // List the job runs of the task panel.
     //
     // The task panel listing of the admin surface: every job run the instance ever recorded, newest first -- model downloads and ML reruns alike. Each row carries the run's progress as its own work's units: the model download's `total` and `done` count pinned bytes and `failed` counts failed models; a rerun's count the assets of its scope and the assets whose rerun failed. `startedAt` is null while a run sits `queued`, `finishedAt` is null until it closes.  `limit` bounds the page size: absent means the default of 50, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 `VALIDATION_FAILED`. 
@@ -103,6 +121,24 @@ void main() {
     //
     //Future<StorageSettingsResponse> updateStorageSettings(StorageSettingsUpdateRequest storageSettingsUpdateRequest) async
     test('test updateStorageSettings', () async {
+      // TODO
+    });
+
+    // Save the video transcoding settings.
+    //
+    // The transcoding settings save of the admin surface.  **The scope pin, documented honestly: the profile affects NEW ingests only.** The transcode job of a video upload reads the profile when it runs, so a saved change governs every video uploaded after it; videos already transcoded keep their existing playable copy and are never re-encoded, and a video whose job is still queued picks up the profile at its run time (the job reads the setting at run time, not enqueue time).  The fields: `preset` bounds the re-encode's vertical resolution (`auto` keeps the source resolution, the numeric presets scale down to the bound, `off` skips the re-encode entirely -- the original file stays in place and downloadable, and the video's pipeline still completes); `concurrency` bounds how many re-encodes run at once; `thumbnailFrame` turns the video poster-frame capture (the video's thumbnail) on or off; `keepOriginal` decides the failure policy -- a failed re-encode either completes the job quietly (the original stays in place and downloadable through the original endpoint) or fails it for retry.  The save validates every field against its enum and answers the saved profile; an out-of-enum value answers 400 VALIDATION_FAILED naming the field, and nothing is written. 
+    //
+    //Future<TranscodingSettingsResponse> updateTranscodingSettings(TranscodingSettingsUpdateRequest transcodingSettingsUpdateRequest) async
+    test('test updateTranscodingSettings', () async {
+      // TODO
+    });
+
+    // Save the trash retention setting.
+    //
+    // The trash settings save of the admin surface. The retention is a whole number of days, 0 to 365:  - **0 means immediate permanent delete** -- an asset enters the trash and the NEXT expiry run purges it (the hourly periodic job and the boot run are the runs; nothing is deleted by the save request itself). - The expiry job reads the setting at the START of each run (the boot run and every hourly periodic run alike), so a change takes effect for the next run's window, not retroactively for rows a past run already considered. - An already-trashed asset's fate is decided by the run's own deadline computation: with a SHORTENED retention, rows past the new window leave on the next run; with a LENGTHENED one, every row gains the added days from its own deletion mark.  The save validates the bound and answers the saved value; a value outside 0-365 answers 400 VALIDATION_FAILED naming `retentionDays`, and nothing is written. 
+    //
+    //Future<TrashSettingsResponse> updateTrashSettings(TrashSettingsUpdateRequest trashSettingsUpdateRequest) async
+    test('test updateTrashSettings', () async {
       // TODO
     });
 

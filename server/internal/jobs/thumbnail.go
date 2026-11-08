@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/media"
@@ -58,6 +59,11 @@ func (w *ThumbnailWorker) Timeout(job *river.Job[ThumbnailArgs]) time.Duration {
 // Work executes one thumbnail job. The derivation (libvips or the
 // ffmpeg subprocess, up to its 60s budget) runs before the database
 // transaction opens: no connection is held while media is processed.
+// The video arm reads the instance's transcoding settings at run
+// time -- the poster-frame switch (thumbnailFrame) decides whether
+// the capture happens at all; off, the job still completes the
+// pipeline (the video simply has no thumbnail), exactly like the
+// transcode job's own `off` preset.
 func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs]) error {
 	assetID := job.Args.AssetID
 
@@ -82,10 +88,22 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 	// Image assets get the three AVIF sizes; video assets get the
 	// poster frame instead -- never AVIF thumbnails (the poster IS the
 	// video's thumbnail, served by the thumbnail endpoint; the
-	// playable stream is the transcode job's product).
+	// playable stream is the transcode job's product). A video under
+	// a thumbnailFrame=off instance skips the capture: no poster, no
+	// blurhash, the pipeline still completes below.
 	var hash string
+	skipDerivation := false
 	if row.MediaKind == dbgen.MediaKindVideo {
-		hash, err = media.GeneratePoster(ctx, path, assetID.String())
+		profile, settingsErr := db.TranscodingSettings(ctx, dbgen.New(w.pool))
+		if settingsErr != nil {
+			w.logger.Error("thumbnail job: transcoding settings are corrupt, using the default", "error", settingsErr)
+		}
+		if !profile.ThumbnailFrame {
+			w.logger.Info("thumbnail job skipped: the poster-frame capture is off", "asset_id", assetID)
+			skipDerivation = true
+		} else {
+			hash, err = media.GeneratePoster(ctx, path, assetID.String())
+		}
 	} else {
 		hash, err = media.GenerateThumbnails(path, assetID.String())
 	}
@@ -100,11 +118,13 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := dbgen.New(tx)
 
-	if err := queries.UpdateAssetBlurhash(ctx, dbgen.UpdateAssetBlurhashParams{
-		ID:       pgUUID(assetID),
-		Blurhash: pgtype.Text{String: hash, Valid: true},
-	}); err != nil {
-		return fmt.Errorf("store blurhash: %w", err)
+	if !skipDerivation {
+		if err := queries.UpdateAssetBlurhash(ctx, dbgen.UpdateAssetBlurhashParams{
+			ID:       pgUUID(assetID),
+			Blurhash: pgtype.Text{String: hash, Valid: true},
+		}); err != nil {
+			return fmt.Errorf("store blurhash: %w", err)
+		}
 	}
 	// The component guard mirrors the metadata job's: a Live Photo
 	// component row's counter counts its transcode alone (M2d), so a

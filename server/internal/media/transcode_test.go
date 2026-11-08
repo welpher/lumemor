@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,6 +52,8 @@ type probeStream struct {
 	CodecName string `json:"codec_name"`
 	PixFmt    string `json:"pix_fmt"`
 	Duration  string `json:"duration"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
 }
 
 // probeReport is the decoded ffprobe output of one media file.
@@ -192,7 +195,7 @@ func TestGenerateTranscode(t *testing.T) {
 	dataDir := newMediaEnv(t)
 	assetID := writeOriginal(t, dataDir, "tiny.mp4", fixtureBytes(t, "tiny.mp4"))
 
-	if err := GenerateTranscode(context.Background(), filepath.Join(dataDir, "originals", "aa", "bb", "tiny.mp4"), assetID); err != nil {
+	if err := GenerateTranscode(context.Background(), filepath.Join(dataDir, "originals", "aa", "bb", "tiny.mp4"), assetID, 0); err != nil {
 		t.Fatalf("GenerateTranscode: %v", err)
 	}
 
@@ -230,6 +233,53 @@ func TestGenerateTranscode(t *testing.T) {
 	requireFaststartLayout(t, outPath)
 }
 
+// TestGenerateTranscodeScalesToPresetBound pins the transcoding
+// settings' numeric preset: a positive maxHeight bound downscales the
+// re-encode (the aspect ratio kept, the -2 width form's even
+// rounding), while the zero bound (the `auto` preset) keeps the
+// source resolution. The resolution facts are the whole assertion,
+// so the test hard-requires ffprobe.
+func TestGenerateTranscodeScalesToPresetBound(t *testing.T) {
+	requireTranscodeFFmpeg(t)
+	if !ffprobeInstalled() {
+		t.Skip("ffprobe is not installed on this host; the resolution probes are the whole assertion (run the suite inside the dev container)")
+	}
+	dataDir := newMediaEnv(t)
+	source := lavfiVideoFixture(t, dataDir, "scaled-video.mp4", 320, 240)
+
+	scaled := "99999999-7777-6666-5555-444444444444"
+	if err := GenerateTranscode(context.Background(), source, scaled, 120); err != nil {
+		t.Fatalf("GenerateTranscode with the 120p bound: %v", err)
+	}
+	video := probeVideoStream(t, probeOf(t, storage.EncodedPath(scaled)))
+	if video.Height != 120 {
+		t.Errorf("scaled height = %d, want the 120 bound", video.Height)
+	}
+	if video.Width != 160 {
+		t.Errorf("scaled width = %d, want the aspect-kept 160", video.Width)
+	}
+
+	// The no-upscale arm: a 720p bound on a 320x240 source keeps the
+	// source resolution (the min() in the filter is the guard).
+	keptUnderBigBound := "99999999-7777-6666-5555-222222222222"
+	if err := GenerateTranscode(context.Background(), source, keptUnderBigBound, 720); err != nil {
+		t.Fatalf("GenerateTranscode with the 720p bound on a 240px source: %v", err)
+	}
+	bigVideo := probeVideoStream(t, probeOf(t, storage.EncodedPath(keptUnderBigBound)))
+	if bigVideo.Height != 240 {
+		t.Errorf("no-upscale height = %d, want the source's 240 (the min guard prevents upscaling)", bigVideo.Height)
+	}
+
+	kept := "99999999-7777-6666-5555-333333333333"
+	if err := GenerateTranscode(context.Background(), source, kept, 0); err != nil {
+		t.Fatalf("GenerateTranscode with the auto bound: %v", err)
+	}
+	video = probeVideoStream(t, probeOf(t, storage.EncodedPath(kept)))
+	if video.Height != 240 || video.Width != 320 {
+		t.Errorf("auto resolution = %dx%d, want the source's 320x240", video.Width, video.Height)
+	}
+}
+
 // TestGenerateTranscodeWithAudio pins the audio arm: a source carrying
 // an audio track transcodes into AAC alongside the H.264 video.
 func TestGenerateTranscodeWithAudio(t *testing.T) {
@@ -239,7 +289,7 @@ func TestGenerateTranscodeWithAudio(t *testing.T) {
 	source := audioVideoFixture(t, dataDir)
 	assetID := "99999999-8888-7777-6666-555555555555"
 
-	if err := GenerateTranscode(context.Background(), source, assetID); err != nil {
+	if err := GenerateTranscode(context.Background(), source, assetID, 0); err != nil {
 		t.Fatalf("GenerateTranscode: %v", err)
 	}
 
@@ -275,10 +325,10 @@ func TestGenerateTranscodeOverwritesSamePath(t *testing.T) {
 	assetID := writeOriginal(t, dataDir, "tiny.mp4", fixtureBytes(t, "tiny.mp4"))
 	path := filepath.Join(dataDir, "originals", "aa", "bb", "tiny.mp4")
 
-	if err := GenerateTranscode(context.Background(), path, assetID); err != nil {
+	if err := GenerateTranscode(context.Background(), path, assetID, 0); err != nil {
 		t.Fatalf("first GenerateTranscode: %v", err)
 	}
-	if err := GenerateTranscode(context.Background(), path, assetID); err != nil {
+	if err := GenerateTranscode(context.Background(), path, assetID, 0); err != nil {
 		t.Fatalf("second GenerateTranscode: %v", err)
 	}
 
@@ -304,7 +354,7 @@ func TestGenerateTranscodeUndecodableVideo(t *testing.T) {
 	dataDir := newMediaEnv(t)
 	assetID := writeOriginal(t, dataDir, "not-a-video.mp4", []byte("definitely not an mp4 container"))
 
-	err := GenerateTranscode(context.Background(), filepath.Join(dataDir, "originals", "aa", "bb", "not-a-video.mp4"), assetID)
+	err := GenerateTranscode(context.Background(), filepath.Join(dataDir, "originals", "aa", "bb", "not-a-video.mp4"), assetID, 0)
 	if err == nil {
 		t.Fatal("GenerateTranscode error = nil, want the undecodable input to fail")
 	}
@@ -338,7 +388,7 @@ func TestTranscodeTimeoutKillsProcessGroup(t *testing.T) {
 	transcodeBinary, transcodeTimeout = script, slowFfmpegTestTimeout
 	t.Cleanup(func() { transcodeBinary, transcodeTimeout = previousBinary, previousTimeout })
 
-	err := GenerateTranscode(context.Background(), "fixture.mp4", "99999999-9999-9999-9999-999999999999")
+	err := GenerateTranscode(context.Background(), "fixture.mp4", "99999999-9999-9999-9999-999999999999", 0)
 	if err == nil {
 		t.Fatal("transcode error = nil, want the timeout to fail it")
 	}
@@ -363,6 +413,21 @@ func audioVideoFixture(t *testing.T, dataDir string) string {
 		"-t", "1", "-pix_fmt", "yuv420p", path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generate audio video fixture: %v: %s", err, out)
+	}
+	return path
+}
+
+// lavfiVideoFixture generates a one-second silent video of the exact
+// given size through ffmpeg's lavfi test source (the preset test's
+// controllable-resolution input).
+func lavfiVideoFixture(t *testing.T, dataDir, name string, width, height int) string {
+	t.Helper()
+	path := filepath.Join(dataDir, name)
+	cmd := exec.Command("ffmpeg",
+		"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=25", width, height),
+		"-t", "1", "-pix_fmt", "yuv420p", path)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generate lavfi video fixture: %v: %s", err, out)
 	}
 	return path
 }

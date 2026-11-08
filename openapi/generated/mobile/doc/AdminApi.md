@@ -13,6 +13,8 @@ Method | HTTP request | Description
 [**createUser**](AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [**downloadModels**](AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
 [**getStorageSettings**](AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
+[**getTranscodingSettings**](AdminApi.md#gettranscodingsettings) | **GET** /admin/settings/transcoding | Read the video transcoding settings.
+[**getTrashSettings**](AdminApi.md#gettrashsettings) | **GET** /admin/settings/trash | Read the trash retention setting.
 [**listJobs**](AdminApi.md#listjobs) | **GET** /admin/jobs | List the job runs of the task panel.
 [**listModels**](AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [**listUsers**](AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
@@ -20,6 +22,8 @@ Method | HTTP request | Description
 [**rerunModel**](AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [**scanModels**](AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
 [**updateStorageSettings**](AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
+[**updateTranscodingSettings**](AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
+[**updateTrashSettings**](AdminApi.md#updatetrashsettings) | **PUT** /admin/settings/trash | Save the trash retention setting.
 [**updateUser**](AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
 
 
@@ -193,6 +197,92 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**StorageSettingsResponse**](StorageSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getTranscodingSettings**
+> TranscodingSettingsResponse getTranscodingSettings()
+
+Read the video transcoding settings.
+
+The transcoding settings read of the admin surface: the instance's video transcoding profile -- the preset the transcode job re-encodes new video uploads at, the concurrency bound of simultaneous re-encodes, the video-thumbnail frame capture switch, and the keep-original-on-failure policy. A fresh instance (or a corrupt row) answers the documented defaults. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getTranscodingSettings();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getTranscodingSettings: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TranscodingSettingsResponse**](TranscodingSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getTrashSettings**
+> TrashSettingsResponse getTrashSettings()
+
+Read the trash retention setting.
+
+The trash settings read of the admin surface: the instance's trash retention in whole days -- the window a soft-deleted asset stays recoverable before the hourly expiry job purges it (rows, thumbnails, derivatives and orphaned files together). A fresh instance (or a corrupt row) answers the default 30; the read never fails over a row the save endpoint's validation should have kept honest. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getTrashSettings();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getTrashSettings: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TrashSettingsResponse**](TrashSettingsResponse.md)
 
 ### Authorization
 
@@ -506,6 +596,100 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**StorageSettingsResponse**](StorageSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **updateTranscodingSettings**
+> TranscodingSettingsResponse updateTranscodingSettings(transcodingSettingsUpdateRequest)
+
+Save the video transcoding settings.
+
+The transcoding settings save of the admin surface.  **The scope pin, documented honestly: the profile affects NEW ingests only.** The transcode job of a video upload reads the profile when it runs, so a saved change governs every video uploaded after it; videos already transcoded keep their existing playable copy and are never re-encoded, and a video whose job is still queued picks up the profile at its run time (the job reads the setting at run time, not enqueue time).  The fields: `preset` bounds the re-encode's vertical resolution (`auto` keeps the source resolution, the numeric presets scale down to the bound, `off` skips the re-encode entirely -- the original file stays in place and downloadable, and the video's pipeline still completes); `concurrency` bounds how many re-encodes run at once; `thumbnailFrame` turns the video poster-frame capture (the video's thumbnail) on or off; `keepOriginal` decides the failure policy -- a failed re-encode either completes the job quietly (the original stays in place and downloadable through the original endpoint) or fails it for retry.  The save validates every field against its enum and answers the saved profile; an out-of-enum value answers 400 VALIDATION_FAILED naming the field, and nothing is written. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final TranscodingSettingsUpdateRequest transcodingSettingsUpdateRequest = {"preset":"720p","concurrency":1,"thumbnailFrame":true,"keepOriginal":false}; // TranscodingSettingsUpdateRequest | 
+
+try {
+    final response = api.updateTranscodingSettings(transcodingSettingsUpdateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->updateTranscodingSettings: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **transcodingSettingsUpdateRequest** | [**TranscodingSettingsUpdateRequest**](TranscodingSettingsUpdateRequest.md)|  | 
+
+### Return type
+
+[**TranscodingSettingsResponse**](TranscodingSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **updateTrashSettings**
+> TrashSettingsResponse updateTrashSettings(trashSettingsUpdateRequest)
+
+Save the trash retention setting.
+
+The trash settings save of the admin surface. The retention is a whole number of days, 0 to 365:  - **0 means immediate permanent delete** -- an asset enters the trash and the NEXT expiry run purges it (the hourly periodic job and the boot run are the runs; nothing is deleted by the save request itself). - The expiry job reads the setting at the START of each run (the boot run and every hourly periodic run alike), so a change takes effect for the next run's window, not retroactively for rows a past run already considered. - An already-trashed asset's fate is decided by the run's own deadline computation: with a SHORTENED retention, rows past the new window leave on the next run; with a LENGTHENED one, every row gains the added days from its own deletion mark.  The save validates the bound and answers the saved value; a value outside 0-365 answers 400 VALIDATION_FAILED naming `retentionDays`, and nothing is written. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final TrashSettingsUpdateRequest trashSettingsUpdateRequest = {"retentionDays":0}; // TrashSettingsUpdateRequest | 
+
+try {
+    final response = api.updateTrashSettings(trashSettingsUpdateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->updateTrashSettings: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **trashSettingsUpdateRequest** | [**TrashSettingsUpdateRequest**](TrashSettingsUpdateRequest.md)|  | 
+
+### Return type
+
+[**TrashSettingsResponse**](TrashSettingsResponse.md)
 
 ### Authorization
 

@@ -218,6 +218,42 @@ func (e BatchRequestAction) Valid() bool {
 	}
 }
 
+// Defines values for DeviceSessionKind.
+const (
+	DeviceSessionKindMobile DeviceSessionKind = "mobile"
+	DeviceSessionKindWeb    DeviceSessionKind = "web"
+)
+
+// Valid indicates whether the value is a known member of the DeviceSessionKind enum.
+func (e DeviceSessionKind) Valid() bool {
+	switch e {
+	case DeviceSessionKindMobile:
+		return true
+	case DeviceSessionKindWeb:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DownloadFormat.
+const (
+	Tar DownloadFormat = "tar"
+	Zip DownloadFormat = "zip"
+)
+
+// Valid indicates whether the value is a known member of the DownloadFormat enum.
+func (e DownloadFormat) Valid() bool {
+	switch e {
+	case Tar:
+		return true
+	case Zip:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	ALBUMLOCKED            ErrorCode = "ALBUM_LOCKED"
@@ -409,16 +445,16 @@ func (e ModelSource) Valid() bool {
 
 // Defines values for SessionInfoKind.
 const (
-	Mobile SessionInfoKind = "mobile"
-	Web    SessionInfoKind = "web"
+	SessionInfoKindMobile SessionInfoKind = "mobile"
+	SessionInfoKindWeb    SessionInfoKind = "web"
 )
 
 // Valid indicates whether the value is a known member of the SessionInfoKind enum.
 func (e SessionInfoKind) Valid() bool {
 	switch e {
-	case Mobile:
+	case SessionInfoKindMobile:
 		return true
-	case Web:
+	case SessionInfoKindWeb:
 		return true
 	default:
 		return false
@@ -464,6 +500,75 @@ func (e TimelineItemTakenAtSource) Valid() bool {
 	}
 }
 
+// Defines values for TranscodePreset.
+const (
+	TranscodePresetAuto   TranscodePreset = "auto"
+	TranscodePresetN1080p TranscodePreset = "1080p"
+	TranscodePresetN480p  TranscodePreset = "480p"
+	TranscodePresetN720p  TranscodePreset = "720p"
+	TranscodePresetOff    TranscodePreset = "off"
+)
+
+// Valid indicates whether the value is a known member of the TranscodePreset enum.
+func (e TranscodePreset) Valid() bool {
+	switch e {
+	case TranscodePresetAuto:
+		return true
+	case TranscodePresetN1080p:
+		return true
+	case TranscodePresetN480p:
+		return true
+	case TranscodePresetN720p:
+		return true
+	case TranscodePresetOff:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TranscodingSettingsResponseConcurrency.
+const (
+	TranscodingSettingsResponseConcurrencyN1 TranscodingSettingsResponseConcurrency = 1
+	TranscodingSettingsResponseConcurrencyN2 TranscodingSettingsResponseConcurrency = 2
+	TranscodingSettingsResponseConcurrencyN4 TranscodingSettingsResponseConcurrency = 4
+)
+
+// Valid indicates whether the value is a known member of the TranscodingSettingsResponseConcurrency enum.
+func (e TranscodingSettingsResponseConcurrency) Valid() bool {
+	switch e {
+	case TranscodingSettingsResponseConcurrencyN1:
+		return true
+	case TranscodingSettingsResponseConcurrencyN2:
+		return true
+	case TranscodingSettingsResponseConcurrencyN4:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TranscodingSettingsUpdateRequestConcurrency.
+const (
+	TranscodingSettingsUpdateRequestConcurrencyN1 TranscodingSettingsUpdateRequestConcurrency = 1
+	TranscodingSettingsUpdateRequestConcurrencyN2 TranscodingSettingsUpdateRequestConcurrency = 2
+	TranscodingSettingsUpdateRequestConcurrencyN4 TranscodingSettingsUpdateRequestConcurrency = 4
+)
+
+// Valid indicates whether the value is a known member of the TranscodingSettingsUpdateRequestConcurrency enum.
+func (e TranscodingSettingsUpdateRequestConcurrency) Valid() bool {
+	switch e {
+	case TranscodingSettingsUpdateRequestConcurrencyN1:
+		return true
+	case TranscodingSettingsUpdateRequestConcurrencyN2:
+		return true
+	case TranscodingSettingsUpdateRequestConcurrencyN4:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TrashItemKind.
 const (
 	TrashItemKindImage TrashItemKind = "image"
@@ -503,6 +608,24 @@ func (e TrashItemTakenAtSource) Valid() bool {
 	}
 }
 
+// Defines values for UserLocale.
+const (
+	UserLocaleEn     UserLocale = "en"
+	UserLocaleZhHans UserLocale = "zh-Hans"
+)
+
+// Valid indicates whether the value is a known member of the UserLocale enum.
+func (e UserLocale) Valid() bool {
+	switch e {
+	case UserLocaleEn:
+		return true
+	case UserLocaleZhHans:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserRole.
 const (
 	UserRoleAdmin UserRole = "admin"
@@ -515,6 +638,27 @@ func (e UserRole) Valid() bool {
 	case UserRoleAdmin:
 		return true
 	case UserRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserTheme.
+const (
+	UserThemeAuto  UserTheme = "auto"
+	UserThemeDark  UserTheme = "dark"
+	UserThemeLight UserTheme = "light"
+)
+
+// Valid indicates whether the value is a known member of the UserTheme enum.
+func (e UserTheme) Valid() bool {
+	switch e {
+	case UserThemeAuto:
+		return true
+	case UserThemeDark:
+		return true
+	case UserThemeLight:
 		return true
 	default:
 		return false
@@ -1456,6 +1600,55 @@ type CreateAdminRequest struct {
 	Password string `json:"password"`
 }
 
+// DeviceSession One of the caller's active sessions as the device list
+// renders it: the row's identity and rendering fields, the
+// `isCurrent` marker derived against the request's own
+// credential, and the session's creation-time address.
+type DeviceSession struct {
+	// DeviceName Human-readable device label: the browser's user agent
+	// captured at login for web sessions, the name supplied
+	// during pairing for mobile ones.
+	DeviceName *string `json:"deviceName,omitempty"`
+
+	// Id UUIDv7 identifier of the session.
+	Id openapi_types.UUID `json:"id"`
+
+	// IpAddress The address the session was created from (the login's or
+	// pairing exchange's socket peer), captured at creation
+	// time. Omitted when the row predates the column or no
+	// address was captured; an audit hint, not a geolocation
+	// claim.
+	//
+	//
+	// Examples: 192.168.1.100
+	IpAddress *string `json:"ipAddress,omitempty"`
+
+	// IsCurrent Whether this row is the session the request itself
+	// authenticates with -- the device the caller is managing
+	// from. Exactly one entry of a list carries `true`, and
+	// that entry cannot be revoked through
+	// `DELETE /users/me/sessions/{id}` (the sign-out flow is
+	// its exit).
+	IsCurrent bool `json:"isCurrent"`
+
+	// Kind Where the session credential lives: `web` sessions ride
+	// the `lumemor_session` cookie, `mobile` sessions ride a
+	// bearer token.
+	Kind DeviceSessionKind `json:"kind"`
+
+	// LastSeenAt When the session was last used (RFC 3339 UTC).
+	LastSeenAt time.Time `json:"lastSeenAt"`
+}
+
+// DeviceSessionKind Where the session credential lives: `web` sessions ride
+// the `lumemor_session` cookie, `mobile` sessions ride a
+// bearer token.
+type DeviceSessionKind string
+
+// DownloadFormat The account's preferred archive format of batch and
+// whole-album downloads.
+type DownloadFormat string
+
 // Error Error envelope shared by all endpoints. `code` is the authoritative
 // registry of stable error codes; clients must not parse `message`.
 type Error struct {
@@ -1888,6 +2081,16 @@ type PairingTokenResponse struct {
 	// string. Render it as a QR code and never store or log it;
 	// the server keeps only its hash.
 	Token string `json:"token"`
+}
+
+// PasswordChangeRequest Payload of `PUT /users/me/password`.
+type PasswordChangeRequest struct {
+	// Current The account's current password; it must verify against
+	// the stored Argon2id hash before anything is written.
+	Current string `json:"current"`
+
+	// Next The new password; 8 to 128 runes, stored as a fresh Argon2id hash.
+	Next string `json:"next"`
 }
 
 // PersonFacetCount One named person of the people facet.
@@ -2475,6 +2678,67 @@ type TimelineResponse struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 }
 
+// TranscodePreset The transcode job's re-encode preset for new video ingests:
+// `auto` keeps the source resolution, the numeric presets
+// scale down to the named vertical bound, and `off` skips the
+// re-encode entirely (the original stays in place and
+// downloadable; the video's pipeline still completes).
+type TranscodePreset string
+
+// TranscodingSettingsResponse The transcoding settings of `GET /admin/settings/transcoding`
+// and the successful `PUT`: the instance's video transcoding
+// profile.
+//
+// Examples: {"concurrency":2,"keepOriginal":true,"preset":"auto","thumbnailFrame":true}
+type TranscodingSettingsResponse struct {
+	// Concurrency How many video re-encodes may run at once: 1 (low load),
+	// 2 (the recommended default) or 4 (high load).
+	Concurrency TranscodingSettingsResponseConcurrency `json:"concurrency"`
+
+	// KeepOriginal The re-encode failure policy: on, a failed re-encode
+	// completes the job quietly and the original stays in
+	// place and downloadable; off, the job fails and retries.
+	KeepOriginal bool `json:"keepOriginal"`
+
+	// Preset The transcode job's re-encode preset for new video ingests:
+	// `auto` keeps the source resolution, the numeric presets
+	// scale down to the named vertical bound, and `off` skips the
+	// re-encode entirely (the original stays in place and
+	// downloadable; the video's pipeline still completes).
+	Preset TranscodePreset `json:"preset"`
+
+	// ThumbnailFrame Whether the video thumbnail job captures a poster frame
+	// (the poster IS a video's thumbnail). Off skips the frame
+	// capture; the video's pipeline still completes.
+	ThumbnailFrame bool `json:"thumbnailFrame"`
+}
+
+// TranscodingSettingsResponseConcurrency How many video re-encodes may run at once: 1 (low load),
+// 2 (the recommended default) or 4 (high load).
+type TranscodingSettingsResponseConcurrency int
+
+// TranscodingSettingsUpdateRequest Payload of `PUT /admin/settings/transcoding`.
+type TranscodingSettingsUpdateRequest struct {
+	// Concurrency The concurrency bound to save: 1, 2 or 4.
+	Concurrency TranscodingSettingsUpdateRequestConcurrency `json:"concurrency"`
+
+	// KeepOriginal The failure policy to save.
+	KeepOriginal bool `json:"keepOriginal"`
+
+	// Preset The transcode job's re-encode preset for new video ingests:
+	// `auto` keeps the source resolution, the numeric presets
+	// scale down to the named vertical bound, and `off` skips the
+	// re-encode entirely (the original stays in place and
+	// downloadable; the video's pipeline still completes).
+	Preset TranscodePreset `json:"preset"`
+
+	// ThumbnailFrame The poster-frame capture switch to save.
+	ThumbnailFrame bool `json:"thumbnailFrame"`
+}
+
+// TranscodingSettingsUpdateRequestConcurrency The concurrency bound to save: 1, 2 or 4.
+type TranscodingSettingsUpdateRequestConcurrency int
+
 // TrashItem One asset of the trash view: the timeline item's fields (the
 // tile-relevant identity and pipeline fields, so the trash page
 // renders the same tiles as the timeline) plus the trash
@@ -2574,6 +2838,28 @@ type TrashResponse struct {
 	Items []TrashItem `json:"items"`
 }
 
+// TrashSettingsResponse The trash settings of `GET /admin/settings/trash` and the
+// successful `PUT`: the instance's trash retention in whole
+// days.
+type TrashSettingsResponse struct {
+	// RetentionDays The retention window of a soft-deleted asset in whole
+	// days, 0 to 365. A fresh instance (or a corrupt row)
+	// answers the default 30; 0 means the next expiry run
+	// purges everything trashed.
+	//
+	//
+	// Examples: 30
+	RetentionDays int `json:"retentionDays"`
+}
+
+// TrashSettingsUpdateRequest Payload of `PUT /admin/settings/trash`.
+type TrashSettingsUpdateRequest struct {
+	// RetentionDays The retention to save, in whole days, 0 to 365.
+	//
+	// Examples: 14
+	RetentionDays int `json:"retentionDays"`
+}
+
 // UnnamedClusterSummary One unnamed face cluster of the caller's unnamed region: a
 // global cluster the caller sees through at least one visible
 // asset and has not labeled themselves. Unlabeled for THIS
@@ -2644,10 +2930,109 @@ type UserListResponse struct {
 	Users []UserSummary `json:"users"`
 }
 
+// UserLocale The account's stored interface language. The values are the
+// UI's installed locales -- the same table the web and mobile
+// clients share -- and the list grows with that table: a
+// locale file added to the i18n directory is a locale this
+// enum admits next. Clients that cannot render a stored value
+// fall back to their own default.
+type UserLocale string
+
 // UserRole Authorization role of an account: `admin` is granted by the
 // first-run wizard or by another administrator, `user` is the
 // default of every other creation path.
 type UserRole string
+
+// UserSelfPatch Payload of `PATCH /users/me`. Every field is optional: an
+// absent field keeps its stored value, a present one replaces
+// it. At least one field must be present.
+type UserSelfPatch struct {
+	// DownloadFormat The account's preferred archive format of batch and
+	// whole-album downloads.
+	DownloadFormat *DownloadFormat `json:"downloadFormat,omitempty"`
+
+	// DownloadIncludeSidecars The download packaging's sidecar switch.
+	DownloadIncludeSidecars *bool `json:"downloadIncludeSidecars,omitempty"`
+
+	// DownloadIncludeVideos The download packaging's video switch.
+	DownloadIncludeVideos *bool `json:"downloadIncludeVideos,omitempty"`
+
+	// Email The new login address, parsed and lower-cased like every
+	// creation path; an address another account already owns
+	// answers 409 USER_EMAIL_TAKEN.
+	Email *openapi_types.Email `json:"email,omitempty"`
+
+	// Locale The account's stored interface language. The values are the
+	// UI's installed locales -- the same table the web and mobile
+	// clients share -- and the list grows with that table: a
+	// locale file added to the i18n directory is a locale this
+	// enum admits next. Clients that cannot render a stored value
+	// fall back to their own default.
+	Locale *UserLocale `json:"locale,omitempty"`
+
+	// Name The new display name; 1 to 100 runes after trimming (an
+	// empty name is refused -- the profile always carries one).
+	Name *string `json:"name,omitempty"`
+
+	// Theme The account's stored appearance preference for the client's
+	// color scheme. `auto` follows the device's system
+	// preference (the web app maps it to its `system` mode),
+	// `light` and `dark` are the manual choices. The value is
+	// declarative account state: a client that reads it applies it
+	// at sign-in, and the client performing the change applies it
+	// immediately.
+	Theme *UserTheme `json:"theme,omitempty"`
+}
+
+// UserSelfResponse The caller's own account as the me-scoped user surface
+// returns it: the identity fields of the profile section, the
+// appearance pair, and the download preferences. The password
+// hash is never part of any response.
+type UserSelfResponse struct {
+	// DownloadFormat The account's preferred archive format of batch and
+	// whole-album downloads.
+	DownloadFormat DownloadFormat `json:"downloadFormat"`
+
+	// DownloadIncludeSidecars Whether the account's download packaging includes EXIF
+	// sidecar files (`.xmp`) beside the media.
+	DownloadIncludeSidecars bool `json:"downloadIncludeSidecars"`
+
+	// DownloadIncludeVideos Whether the account's download packaging includes the
+	// original video files. Photos are the download's content
+	// and always ride along.
+	DownloadIncludeVideos bool `json:"downloadIncludeVideos"`
+
+	// Email Login address; unique instance-wide.
+	Email openapi_types.Email `json:"email"`
+
+	// Id UUIDv7 identifier of the account.
+	Id openapi_types.UUID `json:"id"`
+
+	// Locale The account's stored interface language. The values are the
+	// UI's installed locales -- the same table the web and mobile
+	// clients share -- and the list grows with that table: a
+	// locale file added to the i18n directory is a locale this
+	// enum admits next. Clients that cannot render a stored value
+	// fall back to their own default.
+	Locale UserLocale `json:"locale"`
+
+	// Name Display name.
+	Name string `json:"name"`
+
+	// Role Authorization role of an account: `admin` is granted by the
+	// first-run wizard or by another administrator, `user` is the
+	// default of every other creation path.
+	Role UserRole `json:"role"`
+
+	// Theme The account's stored appearance preference for the client's
+	// color scheme. `auto` follows the device's system
+	// preference (the web app maps it to its `system` mode),
+	// `light` and `dark` are the manual choices. The value is
+	// declarative account state: a client that reads it applies it
+	// at sign-in, and the client performing the change applies it
+	// immediately.
+	Theme UserTheme `json:"theme"`
+}
 
 // UserSummary One account of the minimal member list: exactly the identity
 // fields a pick list renders -- no display name, no
@@ -2668,6 +3053,15 @@ type UserSummary struct {
 	// default of every other creation path.
 	Role UserRole `json:"role"`
 }
+
+// UserTheme The account's stored appearance preference for the client's
+// color scheme. `auto` follows the device's system
+// preference (the web app maps it to its `system` mode),
+// `light` and `dark` are the manual choices. The value is
+// declarative account state: a client that reads it applies it
+// at sign-in, and the client performing the change applies it
+// immediately.
+type UserTheme string
 
 // YearFacetCount One year of the time-range facet.
 type YearFacetCount struct {
@@ -2913,6 +3307,12 @@ type ActivateModelJSONRequestBody = ActivateModelJSONBody
 // UpdateStorageSettingsJSONRequestBody defines body for UpdateStorageSettings for application/json ContentType.
 type UpdateStorageSettingsJSONRequestBody = StorageSettingsUpdateRequest
 
+// UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
+type UpdateTranscodingSettingsJSONRequestBody = TranscodingSettingsUpdateRequest
+
+// UpdateTrashSettingsJSONRequestBody defines body for UpdateTrashSettings for application/json ContentType.
+type UpdateTrashSettingsJSONRequestBody = TrashSettingsUpdateRequest
+
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = AdminCreateUserRequest
 
@@ -2979,6 +3379,12 @@ type RemoveTagAssetsJSONRequestBody = TagAssetsRequest
 // AddTagAssetsJSONRequestBody defines body for AddTagAssets for application/json ContentType.
 type AddTagAssetsJSONRequestBody = TagAssetsRequest
 
+// UpdateUserSelfJSONRequestBody defines body for UpdateUserSelf for application/json ContentType.
+type UpdateUserSelfJSONRequestBody = UserSelfPatch
+
+// ChangeUserPasswordJSONRequestBody defines body for ChangeUserPassword for application/json ContentType.
+type ChangeUserPasswordJSONRequestBody = PasswordChangeRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListJobs List the job runs of the task panel.
@@ -3008,6 +3414,18 @@ type ServerInterface interface {
 	// UpdateStorageSettings Validate and save the storage template.
 	// (PUT /admin/settings/storage)
 	UpdateStorageSettings(w http.ResponseWriter, r *http.Request)
+	// GetTranscodingSettings Read the video transcoding settings.
+	// (GET /admin/settings/transcoding)
+	GetTranscodingSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateTranscodingSettings Save the video transcoding settings.
+	// (PUT /admin/settings/transcoding)
+	UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request)
+	// GetTrashSettings Read the trash retention setting.
+	// (GET /admin/settings/trash)
+	GetTrashSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateTrashSettings Save the trash retention setting.
+	// (PUT /admin/settings/trash)
+	UpdateTrashSettings(w http.ResponseWriter, r *http.Request)
 	// ListUsers List the instance's accounts.
 	// (GET /admin/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -3173,6 +3591,21 @@ type ServerInterface interface {
 	// ListInstanceUsers The instance's member list.
 	// (GET /users)
 	ListInstanceUsers(w http.ResponseWriter, r *http.Request)
+	// GetUserSelf Read the caller's own account.
+	// (GET /users/me)
+	GetUserSelf(w http.ResponseWriter, r *http.Request)
+	// UpdateUserSelf Patch the caller's own account.
+	// (PATCH /users/me)
+	UpdateUserSelf(w http.ResponseWriter, r *http.Request)
+	// ChangeUserPassword Change the caller's own password.
+	// (PUT /users/me/password)
+	ChangeUserPassword(w http.ResponseWriter, r *http.Request)
+	// ListUserDevices List the caller's signed-in devices.
+	// (GET /users/me/sessions)
+	ListUserDevices(w http.ResponseWriter, r *http.Request)
+	// RevokeUserDevice Revoke one of the caller's other devices.
+	// (DELETE /users/me/sessions/{id})
+	RevokeUserDevice(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -3230,6 +3663,30 @@ func (_ Unimplemented) GetStorageSettings(w http.ResponseWriter, r *http.Request
 // UpdateStorageSettings Validate and save the storage template.
 // (PUT /admin/settings/storage)
 func (_ Unimplemented) UpdateStorageSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTranscodingSettings Read the video transcoding settings.
+// (GET /admin/settings/transcoding)
+func (_ Unimplemented) GetTranscodingSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTranscodingSettings Save the video transcoding settings.
+// (PUT /admin/settings/transcoding)
+func (_ Unimplemented) UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTrashSettings Read the trash retention setting.
+// (GET /admin/settings/trash)
+func (_ Unimplemented) GetTrashSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTrashSettings Save the trash retention setting.
+// (PUT /admin/settings/trash)
+func (_ Unimplemented) UpdateTrashSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3563,6 +4020,36 @@ func (_ Unimplemented) ListInstanceUsers(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetUserSelf Read the caller's own account.
+// (GET /users/me)
+func (_ Unimplemented) GetUserSelf(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateUserSelf Patch the caller's own account.
+// (PATCH /users/me)
+func (_ Unimplemented) UpdateUserSelf(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ChangeUserPassword Change the caller's own password.
+// (PUT /users/me/password)
+func (_ Unimplemented) ChangeUserPassword(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListUserDevices List the caller's signed-in devices.
+// (GET /users/me/sessions)
+func (_ Unimplemented) ListUserDevices(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeUserDevice Revoke one of the caller's other devices.
+// (DELETE /users/me/sessions/{id})
+func (_ Unimplemented) RevokeUserDevice(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ServerInterfaceWrapper converts contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler            ServerInterface
@@ -3732,6 +4219,62 @@ func (siw *ServerInterfaceWrapper) UpdateStorageSettings(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateStorageSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTranscodingSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetTranscodingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTranscodingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTranscodingSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTranscodingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrashSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetTrashSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrashSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTrashSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTrashSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTrashSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5262,6 +5805,88 @@ func (siw *ServerInterfaceWrapper) ListInstanceUsers(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// GetUserSelf operation middleware
+func (siw *ServerInterfaceWrapper) GetUserSelf(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUserSelf(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateUserSelf operation middleware
+func (siw *ServerInterfaceWrapper) UpdateUserSelf(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateUserSelf(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeUserPassword operation middleware
+func (siw *ServerInterfaceWrapper) ChangeUserPassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeUserPassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListUserDevices operation middleware
+func (siw *ServerInterfaceWrapper) ListUserDevices(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUserDevices(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeUserDevice operation middleware
+func (siw *ServerInterfaceWrapper) RevokeUserDevice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeUserDevice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -5532,6 +6157,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/users", wrapper.ListInstanceUsers)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/users/me", wrapper.GetUserSelf)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/users/me", wrapper.UpdateUserSelf)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/users/me/password", wrapper.ChangeUserPassword)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/users/me/sessions", wrapper.ListUserDevices)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/users/me/sessions/{id}", wrapper.RevokeUserDevice)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/users", wrapper.ListUsers)
 	})
 	r.Group(func(r chi.Router) {
@@ -5566,6 +6206,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/admin/settings/storage", wrapper.UpdateStorageSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/settings/trash", wrapper.GetTrashSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/settings/trash", wrapper.UpdateTrashSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/settings/transcoding", wrapper.GetTranscodingSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	})
 
 	return r

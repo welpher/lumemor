@@ -2267,6 +2267,185 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the caller's own account.
+         * @description The self-scoped profile read behind the user settings page:
+         *     the calling session's own account row -- the identity fields
+         *     of the profile section, the appearance pair (theme and
+         *     locale) the account persisted, and the download preferences
+         *     the batch and whole-album download flows will consume. The
+         *     endpoint is `me`-scoped by construction: the session that
+         *     authenticates the request IS the identity, there is no
+         *     userId parameter to get wrong, and one account can never
+         *     read another's row through it.
+         *
+         *     The theme and the locale are the values the account chose on
+         *     the settings page; a client that applies them (the web app's
+         *     `.dark` class and i18n store) restores the account's
+         *     appearance at sign-in. The download preferences are
+         *     declarative account state: they persist here and every
+         *     future download flow reads them as the account's default
+         *     packaging (see `UserSelfPatch` for the honest consumption
+         *     state).
+         */
+        get: operations["getUserSelf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch the caller's own account.
+         * @description The self-scoped write behind the settings page's profile,
+         *     appearance and download-preferences sections. Every field is
+         *     optional: an absent field keeps its stored value, a present
+         *     one replaces it, and the response is the complete saved
+         *     account state (the caller adopts it as the fresh state,
+         *     exactly like the storage settings save).
+         *
+         *     THE ME-SCOPING: the endpoint addresses the session's own
+         *     account row only -- no userId parameter exists, and the
+         *     session middleware's identity decides the row. The email is
+         *     the one field whose uniqueness spans accounts: an address
+         *     another account already owns answers 409 USER_EMAIL_TAKEN
+         *     and nothing is written.
+         *
+         *     The theme and the locale persist for the NEXT sign-in and
+         *     every client that reads them; the client performing the
+         *     patch is expected to apply them immediately itself (the web
+         *     app flips its `.dark` class and reloads its i18n store on
+         *     the response, not on a re-login).
+         *
+         *     THE DOWNLOAD PREFERENCES ARE DECLARATIVE: the batch and
+         *     whole-album download endpoints do not exist yet (they are a
+         *     later milestone's surface); the preferences persist here so
+         *     those flows will read the account's default packaging when
+         *     they arrive -- a stored preference is never silently
+         *     dropped, it is simply not consumed yet. This is documented
+         *     honestly: nothing in the current download-less pipeline
+         *     reads these fields.
+         */
+        patch: operations["updateUserSelf"];
+        trace?: never;
+    };
+    "/users/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the caller's own password.
+         * @description The self-scoped password change behind the settings page's
+         *     change-password section. The current password must verify
+         *     against the account's stored Argon2id hash; the next one is
+         *     stored as a fresh Argon2id hash (the same profile every
+         *     creation path pins -- a rehash with a new salt, never a
+         *     mutation of the old hash).
+         *
+         *     **The revocation contract, pinned:** a successful change
+         *     revokes EVERY OTHER session of the account, across all
+         *     devices -- web cookie sessions and mobile bearer sessions
+         *     alike, their credentials failing authentication with 401
+         *     from the next request on -- while the session that performed
+         *     the change STAYS signed in (the caller is not signed out of
+         *     the device they just proved they own). The rationale is the
+         *     credential-severance rule: a changed password means every
+         *     other held credential of the account is stale, and a device
+         *     that wants back in signs in with the new password.
+         *
+         *     A wrong current password answers 400 VALIDATION_FAILED
+         *     naming `current` -- NOT 401, because the request''s session
+         *     is valid and healthy; only the request''s own field failed
+         *     to verify. (Clients must not treat it as a session expiry.)
+         *     The next password follows the account rules everywhere: 8 to
+         *     128 runes.
+         */
+        put: operations["changeUserPassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the caller's signed-in devices.
+         * @description The device list behind the settings page's devices section:
+         *     every active session of the calling account across devices,
+         *     most recently used first, each entry carrying the device
+         *     rendering's own fields -- and, unlike the auth surface's
+         *     own `GET /auth/sessions`, the `isCurrent` marker derived by
+         *     comparing the session id against the credential of THIS
+         *     request, plus the session's creation-time IP address.
+         *
+         *     The list is the account's own sessions only (the `me`
+         *     scoping again: the session IS the identity); a web session
+         *     and a paired phone both appear. `ipAddress` is the address
+         *     the session was created from (the login's or the pairing
+         *     exchange's socket peer), omitted when the row predates the
+         *     column or the address was not captured. It is an audit hint,
+         *     not a geolocation claim.
+         */
+        get: operations["listUserDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one of the caller's other devices.
+         * @description The device list's revoke button: signs out one device by
+         *     deleting its session row. The endpoint is owner-scoped like
+         *     the auth surface's own `DELETE /auth/sessions/{id}` -- an id
+         *     that is unknown, belongs to another account, or is already
+         *     revoked still answers the same 204, without revealing
+         *     whether such a session exists.
+         *
+         *     THE ONE DIFFERENCE FROM THE AUTH SURFACE: the CURRENT
+         *     session -- the one authenticating this very request, the
+         *     row the device list marks `isCurrent` -- answers 400
+         *     VALIDATION_FAILED instead. The settings page's list is a
+         *     remote-device manager; the current device's own exit is the
+         *     sign-out flow (`POST /auth/logout`), and the 400 keeps a
+         *     stray click on the wrong row from signing the caller out of
+         *     the very session they are managing from.
+         */
+        delete: operations["revokeUserDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/users": {
         parameters: {
             query?: never;
@@ -2763,6 +2942,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/settings/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the trash retention setting.
+         * @description The trash settings read of the admin surface: the instance's
+         *     trash retention in whole days -- the window a soft-deleted
+         *     asset stays recoverable before the hourly expiry job purges
+         *     it (rows, thumbnails, derivatives and orphaned files
+         *     together). A fresh instance (or a corrupt row) answers the
+         *     default 30; the read never fails over a row the save
+         *     endpoint's validation should have kept honest.
+         */
+        get: operations["getTrashSettings"];
+        /**
+         * Save the trash retention setting.
+         * @description The trash settings save of the admin surface. The retention
+         *     is a whole number of days, 0 to 365:
+         *
+         *     - **0 means immediate permanent delete** -- an asset enters
+         *     the trash and the NEXT expiry run purges it (the hourly
+         *     periodic job and the boot run are the runs; nothing is
+         *     deleted by the save request itself).
+         *     - The expiry job reads the setting at the START of each run
+         *     (the boot run and every hourly periodic run alike), so a
+         *     change takes effect for the next run's window, not
+         *     retroactively for rows a past run already considered.
+         *     - An already-trashed asset's fate is decided by the run's
+         *     own deadline computation: with a SHORTENED retention, rows
+         *     past the new window leave on the next run; with a LENGTHENED
+         *     one, every row gains the added days from its own deletion
+         *     mark.
+         *
+         *     The save validates the bound and answers the saved value; a
+         *     value outside 0-365 answers 400 VALIDATION_FAILED naming
+         *     `retentionDays`, and nothing is written.
+         */
+        put: operations["updateTrashSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/settings/transcoding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the video transcoding settings.
+         * @description The transcoding settings read of the admin surface: the
+         *     instance's video transcoding profile -- the preset the
+         *     transcode job re-encodes new video uploads at, the
+         *     concurrency bound of simultaneous re-encodes, the
+         *     video-thumbnail frame capture switch, and the
+         *     keep-original-on-failure policy. A fresh instance (or a
+         *     corrupt row) answers the documented defaults.
+         */
+        get: operations["getTranscodingSettings"];
+        /**
+         * Save the video transcoding settings.
+         * @description The transcoding settings save of the admin surface.
+         *
+         *     **The scope pin, documented honestly: the profile affects
+         *     NEW ingests only.** The transcode job of a video upload
+         *     reads the profile when it runs, so a saved change governs
+         *     every video uploaded after it; videos already transcoded
+         *     keep their existing playable copy and are never re-encoded,
+         *     and a video whose job is still queued picks up the profile
+         *     at its run time (the job reads the setting at run time, not
+         *     enqueue time).
+         *
+         *     The fields: `preset` bounds the re-encode's vertical
+         *     resolution (`auto` keeps the source resolution, the numeric
+         *     presets scale down to the bound, `off` skips the re-encode
+         *     entirely -- the original file stays in place and
+         *     downloadable, and the video's pipeline still completes);
+         *     `concurrency` bounds how many re-encodes run at once;
+         *     `thumbnailFrame` turns the video poster-frame capture (the
+         *     video's thumbnail) on or off; `keepOriginal` decides the
+         *     failure policy -- a failed re-encode either completes the
+         *     job quietly (the original stays in place and downloadable
+         *     through the original endpoint) or fails it for retry.
+         *
+         *     The save validates every field against its enum and answers
+         *     the saved profile; an out-of-enum value answers 400
+         *     VALIDATION_FAILED naming the field, and nothing is written.
+         */
+        put: operations["updateTranscodingSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3043,6 +3326,234 @@ export interface components {
              * @example {{y}}/{{MM}}/{{filename}}
              */
             template: string;
+        };
+        /**
+         * @description The account's stored appearance preference for the client's
+         *     color scheme. `auto` follows the device's system
+         *     preference (the web app maps it to its `system` mode),
+         *     `light` and `dark` are the manual choices. The value is
+         *     declarative account state: a client that reads it applies it
+         *     at sign-in, and the client performing the change applies it
+         *     immediately.
+         * @enum {string}
+         */
+        UserTheme: "auto" | "light" | "dark";
+        /**
+         * @description The account's stored interface language. The values are the
+         *     UI's installed locales -- the same table the web and mobile
+         *     clients share -- and the list grows with that table: a
+         *     locale file added to the i18n directory is a locale this
+         *     enum admits next. Clients that cannot render a stored value
+         *     fall back to their own default.
+         * @enum {string}
+         */
+        UserLocale: "en" | "zh-Hans";
+        /**
+         * @description The account's preferred archive format of batch and
+         *     whole-album downloads.
+         * @enum {string}
+         */
+        DownloadFormat: "zip" | "tar";
+        /**
+         * @description The caller's own account as the me-scoped user surface
+         *     returns it: the identity fields of the profile section, the
+         *     appearance pair, and the download preferences. The password
+         *     hash is never part of any response.
+         */
+        UserSelfResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the account.
+             */
+            id: string;
+            /** @description Display name. */
+            name: string;
+            /**
+             * Format: email
+             * @description Login address; unique instance-wide.
+             */
+            email: string;
+            role: components["schemas"]["UserRole"];
+            theme: components["schemas"]["UserTheme"];
+            locale: components["schemas"]["UserLocale"];
+            downloadFormat: components["schemas"]["DownloadFormat"];
+            /**
+             * @description Whether the account's download packaging includes the
+             *     original video files. Photos are the download's content
+             *     and always ride along.
+             */
+            downloadIncludeVideos: boolean;
+            /**
+             * @description Whether the account's download packaging includes EXIF
+             *     sidecar files (`.xmp`) beside the media.
+             */
+            downloadIncludeSidecars: boolean;
+        };
+        /**
+         * @description Payload of `PATCH /users/me`. Every field is optional: an
+         *     absent field keeps its stored value, a present one replaces
+         *     it. At least one field must be present.
+         */
+        UserSelfPatch: {
+            /**
+             * @description The new display name; 1 to 100 runes after trimming (an
+             *     empty name is refused -- the profile always carries one).
+             */
+            name?: string;
+            /**
+             * Format: email
+             * @description The new login address, parsed and lower-cased like every
+             *     creation path; an address another account already owns
+             *     answers 409 USER_EMAIL_TAKEN.
+             */
+            email?: string;
+            theme?: components["schemas"]["UserTheme"];
+            locale?: components["schemas"]["UserLocale"];
+            downloadFormat?: components["schemas"]["DownloadFormat"];
+            /** @description The download packaging's video switch. */
+            downloadIncludeVideos?: boolean;
+            /** @description The download packaging's sidecar switch. */
+            downloadIncludeSidecars?: boolean;
+        };
+        /** @description Payload of `PUT /users/me/password`. */
+        PasswordChangeRequest: {
+            /**
+             * Format: password
+             * @description The account's current password; it must verify against
+             *     the stored Argon2id hash before anything is written.
+             */
+            current: string;
+            /**
+             * Format: password
+             * @description The new password; 8 to 128 runes, stored as a fresh Argon2id hash.
+             */
+            next: string;
+        };
+        /**
+         * @description One of the caller's active sessions as the device list
+         *     renders it: the row's identity and rendering fields, the
+         *     `isCurrent` marker derived against the request's own
+         *     credential, and the session's creation-time address.
+         */
+        DeviceSession: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the session.
+             */
+            id: string;
+            /**
+             * @description Where the session credential lives: `web` sessions ride
+             *     the `lumemor_session` cookie, `mobile` sessions ride a
+             *     bearer token.
+             * @enum {string}
+             */
+            kind: "web" | "mobile";
+            /**
+             * @description Human-readable device label: the browser's user agent
+             *     captured at login for web sessions, the name supplied
+             *     during pairing for mobile ones.
+             */
+            deviceName?: string;
+            /**
+             * Format: date-time
+             * @description When the session was last used (RFC 3339 UTC).
+             */
+            lastSeenAt: string;
+            /**
+             * @description The address the session was created from (the login's or
+             *     pairing exchange's socket peer), captured at creation
+             *     time. Omitted when the row predates the column or no
+             *     address was captured; an audit hint, not a geolocation
+             *     claim.
+             * @example 192.168.1.100
+             */
+            ipAddress?: string;
+            /**
+             * @description Whether this row is the session the request itself
+             *     authenticates with -- the device the caller is managing
+             *     from. Exactly one entry of a list carries `true`, and
+             *     that entry cannot be revoked through
+             *     `DELETE /users/me/sessions/{id}` (the sign-out flow is
+             *     its exit).
+             */
+            isCurrent: boolean;
+        };
+        /**
+         * @description The trash settings of `GET /admin/settings/trash` and the
+         *     successful `PUT`: the instance's trash retention in whole
+         *     days.
+         */
+        TrashSettingsResponse: {
+            /**
+             * @description The retention window of a soft-deleted asset in whole
+             *     days, 0 to 365. A fresh instance (or a corrupt row)
+             *     answers the default 30; 0 means the next expiry run
+             *     purges everything trashed.
+             * @example 30
+             */
+            retentionDays: number;
+        };
+        /** @description Payload of `PUT /admin/settings/trash`. */
+        TrashSettingsUpdateRequest: {
+            /**
+             * @description The retention to save, in whole days, 0 to 365.
+             * @example 14
+             */
+            retentionDays: number;
+        };
+        /**
+         * @description The transcode job's re-encode preset for new video ingests:
+         *     `auto` keeps the source resolution, the numeric presets
+         *     scale down to the named vertical bound, and `off` skips the
+         *     re-encode entirely (the original stays in place and
+         *     downloadable; the video's pipeline still completes).
+         * @enum {string}
+         */
+        TranscodePreset: "auto" | "1080p" | "720p" | "480p" | "off";
+        /**
+         * @description The transcoding settings of `GET /admin/settings/transcoding`
+         *     and the successful `PUT`: the instance's video transcoding
+         *     profile.
+         * @example {
+         *       "preset": "auto",
+         *       "concurrency": 2,
+         *       "thumbnailFrame": true,
+         *       "keepOriginal": true
+         *     }
+         */
+        TranscodingSettingsResponse: {
+            preset: components["schemas"]["TranscodePreset"];
+            /**
+             * @description How many video re-encodes may run at once: 1 (low load),
+             *     2 (the recommended default) or 4 (high load).
+             * @enum {integer}
+             */
+            concurrency: 1 | 2 | 4;
+            /**
+             * @description Whether the video thumbnail job captures a poster frame
+             *     (the poster IS a video's thumbnail). Off skips the frame
+             *     capture; the video's pipeline still completes.
+             */
+            thumbnailFrame: boolean;
+            /**
+             * @description The re-encode failure policy: on, a failed re-encode
+             *     completes the job quietly and the original stays in
+             *     place and downloadable; off, the job fails and retries.
+             */
+            keepOriginal: boolean;
+        };
+        /** @description Payload of `PUT /admin/settings/transcoding`. */
+        TranscodingSettingsUpdateRequest: {
+            preset: components["schemas"]["TranscodePreset"];
+            /**
+             * @description The concurrency bound to save: 1, 2 or 4.
+             * @enum {integer}
+             */
+            concurrency: 1 | 2 | 4;
+            /** @description The poster-frame capture switch to save. */
+            thumbnailFrame: boolean;
+            /** @description The failure policy to save. */
+            keepOriginal: boolean;
         };
         /**
          * @description The identifier of one model download run: the `job_runs` row
@@ -8976,6 +9487,287 @@ export interface operations {
             };
         };
     };
+    getUserSelf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's own account. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSelfResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateUserSelf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserSelfPatch"];
+            };
+        };
+        responses: {
+            /**
+             * @description The patch was applied; the response is the complete
+             *     saved account state.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSelfResponse"];
+                };
+            };
+            /**
+             * @description The payload failed validation: a name past 100 runes, a
+             *     malformed email, a theme, locale or download format
+             *     outside its enum, or a body that is not valid JSON. The
+             *     details name the offending field(s); nothing was
+             *     written.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The patch''s email address already belongs to another
+             *     account; the address is the account identity, unique
+             *     instance-wide, and the login lookup depends on that
+             *     uniqueness. Nothing was written.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    changeUserPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The password was changed and every other session of the
+             *     account was revoked; the response has no body. The
+             *     current session stays signed in.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The current password does not match (details name
+             *     `current`), or the next password is outside the 8-128
+             *     rune bound (details name `next`), or the body is not
+             *     valid JSON. Nothing was written in any case.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listUserDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The caller's active sessions, most recently used first,
+             *     with the current one marked.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSession"][];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeUserDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the session to revoke. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The session is revoked (or never was); the response has
+             *     no body.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The id is the current session's own (the sign-out flow
+             *     is that session's exit, not this one), or the path id is
+             *     not a valid UUID.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listUsers: {
         parameters: {
             query?: never;
@@ -9834,6 +10626,255 @@ export interface operations {
                 };
             };
             /** @description The template passed the validation but the write failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTrashSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The instance's trash retention in days. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashSettingsResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateTrashSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrashSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The retention was saved; the response carries it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashSettingsResponse"];
+                };
+            };
+            /**
+             * @description The retention is not a whole number of days within 0 to
+             *     365, or the body is not valid JSON. The details name
+             *     `retentionDays`; nothing was written.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The validated retention could not be written. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTranscodingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The instance's video transcoding profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscodingSettingsResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateTranscodingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TranscodingSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The profile was saved; the response carries the saved
+             *     value.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscodingSettingsResponse"];
+                };
+            };
+            /**
+             * @description A field is outside its enum (`preset`, `concurrency`) or
+             *     the body is not valid JSON. The details name the
+             *     offending field; nothing was written.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The validated profile could not be written. */
             500: {
                 headers: {
                     [name: string]: unknown;
