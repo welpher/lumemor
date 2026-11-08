@@ -1,17 +1,28 @@
 <script lang="ts">
-	// THE UNIFIED WALL (the 2026-11-07 owner pin 1): ONE pure
-	// rendering component every photo surface composes -- the
-	// timeline (its scrubber, its selection and its batch bar stay
-	// the page's own overlays), the album detail (a pure-navigation
-	// wall, no selection), the favorites and hidden wrappers, the
-	// search browse mode. The component takes bare ITEMS: the
-	// month/day fold, the row layout engine, the ResizeObserver
-	// re-pack and the PhotoTile tree all live inside -- the wall's
-	// density language is one component, not four copies. The
-	// page-level concerns (the data walk, the selection state, the
-	// batch bar, the toolbar, the scrubber, the timeline prefs)
-	// never enter: a page composes `<Wall items />` plus whatever it
-	// overlays.
+	// THE UNIFIED WALL (the 2026-11-07 owner pin 1): ONE rendering
+	// component every photo surface composes -- the timeline (its
+	// selection and its batch bar stay the page's own overlays), the
+	// album detail (a pure-navigation wall, no selection), the
+	// favorites and hidden wrappers, the search browse mode. The
+	// component takes bare ITEMS: the month/day fold, the row layout
+	// engine, the ResizeObserver re-pack, the PhotoTile tree and the
+	// month axis all live inside -- the wall's density language is
+	// one component, not four copies. The page-level concerns (the
+	// data walk, the selection state, the batch bar, the toolbar,
+	// the timeline prefs) never enter: a page composes `<Wall
+	// items />` plus whatever it overlays.
+	//
+	// THE AXIS IS THE WALL'S OWN ORGAN (the 2026-11-08 owner pin,
+	// superseding the 2026-11-05 split that kept the scrubber a
+	// page-level overlay): the photo rendering and the right-edge
+	// month axis are one thing, not a rendering plus a page's
+	// overlay. Every month-grouped wall carries the rail -- its
+	// months fold from the SAME internal groups the rendering packs
+	// (no page re-folds), its jump and its active stop track the
+	// wall's own [data-month-key] sections, and its drag drives the
+	// shell's scroll root: the axis IS the wall's scrollbar, so the
+	// scroll root's native bar hides while a wall lives. An empty
+	// wall renders no rail (the scrubber's own guard).
 	//
 	// THE SELECTION CONTRACT: `onselect`'s PRESENCE is the
 	// capability. A wall whose caller wired the callback renders the
@@ -43,7 +54,11 @@
 	// `--wall-sticky-offset` on an ancestor -- the month headers
 	// then stick BELOW that bar instead of the scroll root's top
 	// edge; every other page leaves the var unset and the headers
-	// stick at 0 like they always did.
+	// stick at 0 like they always did. The offset moves the axis
+	// with it: the jump landing (the section's scroll margin) and
+	// the active-month anchor both shift by the same value, read
+	// back from the computed var so the stop switches at the exact
+	// line the headers pin to.
 	//
 	// PERFORMANCE: every row carries content-visibility with its
 	// height known from the engine's math, so offscreen rows skip
@@ -56,6 +71,7 @@
 	import { groupTimelineItems } from './grouping';
 	import type { TimelineItem } from '$lib/api/timeline';
 	import PhotoTile from './PhotoTile.svelte';
+	import MonthScrubber from './MonthScrubber.svelte';
 
 	type Props = {
 		/** The loaded items, newest first (the page owns the walk that fills this). */
@@ -120,18 +136,157 @@
 
 	const containerWidth = $derived(measuredWidth > 0 ? measuredWidth : WALL_MAX_WIDTH);
 	const packed: PackedMonth[] = $derived(packWall(groups, containerWidth));
+
+	// THE MONTH AXIS (the wall's own organ -- the header pin): the
+	// rail's month entries fold from the same groups the rendering
+	// packs, so the wall and its axis can never disagree (the
+	// timeline page's duplicate fold is gone with this move).
+	const months = $derived(
+		groups.map((group) => ({
+			key: group.key,
+			label: group.label,
+			count: group.days.reduce((total, day) => total + day.items.length, 0)
+		}))
+	);
+
+	let activeMonthKey = $state<string | null>(null);
+	let scrollProgress = $state(0);
+	let scrollScheduled = false;
+
+	/** Jump one month group into view (a rail tap or the keyboard). */
+	function jumpToMonth(key: string): void {
+		const element = wall?.querySelector<HTMLElement>(`[data-month-key="${key}"]`) ?? null;
+		if (element !== null && typeof element.scrollIntoView === 'function') {
+			element.scrollIntoView({ block: 'start', behavior: 'smooth' });
+		}
+	}
+
+	/** The pinned-offset var's pixel value (0 unless a page's own
+	 * bar pins over the wall). An unset var answers an empty string;
+	 * a layout-less host answers the same nothing. */
+	function readStickyOffset(): number {
+		if (wall === undefined) {
+			return 0;
+		}
+		const value = getComputedStyle(wall).getPropertyValue('--wall-sticky-offset');
+		const parsed = Number.parseInt(value, 10);
+		return Number.isNaN(parsed) ? 0 : Math.max(0, parsed);
+	}
+
+	/** Track which month the viewport reads, for the rail's stop. */
+	function updateActiveMonth(): void {
+		if (wall === undefined) {
+			return;
+		}
+		const sections = Array.from(wall.querySelectorAll<HTMLElement>('[data-month-key]'));
+		if (sections.length === 0) {
+			return;
+		}
+		const first = sections[0]?.getBoundingClientRect();
+		// A layout-less host (tests) answers zero rects: keep no stop.
+		if (first === undefined || (first.top === 0 && first.height === 0)) {
+			return;
+		}
+		// The frame's scroll root is the shell's <main>: the sticky
+		// month/day header stack pins to its content top (main's p-6
+		// padding below the pinned top bar), so the anchor keeps the
+		// old rule's 100px -- the stack plus its grace -- below that
+		// edge, shifted by the pinned-offset var when a page's own
+		// bar pins over the wall (the album detail's contextual
+		// bar): the stop switches at the same line the headers pin
+		// to. A page mounted without the shell (the unit tests)
+		// reads the viewport's top.
+		const scroller = document.querySelector<HTMLElement>('main');
+		const scrollerTop = scroller?.getBoundingClientRect().top ?? 0;
+		const anchor = scrollerTop + readStickyOffset() + 124;
+		let current: string | null = null;
+		for (const section of sections) {
+			if (section.getBoundingClientRect().top <= anchor) {
+				current = section.dataset.monthKey ?? null;
+			} else {
+				break;
+			}
+		}
+		activeMonthKey = current;
+	}
+
+	/** The wall's scroll progress (0-1) for the rail's position
+	 * indicator: the scroll root's own fraction, read alongside the
+	 * active-month tracking. */
+	function updateScrollProgress(): void {
+		const scroller = document.querySelector<HTMLElement>('main');
+		if (scroller === null) {
+			return;
+		}
+		const span = scroller.scrollHeight - scroller.clientHeight;
+		scrollProgress = span > 0 ? Math.min(1, Math.max(0, scroller.scrollTop / span)) : 0;
+	}
+
+	/** THE TRUE DRAG: the month axis IS a scrollbar -- the pointer's
+	 * rail fraction maps directly onto the wall's continuous scroll
+	 * position (within months), applied frame-accurate with no
+	 * smoothing (direct manipulation). */
+	function handleRailScrub(fraction: number): void {
+		const scroller = document.querySelector<HTMLElement>('main');
+		if (scroller === null) {
+			return;
+		}
+		const span = scroller.scrollHeight - scroller.clientHeight;
+		if (span > 0) {
+			scroller.scrollTop = fraction * span;
+		}
+	}
+
+	/** The rAF-collapsed scroll notification (one pass per frame). */
+	function handleScrollEvent(): void {
+		if (scrollScheduled) {
+			return;
+		}
+		scrollScheduled = true;
+		requestAnimationFrame(() => {
+			scrollScheduled = false;
+			updateActiveMonth();
+			updateScrollProgress();
+		});
+	}
+
+	// THE FRAME MIGRATION'S RISKY EDGE (R2-1): scrolling lives in
+	// the shell's <main>, and element scroll events do not bubble --
+	// a window-level onscroll handler would silently never fire
+	// again. The tracking therefore listens in the CAPTURE phase on
+	// the document: the one registration that observes every scroll
+	// container below it (the frame's main today, whatever scrolls
+	// tomorrow).
+	$effect(() => {
+		document.addEventListener('scroll', handleScrollEvent, { capture: true, passive: true });
+		return () => {
+			document.removeEventListener('scroll', handleScrollEvent, { capture: true });
+		};
+	});
+
+	// The month axis IS the wall's scrollbar: while this wall lives,
+	// the scroll root's own bar hides (the axis's position indicator
+	// carries the feedback). Other pages keep the thin custom bar.
+	$effect(() => {
+		const scroller = document.querySelector('main');
+		scroller?.classList.add('wall-rail-scroll');
+		return () => {
+			scroller?.classList.remove('wall-rail-scroll');
+		};
+	});
 </script>
 
 <div class="wall__groups" bind:this={wall}>
 	{#each packed as month (month.key)}
 		<!-- Both sticky headers ride above the rows; the section's
-		     scroll margin leaves room for them under the scrubber's
-		     jumps. The day header stacks under the month band exactly
-		     (the band is 38px: py-1.5's 12px + the 26px line at
+		     scroll margin leaves room for them under the axis's jumps
+		     (the pinned-offset term shifts the landing below a page's
+		     own pinned bar). The day header stacks under the month band
+		     exactly (the band is 38px: py-1.5's 12px + the 26px line at
 		     text-[20px]/1.3, probe-verified). The month header's top
 		     rides the pinned-offset var (0 unless a page's own bar
 		     pins over the wall). -->
-		<section class="wall__month scroll-mt-[92px]" data-month-key={month.key}>
+		<section class="wall__month scroll-mt-[calc(92px_+_var(--wall-sticky-offset,0px))]" data-month-key={month.key}>
 			<h2 class="wall__month-header sticky top-[var(--wall-sticky-offset,0px)] z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page">{month.label}</h2>
 			<!-- The day blocks flow horizontally and wrap (the reference
 			     timeline's shape): a day is a header plus its justified
@@ -169,3 +324,9 @@
 		</section>
 	{/each}
 </div>
+
+<!-- The wall's own month axis (the 2026-11-08 pin: the photo
+     rendering and the rail are one thing). The scrubber is
+     viewport-fixed, so it renders from any wall depth; its empty
+     months guard hides it for an empty wall. -->
+<MonthScrubber {months} activeKey={activeMonthKey} progress={scrollProgress} onjump={jumpToMonth} onscrub={handleRailScrub} />

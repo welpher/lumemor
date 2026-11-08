@@ -485,14 +485,14 @@ html.dark {
 	}
 }
 
-/* The timeline's rail-as-scrollbar mode: while the month axis page
- * lives, the scroll root's own bar hides -- the axis's position
- * indicator carries the feedback (the shared thin bar stays for
- * every other page). */
-.timeline-rail-scroll {
+/* The wall's rail-as-scrollbar mode: while a month-grouped wall
+ * lives (its axis is the wall's own organ), the scroll root's own
+ * bar hides -- the axis's position indicator carries the feedback
+ * (the shared thin bar stays for every other page). */
+.wall-rail-scroll {
 	scrollbar-width: none;
 }
 
-.timeline-rail-scroll::-webkit-scrollbar {
+.wall-rail-scroll::-webkit-scrollbar {
 	display: none;
 }
