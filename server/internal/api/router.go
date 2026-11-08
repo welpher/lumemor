@@ -331,34 +331,42 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// covers are a second bounded read of at most four
 				// candidates per album.
 				r.Get("/albums", wrapper.ListAlbums)
+				// The source-path completion of the creation dialog
+				// (E4's albums-as-sources): one settings row read
+				// plus at most one directory listing, at most 20
+				// answer rows -- the bounded-JSON cost class. The
+				// static path-completions segment never contends
+				// with the /albums/{albumId} parameter below (chi
+				// prefers static patterns).
+				r.Get("/albums/path-completions", wrapper.CompleteAlbumPath)
 				r.Get("/albums/{albumId}", wrapper.GetAlbum)
-				// The album surface writes (M3c Task 2): virtual
-				// album creation, the property patch, the delete
-				// and the membership curation. All are bounded row
-				// writes -- the membership lists are capped at 200
-				// ids by the contract, and the cascades ride the
-				// row deletes -- so they belong in this group like
-				// every other bounded JSON handler. The static
-				// /albums/{albumId}/items segment never contends
-				// with the /albums/{albumId} routes (a longer path
-				// shape).
+				// The album surface writes (M3c Task 2, reshaped by
+				// E4): the directory album creation (the path
+				// validation matrix plus one bounded row insert and
+				// the audience grants), the property patch, the
+				// delete and the membership removal. All are
+				// bounded row writes -- the membership and audience
+				// lists are capped at 200 ids by the contract, and
+				// the cascades ride the row deletes -- so they
+				// belong in this group like every other bounded JSON
+				// handler. The static /albums/{albumId}/items
+				// segment never contends with the
+				// /albums/{albumId} routes (a longer path shape).
 				r.Post("/albums", wrapper.CreateAlbum)
 				r.Patch("/albums/{albumId}", wrapper.UpdateAlbum)
 				r.Delete("/albums/{albumId}", wrapper.DeleteAlbum)
-				r.Post("/albums/{albumId}/items", wrapper.AddAlbumItems)
 				r.Delete("/albums/{albumId}/items", wrapper.RemoveAlbumItems)
-				// The album sharing face (M3c Task 3): the view-ACL
-				// grant and revoke, and the instance's minimal
-				// member list the share dialog picks its grantee
-				// from. The grant is one bounded row write; the
-				// revoke deletes one row; the member list is one
-				// bounded read of the small users table. The
-				// /albums/{albumId}/shares segments never contend
-				// with the /albums/{albumId} routes (a longer path
-				// shape), and /users never contends with the
-				// /admin/users group (a different prefix).
-				r.Post("/albums/{albumId}/shares", wrapper.GrantAlbumShare)
-				r.Delete("/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
+				// The album audience face (E4, the
+				// albums-as-sources milestone): the full-set
+				// view-ACL write behind PUT
+				// /albums/{albumId}/audience, the one write surface
+				// of "who can see this album" (the one-row
+				// grant/revoke pair retired with it). Two bounded
+				// statements over at most 200 ids, the batch
+				// surface's cost class. The static audience segment
+				// never contends with the /albums/{albumId} routes
+				// (a longer path shape).
+				r.Put("/albums/{albumId}/audience", wrapper.UpdateAlbumAudience)
 				r.Get("/users", wrapper.ListInstanceUsers)
 				// The me-scoped user settings face (the settings
 				// feature): the caller's own profile, password and
@@ -469,6 +477,14 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/admin/settings/trash", wrapper.UpdateTrashSettings)
 				r.Get("/admin/settings/transcoding", wrapper.GetTranscodingSettings)
 				r.Put("/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
+				// The mount-root allowlist face (E4,
+				// albums-as-sources): the directory-album trust
+				// boundary's read and wholesale save -- the same
+				// GET/PUT shape over one instance_settings row,
+				// bounded list validation in memory, the settings
+				// faces' own discipline.
+				r.Get("/admin/settings/mount-roots", wrapper.GetMountRootsSettings)
+				r.Put("/admin/settings/mount-roots", wrapper.UpdateMountRootsSettings)
 				// The model download trigger (M3a Task 3): the
 				// default group's first-boot download. The handler is
 				// one bounded row read plus one enqueue; the heavy

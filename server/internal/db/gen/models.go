@@ -468,6 +468,7 @@ type Asset struct {
 	DeviceAssetID    pgtype.Text        `json:"device_asset_id"`
 	PendingJobs      int32              `json:"pending_jobs"`
 	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
+	FileMtime        pgtype.Timestamptz `json:"file_mtime"`
 }
 
 type AssetTag struct {

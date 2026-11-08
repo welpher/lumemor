@@ -1,12 +1,15 @@
-// The album surface writes (M3c Task 2): the virtual album creator
-// behind POST /albums (the write face's only creatable type), the
-// property patch behind PATCH /albums/{albumId} (with the cover's
-// live-member validation and the locked gate), the virtual-only
-// delete behind DELETE /albums/{albumId} (never locked-gated --
-// locking is a curation freeze, not a tombstone) and the membership
-// curation behind POST and DELETE /albums/{albumId}/items (batch
-// semantics: honest {added|removed, skipped} reports, never
-// per-item errors).
+// The album surface writes (M3c Task 2, reshaped by E4's
+// albums-as-sources): the directory album creator behind POST
+// /albums (the write face's only creatable type -- the request
+// names an existing path the server validates and references in
+// place), the property patch behind PATCH /albums/{albumId} (with
+// the cover's live-member validation and the locked gate), the
+// virtual-only delete behind DELETE /albums/{albumId} (never
+// locked-gated -- locking is a curation freeze, not a tombstone)
+// and the membership removal behind DELETE /albums/{albumId}/items
+// (batch semantics: the honest {removed, skipped} report, never
+// per-item errors; the membership ADD is gone -- albums are
+// sources, not curation targets).
 //
 // Every write shares the two-tier authorization answer: an album the
 // caller cannot see at all (unknown, foreign-unshared, every sync
@@ -15,10 +18,10 @@
 // not own (a share row exists) answers the honest 403 -- the share is
 // view-only. The owner writes, and the admin role bypasses the owner
 // check (the permanent delete's discipline: the refusal, not the
-// read, shapes the response). The four live events
-// (album.created/updated/deleted/items-changed) publish after the
-// writes commit, ids-only payloads -- no album state rides the
-// shared stream.
+// read, shapes the response). The live album events
+// (album.created/updated/deleted/items-changed, plus the audience
+// pair of albumaudience.go) publish after the writes commit,
+// ids-only payloads -- no album state rides the shared stream.
 package api
 
 import (
@@ -26,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -236,13 +240,20 @@ func (s *server) albumItemsIDs(w http.ResponseWriter, assetIds []openapi_types.U
 	return ids, true
 }
 
-// CreateAlbum implements POST /api/v1/albums: the virtual album
-// creator. The request carries no type field -- this endpoint IS
-// virtual creation, the only creatable type of the face (directory
-// albums arrive with their own milestone, sync albums are born per
-// account). The response is the fresh row's wall card -- the owner
-// role, no share, no members, no cover -- and the write publishes
-// album.created.
+// CreateAlbum implements POST /api/v1/albums: the directory album
+// creator, the albums-as-sources core. The request carries no type
+// field -- this endpoint IS directory creation, the one creatable
+// album type (the sync album is born per account, the virtual album
+// is a legacy shape nothing creates anymore) -- and the source path
+// runs the full validation matrix before anything is written: each
+// failing branch answers its own 400 error code, and the album row
+// stores the RESOLVED path. The request's audience lands in the
+// same write through the full-set semantics of the audience face:
+// unusable ids are skipped and reported, never errors. The response
+// is the fresh row's wall card -- the owner role, no members, no
+// cover -- widened with the honest audience report, and the write
+// publishes album.created plus one album.shared per audience row
+// that landed.
 func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -262,22 +273,75 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	description, ok := s.albumDescription(w, request.Description)
-	if !ok {
+
+	// The source path's shape arms: present, absolute, within the
+	// path bound. The matrix's filesystem branches run after these,
+	// in the domain function.
+	if request.RootPath == "" {
+		s.writeValidationError(w, "rootPath is required", []string{"rootPath"})
 		return
+	}
+	if !filepath.IsAbs(request.RootPath) {
+		s.writeValidationError(w, "rootPath must be an absolute path", []string{"rootPath"})
+		return
+	}
+	if len(request.RootPath) > albumPathMaxBytes {
+		s.writeValidationError(w, "rootPath exceeds the limit of 4096 bytes", []string{"rootPath"})
+		return
+	}
+	if request.Audience != nil && len(*request.Audience) > albumAudienceMaxIds {
+		s.writeValidationError(w, "audience exceeds the limit of 200", []string{"audience"})
+		return
+	}
+	var audience []openapi_types.UUID
+	if request.Audience != nil {
+		audience = *request.Audience
 	}
 
 	ctx := r.Context()
+
+	// The path matrix: the domain (the live mount roots) and the
+	// overlap arm (every existing directory album's root) feed it,
+	// and the answer is the resolved path the row will store.
+	roots := s.effectiveMountRoots(ctx)
+	rootRows, err := s.queries.ListDirectoryAlbumRoots(ctx)
+	if err != nil {
+		s.internalError(w, r, "load the directory album roots", err)
+		return
+	}
+	existing := make([]string, 0, len(rootRows))
+	for _, row := range rootRows {
+		if row.RootPath.Valid {
+			existing = append(existing, row.RootPath.String)
+		}
+	}
+	resolved, failure, err := validateAlbumRootPath(roots, s.dataDir, request.RootPath, existing)
+	if err != nil {
+		s.internalError(w, r, "validate the source path", err)
+		return
+	}
+	if failure != "" {
+		if failure == apigen.VALIDATIONFAILED {
+			s.writeValidationError(w, "rootPath is invalid", []string{"rootPath"})
+		} else {
+			s.writeAlbumPathError(w, failure)
+		}
+		return
+	}
+
 	id, err := uuid.NewV7()
 	if err != nil {
 		s.internalError(w, r, "generate album id", err)
 		return
 	}
-	if _, err := s.queries.CreateVirtualAlbum(ctx, dbgen.CreateVirtualAlbumParams{
-		ID:          pgUUID(id),
-		OwnerID:     pgUUID(requester.userID),
-		Title:       title,
-		Description: description,
+	if _, err := s.queries.CreateDirectoryAlbum(ctx, dbgen.CreateDirectoryAlbumParams{
+		ID:      pgUUID(id),
+		OwnerID: pgUUID(requester.userID),
+		Title:   title,
+		RootPath: pgtype.Text{
+			String: resolved,
+			Valid:  true,
+		},
 	}); err != nil {
 		s.internalError(w, r, "create the album", err)
 		return
@@ -285,11 +349,50 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 
 	s.publishAlbumEvent("album.created", id, requester.userID)
 
+	// The creation's audience lands through the same convergence the
+	// audience face runs: the grants that land fire their events,
+	// the unusable ids ride the response's skipped report.
+	_, _, skipped, ok := s.applyAlbumAudience(w, r, id, requester.userID, requester.userID, distinctUserIDs(audience))
+	if !ok {
+		return
+	}
+
 	summary, ok := s.albumSummaryCardForID(w, r, requester.userID, id)
 	if !ok {
 		return
 	}
-	s.writeJSON(w, http.StatusCreated, summary)
+	s.writeJSON(w, http.StatusCreated, albumCreateResponse(summary, skipped))
+}
+
+// albumCreateResponse widens one wall card with the creation's
+// honest audience report: the summary fields copy verbatim (the
+// generated allOf flattening makes the widening a field copy), and
+// the skipped list rides along -- never nil, so the JSON carries
+// the empty array.
+func albumCreateResponse(card apigen.AlbumSummary, skipped []apigen.AlbumAudienceSkip) apigen.AlbumCreateResponse {
+	response := apigen.AlbumCreateResponse{
+		Id:            card.Id,
+		Title:         card.Title,
+		Description:   card.Description,
+		Type:          apigen.AlbumCreateResponseType(card.Type),
+		Locked:        card.Locked,
+		IsShared:      card.IsShared,
+		CoverAssetIds: card.CoverAssetIds,
+		ItemCount:     card.ItemCount,
+		UpdatedAt:     card.UpdatedAt,
+		CallerRole:    apigen.AlbumCreateResponseCallerRole(card.CallerRole),
+		Skipped:       skipped,
+	}
+	if response.Skipped == nil {
+		response.Skipped = []apigen.AlbumAudienceSkip{}
+	}
+	if card.Owner != nil {
+		response.Owner = card.Owner
+	}
+	if card.InTimeline != nil {
+		response.InTimeline = card.InTimeline
+	}
+	return response
 }
 
 // UpdateAlbum implements PATCH /api/v1/albums/{albumId}: the owner's
@@ -443,57 +546,6 @@ func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 
 	s.publishAlbumEvent("album.deleted", uuid.UUID(albumId), requester.userID)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// AddAlbumItems implements POST /api/v1/albums/{albumId}/items: the
-// membership add with the batch surface's set semantics. Resolution
-// and insert are one statement whose WHERE arm IS the resolution --
-// every id must name a live asset the caller owns -- so foreign,
-// trashed, hidden, component, unknown and already-member ids are the
-// skipped of the honest report, never errors, and an all-skipped
-// request still answers 200. The write publishes album.items-changed
-// exactly when at least one row landed: the idempotent no-op stays
-// silent, the batch's transition-only discipline.
-func (s *server) AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
-	requester, ok := authFrom(r.Context())
-	if !ok {
-		s.rejectUnauthenticated(w)
-		return
-	}
-
-	var request apigen.AlbumItemsRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
-		return
-	}
-	ids, ok := s.albumItemsIDs(w, request.AssetIds)
-	if !ok {
-		return
-	}
-
-	if !s.albumCurationGate(w, r, requester, uuid.UUID(albumId)) {
-		return
-	}
-
-	added, err := s.queries.AddAlbumItems(r.Context(), dbgen.AddAlbumItemsParams{
-		AlbumID:  pgUUID(albumId),
-		AddedBy:  pgUUID(requester.userID),
-		AssetIds: pgUUIDs(ids),
-		OwnerID:  pgUUID(requester.userID),
-	})
-	if err != nil {
-		s.internalError(w, r, "add the album items", err)
-		return
-	}
-
-	if added > 0 {
-		s.publishAlbumEvent("album.items-changed", uuid.UUID(albumId), requester.userID)
-	}
-
-	s.writeJSON(w, http.StatusOK, apigen.AddAlbumItemsResponse{
-		Added:   int(added),
-		Skipped: len(ids) - int(added),
-	})
 }
 
 // RemoveAlbumItems implements DELETE /api/v1/albums/{albumId}/items:

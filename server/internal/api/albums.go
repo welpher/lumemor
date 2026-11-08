@@ -13,7 +13,7 @@
 // invisible and foreign-sync ids answer the same byte-identical
 // envelope, the anti-enumeration discipline of ASSET_NOT_FOUND on
 // the album face. The WRITE gates (albums_write.go,
-// albumshares.go, albumprefs.go) keep refusing every sync album,
+// albumaudience.go, albumprefs.go) keep refusing every sync album,
 // whoever owns it: the read admitting the caller's own sync opens
 // no write path.
 package api
@@ -287,6 +287,14 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		ItemCount:    int(album.ItemCount),
 		Items:        make([]apigen.AlbumItem, 0, len(rows)),
 		InTimeline:   timelinePrefField(album.Album.Type, album.CallerRole, album.InTimeline),
+	}
+	// The source line of the edit dialog: the directory album's
+	// stored root, present exactly on the directory type (fixtures
+	// may carry a NULL root; the row is the honest source of the
+	// field).
+	if album.Album.Type == dbgen.AlbumTypeDirectory && album.Album.RootPath.Valid {
+		rootPath := album.Album.RootPath.String
+		detail.RootPath = &rootPath
 	}
 	// The owner-only grantee list (the share management dialog's
 	// rows): the field rides the owner's view and only that view --

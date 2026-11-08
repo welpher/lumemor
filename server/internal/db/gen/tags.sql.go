@@ -27,7 +27,7 @@ type AddTagAssetsParams struct {
 }
 
 // The assignment add: resolution and insert in one statement, the
-// AddAlbumItems pattern with the resolution domain swapped for the
+// batch-add pattern with the resolution domain swapped for the
 // caller-visible union (the M3d widening -- the union deliberately
 // carries tags, so a sharee tags what they see with their OWN tag).
 // The WHERE arm IS the resolution: an unknown id, another account's

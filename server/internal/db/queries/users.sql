@@ -48,14 +48,19 @@ SELECT id, email, role, is_disabled
 FROM users
 ORDER BY email ASC;
 
--- name: GetUserForShareTarget :one
--- One account as the share grant's target lookup: does the id name
--- a usable account? An unknown id answers no row and a disabled
--- account answers its switch -- the caller folds both into the same
--- 400 so user ids cannot be probed through the sharing face.
-SELECT id, email, is_disabled
+-- name: ListUsableShareTargets :many
+-- The audience write's resolution arm: which of the REQUESTED ids
+-- name usable accounts (known, not disabled)? An unknown id matches
+-- no row and a disabled account is filtered by the switch -- the
+-- handler folds both into the same skipped reason so user ids
+-- cannot be probed through the audience face, the discipline the
+-- one-row share grant kept before E4 folded it into the full-set
+-- write. The array bounds the scan (the contract caps the audience
+-- at 200 ids).
+SELECT id
 FROM users
-WHERE id = $1;
+WHERE id = ANY($1::uuid[])
+  AND NOT is_disabled;
 
 -- name: GetUserRole :one
 -- The role half of the pairing consume's identity answer: the burn

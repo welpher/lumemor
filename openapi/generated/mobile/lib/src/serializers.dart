@@ -14,13 +14,16 @@ import 'package:built_value/iso_8601_date_time_serializer.dart';
 import 'package:lumemor_api/src/date_serializer.dart';
 import 'package:lumemor_api/src/model/date.dart';
 
-import 'package:lumemor_api/src/model/add_album_items_response.dart';
 import 'package:lumemor_api/src/model/add_tag_assets_response.dart';
 import 'package:lumemor_api/src/model/admin_create_user_request.dart';
 import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
+import 'package:lumemor_api/src/model/album_audience_request.dart';
+import 'package:lumemor_api/src/model/album_audience_response.dart';
+import 'package:lumemor_api/src/model/album_audience_skip.dart';
 import 'package:lumemor_api/src/model/album_create_request.dart';
+import 'package:lumemor_api/src/model/album_create_response.dart';
 import 'package:lumemor_api/src/model/album_detail.dart';
 import 'package:lumemor_api/src/model/album_facet_count.dart';
 import 'package:lumemor_api/src/model/album_item.dart';
@@ -28,9 +31,8 @@ import 'package:lumemor_api/src/model/album_item_asset.dart';
 import 'package:lumemor_api/src/model/album_items_request.dart';
 import 'package:lumemor_api/src/model/album_owner_ref.dart';
 import 'package:lumemor_api/src/model/album_patch.dart';
+import 'package:lumemor_api/src/model/album_path_completions_response.dart';
 import 'package:lumemor_api/src/model/album_share_entry.dart';
-import 'package:lumemor_api/src/model/album_share_grant_request.dart';
-import 'package:lumemor_api/src/model/album_share_response.dart';
 import 'package:lumemor_api/src/model/album_summary.dart';
 import 'package:lumemor_api/src/model/album_timeline_preference_request.dart';
 import 'package:lumemor_api/src/model/album_timeline_preference_response.dart';
@@ -73,6 +75,8 @@ import 'package:lumemor_api/src/model/model_response_input_size.dart';
 import 'package:lumemor_api/src/model/model_scan_response.dart';
 import 'package:lumemor_api/src/model/model_slot.dart';
 import 'package:lumemor_api/src/model/model_source.dart';
+import 'package:lumemor_api/src/model/mount_roots_settings_response.dart';
+import 'package:lumemor_api/src/model/mount_roots_settings_update_request.dart';
 import 'package:lumemor_api/src/model/move_face_request.dart';
 import 'package:lumemor_api/src/model/move_face_response.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
@@ -122,13 +126,16 @@ import 'package:lumemor_api/src/model/year_facet_count.dart';
 part 'serializers.g.dart';
 
 @SerializersFor([
-  AddAlbumItemsResponse,
   AddTagAssetsResponse,
   AdminCreateUserRequest,
   AdminUserListResponse,
   AdminUserPatch,
   AdminUserResponse,
+  AlbumAudienceRequest,
+  AlbumAudienceResponse,
+  AlbumAudienceSkip,
   AlbumCreateRequest,
+  AlbumCreateResponse,
   AlbumDetail,
   AlbumFacetCount,
   AlbumItem,
@@ -136,10 +143,9 @@ part 'serializers.g.dart';
   AlbumItemsRequest,
   AlbumOwnerRef,
   AlbumPatch,
+  AlbumPathCompletionsResponse,
   AlbumShareEntry,
-  AlbumShareGrantRequest,
-  AlbumShareResponse,
-  AlbumSummary,
+  AlbumSummary,$AlbumSummary,
   AlbumTimelinePreferenceRequest,
   AlbumTimelinePreferenceResponse,
   AlbumWallResponse,
@@ -181,6 +187,8 @@ part 'serializers.g.dart';
   ModelScanResponse,
   ModelSlot,
   ModelSource,
+  MountRootsSettingsResponse,
+  MountRootsSettingsUpdateRequest,
   MoveFaceRequest,
   MoveFaceResponse,
   PairingConsumeRequest,
@@ -317,6 +325,10 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<ModelResponse>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumAudienceSkip)]),
+        () => ListBuilder<AlbumAudienceSkip>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AssetTagSummary)]),
         () => ListBuilder<AssetTagSummary>(),
       )
@@ -348,6 +360,7 @@ Serializers serializers = (_$serializers.toBuilder()
         const FullType(BuiltList, [FullType(FaceDetail)]),
         () => ListBuilder<FaceDetail>(),
       )
+      ..add(AlbumSummary.serializer)
       ..add(const OneOfSerializer())
       ..add(const AnyOfSerializer())
       ..add(const DateSerializer())
