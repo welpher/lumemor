@@ -4,11 +4,12 @@
 	// IntersectionObserver sentinel over a 600px prefetch margin, the
 	// client's in-flight guard collapsing every burst into one
 	// fetch), month and day groups carry sticky headers, the right
-	// rail scrubs the loaded months, and selection turns the wall
-	// into a curation surface with the floating batch bar. The wall's
-	// rendering itself is the shared Wall component; everything
-	// around it here -- the data walk, the selection state, the
-	// scrubber, the dialogs -- is the page's own concern.
+	// rail scrubs the loaded months (the rail is the wall's own
+	// organ -- the 2026-11-08 pin -- so it comes with the shared Wall
+	// component), and selection turns the wall into a curation
+	// surface with the floating batch bar. Everything around the
+	// wall here -- the data walk, the selection state, the dialogs --
+	// is the page's own concern.
 	//
 	// THE ADD-TO-ALBUM FLOW (M3c Task 5): the batch bar's dialog adds
 	// the selection to one of the caller's own virtual albums, or
@@ -37,7 +38,6 @@
 	// Wall component); full virtualization stays an M3 option if the
 	// wall outgrows it.
 	import { _ } from 'svelte-i18n';
-	import { locale } from 'svelte-i18n';
 	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { createTimelineClient, type BatchAction } from '$lib/api/timeline';
@@ -45,10 +45,8 @@
 	import { addTagAssets, createTag, listTags, type TagSummary } from '$lib/api/tags';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
-	import { groupTimelineItems } from '$lib/timeline/grouping';
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
-	import MonthScrubber from '$lib/timeline/MonthScrubber.svelte';
 	import BatchBar from '$lib/timeline/BatchBar.svelte';
 	import AddToAlbumDialog from '$lib/albums/AddToAlbumDialog.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
@@ -68,7 +66,6 @@
 	let selectMode = $state(false);
 	let batchErrorKey = $state('');
 	let batchBusy = $state(false);
-	let activeMonthKey = $state<string | null>(null);
 
 	// The add-to-album flow's state: the dialog, the caller's own
 	// virtual albums fetched on open, the honest report of the last
@@ -104,17 +101,10 @@
 		}
 	});
 
-	// The scrubber's months (the page's own fold -- the wall does
-	// its own grouping internally for the rendering, and the rail
-	// needs the keys, labels and counts here).
-	const groups = $derived(groupTimelineItems($timeline.items, $locale ?? 'en'));
-	const months = $derived(
-		groups.map((group) => ({
-			key: group.key,
-			label: group.label,
-			count: group.days.reduce((total, day) => total + day.items.length, 0)
-		}))
-	);
+	// The scrubber's months: the wall's own organ now (the
+	// 2026-11-08 pin) -- the axis folds its months from the same
+	// internal groups the rendering packs, so this page's duplicate
+	// fold is gone.
 	const selectable = $derived(selectMode || selection.size > 0);
 	const selectedItems = $derived($timeline.items.filter((timelineItem) => selection.has(timelineItem.id)));
 	const allSelectedFavorite = $derived(
@@ -331,114 +321,11 @@
 		selection.clear();
 	}
 
-	/** Scroll one month group into view (the scrubber jump target). */
-	function jumpToMonth(key: string): void {
-		const element = document.querySelector<HTMLElement>(`[data-month-key="${key}"]`);
-		if (element !== null && typeof element.scrollIntoView === 'function') {
-			element.scrollIntoView({ block: 'start', behavior: 'smooth' });
-		}
-	}
-
-	let scrollScheduled = false;
-
-	/** Track which month the viewport reads, for the scrubber's stop. */
-	function updateActiveMonth(): void {
-		const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-month-key]'));
-		if (sections.length === 0) {
-			return;
-		}
-		const first = sections[0]?.getBoundingClientRect();
-		// A layout-less host (tests) answers zero rects: keep no stop.
-		if (first === undefined || (first.top === 0 && first.height === 0)) {
-			return;
-		}
-		// The frame's scroll root is the shell's <main>: the sticky
-		// month/day header stack pins to its content top (main's p-6
-		// padding below the pinned top bar), so the anchor keeps the
-		// old rule's 100px -- the stack plus its grace -- below that
-		// edge instead of the viewport's. A page mounted without the
-		// shell (the unit tests) reads the viewport's top.
-		const scroller = document.querySelector<HTMLElement>('main');
-		const scrollerTop = scroller?.getBoundingClientRect().top ?? 0;
-		const anchor = scrollerTop + 124;
-		let current: string | null = null;
-		for (const section of sections) {
-			if (section.getBoundingClientRect().top <= anchor) {
-				current = section.dataset.monthKey ?? null;
-			} else {
-				break;
-			}
-		}
-		activeMonthKey = current;
-	}
-
-	/** The wall's scroll progress (0-1) for the axis's position
-	 * indicator: the scroll root's own fraction, read alongside the
-	 * active-month tracking. */
-	let scrollProgress = $state(0);
-
-	function updateScrollProgress(): void {
-		const scroller = document.querySelector<HTMLElement>('main');
-		if (scroller === null) {
-			return;
-		}
-		const span = scroller.scrollHeight - scroller.clientHeight;
-		scrollProgress = span > 0 ? Math.min(1, Math.max(0, scroller.scrollTop / span)) : 0;
-	}
-
-	/** THE TRUE DRAG: the month axis IS a scrollbar -- the pointer's
-	 * rail fraction maps directly onto the wall's continuous scroll
-	 * position (within months), applied frame-accurate with no
-	 * smoothing (direct manipulation). */
-	function handleRailScrub(fraction: number): void {
-		const scroller = document.querySelector<HTMLElement>('main');
-		if (scroller === null) {
-			return;
-		}
-		const span = scroller.scrollHeight - scroller.clientHeight;
-		if (span > 0) {
-			scroller.scrollTop = fraction * span;
-		}
-	}
-
-	/** The rAF-collapsed scroll notification (one pass per frame). */
-	function handleScrollEvent(): void {
-		if (scrollScheduled) {
-			return;
-		}
-		scrollScheduled = true;
-		requestAnimationFrame(() => {
-			scrollScheduled = false;
-			updateActiveMonth();
-			updateScrollProgress();
-		});
-	}
-
-	// THE FRAME MIGRATION'S RISKY EDGE (R2-1): scrolling moved from
-	// the document into the shell's <main>, and element scroll events
-	// do not bubble -- a window-level onscroll handler would silently
-	// never fire again. The tracking therefore listens in the CAPTURE
-	// phase on the document: the one registration that observes every
-	// scroll container below it (the frame's main today, whatever
-	// scrolls tomorrow).
-	$effect(() => {
-		document.addEventListener('scroll', handleScrollEvent, { capture: true, passive: true });
-		return () => {
-			document.removeEventListener('scroll', handleScrollEvent, { capture: true });
-		};
-	});
-
-	// The month axis IS the timeline's scrollbar: while this page
-	// lives, the scroll root's own bar hides (the axis's indicator
-	// carries the position feedback). Other pages keep the thin
-	// custom bar.
-	$effect(() => {
-		const scroller = document.querySelector('main');
-		scroller?.classList.add('timeline-rail-scroll');
-		return () => {
-			scroller?.classList.remove('timeline-rail-scroll');
-		};
-	});
+	// The month axis and its scroll wiring (the jump, the active
+	// stop, the progress, the drag, the scroll-root bar hiding)
+	// moved INTO the wall (the 2026-11-08 pin: the photo rendering
+	// and the right-edge rail are one component). This page composes
+	// the wall and keeps only its selection overlays.
 
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon); the
@@ -532,10 +419,11 @@
 			<Button variant="primary" onclick={() => void timeline.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else}
-		<!-- The unified wall (pure rendering): the page keeps its
-		     toolbar, its scrubber and its scroll tracking as its own
-		     overlays; the grouping, the packed rows and the tiles are
-		     the one wall component every view renders. -->
+		<!-- The unified wall (its month axis is now the wall's own
+		     organ -- the 2026-11-08 pin): the page keeps its toolbar
+		     and its selection overlays; the grouping, the packed
+		     rows, the tiles AND the right-edge rail are the one wall
+		     component every view renders. -->
 		<Wall
 			items={$timeline.items}
 			{selectable}
@@ -561,7 +449,6 @@
 	</section>
 </div>
 
-<MonthScrubber {months} activeKey={activeMonthKey} progress={scrollProgress} onjump={jumpToMonth} onscrub={handleRailScrub} />
 <BatchBar
 	count={selectedItems.length}
 	allFavorite={allSelectedFavorite}
