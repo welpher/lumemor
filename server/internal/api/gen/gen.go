@@ -324,7 +324,9 @@ const (
 	ALBUMPATHSYMLINKESCAPE ErrorCode = "ALBUM_PATH_SYMLINK_ESCAPE"
 	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
 	ASSETNOTREADY          ErrorCode = "ASSET_NOT_READY"
+	ASSETRESTOREMOVEFAILED ErrorCode = "ASSET_RESTORE_MOVE_FAILED"
 	ASSETTOOLARGE          ErrorCode = "ASSET_TOO_LARGE"
+	ASSETTRASHMOVEFAILED   ErrorCode = "ASSET_TRASH_MOVE_FAILED"
 	AUTHFORBIDDEN          ErrorCode = "AUTH_FORBIDDEN"
 	AUTHINVALIDCREDENTIALS ErrorCode = "AUTH_INVALID_CREDENTIALS"
 	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
@@ -367,7 +369,11 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ASSETNOTREADY:
 		return true
+	case ASSETRESTOREMOVEFAILED:
+		return true
 	case ASSETTOOLARGE:
+		return true
+	case ASSETTRASHMOVEFAILED:
 		return true
 	case AUTHFORBIDDEN:
 		return true
@@ -659,6 +665,24 @@ func (e TrashItemKind) Valid() bool {
 	case TrashItemKindImage:
 		return true
 	case TrashItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrashItemStorageKind.
+const (
+	Blob     TrashItemStorageKind = "blob"
+	External TrashItemStorageKind = "external"
+)
+
+// Valid indicates whether the value is a known member of the TrashItemStorageKind enum.
+func (e TrashItemStorageKind) Valid() bool {
+	switch e {
+	case Blob:
+		return true
+	case External:
 		return true
 	default:
 		return false
@@ -1276,6 +1300,16 @@ type AlbumPathCompletionsResponse struct {
 	// ascending, at most 20 rows. The empty array is an honest
 	// "nothing matches", never an error.
 	Paths []string `json:"paths"`
+}
+
+// AlbumRescanResponse The identifier of one directory album rescan run: the
+// `job_runs` row the rescan job drives and the `job.*` events
+// announce.
+type AlbumRescanResponse struct {
+	// JobRunId UUIDv7 identifier of the run's `job_runs` row. `202`
+	// carries the freshly created run; `200` the in-flight one
+	// of THIS album the request joined instead.
+	JobRunId openapi_types.UUID `json:"jobRunId"`
 }
 
 // AlbumShareEntry One grantee of the owner's `shares` list on the album
@@ -3071,6 +3105,19 @@ type TrashItem struct {
 	// expiry run.
 	RemainingDays int `json:"remainingDays"`
 
+	// StorageKind Where the asset's original file lives. `blob` rows were
+	// uploaded into the server's originals tree and were
+	// soft-deleted in place (the file stays until expiry).
+	// `external` rows reference a directory album's source file
+	// and were moved INTO the server's trash area when the
+	// owner trashed them -- the listing is honest for both
+	// kinds, and a restore moves the external file back to its
+	// recorded original location. External rows the rescan's
+	// orphan arm marked deleted never appear here at all: the
+	// file was never the server's and the trash has no meaning
+	// for it.
+	StorageKind TrashItemStorageKind `json:"storageKind"`
+
 	// TakenAt Capture time (RFC 3339), the value the timeline would
 	// order the asset by.
 	TakenAt time.Time `json:"takenAt"`
@@ -3085,6 +3132,19 @@ type TrashItem struct {
 
 // TrashItemKind Media family of the asset.
 type TrashItemKind string
+
+// TrashItemStorageKind Where the asset's original file lives. `blob` rows were
+// uploaded into the server's originals tree and were
+// soft-deleted in place (the file stays until expiry).
+// `external` rows reference a directory album's source file
+// and were moved INTO the server's trash area when the
+// owner trashed them -- the listing is honest for both
+// kinds, and a restore moves the external file back to its
+// recorded original location. External rows the rescan's
+// orphan arm marked deleted never appear here at all: the
+// file was never the server's and the trash has no meaning
+// for it.
+type TrashItemStorageKind string
 
 // TrashItemTakenAtSource Where `takenAt` comes from.
 type TrashItemTakenAtSource string
@@ -3735,6 +3795,9 @@ type ServerInterface interface {
 	// RemoveAlbumItems Remove assets from one virtual album.
 	// (DELETE /albums/{albumId}/items)
 	RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// RescanAlbum Start one rescan of a directory album's source.
+	// (POST /albums/{albumId}/rescan)
+	RescanAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
 	// ResetAlbumTimelinePreference Reset the caller's timeline preference of one album.
 	// (DELETE /albums/{albumId}/timeline-preference)
 	ResetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
@@ -4038,6 +4101,12 @@ func (_ Unimplemented) UpdateAlbumAudience(w http.ResponseWriter, r *http.Reques
 // RemoveAlbumItems Remove assets from one virtual album.
 // (DELETE /albums/{albumId}/items)
 func (_ Unimplemented) RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RescanAlbum Start one rescan of a directory album's source.
+// (POST /albums/{albumId}/rescan)
+func (_ Unimplemented) RescanAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4856,6 +4925,32 @@ func (siw *ServerInterfaceWrapper) RemoveAlbumItems(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RemoveAlbumItems(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RescanAlbum operation middleware
+func (siw *ServerInterfaceWrapper) RescanAlbum(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RescanAlbum(w, r, albumId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6371,6 +6466,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/albums/{albumId}/audience", wrapper.UpdateAlbumAudience)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/albums/{albumId}/rescan", wrapper.RescanAlbum)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/albums/{albumId}/timeline-preference", wrapper.ResetAlbumTimelinePreference)

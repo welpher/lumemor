@@ -473,6 +473,7 @@ func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) 
 
 const getAssetForMetadata = `-- name: GetAssetForMetadata :one
 SELECT a.file_path,
+       a.storage_kind,
        a.media_kind,
        a.taken_at,
        a.taken_at_source,
@@ -486,6 +487,7 @@ WHERE a.id = $1
 
 type GetAssetForMetadataRow struct {
 	FilePath      string             `json:"file_path"`
+	StorageKind   StorageKind        `json:"storage_kind"`
 	MediaKind     MediaKind          `json:"media_kind"`
 	TakenAt       pgtype.Timestamptz `json:"taken_at"`
 	TakenAtSource TakenAtSource      `json:"taken_at_source"`
@@ -503,12 +505,17 @@ type GetAssetForMetadataRow struct {
 // along (M2d) for the completion discipline: the metadata and
 // thumbnail jobs must not consume a component row's counter (the
 // transcode alone owns it), and the transcode job completes the
-// counter but never announces for a component.
+// counter but never announces for a component. storage_kind rides
+// along (E4): an external asset's file_path is the file's real
+// absolute path (the directory album's source tree), not a
+// originals-relative form, so the path resolution branches on the
+// kind -- the one column every job needs to find the bytes.
 func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetAssetForMetadataRow, error) {
 	row := q.db.QueryRow(ctx, getAssetForMetadata, id)
 	var i GetAssetForMetadataRow
 	err := row.Scan(
 		&i.FilePath,
+		&i.StorageKind,
 		&i.MediaKind,
 		&i.TakenAt,
 		&i.TakenAtSource,

@@ -43,6 +43,8 @@
   "asset_too_large": "文件超出上传大小限制。",
   "asset_not_found": "该资产不存在。",
   "asset_not_ready": "该资产仍在处理中。",
+  "asset_trash_move_failed": "无法把文件移入回收站。",
+  "asset_restore_move_failed": "无法把文件移回原位置。",
   "auth_forbidden": "您没有执行此操作的权限。",
   "user_email_taken": "该邮箱地址已注册账号。",
   "user_not_found": "该账号不存在。",

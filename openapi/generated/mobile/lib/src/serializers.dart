@@ -32,6 +32,7 @@ import 'package:lumemor_api/src/model/album_items_request.dart';
 import 'package:lumemor_api/src/model/album_owner_ref.dart';
 import 'package:lumemor_api/src/model/album_patch.dart';
 import 'package:lumemor_api/src/model/album_path_completions_response.dart';
+import 'package:lumemor_api/src/model/album_rescan_response.dart';
 import 'package:lumemor_api/src/model/album_share_entry.dart';
 import 'package:lumemor_api/src/model/album_summary.dart';
 import 'package:lumemor_api/src/model/album_timeline_preference_request.dart';
@@ -144,6 +145,7 @@ part 'serializers.g.dart';
   AlbumOwnerRef,
   AlbumPatch,
   AlbumPathCompletionsResponse,
+  AlbumRescanResponse,
   AlbumShareEntry,
   AlbumSummary,$AlbumSummary,
   AlbumTimelinePreferenceRequest,

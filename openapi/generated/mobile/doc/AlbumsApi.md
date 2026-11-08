@@ -15,6 +15,7 @@ Method | HTTP request | Description
 [**getAlbum**](AlbumsApi.md#getalbum) | **GET** /albums/{albumId} | One album&#39;s detail and one page of its items.
 [**listAlbums**](AlbumsApi.md#listalbums) | **GET** /albums | The caller&#39;s album wall.
 [**removeAlbumItems**](AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one virtual album.
+[**rescanAlbum**](AlbumsApi.md#rescanalbum) | **POST** /albums/{albumId}/rescan | Start one rescan of a directory album&#39;s source.
 [**resetAlbumTimelinePreference**](AlbumsApi.md#resetalbumtimelinepreference) | **DELETE** /albums/{albumId}/timeline-preference | Reset the caller&#39;s timeline preference of one album.
 [**setAlbumTimelinePreference**](AlbumsApi.md#setalbumtimelinepreference) | **PUT** /albums/{albumId}/timeline-preference | Set the caller&#39;s timeline preference of one album.
 [**updateAlbum**](AlbumsApi.md#updatealbum) | **PATCH** /albums/{albumId} | Patch one album&#39;s properties.
@@ -300,6 +301,53 @@ Name | Type | Description  | Notes
 ### HTTP request headers
 
  - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **rescanAlbum**
+> AlbumRescanResponse rescanAlbum(albumId)
+
+Start one rescan of a directory album's source.
+
+The E4 rescan trigger: one run that walks the directory album's source root on the server and reconciles the album's membership with what the filesystem holds. The walk never follows symlinks -- a symlinked entry is skipped, a symlinked subdirectory is never descended -- and each walk entry and each live member resolves through exactly one arm of the three-arm diff:  - a file on disk no live member matches is ADDED by   reference-style ingest: a new asset row   (`storage_kind` `external`, `file_path` the file's real   absolute path, zero copy zero move) and its album   membership land in one transaction, and the existing   pipeline jobs (metadata, thumbnail, and for a video the   transcode) run over the referenced file exactly like an   upload's. An owner+checksum duplicate of content the owner   already holds never creates a second row: a live duplicate   gains the album membership, a trashed duplicate is left   alone (no revival semantics). - a live member whose file is gone from disk is marked   `deleted_at` directly (the orphan arm's pinned semantics:   the file is not the server's and the trash has no meaning   for it) -- no missing state, no revival. If the file   returns, the next scan's add arm ingests it as a NEW row. - a member whose mtime+size snapshot changed has its   checksum re-read and stored, the snapshot re-stamped, and   its metadata pipeline re-run (EXIF re-extracted, thumbnail   regenerated, the playable copy of a video re-encoded); the   ML arm follows the pipeline's own re-run path, which does   not re-fire -- readiness is already stamped.  The run's `job_runs` row (`kind` `album_rescan`, carrying the album's id) surfaces progress the way the places re-resolution run does: `job.started` / `job.progress` / `job.finished` on the activity stream, `total`/`done` counting resolved walk entries plus vanished members and `failed` the entries the run could not resolve. The idempotent rescan is the pinned contract: a second run over an unchanged directory performs zero asset writes and publishes zero asset events (the run's own `job_runs` bookkeeping is the progress surface, not product state).  The endpoint is idempotent the way the places re-resolution is, scoped to the album: a rescan of THIS album still in flight (`queued` or `running`) answers 200 with its identifier and starts nothing; another album's rescan never blocks this one.  Permission is the album writes' own: the owner (or an administrator) proceeds, a sharee answers the honest 403, everyone else folds into the album 404. A non-directory album -- the caller's own sync album, a virtual album -- answers the same 404: the rescan is the directory album's own flow, and ids stay unproammable. A locked album refuses the rescan with 409: the scan rewrites the membership the lock froze. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAlbumsApi();
+final String albumId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the directory album to rescan.
+
+try {
+    final response = api.rescanAlbum(albumId);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AlbumsApi->rescanAlbum: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **albumId** | **String**| Identifier of the directory album to rescan. | 
+
+### Return type
+
+[**AlbumRescanResponse**](AlbumRescanResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)

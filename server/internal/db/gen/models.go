@@ -544,6 +544,7 @@ type JobRun struct {
 	FinishedAt pgtype.Timestamptz `json:"finished_at"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	AlbumID    pgtype.UUID        `json:"album_id"`
 }
 
 type Model struct {
