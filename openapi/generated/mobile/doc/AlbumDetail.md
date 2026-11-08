@@ -10,7 +10,6 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **id** | **String** | Identifier of the album. | 
 **title** | **String** | The album's display title. | 
-**description** | **String** | The album's free-text description (empty when unset). | 
 **type** | **String** | The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404.  | 
 **locked** | **bool** | The owner's lock (metadata to a viewer). | 
 **coverAssetId** | **String** | The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself.  | 

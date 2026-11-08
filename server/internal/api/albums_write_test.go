@@ -286,9 +286,8 @@ func TestCreateAlbum(t *testing.T) {
 		source := sourceDir(t, root, "family")
 		summary := env.createAlbum(t, env.cookie, "Family archive", source, nil)
 
-		if summary.Title != "Family archive" || summary.Description != "" {
-			t.Errorf("title/description = %q/%q, want the stored title and the empty description",
-				summary.Title, summary.Description)
+		if summary.Title != "Family archive" {
+			t.Errorf("title = %q, want the stored title", summary.Title)
 		}
 		if summary.Type != apigen.AlbumCreateResponseTypeDirectory {
 			t.Errorf("type = %q, want directory (the only creatable type)", summary.Type)
@@ -448,9 +447,7 @@ func TestUpdateAlbum(t *testing.T) {
 	adminID := env.sessionUserID(t)
 
 	album := fixtureWriteAlbumID("71")
-	env.insertWallAlbum(t, album, adminID, "virtual", "Original title", wallAlbumOpts{
-		description: "Original description.",
-	})
+	env.insertWallAlbum(t, album, adminID, "virtual", "Original title", wallAlbumOpts{})
 
 	// Two live members, three non-live members, one live non-member
 	// of the caller's own, and one live asset of another account.
@@ -476,15 +473,8 @@ func TestUpdateAlbum(t *testing.T) {
 
 	t.Run("PatchesEachField", func(t *testing.T) {
 		summary := env.patchAlbum(t, env.cookie, album, `{"title":"Renamed"}`)
-		if summary.Title != "Renamed" || summary.Description != "Original description." {
-			t.Errorf("title/description = %q/%q, want the patched title over the kept description",
-				summary.Title, summary.Description)
-		}
-
-		summary = env.patchAlbum(t, env.cookie, album, `{"description":"A new description."}`)
-		if summary.Description != "A new description." || summary.Title != "Renamed" {
-			t.Errorf("title/description = %q/%q, want the patched description over the kept title",
-				summary.Title, summary.Description)
+		if summary.Title != "Renamed" {
+			t.Errorf("title = %q, want the patched title", summary.Title)
 		}
 
 		cover := `{"coverAssetId":"` + older.String() + `"}`
@@ -513,20 +503,16 @@ func TestUpdateAlbum(t *testing.T) {
 		if got := env.queryText(t, "SELECT title FROM albums WHERE id = $1", pgUUID(album)); got != "Renamed" {
 			t.Errorf("stored title = %q, want Renamed", got)
 		}
-		if got := env.queryText(t, "SELECT description FROM albums WHERE id = $1", pgUUID(album)); got != "A new description." {
-			t.Errorf("stored description = %q, want the patched one", got)
-		}
 		if got := env.queryInt(t, "SELECT locked::int FROM albums WHERE id = $1", pgUUID(album)); got != 0 {
 			t.Errorf("stored locked = %d, want 0 (unlocked again)", got)
 		}
 	})
 
 	t.Run("PatchesMultipleFieldsAtOnce", func(t *testing.T) {
-		body := `{"title":"Combined","description":"One write.","locked":true}`
+		body := `{"title":"Combined","locked":true}`
 		summary := env.patchAlbum(t, env.cookie, album, body)
-		if summary.Title != "Combined" || summary.Description != "One write." || !summary.Locked {
-			t.Errorf("title/description/locked = %q/%q/%v, want all three landed",
-				summary.Title, summary.Description, summary.Locked)
+		if summary.Title != "Combined" || !summary.Locked {
+			t.Errorf("title/locked = %q/%v, want both landed", summary.Title, summary.Locked)
 		}
 		env.patchAlbum(t, env.cookie, album, `{"locked":false}`) // leave it unlocked
 	})
@@ -675,7 +661,6 @@ func TestUpdateAlbumLocked(t *testing.T) {
 	t.Run("RefusesPropertyFields", func(t *testing.T) {
 		for _, body := range []string{
 			`{"title":"Nope"}`,
-			`{"description":"Nope"}`,
 			`{"coverAssetId":"` + member.String() + `"}`,
 		} {
 			rec := env.patchAlbumRaw(t, env.cookie, album, body)
@@ -937,7 +922,7 @@ func TestRemoveAlbumItems(t *testing.T) {
 // TestAlbumWriteEvents pins the live event names of the write
 // surface: creation, patch, membership change and delete, each with
 // the ids-only payload -- the album id and the acting user's id, and
-// nothing else. No album state (title, description, cover, lock,
+// nothing else. No album state (title, cover, lock,
 // counts, membership) ever rides the shared bus.
 func TestAlbumWriteEvents(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
@@ -953,7 +938,7 @@ func TestAlbumWriteEvents(t *testing.T) {
 
 	album := fixtureWriteAlbumID("b0")
 	env.insertWallAlbum(t, album, adminID, "virtual", "The eventful album", wallAlbumOpts{})
-	env.patchAlbum(t, env.cookie, album, `{"description":"Now with a description."}`)
+	env.patchAlbum(t, env.cookie, album, `{"title":"The renamed album"}`)
 
 	member := fixtureWallAssetID("b1")
 	second := fixtureWallAssetID("b2")
@@ -1005,7 +990,7 @@ func TestAlbumWriteEvents(t *testing.T) {
 				t.Errorf("%s payload = %v, want exactly the albumId/userId pair", want.name, payload)
 			}
 			for _, banned := range []string{
-				"title", "description", "type", "locked", "coverAssetId",
+				"title", "type", "locked", "coverAssetId",
 				"itemCount", "assetIds", "added", "removed", "skipped",
 			} {
 				if payload[banned] != "" {

@@ -76,7 +76,6 @@ function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 	return {
 		id: 'al1',
 		title: 'Road trip 2026',
-		description: 'The coastal week in the van.',
 		type: 'virtual',
 		locked: false,
 		isShared: false,
@@ -91,7 +90,6 @@ function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 let detailState: AlbumDetail = {
 	id: 'al1',
 	title: 'Road trip 2026',
-	description: 'The coastal week in the van.',
 	type: 'virtual',
 	locked: false,
 	coverAssetId: null,
@@ -238,7 +236,6 @@ beforeEach(async () => {
 	detailState = {
 		id: 'al1',
 		title: 'Road trip 2026',
-		description: 'The coastal week in the van.',
 		type: 'virtual',
 		locked: false,
 		coverAssetId: null,
@@ -281,9 +278,10 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	const back = document.body.querySelector<HTMLAnchorElement>('.album-bar__back');
 	expect(back?.getAttribute('href')).toBe('/albums');
 	expect(back?.getAttribute('aria-label')).toBe('Back to albums');
-	expect(document.body.querySelector('.album-detail__description')?.textContent).toBe(
-		'The coastal week in the van.'
-	);
+	// The description line died whole (the 2026-11-08 owner
+	// evaluation): the header carries the title alone, never a
+	// description paragraph.
+	expect(document.body.querySelector('.album-detail__description')).toBeNull();
 	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
 
 	// The owner of a virtual album holds the E4 write set -- rename
@@ -398,7 +396,6 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 	detailState = {
 		...detailState,
 		title: 'Sync',
-		description: '',
 		type: 'sync',
 		coverAssetId: null,
 		shares: []
@@ -445,9 +442,9 @@ test('the properties dialog edits the title and PATCHes it alone', async () => {
 			'/api/v1/albums/al1': (init?: RequestInit) => {
 				expect(init?.method).toBe('PATCH');
 				const body = JSON.parse(String(init?.body));
-				// The description field died with the reshaped dialog
-				// (the specimen's edit state): the patch carries the
-				// title alone, the stored text keeps its value.
+				// The description field died whole (the 2026-11-08
+				// owner evaluation -- no PATCH face, no column): the
+				// patch carries the title alone.
 				expect(body).toEqual({ title: 'Road trip 2026 -- rerun' });
 				titleSaved = true;
 				return jsonResponse(

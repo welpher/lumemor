@@ -285,8 +285,8 @@ WHERE al.id = sqlc.arg('album_id')
 -- root -- and root_path stores the RESOLVED absolute path (symlinks
 -- evaluated at validation time), so the album can never be silently
 -- repointed by a later symlink swap. The id is generated
--- caller-side; the description stays the column default (the
--- creation face carries title, path and audience only). The wall
+-- caller-side; the creation face carries title, path and audience
+-- only (the description column died whole with the field). The wall
 -- card's companions are the creation-time constants -- the caller's
 -- own audience grants land right after -- so the handler reads the
 -- fresh row's full card through GetAlbumSummary like every other
@@ -346,7 +346,6 @@ WHERE al.id = sqlc.arg('album_id');
 -- honest 404 of a gone album.
 UPDATE albums
 SET title = COALESCE(sqlc.narg('title'), title),
-    description = COALESCE(sqlc.narg('description'), description),
     cover_asset_id = COALESCE(sqlc.arg('cover_asset_id'), cover_asset_id),
     locked = COALESCE(sqlc.narg('locked'), locked),
     updated_at = now()

@@ -49,12 +49,6 @@ const (
 	albumTitleMinRunes = 1
 	albumTitleMaxRunes = 64
 
-	// albumDescriptionLimit is the contract's bound on the album
-	// description: 10,000 Unicode characters, the asset
-	// description's own bound. The handler enforces it because the
-	// generated binder does not check the schema's maxLength.
-	albumDescriptionLimit = 10000
-
 	// albumItemsMaxIds caps the membership write's id list, pinned
 	// by the contract: 200 ids keep one request a bounded statement
 	// and a bounded report, the batch surface's own discipline.
@@ -70,7 +64,7 @@ func (s *server) writeAlbumLocked(w http.ResponseWriter) {
 
 // publishAlbumEvent reports one album write onto the activity
 // stream. The payload carries ONLY the album's id and the acting
-// user's id: titles, descriptions, covers, the lock state and the
+// user's id: titles, covers, the lock state and the
 // membership itself are album state the subscribers refetch, never
 // bus payload -- the person.* events' ids-only discipline, applied
 // to the album face. The nil guard matches the people publisher (a
@@ -94,22 +88,6 @@ func (s *server) albumTitle(w http.ResponseWriter, title string) (string, bool) 
 		return "", false
 	}
 	return trimmed, true
-}
-
-// albumDescription bounds the optional free-text description and
-// answers its value (the empty string when absent); it answers
-// ok=false once it has written the 400.
-func (s *server) albumDescription(w http.ResponseWriter, description *string) (string, bool) {
-	if description == nil {
-		return "", true
-	}
-	if utf8.RuneCountInString(*description) > albumDescriptionLimit {
-		s.writeValidationError(w,
-			fmt.Sprintf("description exceeds the limit of %d characters", albumDescriptionLimit),
-			[]string{"description"})
-		return "", false
-	}
-	return *description, true
 }
 
 // albumWriteGate resolves the two-tier authorization answer every
@@ -373,7 +351,6 @@ func albumCreateResponse(card apigen.AlbumSummary, skipped []apigen.AlbumAudienc
 	response := apigen.AlbumCreateResponse{
 		Id:            card.Id,
 		Title:         card.Title,
-		Description:   card.Description,
 		Type:          apigen.AlbumCreateResponseType(card.Type),
 		Locked:        card.Locked,
 		IsShared:      card.IsShared,
@@ -396,7 +373,7 @@ func albumCreateResponse(card apigen.AlbumSummary, skipped []apigen.AlbumAudienc
 }
 
 // UpdateAlbum implements PATCH /api/v1/albums/{albumId}: the owner's
-// partial edit of the four properties -- any subset, at least one
+// partial edit of the three properties -- any subset, at least one
 // field, JSON null counting as absent. The locked gate refuses the
 // property fields on a locked album (the locked field itself is
 // never gated: a patch of locked alone IS the unlock); the cover
@@ -417,7 +394,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
 		return
 	}
-	if request.Title == nil && request.Description == nil &&
+	if request.Title == nil &&
 		request.CoverAssetId == nil && request.Locked == nil {
 		s.writeValidationError(w, "the patch must carry a field", []string{"body"})
 		return
@@ -434,7 +411,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 	// fields until the owner unlocks it. A mixed patch carrying the
 	// unlock is refused whole -- unlock first, then edit.
 	if gate.Album.Locked &&
-		(request.Title != nil || request.Description != nil || request.CoverAssetId != nil) {
+		(request.Title != nil || request.CoverAssetId != nil) {
 		s.writeAlbumLocked(w)
 		return
 	}
@@ -466,13 +443,6 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 			return
 		}
 		params.Title = pgtype.Text{String: title, Valid: true}
-	}
-	if request.Description != nil {
-		description, ok := s.albumDescription(w, request.Description)
-		if !ok {
-			return
-		}
-		params.Description = pgtype.Text{String: description, Valid: true}
 	}
 	if request.CoverAssetId != nil {
 		params.CoverAssetID = pgUUID(uuid.UUID(*request.CoverAssetId))

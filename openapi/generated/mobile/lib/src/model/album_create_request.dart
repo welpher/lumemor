@@ -9,7 +9,7 @@ import 'package:built_value/serializer.dart';
 
 part 'album_create_request.g.dart';
 
-/// The creation body of one directory album (E4's albums-as-sources): the title, the existing directory the album references in place, and the audience the album starts with. No type field exists -- this endpoint IS directory creation, the only creatable album type; no description field either -- the dialog carries title, path and audience, and the description stays empty (the property patch can set one later). 
+/// The creation body of one directory album (E4's albums-as-sources): the title, the existing directory the album references in place, and the audience the album starts with. No type field exists -- this endpoint IS directory creation, the only creatable album type. No description field either: it died whole (the 2026-11-08 owner evaluation -- real-world fill rate near zero, the context already carried by title/date-range+count/place/cover), and the property patch carries no field that could set one. 
 ///
 /// Properties:
 /// * [title] - The album's display title, trimmed server-side; it must span 1-64 Unicode characters after the trim (the count is over runes, so multi-byte titles stay within the bound at the same length). 

@@ -262,7 +262,6 @@
 	/** Adopt a write response's wall card into the detail's fields. */
 	function applyWriteFields(next: {
 		title: string;
-		description: string;
 		locked: boolean;
 		itemCount: number;
 	}): void {
@@ -270,7 +269,6 @@
 			detail = {
 				...detail,
 				title: next.title,
-				description: next.description,
 				locked: next.locked,
 				itemCount: next.itemCount
 			};
@@ -661,7 +659,7 @@
 		</div>
 	{:else if detail !== null}
 		<!-- The context block (the page's card-framed text: the
-		     description, the notices, the shared error line) -- the
+		     notices and the shared error line) -- the
 		     WALL below is full-flow edge-to-edge like every wall. -->
 		<div class="album-detail__body max-w-[1200px] mx-auto px-2">
 			{#if owner && detail.type === 'directory' && rescanRun !== null}
@@ -695,9 +693,6 @@
 						</div>
 					{/if}
 				</div>
-			{/if}
-			{#if detail.description !== ''}
-				<p class="album-detail__description my-0 mb-3 font-body font-normal text-[15px] leading-[1.5] text-text-soft">{detail.description}</p>
 			{/if}
 			{#if locked && owner && virtual}
 				<!-- The locked gate, honest: curation and property writes stay

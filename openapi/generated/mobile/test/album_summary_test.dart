@@ -19,12 +19,6 @@ void main() {
       // TODO
     });
 
-    // The album's free-text description (empty when unset).
-    // String description
-    test('to test the property `description`', () async {
-      // TODO
-    });
-
     // The album's type. `virtual` albums are curated by their owner; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
     // String type
     test('to test the property `type`', () async {

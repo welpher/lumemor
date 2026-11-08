@@ -46,7 +46,6 @@ func bulkAlbumAssetID(i int) uuid.UUID {
 // album; the zero value is a plain unlocked album with no pinned
 // cover and the insert time as updated_at.
 type wallAlbumOpts struct {
-	description  string
 	locked       bool
 	coverAssetID *uuid.UUID
 	updatedAt    time.Time
@@ -66,9 +65,9 @@ func (e *assetEnv) insertWallAlbum(t *testing.T, id, owner uuid.UUID, albumType,
 		updatedAt = time.Now()
 	}
 	if _, err := e.pool.Exec(context.Background(), `
-		INSERT INTO albums (id, owner_id, title, description, type, locked, cover_asset_id, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		pgUUID(id), pgUUID(owner), title, opts.description, albumType,
+		INSERT INTO albums (id, owner_id, title, type, locked, cover_asset_id, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		pgUUID(id), pgUUID(owner), title, albumType,
 		opts.locked, coverAssetID, updatedAt); err != nil {
 		t.Fatalf("insert fixture album %s: %v", id, err)
 	}
@@ -237,8 +236,7 @@ func TestAlbumWall(t *testing.T) {
 	ownVirtual := fixtureWallAlbumID("01")
 	ownDirectory := fixtureWallAlbumID("02")
 	env.insertWallAlbum(t, ownVirtual, adminID, "virtual", "Trip to the coast", wallAlbumOpts{
-		description: "The van week.",
-		updatedAt:   time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC),
+		updatedAt: time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC),
 	})
 	env.insertWallAlbum(t, ownDirectory, adminID, "directory", "Archive", wallAlbumOpts{
 		updatedAt: time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC),
@@ -248,8 +246,7 @@ func TestAlbumWall(t *testing.T) {
 	// Grace's shared virtual album with one live member of her own.
 	shared := fixtureWallAlbumID("03")
 	env.insertWallAlbum(t, shared, graceID, "virtual", "Grace picks", wallAlbumOpts{
-		description: "Shared with the family.",
-		updatedAt:   time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC),
+		updatedAt: time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC),
 	})
 	sharedAsset := fixtureWallAssetID("03")
 	env.insertTimelineAsset(t, sharedAsset, graceID, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
@@ -318,8 +315,8 @@ func TestAlbumWall(t *testing.T) {
 	if virtual.CallerRole != apigen.AlbumSummaryCallerRoleOwner {
 		t.Errorf("wall[1].callerRole = %q, want owner", virtual.CallerRole)
 	}
-	if virtual.Title != "Trip to the coast" || virtual.Description != "The van week." {
-		t.Errorf("wall[1].title/description = %q/%q, want the stored values", virtual.Title, virtual.Description)
+	if virtual.Title != "Trip to the coast" {
+		t.Errorf("wall[1].title = %q, want the stored value", virtual.Title)
 	}
 	if virtual.Type != apigen.AlbumSummaryTypeVirtual {
 		t.Errorf("wall[1].type = %q, want virtual", virtual.Type)
@@ -599,9 +596,7 @@ func TestAlbumDetail(t *testing.T) {
 	adminID := env.sessionUserID(t)
 
 	album := fixtureWallAlbumID("21")
-	env.insertWallAlbum(t, album, adminID, "virtual", "The long walk", wallAlbumOpts{
-		description: "Sixty-one frames.",
-	})
+	env.insertWallAlbum(t, album, adminID, "virtual", "The long walk", wallAlbumOpts{})
 
 	// 61 live members. Asset i was taken (60 - i) minutes after the
 	// base, except items 3 and 4 share one taken_at: the tie pair
@@ -707,8 +702,8 @@ func TestAlbumDetail(t *testing.T) {
 		if uuid.UUID(page.Id) != album {
 			t.Errorf("detail id = %s, want %s", page.Id, album)
 		}
-		if page.Title != "The long walk" || page.Description != "Sixty-one frames." {
-			t.Errorf("detail title/description = %q/%q, want the stored values", page.Title, page.Description)
+		if page.Title != "The long walk" {
+			t.Errorf("detail title = %q, want the stored value", page.Title)
 		}
 		if page.Type != apigen.AlbumDetailTypeVirtual {
 			t.Errorf("detail type = %q, want virtual", page.Type)
@@ -852,9 +847,6 @@ func TestSyncAlbumDetail(t *testing.T) {
 		if page.Title != "Sync" {
 			t.Errorf("detail title = %q, want the internal label %q", page.Title, "Sync")
 		}
-		if page.Description != "" {
-			t.Errorf("detail description = %q, want the empty default", page.Description)
-		}
 		if page.Type != apigen.AlbumDetailTypeSync {
 			t.Errorf("detail type = %q, want sync (the default album)", page.Type)
 		}
@@ -949,8 +941,7 @@ func TestAlbumDetailViewer(t *testing.T) {
 
 	shared := fixtureWallAlbumID("51")
 	env.insertWallAlbum(t, shared, graceID, "virtual", "For the family", wallAlbumOpts{
-		description: "Grace's curation.",
-		locked:      true,
+		locked: true,
 	})
 	newer := fixtureWallAssetID("51")
 	older := fixtureWallAssetID("52")
@@ -965,8 +956,8 @@ func TestAlbumDetailViewer(t *testing.T) {
 		if detail.CallerRole != apigen.AlbumDetailCallerRoleViewer {
 			t.Errorf("callerRole = %q, want viewer for the sharee", detail.CallerRole)
 		}
-		if detail.Title != "For the family" || detail.Description != "Grace's curation." {
-			t.Errorf("title/description = %q/%q, want the stored values", detail.Title, detail.Description)
+		if detail.Title != "For the family" {
+			t.Errorf("title = %q, want the stored value", detail.Title)
 		}
 		if !detail.Locked {
 			t.Error("locked = false, want true (metadata to a viewer)")

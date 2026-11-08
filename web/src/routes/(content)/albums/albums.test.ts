@@ -39,7 +39,6 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 	return {
 		id,
 		title: `Album ${id}`,
-		description: '',
 		type: 'virtual',
 		locked: false,
 		isShared: false,
@@ -53,7 +52,6 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 
 const roadTrip = summary('al1', {
 	title: 'Road trip 2026',
-	description: 'The coastal week.',
 	coverAssetIds: ['a1', 'a2', 'a3', 'a4'],
 	itemCount: 128,
 	isShared: true
@@ -81,7 +79,6 @@ const quickPicks = summary('al3', {
 });
 const graceHighlights = summary('al4', {
 	title: "Grace's highlights",
-	description: 'Shared with the family.',
 	coverAssetIds: ['g1', 'g2'],
 	itemCount: 17,
 	callerRole: 'viewer',
