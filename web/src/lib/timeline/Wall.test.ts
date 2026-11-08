@@ -4,16 +4,19 @@ import { initI18n } from '$lib/i18n';
 import Wall from './Wall.svelte';
 import type { TimelineItem } from '$lib/api/timeline';
 
-// The unified wall (the 2026-11-07 owner pin): ONE pure rendering
+// The unified wall (the 2026-11-07 owner pin): ONE rendering
 // component every photo surface composes -- the timeline, the album
 // detail, the favorites/hidden wrappers, the search browse mode. It
 // takes bare ITEMS (the month/day fold is its own), the row engine,
-// the ResizeObserver re-pack and PhotoTile live inside it, and the
-// page-level concerns (selection state, batch bar, scrubber, the
-// data walk) never enter. The selection contract: `onselect`'s
-// PRESENCE is the capability -- a wall with no callback renders NO
-// check affordance at all (the album detail's pure-navigation wall,
-// R5), while the walls that wire it keep the hover-reveal entry.
+// the ResizeObserver re-pack, PhotoTile AND the month axis live
+// inside it (the 2026-11-08 pin: the photo rendering and the
+// right-edge rail are one thing -- the axis folds from the same
+// internal groups the rendering packs), and the page-level concerns
+// (selection state, batch bar, the data walk) never enter. The
+// selection contract: `onselect`'s PRESENCE is the capability -- a
+// wall with no callback renders NO check affordance at all (the
+// album detail's pure-navigation wall, R5), while the walls that
+// wire it keep the hover-reveal entry.
 
 const itemDefaults = {
 	ownerId: '0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60',
@@ -110,6 +113,46 @@ test('a wall with onselect keeps the check affordance and forwards its toggles',
 	checks[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	expect(onselect).toHaveBeenCalledWith('a1', true);
+
+	unmount(wall);
+	flushSync();
+});
+
+test('the month axis is the wall\'s own organ: one stop per month, folded from the same groups', () => {
+	// The 2026-11-08 pin: the photo rendering and the right-edge
+	// rail are one component. The axis cannot disagree with the
+	// wall -- its months fold from the SAME internal groups the
+	// rendering packs, so the stops' labels are the month headers'
+	// labels, verbatim and in order.
+	const wall = mount(Wall, { target: document.body, props: { items } });
+	flushSync();
+
+	const rail = document.body.querySelector('.scrubber');
+	expect(rail).not.toBeNull();
+	const stops = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop'));
+	expect(stops).toHaveLength(2);
+	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual([
+		'November 2026',
+		'October 2026'
+	]);
+	// The wall's month headers carry the same strings (the
+	// same-fold guarantee, asserted from both sides).
+	const headers = Array.from(document.body.querySelectorAll('.wall__month-header'));
+	expect(headers.map((header) => header.textContent)).toEqual([
+		'November 2026',
+		'October 2026'
+	]);
+
+	unmount(wall);
+	flushSync();
+});
+
+test('an empty wall renders no rail (the scrubber\'s own guard)', () => {
+	const wall = mount(Wall, { target: document.body, props: { items: [] } });
+	flushSync();
+
+	expect(document.body.querySelector('.scrubber')).toBeNull();
+	expect(document.body.querySelector('.wall__month')).toBeNull();
 
 	unmount(wall);
 	flushSync();
