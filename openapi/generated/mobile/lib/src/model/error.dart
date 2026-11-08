@@ -21,7 +21,7 @@ abstract class Error implements Built<Error, ErrorBuilder> {
   /// Stable error code. The i18n translation key is the lowercase form of this value. 
   @BuiltValueField(wireName: r'code')
   ErrorCodeEnum get code;
-  // enum codeEnum {  SETUP_ALREADY_COMPLETED,  VALIDATION_FAILED,  INTERNAL,  AUTH_FORBIDDEN,  AUTH_INVALID_CREDENTIALS,  AUTH_RATE_LIMITED,  PAIRING_TOKEN_INVALID,  ASSET_TOO_LARGE,  ASSET_NOT_FOUND,  ASSET_NOT_READY,  USER_EMAIL_TAKEN,  USER_NOT_FOUND,  MODEL_DOWNLOAD_FAILED,  MODEL_NOT_FOUND,  MODEL_INVALID,  PERSON_NOT_FOUND,  ALBUM_NOT_FOUND,  ALBUM_LOCKED,  TAG_NOT_FOUND,  TAG_NAME_TAKEN,  };
+  // enum codeEnum {  SETUP_ALREADY_COMPLETED,  VALIDATION_FAILED,  INTERNAL,  AUTH_FORBIDDEN,  AUTH_INVALID_CREDENTIALS,  AUTH_RATE_LIMITED,  PAIRING_TOKEN_INVALID,  ASSET_TOO_LARGE,  ASSET_NOT_FOUND,  ASSET_NOT_READY,  USER_EMAIL_TAKEN,  USER_NOT_FOUND,  MODEL_DOWNLOAD_FAILED,  MODEL_NOT_FOUND,  MODEL_INVALID,  PERSON_NOT_FOUND,  ALBUM_NOT_FOUND,  ALBUM_LOCKED,  ALBUM_PATH_NOT_FOUND,  ALBUM_PATH_NOT_DIRECTORY,  ALBUM_PATH_NOT_READABLE,  ALBUM_PATH_SYMLINK_ESCAPE,  ALBUM_PATH_IN_MANAGED_TREE,  ALBUM_PATH_OVERLAPS,  ALBUM_PATH_OUTSIDE_ROOTS,  TAG_NOT_FOUND,  TAG_NAME_TAKEN,  };
 
   /// English technical description for debugging.
   @BuiltValueField(wireName: r'message')
@@ -188,6 +188,20 @@ class ErrorCodeEnum extends EnumClass {
   static const ErrorCodeEnum ALBUM_NOT_FOUND = _$errorCodeEnum_ALBUM_NOT_FOUND;
   @BuiltValueEnumConst(wireName: r'ALBUM_LOCKED')
   static const ErrorCodeEnum ALBUM_LOCKED = _$errorCodeEnum_ALBUM_LOCKED;
+  @BuiltValueEnumConst(wireName: r'ALBUM_PATH_NOT_FOUND')
+  static const ErrorCodeEnum ALBUM_PATH_NOT_FOUND = _$errorCodeEnum_ALBUM_PATH_NOT_FOUND;
+  @BuiltValueEnumConst(wireName: r'ALBUM_PATH_NOT_DIRECTORY')
+  static const ErrorCodeEnum ALBUM_PATH_NOT_DIRECTORY = _$errorCodeEnum_ALBUM_PATH_NOT_DIRECTORY;
+  @BuiltValueEnumConst(wireName: r'ALBUM_PATH_NOT_READABLE')
+  static const ErrorCodeEnum ALBUM_PATH_NOT_READABLE = _$errorCodeEnum_ALBUM_PATH_NOT_READABLE;
+  @BuiltValueEnumConst(wireName: r'ALBUM_PATH_SYMLINK_ESCAPE')
+  static const ErrorCodeEnum ALBUM_PATH_SYMLINK_ESCAPE = _$errorCodeEnum_ALBUM_PATH_SYMLINK_ESCAPE;
+  @BuiltValueEnumConst(wireName: r'ALBUM_PATH_IN_MANAGED_TREE')
+  static const ErrorCodeEnum ALBUM_PATH_IN_MANAGED_TREE = _$errorCodeEnum_ALBUM_PATH_IN_MANAGED_TREE;
+  @BuiltValueEnumConst(wireName: r'ALBUM_PATH_OVERLAPS')
+  static const ErrorCodeEnum ALBUM_PATH_OVERLAPS = _$errorCodeEnum_ALBUM_PATH_OVERLAPS;
+  @BuiltValueEnumConst(wireName: r'ALBUM_PATH_OUTSIDE_ROOTS')
+  static const ErrorCodeEnum ALBUM_PATH_OUTSIDE_ROOTS = _$errorCodeEnum_ALBUM_PATH_OUTSIDE_ROOTS;
   @BuiltValueEnumConst(wireName: r'TAG_NOT_FOUND')
   static const ErrorCodeEnum TAG_NOT_FOUND = _$errorCodeEnum_TAG_NOT_FOUND;
   @BuiltValueEnumConst(wireName: r'TAG_NAME_TAKEN')

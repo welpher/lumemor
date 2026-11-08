@@ -9,13 +9,13 @@ import 'package:built_value/serializer.dart';
 
 part 'album_items_request.g.dart';
 
-/// The membership write body: the list of asset ids to add to or remove from one virtual album. Repeated ids collapse to one application; the report's counts cover the distinct ids. 
+/// The membership removal body: the list of asset ids to remove from one virtual album. Repeated ids collapse to one application; the report's counts cover the distinct ids. 
 ///
 /// Properties:
-/// * [assetIds] - The asset ids of the membership write, between 1 and 200 entries. The add skips -- never errors on -- every id that is not a live caller-owned asset or that already sits in the album; the remove skips the ids that are no members. 
+/// * [assetIds] - The asset ids of the membership removal, between 1 and 200 entries; the remove skips the ids that are no members. 
 @BuiltValue()
 abstract class AlbumItemsRequest implements Built<AlbumItemsRequest, AlbumItemsRequestBuilder> {
-  /// The asset ids of the membership write, between 1 and 200 entries. The add skips -- never errors on -- every id that is not a live caller-owned asset or that already sits in the album; the remove skips the ids that are no members. 
+  /// The asset ids of the membership removal, between 1 and 200 entries; the remove skips the ids that are no members. 
   @BuiltValueField(wireName: r'assetIds')
   BuiltList<String> get assetIds;
 

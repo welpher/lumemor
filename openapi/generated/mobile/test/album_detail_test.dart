@@ -43,6 +43,12 @@ void main() {
       // TODO
     });
 
+    // The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Virtual and sync albums omit it. 
+    // String rootPath
+    test('to test the property `rootPath`', () async {
+      // TODO
+    });
+
     // The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
     // String callerRole
     test('to test the property `callerRole`', () async {

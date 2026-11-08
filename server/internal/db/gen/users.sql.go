@@ -97,29 +97,6 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 	return i, err
 }
 
-const getUserForShareTarget = `-- name: GetUserForShareTarget :one
-SELECT id, email, is_disabled
-FROM users
-WHERE id = $1
-`
-
-type GetUserForShareTargetRow struct {
-	ID         pgtype.UUID `json:"id"`
-	Email      string      `json:"email"`
-	IsDisabled bool        `json:"is_disabled"`
-}
-
-// One account as the share grant's target lookup: does the id name
-// a usable account? An unknown id answers no row and a disabled
-// account answers its switch -- the caller folds both into the same
-// 400 so user ids cannot be probed through the sharing face.
-func (q *Queries) GetUserForShareTarget(ctx context.Context, id pgtype.UUID) (GetUserForShareTargetRow, error) {
-	row := q.db.QueryRow(ctx, getUserForShareTarget, id)
-	var i GetUserForShareTargetRow
-	err := row.Scan(&i.ID, &i.Email, &i.IsDisabled)
-	return i, err
-}
-
 const getUserRole = `-- name: GetUserRole :one
 SELECT role FROM users WHERE id = $1
 `
@@ -223,6 +200,41 @@ func (q *Queries) ListInstanceUsersMinimal(ctx context.Context) ([]ListInstanceU
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsableShareTargets = `-- name: ListUsableShareTargets :many
+SELECT id
+FROM users
+WHERE id = ANY($1::uuid[])
+  AND NOT is_disabled
+`
+
+// The audience write's resolution arm: which of the REQUESTED ids
+// name usable accounts (known, not disabled)? An unknown id matches
+// no row and a disabled account is filtered by the switch -- the
+// handler folds both into the same skipped reason so user ids
+// cannot be probed through the audience face, the discipline the
+// one-row share grant kept before E4 folded it into the full-set
+// write. The array bounds the scan (the contract caps the audience
+// at 200 ids).
+func (q *Queries) ListUsableShareTargets(ctx context.Context, dollar_1 []pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listUsableShareTargets, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -804,9 +804,9 @@ func TestAlbumDetailNotFound(t *testing.T) {
 // empty (no share row can name a sync album). Another account's sync
 // album stays in the 404 region. The WRITE faces' refusals of the
 // same album are pinned where they live: TestUpdateAlbum's
-// RefusesSyncAlbum (PATCH), TestAddAlbumItems / TestRemoveAlbumItems
-// (the membership pair), TestGrantAlbumShareAlbumTypes (the share
-// grant), TestSetAlbumTimelinePreference's SyncAndOwnVirtualRefused
+// RefusesSyncAlbum (PATCH), TestRemoveAlbumItems (the membership
+// removal), TestUpdateAlbumAudienceAlbumTypes (the audience write),
+// TestSetAlbumTimelinePreference's SyncAndOwnVirtualRefused
 // (the preference), and TestDeleteAlbum (the delete) -- the read
 // admitting the caller's own sync changes none of them.
 func TestSyncAlbumDetail(t *testing.T) {

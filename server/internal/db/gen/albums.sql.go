@@ -11,50 +11,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const addAlbumItems = `-- name: AddAlbumItems :execrows
-INSERT INTO album_items (album_id, asset_id, added_by)
-SELECT $1, a.id, $2
-FROM assets a
-WHERE a.id = ANY($3::uuid[])
-  AND a.owner_id = $4
-  AND a.deleted_at IS NULL
-  AND a.is_hidden = false
-  AND a.is_component = false
-ON CONFLICT DO NOTHING
+const addAlbumAudienceGrants = `-- name: AddAlbumAudienceGrants :many
+
+INSERT INTO album_shares (album_id, user_id, granted_by)
+SELECT $1, u.id, $2
+FROM users u
+WHERE u.id = ANY($3::uuid[])
+  AND NOT u.is_disabled
+ON CONFLICT (album_id, user_id) DO NOTHING
+RETURNING user_id
 `
 
-type AddAlbumItemsParams struct {
-	AlbumID  pgtype.UUID   `json:"album_id"`
-	AddedBy  pgtype.UUID   `json:"added_by"`
-	AssetIds []pgtype.UUID `json:"asset_ids"`
-	OwnerID  pgtype.UUID   `json:"owner_id"`
+type AddAlbumAudienceGrantsParams struct {
+	AlbumID   pgtype.UUID   `json:"album_id"`
+	GrantedBy pgtype.UUID   `json:"granted_by"`
+	UserIds   []pgtype.UUID `json:"user_ids"`
 }
 
-// The membership add: resolution and insert in one statement. The
-// WHERE arm IS the resolution -- every id must name a live asset the
-// CALLER owns (the owner-based live predicate, a DELIBERATE M3c
-// decision: curating another account's shared photos into a virtual
-// album is the re-share feature, which needs display-time
-// owner-visibility re-validation on every item-listing surface
-// before the union can carry curation without leaving stale
-// snapshots behind a revoked share) -- so foreign, trashed, hidden,
-// component and unknown ids never produce rows: they are the
-// skipped of the honest report, never errors. ON CONFLICT DO NOTHING
-// makes the already-member id the no-op of the idempotent add
-// (membership is a set). The SELECT scans assets once, so a repeated
-// id in the array yields one row; the rows-affected count is the
-// report's added.
-func (q *Queries) AddAlbumItems(ctx context.Context, arg AddAlbumItemsParams) (int64, error) {
-	result, err := q.db.Exec(ctx, addAlbumItems,
-		arg.AlbumID,
-		arg.AddedBy,
-		arg.AssetIds,
-		arg.OwnerID,
-	)
+// Album audience (E4, the albums-as-sources milestone): the
+// full-set write behind PUT /albums/{albumId}/audience replaces the
+// one-row grant/revoke pair. The set discipline is the batch
+// surface's: the requested ids that cannot be granted -- unknown or
+// disabled accounts, and the album's own owner -- are the skipped of
+// the honest report, never errors; the rest converge onto exactly
+// the requested audience. The PK is the race guard, and RETURNING is
+// the transition signal the handler's event discipline reads: the
+// ids that actually landed / actually left, so a concurrent writer
+// can never make an idempotent no-op fire an event.
+// The grant arm of the audience write: one album_shares row for
+// every REQUESTED id that names a usable account (known, not
+// disabled), inserted with the acting user as the grantor. ON
+// CONFLICT DO NOTHING makes the already-granted id the no-op of the
+// idempotent set write, so RETURNING carries exactly the rows this
+// write landed -- the ids whose album.shared events fire.
+func (q *Queries) AddAlbumAudienceGrants(ctx context.Context, arg AddAlbumAudienceGrantsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, addAlbumAudienceGrants, arg.AlbumID, arg.GrantedBy, arg.UserIds)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var user_id pgtype.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const addAssetToAlbum = `-- name: AddAssetToAlbum :exec
@@ -110,32 +117,39 @@ func (q *Queries) CountLiveAlbumMember(ctx context.Context, arg CountLiveAlbumMe
 	return matches, err
 }
 
-const createVirtualAlbum = `-- name: CreateVirtualAlbum :one
-INSERT INTO albums (id, owner_id, title, description, type)
-VALUES ($1, $2, $3, $4, 'virtual')
+const createDirectoryAlbum = `-- name: CreateDirectoryAlbum :one
+INSERT INTO albums (id, owner_id, title, type, root_path)
+VALUES ($1, $2, $3, 'directory', $4)
 RETURNING id
 `
 
-type CreateVirtualAlbumParams struct {
-	ID          pgtype.UUID `json:"id"`
-	OwnerID     pgtype.UUID `json:"owner_id"`
-	Title       string      `json:"title"`
-	Description string      `json:"description"`
+type CreateDirectoryAlbumParams struct {
+	ID       pgtype.UUID `json:"id"`
+	OwnerID  pgtype.UUID `json:"owner_id"`
+	Title    string      `json:"title"`
+	RootPath pgtype.Text `json:"root_path"`
 }
 
-// The virtual album creator: the write face's only creatable type
-// (directory albums arrive with their own milestone, sync albums are
-// born per account), with the id generated caller-side because the
-// table carries no default. The wall card's companions are the
-// creation-time constants -- no share, no member, no cover -- so the
-// handler reads the fresh row's full card through GetAlbumSummary
-// like every other write response.
-func (q *Queries) CreateVirtualAlbum(ctx context.Context, arg CreateVirtualAlbumParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, createVirtualAlbum,
+// The directory album creator (E4's albums-as-sources): the row
+// references an existing filesystem directory the server validated
+// against the path matrix BEFORE this statement ran -- exists, is a
+// directory, readable, outside the managed tree, inside a configured
+// mount root, no overlap or nesting with another directory album's
+// root -- and root_path stores the RESOLVED absolute path (symlinks
+// evaluated at validation time), so the album can never be silently
+// repointed by a later symlink swap. The id is generated
+// caller-side; the description stays the column default (the
+// creation face carries title, path and audience only). The wall
+// card's companions are the creation-time constants -- the caller's
+// own audience grants land right after -- so the handler reads the
+// fresh row's full card through GetAlbumSummary like every other
+// write response.
+func (q *Queries) CreateDirectoryAlbum(ctx context.Context, arg CreateDirectoryAlbumParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, createDirectoryAlbum,
 		arg.ID,
 		arg.OwnerID,
 		arg.Title,
-		arg.Description,
+		arg.RootPath,
 	)
 	var id pgtype.UUID
 	err := row.Scan(&id)
@@ -388,8 +402,9 @@ type GetAlbumForWriteRow struct {
 	SharedToCaller bool  `json:"shared_to_caller"`
 }
 
-// Album writes (M3c Task 2): creation, the property patch, the
-// delete, the membership curation and the write face's authorization
+// Album writes (M3c Task 2, reshaped by E4): creation, the property
+// patch, the delete, the membership removal and the write face's
+// authorization
 // gate. The reads' live-member predicate runs through the cover
 // validation and the add's resolution: the same three-part filter
 // (deleted_at IS NULL AND is_hidden = false AND is_component =
@@ -419,34 +434,6 @@ func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWritePara
 		&i.Album.UpdatedAt,
 		&i.SharedToCaller,
 	)
-	return i, err
-}
-
-const getAlbumShare = `-- name: GetAlbumShare :one
-SELECT album_id, user_id, granted_at
-FROM album_shares
-WHERE album_id = $1
-  AND user_id = $2
-`
-
-type GetAlbumShareParams struct {
-	AlbumID pgtype.UUID `json:"album_id"`
-	UserID  pgtype.UUID `json:"user_id"`
-}
-
-type GetAlbumShareRow struct {
-	AlbumID   pgtype.UUID        `json:"album_id"`
-	UserID    pgtype.UUID        `json:"user_id"`
-	GrantedAt pgtype.Timestamptz `json:"granted_at"`
-}
-
-// One share row of one grantee: the honest post-write state of the
-// grant (the fresh row's now(), or the existing row's original
-// values when the grant was the idempotent no-op).
-func (q *Queries) GetAlbumShare(ctx context.Context, arg GetAlbumShareParams) (GetAlbumShareRow, error) {
-	row := q.db.QueryRow(ctx, getAlbumShare, arg.AlbumID, arg.UserID)
-	var i GetAlbumShareRow
-	err := row.Scan(&i.AlbumID, &i.UserID, &i.GrantedAt)
 	return i, err
 }
 
@@ -510,39 +497,6 @@ func (q *Queries) GetAlbumSummary(ctx context.Context, arg GetAlbumSummaryParams
 		&i.InTimeline,
 	)
 	return i, err
-}
-
-const grantAlbumShare = `-- name: GrantAlbumShare :execrows
-
-INSERT INTO album_shares (album_id, user_id, granted_by)
-VALUES ($1, $2, $3)
-ON CONFLICT (album_id, user_id) DO NOTHING
-`
-
-type GrantAlbumShareParams struct {
-	AlbumID   pgtype.UUID `json:"album_id"`
-	UserID    pgtype.UUID `json:"user_id"`
-	GrantedBy pgtype.UUID `json:"granted_by"`
-}
-
-// Album sharing (M3c Task 3): the view-ACL grant, revoke and the
-// owner's grantee list. The grant is the set discipline again: ON
-// CONFLICT DO NOTHING makes the re-grant of a current grantee a
-// no-op, so the rows-affected count is the transition signal the
-// handler's event discipline reads (a new row fires album.shared,
-// the idempotent no-op stays silent) -- and the PK is the race
-// guard: concurrent grants converge on one row.
-// The view-ACL grant: one album_shares row. The count answers the
-// transition -- 1 row landed a fresh grant, 0 rows mean the grantee
-// already holds the share (the handler then re-reads the existing
-// row for the response; the grantor and grant time of the original
-// stay untouched).
-func (q *Queries) GrantAlbumShare(ctx context.Context, arg GrantAlbumShareParams) (int64, error) {
-	result, err := q.db.Exec(ctx, grantAlbumShare, arg.AlbumID, arg.UserID, arg.GrantedBy)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }
 
 const listAlbumCoverCandidates = `-- name: ListAlbumCoverCandidates :many
@@ -696,6 +650,43 @@ func (q *Queries) ListAlbumShares(ctx context.Context, albumID pgtype.UUID) ([]L
 	for rows.Next() {
 		var i ListAlbumSharesRow
 		if err := rows.Scan(&i.UserID, &i.Email, &i.GrantedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDirectoryAlbumRoots = `-- name: ListDirectoryAlbumRoots :many
+SELECT id, root_path
+FROM albums
+WHERE type = 'directory'
+`
+
+type ListDirectoryAlbumRootsRow struct {
+	ID       pgtype.UUID `json:"id"`
+	RootPath pgtype.Text `json:"root_path"`
+}
+
+// Every directory album's stored root path across the WHOLE
+// instance, the overlap arm of the creation-time path matrix. The
+// check is deliberately not owner-scoped: two albums mirroring the
+// same tree (equal, containing, or contained roots) is confusing
+// double-scan state whatever accounts own them, and the family
+// instance has no case for it. The album count bounds the read.
+func (q *Queries) ListDirectoryAlbumRoots(ctx context.Context) ([]ListDirectoryAlbumRootsRow, error) {
+	rows, err := q.db.Query(ctx, listDirectoryAlbumRoots)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDirectoryAlbumRootsRow
+	for rows.Next() {
+		var i ListDirectoryAlbumRootsRow
+		if err := rows.Scan(&i.ID, &i.RootPath); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -878,6 +869,45 @@ func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUI
 	return items, nil
 }
 
+const removeAlbumAudienceRows = `-- name: RemoveAlbumAudienceRows :many
+DELETE FROM album_shares
+WHERE album_id = $1
+  AND NOT (user_id = ANY($2::uuid[]))
+RETURNING user_id
+`
+
+type RemoveAlbumAudienceRowsParams struct {
+	AlbumID pgtype.UUID   `json:"album_id"`
+	UserIds []pgtype.UUID `json:"user_ids"`
+}
+
+// The revoke arm of the audience write: every share row whose
+// grantee is NOT in the requested set leaves. An EMPTY array is the
+// honest "audience: none" request: ANY('{}') matches no id, so every
+// row leaves -- the owner's access is ownership, not a share row,
+// and stays untouched whatever the array holds. RETURNING carries
+// exactly the rows that left -- the ids whose album.unshared events
+// fire.
+func (q *Queries) RemoveAlbumAudienceRows(ctx context.Context, arg RemoveAlbumAudienceRowsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, removeAlbumAudienceRows, arg.AlbumID, arg.UserIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var user_id pgtype.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeAlbumItems = `-- name: RemoveAlbumItems :execrows
 DELETE FROM album_items
 WHERE album_id = $1
@@ -895,29 +925,6 @@ type RemoveAlbumItemsParams struct {
 // leaves), and the rows-affected count is the report's removed.
 func (q *Queries) RemoveAlbumItems(ctx context.Context, arg RemoveAlbumItemsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, removeAlbumItems, arg.AlbumID, arg.AssetIds)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const revokeAlbumShare = `-- name: RevokeAlbumShare :execrows
-DELETE FROM album_shares
-WHERE album_id = $1
-  AND user_id = $2
-`
-
-type RevokeAlbumShareParams struct {
-	AlbumID pgtype.UUID `json:"album_id"`
-	UserID  pgtype.UUID `json:"user_id"`
-}
-
-// The view-ACL revoke: the row leaves, and the count is the
-// transition signal -- 1 row left fires album.unshared, 0 rows (the
-// share never existed, already left, or the id names no account)
-// are the idempotent silence the 204 answers either way.
-func (q *Queries) RevokeAlbumShare(ctx context.Context, arg RevokeAlbumShareParams) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeAlbumShare, arg.AlbumID, arg.UserID)
 	if err != nil {
 		return 0, err
 	}

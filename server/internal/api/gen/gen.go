@@ -14,6 +14,63 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AlbumAudienceSkipReason.
+const (
+	AlbumAudienceSkipReasonInvalidAccount AlbumAudienceSkipReason = "invalid_account"
+	AlbumAudienceSkipReasonOwner          AlbumAudienceSkipReason = "owner"
+)
+
+// Valid indicates whether the value is a known member of the AlbumAudienceSkipReason enum.
+func (e AlbumAudienceSkipReason) Valid() bool {
+	switch e {
+	case AlbumAudienceSkipReasonInvalidAccount:
+		return true
+	case AlbumAudienceSkipReasonOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AlbumCreateResponseCallerRole.
+const (
+	AlbumCreateResponseCallerRoleOwner  AlbumCreateResponseCallerRole = "owner"
+	AlbumCreateResponseCallerRoleViewer AlbumCreateResponseCallerRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the AlbumCreateResponseCallerRole enum.
+func (e AlbumCreateResponseCallerRole) Valid() bool {
+	switch e {
+	case AlbumCreateResponseCallerRoleOwner:
+		return true
+	case AlbumCreateResponseCallerRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AlbumCreateResponseType.
+const (
+	AlbumCreateResponseTypeDirectory AlbumCreateResponseType = "directory"
+	AlbumCreateResponseTypeSync      AlbumCreateResponseType = "sync"
+	AlbumCreateResponseTypeVirtual   AlbumCreateResponseType = "virtual"
+)
+
+// Valid indicates whether the value is a known member of the AlbumCreateResponseType enum.
+func (e AlbumCreateResponseType) Valid() bool {
+	switch e {
+	case AlbumCreateResponseTypeDirectory:
+		return true
+	case AlbumCreateResponseTypeSync:
+		return true
+	case AlbumCreateResponseTypeVirtual:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AlbumDetailCallerRole.
 const (
 	AlbumDetailCallerRoleOwner  AlbumDetailCallerRole = "owner"
@@ -258,6 +315,13 @@ func (e DownloadFormat) Valid() bool {
 const (
 	ALBUMLOCKED            ErrorCode = "ALBUM_LOCKED"
 	ALBUMNOTFOUND          ErrorCode = "ALBUM_NOT_FOUND"
+	ALBUMPATHINMANAGEDTREE ErrorCode = "ALBUM_PATH_IN_MANAGED_TREE"
+	ALBUMPATHNOTDIRECTORY  ErrorCode = "ALBUM_PATH_NOT_DIRECTORY"
+	ALBUMPATHNOTFOUND      ErrorCode = "ALBUM_PATH_NOT_FOUND"
+	ALBUMPATHNOTREADABLE   ErrorCode = "ALBUM_PATH_NOT_READABLE"
+	ALBUMPATHOUTSIDEROOTS  ErrorCode = "ALBUM_PATH_OUTSIDE_ROOTS"
+	ALBUMPATHOVERLAPS      ErrorCode = "ALBUM_PATH_OVERLAPS"
+	ALBUMPATHSYMLINKESCAPE ErrorCode = "ALBUM_PATH_SYMLINK_ESCAPE"
 	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
 	ASSETNOTREADY          ErrorCode = "ASSET_NOT_READY"
 	ASSETTOOLARGE          ErrorCode = "ASSET_TOO_LARGE"
@@ -284,6 +348,20 @@ func (e ErrorCode) Valid() bool {
 	case ALBUMLOCKED:
 		return true
 	case ALBUMNOTFOUND:
+		return true
+	case ALBUMPATHINMANAGEDTREE:
+		return true
+	case ALBUMPATHNOTDIRECTORY:
+		return true
+	case ALBUMPATHNOTFOUND:
+		return true
+	case ALBUMPATHNOTREADABLE:
+		return true
+	case ALBUMPATHOUTSIDEROOTS:
+		return true
+	case ALBUMPATHOVERLAPS:
+		return true
+	case ALBUMPATHSYMLINKESCAPE:
 		return true
 	case ASSETNOTFOUND:
 		return true
@@ -722,22 +800,6 @@ func (e SearchAssetsParamsLocale) Valid() bool {
 	}
 }
 
-// AddAlbumItemsResponse The honest report of one membership add over the request's
-// distinct ids: what landed and what was skipped, foreign,
-// non-live and already-member ids alike.
-type AddAlbumItemsResponse struct {
-	// Added The membership rows the request inserted. Zero for an
-	// all-skipped request, which is still a 200 -- batch
-	// semantics, never an error.
-	Added int `json:"added"`
-
-	// Skipped The distinct ids that did not land: unknown ids, another
-	// account's assets, trashed, hidden or component rows, and
-	// the ids already sitting in the album (the idempotent
-	// add).
-	Skipped int `json:"skipped"`
-}
-
 // AddTagAssetsResponse The honest report of one assignment add over the request's
 // distinct ids: what landed and what was skipped, invisible
 // and already-tagged ids alike.
@@ -815,15 +877,99 @@ type AdminUserResponse struct {
 	Role UserRole `json:"role"`
 }
 
-// AlbumCreateRequest The creation body of one virtual album: the title and the
-// optional bounded description. No type field exists -- this
-// endpoint IS virtual creation, the only creatable album type
-// of the face.
+// AlbumAudienceRequest The audience write body: the COMPLETE grantee set, the state
+// the album's `album_shares` rows must converge to. The field
+// must ride the body -- an explicit empty array IS the valid
+// "only me" request (every row leaves), while an absent field
+// is a client bug the 400 names, the destructive-silent-
+// default guard of the settings writes.
+type AlbumAudienceRequest struct {
+	// Audience Every account that may view the album after this write,
+	// between 0 and 200 entries. Repeated ids collapse to one
+	// application. The owner's own id is skippable noise (the
+	// owner sees the album by construction), and ids that name
+	// no usable account are skipped with a reason -- never
+	// errors.
+	Audience []openapi_types.UUID `json:"audience"`
+}
+
+// AlbumAudienceResponse The audience write's honest report: the audience as it
+// stands after the write, the transitions this write caused,
+// and the requested ids it skipped. The three id lists carry
+// only what the write actually did -- a concurrent writer's
+// rows surface in `audience`, never in a transition the
+// response claims.
+type AlbumAudienceResponse struct {
+	// AlbumId Identifier of the album the audience belongs to.
+	AlbumId openapi_types.UUID `json:"albumId"`
+
+	// Audience The grantee list after the write, one entry per
+	// `album_shares` row in the grant order (`grantedAt`
+	// ascending) -- the same list the owner's album detail
+	// carries as `shares`, the edit dialog's chips.
+	Audience []AlbumShareEntry `json:"audience"`
+
+	// Granted The ids whose rows THIS write landed -- empty for the
+	// idempotent repeat of the stored set. One `album.shared`
+	// event fired per entry.
+	Granted []openapi_types.UUID `json:"granted"`
+
+	// Revoked The ids whose rows THIS write removed -- empty for the
+	// idempotent repeat. One `album.unshared` event fired per
+	// entry.
+	Revoked []openapi_types.UUID `json:"revoked"`
+
+	// Skipped The requested ids that stayed ungranted, each with its
+	// reason. Empty when the whole request was actionable.
+	Skipped []AlbumAudienceSkip `json:"skipped"`
+}
+
+// AlbumAudienceSkip One requested audience entry the write could not grant: the
+// id and the honest reason. The reason is a machine value the
+// client maps onto its own phrasing; it never probes the
+// account table further.
+type AlbumAudienceSkip struct {
+	// Reason Why the id was skipped: `owner` -- the album's own owner,
+	// whose visibility is the ownership row, never a share row;
+	// `invalid_account` -- an unknown or disabled account (the
+	// same reason for both, so user ids cannot be probed).
+	Reason AlbumAudienceSkipReason `json:"reason"`
+
+	// UserId The requested id that stayed ungranted.
+	UserId openapi_types.UUID `json:"userId"`
+}
+
+// AlbumAudienceSkipReason Why the id was skipped: `owner` -- the album's own owner,
+// whose visibility is the ownership row, never a share row;
+// `invalid_account` -- an unknown or disabled account (the
+// same reason for both, so user ids cannot be probed).
+type AlbumAudienceSkipReason string
+
+// AlbumCreateRequest The creation body of one directory album (E4's
+// albums-as-sources): the title, the existing directory the
+// album references in place, and the audience the album starts
+// with. No type field exists -- this endpoint IS directory
+// creation, the only creatable album type; no description
+// field either -- the dialog carries title, path and audience,
+// and the description stays empty (the property patch can set
+// one later).
 type AlbumCreateRequest struct {
-	// Description The album's free-text description; empty when absent.
-	// At most 10,000 Unicode characters, the asset
-	// description's own bound.
-	Description *string `json:"description,omitempty"`
+	// Audience The accounts the album starts being visible to: the
+	// initial `album_shares` set, empty (or absent) meaning
+	// "only me". Entries that cannot be granted -- an unknown
+	// or disabled account, or the caller's own id -- are
+	// skipped and reported in the response's `skipped` list,
+	// never errors.
+	Audience *[]openapi_types.UUID `json:"audience,omitempty"`
+
+	// RootPath The source directory: an existing absolute path the
+	// server validates against the path matrix (existence,
+	// directory-ness, readability, symlink resolution, the
+	// managed tree, root overlap, the mount-root allowlist)
+	// before creating anything. The album row stores the
+	// RESOLVED absolute path -- symlink segments evaluated --
+	// so a later symlink swap cannot repoint the album.
+	RootPath string `json:"rootPath"`
 
 	// Title The album's display title, trimmed server-side; it must
 	// span 1-64 Unicode characters after the trim (the count
@@ -831,6 +977,99 @@ type AlbumCreateRequest struct {
 	// bound at the same length).
 	Title string `json:"title"`
 }
+
+// AlbumCreateResponse The creation answer: the fresh directory album's wall card
+// (the summary exactly as `GET /albums` lists it) plus the
+// honest audience report -- the requested ids that did not
+// become audience, each with its reason. The card's companions
+// are the creation-time constants: `callerRole` `owner`,
+// `isShared` true exactly when the audience landed a row, an
+// empty `coverAssetIds`, `itemCount` 0.
+type AlbumCreateResponse struct {
+	// CallerRole The caller's relation to this album: `owner` items belong
+	// to the own group, `viewer` items to the shared group. The
+	// web client sections the wall off this discriminator.
+	CallerRole AlbumCreateResponseCallerRole `json:"callerRole"`
+
+	// CoverAssetIds The collage source of the wall card: the pinned cover
+	// asset as a single-element list when the owner set one,
+	// otherwise the album's most recent live member assets (up
+	// to four, `takenAt` descending, the asset id as the
+	// tiebreak). Empty for an album with no live members.
+	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
+
+	// Description The album's free-text description (empty when unset).
+	Description string `json:"description"`
+
+	// Id Identifier of the album.
+	Id openapi_types.UUID `json:"id"`
+
+	// InTimeline The caller's timeline preference of this album: whether
+	// it feeds their aggregated timeline. Present exactly on
+	// the excludable cards -- the own `directory` items and
+	// every shared item; the own `virtual` items omit it
+	// (they never feed the caller's own timeline, so there is
+	// nothing to exclude), and the pinned `sync` card omits it
+	// too (the core stream is never excludable). The value is
+	// the preference row's switch, true when no row exists
+	// (the default).
+	InTimeline *bool `json:"inTimeline,omitempty"`
+
+	// IsShared True when the album carries at least one `album_shares`
+	// row -- someone besides the owner can see it. Always true
+	// on shared-group items by construction.
+	IsShared bool `json:"isShared"`
+
+	// ItemCount The album's live member count: trashed, hidden and Live
+	// Photo component rows never count (A5 -- a hidden asset is
+	// invisible to the whole family).
+	ItemCount int `json:"itemCount"`
+
+	// Locked The owner's lock: a locked album refuses its owner's
+	// curation and property writes until unlocked. It is
+	// metadata to a viewer (viewers are read-only regardless).
+	Locked bool `json:"locked"`
+
+	// Owner The owner attribution of a shared item: the account that
+	// owns the album. Present exactly when `callerRole` is
+	// `viewer`; own items omit it (the owner is the caller).
+	Owner *AlbumOwnerRef `json:"owner,omitempty"`
+
+	// Skipped The requested audience ids that stayed ungranted:
+	// the album's own owner and every id that names no
+	// usable account. Empty when the whole audience
+	// landed.
+	Skipped []AlbumAudienceSkip `json:"skipped"`
+
+	// Title The album's display title.
+	Title string `json:"title"`
+
+	// Type The album's type. `virtual` albums are curated by their
+	// owner; `directory` albums mirror a filesystem path. The
+	// one `sync` card, when present, is the caller's own
+	// default album pinned first (never another account's):
+	// its `title` is the internal system label ('Sync') and
+	// clients render the localized display name instead (en
+	// "My photos", zh-Hans "我的照片").
+	Type AlbumCreateResponseType `json:"type"`
+
+	// UpdatedAt When the album row last changed (RFC 3339 UTC).
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// AlbumCreateResponseCallerRole The caller's relation to this album: `owner` items belong
+// to the own group, `viewer` items to the shared group. The
+// web client sections the wall off this discriminator.
+type AlbumCreateResponseCallerRole string
+
+// AlbumCreateResponseType The album's type. `virtual` albums are curated by their
+// owner; `directory` albums mirror a filesystem path. The
+// one `sync` card, when present, is the caller's own
+// default album pinned first (never another account's):
+// its `title` is the internal system label ('Sync') and
+// clients render the localized display name instead (en
+// "My photos", zh-Hans "我的照片").
+type AlbumCreateResponseType string
 
 // AlbumDetail One album's detail as the calling user sees it: the metadata,
 // the caller's role, the live member count and one keyset page
@@ -880,6 +1119,13 @@ type AlbumDetail struct {
 	// `cursor` query parameter to fetch the next page. Absent
 	// exactly when this is the last page.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// RootPath The album's source directory: the RESOLVED absolute path
+	// the album row stores, present exactly on `directory`
+	// albums (the edit dialog's read-only source line; the
+	// property patch carries no field for it -- the source is
+	// pinned at creation). Virtual and sync albums omit it.
+	RootPath *string `json:"rootPath,omitempty"`
 
 	// Shares The album's grantee list, riding ONLY the owner's view:
 	// one entry per `album_shares` row in the grant order
@@ -964,14 +1210,12 @@ type AlbumItemAsset struct {
 // AlbumItemAssetKind The asset's media kind.
 type AlbumItemAssetKind string
 
-// AlbumItemsRequest The membership write body: the list of asset ids to add to
-// or remove from one virtual album. Repeated ids collapse to
-// one application; the report's counts cover the distinct ids.
+// AlbumItemsRequest The membership removal body: the list of asset ids to remove
+// from one virtual album. Repeated ids collapse to one
+// application; the report's counts cover the distinct ids.
 type AlbumItemsRequest struct {
-	// AssetIds The asset ids of the membership write, between 1 and 200
-	// entries. The add skips -- never errors on -- every id
-	// that is not a live caller-owned asset or that already
-	// sits in the album; the remove skips the ids that are no
+	// AssetIds The asset ids of the membership removal, between 1 and
+	// 200 entries; the remove skips the ids that are no
 	// members.
 	AssetIds []openapi_types.UUID `json:"assetIds"`
 }
@@ -1022,36 +1266,24 @@ type AlbumPatch struct {
 	Title *string `json:"title,omitempty"`
 }
 
+// AlbumPathCompletionsResponse The path completion answer: the pickable source directories
+// of the creation dialog's combobox.
+type AlbumPathCompletionsResponse struct {
+	// Paths Full absolute directory paths inside the completion
+	// domain -- at or under a configured mount root, outside
+	// the server's managed tree, real directories (symlinked
+	// entries are never listed). Deduplicated, sorted
+	// ascending, at most 20 rows. The empty array is an honest
+	// "nothing matches", never an error.
+	Paths []string `json:"paths"`
+}
+
 // AlbumShareEntry One grantee of the owner's `shares` list on the album
 // detail: the grantee's identity and the grant time -- the
 // share management dialog's row.
 type AlbumShareEntry struct {
 	// Email The grantee's login address.
 	Email openapi_types.Email `json:"email"`
-
-	// GrantedAt When the view ACL was granted (RFC 3339 UTC).
-	GrantedAt time.Time `json:"grantedAt"`
-
-	// UserId Identifier of the grantee account.
-	UserId openapi_types.UUID `json:"userId"`
-}
-
-// AlbumShareGrantRequest The grant body: the account receiving the view ACL. The
-// target rules live in the endpoint's own answer -- the
-// album's owner and unusable accounts answer 400 there, never
-// a distinct shape here.
-type AlbumShareGrantRequest struct {
-	// UserId Identifier of the account receiving the view ACL.
-	UserId openapi_types.UUID `json:"userId"`
-}
-
-// AlbumShareResponse One share row as the grant endpoint answers it: the album,
-// the grantee and the grant time. The idempotent re-grant
-// answers the existing row's values -- the original
-// `grantedAt` and grantor untouched.
-type AlbumShareResponse struct {
-	// AlbumId Identifier of the shared album.
-	AlbumId openapi_types.UUID `json:"albumId"`
 
 	// GrantedAt When the view ACL was granted (RFC 3339 UTC).
 	GrantedAt time.Time `json:"grantedAt"`
@@ -2038,6 +2270,35 @@ type ModelSlot string
 // group; `custom` models were registered by the scan of a
 // directory an administrator placed.
 type ModelSource string
+
+// MountRootsSettingsResponse The mount-root allowlist answer of `GET /admin/settings/
+// mount-roots` and `PUT /admin/settings/mount-roots`: the
+// stored list verbatim (the PUT's answer carries the cleaned,
+// deduplicated value in first-occurrence order). The empty
+// list is the default closed posture, never an error.
+type MountRootsSettingsResponse struct {
+	// Roots The configured mount roots: absolute directory paths,
+	// at most 32, stored as written. A root's live usability
+	// (exists, is a directory, outside the managed tree) is
+	// the completion and creation domains' concern, not this
+	// list's -- the list is the honest record of the
+	// configuration.
+	Roots []string `json:"roots"`
+}
+
+// MountRootsSettingsUpdateRequest Payload of `PUT /admin/settings/mount-roots`: the COMPLETE
+// replacement allowlist. The field must ride the body -- an
+// explicit empty array closes directory album creation, while
+// an absent field is a client bug the 400 names.
+type MountRootsSettingsUpdateRequest struct {
+	// Roots Every mount root of the new allowlist, at most 32
+	// entries. Each must be an absolute path within the
+	// 4,096-byte bound; the server cleans each value and
+	// collapses duplicates after the clean. Existence is not
+	// required -- a root may be configured before the volume
+	// is mounted.
+	Roots []string `json:"roots"`
+}
 
 // MoveFaceRequest One face's move onto an existing face cluster.
 type MoveFaceRequest struct {
@@ -3084,6 +3345,15 @@ type ListJobsParams struct {
 // ActivateModelJSONBody defines parameters for ActivateModel.
 type ActivateModelJSONBody = map[string]interface{}
 
+// CompleteAlbumPathParams defines parameters for CompleteAlbumPath.
+type CompleteAlbumPathParams struct {
+	// Prefix The path fragment typed so far. Absent or empty lists the
+	// mount roots. Values past 4,096 bytes answer 400 -- the
+	// filesystem's own path ceiling, so no honest typing ever
+	// hits it.
+	Prefix *string `form:"prefix,omitempty" json:"prefix,omitempty"`
+}
+
 // GetAlbumParams defines parameters for GetAlbum.
 type GetAlbumParams struct {
 	// Cursor The `nextCursor` of the previous page; absent on the first
@@ -3304,6 +3574,9 @@ type SearchAssetsParamsLocale string
 // ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
 type ActivateModelJSONRequestBody = ActivateModelJSONBody
 
+// UpdateMountRootsSettingsJSONRequestBody defines body for UpdateMountRootsSettings for application/json ContentType.
+type UpdateMountRootsSettingsJSONRequestBody = MountRootsSettingsUpdateRequest
+
 // UpdateStorageSettingsJSONRequestBody defines body for UpdateStorageSettings for application/json ContentType.
 type UpdateStorageSettingsJSONRequestBody = StorageSettingsUpdateRequest
 
@@ -3325,14 +3598,11 @@ type CreateAlbumJSONRequestBody = AlbumCreateRequest
 // UpdateAlbumJSONRequestBody defines body for UpdateAlbum for application/json ContentType.
 type UpdateAlbumJSONRequestBody = AlbumPatch
 
+// UpdateAlbumAudienceJSONRequestBody defines body for UpdateAlbumAudience for application/json ContentType.
+type UpdateAlbumAudienceJSONRequestBody = AlbumAudienceRequest
+
 // RemoveAlbumItemsJSONRequestBody defines body for RemoveAlbumItems for application/json ContentType.
 type RemoveAlbumItemsJSONRequestBody = AlbumItemsRequest
-
-// AddAlbumItemsJSONRequestBody defines body for AddAlbumItems for application/json ContentType.
-type AddAlbumItemsJSONRequestBody = AlbumItemsRequest
-
-// GrantAlbumShareJSONRequestBody defines body for GrantAlbumShare for application/json ContentType.
-type GrantAlbumShareJSONRequestBody = AlbumShareGrantRequest
 
 // SetAlbumTimelinePreferenceJSONRequestBody defines body for SetAlbumTimelinePreference for application/json ContentType.
 type SetAlbumTimelinePreferenceJSONRequestBody = AlbumTimelinePreferenceRequest
@@ -3408,6 +3678,12 @@ type ServerInterface interface {
 	// ReresolvePlaces Start a full place re-resolution run.
 	// (POST /admin/places/reresolve)
 	ReresolvePlaces(w http.ResponseWriter, r *http.Request)
+	// GetMountRootsSettings The directory-album mount-root allowlist.
+	// (GET /admin/settings/mount-roots)
+	GetMountRootsSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateMountRootsSettings Save the directory-album mount-root allowlist.
+	// (PUT /admin/settings/mount-roots)
+	UpdateMountRootsSettings(w http.ResponseWriter, r *http.Request)
 	// GetStorageSettings Read the storage template setting.
 	// (GET /admin/settings/storage)
 	GetStorageSettings(w http.ResponseWriter, r *http.Request)
@@ -3438,9 +3714,12 @@ type ServerInterface interface {
 	// ListAlbums The caller's album wall.
 	// (GET /albums)
 	ListAlbums(w http.ResponseWriter, r *http.Request)
-	// CreateAlbum Create one virtual album.
+	// CreateAlbum Create one directory album from an existing path.
 	// (POST /albums)
 	CreateAlbum(w http.ResponseWriter, r *http.Request)
+	// CompleteAlbumPath Complete a directory album's source path.
+	// (GET /albums/path-completions)
+	CompleteAlbumPath(w http.ResponseWriter, r *http.Request, params CompleteAlbumPathParams)
 	// DeleteAlbum Delete one virtual album.
 	// (DELETE /albums/{albumId})
 	DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
@@ -3450,18 +3729,12 @@ type ServerInterface interface {
 	// UpdateAlbum Patch one album's properties.
 	// (PATCH /albums/{albumId})
 	UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// UpdateAlbumAudience Set one album's audience (the full grantee set).
+	// (PUT /albums/{albumId}/audience)
+	UpdateAlbumAudience(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
 	// RemoveAlbumItems Remove assets from one virtual album.
 	// (DELETE /albums/{albumId}/items)
 	RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
-	// AddAlbumItems Add assets to one virtual album.
-	// (POST /albums/{albumId}/items)
-	AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
-	// GrantAlbumShare Grant one account the view ACL of an album.
-	// (POST /albums/{albumId}/shares)
-	GrantAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
-	// RevokeAlbumShare Revoke one account's view ACL of an album.
-	// (DELETE /albums/{albumId}/shares/{userId})
-	RevokeAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, userId openapi_types.UUID)
 	// ResetAlbumTimelinePreference Reset the caller's timeline preference of one album.
 	// (DELETE /albums/{albumId}/timeline-preference)
 	ResetAlbumTimelinePreference(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
@@ -3654,6 +3927,18 @@ func (_ Unimplemented) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetMountRootsSettings The directory-album mount-root allowlist.
+// (GET /admin/settings/mount-roots)
+func (_ Unimplemented) GetMountRootsSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateMountRootsSettings Save the directory-album mount-root allowlist.
+// (PUT /admin/settings/mount-roots)
+func (_ Unimplemented) UpdateMountRootsSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetStorageSettings Read the storage template setting.
 // (GET /admin/settings/storage)
 func (_ Unimplemented) GetStorageSettings(w http.ResponseWriter, r *http.Request) {
@@ -3714,9 +3999,15 @@ func (_ Unimplemented) ListAlbums(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// CreateAlbum Create one virtual album.
+// CreateAlbum Create one directory album from an existing path.
 // (POST /albums)
 func (_ Unimplemented) CreateAlbum(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CompleteAlbumPath Complete a directory album's source path.
+// (GET /albums/path-completions)
+func (_ Unimplemented) CompleteAlbumPath(w http.ResponseWriter, r *http.Request, params CompleteAlbumPathParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3738,27 +4029,15 @@ func (_ Unimplemented) UpdateAlbum(w http.ResponseWriter, r *http.Request, album
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// UpdateAlbumAudience Set one album's audience (the full grantee set).
+// (PUT /albums/{albumId}/audience)
+func (_ Unimplemented) UpdateAlbumAudience(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // RemoveAlbumItems Remove assets from one virtual album.
 // (DELETE /albums/{albumId}/items)
 func (_ Unimplemented) RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// AddAlbumItems Add assets to one virtual album.
-// (POST /albums/{albumId}/items)
-func (_ Unimplemented) AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// GrantAlbumShare Grant one account the view ACL of an album.
-// (POST /albums/{albumId}/shares)
-func (_ Unimplemented) GrantAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// RevokeAlbumShare Revoke one account's view ACL of an album.
-// (DELETE /albums/{albumId}/shares/{userId})
-func (_ Unimplemented) RevokeAlbumShare(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID, userId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4200,6 +4479,34 @@ func (siw *ServerInterfaceWrapper) ReresolvePlaces(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetMountRootsSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetMountRootsSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMountRootsSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMountRootsSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMountRootsSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMountRootsSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStorageSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetStorageSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -4366,6 +4673,39 @@ func (siw *ServerInterfaceWrapper) CreateAlbum(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// CompleteAlbumPath operation middleware
+func (siw *ServerInterfaceWrapper) CompleteAlbumPath(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompleteAlbumPathParams
+
+	// ------------- Optional query parameter "prefix" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "prefix", r.URL.Query(), &params.Prefix, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "prefix"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "prefix", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteAlbumPath(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteAlbum operation middleware
 func (siw *ServerInterfaceWrapper) DeleteAlbum(w http.ResponseWriter, r *http.Request) {
 
@@ -4473,6 +4813,32 @@ func (siw *ServerInterfaceWrapper) UpdateAlbum(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateAlbumAudience operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAlbumAudience(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAlbumAudience(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RemoveAlbumItems operation middleware
 func (siw *ServerInterfaceWrapper) RemoveAlbumItems(w http.ResponseWriter, r *http.Request) {
 
@@ -4490,93 +4856,6 @@ func (siw *ServerInterfaceWrapper) RemoveAlbumItems(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RemoveAlbumItems(w, r, albumId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// AddAlbumItems operation middleware
-func (siw *ServerInterfaceWrapper) AddAlbumItems(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "albumId" -------------
-	var albumId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AddAlbumItems(w, r, albumId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GrantAlbumShare operation middleware
-func (siw *ServerInterfaceWrapper) GrantAlbumShare(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "albumId" -------------
-	var albumId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GrantAlbumShare(w, r, albumId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// RevokeAlbumShare operation middleware
-func (siw *ServerInterfaceWrapper) RevokeAlbumShare(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "albumId" -------------
-	var albumId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "userId" -------------
-	var userId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "userId", chi.URLParam(r, "userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RevokeAlbumShare(w, r, albumId, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6076,6 +6355,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/albums", wrapper.CreateAlbum)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/albums/path-completions", wrapper.CompleteAlbumPath)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/albums/{albumId}", wrapper.DeleteAlbum)
 	})
 	r.Group(func(r chi.Router) {
@@ -6088,13 +6370,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/albums/{albumId}/items", wrapper.RemoveAlbumItems)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/albums/{albumId}/items", wrapper.AddAlbumItems)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/albums/{albumId}/shares", wrapper.GrantAlbumShare)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
+		r.Put(options.BaseURL+"/albums/{albumId}/audience", wrapper.UpdateAlbumAudience)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/albums/{albumId}/timeline-preference", wrapper.ResetAlbumTimelinePreference)
@@ -6218,6 +6494,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/settings/mount-roots", wrapper.GetMountRootsSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/settings/mount-roots", wrapper.UpdateMountRootsSettings)
 	})
 
 	return r

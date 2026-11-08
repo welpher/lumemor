@@ -25,8 +25,8 @@ part 'album_summary.g.dart';
 /// * [callerRole] - The caller's relation to this album: `owner` items belong to the own group, `viewer` items to the shared group. The web client sections the wall off this discriminator. 
 /// * [owner] - The owner attribution of a shared item: the account that owns the album. Present exactly when `callerRole` is `viewer`; own items omit it (the owner is the caller). 
 /// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `virtual` items omit it (they never feed the caller's own timeline, so there is nothing to exclude), and the pinned `sync` card omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). 
-@BuiltValue()
-abstract class AlbumSummary implements Built<AlbumSummary, AlbumSummaryBuilder> {
+@BuiltValue(instantiable: false)
+abstract class AlbumSummary  {
   /// Identifier of the album.
   @BuiltValueField(wireName: r'id')
   String get id;
@@ -77,20 +77,13 @@ abstract class AlbumSummary implements Built<AlbumSummary, AlbumSummaryBuilder> 
   @BuiltValueField(wireName: r'inTimeline')
   bool? get inTimeline;
 
-  AlbumSummary._();
-
-  factory AlbumSummary([void updates(AlbumSummaryBuilder b)]) = _$AlbumSummary;
-
-  @BuiltValueHook(initializeBuilder: true)
-  static void _defaults(AlbumSummaryBuilder b) => b;
-
   @BuiltValueSerializer(custom: true)
   static Serializer<AlbumSummary> get serializer => _$AlbumSummarySerializer();
 }
 
 class _$AlbumSummarySerializer implements PrimitiveSerializer<AlbumSummary> {
   @override
-  final Iterable<Type> types = const [AlbumSummary, _$AlbumSummary];
+  final Iterable<Type> types = const [AlbumSummary];
 
   @override
   final String wireName = r'AlbumSummary';
@@ -173,6 +166,47 @@ class _$AlbumSummarySerializer implements PrimitiveSerializer<AlbumSummary> {
     FullType specifiedType = FullType.unspecified,
   }) {
     return _serializeProperties(serializers, object, specifiedType: specifiedType).toList();
+  }
+
+  @override
+  AlbumSummary deserialize(
+    Serializers serializers,
+    Object serialized, {
+    FullType specifiedType = FullType.unspecified,
+  }) {
+    return serializers.deserialize(serialized, specifiedType: FullType($AlbumSummary)) as $AlbumSummary;
+  }
+}
+
+
+/// a concrete implementation of [AlbumSummary], since [AlbumSummary] is not instantiable
+@BuiltValue(instantiable: true)
+abstract class $AlbumSummary implements AlbumSummary, Built<$AlbumSummary, $AlbumSummaryBuilder> {
+  $AlbumSummary._();
+
+  factory $AlbumSummary([void Function($AlbumSummaryBuilder)? updates]) = _$$AlbumSummary;
+
+  @BuiltValueHook(initializeBuilder: true)
+  static void _defaults($AlbumSummaryBuilder b) => b;
+
+  @BuiltValueSerializer(custom: true)
+  static Serializer<$AlbumSummary> get serializer => _$$AlbumSummarySerializer();
+}
+
+class _$$AlbumSummarySerializer implements PrimitiveSerializer<$AlbumSummary> {
+  @override
+  final Iterable<Type> types = const [$AlbumSummary, _$$AlbumSummary];
+
+  @override
+  final String wireName = r'$AlbumSummary';
+
+  @override
+  Object serialize(
+    Serializers serializers,
+    $AlbumSummary object, {
+    FullType specifiedType = FullType.unspecified,
+  }) {
+    return serializers.serialize(object, specifiedType: FullType(AlbumSummary))!;
   }
 
   void _deserializeProperties(
@@ -282,12 +316,12 @@ class _$AlbumSummarySerializer implements PrimitiveSerializer<AlbumSummary> {
   }
 
   @override
-  AlbumSummary deserialize(
+  $AlbumSummary deserialize(
     Serializers serializers,
     Object serialized, {
     FullType specifiedType = FullType.unspecified,
   }) {
-    final result = AlbumSummaryBuilder();
+    final result = $AlbumSummaryBuilder();
     final serializedList = (serialized as Iterable<Object?>).toList();
     final unhandled = <Object?>[];
     _deserializeProperties(
@@ -301,7 +335,6 @@ class _$AlbumSummarySerializer implements PrimitiveSerializer<AlbumSummary> {
     return result.build();
   }
 }
-
 
 /// The album's type. `virtual` albums are curated by their owner; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
 class AlbumSummaryTypeEnum extends EnumClass {
