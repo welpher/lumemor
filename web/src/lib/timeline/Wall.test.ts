@@ -9,14 +9,20 @@ import type { TimelineItem } from '$lib/api/timeline';
 // detail, the favorites/hidden wrappers, the search browse mode. It
 // takes bare ITEMS (the month/day fold is its own), the row engine,
 // the ResizeObserver re-pack, PhotoTile AND the month axis live
-// inside it (the 2026-11-08 pin: the photo rendering and the
+// inside it (the 2026-11-08 axis pin: the photo rendering and the
 // right-edge rail are one thing -- the axis folds from the same
-// internal groups the rendering packs), and the page-level concerns
-// (selection state, batch bar, the data walk) never enter. The
-// selection contract: `onselect`'s PRESENCE is the capability -- a
-// wall with no callback renders NO check affordance at all (the
-// album detail's pure-navigation wall, R5), while the walls that
-// wire it keep the hover-reveal entry.
+// internal groups the rendering packs), and so does the SELECTION
+// FLOW (the 2026-11-08 selection pin, web IA §7.4): the selection
+// state, the select mode, the Escape exit and the batch bar are the
+// wall's own, gated by `onbatch`'s PRESENCE -- a wall with no runner
+// renders NO check affordance and NO bar at all (the album detail's
+// pure-navigation wall, R5), while the walls that wire it keep the
+// hover-reveal entry and the choreography: a landed run clears the
+// selection (an armed mode persists), a failure keeps it and maps
+// its error into the bar, a busy run disables the buttons. The pages
+// reach the flow through the bound selectMode, the batch runs and
+// the dialog openers (the ids captured at open, the `done`
+// continuation the pass's landing fires).
 
 const itemDefaults = {
 	ownerId: '0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60',
@@ -47,10 +53,38 @@ const items = [
 	item('a3', '2026-10-13T12:30:00Z')
 ];
 
+/** The wall's batch outcome: the ok/errorKey split the wall reads. */
+type Outcome = { ok: true } | { ok: false; errorKey: string };
+
 beforeEach(async () => {
 	document.body.textContent = '';
 	await initI18n();
 });
+
+/** Drain the run's promise chain (the wall awaits the page's batch
+ * run) and force the DOM flush. */
+async function settle(): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	flushSync();
+}
+
+/** Click one tile's check affordance (the selection entry, R2-11). */
+function clickTileCheck(index: number): void {
+	const checks = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.tile__check'));
+	checks[index]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
+}
+
+/** The icon-only bar actions name themselves by aria-label. */
+function buttonByLabel(label: string): HTMLButtonElement {
+	const found = document.body.querySelector<HTMLButtonElement>(
+		`.batchbar button[aria-label="${label}"]`
+	);
+	if (found === null) {
+		throw new Error(`missing batch button ${label}`);
+	}
+	return found;
+}
 
 test('the wall folds bare items into the month/day tree and packs rows', () => {
 	const wall = mount(Wall, { target: document.body, props: { items } });
@@ -76,14 +110,16 @@ test('the wall folds bare items into the month/day tree and packs rows', () => {
 	flushSync();
 });
 
-test('a wall without onselect renders no check affordance: the tiles are pure navigation', () => {
-	// R5 (the album detail's wall): no callback wired, no selection
-	// possible -- NO hover checkbox renders at all, and the tile body
-	// stays the viewer anchor.
+test('a wall without onbatch renders no check and no bar: the tiles are pure navigation', () => {
+	// R5 (the album detail's wall, restated on the onbatch gate): no
+	// runner wired, no selection possible -- NO hover checkbox
+	// renders at all, no bar ever rises, and the tile body stays the
+	// viewer anchor.
 	const wall = mount(Wall, { target: document.body, props: { items } });
 	flushSync();
 
 	expect(document.body.querySelector('.tile__check')).toBeNull();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
 	const link = document.body.querySelector<HTMLAnchorElement>('a.tile__link');
 	expect(link?.getAttribute('href')).toBe('/a/a1');
 
@@ -91,30 +127,211 @@ test('a wall without onselect renders no check affordance: the tiles are pure na
 	link?.dispatchEvent(click);
 	flushSync();
 	expect(click.defaultPrevented).toBe(false);
+	expect(document.body.querySelector('.batchbar')).toBeNull();
 
 	unmount(wall);
 	flushSync();
 });
 
-test('a wall with onselect keeps the check affordance and forwards its toggles', () => {
-	const onselect = vi.fn();
-	const wall = mount(Wall, {
-		target: document.body,
-		props: { items, selectable: true, isSelected: (id: string) => id === 'a2', onselect }
-	});
+test('a wall with onbatch renders the check affordance and toggles its own selection', () => {
+	const onbatch = vi.fn(async () => ({ ok: true }) as Outcome);
+	const wall = mount(Wall, { target: document.body, props: { items, onbatch } });
 	flushSync();
 
 	const checks = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.tile__check'));
 	expect(checks).toHaveLength(3);
-	// isSelected drives the aria state per tile.
+	// The wall's selection starts empty: every check rests unchecked.
+	expect(checks.map((check) => check.getAttribute('aria-checked'))).toEqual([
+		'false',
+		'false',
+		'false'
+	]);
+
+	// The check's click toggles the wall's own set: the aria state
+	// follows, and the bar rises with the honest count.
+	clickTileCheck(1);
 	expect(checks[1]?.getAttribute('aria-checked')).toBe('true');
 	expect(checks[0]?.getAttribute('aria-checked')).toBe('false');
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('1 selected');
 
-	checks[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	// The tile body toggles too while the selection is alive (the
+	// mid-selection reveal): the click never reaches the viewer
+	// anchor.
+	const link = document.body.querySelector<HTMLAnchorElement>('a.tile__link');
+	const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+	link?.dispatchEvent(click);
 	flushSync();
-	expect(onselect).toHaveBeenCalledWith('a1', true);
+	expect(click.defaultPrevented).toBe(true);
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('2 selected');
 
 	unmount(wall);
+	flushSync();
+});
+
+test('a landed batch run clears the selection and persists an armed select mode', async () => {
+	const onbatch = vi.fn(async () => ({ ok: true }) as Outcome);
+	// The armed mode (the timeline's ?album= handoff writes the
+	// bindable; the curated toolbar toggles it).
+	const wall = mount(Wall, {
+		target: document.body,
+		props: { items, selectMode: true, onbatch }
+	});
+	flushSync();
+	expect(document.body.querySelector('.tile')?.className).toContain('tile--selectable');
+
+	clickTileCheck(0);
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('1 selected');
+
+	buttonByLabel('Trash').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+
+	// The runner saw the wall's own selection.
+	expect(onbatch).toHaveBeenCalledWith('trash', ['a1']);
+	// The success arm: the selection cleared (the bar is gone) but
+	// the armed mode PERSISTED (the checks stay revealed for the
+	// next pass).
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+	expect(document.body.querySelector('.tile')?.className).toContain('tile--selectable');
+	expect(document.body.querySelector('.tile__check')?.getAttribute('aria-checked')).toBe('false');
+
+	unmount(wall);
+	flushSync();
+});
+
+test('a failed batch run keeps the selection and maps the error into the bar', async () => {
+	const onbatch = vi.fn(async () => ({ ok: false, errorKey: 'internal' }) as Outcome);
+	const wall = mount(Wall, { target: document.body, props: { items, onbatch } });
+	flushSync();
+
+	clickTileCheck(0);
+	buttonByLabel('Hide').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+
+	// The failure keeps the selection (the retry affordance) and
+	// surfaces the mapped message.
+	expect(onbatch).toHaveBeenCalledWith('hide', ['a1']);
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('1 selected');
+	expect(document.body.querySelector('.batchbar__error')?.textContent).toBe(
+		'Something went wrong. Please try again.'
+	);
+
+	unmount(wall);
+	flushSync();
+});
+
+test('a busy batch run disables the bar until the promise lands', async () => {
+	let resolveRun: ((outcome: Outcome) => void) | undefined;
+	const onbatch = vi.fn(
+		() =>
+			new Promise<Outcome>((resolve) => {
+				resolveRun = resolve;
+			})
+	);
+	const wall = mount(Wall, { target: document.body, props: { items, onbatch } });
+	flushSync();
+
+	clickTileCheck(0);
+	buttonByLabel('Trash').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
+
+	// In flight: every action disables (one write at a time).
+	for (const label of ['Favorite', 'Hide', 'Unhide', 'Trash', 'Restore']) {
+		expect(buttonByLabel(label).disabled, label).toBe(true);
+	}
+
+	resolveRun?.({ ok: true });
+	await settle();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+
+	unmount(wall);
+	flushSync();
+});
+
+test('the dialog openers capture the ids at open; done clears the selection', () => {
+	const onbatch = vi.fn(async () => ({ ok: true }) as Outcome);
+	const onaddtoalbum = vi.fn();
+	const onaddtag = vi.fn();
+	const wall = mount(Wall, {
+		target: document.body,
+		props: { items, onbatch, onaddtoalbum, onaddtag }
+	});
+	flushSync();
+
+	clickTileCheck(0);
+	clickTileCheck(2);
+	buttonByLabel('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
+
+	// The ids are the ones captured AT OPEN (the current selection,
+	// handed over once) together with the done continuation.
+	expect(onaddtoalbum).toHaveBeenCalledTimes(1);
+	const [ids, done] = onaddtoalbum.mock.calls[0] as [string[], () => void];
+	expect(ids).toEqual(['a1', 'a3']);
+	expect(typeof done).toBe('function');
+
+	// The tag opener rides the same shape over the same selection.
+	buttonByLabel('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
+	expect(onaddtag).toHaveBeenCalledTimes(1);
+	expect((onaddtag.mock.calls[0] as [string[]])[0]).toEqual(['a1', 'a3']);
+
+	// The pass lands (the page fires done from its report's done
+	// affordance): the wall applies its success arm -- the selection
+	// clears and the bar drops.
+	done();
+	flushSync();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+
+	unmount(wall);
+	flushSync();
+});
+
+test('the bar carries no dialog affordance the page did not wire', () => {
+	// The curated walls' shape: onbatch alone -- the album and tag
+	// openers are the timeline's alone.
+	const onbatch = vi.fn(async () => ({ ok: true }) as Outcome);
+	const wall = mount(Wall, { target: document.body, props: { items, onbatch } });
+	flushSync();
+
+	clickTileCheck(0);
+	expect(() => buttonByLabel('Add to album')).toThrow();
+	expect(() => buttonByLabel('Add tag')).toThrow();
+	expect(document.body.querySelector('.batchbar')?.textContent).toContain('1 selected');
+
+	unmount(wall);
+	flushSync();
+});
+
+test('Escape drops a live selection and an armed select mode', () => {
+	const onbatch = vi.fn(async () => ({ ok: true }) as Outcome);
+
+	// A live selection (the mid-selection reveal) drops: the bar and
+	// the reveal go with it.
+	const live = mount(Wall, { target: document.body, props: { items, onbatch } });
+	flushSync();
+	clickTileCheck(0);
+	expect(document.body.querySelector('.batchbar')).not.toBeNull();
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+	flushSync();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+	expect(document.body.querySelector('.tile')?.className).not.toContain('tile--selectable');
+	unmount(live);
+	flushSync();
+
+	// An armed mode with nothing picked (the ?album= arrival before
+	// the first check) drops the same way: the full exit disarms.
+	const armed = mount(Wall, {
+		target: document.body,
+		props: { items, onbatch, selectMode: true }
+	});
+	flushSync();
+	expect(document.body.querySelector('.tile')?.className).toContain('tile--selectable');
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+	flushSync();
+	expect(document.body.querySelector('.tile')?.className).not.toContain('tile--selectable');
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+
+	unmount(armed);
 	flushSync();
 });
 

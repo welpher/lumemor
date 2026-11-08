@@ -20,14 +20,15 @@
 	// the page root sets --wall-sticky-offset so those headers stick
 	// BELOW the bar instead of under it.
 	//
-	// THE NO-SELECTION WALL (the 2026-11-07 owner pin 5): the album
-	// context renders the shared Wall with NO selection -- no
-	// onselect callback is wired, so no hover checkbox renders and no
-	// batch bar exists; the tiles are pure click-to-viewer
-	// navigation. The wall's data walk (the keyset client over the
-	// album narrow, the SSE convergence, the sentinel, the
-	// wallItems publication) is the PAGE's own concern here, the
-	// same shape the timeline page owns for its walk.
+	// THE NO-SELECTION WALL (the 2026-11-07 owner pin 5, restated on
+	// the 2026-11-08 selection pin's new gate): the album context
+	// renders the shared Wall with NO curation -- no onbatch runner
+	// is wired, so no hover checkbox renders and no batch bar
+	// exists; the tiles are pure click-to-viewer navigation. The
+	// wall's data walk (the keyset client over the album narrow, the
+	// SSE convergence, the sentinel, the wallItems publication) is
+	// the PAGE's own concern here, the same shape the timeline page
+	// owns for its walk.
 	//
 	// THE PINNED CHOICES:
 	//
@@ -159,8 +160,8 @@
 	// (album.items-changed bumps it and the walk restarts from page
 	// one), the SSE asset convergence, the sentinel and the
 	// wallItems publication. NO selection state exists here (R5):
-	// the Wall below receives no onselect, so its tiles are pure
-	// navigation.
+	// the Wall below receives no onbatch runner, so its tiles are
+	// pure navigation.
 	const wall = untrack(() =>
 		createTimelineClient({ path: '/api/v1/assets/timeline', view: 'timeline', albumId })
 	);
@@ -689,10 +690,11 @@
 			{/if}
 		</div>
 
-		<!-- THE NO-SELECTION WALL (R5): the page's own walk (the keyset
-		     client, the SSE convergence, the sentinel) around the
-		     shared Wall's pure rendering -- no onselect wired, so the
-		     tiles are pure navigation and no batch bar exists. -->
+		<!-- THE NO-SELECTION WALL (R5, the onbatch capability gate):
+		     the page's own walk (the keyset client, the SSE
+		     convergence, the sentinel) around the shared Wall's pure
+		     rendering -- no onbatch runner wired, so the tiles are
+		     pure navigation and no batch bar exists. -->
 		<section class="album-detail__wall px-2" aria-busy={$wall.status === 'loading'}>
 			{#if wallFirstLoad}
 				<p class="album-detail__wall-status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('albums_detail_loading')}</p>
