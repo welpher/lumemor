@@ -1,22 +1,26 @@
-// The albums surface's data client (M3c Task 5): the wall list, the
-// detail read, the virtual creation, the property patch, the virtual
-// delete, the membership add, the share grant/revoke pair, the
-// instance's member list and the timeline preference write -- each
-// behind the repo-wide error-code convention: every failure outcome
-// carries the error code's i18n key (the envelope code lowercased,
-// 'internal' for a network failure or an unparseable body,
-// 'session_expired' for a 401).
+// The albums surface's data client (M3c Task 5, reshaped by E4's
+// albums-as-sources): the wall list, the detail read, the directory
+// creation (title + source path + audience, the honest skipped
+// report), the property patch, the virtual/directory delete, the
+// path completion of the creation dialog's combobox, the audience's
+// full-set PUT, the rescan trigger, the instance's member list and
+// the timeline preference write -- each behind the repo-wide
+// error-code convention: every failure outcome carries the error
+// code's i18n key (the envelope code lowercased, 'internal' for a
+// network failure or an unparseable body, 'session_expired' for a
+// 401).
 //
 // THE MESSAGE-KEY EXCEPTIONS (the people client's requires-label
 // pattern): the album write faces answer a handful of 400
 // VALIDATION_FAILED whose `details` carry a message key rather than
 // an error code of their own -- the cover validation
-// (`album_cover_not_member`), the share target rules
-// (`album_share_to_owner`, `album_share_user_invalid`) and the
-// preference's not-excludable kinds (`album_pref_not_excludable`).
-// The error-key helper surfaces those keys as the failure's
-// errorKey, so the honest message renders through the same
-// resolveErrorText path every code takes.
+// (`album_cover_not_member`) and the preference's not-excludable
+// kinds (`album_pref_not_excludable`). The error-key helper surfaces
+// those keys as the failure's errorKey, so the honest message
+// renders through the same resolveErrorText path every code takes.
+// (The share target rules' message keys retired with the
+// grant/revoke pair -- the audience write reports its skips in the
+// RESPONSE body, never as a 400.)
 //
 // The wall's two groups arrive concatenated (the pinned sync card
 // first, then the own group, shared after); the page sections them
@@ -39,14 +43,20 @@ export type AlbumDetail = components['schemas']['AlbumDetail'];
 /** One grantee row of the owner's detail `shares` list. */
 export type AlbumShareEntry = components['schemas']['AlbumShareEntry'];
 
+/** One requested audience id the write could not grant, with its reason. */
+export type AlbumAudienceSkip = components['schemas']['AlbumAudienceSkip'];
+
 /** One account of the instance's minimal member list. */
 export type UserSummary = components['schemas']['UserSummary'];
 
-/** The share grant's response row. */
-export type AlbumShareResponse = components['schemas']['AlbumShareResponse'];
-
 /** The timeline preference write's response. */
 export type AlbumTimelinePreferenceResponse = components['schemas']['AlbumTimelinePreferenceResponse'];
+
+/** The audience write's honest report. */
+export type AlbumAudienceResponse = components['schemas']['AlbumAudienceResponse'];
+
+/** The rescan trigger's answer: the run's job_runs identifier. */
+export type AlbumRescanResponse = components['schemas']['AlbumRescanResponse'];
 
 /** The wall list's outcome. */
 export type AlbumListResult =
@@ -56,24 +66,39 @@ export type AlbumListResult =
 /** The detail read's outcome. */
 export type AlbumDetailResult = { ok: true; detail: AlbumDetail } | { ok: false; errorKey: string };
 
-/** The creation's outcome (the response IS the created wall card). */
-export type AlbumCreateResult = { ok: true; album: AlbumSummary } | { ok: false; errorKey: string };
+/**
+ * The creation's outcome: the created wall card plus the honest
+ * audience report -- the requested ids that did not become audience
+ * (the dialog surfaces them before closing).
+ */
+export type AlbumCreateResult =
+	| { ok: true; album: AlbumSummary; skipped: AlbumAudienceSkip[] }
+	| { ok: false; errorKey: string };
 
 /** The property patch's outcome (the response is the card after the edit). */
 export type AlbumPatchResult = { ok: true; album: AlbumSummary } | { ok: false; errorKey: string };
 
-/** A body-less mutation's outcome (the delete, the revoke). */
+/** A body-less mutation's outcome (the delete). */
 export type AlbumMutationResult = { ok: true } | { ok: false; errorKey: string };
 
-/** The membership add's honest report. */
-export type AlbumItemsAddResult =
-	| { ok: true; added: number; skipped: number }
+/**
+ * The path completion's outcome: the pickable directories, at most
+ * 20, the server's own honest answer (an empty list never an error).
+ */
+export type PathCompletionsResult =
+	| { ok: true; paths: string[] }
 	| { ok: false; errorKey: string };
 
-/** The share grant's outcome. */
-export type AlbumShareGrantResult =
-	| { ok: true; share: AlbumShareResponse }
+/** The audience write's outcome (the response IS the honest report). */
+export type AlbumAudienceResult =
+	| { ok: true; report: AlbumAudienceResponse }
 	| { ok: false; errorKey: string };
+
+/**
+ * The rescan trigger's outcome: the joined-or-created run's
+ * identifier (200 joined an in-flight run, 202 created one).
+ */
+export type AlbumRescanResult = { ok: true; run: AlbumRescanResponse } | { ok: false; errorKey: string };
 
 /** The member list's outcome. */
 export type UserListResult = { ok: true; users: UserSummary[] } | { ok: false; errorKey: string };
@@ -94,8 +119,6 @@ export const ALBUM_DETAIL_LIMIT = 1;
 /** The album write faces' message keys, surfaced as error keys. */
 const MESSAGE_KEYS: ReadonlySet<string> = new Set([
 	'album_cover_not_member',
-	'album_share_to_owner',
-	'album_share_user_invalid',
 	'album_pref_not_excludable'
 ]);
 
@@ -208,6 +231,45 @@ function shareEntryFrom(body: unknown): AlbumShareEntry | null {
 	return body as AlbumShareEntry;
 }
 
+/** Structurally validate one audience skip entry; null when it is not one. */
+function audienceSkipFrom(body: unknown): AlbumAudienceSkip | null {
+	if (!isObject(body)) {
+		return null;
+	}
+	const candidate = body as Partial<AlbumAudienceSkip>;
+	if (typeof candidate.userId !== 'string' || candidate.userId === '') {
+		return null;
+	}
+	if (candidate.reason !== 'owner' && candidate.reason !== 'invalid_account') {
+		return null;
+	}
+	return body as AlbumAudienceSkip;
+}
+
+/**
+ * Structurally validate the creation's answer: the created wall card
+ * plus the required honest `skipped` report (empty when the whole
+ * audience landed).
+ */
+function createResponseFrom(body: unknown): { album: AlbumSummary; skipped: AlbumAudienceSkip[] } | null {
+	const album = summaryFrom(body);
+	if (album === null) {
+		return null;
+	}
+	if (!isObject(body) || !Array.isArray(body.skipped)) {
+		return null;
+	}
+	const skipped: AlbumAudienceSkip[] = [];
+	for (const entry of body.skipped) {
+		const skip = audienceSkipFrom(entry);
+		if (skip === null) {
+			return null;
+		}
+		skipped.push(skip);
+	}
+	return { album, skipped };
+}
+
 /** Structurally validate one album detail; null when it is not one. */
 function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 	if (!isObject(body)) {
@@ -227,6 +289,11 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 		return null;
 	}
 	if (candidate.coverAssetId !== null && typeof candidate.coverAssetId !== 'string') {
+		return null;
+	}
+	// The source directory rides the directory albums only; a string
+	// when present, never null (the edit dialog's read-only row).
+	if (candidate.rootPath !== undefined && typeof candidate.rootPath !== 'string') {
 		return null;
 	}
 	if (candidate.callerRole !== 'owner' && candidate.callerRole !== 'viewer') {
@@ -311,10 +378,11 @@ export async function listAlbums(
 /**
  * GET /api/v1/albums/{albumId}: the album's metadata as the caller
  * sees it -- `callerRole` decides the write affordances, `shares`
- * rides the owner's view alone, `inTimeline` the excludable kinds.
- * The caller's OWN sync album answers here (read-only, the default
- * album); a 404 is the anti-enumeration pair (unknown id, another
- * account's unshared album, every foreign sync album).
+ * rides the owner's view alone, `rootPath` the directory albums'
+ * source row, `inTimeline` the excludable kinds. The caller's OWN
+ * sync album answers here (read-only, the default album); a 404 is
+ * the anti-enumeration pair (unknown id, another account's
+ * unshared album, every foreign sync album).
  */
 export async function fetchAlbumDetail(
 	albumId: string,
@@ -341,13 +409,17 @@ export async function fetchAlbumDetail(
 }
 
 /**
- * POST /api/v1/albums: create one virtual album (the only creatable
- * type). The response is the created album's wall card -- the
- * creation-time zeros: no member, no share, no cover.
+ * POST /api/v1/albums: create one directory album -- the album IS a
+ * source. The request names an existing directory (the server runs
+ * the path validation matrix; every branch its own 400 error code)
+ * and the audience the album starts with; the files stay where they
+ * are, zero copy, zero move. The response is the created album's
+ * wall card (the creation-time zeros: no member, no cover) plus the
+ * honest `skipped` report of the requested audience ids that did
+ * not land (an unknown, disabled or own id) -- never errors.
  */
 export async function createAlbum(
-	title: string,
-	description = '',
+	input: { title: string; rootPath: string; audience: readonly string[] },
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<AlbumCreateResult> {
 	let response: Response;
@@ -357,7 +429,11 @@ export async function createAlbum(
 			{
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ title, description })
+				body: JSON.stringify({
+					title: input.title,
+					rootPath: input.rootPath,
+					audience: [...input.audience]
+				})
 			},
 			fetcher
 		);
@@ -367,11 +443,43 @@ export async function createAlbum(
 	if (!response.ok) {
 		return { ok: false, errorKey: await errorKeyFrom(response) };
 	}
-	const album = summaryFrom(await bodyOf(response));
-	if (album === null) {
+	const created = createResponseFrom(await bodyOf(response));
+	if (created === null) {
 		return { ok: false, errorKey: 'internal' };
 	}
-	return { ok: true, album };
+	return { ok: true, album: created.album, skipped: created.skipped };
+}
+
+/**
+ * GET /api/v1/albums/path-completions: the creation dialog's source
+ * path completion. The domain is EXACTLY the creation validation
+ * domain -- only directories at or under a configured mount root
+ * (an empty allowlist answers nothing, so the first root is always
+ * typed by hand or opened by an admin). The empty prefix lists the
+ * roots themselves; a typed prefix narrows to the parent's matching
+ * children; a trailing separator drills into the prefix itself.
+ * The answer is at most 20 rows and the empty list is honest, never
+ * an error.
+ */
+export async function completeAlbumPath(
+	prefix: string,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<PathCompletionsResult> {
+	const query = prefix === '' ? '' : `?prefix=${encodeURIComponent(prefix)}`;
+	let response: Response;
+	try {
+		response = await apiFetch(`/api/v1/albums/path-completions${query}`, undefined, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const body = await bodyOf(response);
+	if (!isObject(body) || !Array.isArray(body.paths) || body.paths.some((path) => typeof path !== 'string')) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, paths: body.paths as string[] };
 }
 
 /**
@@ -409,9 +517,117 @@ export async function patchAlbum(
 }
 
 /**
- * DELETE /api/v1/albums/{albumId}: delete the caller's virtual
- * album. The row goes with its membership and share rows (the
- * schema's cascades); 204, no body.
+ * PUT /api/v1/albums/{albumId}/audience: the album's audience as ONE
+ * declarative write -- the request carries the complete grantee set,
+ * the server converges the share rows onto exactly it (grants land,
+ * departures leave, the same set twice is the silent no-op). The
+ * response is the write's honest report: the audience as it stands
+ * after the write, the transitions this write caused, and the
+ * requested ids it skipped with each one's reason. An empty set is
+ * the valid "only me"; the owner's own visibility is the ownership
+ * row, never a share row, so the set can never remove the owner.
+ */
+export async function updateAlbumAudience(
+	albumId: string,
+	audience: readonly string[],
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<AlbumAudienceResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`/api/v1/albums/${encodeURIComponent(albumId)}/audience`,
+			{
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ audience: [...audience] })
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const body = await bodyOf(response);
+	if (!isObject(body)) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const candidate = body as Partial<AlbumAudienceResponse>;
+	if (candidate.albumId !== albumId) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (
+		!Array.isArray(candidate.audience) ||
+		!Array.isArray(candidate.granted) ||
+		!Array.isArray(candidate.revoked) ||
+		!Array.isArray(candidate.skipped)
+	) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const report = body as AlbumAudienceResponse;
+	for (const entry of report.audience) {
+		if (shareEntryFrom(entry) === null) {
+			return { ok: false, errorKey: 'internal' };
+		}
+	}
+	for (const id of report.granted) {
+		if (typeof id !== 'string') {
+			return { ok: false, errorKey: 'internal' };
+		}
+	}
+	for (const id of report.revoked) {
+		if (typeof id !== 'string') {
+			return { ok: false, errorKey: 'internal' };
+		}
+	}
+	for (const entry of report.skipped) {
+		if (audienceSkipFrom(entry) === null) {
+			return { ok: false, errorKey: 'internal' };
+		}
+	}
+	return { ok: true, report };
+}
+
+/**
+ * POST /api/v1/albums/{albumId}/rescan: start (or join) one rescan
+ * of the directory album's source -- the three-arm diff that
+ * reconciles the album's membership with what the filesystem holds.
+ * The endpoint is idempotent per album: a run still in flight
+ * answers 200 with its identifier and starts nothing; 202 carries
+ * the freshly created run. The owner (or an administrator)
+ * proceeds; the run's progress surfaces on the activity stream's
+ * job.* events keyed by the returned identifier.
+ */
+export async function rescanAlbum(
+	albumId: string,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<AlbumRescanResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`/api/v1/albums/${encodeURIComponent(albumId)}/rescan`,
+			{ method: 'POST' },
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const body = await bodyOf(response);
+	if (!isObject(body) || typeof body.jobRunId !== 'string' || body.jobRunId === '') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, run: body as AlbumRescanResponse };
+}
+
+/**
+ * DELETE /api/v1/albums/{albumId}: delete the caller's virtual or
+ * directory album. The row goes with its membership and share rows
+ * (the schema's cascades); 204, no body. (External assets the scan
+ * ingested keep their rows -- the trash owns them now.)
  */
 export async function deleteAlbum(
 	albumId: string,
@@ -434,118 +650,12 @@ export async function deleteAlbum(
 }
 
 /**
- * POST /api/v1/albums/{albumId}/items: add assets to the caller's
- * virtual album with the batch surface's set semantics -- one honest
- * report `{added, skipped}` over the request's distinct ids, never
- * an error for an id the caller cannot act on.
- */
-export async function addAlbumItems(
-	albumId: string,
-	assetIds: string[],
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<AlbumItemsAddResult> {
-	let response: Response;
-	try {
-		response = await apiFetch(
-			`/api/v1/albums/${encodeURIComponent(albumId)}/items`,
-			{
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ assetIds })
-			},
-			fetcher
-		);
-	} catch {
-		return { ok: false, errorKey: 'internal' };
-	}
-	if (!response.ok) {
-		return { ok: false, errorKey: await errorKeyFrom(response) };
-	}
-	const body = await bodyOf(response);
-	if (!isObject(body)) {
-		return { ok: false, errorKey: 'internal' };
-	}
-	const { added, skipped } = body as { added?: unknown; skipped?: unknown };
-	if (typeof added !== 'number' || typeof skipped !== 'number') {
-		return { ok: false, errorKey: 'internal' };
-	}
-	return { ok: true, added, skipped };
-}
-
-/**
- * POST /api/v1/albums/{albumId}/shares: grant an account the album's
- * view ACL. The response is the share row -- the fresh row for a new
- * grantee, the existing one (its original grant time) for the
- * idempotent re-grant.
- */
-export async function grantAlbumShare(
-	albumId: string,
-	userId: string,
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<AlbumShareGrantResult> {
-	let response: Response;
-	try {
-		response = await apiFetch(
-			`/api/v1/albums/${encodeURIComponent(albumId)}/shares`,
-			{
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ userId })
-			},
-			fetcher
-		);
-	} catch {
-		return { ok: false, errorKey: 'internal' };
-	}
-	if (!response.ok) {
-		return { ok: false, errorKey: await errorKeyFrom(response) };
-	}
-	const body = await bodyOf(response);
-	if (!isObject(body)) {
-		return { ok: false, errorKey: 'internal' };
-	}
-	const candidate = body as Partial<AlbumShareResponse>;
-	if (
-		typeof candidate.albumId !== 'string' ||
-		typeof candidate.userId !== 'string' ||
-		typeof candidate.grantedAt !== 'string'
-	) {
-		return { ok: false, errorKey: 'internal' };
-	}
-	return { ok: true, share: body as AlbumShareResponse };
-}
-
-/**
- * DELETE /api/v1/albums/{albumId}/shares/{userId}: revoke one
- * account's view ACL (the owner or an administrator any grantee, a
- * grantee their own row -- the departure). Idempotent 204.
- */
-export async function revokeAlbumShare(
-	albumId: string,
-	userId: string,
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<AlbumMutationResult> {
-	let response: Response;
-	try {
-		response = await apiFetch(
-			`/api/v1/albums/${encodeURIComponent(albumId)}/shares/${encodeURIComponent(userId)}`,
-			{ method: 'DELETE' },
-			fetcher
-		);
-	} catch {
-		return { ok: false, errorKey: 'internal' };
-	}
-	if (response.ok) {
-		return { ok: true };
-	}
-	return { ok: false, errorKey: await errorKeyFrom(response) };
-}
-
-/**
  * GET /api/v1/users: the instance's minimal member list, every
- * account `email` ascending -- the share dialog's pick list. The
- * entries carry the disabled switch so callers can present accounts
- * that cannot sign in for what they are.
+ * account `email` ascending -- the audience picker's candidate
+ * source. The entries carry the disabled switch so callers can
+ * present accounts that cannot sign in for what they are (the
+ * server's audience write skips them with `invalid_account`, the
+ * honest report rather than a refusal).
  */
 export async function listUsers(
 	fetcher: typeof fetch = globalThis.fetch

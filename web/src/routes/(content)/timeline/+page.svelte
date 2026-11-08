@@ -10,28 +10,21 @@
 	// (the 2026-11-08 pins -- web IA §7.3/§7.4), so they ride the
 	// shared Wall component. Everything around the wall here -- the
 	// data walk, the dialogs -- is the page's own concern: the page
-	// runs the batch writes the wall awaits, arms the wall's select
-	// mode for the ?album= handoff, and owns the add-to-album and
-	// add-tag dialogs the wall's openers feed with the ids captured
-	// at open.
+	// runs the batch writes the wall awaits and owns the add-tag
+	// dialog the wall's opener feeds with the ids captured at open.
 	//
-	// THE ADD-TO-ALBUM FLOW (M3c Task 5): the bar's dialog adds the
-	// captured selection to one of the caller's own virtual albums,
-	// or creates the album first -- the honest {added, skipped}
-	// report of the write's own answer lands in the dialog. The
-	// wall captures the ids at open and hands them over with the
-	// `done` continuation the dialog's report-done fires (the wall
-	// then clears its selection -- the success arm). The ?album=
-	// query parameter (the album detail's add-photos handoff) arms
-	// the wall's bound select mode and preselects that album in the
-	// dialog.
+	// THE ADD-TO-ALBUM FLOW IS GONE (E4, web IA §7.5): an album is a
+	// source picked at creation, not a container photos get curated
+	// into -- the bar's album button, its dialog and the ?album=
+	// handoff all died together (the tag flow stays: tags are
+	// vocabulary, not containers).
 	//
-	// THE ADD-TAG FLOW (M3d Task 4): the bar's second dialog tags
-	// the captured selection with one of the caller's existing
-	// tags, or creates the tag first (idempotently) -- the same
-	// honest report, the same `done` continuation. Tag writes are
-	// per-user state and publish nothing, so the report is the
-	// outcome and the wall never converges.
+	// THE ADD-TAG FLOW (M3d Task 4): the bar's dialog tags the
+	// captured selection with one of the caller's existing tags, or
+	// creates the tag first (idempotently) -- the same honest
+	// report, the same `done` continuation. Tag writes are per-user
+	// state and publish nothing, so the report is the outcome and
+	// the wall never converges.
 	//
 	// The SSE subscriptions live for the page's lifetime: the first
 	// subscriber opens the stream, leaving the page closes it, and
@@ -47,15 +40,12 @@
 	// Wall component); full virtualization stays an M3 option if the
 	// wall outgrows it.
 	import { _ } from 'svelte-i18n';
-	import { page } from '$app/state';
 	import { createTimelineClient, type BatchAction, type BatchOutcome } from '$lib/api/timeline';
-	import { addAlbumItems, createAlbum, listAlbums, type AlbumSummary } from '$lib/api/albums';
 	import { addTagAssets, createTag, listTags, type TagSummary } from '$lib/api/tags';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
-	import AddToAlbumDialog from '$lib/albums/AddToAlbumDialog.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -63,34 +53,11 @@
 
 	const timeline = createTimelineClient();
 
-	// The wall's bound select mode: the ?album= handoff arms it and
-	// the wall owns the drops (Escape, the bar's clear) -- the
-	// binding carries both directions.
-	let selectMode = $state(false);
-
-	// The add-to-album flow's state: the dialog, the caller's own
-	// virtual albums fetched on open, the honest report of the last
-	// landed add, and the album a create-then-add chain already made
-	// (a retry reuses it instead of creating a second album). The
-	// PASS's ids are the ones the wall captured at open (the dialog
-	// is modal, so the snapshot is exactly what a read-at-submit
-	// would read); the `done` continuation the wall handed over
-	// fires when the report is acknowledged.
-	let addIds: readonly string[] = [];
-	let addDone: (() => void) | undefined;
-	let addOpen = $state(false);
-	let addBusy = $state(false);
-	let addErrorKey = $state('');
-	let addAlbums = $state<AlbumSummary[]>([]);
-	let addLoading = $state(false);
-	let addReport = $state<{ added: number; skipped: number } | null>(null);
-	let createdAlbumId = $state('');
-
-	// The add-tag flow's state (M3d, the bar's second dialog): the
-	// vocabulary fetched on open, the honest report of the last
-	// landed add, the same captured-ids + done-continuation shape.
-	// The create is idempotent (a name the caller owns converges on
-	// the existing row), so no created-id bookkeeping.
+	// The add-tag flow's state (the bar's dialog): the vocabulary
+	// fetched on open, the honest report of the last landed add, and
+	// the captured-ids + done-continuation pair the wall's opener
+	// hands over. The create is idempotent (a name the caller owns
+	// converges on the existing row), so no created-id bookkeeping.
 	let tagIds: readonly string[] = [];
 	let tagDone: (() => void) | undefined;
 	let tagOpen = $state(false);
@@ -99,17 +66,6 @@
 	let tagList = $state<TagSummary[]>([]);
 	let tagLoading = $state(false);
 	let tagReport = $state<{ added: number; skipped: number } | null>(null);
-
-	// The ?album= handoff: the album detail's add-photos action sends
-	// the caller here to pick photos for that album -- the wall's
-	// bound select mode arms and the dialog preselects it.
-	const preselectAlbumId = $derived(page.url.searchParams.get('album') ?? '');
-
-	$effect(() => {
-		if (preselectAlbumId !== '') {
-			selectMode = true;
-		}
-	});
 
 	const firstLoad = $derived($timeline.items.length === 0 && $timeline.status === 'loading');
 	const settledEmpty = $derived(
@@ -129,91 +85,6 @@
 	// here.
 	function runBatch(action: BatchAction, ids: readonly string[]): Promise<BatchOutcome> {
 		return timeline.runBatch(action, [...ids]);
-	}
-
-	// The add-to-album flow: open the dialog over the wall's
-	// captured ids with the caller's own virtual albums (the only
-	// addable-to kind) fetched fresh -- the pick list is the server's.
-	function openAddDialog(ids: readonly string[], done: () => void): void {
-		addIds = ids;
-		addDone = done;
-		addErrorKey = '';
-		addReport = null;
-		createdAlbumId = '';
-		addOpen = true;
-		addAlbums = [];
-		addLoading = true;
-		void (async () => {
-			const outcome = await listAlbums();
-			if (!addOpen) {
-				return;
-			}
-			addLoading = false;
-			if (outcome.ok) {
-				addAlbums = outcome.albums.filter(
-					(album) => album.callerRole === 'owner' && album.type === 'virtual'
-				);
-			} else {
-				addErrorKey = outcome.errorKey;
-			}
-		})();
-	}
-
-	// The existing-album path: the honest {added, skipped} report of
-	// the write's own answer lands in the dialog.
-	async function addToExisting(albumId: string): Promise<void> {
-		if (addBusy || addIds.length === 0) {
-			return;
-		}
-		addBusy = true;
-		addErrorKey = '';
-		const outcome = await addAlbumItems(albumId, [...addIds]);
-		addBusy = false;
-		if (!outcome.ok) {
-			addErrorKey = outcome.errorKey;
-			return;
-		}
-		addReport = { added: outcome.added, skipped: outcome.skipped };
-	}
-
-	// The create-then-add path: create the album (or reuse the one a
-	// failed retry already made), then feed it the captured ids.
-	async function addToNew(title: string): Promise<void> {
-		if (addBusy || addIds.length === 0) {
-			return;
-		}
-		addBusy = true;
-		addErrorKey = '';
-		let albumId = createdAlbumId;
-		if (albumId === '') {
-			const created = await createAlbum(title);
-			if (!created.ok) {
-				addBusy = false;
-				addErrorKey = created.errorKey;
-				return;
-			}
-			albumId = created.album.id;
-			createdAlbumId = albumId;
-		}
-		const outcome = await addAlbumItems(albumId, [...addIds]);
-		addBusy = false;
-		if (!outcome.ok) {
-			addErrorKey = outcome.errorKey;
-			return;
-		}
-		addReport = { added: outcome.added, skipped: outcome.skipped };
-	}
-
-	// The report's done: close the dialog and fire the wall's done
-	// continuation -- the add landed (the SSE items-changed echo
-	// converges the album surfaces, and the timeline itself only
-	// changes when the membership moved a feeding album), and the
-	// wall clears its selection (the success arm).
-	function finishAdd(): void {
-		addOpen = false;
-		addReport = null;
-		addDone?.();
-		addDone = undefined;
 	}
 
 	// The add-tag flow: open the dialog over the wall's captured ids
@@ -374,9 +245,8 @@
 	     what the top bar already owns (upload, search). The hidden
 	     view's entry moved to the navigation drawer; the selection
 	     entry is the tiles' check affordance (hover/keyboard-focus
-	     revealed on every tile, the first click enters the selection)
-	     -- the ?album= handoff below still arms the wall's bound
-	     select mode for the add-photos flow. -->
+	     revealed on every tile, the first click enters the
+	     selection). -->
 
 	{#if firstLoad}
 		<p class="timeline__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('timeline_loading')}</p>
@@ -396,14 +266,11 @@
 		     keeps its data walk, its batch runs and its dialogs; the
 		     grouping, the packed rows, the tiles, the right-edge rail,
 		     the selection state and the batch bar are the one wall
-		     component every curatable view renders. The bound select
-		     mode carries the ?album= arming; the dialog openers carry
-		     the ids the wall captured. -->
+		     component every curatable view renders. The dialog opener
+		     carries the ids the wall captured. -->
 		<Wall
 			items={$timeline.items}
-			bind:selectMode
 			onbatch={runBatch}
-			onaddtoalbum={openAddDialog}
 			onaddtag={openTagDialog}
 		/>
 	{/if}
@@ -425,18 +292,6 @@
 	</section>
 </div>
 
-<AddToAlbumDialog
-	bind:open={addOpen}
-	albums={addAlbums}
-	initialAlbumId={preselectAlbumId}
-	loading={addLoading}
-	busy={addBusy}
-	errorKey={addErrorKey}
-	report={addReport}
-	onpick={(albumId) => void addToExisting(albumId)}
-	oncreate={(title) => void addToNew(title)}
-	ondone={finishAdd}
-/>
 <AddTagDialog
 	bind:open={tagOpen}
 	tags={tagList}

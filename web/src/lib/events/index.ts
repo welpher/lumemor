@@ -71,7 +71,7 @@ export type JobEvent = {
 	name: JobEventName;
 	/** The job_runs row the event announces. */
 	jobRunId: string;
-	/** The run's kind (model_download, the rerun kinds). */
+	/** The run's kind (model_download, the rerun kinds, the album rescan). */
 	kind: string;
 	/** The run's whole work, in the run's own units. */
 	total: number;

@@ -7,29 +7,33 @@ import type { AlbumDetail, AlbumSummary } from '$lib/api/albums';
 import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
 
-// The album detail (web IA §2-§3): the metadata header with its
-// callerRole x type action set -- the owner of a virtual album holds
-// rename / set cover / lock / share management / add photos / delete,
-// the owner of a directory album the properties / exclusion toggle /
-// disabled rescan placeholder, the owner of the sync album (the
-// default album) NOTHING -- system-managed, read-only, the localized
-// display name for the title -- a viewer the exclusion toggle alone
-// (read-only is visual: no write affordance renders) -- over the
-// CuratedWall grid that pages the album's own timeline. Every write
-// adopts its own response or converges through the detail refetch;
-// the album.* SSE events for THIS album refetch the metadata and
-// restart the items walk on membership changes. $app/state and
-// $app/navigation are mocked because the real router needs a running
-// SvelteKit app; the events module is mocked with a captured handler
-// registry, the timeline page's pattern.
+// The album detail (web IA §2-§3, E4's albums-as-sources reshape):
+// the metadata header with its callerRole x type action set -- the
+// owner of a virtual album holds rename / set cover / lock / delete,
+// the owner of a directory album the properties edit (title + the
+// read-only source row + the audience) / exclusion toggle / rescan
+// trigger with its job-event progress line, the owner of the sync
+// album (the default album) NOTHING -- system-managed, read-only,
+// the localized display name for the title -- a viewer the exclusion
+// toggle alone (the departure went with the revoke endpoint it
+// rode) -- over the wall that pages the album's own timeline. Every
+// write adopts its own response or converges through the detail
+// refetch; the album.* SSE events for THIS album refetch the
+// metadata and restart the items walk on membership changes; the
+// rescan's progress rides the job.* events keyed by the run the
+// trigger answered. $app/state and $app/navigation are mocked
+// because the real router needs a running SvelteKit app; the events
+// module is mocked with a captured handler registry, the timeline
+// page's pattern.
 
-const { pageState, albumHandlers, assetHandlers } = vi.hoisted(() => ({
+const { pageState, albumHandlers, assetHandlers, jobHandlers } = vi.hoisted(() => ({
 	pageState: {
 		params: { id: 'al1' } as { id: string },
 		url: new URL('http://localhost/albums/al1')
 	},
 	albumHandlers: [] as Array<(event: unknown) => void>,
-	assetHandlers: [] as Array<(event: unknown) => void>
+	assetHandlers: [] as Array<(event: unknown) => void>,
+	jobHandlers: [] as Array<(event: unknown) => void>
 }));
 
 vi.mock('$app/state', () => ({ page: pageState }));
@@ -52,6 +56,15 @@ vi.mock('$lib/events', () => ({
 			const index = assetHandlers.indexOf(listener);
 			if (index !== -1) {
 				assetHandlers.splice(index, 1);
+			}
+		};
+	},
+	subscribeJobEvents: (listener: (event: unknown) => void) => {
+		jobHandlers.push(listener);
+		return () => {
+			const index = jobHandlers.indexOf(listener);
+			if (index !== -1) {
+				jobHandlers.splice(index, 1);
 			}
 		};
 	}
@@ -117,7 +130,8 @@ const usersBody = {
 	users: [
 		{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false },
 		{ id: 'u2', email: 'grace@example.com', role: 'user', isDisabled: false },
-		{ id: 'u3', email: 'ivy@example.com', role: 'user', isDisabled: false }
+		{ id: 'u3', email: 'ivy@example.com', role: 'user', isDisabled: false },
+		{ id: 'u4', email: 'hopper@example.com', role: 'user', isDisabled: true }
 	]
 };
 
@@ -188,22 +202,13 @@ function buttonByLabel(label: string, scope: ParentNode = document.body): HTMLBu
 	return found;
 }
 
-function fillField(scope: ParentNode, value: string): void {
-	const field = scope.querySelector<HTMLInputElement>('input');
+function fillField(scope: ParentNode, value: string, id: string): void {
+	const field = scope.querySelector<HTMLInputElement>(`#${id}`);
 	if (field === null) {
-		throw new Error('missing dialog input');
+		throw new Error(`missing dialog input ${id}`);
 	}
 	field.value = value;
 	field.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
-function chooseOption(scope: ParentNode, value: string): void {
-	const select = scope.querySelector<HTMLSelectElement>('select');
-	if (select === null) {
-		throw new Error('missing dialog select');
-	}
-	select.value = value;
-	select.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 function modal(): HTMLElement | null {
@@ -217,10 +222,18 @@ function fireAlbumEvent(event: Record<string, unknown>): void {
 	}
 }
 
+/** Fire one parsed job event to every live job subscriber. */
+function fireJobEvent(event: Record<string, unknown>): void {
+	for (const handler of [...jobHandlers]) {
+		handler(event);
+	}
+}
+
 beforeEach(async () => {
 	document.body.textContent = '';
 	albumHandlers.length = 0;
 	assetHandlers.length = 0;
+	jobHandlers.length = 0;
 	vi.clearAllMocks();
 	detailState = {
 		id: 'al1',
@@ -273,10 +286,16 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	);
 	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
 
-	// The owner of a virtual album holds the full write set -- every
-	// action is an icon-only button named by its aria-label.
-	for (const label of ['Rename', 'Set cover…', 'Lock', 'Share…', 'Add photos', 'Delete album']) {
+	// The owner of a virtual album holds the E4 write set -- rename
+	// (the edit dialog: title + audience), the cover, the lock and
+	// the delete. The share action and the add-photos handoff are
+	// GONE with the curation removal (§7.5) and the share dialog's
+	// fold-in (§7.6): the audience is an album property.
+	for (const label of ['Rename', 'Set cover…', 'Lock', 'Delete album']) {
 		expect(() => buttonByLabel(label), label).not.toThrow();
+	}
+	for (const label of ['Share…', 'Add photos', 'Properties', 'Rescan', 'Leave album']) {
+		expect(() => buttonByLabel(label), label).toThrow();
 	}
 
 	// THE NO-SELECTION WALL (R5): the album's tiles are pure
@@ -294,10 +313,6 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	);
 	expect(wallCalls).toHaveLength(1);
 
-	// The add-photos handoff arms the timeline's selection flow.
-	buttonByLabel('Add photos').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	expect(vi.mocked(goto)).toHaveBeenCalledWith('/timeline?album=al1');
-
 	unmount(page);
 	flushSync();
 });
@@ -314,15 +329,17 @@ test('a viewer sees read-only: the exclusion toggle alone, no write affordances'
 	await settle();
 
 	// Read-only is visual: every write affordance is absent, never
-	// disabled.
+	// disabled -- the audience is owner-domain, and the departure
+	// went with the revoke endpoint it rode.
 	for (const label of [
 		'Rename',
 		'Set cover…',
 		'Lock',
 		'Unlock',
-		'Share…',
-		'Add photos',
-		'Delete album'
+		'Delete album',
+		'Properties',
+		'Rescan',
+		'Leave album'
 	]) {
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
@@ -344,10 +361,11 @@ test('the own virtual album offers no exclusion toggle: it never feeds the own t
 	flushSync();
 });
 
-test('the directory detail: properties, the exclusion toggle and the disabled rescan placeholder', async () => {
+test('the directory detail: the edit dialog, the exclusion toggle and the live rescan trigger', async () => {
 	detailState = {
 		...detailState,
 		type: 'directory',
+		rootPath: '/Volumes/Photos/family',
 		inTimeline: true
 	};
 	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
@@ -357,15 +375,14 @@ test('the directory detail: properties, the exclusion toggle and the disabled re
 	expect(() => buttonByLabel('Properties')).not.toThrow();
 	expect(() => buttonByLabel('Keep out of timeline')).not.toThrow();
 
+	// The rescan trigger is LIVE (E4): the directory album's own
+	// refresh, not the placeholder.
 	const rescan = buttonByLabel('Rescan');
-	expect(rescan.disabled).toBe(true);
-	expect(document.body.querySelector('.album-detail__rescan-note')?.textContent).toContain(
-		'Directory albums arrive in a later update.'
-	);
+	expect(rescan.disabled).toBe(false);
 
 	// The virtual album's write set is gone, and the directory album
-	// holds neither curation nor removal.
-	for (const label of ['Rename', 'Set cover…', 'Lock', 'Share…', 'Add photos', 'Delete album']) {
+	// holds neither curation, cover pin nor delete.
+	for (const label of ['Rename', 'Set cover…', 'Lock', 'Delete album', 'Leave album']) {
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
 	unmount(page);
@@ -408,8 +425,6 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 		'Set cover…',
 		'Lock',
 		'Unlock',
-		'Share…',
-		'Add photos',
 		'Delete album',
 		'Properties',
 		'Rescan',
@@ -423,21 +438,27 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 	flushSync();
 });
 
-test('renaming PATCHes the properties and the header adopts the response', async () => {
+test('the properties dialog edits the title and PATCHes it alone', async () => {
+	let titleSaved = false;
 	const fetchMock = stubFetch(
 		detailRoutes({
 			'/api/v1/albums/al1': (init?: RequestInit) => {
 				expect(init?.method).toBe('PATCH');
 				const body = JSON.parse(String(init?.body));
-				expect(body).toEqual({
-					title: 'Road trip 2026 -- rerun',
-					description: 'The coastal week in the van.'
-				});
+				// The description field died with the reshaped dialog
+				// (the specimen's edit state): the patch carries the
+				// title alone, the stored text keeps its value.
+				expect(body).toEqual({ title: 'Road trip 2026 -- rerun' });
+				titleSaved = true;
 				return jsonResponse(
 					200,
 					summary({ title: 'Road trip 2026 -- rerun', updatedAt: '2026-11-05T11:02:00Z' })
 				);
-			}
+			},
+			'/api/v1/albums/al1?limit=1': () =>
+				titleSaved
+					? jsonResponse(200, { ...detailState, title: 'Road trip 2026 -- rerun' })
+					: jsonResponse(200, detailState)
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -448,7 +469,7 @@ test('renaming PATCHes the properties and the header adopts the response', async
 	flushSync();
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('Album properties');
-	fillField(dialog as ParentNode, 'Road trip 2026 -- rerun');
+	fillField(dialog as ParentNode, 'Road trip 2026 -- rerun', 'album-title');
 	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
 		new MouseEvent('click', { bubbles: true })
 	);
@@ -462,6 +483,199 @@ test('renaming PATCHes the properties and the header adopts the response', async
 		'Road trip 2026 -- rerun'
 	);
 	expect(modal()).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the properties dialog edits the audience: the full-set PUT and the converged chips', async () => {
+	// Signed in as ada (u1, the owner): the current grant (grace)
+	// seeds the chips, the picker offers the other accounts (the
+	// caller and the grant excluded), and saving PUTs the COMPLETE
+	// set -- the added id and nothing else.
+	let audienceSaved = false;
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/albums/al1/audience': (init?: RequestInit) => {
+				expect(init?.method).toBe('PUT');
+				const body = JSON.parse(String(init?.body));
+				expect(body).toEqual({ audience: ['u2', 'u3'] });
+				audienceSaved = true;
+				return jsonResponse(200, {
+					albumId: 'al1',
+					audience: [
+						{ userId: 'u2', email: 'grace@example.com', grantedAt: '2026-11-05T09:30:00Z' },
+						{ userId: 'u3', email: 'ivy@example.com', grantedAt: '2026-11-05T12:00:00Z' }
+					],
+					granted: ['u3'],
+					revoked: [],
+					skipped: []
+				});
+			},
+			'/api/v1/albums/al1?limit=1': () => {
+				if (audienceSaved) {
+					return jsonResponse(200, {
+						...detailState,
+						isShared: undefined,
+						shares: [
+							{ userId: 'u2', email: 'grace@example.com', grantedAt: '2026-11-05T09:30:00Z' },
+							{ userId: 'u3', email: 'ivy@example.com', grantedAt: '2026-11-05T12:00:00Z' }
+						]
+					});
+				}
+				return jsonResponse(200, detailState);
+			}
+		})
+	);
+	await bootDetailSession('u1', 'admin');
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+
+	// The chips seed from the current grants.
+	const chipNames = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []);
+	expect(chipNames.map((chip) => chip.textContent)).toEqual(['grace@example.com']);
+
+	// The picker: the other accounts (the caller and the grant
+	// excluded -- hopper renders with the honest disabled note).
+	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const rows = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
+	expect(
+		rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)
+	).toEqual(['ivy@example.com', 'hopper@example.com']);
+	expect(rows[1]?.textContent).toContain('cannot sign in');
+
+	// The keyboard the specimen pins: the listbox drives, the loaded
+	// set highlights its first row, Enter adds the highlighted
+	// candidate, the picker stays open.
+	const listbox = dialog?.querySelector<HTMLElement>('#audience-field-picker');
+	expect(
+		dialog?.querySelectorAll('[role="option"]')[0]?.getAttribute('aria-selected')
+	).toBe('true');
+	listbox?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+	flushSync();
+	const chipNamesAfter = Array.from(
+		dialog?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []
+	);
+	expect(chipNamesAfter.map((chip) => chip.textContent)).toEqual([
+		'grace@example.com',
+		'ivy@example.com'
+	]);
+
+	// Esc closes the picker alone -- the dialog stays.
+	listbox?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+	flushSync();
+	expect(dialog?.querySelector('#audience-field-picker')).toBeNull();
+	expect(modal()).not.toBeNull();
+
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const puts = fetchMock.mock.calls.filter(
+		([input, init]) =>
+			String(input) === '/api/v1/albums/al1/audience' && init?.method === 'PUT'
+	);
+	expect(puts).toHaveLength(1);
+	expect(modal()).toBeNull();
+
+	// The converged detail's grantee list rides the next open: the
+	// chips reseed from the refetched shares.
+	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const chipNamesConverged = Array.from(
+		modal()?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []
+	);
+	expect(chipNamesConverged.map((chip) => chip.textContent)).toEqual([
+		'grace@example.com',
+		'ivy@example.com'
+	]);
+	unmount(page);
+	flushSync();
+});
+
+test('a failed audience write keeps the dialog with the mapped error', async () => {
+	await bootDetailSession('u1', 'admin');
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/albums/al1/audience': () =>
+				jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'view-only share' })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const rows = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
+	rows[0]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+	flushSync();
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	expect(modal()?.textContent).toContain("You don't have permission to do this.");
+	unmount(page);
+	flushSync();
+});
+
+test('a no-change save writes nothing at all', async () => {
+	// The full-set semantics' honest idle: the same title and the
+	// same audience -- no PATCH (a same-value patch would still
+	// publish), no PUT (the idempotent no-op), just the close.
+	const fetchMock = stubFetch(detailRoutes());
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	buttonByText('Save changes', modal() as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const writes = fetchMock.mock.calls.filter(
+		([input, init]) =>
+			(String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH') ||
+			(String(input) === '/api/v1/albums/al1/audience' && init?.method === 'PUT')
+	);
+	expect(writes).toHaveLength(0);
+	expect(modal()).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the directory properties dialog shows the read-only source row', async () => {
+	detailState = {
+		...detailState,
+		type: 'directory',
+		rootPath: '/Volumes/Photos/family',
+		inTimeline: true
+	};
+	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	const source = dialog?.querySelector<HTMLElement>('.album-form__source');
+	expect(source?.querySelector('.album-form__source-path')?.textContent).toBe(
+		'/Volumes/Photos/family'
+	);
+	// The honest tag: the source is pinned at creation.
+	expect(source?.querySelector('.album-form__source-tag')?.textContent).toBe('Source · fixed');
 	unmount(page);
 	flushSync();
 });
@@ -491,14 +705,12 @@ test('the lock toggle PATCHes locked; the badge and notice follow and curation d
 		'until you unlock it'
 	);
 	// The locked gate is visual too: curation and property writes
-	// disable until the unlock, the delete hides until the unlock
-	// (the permission matrix pins deletion to the unlocked state),
-	// while the share stays.
+	// disable until the unlock, and the delete hides until the
+	// unlock (the permission matrix pins deletion to the unlocked
+	// state).
 	expect(buttonByLabel('Rename').disabled).toBe(true);
 	expect(buttonByLabel('Set cover…').disabled).toBe(true);
-	expect(buttonByLabel('Add photos').disabled).toBe(true);
 	expect(() => buttonByLabel('Delete album')).toThrow();
-	expect(buttonByLabel('Share…').disabled).toBe(false);
 	expect(() => buttonByLabel('Unlock')).not.toThrow();
 	unmount(page);
 	flushSync();
@@ -561,44 +773,20 @@ test('the cover dialog renders the current pin and the empty state', async () =>
 	flushSync();
 });
 
-test('the share dialog grants and revokes through the detail refetch', async () => {
-	let granted = false;
-	let revoked = false;
+test('the rescan trigger POSTs and the job events drive the progress line', async () => {
+	detailState = {
+		...detailState,
+		type: 'directory',
+		rootPath: '/Volumes/Photos/family',
+		itemCount: 0,
+		inTimeline: true
+	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1/shares': (init?: RequestInit) => {
+			'/api/v1/assets/timeline?albumId=al1&limit=100': () => jsonResponse(200, { items: [] }),
+			'/api/v1/albums/al1/rescan': (init?: RequestInit) => {
 				expect(init?.method).toBe('POST');
-				expect(JSON.parse(String(init?.body))).toEqual({ userId: 'u3' });
-				granted = true;
-				return jsonResponse(200, {
-					albumId: 'al1',
-					userId: 'u3',
-					grantedAt: '2026-11-05T12:00:00Z'
-				});
-			},
-			'/api/v1/albums/al1/shares/u2': (init?: RequestInit) => {
-				expect(init?.method).toBe('DELETE');
-				revoked = true;
-				return new Response(null, { status: 204 });
-			},
-			'/api/v1/albums/al1?limit=1': () => {
-				if (granted && !revoked) {
-					return jsonResponse(200, {
-						...detailState,
-						isShared: undefined,
-						shares: [
-							{ userId: 'u2', email: 'grace@example.com', grantedAt: '2026-11-05T09:30:00Z' },
-							{ userId: 'u3', email: 'ivy@example.com', grantedAt: '2026-11-05T12:00:00Z' }
-						]
-					});
-				}
-				if (revoked) {
-					return jsonResponse(200, {
-						...detailState,
-						shares: [{ userId: 'u3', email: 'ivy@example.com', grantedAt: '2026-11-05T12:00:00Z' }]
-					});
-				}
-				return jsonResponse(200, detailState);
+				return jsonResponse(202, { jobRunId: 'run-1' });
 			}
 		})
 	);
@@ -606,165 +794,114 @@ test('the share dialog grants and revokes through the detail refetch', async () 
 	const page = mountPage();
 	await settle();
 
-	buttonByLabel('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	// No run line before any trigger.
+	expect(document.body.querySelector('[data-testid="album-rescan-progress"]')).toBeNull();
+
+	buttonByLabel('Rescan').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
-	const dialog = modal();
-	expect(dialog?.getAttribute('aria-label')).toBe('Share this album');
-	// The grantee list rides the owner's detail: one current grantee.
-	expect(dialog?.textContent).toContain('grace@example.com');
-	// The pick list offers the other accounts (current grantees excluded).
-	chooseOption(dialog as ParentNode, 'u3');
-	buttonByText('Share', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
+
+	const posts = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/albums/al1/rescan' && init?.method === 'POST'
 	);
+	expect(posts).toHaveLength(1);
+
+	// The queued line lands (aria-live, the models download page's
+	// mechanism), and the trigger disables while the run is live.
+	let progress = document.body.querySelector<HTMLElement>('[data-testid="album-rescan-progress"]');
+	expect(progress?.getAttribute('aria-live')).toBe('polite');
+	expect(progress?.textContent).toContain('Rescan queued…');
+	expect(buttonByLabel('Rescan').disabled).toBe(true);
+
+	// The run's progress events (keyed by the identifier the trigger
+	// answered) drive the line and the bar in place.
+	fireJobEvent({
+		id: 1,
+		name: 'job.progress',
+		jobRunId: 'run-1',
+		kind: 'album_rescan',
+		total: 12,
+		done: 4,
+		failed: 0,
+		state: 'running'
+	});
 	await settle();
+	progress = document.body.querySelector<HTMLElement>('[data-testid="album-rescan-progress"]');
+	expect(progress?.textContent).toContain('Scanning… 4 of 12');
+	const bar = progress?.querySelector<HTMLElement>('[role="progressbar"]');
+	expect(bar?.getAttribute('aria-valuenow')).toBe('4');
+	expect(bar?.getAttribute('aria-valuemax')).toBe('12');
 
-	// The refetched detail's grantee list carries the new row.
-	expect(modal()?.textContent).toContain('ivy@example.com');
-
-	// The revoke: the row's button leaves, the refetch drops the row
-	// (the account legitimately re-enters the pick list).
-	const revoke = buttonByLabel('Revoke', modal() as ParentNode);
-	revoke.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	// A run of ANOTHER album (or another kind) never touches this
+	// line -- the identifier keys the convergence.
+	fireJobEvent({
+		id: 2,
+		name: 'job.progress',
+		jobRunId: 'run-elsewhere',
+		kind: 'album_rescan',
+		total: 99,
+		done: 99,
+		failed: 0,
+		state: 'running'
+	});
+	fireJobEvent({
+		id: 3,
+		name: 'job.progress',
+		jobRunId: 'run-other-kind',
+		kind: 'model_download',
+		total: 50,
+		done: 50,
+		failed: 0,
+		state: 'running'
+	});
 	await settle();
+	progress = document.body.querySelector<HTMLElement>('[data-testid="album-rescan-progress"]');
+	expect(progress?.textContent).toContain('Scanning… 4 of 12');
 
-	const granteeList = modal()?.querySelector('.share-dialog__list');
-	expect(granteeList?.textContent).not.toContain('grace@example.com');
-	expect(granteeList?.textContent).toContain('ivy@example.com');
+	// The finish lands the final state and re-enables the trigger.
+	fireJobEvent({
+		id: 4,
+		name: 'job.finished',
+		jobRunId: 'run-1',
+		kind: 'album_rescan',
+		total: 12,
+		done: 12,
+		failed: 0,
+		state: 'succeeded'
+	});
+	await settle();
+	progress = document.body.querySelector<HTMLElement>('[data-testid="album-rescan-progress"]');
+	expect(progress?.textContent).toContain('Rescan complete.');
+	expect(buttonByLabel('Rescan').disabled).toBe(false);
 	unmount(page);
 	flushSync();
 });
 
-test('the share dialog surfaces the honest owner-target message', async () => {
-	// No identity booted: a session the store could not resolve (the
-	// degraded path) cannot filter the caller out of the pick list,
-	// so the server's own target rule answers the pick honestly --
-	// the backstop the client-side self filter never replaces.
-	vi.stubGlobal(
-		'fetch',
-		stubFetch(
-			detailRoutes({
-				'/api/v1/albums/al1/shares': () =>
-					jsonResponse(400, {
-						code: 'VALIDATION_FAILED',
-						message: 'an album owner cannot be its grantee',
-						details: { key: 'album_share_to_owner' }
-					})
-			})
-		)
-	);
-	const page = mountPage();
-	await settle();
-
-	buttonByLabel('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-	const dialog = modal();
-	chooseOption(dialog as ParentNode, 'u1');
-	buttonByText('Share', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
-	await settle();
-
-	expect(modal()?.textContent).toContain('This album is already yours');
-	unmount(page);
-	flushSync();
-});
-
-/** Boot the session store signed in as one of the fixture accounts. */
-async function bootDetailSession(userId: string, role: 'admin' | 'user'): Promise<void> {
-	vi.stubGlobal('fetch', vi.fn(async () =>
-		jsonResponse(200, [
-			{
-				id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
-				kind: 'WEB',
-				userId,
-				role,
-				deviceName: 'Mozilla/5.0 (test)',
-				createdAt: '2026-11-01T10:00:00Z',
-				lastSeenAt: '2026-11-02T10:00:00Z'
-			}
-		])
-	));
-	await probeSession();
-}
-
-test("the share pick filters the caller's own account (the identity seam)", async () => {
-	// Signed in as ada (u1, the album's owner): the pick list offers
-	// neither the current grantees nor the caller's own account --
-	// the grant's own target rule never has to refuse a self-pick.
-	await bootDetailSession('u1', 'admin');
-	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
-	const page = mountPage();
-	await settle();
-
-	buttonByLabel('Share…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-	const dialog = modal();
-	expect(dialog?.textContent).toContain('grace@example.com');
-
-	const options = [...(dialog?.querySelectorAll<HTMLOptionElement>('option') ?? [])].map(
-		(option) => option.value
-	);
-	expect(options).toEqual(['u3']);
-	unmount(page);
-	flushSync();
-});
-
-test("the sharee's leave affordance revokes their own share row and leaves for the wall", async () => {
-	// Signed in as grace (u2, the grantee): the viewer header renders
-	// the departure. The write is the revoke of the CALLER'S OWN
-	// share row -- DELETE /albums/al1/shares/u2 -- and success leaves
-	// for the wall.
-	await bootDetailSession('u2', 'user');
-	detailState = { ...detailState, callerRole: 'viewer', shares: undefined, inTimeline: true };
+test('a failed rescan trigger surfaces the mapped error on the shared line', async () => {
+	detailState = {
+		...detailState,
+		type: 'directory',
+		rootPath: '/Volumes/Photos/family',
+		inTimeline: true
+	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1/shares/u2': (init?: RequestInit) => {
-				expect(init?.method).toBe('DELETE');
-				return new Response(null, { status: 204 });
-			}
+			'/api/v1/albums/al1/rescan': () =>
+				jsonResponse(409, { code: 'ALBUM_LOCKED', message: 'the album is locked' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
 
-	const leave = buttonByLabel('Leave album');
-	leave.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Rescan').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const calls = fetchMock.mock.calls.filter(
-		([input, init]) =>
-			String(input) === '/api/v1/albums/al1/shares/u2' && init?.method === 'DELETE'
+	// No run line (nothing started); the bar's shared error line
+	// carries the server's own answer.
+	expect(document.body.querySelector('[data-testid="album-rescan-progress"]')).toBeNull();
+	expect(document.body.querySelector('.album-detail__action-error')?.textContent).toContain(
+		'This album is locked.'
 	);
-	expect(calls).toHaveLength(1);
-	expect(vi.mocked(goto)).toHaveBeenCalledWith('/albums');
-	unmount(page);
-	flushSync();
-});
-
-test("the sharee's failed leave keeps the detail with the mapped error", async () => {
-	await bootDetailSession('u2', 'user');
-	detailState = { ...detailState, callerRole: 'viewer', shares: undefined, inTimeline: true };
-	vi.stubGlobal(
-		'fetch',
-		stubFetch(
-			detailRoutes({
-				'/api/v1/albums/al1/shares/u2': () =>
-					jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'no' })
-			})
-		)
-	);
-	const page = mountPage();
-	await settle();
-
-	buttonByLabel('Leave album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-
-	// Still on the detail (the departure never happened), with the
-	// header's shared error line carrying the mapped failure.
-	expect(vi.mocked(goto)).not.toHaveBeenCalled();
-	expect(document.body.textContent).toContain("You don't have permission to do this.");
 	unmount(page);
 	flushSync();
 });
@@ -964,12 +1101,33 @@ test('leaving the page unsubscribes from the event stream', async () => {
 	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
 	const page = mountPage();
 	await settle();
-	// The detail's album listener and the wall's asset listener.
+	// The detail's album listener, the wall's asset listener and the
+	// rescan progress's job listener.
 	expect(albumHandlers).toHaveLength(1);
 	expect(assetHandlers).toHaveLength(1);
+	expect(jobHandlers).toHaveLength(1);
 
 	unmount(page);
 	flushSync();
 	expect(albumHandlers).toHaveLength(0);
 	expect(assetHandlers).toHaveLength(0);
+	expect(jobHandlers).toHaveLength(0);
 });
+
+/** Boot the session store signed in as one of the fixture accounts. */
+async function bootDetailSession(userId: string, role: 'admin' | 'user'): Promise<void> {
+	vi.stubGlobal('fetch', vi.fn(async () =>
+		jsonResponse(200, [
+			{
+				id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
+				kind: 'WEB',
+				userId,
+				role,
+				deviceName: 'Mozilla/5.0 (test)',
+				createdAt: '2026-11-01T10:00:00Z',
+				lastSeenAt: '2026-11-02T10:00:00Z'
+			}
+		])
+	));
+	await probeSession();
+}
