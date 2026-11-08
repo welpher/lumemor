@@ -20,6 +20,14 @@
 	// PERFORMANCE: every row carries content-visibility with its
 	// height known from the engine's math (the same row-level
 	// windowing the month-grouped wall applies).
+	//
+	// THE NO-SELECTION PIN (web IA §7.4): the flat wall is pure
+	// navigation by design -- the selection flow is the month-grouped
+	// Wall's organ, and a rank list carries no curation surface. No
+	// selection props exist here at all (the search's query wall
+	// wires nothing, the same refusal the album detail's wall makes;
+	// a later page-level opt-in would go through the month-grouped
+	// wall's `onbatch`, never a parallel contract here).
 	import { packRows, WALL_MAX_WIDTH, WALL_TILE_SEAM, type PackedRow } from './layout';
 	import PhotoTile from './PhotoTile.svelte';
 	import type { TimelineItem } from '$lib/api/timeline';
@@ -27,24 +35,9 @@
 	type Props = {
 		/** The result items, in the page's own order (rank order). */
 		items: readonly TimelineItem[];
-		/** Whether one item is in the current selection. */
-		isSelected?: (id: string) => boolean;
-		/** Whether checkboxes show and clicks toggle (select mode or an active selection). */
-		selectable?: boolean;
-		/**
-		 * The selection toggle. ABSENT = no check renders (the search
-		 * wall wires no selection -- its tiles are pure navigation,
-		 * the same no-selection contract as the album detail's wall).
-		 */
-		onselect?: (id: string, next: boolean) => void;
 	};
 
-	let {
-		items,
-		isSelected = () => false,
-		selectable = false,
-		onselect
-	}: Props = $props();
+	let { items }: Props = $props();
 
 	let wall: HTMLElement | undefined = $state();
 	let measuredWidth = $state(0);
@@ -97,12 +90,9 @@
 		>
 			{#each row.tiles as tile (tile.item.id)}
 				<div class="flat-wall__cell shrink-0" style="width:{tile.width}px">
-					<PhotoTile
-						item={tile.item}
-						selected={isSelected(tile.item.id)}
-						selectable={selectable}
-						onselect={onselect}
-					/>
+					<!-- No onselect wired: the tiles are pure click-to-viewer
+					     navigation (PhotoTile renders no check circle at all). -->
+					<PhotoTile item={tile.item} selected={false} selectable={false} />
 				</div>
 			{/each}
 		</div>

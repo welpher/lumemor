@@ -4,25 +4,34 @@
 	// IntersectionObserver sentinel over a 600px prefetch margin, the
 	// client's in-flight guard collapsing every burst into one
 	// fetch), month and day groups carry sticky headers, the right
-	// rail scrubs the loaded months (the rail is the wall's own
-	// organ -- the 2026-11-08 pin -- so it comes with the shared Wall
-	// component), and selection turns the wall into a curation
-	// surface with the floating batch bar. Everything around the
-	// wall here -- the data walk, the selection state, the dialogs --
-	// is the page's own concern.
+	// rail scrubs the loaded months, and selection turns the wall
+	// into a curation surface with the floating batch bar. The
+	// month axis AND the selection flow are the wall's own organs
+	// (the 2026-11-08 pins -- web IA §7.3/§7.4), so they ride the
+	// shared Wall component. Everything around the wall here -- the
+	// data walk, the dialogs -- is the page's own concern: the page
+	// runs the batch writes the wall awaits, arms the wall's select
+	// mode for the ?album= handoff, and owns the add-to-album and
+	// add-tag dialogs the wall's openers feed with the ids captured
+	// at open.
 	//
-	// THE ADD-TO-ALBUM FLOW (M3c Task 5): the batch bar's dialog adds
-	// the selection to one of the caller's own virtual albums, or
-	// creates the album first -- the honest {added, skipped} report
-	// of the write's own answer lands in the dialog. The ?album=
+	// THE ADD-TO-ALBUM FLOW (M3c Task 5): the bar's dialog adds the
+	// captured selection to one of the caller's own virtual albums,
+	// or creates the album first -- the honest {added, skipped}
+	// report of the write's own answer lands in the dialog. The
+	// wall captures the ids at open and hands them over with the
+	// `done` continuation the dialog's report-done fires (the wall
+	// then clears its selection -- the success arm). The ?album=
 	// query parameter (the album detail's add-photos handoff) arms
-	// the select mode and preselects that album in the dialog.
+	// the wall's bound select mode and preselects that album in the
+	// dialog.
 	//
-	// THE ADD-TAG FLOW (M3d Task 4): the batch bar's second dialog
-	// tags the selection with one of the caller's existing tags, or
-	// creates the tag first (idempotently) -- the same honest
-	// report. Tag writes are per-user state and publish nothing, so
-	// the report is the outcome and the wall never converges.
+	// THE ADD-TAG FLOW (M3d Task 4): the bar's second dialog tags
+	// the captured selection with one of the caller's existing
+	// tags, or creates the tag first (idempotently) -- the same
+	// honest report, the same `done` continuation. Tag writes are
+	// per-user state and publish nothing, so the report is the
+	// outcome and the wall never converges.
 	//
 	// The SSE subscriptions live for the page's lifetime: the first
 	// subscriber opens the stream, leaving the page closes it, and
@@ -39,15 +48,13 @@
 	// wall outgrows it.
 	import { _ } from 'svelte-i18n';
 	import { page } from '$app/state';
-	import { SvelteSet } from 'svelte/reactivity';
-	import { createTimelineClient, type BatchAction } from '$lib/api/timeline';
+	import { createTimelineClient, type BatchAction, type BatchOutcome } from '$lib/api/timeline';
 	import { addAlbumItems, createAlbum, listAlbums, type AlbumSummary } from '$lib/api/albums';
 	import { addTagAssets, createTag, listTags, type TagSummary } from '$lib/api/tags';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
-	import BatchBar from '$lib/timeline/BatchBar.svelte';
 	import AddToAlbumDialog from '$lib/albums/AddToAlbumDialog.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
@@ -56,21 +63,21 @@
 
 	const timeline = createTimelineClient();
 
-	// The selection is a reactive id set: the tiles' check
-	// affordances toggle it (the entry, R2-11: the check reveals on
-	// hover/keyboard focus on every tile, and its first click enters
-	// the selection), Esc and the bar's clear drop it, and the
-	// ?album= handoff arms the select mode for the add-photos flow
-	// (the touch-friendly path the toolbar button used to carry).
-	const selection = new SvelteSet<string>();
+	// The wall's bound select mode: the ?album= handoff arms it and
+	// the wall owns the drops (Escape, the bar's clear) -- the
+	// binding carries both directions.
 	let selectMode = $state(false);
-	let batchErrorKey = $state('');
-	let batchBusy = $state(false);
 
 	// The add-to-album flow's state: the dialog, the caller's own
 	// virtual albums fetched on open, the honest report of the last
 	// landed add, and the album a create-then-add chain already made
-	// (a retry reuses it instead of creating a second album).
+	// (a retry reuses it instead of creating a second album). The
+	// PASS's ids are the ones the wall captured at open (the dialog
+	// is modal, so the snapshot is exactly what a read-at-submit
+	// would read); the `done` continuation the wall handed over
+	// fires when the report is acknowledged.
+	let addIds: readonly string[] = [];
+	let addDone: (() => void) | undefined;
 	let addOpen = $state(false);
 	let addBusy = $state(false);
 	let addErrorKey = $state('');
@@ -79,10 +86,13 @@
 	let addReport = $state<{ added: number; skipped: number } | null>(null);
 	let createdAlbumId = $state('');
 
-	// The add-tag flow's state (M3d, the batch bar's second dialog):
-	// the vocabulary fetched on open, the honest report of the last
-	// landed add. The create is idempotent (a name the caller owns
-	// converges on the existing row), so no created-id bookkeeping.
+	// The add-tag flow's state (M3d, the bar's second dialog): the
+	// vocabulary fetched on open, the honest report of the last
+	// landed add, the same captured-ids + done-continuation shape.
+	// The create is idempotent (a name the caller owns converges on
+	// the existing row), so no created-id bookkeeping.
+	let tagIds: readonly string[] = [];
+	let tagDone: (() => void) | undefined;
 	let tagOpen = $state(false);
 	let tagBusy = $state(false);
 	let tagErrorKey = $state('');
@@ -91,8 +101,8 @@
 	let tagReport = $state<{ added: number; skipped: number } | null>(null);
 
 	// The ?album= handoff: the album detail's add-photos action sends
-	// the caller here to pick photos for that album -- the select
-	// mode arms and the dialog preselects it.
+	// the caller here to pick photos for that album -- the wall's
+	// bound select mode arms and the dialog preselects it.
 	const preselectAlbumId = $derived(page.url.searchParams.get('album') ?? '');
 
 	$effect(() => {
@@ -101,15 +111,6 @@
 		}
 	});
 
-	// The scrubber's months: the wall's own organ now (the
-	// 2026-11-08 pin) -- the axis folds its months from the same
-	// internal groups the rendering packs, so this page's duplicate
-	// fold is gone.
-	const selectable = $derived(selectMode || selection.size > 0);
-	const selectedItems = $derived($timeline.items.filter((timelineItem) => selection.has(timelineItem.id)));
-	const allSelectedFavorite = $derived(
-		selectedItems.length > 0 && selectedItems.every((timelineItem) => timelineItem.isFavorite)
-	);
 	const firstLoad = $derived($timeline.items.length === 0 && $timeline.status === 'loading');
 	const settledEmpty = $derived(
 		$timeline.items.length === 0 && $timeline.status === 'ready' && !$timeline.hasMore
@@ -122,51 +123,20 @@
 	const observerAvailable = typeof IntersectionObserver === 'function';
 	let sentinel: HTMLElement | undefined = $state();
 
-	function toggleSelected(id: string, next: boolean): void {
-		if (next) {
-			selection.add(id);
-		} else {
-			selection.delete(id);
-		}
+	// The wall's batch runner: this page's walk owns the write (the
+	// client's optimistic state and rollback); the wall owns the
+	// busy/error/clear choreography around the promise it awaits
+	// here.
+	function runBatch(action: BatchAction, ids: readonly string[]): Promise<BatchOutcome> {
+		return timeline.runBatch(action, [...ids]);
 	}
 
-	function exitSelection(): void {
-		selection.clear();
-		selectMode = false;
-	}
-
-	function handleWindowKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape' && (selection.size > 0 || selectMode)) {
-			exitSelection();
-		}
-	}
-
-	async function runAction(action: BatchAction): Promise<void> {
-		if (batchBusy || selection.size === 0) {
-			return;
-		}
-		batchBusy = true;
-		batchErrorKey = '';
-		const outcome = await timeline.runBatch(action, [...selection]);
-		batchBusy = false;
-		if (outcome.ok) {
-			// A successful action clears the selection; the explicit
-			// select mode persists for the next curation pass.
-			selection.clear();
-		} else {
-			// The failure keeps the selection (a retry affordance) and
-			// surfaces the mapped message in the bar.
-			batchErrorKey = outcome.errorKey;
-		}
-	}
-
-	// The add-to-album flow: open the dialog over the current
-	// selection with the caller's own virtual albums (the only
+	// The add-to-album flow: open the dialog over the wall's
+	// captured ids with the caller's own virtual albums (the only
 	// addable-to kind) fetched fresh -- the pick list is the server's.
-	function openAddDialog(): void {
-		if (selection.size === 0) {
-			return;
-		}
+	function openAddDialog(ids: readonly string[], done: () => void): void {
+		addIds = ids;
+		addDone = done;
 		addErrorKey = '';
 		addReport = null;
 		createdAlbumId = '';
@@ -192,12 +162,12 @@
 	// The existing-album path: the honest {added, skipped} report of
 	// the write's own answer lands in the dialog.
 	async function addToExisting(albumId: string): Promise<void> {
-		if (addBusy || selection.size === 0) {
+		if (addBusy || addIds.length === 0) {
 			return;
 		}
 		addBusy = true;
 		addErrorKey = '';
-		const outcome = await addAlbumItems(albumId, [...selection]);
+		const outcome = await addAlbumItems(albumId, [...addIds]);
 		addBusy = false;
 		if (!outcome.ok) {
 			addErrorKey = outcome.errorKey;
@@ -207,9 +177,9 @@
 	}
 
 	// The create-then-add path: create the album (or reuse the one a
-	// failed retry already made), then feed it the selection.
+	// failed retry already made), then feed it the captured ids.
 	async function addToNew(title: string): Promise<void> {
-		if (addBusy || selection.size === 0) {
+		if (addBusy || addIds.length === 0) {
 			return;
 		}
 		addBusy = true;
@@ -225,7 +195,7 @@
 			albumId = created.album.id;
 			createdAlbumId = albumId;
 		}
-		const outcome = await addAlbumItems(albumId, [...selection]);
+		const outcome = await addAlbumItems(albumId, [...addIds]);
 		addBusy = false;
 		if (!outcome.ok) {
 			addErrorKey = outcome.errorKey;
@@ -234,25 +204,26 @@
 		addReport = { added: outcome.added, skipped: outcome.skipped };
 	}
 
-	// The report's done: close the dialog and clear the selection --
-	// the add landed (the SSE items-changed echo converges the album
-	// surfaces, and the timeline itself only changes when the
-	// membership moved a feeding album).
+	// The report's done: close the dialog and fire the wall's done
+	// continuation -- the add landed (the SSE items-changed echo
+	// converges the album surfaces, and the timeline itself only
+	// changes when the membership moved a feeding album), and the
+	// wall clears its selection (the success arm).
 	function finishAdd(): void {
 		addOpen = false;
 		addReport = null;
-		selection.clear();
+		addDone?.();
+		addDone = undefined;
 	}
 
-	// The add-tag flow: open the dialog over the current selection
+	// The add-tag flow: open the dialog over the wall's captured ids
 	// with the caller's vocabulary fetched fresh -- the pick list is
 	// the server's. Tag writes are per-user state (B4) and publish
 	// nothing, so nothing here converges the wall: the report IS the
 	// outcome.
-	function openTagDialog(): void {
-		if (selection.size === 0) {
-			return;
-		}
+	function openTagDialog(ids: readonly string[], done: () => void): void {
+		tagIds = ids;
+		tagDone = done;
 		tagErrorKey = '';
 		tagReport = null;
 		tagOpen = true;
@@ -275,12 +246,12 @@
 	// The existing-tag path: the honest {added, skipped} report of
 	// the write's own answer lands in the dialog.
 	async function addToExistingTag(tagId: string): Promise<void> {
-		if (tagBusy || selection.size === 0) {
+		if (tagBusy || tagIds.length === 0) {
 			return;
 		}
 		tagBusy = true;
 		tagErrorKey = '';
-		const outcome = await addTagAssets(tagId, [...selection]);
+		const outcome = await addTagAssets(tagId, [...tagIds]);
 		tagBusy = false;
 		if (!outcome.ok) {
 			tagErrorKey = outcome.errorKey;
@@ -290,9 +261,9 @@
 	}
 
 	// The new-tag path: create the tag (idempotently -- a retry
-	// converges on the same row), then tag the selection with it.
+	// converges on the same row), then tag the captured ids with it.
 	async function addToNewTag(name: string): Promise<void> {
-		if (tagBusy || selection.size === 0) {
+		if (tagBusy || tagIds.length === 0) {
 			return;
 		}
 		tagBusy = true;
@@ -303,7 +274,7 @@
 			tagErrorKey = created.errorKey;
 			return;
 		}
-		const outcome = await addTagAssets(created.tag.id, [...selection]);
+		const outcome = await addTagAssets(created.tag.id, [...tagIds]);
 		tagBusy = false;
 		if (!outcome.ok) {
 			tagErrorKey = outcome.errorKey;
@@ -312,20 +283,23 @@
 		tagReport = outcome.report;
 	}
 
-	// The tag report's done: close the dialog and clear the
-	// selection -- the caller's own tags landed, no wall convergence
-	// follows (per-user state, silent by contract).
+	// The tag report's done: close the dialog and fire the wall's
+	// done continuation -- the caller's own tags landed, no wall
+	// convergence follows (per-user state, silent by contract), and
+	// the wall clears its selection (the success arm).
 	function finishTag(): void {
 		tagOpen = false;
 		tagReport = null;
-		selection.clear();
+		tagDone?.();
+		tagDone = undefined;
 	}
 
-	// The month axis and its scroll wiring (the jump, the active
-	// stop, the progress, the drag, the scroll-root bar hiding)
-	// moved INTO the wall (the 2026-11-08 pin: the photo rendering
-	// and the right-edge rail are one component). This page composes
-	// the wall and keeps only its selection overlays.
+	// The month axis, the selection flow and the batch bar (the
+	// jump, the active stop, the drag, the checks, the Esc exit, the
+	// busy/error choreography, the bar itself) all moved INTO the
+	// wall (the 2026-11-08 pins: the photo rendering, the right-edge
+	// rail and the selection are one component). This page composes
+	// the wall, runs its batch writes and owns the dialogs.
 
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon); the
@@ -388,8 +362,6 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} />
-
 <svelte:head>
 	<title>Timeline · lumemor</title>
 </svelte:head>
@@ -403,8 +375,8 @@
 	     view's entry moved to the navigation drawer; the selection
 	     entry is the tiles' check affordance (hover/keyboard-focus
 	     revealed on every tile, the first click enters the selection)
-	     -- the ?album= handoff below still arms the select mode for
-	     the add-photos flow. -->
+	     -- the ?album= handoff below still arms the wall's bound
+	     select mode for the add-photos flow. -->
 
 	{#if firstLoad}
 		<p class="timeline__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('timeline_loading')}</p>
@@ -419,16 +391,20 @@
 			<Button variant="primary" onclick={() => void timeline.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else}
-		<!-- The unified wall (its month axis is now the wall's own
-		     organ -- the 2026-11-08 pin): the page keeps its toolbar
-		     and its selection overlays; the grouping, the packed
-		     rows, the tiles AND the right-edge rail are the one wall
-		     component every view renders. -->
+		<!-- The unified wall (its month axis AND its selection flow are
+		     the wall's own organs -- the 2026-11-08 pins): the page
+		     keeps its data walk, its batch runs and its dialogs; the
+		     grouping, the packed rows, the tiles, the right-edge rail,
+		     the selection state and the batch bar are the one wall
+		     component every curatable view renders. The bound select
+		     mode carries the ?album= arming; the dialog openers carry
+		     the ids the wall captured. -->
 		<Wall
 			items={$timeline.items}
-			{selectable}
-			isSelected={(id) => selection.has(id)}
-			onselect={toggleSelected}
+			bind:selectMode
+			onbatch={runBatch}
+			onaddtoalbum={openAddDialog}
+			onaddtag={openTagDialog}
 		/>
 	{/if}
 
@@ -449,16 +425,6 @@
 	</section>
 </div>
 
-<BatchBar
-	count={selectedItems.length}
-	allFavorite={allSelectedFavorite}
-	errorKey={batchErrorKey}
-	busy={batchBusy}
-	onaddtoalbum={openAddDialog}
-	onaddtag={openTagDialog}
-	onaction={runAction}
-	onclear={exitSelection}
-/>
 <AddToAlbumDialog
 	bind:open={addOpen}
 	albums={addAlbums}
