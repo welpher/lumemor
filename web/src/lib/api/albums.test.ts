@@ -28,7 +28,6 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 const ownCard: AlbumSummary = {
 	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 	title: 'Road trip 2026',
-	description: 'The coastal week in the van.',
 	type: 'virtual',
 	locked: false,
 	isShared: true,
@@ -46,7 +45,6 @@ const ownCard: AlbumSummary = {
 const directoryCard: AlbumSummary = {
 	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6078',
 	title: 'Family archive',
-	description: '',
 	type: 'directory',
 	locked: false,
 	isShared: false,
@@ -59,7 +57,6 @@ const directoryCard: AlbumSummary = {
 const detailBody = {
 	id: ownCard.id,
 	title: ownCard.title,
-	description: ownCard.description,
 	type: 'virtual',
 	locked: false,
 	coverAssetId: null,

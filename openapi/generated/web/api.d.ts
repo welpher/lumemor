@@ -217,7 +217,7 @@ export interface paths {
          *     (`album.items-changed`) and the audience writes
          *     (`album.shared`, `album.unshared`). Every payload carries
          *     ONLY the album's id and one user's `userId`: titles,
-         *     descriptions, covers, the lock state, the source path and
+         *     covers, the lock state, the source path and
          *     the membership itself are album state the subscribers
          *     refetch, never bus payload. `album.updated` fires on every
          *     successful patch (the convergent refetch makes the
@@ -1365,7 +1365,7 @@ export interface paths {
         /**
          * Patch one album's properties.
          * @description The owner's partial edit of the album's properties: `title`,
-         *     `description`, `coverAssetId` and `locked`, any subset, at
+         *     `coverAssetId` and `locked`, any subset, at
          *     least one field (a body that carries none -- JSON null counts
          *     as absent, the patch discipline of the asset surface -- is a
          *     client bug and answers 400). The response is the album's wall
@@ -1383,7 +1383,7 @@ export interface paths {
          *     permanent delete's own discipline).
          *
          *     The locked gate: a locked album refuses the property and
-         *     curation fields (`title`, `description`, `coverAssetId`)
+         *     curation fields (`title`, `coverAssetId`)
          *     with 409 `ALBUM_LOCKED` -- unlock first. The `locked` field
          *     itself is never gated: a patch of only `locked: false` IS the
          *     unlock.
@@ -5496,8 +5496,6 @@ export interface components {
             id: string;
             /** @description The album's display title. */
             title: string;
-            /** @description The album's free-text description (empty when unset). */
-            description: string;
             /**
              * @description The album's type. `virtual` albums are curated by their
              *     owner; `directory` albums mirror a filesystem path. The
@@ -5595,8 +5593,6 @@ export interface components {
             id: string;
             /** @description The album's display title. */
             title: string;
-            /** @description The album's free-text description (empty when unset). */
-            description: string;
             /**
              * @description The album's type; `sync` is the caller's own default
              *     album -- a read-only, system-managed detail (no write
@@ -5719,10 +5715,11 @@ export interface components {
          *     albums-as-sources): the title, the existing directory the
          *     album references in place, and the audience the album starts
          *     with. No type field exists -- this endpoint IS directory
-         *     creation, the only creatable album type; no description
-         *     field either -- the dialog carries title, path and audience,
-         *     and the description stays empty (the property patch can set
-         *     one later).
+         *     creation, the only creatable album type. No description
+         *     field either: it died whole (the 2026-11-08 owner
+         *     evaluation -- real-world fill rate near zero, the context
+         *     already carried by title/date-range+count/place/cover), and
+         *     the property patch carries no field that could set one.
          */
         AlbumCreateRequest: {
             /**
@@ -5787,12 +5784,6 @@ export interface components {
              *     trim.
              */
             title?: string;
-            /**
-             * @description The album's free-text description; the value replaces
-             *     the stored text wholesale (an empty string clears it).
-             *     At most 10,000 Unicode characters.
-             */
-            description?: string;
             /**
              * Format: uuid
              * @description The pinned cover asset. When present it must be a LIVE

@@ -19,12 +19,6 @@ void main() {
       // TODO
     });
 
-    // The album's free-text description (empty when unset).
-    // String description
-    test('to test the property `description`', () async {
-      // TODO
-    });
-
     // The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
     // String type
     test('to test the property `type`', () async {

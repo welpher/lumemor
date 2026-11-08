@@ -976,10 +976,11 @@ type AlbumAudienceSkipReason string
 // albums-as-sources): the title, the existing directory the
 // album references in place, and the audience the album starts
 // with. No type field exists -- this endpoint IS directory
-// creation, the only creatable album type; no description
-// field either -- the dialog carries title, path and audience,
-// and the description stays empty (the property patch can set
-// one later).
+// creation, the only creatable album type. No description
+// field either: it died whole (the 2026-11-08 owner
+// evaluation -- real-world fill rate near zero, the context
+// already carried by title/date-range+count/place/cover), and
+// the property patch carries no field that could set one.
 type AlbumCreateRequest struct {
 	// Audience The accounts the album starts being visible to: the
 	// initial `album_shares` set, empty (or absent) meaning
@@ -1024,9 +1025,6 @@ type AlbumCreateResponse struct {
 	// to four, `takenAt` descending, the asset id as the
 	// tiebreak). Empty for an album with no live members.
 	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
-
-	// Description The album's free-text description (empty when unset).
-	Description string `json:"description"`
 
 	// Id Identifier of the album.
 	Id openapi_types.UUID `json:"id"`
@@ -1110,9 +1108,6 @@ type AlbumDetail struct {
 	// column; the wall derives its collage fallback, the detail
 	// carries the pin itself.
 	CoverAssetId *openapi_types.UUID `json:"coverAssetId"`
-
-	// Description The album's free-text description (empty when unset).
-	Description string `json:"description"`
 
 	// Id Identifier of the album.
 	Id openapi_types.UUID `json:"id"`
@@ -1275,11 +1270,6 @@ type AlbumPatch struct {
 	// unchanged.
 	CoverAssetId *openapi_types.UUID `json:"coverAssetId,omitempty"`
 
-	// Description The album's free-text description; the value replaces
-	// the stored text wholesale (an empty string clears it).
-	// At most 10,000 Unicode characters.
-	Description *string `json:"description,omitempty"`
-
 	// Locked The owner's lock. `true` freezes the album's curation
 	// and property fields against later writes (this same
 	// endpoint refuses them with 409 until the owner patches
@@ -1346,9 +1336,6 @@ type AlbumSummary struct {
 	// to four, `takenAt` descending, the asset id as the
 	// tiebreak). Empty for an album with no live members.
 	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
-
-	// Description The album's free-text description (empty when unset).
-	Description string `json:"description"`
 
 	// Id Identifier of the album.
 	Id openapi_types.UUID `json:"id"`

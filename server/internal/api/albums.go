@@ -99,7 +99,6 @@ func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role ap
 	return apigen.AlbumSummary{
 		Id:            uuid.UUID(album.ID.Bytes),
 		Title:         album.Title,
-		Description:   album.Description,
 		Type:          apigen.AlbumSummaryType(album.Type),
 		Locked:        album.Locked,
 		IsShared:      isShared,
@@ -279,7 +278,6 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 	detail := apigen.AlbumDetail{
 		Id:           albumId,
 		Title:        album.Album.Title,
-		Description:  album.Album.Description,
 		Type:         apigen.AlbumDetailType(album.Album.Type),
 		Locked:       album.Album.Locked,
 		CoverAssetId: nil,

@@ -138,8 +138,8 @@ type CreateDirectoryAlbumParams struct {
 // root -- and root_path stores the RESOLVED absolute path (symlinks
 // evaluated at validation time), so the album can never be silently
 // repointed by a later symlink swap. The id is generated
-// caller-side; the description stays the column default (the
-// creation face carries title, path and audience only). The wall
+// caller-side; the creation face carries title, path and audience
+// only (the description column died whole with the field). The wall
 // card's companions are the creation-time constants -- the caller's
 // own audience grants land right after -- so the handler reads the
 // fresh row's full card through GetAlbumSummary like every other
@@ -238,7 +238,7 @@ func (q *Queries) EnsureSyncAlbum(ctx context.Context, arg EnsureSyncAlbumParams
 }
 
 const getAlbumForCaller = `-- name: GetAlbumForCaller :one
-SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
        CASE
            WHEN al.owner_id = $1 THEN 'owner'::text
            ELSE 'viewer'::text
@@ -303,7 +303,6 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 		&i.Album.ID,
 		&i.Album.OwnerID,
 		&i.Album.Title,
-		&i.Album.Description,
 		&i.Album.Type,
 		&i.Album.Locked,
 		&i.Album.CoverAssetID,
@@ -320,7 +319,7 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 
 const getAlbumForTimelinePref = `-- name: GetAlbumForTimelinePref :one
 
-SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
        CASE
            WHEN al.owner_id = $1 THEN 'owner'::text
            ELSE 'viewer'::text
@@ -367,7 +366,6 @@ func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTi
 		&i.Album.ID,
 		&i.Album.OwnerID,
 		&i.Album.Title,
-		&i.Album.Description,
 		&i.Album.Type,
 		&i.Album.Locked,
 		&i.Album.CoverAssetID,
@@ -382,7 +380,7 @@ func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTi
 
 const getAlbumForWrite = `-- name: GetAlbumForWrite :one
 
-SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
        EXISTS (
            SELECT 1 FROM album_shares s
            WHERE s.album_id = al.id AND s.user_id = $1
@@ -424,7 +422,6 @@ func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWritePara
 		&i.Album.ID,
 		&i.Album.OwnerID,
 		&i.Album.Title,
-		&i.Album.Description,
 		&i.Album.Type,
 		&i.Album.Locked,
 		&i.Album.CoverAssetID,
@@ -438,7 +435,7 @@ func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWritePara
 }
 
 const getAlbumSummary = `-- name: GetAlbumSummary :one
-SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
        EXISTS (
            SELECT 1 FROM album_shares s WHERE s.album_id = al.id
        ) AS is_shared,
@@ -484,7 +481,6 @@ func (q *Queries) GetAlbumSummary(ctx context.Context, arg GetAlbumSummaryParams
 		&i.Album.ID,
 		&i.Album.OwnerID,
 		&i.Album.Title,
-		&i.Album.Description,
 		&i.Album.Type,
 		&i.Album.Locked,
 		&i.Album.CoverAssetID,
@@ -699,7 +695,7 @@ func (q *Queries) ListDirectoryAlbumRoots(ctx context.Context) ([]ListDirectoryA
 
 const listWallAlbumsForCaller = `-- name: ListWallAlbumsForCaller :many
 
-SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
@@ -730,7 +726,7 @@ WHERE al.owner_id = $1
 
 UNION ALL
 
-SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
@@ -757,7 +753,7 @@ WHERE al.owner_id = $1
 
 UNION ALL
 
-SELECT al.id, al.owner_id, al.title, al.description, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
        'viewer'::text AS caller_role,
        u.id AS owner_user_id,
        u.email AS owner_email,
@@ -842,7 +838,6 @@ func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUI
 			&i.Album.ID,
 			&i.Album.OwnerID,
 			&i.Album.Title,
-			&i.Album.Description,
 			&i.Album.Type,
 			&i.Album.Locked,
 			&i.Album.CoverAssetID,
@@ -934,17 +929,15 @@ func (q *Queries) RemoveAlbumItems(ctx context.Context, arg RemoveAlbumItemsPara
 const updateAlbumFields = `-- name: UpdateAlbumFields :one
 UPDATE albums
 SET title = COALESCE($1, title),
-    description = COALESCE($2, description),
-    cover_asset_id = COALESCE($3, cover_asset_id),
-    locked = COALESCE($4, locked),
+    cover_asset_id = COALESCE($2, cover_asset_id),
+    locked = COALESCE($3, locked),
     updated_at = now()
-WHERE id = $5
+WHERE id = $4
 RETURNING id
 `
 
 type UpdateAlbumFieldsParams struct {
 	Title        pgtype.Text `json:"title"`
-	Description  pgtype.Text `json:"description"`
 	CoverAssetID pgtype.UUID `json:"cover_asset_id"`
 	Locked       pgtype.Bool `json:"locked"`
 	AlbumID      pgtype.UUID `json:"album_id"`
@@ -963,7 +956,6 @@ type UpdateAlbumFieldsParams struct {
 func (q *Queries) UpdateAlbumFields(ctx context.Context, arg UpdateAlbumFieldsParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, updateAlbumFields,
 		arg.Title,
-		arg.Description,
 		arg.CoverAssetID,
 		arg.Locked,
 		arg.AlbumID,

@@ -180,9 +180,6 @@ function summaryFrom(body: unknown): AlbumSummary | null {
 	if (typeof candidate.id !== 'string' || typeof candidate.title !== 'string') {
 		return null;
 	}
-	if (typeof candidate.description !== 'string') {
-		return null;
-	}
 	if (candidate.type !== 'virtual' && candidate.type !== 'directory' && candidate.type !== 'sync') {
 		return null;
 	}
@@ -277,9 +274,6 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 	}
 	const candidate = body as Partial<AlbumDetail>;
 	if (candidate.id !== albumId || typeof candidate.title !== 'string') {
-		return null;
-	}
-	if (typeof candidate.description !== 'string') {
 		return null;
 	}
 	if (candidate.type !== 'virtual' && candidate.type !== 'directory' && candidate.type !== 'sync') {
@@ -484,12 +478,12 @@ export async function completeAlbumPath(
 
 /**
  * PATCH /api/v1/albums/{albumId}: the owner's partial edit of the
- * properties (`title`, `description`, `coverAssetId`, `locked`, any
+ * properties (`title`, `coverAssetId`, `locked`, any
  * subset). The response is the album's wall card after the edit.
  */
 export async function patchAlbum(
 	albumId: string,
-	patch: { title?: string; description?: string; coverAssetId?: string; locked?: boolean },
+	patch: { title?: string; coverAssetId?: string; locked?: boolean },
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<AlbumPatchResult> {
 	let response: Response;

@@ -16,7 +16,6 @@ part 'album_detail.g.dart';
 /// Properties:
 /// * [id] - Identifier of the album.
 /// * [title] - The album's display title.
-/// * [description] - The album's free-text description (empty when unset).
 /// * [type] - The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
 /// * [locked] - The owner's lock (metadata to a viewer).
 /// * [coverAssetId] - The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
@@ -36,10 +35,6 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   /// The album's display title.
   @BuiltValueField(wireName: r'title')
   String get title;
-
-  /// The album's free-text description (empty when unset).
-  @BuiltValueField(wireName: r'description')
-  String get description;
 
   /// The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
   @BuiltValueField(wireName: r'type')
@@ -114,11 +109,6 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
     yield r'title';
     yield serializers.serialize(
       object.title,
-      specifiedType: const FullType(String),
-    );
-    yield r'description';
-    yield serializers.serialize(
-      object.description,
       specifiedType: const FullType(String),
     );
     yield r'type';
@@ -215,13 +205,6 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
             specifiedType: const FullType(String),
           ) as String;
           result.title = valueDes;
-          break;
-        case r'description':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(String),
-          ) as String;
-          result.description = valueDes;
           break;
         case r'type':
           final valueDes = serializers.deserialize(

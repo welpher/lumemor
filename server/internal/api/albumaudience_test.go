@@ -697,7 +697,7 @@ func TestAlbumAudienceEvents(t *testing.T) {
 			t.Errorf("album.shared[%d] payload = %v, want exactly the albumId/userId pair", i, payload)
 		}
 		for _, banned := range []string{
-			"email", "grantedAt", "grantedBy", "title", "description",
+			"email", "grantedAt", "grantedBy", "title",
 			"locked", "type", "itemCount", "isDisabled", "role",
 		} {
 			if payload[banned] != "" {
@@ -717,7 +717,7 @@ func TestAlbumAudienceEvents(t *testing.T) {
 			t.Errorf("album.unshared[%d] payload = %v, want exactly the albumId/userId pair", i, payload)
 		}
 		for _, banned := range []string{
-			"email", "grantedAt", "grantedBy", "title", "description",
+			"email", "grantedAt", "grantedBy", "title",
 			"locked", "type", "itemCount", "isDisabled", "role",
 		} {
 			if payload[banned] != "" {

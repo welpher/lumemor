@@ -15,7 +15,6 @@ part 'album_summary.g.dart';
 /// Properties:
 /// * [id] - Identifier of the album.
 /// * [title] - The album's display title.
-/// * [description] - The album's free-text description (empty when unset).
 /// * [type] - The album's type. `virtual` albums are curated by their owner; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
 /// * [locked] - The owner's lock: a locked album refuses its owner's curation and property writes until unlocked. It is metadata to a viewer (viewers are read-only regardless). 
 /// * [isShared] - True when the album carries at least one `album_shares` row -- someone besides the owner can see it. Always true on shared-group items by construction. 
@@ -34,10 +33,6 @@ abstract class AlbumSummary  {
   /// The album's display title.
   @BuiltValueField(wireName: r'title')
   String get title;
-
-  /// The album's free-text description (empty when unset).
-  @BuiltValueField(wireName: r'description')
-  String get description;
 
   /// The album's type. `virtual` albums are curated by their owner; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
   @BuiltValueField(wireName: r'type')
@@ -101,11 +96,6 @@ class _$AlbumSummarySerializer implements PrimitiveSerializer<AlbumSummary> {
     yield r'title';
     yield serializers.serialize(
       object.title,
-      specifiedType: const FullType(String),
-    );
-    yield r'description';
-    yield serializers.serialize(
-      object.description,
       specifiedType: const FullType(String),
     );
     yield r'type';
@@ -234,13 +224,6 @@ class _$$AlbumSummarySerializer implements PrimitiveSerializer<$AlbumSummary> {
             specifiedType: const FullType(String),
           ) as String;
           result.title = valueDes;
-          break;
-        case r'description':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(String),
-          ) as String;
-          result.description = valueDes;
           break;
         case r'type':
           final valueDes = serializers.deserialize(

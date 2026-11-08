@@ -404,7 +404,6 @@ type Album struct {
 	ID            pgtype.UUID        `json:"id"`
 	OwnerID       pgtype.UUID        `json:"owner_id"`
 	Title         string             `json:"title"`
-	Description   string             `json:"description"`
 	Type          AlbumType          `json:"type"`
 	Locked        bool               `json:"locked"`
 	CoverAssetID  pgtype.UUID        `json:"cover_asset_id"`
