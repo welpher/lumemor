@@ -40,7 +40,8 @@
 	import Menu from '@lucide/svelte/icons/menu';
 	import Search from '@lucide/svelte/icons/search';
 	import Upload from '@lucide/svelte/icons/upload';
-	import LogOut from '@lucide/svelte/icons/log-out';
+ import LogOut from '@lucide/svelte/icons/log-out';
+	import Settings from '@lucide/svelte/icons/settings';
 	import CircleUser from '@lucide/svelte/icons/circle-user';
 	import type { LayoutProps } from './$types';
 
@@ -265,6 +266,16 @@
 							{/each}
 						</div>
 						<div class="account-menu__divider h-px my-2 mx-1 bg-border"></div>
+						<!-- The settings link: the dropdown's own door to the full
+						     settings page (the drawer also carries it, but the
+						     account menu is the faster reach). -->
+						<a
+							class="account-menu__option account-menu__settings flex items-center gap-2 px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left no-underline cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
+							href="/settings"
+						>
+							<Settings size={16} aria-hidden="true" />
+							{$_('settings_title')}
+						</a>
 						<!-- The sign-out action closes the account section: the divider
 						     separates it from the appearance toggles, and the label keeps
 						     the regular text color for AA contrast. The icon-first rule:
