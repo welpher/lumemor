@@ -14,8 +14,9 @@
 	//
 	// THE PROGRESS UNITS: each run's counts carry its own work's
 	// units -- the model download's are pinned bytes (rendered as
-	// megabytes), the reruns' are asset counts. The kind decides the
-	// formatting; the numbers themselves are the row's.
+	// megabytes), the reruns' are asset counts, the rescan's are
+	// resolved source entries. The kind decides the formatting;
+	// the numbers themselves are the row's.
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
@@ -33,7 +34,9 @@
 		face_detect_rerun: 'admin_jobs_kind_face_detect_rerun',
 		face_recognize_rerun: 'admin_jobs_kind_face_recognize_rerun',
 		clip_embed_rerun: 'admin_jobs_kind_clip_embed_rerun',
-		ocr_rerun: 'admin_jobs_kind_ocr_rerun'
+		ocr_rerun: 'admin_jobs_kind_ocr_rerun',
+		places_rerun: 'admin_jobs_kind_places_rerun',
+		album_rescan: 'admin_jobs_kind_album_rescan'
 	};
 
 	/** The state label keys, and the badge modifier classes. */

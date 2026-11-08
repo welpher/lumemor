@@ -10077,7 +10077,9 @@ components:
         The kinds of job runs the instance records. The model
         download is one run; each machine learning slot's rerun is
         its own kind, named after the slot it redoes; the place
-        re-resolution is the places-data-update path's kind.
+        re-resolution is the places-data-update path's kind; the
+        album rescan is the directory album's source-reconciliation
+        run.
       enum:
         - model_download
         - face_detect_rerun
@@ -10085,6 +10087,7 @@ components:
         - clip_embed_rerun
         - ocr_rerun
         - places_rerun
+        - album_rescan
     JobRunState:
       type: string
       description: |

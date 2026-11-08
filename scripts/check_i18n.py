@@ -346,6 +346,8 @@ NON_ERROR_KEYS = {
     "admin_jobs_kind_face_recognize_rerun",
     "admin_jobs_kind_clip_embed_rerun",
     "admin_jobs_kind_ocr_rerun",
+    "admin_jobs_kind_places_rerun",
+    "admin_jobs_kind_album_rescan",
     "admin_jobs_state_queued",
     "admin_jobs_state_running",
     "admin_jobs_state_succeeded",

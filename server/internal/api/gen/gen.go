@@ -412,6 +412,7 @@ func (e ErrorCode) Valid() bool {
 
 // Defines values for JobRunKind.
 const (
+	AlbumRescan        JobRunKind = "album_rescan"
 	ClipEmbedRerun     JobRunKind = "clip_embed_rerun"
 	FaceDetectRerun    JobRunKind = "face_detect_rerun"
 	FaceRecognizeRerun JobRunKind = "face_recognize_rerun"
@@ -423,6 +424,8 @@ const (
 // Valid indicates whether the value is a known member of the JobRunKind enum.
 func (e JobRunKind) Valid() bool {
 	switch e {
+	case AlbumRescan:
+		return true
 	case ClipEmbedRerun:
 		return true
 	case FaceDetectRerun:
@@ -2014,7 +2017,9 @@ type FaceDetail struct {
 // JobRunKind The kinds of job runs the instance records. The model
 // download is one run; each machine learning slot's rerun is
 // its own kind, named after the slot it redoes; the place
-// re-resolution is the places-data-update path's kind.
+// re-resolution is the places-data-update path's kind; the
+// album rescan is the directory album's source-reconciliation
+// run.
 type JobRunKind string
 
 // JobRunListResponse The task panel listing: the instance's job runs, newest
@@ -2047,7 +2052,9 @@ type JobRunResponse struct {
 	// Kind The kinds of job runs the instance records. The model
 	// download is one run; each machine learning slot's rerun is
 	// its own kind, named after the slot it redoes; the place
-	// re-resolution is the places-data-update path's kind.
+	// re-resolution is the places-data-update path's kind; the
+	// album rescan is the directory album's source-reconciliation
+	// run.
 	Kind JobRunKind `json:"kind"`
 
 	// StartedAt When the run's driver first picked it up (RFC 3339
