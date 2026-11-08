@@ -177,6 +177,10 @@ func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, reru
 		Models:    registry,
 		ModelsDir: modelsDir,
 		MlReruns:  queue,
+		// The album rescan endpoint enqueues through the same queue:
+		// the rescan tests drive the three arms through the real
+		// worker this env starts.
+		AlbumRescans: queue,
 	})
 
 	e := &env{

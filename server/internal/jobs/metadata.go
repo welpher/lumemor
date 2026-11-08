@@ -76,7 +76,7 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 		return fmt.Errorf("load asset: %w", err)
 	}
 
-	path, err := storage.ResolveStoredPath(w.dataDir, row.FilePath)
+	path, err := storage.ResolveAssetPath(w.dataDir, row.FilePath, string(row.StorageKind))
 	if err != nil {
 		return fmt.Errorf("resolve file of asset %s: %w", assetID, err)
 	}

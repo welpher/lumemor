@@ -196,7 +196,7 @@ func (w *FaceRecognizeWorker) work(ctx context.Context, job *river.Job[FaceRecog
 	}
 	defer func() { _ = detectSess.Close() }()
 
-	path, err := storage.ResolveStoredPath(w.dataDir, row.FilePath)
+	path, err := storage.ResolveAssetPath(w.dataDir, row.FilePath, string(row.StorageKind))
 	if err != nil {
 		return fmt.Errorf("resolve file of asset %s: %w", assetID, err)
 	}

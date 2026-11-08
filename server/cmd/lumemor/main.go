@@ -247,6 +247,9 @@ func run(logger *slog.Logger) error {
 			// The places re-resolution endpoint enqueues through the
 			// same queue.
 			PlacesReruns: queue,
+			// The album rescan endpoint enqueues through the same
+			// queue.
+			AlbumRescans: queue,
 			Initialized: func(ctx context.Context) bool {
 				admins, err := queries.CountAdmins(ctx)
 				if err != nil {

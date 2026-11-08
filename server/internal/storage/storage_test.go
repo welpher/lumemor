@@ -18,6 +18,7 @@ func TestEnsureLayoutCreatesDirectoryTree(t *testing.T) {
 	for _, dir := range []string{
 		filepath.Join(dataDir, "originals"),
 		filepath.Join(dataDir, "tmp"),
+		filepath.Join(dataDir, "trash"),
 		filepath.Join(dataDir, "storage", "thumbs"),
 		filepath.Join(dataDir, "storage", "encoded"),
 		filepath.Join(dataDir, "storage", "sidecars"),

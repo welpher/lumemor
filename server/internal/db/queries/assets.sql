@@ -137,8 +137,13 @@ INSERT INTO exif (asset_id, exif) VALUES ($1, $2);
 -- along (M2d) for the completion discipline: the metadata and
 -- thumbnail jobs must not consume a component row's counter (the
 -- transcode alone owns it), and the transcode job completes the
--- counter but never announces for a component.
+-- counter but never announces for a component. storage_kind rides
+-- along (E4): an external asset's file_path is the file's real
+-- absolute path (the directory album's source tree), not a
+-- originals-relative form, so the path resolution branches on the
+-- kind -- the one column every job needs to find the bytes.
 SELECT a.file_path,
+       a.storage_kind,
        a.media_kind,
        a.taken_at,
        a.taken_at_source,

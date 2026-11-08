@@ -92,6 +92,12 @@ type Deps struct {
 	// queue wired -- tests, wiring order); production passes the jobs
 	// queue, which implements it structurally.
 	PlacesReruns PlacesRerunEnqueuer
+	// AlbumRescans starts the directory album rescan runs: the
+	// rescan endpoint enqueues the album_rescan job through this
+	// seam. Nil keeps the endpoint answering 500 INTERNAL (no queue
+	// wired -- tests, wiring order); production passes the jobs
+	// queue, which implements it structurally.
+	AlbumRescans AlbumRescanEnqueuer
 }
 
 // AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
@@ -145,6 +151,18 @@ type PlacesRerunEnqueuer interface {
 	// identifier. The enqueue refuses a server without the place
 	// reference data: there is no grid to re-resolve against.
 	EnqueuePlacesRerun(ctx context.Context) (uuid.UUID, error)
+}
+
+// AlbumRescanEnqueuer starts one directory album rescan run. It is
+// the seam between the rescan endpoint and the job queue:
+// production passes the jobs package's Queue, which implements it
+// structurally.
+type AlbumRescanEnqueuer interface {
+	// EnqueueAlbumRescan creates the run's job_runs row and enqueues
+	// the River job in one transaction, returning the run's
+	// identifier. The caller has already gated the album (owner,
+	// type, lock); the enqueue trusts the gate's answer.
+	EnqueueAlbumRescan(ctx context.Context, albumID uuid.UUID) (uuid.UUID, error)
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
@@ -205,6 +223,9 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		// The places re-resolution enqueue seam: nil is a valid (no
 		// queue) wiring.
 		placesReruns: deps.PlacesReruns,
+		// The album rescan enqueue seam: nil is a valid (no queue)
+		// wiring.
+		albumRescans: deps.AlbumRescans,
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
@@ -367,6 +388,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// never contends with the /albums/{albumId} routes
 				// (a longer path shape).
 				r.Put("/albums/{albumId}/audience", wrapper.UpdateAlbumAudience)
+				// The rescan trigger (E4, the
+				// albums-as-sources milestone): one bounded row read
+				// plus one enqueue; the walk over the source root and
+				// the three-arm diff live on the queue. The static
+				// rescan segment never contends with the
+				// /albums/{albumId} routes (a longer path shape).
+				r.Post("/albums/{albumId}/rescan", wrapper.RescanAlbum)
 				r.Get("/users", wrapper.ListInstanceUsers)
 				// The me-scoped user settings face (the settings
 				// feature): the caller's own profile, password and
@@ -610,6 +638,10 @@ type server struct {
 	// queue is wired and the re-resolution endpoint answers the
 	// generic internal error.
 	placesReruns PlacesRerunEnqueuer
+	// albumRescans starts the directory album rescan runs; nil means
+	// no queue is wired and the rescan endpoint answers the generic
+	// internal error.
+	albumRescans AlbumRescanEnqueuer
 
 	// textTowerCache keeps the search's semantic path warm: the
 	// active clip-text model's loaded session and tokenizer (loading

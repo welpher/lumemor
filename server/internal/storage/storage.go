@@ -31,21 +31,33 @@ func requireDataRoot(caller string) {
 // EnsureLayout creates the full directory tree under the configured
 // data and config roots:
 //
-//	data/    originals/, tmp/, storage/thumbs/, storage/encoded/, storage/sidecars/
+//	data/    originals/, tmp/, trash/, storage/thumbs/, storage/encoded/, storage/sidecars/
 //	config/  models/
 //
 // It then verifies with an actual link round-trip that upload
 // staging shares a filesystem with the originals directory: uploads
 // finalize with a hard link into the originals tree, which only works
 // within one filesystem, so a layout that would break every upload
-// fails startup instead of the first upload attempt. On success it
-// records the data root for the path helpers below.
+// fails startup instead of the first upload attempt. The trash area
+// needs no probe of its own: the external asset's move into it
+// (E4's §A6/E4 semantics) falls back to copy-then-remove across
+// filesystems, so a mount root on another device than the data root
+// is a slower trash, never a broken one. On success it records the
+// data root for the path helpers below.
 func EnsureLayout(dataDir, configDir string) error {
 	originals := filepath.Join(dataDir, "originals")
 	tmp := filepath.Join(dataDir, "tmp")
 	for _, dir := range []string{
 		originals,
 		tmp,
+		// The external asset trash area (E4): trashing a directory
+		// album's referenced file moves it under trash/<assetID>/,
+		// the server's own tree, so expiry and the explicit delete
+		// own the file exactly like they own a blob. The directory
+		// is created here so the move never depends on a lazily
+		// created path (and the layout listing stays the one truth
+		// of what lives under the data root).
+		filepath.Join(dataDir, "trash"),
 		filepath.Join(dataDir, "storage", "thumbs"),
 		filepath.Join(dataDir, "storage", "encoded"),
 		filepath.Join(dataDir, "storage", "sidecars"),
@@ -187,6 +199,64 @@ func removeFileIfPresent(path string) error {
 	return nil
 }
 
+// RemoveExternalAssetFiles removes the on-disk artifacts of one
+// permanently deleted EXTERNAL asset (E4): the derived directories
+// (storage/thumbs/<assetID>/ and storage/encoded/<assetID>/) are
+// keyed by the asset id alone and always go, exactly like a blob's.
+// The original half follows the §A6/E4 table's move semantics: the
+// only file of an external row the server ever owns is the TRASH
+// COPY the user-initiated trash move landed under
+// data/trash/<assetID>/ (the caller passes the row's trash_path,
+// which names it); a live external's source file is the family's
+// own and is never touched. The containment check is the authority:
+// a trash_path outside the trash area -- a corrupted row, or NULL
+// for the rescan's orphan marks, whose source file is gone by
+// definition -- removes nothing, and the row's delete stands alone.
+// Like RemoveAssetFiles it works on any data root and treats a file
+// already gone as success (the expiry that owned it may race an
+// equivalent purge).
+func RemoveExternalAssetFiles(dataDir, trashPath, assetID string) error {
+	if assetID == "" {
+		// The callers pass the uuid string of a database row; empty
+		// would remove the whole derived trees, so refuse it outright
+		// rather than trusting a faraway caller.
+		return fmt.Errorf("storage: RemoveExternalAssetFiles: asset id is empty")
+	}
+	var errs []error
+	for _, dir := range []string{
+		filepath.Join(dataDir, "storage", "thumbs", assetID),
+		filepath.Join(dataDir, "storage", "encoded", assetID),
+	} {
+		if err := os.RemoveAll(dir); err != nil {
+			errs = append(errs, fmt.Errorf("remove derived files %s: %w", dir, err))
+		}
+	}
+	if trashPath == "" {
+		// The orphan's row (the rescan's vanish arm): no file of the
+		// server's exists, the derived trees above were the whole
+		// cleanup.
+		return errors.Join(errs...)
+	}
+	// The trash copy: ours by construction, but proven by containment
+	// -- defense in depth against a corrupted row's path.
+	trash := filepath.Join(dataDir, "trash") + string(filepath.Separator)
+	clean := filepath.Clean(trashPath)
+	if !strings.HasPrefix(clean, trash) {
+		return errors.Join(append(errs, fmt.Errorf(
+			"storage: external trash path %q escapes the trash area; the source file is never the server's to remove", trashPath))...)
+	}
+	if err := removeFileIfPresent(clean); err != nil {
+		errs = append(errs, fmt.Errorf("remove trashed external file %s: %w", clean, err))
+	}
+	// The per-asset trash directory itself goes best-effort: the
+	// path is keyed by this asset's id, so it is empty now (crash
+	// debris is the only other resident); leaving it is a leak,
+	// never data loss, so the failure is swallowed like the other
+	// post-row-delete cleanups.
+	_ = os.Remove(filepath.Dir(clean))
+	return errors.Join(errs...)
+}
+
 // PosterPath returns the path of the poster frame of a video asset
 // under the data root: storage/thumbs/<assetID>/poster.jpg. The poster
 // is a JPEG, not an AVIF thumbnail: it is extracted by ffmpeg from the
@@ -227,6 +297,67 @@ func ResolveStoredPath(dataDir, rel string) (string, error) {
 		return "", fmt.Errorf("storage: file path %q escapes the originals tree", rel)
 	}
 	return abs, nil
+}
+
+// StorageKindExternal and StorageKindBlob mirror the storage_kind
+// enum values the database's asset rows carry (the callers pass the
+// kind as the plain string the generated row types hold), so the
+// resolver below branches on the same vocabulary the rows store.
+const (
+	StorageKindBlob     = "blob"
+	StorageKindExternal = "external"
+)
+
+// ResolveAssetPath resolves where an asset's bytes live on this
+// server, branching on the row's storage kind -- the one resolver
+// every reader of file_path goes through (the pipeline jobs, the
+// original download), so the two storage eras stay one contract:
+//
+//   - a blob row's file_path is the portable relative form the
+//     upload receiver recorded, resolved against the data root with
+//     the originals-tree guard of ResolveStoredPath (server-generated
+//     values, defense in depth against a corrupted row);
+//
+//   - an external row's file_path IS the file's real absolute path
+//     (the directory album's source tree, E4: zero copy, zero move),
+//     so the resolver cleans it and proves the two invariants the
+//     rescan guarantees at ingest -- absolute, and not pointing
+//     inside the server's own managed tree (an external file never
+//     lives under the data root; the guard keeps a corrupted row
+//     from turning the media endpoints into a reader of the
+//     server's own storage).
+//
+// Unlike the path helpers above it works on any data root, not the
+// one recorded by EnsureLayout: the callers hold the data root they
+// were wired with.
+func ResolveAssetPath(dataDir, filePath, storageKind string) (string, error) {
+	if storageKind == StorageKindExternal {
+		if !filepath.IsAbs(filePath) {
+			return "", fmt.Errorf("storage: external file path %q is not absolute", filePath)
+		}
+		clean := filepath.Clean(filePath)
+		if underManagedRoot(clean, dataDir) {
+			return "", fmt.Errorf("storage: external file path %q sits inside the server's managed data tree", filePath)
+		}
+		return clean, nil
+	}
+	return ResolveStoredPath(dataDir, filePath)
+}
+
+// underManagedRoot reports whether path lies at or under the given
+// managed root, component boundaries only ("/a/b" is under "/a",
+// "/a/b-extra" is not) -- the containment test ResolveAssetPath's
+// external arm applies to keep the managed tree out of the external
+// resolution.
+func underManagedRoot(path, root string) bool {
+	root = filepath.Clean(root)
+	if path == root {
+		return true
+	}
+	if root == string(filepath.Separator) {
+		return filepath.IsAbs(path)
+	}
+	return strings.HasPrefix(path, root+string(filepath.Separator))
 }
 
 // isExtension reports whether s is a file extension in canonical form:

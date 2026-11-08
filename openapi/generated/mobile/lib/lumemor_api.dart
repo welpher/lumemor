@@ -40,6 +40,7 @@ export 'package:lumemor_api/src/model/album_items_request.dart';
 export 'package:lumemor_api/src/model/album_owner_ref.dart';
 export 'package:lumemor_api/src/model/album_patch.dart';
 export 'package:lumemor_api/src/model/album_path_completions_response.dart';
+export 'package:lumemor_api/src/model/album_rescan_response.dart';
 export 'package:lumemor_api/src/model/album_share_entry.dart';
 export 'package:lumemor_api/src/model/album_summary.dart';
 export 'package:lumemor_api/src/model/album_timeline_preference_request.dart';

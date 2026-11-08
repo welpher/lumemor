@@ -100,6 +100,14 @@ type Config struct {
 	// queue). Production leaves it nil and the queue wires its own
 	// dispatcher; the rerun tests inject fakes of the same contract.
 	MlRerunDispatch MlRerunDispatchFunc
+	// RescanDispatch runs one externally ingested asset's pipeline
+	// enqueue (the rescan worker's add and change arms): the seam
+	// whose production wiring is the queue's own dispatcher (the
+	// metadata, thumbnail and per-kind transcode jobs, the same
+	// fan-out the upload handler performs). Production leaves it nil
+	// and the queue wires its own dispatcher; the rescan tests inject
+	// fakes of the same contract.
+	RescanDispatch RescanDispatchFunc
 	// Places is the in-memory place grid the metadata job's GPS step
 	// and the places re-resolution run resolve against, built once at
 	// boot from the baked GeoNames data (geodata.Prepare). Nil is the
@@ -239,6 +247,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		places: cfg.Places,
 		logger: logger,
 	})
+	rescanWorker := &AlbumRescanWorker{
+		pool:   cfg.Pool,
+		bus:    cfg.Bus,
+		logger: logger,
+	}
+	river.AddWorker(workers, rescanWorker)
 	faceDetectWorker := &FaceDetectWorker{
 		pool:     cfg.Pool,
 		dataDir:  cfg.DataDir,
@@ -327,6 +341,15 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		mlRerunWorker.dispatch = cfg.MlRerunDispatch
 	} else {
 		mlRerunWorker.dispatch = queue.dispatchMlRerun
+	}
+	// The rescan dispatch, the same wiring discipline: the config's
+	// injection (the tests' fakes) or the queue's own fan-out. This
+	// runs BEFORE the client starts -- no worker is executing yet,
+	// so the wiring cannot race the first dispatch.
+	if cfg.RescanDispatch != nil {
+		rescanWorker.dispatch = cfg.RescanDispatch
+	} else {
+		rescanWorker.dispatch = queue.dispatchRescan
 	}
 
 	if err := client.Start(context.WithoutCancel(ctx)); err != nil {

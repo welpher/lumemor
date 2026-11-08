@@ -17,6 +17,7 @@ import 'package:lumemor_api/src/model/album_detail.dart';
 import 'package:lumemor_api/src/model/album_items_request.dart';
 import 'package:lumemor_api/src/model/album_patch.dart';
 import 'package:lumemor_api/src/model/album_path_completions_response.dart';
+import 'package:lumemor_api/src/model/album_rescan_response.dart';
 import 'package:lumemor_api/src/model/album_summary.dart';
 import 'package:lumemor_api/src/model/album_timeline_preference_request.dart';
 import 'package:lumemor_api/src/model/album_timeline_preference_response.dart';
@@ -564,6 +565,92 @@ class AlbumsApi {
     }
 
     return Response<RemoveAlbumItemsResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Start one rescan of a directory album&#39;s source.
+  /// The E4 rescan trigger: one run that walks the directory album&#39;s source root on the server and reconciles the album&#39;s membership with what the filesystem holds. The walk never follows symlinks -- a symlinked entry is skipped, a symlinked subdirectory is never descended -- and each walk entry and each live member resolves through exactly one arm of the three-arm diff:  - a file on disk no live member matches is ADDED by   reference-style ingest: a new asset row   (&#x60;storage_kind&#x60; &#x60;external&#x60;, &#x60;file_path&#x60; the file&#39;s real   absolute path, zero copy zero move) and its album   membership land in one transaction, and the existing   pipeline jobs (metadata, thumbnail, and for a video the   transcode) run over the referenced file exactly like an   upload&#39;s. An owner+checksum duplicate of content the owner   already holds never creates a second row: a live duplicate   gains the album membership, a trashed duplicate is left   alone (no revival semantics). - a live member whose file is gone from disk is marked   &#x60;deleted_at&#x60; directly (the orphan arm&#39;s pinned semantics:   the file is not the server&#39;s and the trash has no meaning   for it) -- no missing state, no revival. If the file   returns, the next scan&#39;s add arm ingests it as a NEW row. - a member whose mtime+size snapshot changed has its   checksum re-read and stored, the snapshot re-stamped, and   its metadata pipeline re-run (EXIF re-extracted, thumbnail   regenerated, the playable copy of a video re-encoded); the   ML arm follows the pipeline&#39;s own re-run path, which does   not re-fire -- readiness is already stamped.  The run&#39;s &#x60;job_runs&#x60; row (&#x60;kind&#x60; &#x60;album_rescan&#x60;, carrying the album&#39;s id) surfaces progress the way the places re-resolution run does: &#x60;job.started&#x60; / &#x60;job.progress&#x60; / &#x60;job.finished&#x60; on the activity stream, &#x60;total&#x60;/&#x60;done&#x60; counting resolved walk entries plus vanished members and &#x60;failed&#x60; the entries the run could not resolve. The idempotent rescan is the pinned contract: a second run over an unchanged directory performs zero asset writes and publishes zero asset events (the run&#39;s own &#x60;job_runs&#x60; bookkeeping is the progress surface, not product state).  The endpoint is idempotent the way the places re-resolution is, scoped to the album: a rescan of THIS album still in flight (&#x60;queued&#x60; or &#x60;running&#x60;) answers 200 with its identifier and starts nothing; another album&#39;s rescan never blocks this one.  Permission is the album writes&#39; own: the owner (or an administrator) proceeds, a sharee answers the honest 403, everyone else folds into the album 404. A non-directory album -- the caller&#39;s own sync album, a virtual album -- answers the same 404: the rescan is the directory album&#39;s own flow, and ids stay unproammable. A locked album refuses the rescan with 409: the scan rewrites the membership the lock froze. 
+  ///
+  /// Parameters:
+  /// * [albumId] - Identifier of the directory album to rescan.
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [AlbumRescanResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<AlbumRescanResponse>> rescanAlbum({ 
+    required String albumId,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/albums/{albumId}/rescan'.replaceAll('{' r'albumId' '}', encodeQueryParameter(_serializers, albumId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    AlbumRescanResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(AlbumRescanResponse),
+      ) as AlbumRescanResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<AlbumRescanResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

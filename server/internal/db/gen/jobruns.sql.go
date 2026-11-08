@@ -11,8 +11,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const findInFlightAlbumRescan = `-- name: FindInFlightAlbumRescan :one
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+FROM job_runs
+WHERE kind = $1
+  AND album_id = $2
+  AND state IN ('queued', 'running')
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type FindInFlightAlbumRescanParams struct {
+	Kind    string      `json:"kind"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+// The rescan endpoint's idempotence lookup, scoped to the album: a
+// run of the kind still in flight (state queued or running) FOR
+// THIS ALBUM answers 200 with its identifier instead of a second
+// enqueue. Another album's in-flight run matches nothing here --
+// the scans are independent, and the guard's scope is the pin (a
+// global kind lookup would serialize every album's scan behind one
+// unrelated one).
+func (q *Queries) FindInFlightAlbumRescan(ctx context.Context, arg FindInFlightAlbumRescanParams) (JobRun, error) {
+	row := q.db.QueryRow(ctx, findInFlightAlbumRescan, arg.Kind, arg.AlbumID)
+	var i JobRun
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Total,
+		&i.Done,
+		&i.Failed,
+		&i.State,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AlbumID,
+	)
+	return i, err
+}
+
 const findInFlightJobRunByKind = `-- name: FindInFlightJobRunByKind :one
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
 FROM job_runs
 WHERE kind = $1 AND state IN ('queued', 'running')
 ORDER BY created_at DESC, id DESC
@@ -37,6 +78,7 @@ func (q *Queries) FindInFlightJobRunByKind(ctx context.Context, kind string) (Jo
 		&i.FinishedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AlbumID,
 	)
 	return i, err
 }
@@ -67,7 +109,7 @@ func (q *Queries) FinishJobRun(ctx context.Context, arg FinishJobRunParams) erro
 }
 
 const getJobRun = `-- name: GetJobRun :one
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
 FROM job_runs
 WHERE id = $1
 `
@@ -89,6 +131,7 @@ func (q *Queries) GetJobRun(ctx context.Context, id pgtype.UUID) (JobRun, error)
 		&i.FinishedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AlbumID,
 	)
 	return i, err
 }
@@ -121,6 +164,39 @@ WHERE id = $1
 // enqueue itself failed (the asset's work never started).
 func (q *Queries) IncrementJobRunFailed(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, incrementJobRunFailed, id)
+	return err
+}
+
+const insertAlbumRescanRun = `-- name: InsertAlbumRescanRun :exec
+INSERT INTO job_runs (id, kind, total, album_id)
+VALUES ($1, $2, $3, $4)
+`
+
+type InsertAlbumRescanRunParams struct {
+	ID      pgtype.UUID `json:"id"`
+	Kind    string      `json:"kind"`
+	Total   int32       `json:"total"`
+	AlbumID pgtype.UUID `json:"album_id"`
+}
+
+// The rescan run's row (E4): the places-rerun row's own shape plus
+// the run's SUBJECT -- the directory album the walk reconciles.
+// The album_id column exists for exactly this kind (00015): the
+// endpoint's in-flight guard is scoped to the album, so one
+// album's scan never blocks another's while a global kind lookup
+// would. The enqueue inserts the River job in the SAME transaction
+// (one transaction, neither row nor job behind on a half-failure),
+// and the total carries the enqueue-time scope -- the album's live
+// external member count, the half of the diff the database knows
+// (the worker sizes the row to the full diff once the walk listed
+// the root).
+func (q *Queries) InsertAlbumRescanRun(ctx context.Context, arg InsertAlbumRescanRunParams) error {
+	_, err := q.db.Exec(ctx, insertAlbumRescanRun,
+		arg.ID,
+		arg.Kind,
+		arg.Total,
+		arg.AlbumID,
+	)
 	return err
 }
 
@@ -158,7 +234,7 @@ func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) erro
 }
 
 const latestJobRunByKind = `-- name: LatestJobRunByKind :one
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
 FROM job_runs
 WHERE kind = $1
 ORDER BY created_at DESC, id DESC
@@ -184,12 +260,13 @@ func (q *Queries) LatestJobRunByKind(ctx context.Context, kind string) (JobRun, 
 		&i.FinishedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AlbumID,
 	)
 	return i, err
 }
 
 const listJobRuns = `-- name: ListJobRuns :many
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
 FROM job_runs
 ORDER BY created_at DESC, id DESC
 LIMIT $1
@@ -218,6 +295,7 @@ func (q *Queries) ListJobRuns(ctx context.Context, limit int32) ([]JobRun, error
 			&i.FinishedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AlbumID,
 		); err != nil {
 			return nil, err
 		}
@@ -240,6 +318,29 @@ WHERE id = $1
 // panel's honest start time.
 func (q *Queries) MarkJobRunRunning(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markJobRunRunning, id)
+	return err
+}
+
+const setJobRunTotal = `-- name: SetJobRunTotal :exec
+UPDATE job_runs
+SET total = $2, updated_at = now()
+WHERE id = $1
+`
+
+type SetJobRunTotalParams struct {
+	ID    pgtype.UUID `json:"id"`
+	Total int32       `json:"total"`
+}
+
+// The rescan worker's sizing write: the enqueue-time total was the
+// database's half of the diff (the live member count), and the
+// walk's listing of the source root completes it -- the row's
+// total becomes the full diff (walked entries plus vanished
+// members) so the panel's progress ratio stays meaningful as the
+// arms resolve entries. The write lands once, right after the walk
+// listed the root and before the first arm runs.
+func (q *Queries) SetJobRunTotal(ctx context.Context, arg SetJobRunTotalParams) error {
+	_, err := q.db.Exec(ctx, setJobRunTotal, arg.ID, arg.Total)
 	return err
 }
 

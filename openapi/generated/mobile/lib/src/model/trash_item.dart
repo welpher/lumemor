@@ -15,6 +15,7 @@ part 'trash_item.g.dart';
 /// * [id] - UUIDv7 identifier of the asset.
 /// * [ownerId] - UUIDv7 identifier of the owning account.
 /// * [kind] - Media family of the asset.
+/// * [storageKind] - Where the asset's original file lives. `blob` rows were uploaded into the server's originals tree and were soft-deleted in place (the file stays until expiry). `external` rows reference a directory album's source file and were moved INTO the server's trash area when the owner trashed them -- the listing is honest for both kinds, and a restore moves the external file back to its recorded original location. External rows the rescan's orphan arm marked deleted never appear here at all: the file was never the server's and the trash has no meaning for it. 
 /// * [originalFilename] - The file name the asset was uploaded with.
 /// * [fileSize] - Size of the stored file in bytes.
 /// * [mimeType] - Canonical content type of the stored format, for example `image/jpeg` or `video/quicktime`. 
@@ -44,6 +45,11 @@ abstract class TrashItem implements Built<TrashItem, TrashItemBuilder> {
   @BuiltValueField(wireName: r'kind')
   TrashItemKindEnum get kind;
   // enum kindEnum {  image,  video,  };
+
+  /// Where the asset's original file lives. `blob` rows were uploaded into the server's originals tree and were soft-deleted in place (the file stays until expiry). `external` rows reference a directory album's source file and were moved INTO the server's trash area when the owner trashed them -- the listing is honest for both kinds, and a restore moves the external file back to its recorded original location. External rows the rescan's orphan arm marked deleted never appear here at all: the file was never the server's and the trash has no meaning for it. 
+  @BuiltValueField(wireName: r'storageKind')
+  TrashItemStorageKindEnum get storageKind;
+  // enum storageKindEnum {  blob,  external,  };
 
   /// The file name the asset was uploaded with.
   @BuiltValueField(wireName: r'originalFilename')
@@ -143,6 +149,11 @@ class _$TrashItemSerializer implements PrimitiveSerializer<TrashItem> {
     yield serializers.serialize(
       object.kind,
       specifiedType: const FullType(TrashItemKindEnum),
+    );
+    yield r'storageKind';
+    yield serializers.serialize(
+      object.storageKind,
+      specifiedType: const FullType(TrashItemStorageKindEnum),
     );
     yield r'originalFilename';
     yield serializers.serialize(
@@ -262,6 +273,13 @@ class _$TrashItemSerializer implements PrimitiveSerializer<TrashItem> {
             specifiedType: const FullType(TrashItemKindEnum),
           ) as TrashItemKindEnum;
           result.kind = valueDes;
+          break;
+        case r'storageKind':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(TrashItemStorageKindEnum),
+          ) as TrashItemStorageKindEnum;
+          result.storageKind = valueDes;
           break;
         case r'originalFilename':
           final valueDes = serializers.deserialize(
@@ -417,6 +435,22 @@ class TrashItemKindEnum extends EnumClass {
 
   static BuiltSet<TrashItemKindEnum> get values => _$trashItemKindEnumValues;
   static TrashItemKindEnum valueOf(String name) => _$trashItemKindEnumValueOf(name);
+}
+
+/// Where the asset's original file lives. `blob` rows were uploaded into the server's originals tree and were soft-deleted in place (the file stays until expiry). `external` rows reference a directory album's source file and were moved INTO the server's trash area when the owner trashed them -- the listing is honest for both kinds, and a restore moves the external file back to its recorded original location. External rows the rescan's orphan arm marked deleted never appear here at all: the file was never the server's and the trash has no meaning for it. 
+class TrashItemStorageKindEnum extends EnumClass {
+
+  @BuiltValueEnumConst(wireName: r'blob')
+  static const TrashItemStorageKindEnum blob = _$trashItemStorageKindEnum_blob;
+  @BuiltValueEnumConst(wireName: r'external')
+  static const TrashItemStorageKindEnum external_ = _$trashItemStorageKindEnum_external_;
+
+  static Serializer<TrashItemStorageKindEnum> get serializer => _$trashItemStorageKindEnumSerializer;
+
+  const TrashItemStorageKindEnum._(String name): super(name);
+
+  static BuiltSet<TrashItemStorageKindEnum> get values => _$trashItemStorageKindEnumValues;
+  static TrashItemStorageKindEnum valueOf(String name) => _$trashItemStorageKindEnumValueOf(name);
 }
 
 /// Where `takenAt` comes from.
