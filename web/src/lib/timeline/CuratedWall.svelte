@@ -8,9 +8,9 @@
 	// shared Wall's pure rendering. The page tells the wall its
 	// endpoint, its view, its strings and its action subset; the
 	// RENDERING is the one Wall component every photo surface
-	// composes (the timeline page keeps its richer layout -- the
-	// month scrubber, the scroll tracking -- and owns the same
-	// concerns inline; the album detail owns its own no-selection
+	// composes (the month axis is the wall's own organ -- the
+	// 2026-11-08 pin -- so it rides along here exactly as it does
+	// on the timeline; the album detail owns its own no-selection
 	// walk). The wall here IS selectable: the tiles' check
 	// affordance and the toolbar's touch-friendly select-mode toggle
 	// enter the curation pass whose actions end rows' memberships.
