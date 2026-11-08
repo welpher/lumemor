@@ -134,15 +134,6 @@
 		}
 	}
 
-	const themeOptions: ReadonlyArray<{ value: ThemePreference; labelKey: string }> = [
-		{ value: 'light', labelKey: 'theme_light' },
-		{ value: 'dark', labelKey: 'theme_dark' },
-		{ value: 'system', labelKey: 'theme_system' }
-	];
-	const languageOptions: ReadonlyArray<{ value: AppLocale; labelKey: string }> = [
-		{ value: 'en', labelKey: 'language_english' },
-		{ value: 'zh-Hans', labelKey: 'language_chinese' }
-	];
 
 	function closeAccountMenu(): void {
 		accountMenuOpen = false;
@@ -239,33 +230,10 @@
 				</button>
 				{#if accountMenuOpen}
 					<div class="account-menu absolute top-[calc(100%_+_8px)] right-0 z-(--z-menu) min-w-[180px] box-content p-2 bg-card border border-border rounded-overlay shadow-overlay">
-						<p class="account-menu__heading mt-1 mx-2 mb-0.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('theme_label')}</p>
-						<div class="account-menu__options flex flex-col" role="group" aria-label={$_('theme_label')}>
-							{#each themeOptions as option (option.value)}
-								<button
-									class="account-menu__option px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft aria-pressed:font-bold aria-pressed:text-accent-soft-text aria-pressed:bg-accent-soft"
-									type="button"
-									aria-pressed={themePreference() === option.value}
-									onclick={() => setThemePreference(option.value)}
-								>
-									{$_(option.labelKey)}
-								</button>
-							{/each}
-						</div>
-						<p class="account-menu__heading mt-1 mx-2 mb-0.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('language_label')}</p>
-						<div class="account-menu__options flex flex-col" role="group" aria-label={$_('language_label')}>
-							{#each languageOptions as option (option.value)}
-								<button
-									class="account-menu__option px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft aria-pressed:font-bold aria-pressed:text-accent-soft-text aria-pressed:bg-accent-soft"
-									type="button"
-									aria-pressed={($locale ?? 'en') === option.value}
-									onclick={() => setLocale(option.value)}
-								>
-									{$_(option.labelKey)}
-								</button>
-							{/each}
-						</div>
-						<div class="account-menu__divider h-px my-2 mx-1 bg-border"></div>
+						<!-- The dropdown is the account's door: the settings link and
+						     the sign-out. The theme/language quick toggles moved to
+						     the settings page (their permanent home — the dropdown
+						     keeps one purpose, not a control panel). -->
 						<!-- The settings link: the dropdown's own door to the full
 						     settings page (the drawer also carries it, but the
 						     account menu is the faster reach). -->
