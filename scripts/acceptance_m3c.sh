@@ -428,17 +428,32 @@ prepare_bind_mount() {
     # through the image itself running as root -- the fresh-install
     # contract without sudo. The chown rides the app image, so it must
     # exist: build it here (a cached no-op when the image is current;
-    # `up -d --build` below re-checks it). The E6 writable source
-    # fixture joins the chown: the write probe creates and removes
-    # its own entry in that directory and the trash move renames out
-    # of it, so the DIRECTORY must be the container's to write (the
-    # photos the stories stage inside it later need no ownership of
-    # their own). The read-only fixture mount is never touched.
+    # `up -d --build` below re-checks it).
+    #
+    # The TWO binds get DIFFERENT treatments, and the difference is
+    # load-bearing:
+    # - /var/lib/lumemor (the data tree) is CHOWNED to 10001 -- the
+    #   container is its only writer; the host never touches it again.
+    # - /mnt/e2e-source-rw (the E6 writable source fixture) is
+    #   CHMOD-only (a+rwX, ownership untouched). On a real Linux bind
+    #   a chown would propagate to the host directory and lock the
+    #   HOST user out of the sweep/seed steps that follow
+    #   (seed_rw_fixture runs as the host user -- the first CI run
+    #   hit exactly that: cp: Permission denied). With chmod the
+    #   directory stays the host user's (the sweep and the seed keep
+    #   working) while the container's uid 10001 writes through the
+    #   "other" bits: the probe's create/remove, the trash move's
+    #   rename (a rename needs the DIRECTORY's write bit, never the
+    #   file's), and the restore's return. On Darwin's osxfs the
+    #   chown never propagated anyway -- which is why the local runs
+    #   stayed green while CI died: the local green was masking the
+    #   Linux semantics, and the chmod model makes both hosts behave
+    #   the same.
     mkdir -p lumemor
     compose build || fail "docker compose build failed"
     compose run --rm --no-deps --entrypoint /bin/sh -u 0 lumemor \
-        -c 'chown -R 10001:10001 /var/lib/lumemor /mnt/e2e-source-rw' \
-        || fail "chown of ./lumemor and the writable source fixture to 10001:10001 through the image failed"
+        -c 'chown -R 10001:10001 /var/lib/lumemor; chmod -R a+rwX /mnt/e2e-source-rw' \
+        || fail "the data chown and the writable-fixture chmod through the image failed"
 }
 
 # seed_rw_fixture stages the writable source fixture's photo: the
