@@ -641,7 +641,7 @@ status="$(curl -sS -o "$work_dir/unnamed_body" -b "$cookie_jar" -w '%{http_code}
     || fail "GET /api/v1/people/unnamed request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/people/unnamed returned status $status, want 200: $(cat "$work_dir/unnamed_body")"
-unnamed_items="$(grep -o '"clusterId"' "$work_dir/unnamed_body" | wc -l | tr -d ' ')"
+unnamed_items="$(grep -o '"clusterId"' "$work_dir/unnamed_body" | wc -l | tr -d ' ' || true)"
 [ "$unnamed_items" = "2" ] \
     || fail "the unnamed region lists $unnamed_items clusters, want 2: $(cat "$work_dir/unnamed_body")"
 grep -q "\"$clusterA\"" "$work_dir/unnamed_body" \
@@ -683,7 +683,7 @@ status="$(curl -sS -o "$work_dir/unnamed_body" -b "$cookie_jar" -w '%{http_code}
     || fail "GET /api/v1/people/unnamed request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/people/unnamed returned status $status, want 200: $(cat "$work_dir/unnamed_body")"
-unnamed_items="$(grep -o '"clusterId"' "$work_dir/unnamed_body" | wc -l | tr -d ' ')"
+unnamed_items="$(grep -o '"clusterId"' "$work_dir/unnamed_body" | wc -l | tr -d ' ' || true)"
 [ "$unnamed_items" = "1" ] \
     || fail "the unnamed region lists $unnamed_items clusters after naming Alpha, want 1: $(cat "$work_dir/unnamed_body")"
 grep -q "\"$clusterB\"" "$work_dir/unnamed_body" \

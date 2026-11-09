@@ -622,10 +622,10 @@ status="$(curl -sS -o "$work_dir/models_body" -b "$cookie_jar" -w '%{http_code}'
     || fail "GET /api/v1/admin/models request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/admin/models returned status $status, want 200: $(cat "$work_dir/models_body")"
-active_count="$(grep -o '"isActive":true' "$work_dir/models_body" | wc -l | tr -d ' ')"
+active_count="$(grep -o '"isActive":true' "$work_dir/models_body" | wc -l | tr -d ' ' || true)"
 [ "$active_count" = "5" ] \
     || fail "the model listing shows $active_count active models, want 5: $(cat "$work_dir/models_body")"
-files_present="$(grep -o '"filesPresent":true' "$work_dir/models_body" | wc -l | tr -d ' ')"
+files_present="$(grep -o '"filesPresent":true' "$work_dir/models_body" | wc -l | tr -d ' ' || true)"
 [ "$files_present" = "5" ] \
     || fail "the model listing shows $files_present models with files present, want 5: $(cat "$work_dir/models_body")"
 for model_id in yunet-2023mar sface-2021dec cnclip-vit-b16-vision cnclip-vit-b16-text ppocr-v4-mobile-ch; do
