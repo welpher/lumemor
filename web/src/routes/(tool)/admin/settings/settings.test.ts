@@ -522,7 +522,7 @@ test('the add row completes against the opened roots through the shared combobox
 	await settle();
 
 	const rows = Array.from(
-		section().querySelectorAll<HTMLElement>('.path-completion__row-path') ?? []
+		document.body.querySelectorAll<HTMLElement>('.path-completion__row-path') ?? []
 	);
 	expect(rows.map((row) => row.textContent)).toEqual(['/Volumes/Photos', '/Volumes/PhoneBackup']);
 
@@ -533,13 +533,15 @@ test('the add row completes against the opened roots through the shared combobox
 	input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 	flushSync();
 	expect(
-		section().querySelectorAll('[role="option"]')[1]?.getAttribute('aria-selected')
+		document.body.querySelectorAll('[role="option"]')[1]?.getAttribute('aria-selected')
 	).toBe('true');
 	input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 	flushSync();
 
 	expect(input?.value).toBe('/Volumes/PhoneBackup');
-	expect(section().querySelector('.path-completion__suggest')).toBeNull();
+	// The portaled layer leaves the document with the close -- the
+	// section's own DOM never carried it.
+	expect(document.body.querySelector('.path-completion__suggest')).toBeNull();
 
 	// The completed draft lands as a root row through the add button.
 	buttonByText('Add root', section()).dispatchEvent(new MouseEvent('click', { bubbles: true }));

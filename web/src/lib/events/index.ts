@@ -18,7 +18,14 @@
 // ring buffer and skips what fell out (the contract in
 // openapi/lumemor.yaml). This module adds no reconnect logic of its
 // own on purpose -- hand-rolling it would only diverge from the
-// browser's.
+// browser's. It does OBSERVE the browser's connection state (the
+// onopen/onerror handlers below) and report it into the connection
+// store, so the offline strip (web IA §6's pinned state) can tell
+// the user the truth: the stream is down, the browser is retrying,
+// it recovered. Observation only -- the retry schedule stays the
+// browser's secret (JS cannot read it), which is why the strip
+// counts the elapsed reconnecting seconds, never a fabricated
+// countdown.
 //
 // Event names arrive as SSE `event:` lines, so only
 // addEventListener(name) receives them (the default `onmessage`
@@ -33,6 +40,13 @@
 // map[string]string), the counts parsing through Number(); anything
 // else on the wire is ignored defensively rather than crashing
 // subscribers.
+
+import {
+	markStreamClosed,
+	markStreamConnecting,
+	markStreamDown,
+	markStreamOpen
+} from './connection.svelte';
 
 export type AssetKind = 'image' | 'video';
 
@@ -466,7 +480,10 @@ function parseAlbumEvent(name: AlbumEventName, message: MessageEvent): AlbumEven
  * Open the shared stream when the first listener arrives. The
  * EventSource constructor is read at call time (never at import
  * time) so test environments without one keep every subscriber inert
- * instead of throwing at module load.
+ * instead of throwing at module load. The connection store joins the
+ * ride from here: the construction reports 'connecting', the
+ * browser's onopen reports the landed connection, its onerror
+ * reports the lost one (the browser owns the retry; see the header).
  */
 function connect(): void {
 	if (source !== null) {
@@ -477,6 +494,13 @@ function connect(): void {
 		return;
 	}
 	source = new EventSourceConstructor(EVENTS_PATH);
+	markStreamConnecting();
+	source.onopen = () => {
+		markStreamOpen();
+	};
+	source.onerror = () => {
+		markStreamDown();
+	};
 	for (const name of ASSET_EVENT_NAMES) {
 		source.addEventListener(name, (message: MessageEvent) => {
 			const event = parseAssetEvent(name, message);
@@ -534,10 +558,16 @@ function connect(): void {
 	}
 }
 
-/** Close the shared stream (the last listener left, or the app reset). */
+/**
+ * Close the shared stream (the last listener left, or the app reset).
+ * The close is intentional, so the connection store reports 'closed'
+ * -- nothing is lost when nothing is live, and the offline strip
+ * falls with it.
+ */
 function disconnect(): void {
 	source?.close();
 	source = null;
+	markStreamClosed();
 }
 
 /** The number of subscribers across all event kinds. */

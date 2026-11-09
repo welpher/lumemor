@@ -1,12 +1,21 @@
 <script lang="ts">
 	// The source-path completion combobox of the albums-as-sources
-	// dialogs (the specimen's inline-expansion pin, 2026-11-08): the
-	// typed prefix in, the pickable directories out, the list
-	// expanding INLINE under the input -- the dialog grows and its
-	// footer moves down, zero occlusion by construction, no floating
-	// layer a modal body's overflow could clip. The rows are the
-	// specimen's: the folder glyph + the full path, the active
-	// highlight, the keys footer (↑↓ / Enter / Esc).
+	// dialogs: the typed prefix in, the pickable directories out, the
+	// list a FLOATING LAYER (web IA §7.5's 2026-11-09 second
+	// revision: the 2026-11-08 inline-expansion design is retired --
+	// it traded an offset shift for height churn, the modal growing
+	// and shrinking with every list appearance, the wrong tool). The
+	// layer portals to document.body as a fixed, anchored surface
+	// (the shared `anchored` action): the modal body's overflow can
+	// never clip it, and the dialog NEVER changes height for it. The
+	// rows are the specimen's: the folder glyph + the full path, the
+	// active highlight, the keys footer (↑↓ / Enter / Esc).
+	//
+	// THE VALIDATION SLOT (§7.5's companion pin): the line under the
+	// field is a reserved fixed-height slot -- the hint and the
+	// failure SWAP inside it (slot-replace, never slot-add), so the
+	// dialog's height is invariant to the validation's comings and
+	// goings exactly as it is to the picker's open/close.
 	//
 	// THE REQUEST DISCIPLINE (the plan's pinned semantics): debounced
 	// ~250ms and single-flight -- a burst of keystrokes costs ONE
@@ -27,10 +36,15 @@
 	// highlighted row into the field and closes the list, Esc closes
 	// the list alone -- both stopPropagation so the surrounding
 	// modal (its own Escape and any Enter-submit) never reacts to a
-	// stroke the list already owned.
+	// stroke the list already owned. The input KEEPS the focus while
+	// the list is open (the combobox pattern); the layer floats
+	// outside the Modal's focus trap by the spec's own pin.
 	import { _ } from 'svelte-i18n';
 	import { completeAlbumPath } from '$lib/api/albums';
+	import { sessionRole } from '$lib/auth/session.svelte';
+	import { anchored } from '$lib/components/anchored';
 	import Folder from '@lucide/svelte/icons/folder';
+	import HardDrive from '@lucide/svelte/icons/hard-drive';
 
 	type Props = {
 		/** The draft path (bindable): a completion writes its row into it. */
@@ -71,6 +85,10 @@
 	 */
 	let emptyPrefixAnswer = $state(false);
 
+	/** The admin's direct door out of the dead end (the owner's
+	 * 2026-11-09 dogfood finding): the session's role decides. */
+	const adminSession = $derived(sessionRole() === 'admin');
+
 	// The single-flight pair: the running flag parks later triggers,
 	// the queued flag runs ONE trailing fetch when the flight lands
 	// (the wall's runLoad collapse, applied to a combobox).
@@ -81,6 +99,8 @@
 	let generation = 0;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
+	/** The combobox input: the layer's anchor and its focus home. */
+	let input: HTMLInputElement | undefined = $state();
 	let listbox: HTMLElement | undefined = $state();
 
 	$effect(() => {
@@ -205,6 +225,7 @@
 	<input
 		class="path-completion__input w-full px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-card border rounded-control outline-none transition-[border-color] duration-(--motion-fast) ease-standard {failure === '' ? 'border-border-strong focus:border-accent' : 'border-danger'}"
 		{id}
+		bind:this={input}
 		bind:value={path}
 		type="text"
 		{placeholder}
@@ -217,24 +238,43 @@
 		aria-activedescendant={open && activeIndex >= 0 ? rowId(activeIndex) : undefined}
 		aria-autocomplete="list"
 		aria-invalid={failure === '' ? undefined : 'true'}
-		aria-describedby={failure !== '' ? `${id}-failure` : undefined}
+		aria-describedby="{id}-note"
 		oninput={() => schedule()}
 		onfocus={() => schedule()}
 		onkeydown={handleKeydown}
 		onblur={handleBlur}
 	/>
-	{#if hint !== ''}
-		<p class="path-completion__hint m-0 mt-1 font-body font-normal text-[13px] leading-[1.4] text-text-faint">{hint}</p>
-	{/if}
-	{#if failure !== ''}
-		<p class="path-completion__failure m-0 mt-1 font-body font-semibold text-[13px] leading-[1.4] text-danger-text" id="{id}-failure" role="alert">{failure}</p>
-	{/if}
+	<!-- THE VALIDATION SLOT (§7.5's 2026-11-09 companion pin): the
+	     line under the field is a reserved fixed-height slot -- the
+	     hint and the failure SWAP inside it (slot-replace, never
+	     slot-add), so the dialog's height is invariant to the
+	     validation's comings and goings, exactly as it is to the
+	     picker's open/close. The slot reserves two lines while a
+	     hint or a failure stands (the specimen's hint wraps two),
+	     one line for a bare field (the settings' add-root row); a
+	     text longer than the standing face overflows visibly rather
+	     than clipping -- honest words beat clipped ones. The slot's
+	     id is the input's described-by partner in both faces. -->
+	<p
+		class="path-completion__slot m-0 mt-1 {hint === '' && failure === '' ? 'h-[19px]' : 'h-[37px]'} font-body font-normal text-[13px] leading-[1.4] {failure !== '' ? 'path-completion__failure font-semibold text-danger-text' : 'path-completion__hint text-text-faint'}"
+		id="{id}-note"
+		role={failure !== '' ? 'alert' : undefined}
+	>{failure !== '' ? failure : hint}</p>
 	{#if open}
-		<!-- THE INLINE EXPANSION (the anti-occlusion pin): the list is
-		     a flow child of the field -- the dialog grows, its footer
-		     moves down, and no overflow rule can ever clip it. -->
+		<!-- THE FLOATING LAYER (§7.5's 2026-11-09 second revision): the
+		     candidate block portals to document.body as a fixed layer
+		     anchored under the input (the shared `anchored` action) --
+		     the modal's overflow never clips it and the dialog NEVER
+		     changes height for it. The surface mirrors the account
+		     dropdown (bg-card, overlay radius, overlay shadow): it is
+		     a popover now, not a form block. The focus stays on the
+		     input (the combobox pattern) -- the layer rides outside
+		     the Modal's focus trap by the spec's own pin, and its
+		     rows are plain descendants the input's aria-* wiring
+		     still points at. -->
 		<div
-			class="path-completion__suggest mt-1.5 bg-page border border-border rounded-control overflow-hidden"
+			class="path-completion__suggest fixed z-(--z-dropdown) box-border bg-card border border-border rounded-overlay shadow-overlay overflow-y-auto [scrollbar-gutter:stable]"
+			use:anchored={{ anchor: () => input }}
 			bind:this={listbox}
 			id="{id}-listbox"
 			role="listbox"
@@ -247,8 +287,28 @@
 			{:else if paths.length === 0}
 				{#if emptyPrefixAnswer}
 					<!-- The honest no-roots posture: the allowlist is closed,
-					     the admin must open a root first. -->
-					<p class="path-completion__no-roots m-0 px-3 py-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_('albums_path_no_roots')}</p>
+					     the admin must open a root first. For the ADMIN the
+					     note is no longer a dead end (the 2026-11-09 dogfood
+					     finding): a direct icon+text action (§7.2's primary
+					     flow shape) jumps to the instance settings, where the
+					     "Album sources" section owns the allowlist -- the
+					     member keeps the note alone, the honest face of
+					     "an administrator must do this". The role is the
+					     session store's own read (the drawer's pattern:
+					     components read the store directly, no prop
+					     shadowing). -->
+					<div class="path-completion__no-roots-block px-3 py-2">
+						<p class="path-completion__no-roots m-0 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_('albums_path_no_roots')}</p>
+						{#if adminSession}
+							<a
+								class="path-completion__no-roots-action mt-1.5 inline-flex items-center gap-2 px-2 py-1.5 rounded-control bg-transparent font-body font-semibold text-[13px] leading-[1.4] text-link text-left no-underline cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+								href="/admin/settings"
+							>
+								<HardDrive size={16} class="shrink-0" aria-hidden="true" />
+								{$_('albums_path_no_roots_action')}
+							</a>
+						{/if}
+					</div>
 				{:else}
 					<p class="path-completion__no-match m-0 px-3 py-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_('albums_path_no_match')}</p>
 				{/if}

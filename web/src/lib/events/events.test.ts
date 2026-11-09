@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { subscribeAlbumEvents, subscribeAssetEvents, subscribeFaceEvents, subscribeJobEvents, subscribePersonEvents } from './index';
+import { streamDownSince, streamStatus } from './connection.svelte';
 
 // The shared SSE subscription module: one EventSource per app, opened
 // by the first subscriber and closed by the last unsubscribe, parsing
@@ -17,6 +18,9 @@ class MockEventSource {
 	url: string;
 	closed = false;
 	readonly listeners = new Map<string, Set<Listener>>();
+	/** The connection lifecycle callbacks the events lib reports into the store. */
+	onopen: (() => void) | null = null;
+	onerror: (() => void) | null = null;
 
 	constructor(url: string) {
 		this.url = url;
@@ -34,6 +38,16 @@ class MockEventSource {
 
 	close(): void {
 		this.closed = true;
+	}
+
+	/** The browser's connection-landed report (onopen). */
+	open(): void {
+		this.onopen?.();
+	}
+
+	/** The browser's connection-lost report (onerror). */
+	drop(): void {
+		this.onerror?.();
 	}
 
 	/** Deliver one SSE block the way the browser would. */
@@ -427,8 +441,7 @@ test('album subscribers ride the shared stream; the last unsubscribe closes it',
 
 // --- face.clustered (the recognition run's cluster totals) --------------------
 
-test('face.clustered is subscribed and parses the all-strings counts into numbers', () => {
-	const seen: unknown[] = [];
+test('face.clustered is subscribed and parses the all-strings counts into numbers', () => {	const seen: unknown[] = [];
 	const unsubscribe = subscribeFaceEvents((event) => seen.push(event));
 
 	// The payload is map[string]string on the wire: both totals are
@@ -457,4 +470,57 @@ test('malformed face.clustered blocks are ignored, not dispatched', () => {
 
 	expect(seen).toEqual([]);
 	unsubscribe();
+});
+
+// --- the connection store (the offline strip's truth) -------------------------
+
+test('the connection store follows the stream lifecycle: connecting, open, down, closed', () => {
+	const unsubscribe = subscribeAssetEvents(() => undefined);
+	const stream = MockEventSource.instances[0];
+
+	// The construction reports 'connecting' -- no strip face yet.
+	expect(streamStatus()).toBe('connecting');
+	// The browser's connection lands (onopen): the healthy state.
+	stream.open();
+	expect(streamStatus()).toBe('open');
+	expect(streamDownSince()).toBeNull();
+
+	// The browser loses the connection (onerror): the strip's face,
+	// with the drop's timestamp (the elapsed clock's origin).
+	stream.drop();
+	expect(streamStatus()).toBe('down');
+	expect(streamDownSince()).not.toBeNull();
+
+	// A repeated error (another failed retry) keeps the FIRST drop's
+	// timestamp: the elapsed count spans the whole reconnecting
+	// window, never restarting at every attempt.
+	const firstDrop = streamDownSince();
+	stream.drop();
+	expect(streamDownSince()).toBe(firstDrop);
+
+	// The browser's own retry lands: recovery, the strip falls.
+	stream.open();
+	expect(streamStatus()).toBe('open');
+	expect(streamDownSince()).toBeNull();
+
+	// The intentional close (the last subscriber left): nothing is
+	// lost when nothing is live -- the strip falls with it.
+	unsubscribe();
+	expect(streamStatus()).toBe('closed');
+	expect(streamDownSince()).toBeNull();
+});
+
+test('an error during the initial connect is already the down state (the strip never waits for a first open)', () => {
+	const unsubscribe = subscribeAssetEvents(() => undefined);
+	const stream = MockEventSource.instances[0];
+
+	// The server is unreachable from the very first attempt: the
+	// browser reports the failure while still connecting -- the
+	// stream the pages expect is not there, and the strip rises.
+	stream.drop();
+	expect(streamStatus()).toBe('down');
+	expect(streamDownSince()).not.toBeNull();
+
+	unsubscribe();
+	expect(streamStatus()).toBe('closed');
 });

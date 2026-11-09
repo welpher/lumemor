@@ -35,6 +35,8 @@
 	import Button from '$lib/components/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import UploadOverlay from '$lib/upload/UploadOverlay.svelte';
+	import OfflineStrip from '$lib/events/OfflineStrip.svelte';
+	import ShortcutsDialog from '$lib/components/ShortcutsDialog.svelte';
 	import { enqueueUploadFiles } from '$lib/upload/queue.svelte';
 	import { logout } from '$lib/auth/session.svelte';
 	import Menu from '@lucide/svelte/icons/menu';
@@ -149,7 +151,48 @@
 		if (accountMenuOpen && event.key === 'Escape') {
 			closeAccountMenu();
 		}
+		// The `/` focus-search binding (web IA §6): outside every
+		// editable context, with no dialog open above the page and
+		// the drawer closed, the stroke lands the focus on the top
+		// bar's search box -- the one box whose Enter commits to the
+		// search page. preventDefault keeps the key from the
+		// browser's own quick-find (Firefox) and the stroke from
+		// scrolling. Two routes have no box to focus: the album
+		// detail (its own chrome replaces the shell bar) and the
+		// viewer (the fixed stage covers the bar) -- on both the
+		// stroke passes through untouched rather than focusing an
+		// element the page has covered.
+		if (event.key === '/' && !isEditableTarget(event.target)) {
+			if (accountMenuOpen || drawerOpen || document.querySelector('[role="dialog"]') !== null) {
+				return;
+			}
+			if (page.route.id === '/(content)/a/[id]' || albumDetailActive) {
+				return;
+			}
+			const box = document.querySelector<HTMLInputElement>('input.topbar-search');
+			if (box === null) {
+				return;
+			}
+			event.preventDefault();
+			box.focus();
+		}
 	}
+
+	/** Typing belongs to the field: the viewer's own guard, shared shape. */
+	function isEditableTarget(target: EventTarget | null): boolean {
+		if (target === null || !(target instanceof HTMLElement)) {
+			return false;
+		}
+		return (
+			target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]') !==
+			null
+		);
+	}
+
+	// The shortcut sheet's open state: the ShortcutsDialog owns its
+	// own `?` toggle; the state lives here only because the sheet is
+	// the shell's organ (one instance per shell, like the drawer).
+	let shortcutsOpen = $state(false);
 
 	// Sign out: revoke the session, clear the store, land on the
 	// login page. The SessionGuard watcher reacts to the same store
@@ -171,6 +214,13 @@
 <svelte:window onpointerdown={handleWindowPointerdown} onkeydown={handleWindowKeydown} />
 
 <div class="shell h-dvh flex flex-col overflow-hidden">
+	<!-- The offline strip (web IA §6): the frame's FIRST child, above
+	     the topbar content -- and above <main> on the album detail
+	     route, whose own chrome replaces the shell bar (the
+	     connection is shell-wide truth, not the topbar's). It renders
+	     nothing while the SSE stream is healthy or closed; it rises
+	     only on a dropped connection. -->
+	<OfflineStrip />
 	{#if !albumDetailActive}
 		<header class="shell-topbar flex items-center gap-3 px-4 py-2 border-b border-border bg-card">
 			<button
@@ -234,9 +284,11 @@
 						     the sign-out. The theme/language quick toggles moved to
 						     the settings page (their permanent home — the dropdown
 						     keeps one purpose, not a control panel). -->
-						<!-- The settings link: the dropdown's own door to the full
-						     settings page (the drawer also carries it, but the
-						     account menu is the faster reach). -->
+						<!-- The settings link: the account dropdown is settings'
+						     ONLY home (web IA §7.8's 2026-11-09 pin -- the
+						     drawer's duplicate item died with the
+						     interface-debt block), so this door carries the
+						     whole reach. -->
 						<a
 							class="account-menu__option account-menu__settings flex items-center gap-2 px-2 py-[7px] rounded-control bg-transparent font-body font-normal text-[15px] leading-[1.4] text-text text-left no-underline cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
 							href="/settings"
@@ -263,6 +315,9 @@
 		</header>
 	{/if}
 	<Drawer bind:open={drawerOpen} />
+	<!-- The `?` shortcut sheet (web IA §6): the shared Modal over the
+	     shell, listing every binding the app actually carries. -->
+	<ShortcutsDialog bind:open={shortcutsOpen} />
 	<!-- The frame's one scroll container: the sticky month/day
 	     headers, the scrubber tracking and the batch bar all answer
 	     to THIS element now (see the pages' capture-phase scroll

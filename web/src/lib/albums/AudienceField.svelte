@@ -8,32 +8,61 @@
 	// §7.6, the specimen's add-style pin): "who can see" as ONE
 	// property of the album -- the granted accounts as chips (the
 	// avatar + the name + the remove mark), the dashed "Add"
-	// affordance, and the candidate picker that opens INLINE (the
-	// same zero-occlusion construction as the path completion: the
-	// dialog grows, its footer moves down, no floating layer). The
-	// candidate rows are STATE SELECTORS, not action buttons (the
-	// icon-first rule's second face): the row's mousedown adds, the
-	// chip's remove mark is the only button among them.
+	// affordance, and the candidate picker as a FLOATING LAYER (web
+	// IA §7.5's 2026-11-09 second revision: the 2026-11-08
+	// inline-expansion design is retired -- it traded an offset
+	// shift for height churn, the dialog growing and shrinking with
+	// every open; the layer portals to document.body, anchored under
+	// the chips row through the shared `anchored` action, so the
+	// modal's overflow never clips it and the dialog NEVER changes
+	// height for it). The candidate rows are STATE SELECTORS, not
+	// action buttons (the icon-first rule's second face): the row's
+	// mousedown adds, the chip's remove mark is the only button
+	// among them.
 	//
 	// THE CANDIDATES: the instance's minimal member list (the same
 	// users listing the share dialog consumed), minus the current
 	// draft's members (they are chips already) and minus the CALLER
 	// (the owner sees the album by construction; the server's own
 	// skip report is the backstop when the session has no id). The
-	// listing is fetched on every open -- the per-open discipline of
-	// the old share dialog -- and its honest failure renders inside
-	// the picker, with the toggle affordance as the retry path.
+	// listing is fetched ONCE AT MOUNT (the pool probe -- §7.6's
+	// 2026-11-09 pin needs the pool KNOWN before the first open, so
+	// a single-account instance answers its honestly disabled add
+	// button immediately) and FRESH on every open -- the per-open
+	// discipline of the old share dialog; its honest failure renders
+	// inside the picker, with the toggle affordance as the retry
+	// path (which is exactly why an UNKNOWN pool never disables the
+	// button: the open IS the retry).
+	//
+	// NO CANDIDATES = THE ADD AFFORDANCE DIES (§7.6's 2026-11-09
+	// pin): when the known pool is empty -- a single-account
+	// instance, or the multi-add draining the last candidate -- the
+	// add button is disabled (the honest disabled face: reduced
+	// opacity, the not-allowed cursor) and an empty list earns no
+	// row: the picker never OPENS empty, and a picker whose pool
+	// drains mid-open COLLAPSES itself (an empty picker state is
+	// never shown). The reserved no-candidates slot under the chips
+	// row carries the words.
+	//
+	// THE VALIDATION SLOT (§7.5's 2026-11-09 companion pin): the
+	// line under the chips row is a reserved fixed-height slot --
+	// the no-candidates note appears and disappears inside it, so
+	// the dialog's height is invariant to the note's comings and
+	// goings, exactly as it is to the picker's open/close.
 	//
 	// THE KEYBOARD (the specimen's keys footer): the listbox takes
 	// the focus on open; ↑/↓ move the highlight, Enter adds the
 	// highlighted candidate (the list STAYS open -- the specimen's
 	// state two shows a chip landed while the picker offers the
-	// next; Esc is the close), Esc closes the picker alone and
-	// stops there -- the modal behind it never reacts to a stroke
-	// the picker owned.
+	// next -- unless the pool drains, which collapses it), Esc
+	// closes the picker alone and stops there -- the modal behind
+	// it never reacts to a stroke the picker owned. The layer rides
+	// OUTSIDE the Modal's focus trap by the spec's own pin; closing
+	// returns the focus to the trigger.
 	import { _ } from 'svelte-i18n';
 	import { tick } from 'svelte';
 	import { listUsers, type UserSummary } from '$lib/api/albums';
+	import { anchored } from '$lib/components/anchored';
 	import UserRoundPlus from '@lucide/svelte/icons/user-round-plus';
 	import X from '@lucide/svelte/icons/x';
 
@@ -50,14 +79,23 @@
 
 	/** The candidate picker's face. */
 	let open = $state(false);
-	/** The instance's member list while it is loaded ('' state below). */
+	/** The instance's member list while it is loaded (the pool's source). */
 	let users = $state<UserSummary[]>([]);
 	/** Whether the member-list fetch runs; its honest failure key. */
 	let loading = $state(false);
 	let failed = $state(false);
+	/**
+	 * Whether a member listing has ever landed OK -- what makes the
+	 * candidate pool KNOWN. The add button's disabled state rides on
+	 * it: an unknown pool (never probed, or a failed probe) keeps the
+	 * button enabled, because opening the picker IS the retry path.
+	 */
+	let probed = $state(false);
 	/** The highlighted candidate's index (-1 = none). */
 	let activeIndex = $state(-1);
 
+	/** The chips row: the portaled picker's anchor and the drain-close's focus scope. */
+	let chipsRow: HTMLElement | undefined = $state();
 	let listbox: HTMLElement | undefined = $state();
 	let addButton: HTMLButtonElement | undefined = $state();
 
@@ -69,6 +107,19 @@
 				user.id !== selfId && !members.some((member) => member.userId === user.id)
 		)
 	);
+
+	// The add affordance's honest disabled state (§7.6's pin): the
+	// pool is KNOWN empty -- a landed listing minus the caller minus
+	// the granted chips. The granted set cannot push the pool below
+	// empty on its own (granted accounts were never candidates); an
+	// unknown pool keeps the button enabled as the retry door.
+	const poolEmpty = $derived(probed && candidates.length === 0);
+
+	// The mount probe: one listing fetch when the field mounts (the
+	// dialog opened), so the pool is known BEFORE the first open.
+	$effect(() => {
+		void load();
+	});
 
 	// Keep the highlight valid as the set re-derives (a just-added
 	// candidate leaves the list; the highlight steps forward on its
@@ -91,6 +142,36 @@
 		}
 	});
 
+	/**
+	 * Fetch the member list: once at mount (the pool probe) and fresh
+	 * on every picker open. The answer always applies -- it feeds the
+	 * add button's state whether the picker is open or not (the
+	 * stale pool keeps that state honest while the fresh fetch runs;
+	 * the picker shows its own loading face).
+	 */
+	async function load(): Promise<void> {
+		loading = true;
+		failed = false;
+		const outcome = await listUsers();
+		loading = false;
+		if (outcome.ok) {
+			users = outcome.users;
+			probed = true;
+			activeIndex = 0;
+			// §7.6's pin: an empty picker state is never shown. The
+			// fresh answer may reveal the pool empty mid-open (the
+			// probe raced the open, or the listing changed) -- the
+			// honest collapse. The focus stays put: the add button is
+			// about to disable (an unfocusable target), and the
+			// modal's Tab trap recovers the next stroke anyway.
+			if (open && candidates.length === 0) {
+				open = false;
+			}
+		} else {
+			failed = true;
+		}
+	}
+
 	/** Toggle the candidate picker; every open fetches the member list fresh. */
 	function toggle(): void {
 		if (busy) {
@@ -102,34 +183,34 @@
 			return;
 		}
 		open = true;
-		users = [];
-		failed = false;
-		loading = true;
-		void (async () => {
-			const outcome = await listUsers();
-			if (!open) {
-				return;
-			}
-			loading = false;
-			if (outcome.ok) {
-				users = outcome.users;
-				activeIndex = 0;
-			} else {
-				failed = true;
-			}
-		})();
-		// The listbox renders with this state change; focus it once
-		// the DOM carries it (the keyboard driver of the picker).
+		void load();
+		// The portaled listbox renders with this state change; focus
+		// it once the DOM carries it (the keyboard driver of the picker).
 		void tick().then(() => listbox?.focus());
 	}
 
-	/** Add one candidate to the draft audience (the picker stays open). */
+	/**
+	 * Add one candidate to the draft audience. The picker stays open
+	 * for the next -- UNLESS the pool drained (§7.6's pin): the last
+	 * candidate's add collapses the picker (an empty picker state is
+	 * never shown; the add button disables and the no-candidates note
+	 * takes the reserved slot), and the focus lands on the newest
+	 * chip's remove mark -- the one enabled button left in the
+	 * section, the add button having just disabled.
+	 */
 	function add(index: number): void {
 		const candidate = candidates[index];
 		if (candidate === undefined) {
 			return;
 		}
 		members = [...members, { userId: candidate.id, email: candidate.email }];
+		if (candidates.length === 0) {
+			open = false;
+			void tick().then(() => {
+				const marks = chipsRow?.querySelectorAll<HTMLButtonElement>('.audience-field__chip-remove');
+				marks?.[marks.length - 1]?.focus();
+			});
+		}
 	}
 
 	/** Remove one member (the chip's mark). */
@@ -175,7 +256,7 @@
 
 <section class="audience-field border-t border-border pt-3" aria-label={$_('albums_audience_label')}>
 	<p class="audience-field__label m-0 mb-2 font-body font-semibold text-[14px] leading-[1.4] text-text">{$_('albums_audience_label')}</p>
-	<div class="audience-field__chips flex flex-wrap items-center gap-2">
+	<div class="audience-field__chips flex flex-wrap items-center gap-2" bind:this={chipsRow}>
 		{#if members.length === 0}
 			<!-- The honest empty audience: only the caller themselves. -->
 			<p class="audience-field__only-me m-0 font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('albums_audience_only_me')}</p>
@@ -198,26 +279,46 @@
 				</span>
 			{/each}
 		{/if}
-		<!-- The dashed add affordance (icon + text), the picker's toggle. -->
+		<!-- The dashed add affordance (icon + text), the picker's
+		     toggle. §7.6's 2026-11-09 pin: the KNOWN-empty candidate
+		     pool disables it (reduced opacity, the not-allowed cursor)
+		     -- an empty list earns no row, and the button is the one
+		     honest door that never opens onto nothing. An unknown
+		     pool keeps it enabled: the open is the failed listing's
+		     retry path. -->
 		<button
 			class="audience-field__add inline-flex items-center gap-1.5 px-2.5 py-1 border border-dashed border-border-strong bg-transparent text-text-soft rounded-full font-body font-bold text-[13px] leading-[1.4] cursor-pointer transition-[border-color,color] duration-(--motion-fast) ease-standard hover:border-accent hover:text-accent disabled:opacity-55 disabled:cursor-not-allowed"
 			type="button"
 			bind:this={addButton}
 			aria-expanded={open}
 			aria-controls={open ? 'audience-field-picker' : undefined}
-			disabled={busy}
+			disabled={busy || poolEmpty}
 			onclick={toggle}
 		>
 			<UserRoundPlus size={14} class="text-accent" aria-hidden="true" />
 			{$_('albums_audience_add')}
 		</button>
 	</div>
+	<!-- THE VALIDATION SLOT (§7.5's companion pin): a reserved
+	     fixed-height line under the chips row -- the no-candidates
+	     note appears and disappears INSIDE it, so the dialog's
+	     height never moves for the note. -->
+	<p
+		class="audience-field__slot m-0 mt-2 h-[19px] font-body font-normal text-[13px] leading-[1.4] text-text-faint {poolEmpty ? 'audience-field__no-candidates' : ''}"
+	>{poolEmpty ? $_('albums_audience_no_candidates') : ''}</p>
 	{#if open}
-		<!-- THE INLINE EXPANSION (the same anti-occlusion construction
-		     as the path completion): the picker is a flow child of the
-		     audience section. -->
+		<!-- THE FLOATING LAYER (§7.5's 2026-11-09 second revision): the
+		     candidate block portals to document.body as a fixed layer
+		     anchored under the chips row (the shared `anchored`
+		     action) -- the modal's overflow never clips it and the
+		     dialog NEVER changes height for it. The surface mirrors
+		     the account dropdown (bg-card, overlay radius, overlay
+		     shadow): it is a popover now, not a form block. The
+		     focus rides in the layer (outside the Modal's trap, the
+		     spec's own pin) and returns to the trigger on close. -->
 		<div
-			class="audience-field__picker mt-2 bg-page border border-border rounded-control overflow-hidden"
+			class="audience-field__picker fixed z-(--z-dropdown) box-border bg-card border border-border rounded-overlay shadow-overlay overflow-y-auto [scrollbar-gutter:stable]"
+			use:anchored={{ anchor: () => chipsRow }}
 			bind:this={listbox}
 			id="audience-field-picker"
 			role="listbox"
@@ -229,8 +330,6 @@
 				<p class="audience-field__loading m-0 px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('albums_audience_loading')}</p>
 			{:else if failed}
 				<p class="audience-field__failed m-0 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-danger-text" role="alert">{$_('albums_audience_failed')}</p>
-			{:else if candidates.length === 0}
-				<p class="audience-field__no-candidates m-0 px-3 py-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_('albums_audience_no_candidates')}</p>
 			{:else}
 				{#each candidates as candidate, index (candidate.id)}
 					<!-- The candidate row: a state selector, not an action

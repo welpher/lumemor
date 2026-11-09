@@ -16,13 +16,20 @@ import Layout from './+layout.svelte';
 // renders (bind:this included), so each test fires its navigation
 // explicitly after the mount.
 
-const { navigationCallbacks, pageState } = vi.hoisted(() => ({
+const { navigationCallbacks, pageState, connectionState } = vi.hoisted(() => ({
 	navigationCallbacks: [] as Array<(navigation: { type: string }) => void>,
 	// The route state the layout's topbar-hiding rule reads: the
 	// album detail's route id hides the shell topbar (R3, the page
 	// owns its chrome there); every other route keeps it.
 	pageState: {
 		route: { id: '/(content)/timeline' as string | null }
+	},
+	// The offline strip's truth, mocked at the store the strip
+	// reads: the layout's pins drive the state directly instead of
+	// stubbing an EventSource chain the layout never owns.
+	connectionState: {
+		status: 'closed' as 'closed' | 'connecting' | 'open' | 'down',
+		downSince: null as number | null
 	}
 }));
 
@@ -33,6 +40,14 @@ vi.mock('$app/navigation', () => ({
 	}
 }));
 vi.mock('$app/state', () => ({ page: pageState }));
+vi.mock('$lib/events/connection.svelte', () => ({
+	streamStatus: () => connectionState.status,
+	streamDownSince: () => connectionState.downSince,
+	markStreamConnecting: () => undefined,
+	markStreamOpen: () => undefined,
+	markStreamDown: () => undefined,
+	markStreamClosed: () => undefined
+}));
 
 function mountLayout(): ReturnType<typeof mount> {
 	return mount(Layout, {
@@ -67,6 +82,9 @@ function navigate(type: string): void {
 beforeEach(async () => {
 	document.body.textContent = '';
 	navigationCallbacks.length = 0;
+	pageState.route.id = '/(content)/timeline';
+	connectionState.status = 'closed';
+	connectionState.downSince = null;
 	vi.clearAllMocks();
 	await initI18n();
 });
@@ -230,3 +248,146 @@ test('the top bar search box navigates to the search page on commit (Enter)', ()
 	unmount(app);
 	flushSync();
 });
+
+// --- the offline strip (web IA §6, the frame's first child) ------------------
+
+test('the offline strip pins above the topbar content and rises only on a dropped connection', () => {
+	// The mocked store answers at mount (the live transitions are
+	// the component test's own pins, against the real store): each
+	// state gets its own mount.
+	connectionState.status = 'open';
+	const healthy = mountLayout();
+	flushSync();
+	expect(document.body.querySelector('.offline-strip')).toBeNull();
+	unmount(healthy);
+	flushSync();
+
+	// The dropped connection rises the yellow band -- and it is the
+	// FRAME'S FIRST CHILD, standing above the topbar content (the
+	// pin's placement: 顶栏黄条 above everything the bar carries).
+	connectionState.status = 'down';
+	connectionState.downSince = Date.now();
+	const dropped = mountLayout();
+	flushSync();
+
+	const shell = document.body.querySelector<HTMLElement>('.shell');
+	if (shell === null) {
+		throw new Error('missing shell');
+	}
+	const strip = document.body.querySelector<HTMLElement>('.offline-strip');
+	expect(strip).not.toBeNull();
+	expect(strip?.textContent).toContain('Connection lost — reconnecting');
+	expect(shell.firstElementChild).toBe(strip);
+	expect(shell.firstElementChild?.nextElementSibling?.className).toContain('shell-topbar');
+
+	unmount(dropped);
+	flushSync();
+});
+
+test('the strip stays pinned above <main> while the album detail hides the topbar', () => {
+	// The connection is shell-wide truth, not the topbar's: the
+	// album detail route owns its chrome, and the strip still rides
+	// the frame's top edge above it.
+	pageState.route.id = '/(content)/albums/[id]';
+	connectionState.status = 'down';
+	connectionState.downSince = Date.now();
+	const app = mountLayout();
+	flushSync();
+
+	expect(document.body.querySelector('.shell-topbar')).toBeNull();
+	const shell = document.body.querySelector<HTMLElement>('.shell');
+	expect(shell?.firstElementChild?.className).toContain('offline-strip');
+	expect(shell?.firstElementChild?.nextElementSibling?.tagName.toLowerCase()).toBe('main');
+
+	unmount(app);
+	flushSync();
+});
+
+// --- the `/` focus search and the `?` sheet (web IA §6) ----------------------
+
+test('`/` lands the focus on the topbar search box outside editable contexts', () => {
+	const app = mountLayout();
+	flushSync();
+	const box = document.body.querySelector<HTMLInputElement>('input.topbar-search');
+	if (box === null) {
+		throw new Error('missing topbar search');
+	}
+
+	// The stroke focuses the search box and takes its default
+	// (Firefox's quick-find would otherwise own it).
+	const onWindow = pressShell('/');
+	expect(onWindow.defaultPrevented).toBe(true);
+	expect(document.activeElement).toBe(box);
+
+	// Typing in a field keeps the stroke: dispatched at the input,
+	// the handler never touches it (no preventDefault, no focus
+	// theft -- the field's own text owns the key).
+	const inField = pressShellOn('/', box);
+	expect(inField.defaultPrevented).toBe(false);
+	expect(document.activeElement).toBe(box);
+
+	unmount(app);
+	flushSync();
+});
+
+test('`/` defers to the open layering: the drawer, the account menu and any open dialog', () => {
+	// The viewer route: the shell bar is hidden behind the page's
+	// fixed surface -- there is no box to focus, the stroke passes
+	// through untouched.
+	pageState.route.id = '/(content)/a/[id]';
+	const viewer = mountLayout();
+	flushSync();
+	const passes = pressShell('/');
+	expect(passes.defaultPrevented).toBe(false);
+	unmount(viewer);
+	flushSync();
+
+	pageState.route.id = '/(content)/timeline';
+	const app = mountLayout();
+	flushSync();
+
+	// A dialog is open: it owns the keyboard, the stroke never
+	// focuses a box behind it.
+	const dialog = document.createElement('div');
+	dialog.setAttribute('role', 'dialog');
+	document.body.appendChild(dialog);
+	const behindDialog = pressShell('/');
+	expect(behindDialog.defaultPrevented).toBe(false);
+	dialog.remove();
+
+	unmount(app);
+	flushSync();
+});
+
+test('the `?` sheet mounts with the shell and answers the toggle', () => {
+	const app = mountLayout();
+	flushSync();
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
+
+	pressShell('?');
+	const sheet = document.body.querySelector<HTMLElement>('.modal__panel[role="dialog"]');
+	expect(sheet?.getAttribute('aria-label')).toBe('Keyboard shortcuts');
+
+	pressShell('Escape');
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
+
+	unmount(app);
+	flushSync();
+});
+
+/** Press one key on the window (the shell handler's input). */
+function pressShell(key: string): KeyboardEvent {
+	const event = new KeyboardEvent('keydown', { key, cancelable: true, bubbles: true });
+	window.dispatchEvent(event);
+	flushSync();
+	return event;
+}
+
+/** Press one key targeted at a field (the editable guard's input). */
+function pressShellOn(key: string, target: HTMLElement): KeyboardEvent {
+	const event = new KeyboardEvent('keydown', { key, cancelable: true, bubbles: true });
+	Object.defineProperty(event, 'target', { value: target });
+	target.dispatchEvent(event);
+	flushSync();
+	return event;
+}
