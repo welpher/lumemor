@@ -1,7 +1,6 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
-import { probeSession, sessionStatus } from '$lib/auth/session.svelte';
 import PathCompletion from './PathCompletion.svelte';
 
 // The source-path completion combobox: the typed prefix in, the
@@ -13,15 +12,15 @@ import PathCompletion from './PathCompletion.svelte';
 // request and ONE trailing fetch runs when it lands), and a stale
 // answer never overwrites a newer one (the generation guard). The
 // keyboard: ↑/↓ highlight, Enter completes, Esc closes the list
-// alone. The honest faces: the empty-prefix empty answer is the
-// NO-ROOTS posture (the allowlist is closed), and the completion's
-// own failure renders as a line that points back at the completion.
-// The no-roots face carries the admin's direct jump to the instance
-// settings (the 2026-11-09 dogfood pin) and the validation slot
-// under the field swaps the hint and the failure at ONE height
-// (§7.5's companion pin). Every case drives the component through
-// an injected fetch mock under fake timers (the debounce is the
-// unit under observation).
+// alone. The honest faces: the empty prefix lists the container's
+// root itself (E6's system-wide domain -- the allowlist and its
+// no-roots posture retired with §7.5's third revision), an empty
+// answer renders the plain no-match note, and the completion's own
+// failure renders as a line that points back at the completion.
+// The validation slot under the field swaps the hint and the
+// failure at ONE height (§7.5's companion pin). Every case drives
+// the component through an injected fetch mock under fake timers
+// (the debounce is the unit under observation).
 
 type Held = { resolve: (paths: string[]) => void };
 
@@ -30,28 +29,6 @@ function jsonResponse(status: number, body: unknown): Response {
 		status,
 		headers: { 'Content-Type': 'application/json' }
 	});
-}
-
-/** Boot the session store signed in with the given role (or out on null). */
-async function bootSession(role: 'admin' | 'user' | null): Promise<void> {
-	if (role === null) {
-		vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
-	} else {
-		vi.stubGlobal('fetch', vi.fn(async () =>
-			jsonResponse(200, [
-				{
-					id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
-					kind: 'WEB',
-					userId: '6f9c2d18-9a4c-4a1b-b1a1-00000000000a',
-					role,
-					deviceName: 'Mozilla/5.0 (test)',
-					createdAt: '2026-11-01T10:00:00Z',
-					lastSeenAt: '2026-11-02T10:00:00Z'
-				}
-			])
-		));
-	}
-	await probeSession();
 }
 
 /** Mount the combobox with a captured path binding. */
@@ -83,11 +60,6 @@ function mountField(props: { path?: string; failure?: string; hint?: string } = 
 beforeEach(async () => {
 	document.body.textContent = '';
 	vi.useFakeTimers();
-	// The session store is module state shared by this file's tests:
-	// every case starts signed out and boots its own role when it
-	// needs one (the no-roots action's gate).
-	await bootSession(null);
-	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
 });
 
@@ -263,90 +235,44 @@ test('a row completes on mousedown (the state-selector semantics)', async () => 
 	flushSync();
 });
 
-test('the empty prefix lists the roots; the empty answer over an empty prefix is the no-roots posture', async () => {
+test('the empty prefix lists the root itself; the honest empty answer is the plain no-match note (E6: the no-roots face retired)', async () => {
+	// The system-wide domain: the empty prefix carries no query
+	// string and the server answers the container's root.
 	const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
-		jsonResponse(200, { paths: ['/Volumes/Photos'] })
+		jsonResponse(200, { paths: ['/'] })
 	);
 	vi.stubGlobal('fetch', fetchMock);
 	const { component } = mountField();
 
-	// Focus alone arms the debounced completion: the empty prefix
-	// carries no query string.
 	focus();
 	await advance(300);
 	expect(fetchMock).toHaveBeenCalledTimes(1);
 	expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/albums/path-completions');
-	expect(rows()).toEqual(['/Volumes/Photos']);
-	expect(document.body.querySelector('.path-completion__no-roots')).toBeNull();
+	expect(rows()).toEqual(['/']);
 
 	unmount(component);
 	flushSync();
 
-	// The same empty answer over an empty prefix with no roots
-	// configured: the honest note names the admin's move.
+	// The same empty answer (whatever the prefix): the plain
+	// no-match note -- the allowlist and its no-roots posture
+	// retired with E6, so there is no closed state to explain and
+	// no admin jump to offer (the component reads no role at all).
 	document.body.textContent = '';
 	const empty = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: [] }));
 	vi.stubGlobal('fetch', empty);
 	const again = mountField();
 	focus();
 	await advance(300);
-	expect(document.body.querySelector('.path-completion__no-roots')?.textContent).toContain(
-		'No folders can be picked yet'
+	expect(document.body.querySelector('.path-completion__no-match')?.textContent).toContain(
+		'No matching folders'
 	);
 	// The keys footer rides the row list only -- nothing to
 	// navigate here.
 	expect(keysFooter()).toBeNull();
-	// The signed-out session holds no role: the admin's direct jump
-	// never renders (the note alone is the honest face).
+	expect(document.body.querySelector('.path-completion__no-roots')).toBeNull();
 	expect(document.body.querySelector('.path-completion__no-roots-action')).toBeNull();
 
 	unmount(again.component);
-	flushSync();
-});
-
-test('the no-roots note carries the ADMIN\'S direct jump to the instance settings (the dogfood pin)', async () => {
-	await bootSession('admin');
-	const empty = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: [] }));
-	vi.stubGlobal('fetch', empty);
-	const { component } = mountField();
-	focus();
-	await advance(300);
-
-	// The note itself stays honest (the allowlist is closed, the
-	// administrator must open a root), and the admin's face adds the
-	// direct action: icon + text (§7.2's primary-flow shape), jumping
-	// to the instance settings where the "Album sources" section
-	// owns the allowlist.
-	expect(document.body.querySelector('.path-completion__no-roots')?.textContent).toContain(
-		'No folders can be picked yet'
-	);
-	const action = document.body.querySelector<HTMLAnchorElement>('.path-completion__no-roots-action');
-	expect(action?.getAttribute('href')).toBe('/admin/settings');
-	expect(action?.textContent?.trim()).toBe('Open mount roots');
-	// The icon leads the label, decorative (the icon-first rule).
-	const icon = action?.querySelector('svg');
-	expect(icon).not.toBeNull();
-	expect(action?.firstElementChild).toBe(icon);
-	expect(icon?.getAttribute('aria-hidden')).toBe('true');
-
-	unmount(component);
-	flushSync();
-});
-
-test("a member's no-roots note keeps the honest dead end without the admin jump", async () => {
-	await bootSession('user');
-	const empty = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: [] }));
-	vi.stubGlobal('fetch', empty);
-	const { component } = mountField();
-	focus();
-	await advance(300);
-
-	expect(document.body.querySelector('.path-completion__no-roots')?.textContent).toContain(
-		'No folders can be picked yet'
-	);
-	expect(document.body.querySelector('.path-completion__no-roots-action')).toBeNull();
-
-	unmount(component);
 	flushSync();
 });
 

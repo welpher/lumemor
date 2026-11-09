@@ -1,14 +1,20 @@
 <script lang="ts">
-	// The user management page of the admin surface (M2d Task 8):
-	// the account listing (role and disabled badges), the create-user
-	// form, and the disable/enable toggle. The create form mirrors
-	// the login form's failure surface (one mapped error line); the
-	// toggle adopts the PATCH response as the row's fresh state and
-	// confirms before a disable, because the write signs the account
-	// out of every session at once. A failed disable keeps the
-	// confirm dialog open with the mapped error (the trash page's
-	// confirm pattern); a 404 is the already-gone reading -- the
-	// listing's refetch reconciles the row and the dialog closes.
+	// The user management page of the admin surface (M2d Task 8,
+	// reshaped by the 2026-11-09 modal pin): the account listing
+	// (role and disabled badges), the create-user flow, and the
+	// disable/enable toggle. CREATION IS A MODAL now (web IA §7.8:
+	// the page-header row's right slot carries the "New user" button
+	// -- UserPlus + text, the primary-flow shape -- and the Modal
+	// holds the same fields the inline form held, the same failure
+	// surface, success closing it with the listing converging; the
+	// grammar joins the album and tag dialogs and this page's own
+	// disable confirm). The toggle adopts the PATCH response as the
+	// row's fresh state and confirms before a disable, because the
+	// write signs the account out of every session at once. A failed
+	// disable keeps the confirm dialog open with the mapped error
+	// (the trash page's confirm pattern); a 404 is the already-gone
+	// reading -- the listing's refetch reconciles the row and the
+	// dialog closes.
 	//
 	// THE 403 PAGE: a signed-in non-admin landing on this route sees
 	// the mapped auth_forbidden message -- the tool shell has no
@@ -18,9 +24,9 @@
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
-	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
 	import {
 		createAdminUser,
 		listAdminUsers,
@@ -32,7 +38,7 @@
 	import UserX from '@lucide/svelte/icons/user-x';
 	import Check from '@lucide/svelte/icons/check';
 	import X from '@lucide/svelte/icons/x';
-	import Plus from '@lucide/svelte/icons/plus';
+	import UserPlus from '@lucide/svelte/icons/user-plus';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -47,13 +53,39 @@
 	let pendingDisable = $state<AdminUser | null>(null);
 	let disableErrorKey = $state('');
 
-	// The create form's fields; the role select defaults to 'user'.
+	// The create modal's state: the open flag plus the form's
+	// fields; the role select defaults to 'user'. Opening the modal
+	// seeds the fields clean (a close mid-draft leaves the stale
+	// text behind, but the next open overwrites it).
+	let createOpen = $state(false);
 	let formName = $state('');
 	let formEmail = $state('');
 	let formPassword = $state('');
 	let formRole = $state<'user' | 'admin'>('user');
 	let creating = $state(false);
 	let createErrorKey = $state('');
+
+	/** Open the creation modal with clean fields. */
+	function openCreate(): void {
+		if (creating) {
+			return;
+		}
+		formName = '';
+		formEmail = '';
+		formPassword = '';
+		formRole = 'user';
+		createErrorKey = '';
+		createOpen = true;
+	}
+
+	/** Close the creation modal (the busy write guards it). */
+	function cancelCreate(): void {
+		if (creating) {
+			return;
+		}
+		createOpen = false;
+		createErrorKey = '';
+	}
 
 	const activeLocale = $derived($locale ?? 'en');
 
@@ -99,8 +131,8 @@
 		);
 	}
 
-	async function handleSubmit(event: SubmitEvent): Promise<void> {
-		event.preventDefault();
+	async function handleSubmit(event?: SubmitEvent): Promise<void> {
+		event?.preventDefault();
 		if (creating) {
 			return;
 		}
@@ -116,8 +148,11 @@
 		if (outcome.ok) {
 			// The listing is creation-ordered (oldest first), so the
 			// new account joins the end; the response is the fresh
-			// row, no refetch needed.
+			// row, no refetch needed. Success closes the modal (the
+			// 2026-11-09 pin); a failure keeps it open with the
+			// mapped error inside -- the disable confirm's pattern.
 			users = [...users, outcome.user];
+			createOpen = false;
 			formName = '';
 			formEmail = '';
 			formPassword = '';
@@ -206,7 +241,7 @@
 	<title>Users · lumemor</title>
 </svelte:head>
 
-<div class="users max-w-[920px] mx-auto flex flex-col gap-6">
+<div class="users flex flex-col gap-6">
 	{#if status === 'loading'}
 		<p class="users__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('admin_users_loading')}</p>
 	{:else if status === 'error'}
@@ -215,8 +250,20 @@
 			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready'}
+		<!-- The page-header row (the 2026-11-09 specimen): the title
+		     on the left, this page's own contextual action on the
+		     right -- the create-user button, UserPlus + text (the
+		     primary-flow shape). The listing is a full-width page:
+		     the rows eat the width the rail leaves. -->
+		<AdminPageHeader title={$_('admin_users_title')}>
+			{#snippet actions()}
+				<Button onclick={openCreate}>
+					<UserPlus size={20} aria-hidden="true" />
+					{$_('admin_users_new')}
+				</Button>
+			{/snippet}
+		</AdminPageHeader>
 		<section class="users__list" aria-label={$_('admin_users_title')}>
-			<h1 class="users__title mb-3 font-display font-bold text-[26px] text-text">{$_('admin_users_title')}</h1>
 			<table class="users__table w-full border-collapse bg-card border border-border rounded-card shadow-card overflow-hidden">
 				<thead>
 					<tr>
@@ -280,56 +327,65 @@
 			{/if}
 		</section>
 
-		<section class="users__create">
-			<div class="users__create-card w-[min(400px,100%)]">
-				<Card>
-					<h2 class="users__create-title mb-1 font-display font-bold text-[22px] text-text">{$_('admin_users_create_heading')}</h2>
-					<p class="users__create-note mb-5 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_users_create_note')}</p>
-					<form class="users__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
-						<Input
-							id="admin-user-name"
-							label={$_('admin_users_field_name')}
-							type="text"
-							autocomplete="name"
-							bind:value={formName}
-						/>
-						<Input
-							id="admin-user-email"
-							label={$_('admin_users_field_email')}
-							type="email"
-							autocomplete="off"
-							bind:value={formEmail}
-						/>
-						<Input
-							id="admin-user-password"
-							label={$_('admin_users_field_password')}
-							type="password"
-							autocomplete="new-password"
-							bind:value={formPassword}
-						/>
-						<div class="users__field flex flex-col gap-1.5">
-							<label class="users__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="admin-user-role">{$_('admin_users_field_role')}</label>
-							<select
-								class="users__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
-								id="admin-user-role"
-								bind:value={formRole}
-							>
-								<option value="user">{$_('admin_role_user')}</option>
-								<option value="admin">{$_('admin_role_admin')}</option>
-							</select>
-						</div>
-						{#if createErrorKey !== ''}
-							<p class="users__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(createErrorKey)}</p>
-						{/if}
-						<div class="users__form-actions flex justify-end mt-1">
-							<Button type="submit" disabled={creating}><Plus size={20} aria-hidden="true" />{$_('admin_users_create_submit')}</Button>
-						</div>
-					</form>
-				</Card>
-			</div>
-		</section>
 	{/if}
 </div>
+
+<!-- The creation modal (the 2026-11-09 pin): the same fields the
+     inline form held, the same failure surface (one mapped error
+     line), success closing it and the listing converging. The busy
+     write keeps it open; the cancel is inert while one runs. -->
+<Modal bind:open={createOpen} title={$_('admin_users_create_heading')} onclose={cancelCreate}>
+	{#snippet children()}
+		<p class="users__create-note mb-4 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_users_create_note')}</p>
+		<form id="admin-user-create" class="users__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
+			<Input
+				id="admin-user-name"
+				label={$_('admin_users_field_name')}
+				type="text"
+				autocomplete="name"
+				bind:value={formName}
+			/>
+			<Input
+				id="admin-user-email"
+				label={$_('admin_users_field_email')}
+				type="email"
+				autocomplete="off"
+				bind:value={formEmail}
+			/>
+			<Input
+				id="admin-user-password"
+				label={$_('admin_users_field_password')}
+				type="password"
+				autocomplete="new-password"
+				bind:value={formPassword}
+			/>
+			<div class="users__field flex flex-col gap-1.5">
+				<label class="users__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="admin-user-role">{$_('admin_users_field_role')}</label>
+				<select
+					class="users__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+					id="admin-user-role"
+					bind:value={formRole}
+				>
+					<option value="user">{$_('admin_role_user')}</option>
+					<option value="admin">{$_('admin_role_admin')}</option>
+				</select>
+			</div>
+			{#if createErrorKey !== ''}
+				<p class="users__error m-0 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(createErrorKey)}</p>
+			{/if}
+		</form>
+	{/snippet}
+	{#snippet footer()}
+		<Button variant="ghost" disabled={creating} onclick={cancelCreate}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_cancel')}
+		</Button>
+		<Button disabled={creating} onclick={() => void handleSubmit()}>
+			<UserPlus size={20} aria-hidden="true" />
+			{$_('admin_users_create_submit')}
+		</Button>
+	{/snippet}
+</Modal>
 
 <Modal open={pendingDisable !== null} title={$_('admin_users_disable_title')} onclose={cancelDisable}>
 	{#snippet children()}

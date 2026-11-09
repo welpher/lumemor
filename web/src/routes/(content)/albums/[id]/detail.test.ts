@@ -7,24 +7,27 @@ import type { AlbumDetail, AlbumSummary } from '$lib/api/albums';
 import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
 
-// The album detail (web IA §2-§3, E4's albums-as-sources reshape):
-// the metadata header with its callerRole x type action set -- the
-// owner of a virtual album holds rename / set cover / lock / delete,
-// the owner of a directory album the properties edit (title + the
-// read-only source row + the audience) / exclusion toggle / rescan
-// trigger with its job-event progress line, the owner of the sync
-// album (the default album) NOTHING -- system-managed, read-only,
-// the localized display name for the title -- a viewer the exclusion
-// toggle alone (the departure went with the revoke endpoint it
-// rode) -- over the wall that pages the album's own timeline. Every
-// write adopts its own response or converges through the detail
-// refetch; the album.* SSE events for THIS album refetch the
-// metadata and restart the items walk on membership changes; the
-// rescan's progress rides the job.* events keyed by the run the
-// trigger answered. $app/state and $app/navigation are mocked
-// because the real router needs a running SvelteKit app; the events
-// module is mocked with a captured handler registry, the timeline
-// page's pattern.
+// The album detail (web IA §2-§3, E4's albums-as-sources reshape,
+// completed by E6's autonomy face): the metadata header with its
+// callerRole x type action set -- the owner of a virtual album holds
+// rename / set cover / delete, the owner of a directory album the
+// properties edit (title + the read-only source row + the audience
+// + the autonomy block of lock / timeline exclusion / deletability)
+// / rescan trigger with its job-event progress line, the owner of
+// the sync album (the default album) NOTHING -- system-managed,
+// read-only, the localized display name for the title -- a viewer
+// the exclusion toggle alone (the departure went with the revoke
+// endpoint it rode) -- over the wall that pages the album's own
+// timeline, curating a DELETE-ONLY selection exactly when the
+// server-derived `deletable` face holds (owner AND writable AND
+// the switch AND unlocked). Every write adopts its own response or
+// converges through the detail refetch; the album.* SSE events for
+// THIS album refetch the metadata and restart the items walk on
+// membership changes; the rescan's progress rides the job.* events
+// keyed by the run the trigger answered. $app/state and
+// $app/navigation are mocked because the real router needs a
+// running SvelteKit app; the events module is mocked with a
+// captured handler registry, the timeline page's pattern.
 
 const { pageState, albumHandlers, assetHandlers, jobHandlers } = vi.hoisted(() => ({
 	pageState: {
@@ -284,21 +287,24 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	expect(document.body.querySelector('.album-detail__description')).toBeNull();
 	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
 
-	// The owner of a virtual album holds the E4 write set -- rename
-	// (the edit dialog: title + audience), the cover, the lock and
-	// the delete. The share action and the add-photos handoff are
-	// GONE with the curation removal (§7.5) and the share dialog's
-	// fold-in (§7.6): the audience is an album property.
-	for (const label of ['Rename', 'Set cover…', 'Lock', 'Delete album']) {
+	// The owner of a virtual album holds the E4 write set MINUS the
+	// lock -- E6 moved the lock toggle into the edit dialog (§7.9's
+	// autonomy block), so the bar holds rename (the dialog opener),
+	// the cover and the delete. The share action and the
+	// add-photos handoff are GONE with the curation removal (§7.5)
+	// and the share dialog's fold-in (§7.6): the audience is an
+	// album property.
+	for (const label of ['Rename', 'Set cover…', 'Delete album']) {
 		expect(() => buttonByLabel(label), label).not.toThrow();
 	}
-	for (const label of ['Share…', 'Add photos', 'Properties', 'Rescan', 'Leave album']) {
+	for (const label of ['Share…', 'Add photos', 'Properties', 'Rescan', 'Leave album', 'Lock', 'Unlock']) {
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
 
-	// THE NO-SELECTION WALL (R5): the album's tiles are pure
+	// THE NO-SELECTION WALL (R5): a virtual album's tiles are pure
 	// navigation -- no hover checkbox, no select-mode entry, no
-	// batch bar ever rises.
+	// batch bar ever rises (the deletable face is the directory
+	// album's own).
 	expect(tiles()).toHaveLength(2);
 	expect(document.body.querySelector('.tile__check')).toBeNull();
 	expect(document.body.querySelector('.batchbar')).toBeNull();
@@ -341,7 +347,10 @@ test('a viewer sees read-only: the exclusion toggle alone, no write affordances'
 	]) {
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
-	// The one action a viewer holds: their own timeline preference.
+	// The one action a viewer holds: their own timeline preference
+	// (the bar arm -- the owner's own toggle moved into the edit
+	// dialog, but the viewer holds no dialog; the member side is
+	// unchanged).
 	expect(() => buttonByLabel('Keep out of timeline')).not.toThrow();
 	expect(tiles()).toHaveLength(2);
 	unmount(page);
@@ -359,11 +368,14 @@ test('the own virtual album offers no exclusion toggle: it never feeds the own t
 	flushSync();
 });
 
-test('the directory detail: the edit dialog, the exclusion toggle and the live rescan trigger', async () => {
+test('the directory detail: the edit dialog, the autonomy faces and the live rescan trigger', async () => {
 	detailState = {
 		...detailState,
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
+		sourceWritable: true,
+		allowAppDeletion: true,
+		deletable: true,
 		inTimeline: true
 	};
 	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
@@ -371,7 +383,11 @@ test('the directory detail: the edit dialog, the exclusion toggle and the live r
 	await settle();
 
 	expect(() => buttonByLabel('Properties')).not.toThrow();
-	expect(() => buttonByLabel('Keep out of timeline')).not.toThrow();
+
+	// The owner's exclusion toggle moved into the edit dialog (E6):
+	// the bar arm carries no calendar icon for the owner -- the
+	// viewer's arm (their only action) keeps it.
+	expect(() => buttonByLabel('Keep out of timeline')).toThrow();
 
 	// The rescan trigger is LIVE (E4): the directory album's own
 	// refresh, not the placeholder.
@@ -380,9 +396,25 @@ test('the directory detail: the edit dialog, the exclusion toggle and the live r
 
 	// The virtual album's write set is gone, and the directory album
 	// holds neither curation, cover pin nor delete.
-	for (const label of ['Rename', 'Set cover…', 'Lock', 'Delete album', 'Leave album']) {
+	for (const label of ['Rename', 'Set cover…', 'Lock', 'Unlock', 'Delete album', 'Leave album']) {
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
+
+	// THE DELETABLE WALL (E6): the derived face holds, so the wall's
+	// selection machinery is wired -- the tiles carry the hover
+	// check affordance and a selection raises the batch bar with the
+	// DELETE-ONLY action subset (no favorite, no hide, no restore).
+	const check = tiles()[0]?.querySelector<HTMLElement>('.tile__check');
+	expect(check).not.toBeNull();
+	check?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const bar = document.body.querySelector<HTMLElement>('.batchbar');
+	expect(bar).not.toBeNull();
+	expect(bar?.getAttribute('role')).toBe('toolbar');
+	for (const label of ['Favorite', 'Hide', 'Unhide', 'Restore']) {
+		expect(() => buttonByLabel(label, bar as ParentNode), label).toThrow();
+	}
+	expect(() => buttonByLabel('Trash', bar as ParentNode)).not.toThrow();
 	unmount(page);
 	flushSync();
 });
@@ -683,20 +715,244 @@ test('the directory properties dialog shows the read-only source row', async () 
 	flushSync();
 });
 
-test('the lock toggle PATCHes locked; the badge and notice follow and curation disables', async () => {
+test('the deletability row renders for a writable source and PATCHes the switch (E6)', async () => {
+	let deletabilitySaved = false;
+	detailState = {
+		...detailState,
+		type: 'directory',
+		rootPath: '/Volumes/Photos/family',
+		sourceWritable: true,
+		allowAppDeletion: true,
+		deletable: true,
+		inTimeline: true
+	};
 	const fetchMock = stubFetch(
 		detailRoutes({
 			'/api/v1/albums/al1': (init?: RequestInit) => {
-				expect(JSON.parse(String(init?.body))).toEqual({ locked: true });
-				return jsonResponse(200, summary({ locked: true }));
-			}
+				expect(JSON.parse(String(init?.body))).toEqual({ allowAppDeletion: false });
+				deletabilitySaved = true;
+				return jsonResponse(200, summary({ type: 'directory' }));
+			},
+			'/api/v1/albums/al1?limit=1': () =>
+				deletabilitySaved
+					? jsonResponse(200, { ...detailState, allowAppDeletion: false, deletable: false })
+					: jsonResponse(200, detailState)
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
 
-	buttonByLabel('Lock').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	const toggle = dialog?.querySelector<HTMLInputElement>('[data-testid="album-deletable-toggle"]');
+	expect(toggle).not.toBeNull();
+	expect(toggle?.checked).toBe(true);
+	toggle!.checked = false;
+	toggle!.dispatchEvent(new Event('change', { bubbles: true }));
+	await settle();
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const patches = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH'
+	);
+	expect(patches).toHaveLength(1);
+	expect(modal()).toBeNull();
+
+	// The converged face: the derived affordance dies with the
+	// switch, so the wall's selection machinery unwires -- no check,
+	// no bar (the save's refetch carried deletable: false).
+	await settle();
+	expect(tiles()[0]?.querySelector('.tile__check')).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('a read-only source renders NO deletability row and NO wall selection (the row does not exist)', async () => {
+	detailState = {
+		...detailState,
+		type: 'directory',
+		rootPath: '/mnt/readonly/archive',
+		sourceWritable: false,
+		allowAppDeletion: true,
+		deletable: false,
+		inTimeline: true
+	};
+	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
+	const page = mountPage();
+	await settle();
+
+	// The wall is pure navigation: the derived face is false, no
+	// check ever renders.
+	expect(tiles()[0]?.querySelector('.tile__check')).toBeNull();
+
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	// The row does not EXIST for a read-only source (§7.9: no dead
+	// affordance) -- the lock and exclusion rows still stand.
+	expect(dialog?.querySelector('[data-testid="album-deletable-toggle"]')).toBeNull();
+	expect(dialog?.querySelector('[data-testid="album-lock-toggle"]')).not.toBeNull();
+	expect(dialog?.querySelector('[data-testid="album-timeline-toggle"]')).not.toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the dialog\'s exclusion row writes the caller\'s own preference on save', async () => {
+	let preferenceSaved = false;
+	detailState = {
+		...detailState,
+		type: 'directory',
+		rootPath: '/Volumes/Photos/family',
+		sourceWritable: true,
+		allowAppDeletion: true,
+		deletable: true,
+		inTimeline: true
+	};
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/albums/al1/timeline-preference': (init?: RequestInit) => {
+				expect(JSON.parse(String(init?.body))).toEqual({ inTimeline: false });
+				preferenceSaved = true;
+				return jsonResponse(200, { albumId: 'al1', inTimeline: false });
+			},
+			'/api/v1/albums/al1?limit=1': () =>
+				preferenceSaved
+					? jsonResponse(200, { ...detailState, inTimeline: false })
+					: jsonResponse(200, detailState)
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	const toggle = dialog?.querySelector<HTMLInputElement>('[data-testid="album-timeline-toggle"]');
+	expect(toggle?.checked).toBe(true);
+	toggle!.checked = false;
+	toggle!.dispatchEvent(new Event('change', { bubbles: true }));
+	await settle();
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const puts = fetchMock.mock.calls.filter(
+		([input]) => String(input) === '/api/v1/albums/al1/timeline-preference'
+	);
+	expect(puts).toHaveLength(1);
+	// The badge and notice follow the converged preference.
+	expect(document.body.querySelector('.album-detail__badge--excluded')?.textContent?.trim()).toBe(
+		'Not in timeline'
+	);
+	expect(modal()).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('a locked album unlocks FIRST and alone: a mixed unlock-and-edit save writes two PATCHes in order', async () => {
+	const patches: Array<Record<string, unknown>> = [];
+	let step = 0;
+	detailState = {
+		...detailState,
+		type: 'directory',
+		rootPath: '/Volumes/Photos/family',
+		locked: true,
+		sourceWritable: true,
+		allowAppDeletion: true,
+		deletable: false,
+		inTimeline: true
+	};
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/albums/al1': (init?: RequestInit) => {
+				patches.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+				step += 1;
+				if (step === 1) {
+					// The unlock lands ALONE (a mixed patch is refused whole).
+					expect(patches[0]).toEqual({ locked: false });
+					return jsonResponse(200, summary({ locked: false }));
+				}
+				// The property fields follow the unlock.
+				expect(patches[1]).toEqual({ title: 'Family archive 2026' });
+				return jsonResponse(200, summary({ title: 'Family archive 2026', locked: false }));
+			},
+			'/api/v1/albums/al1?limit=1': () =>
+				step > 0
+					? jsonResponse(200, { ...detailState, locked: false, title: 'Family archive 2026' })
+					: jsonResponse(200, detailState)
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// Under the lock the property fields are frozen in the dialog
+	// (the server's own 409 gate, mirrored locally) -- the lock row
+	// is the door, and unchecking it frees the fields for the same
+	// save.
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	let dialog = modal();
+	expect(dialog?.querySelector<HTMLInputElement>('#album-title')?.disabled).toBe(true);
+	const lockToggle = dialog?.querySelector<HTMLInputElement>('[data-testid="album-lock-toggle"]');
+	expect(lockToggle?.checked).toBe(true);
+	lockToggle!.checked = false;
+	lockToggle!.dispatchEvent(new Event('change', { bubbles: true }));
+	await settle();
+	dialog = modal();
+	expect(dialog?.querySelector<HTMLInputElement>('#album-title')?.disabled).toBe(false);
+	fillField(dialog as ParentNode, 'Family archive 2026', 'album-title');
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	expect(patches).toEqual([{ locked: false }, { title: 'Family archive 2026' }]);
+	expect(modal()).toBeNull();
+	// The locked notice died with the unlock.
+	expect(document.body.querySelector('.album-detail__locked-notice')).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the dialog\'s lock row PATCHes locked; the badge and notice follow and the bar freezes honestly', async () => {
+	let lockedNow = false;
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/albums/al1': (init?: RequestInit) => {
+				expect(JSON.parse(String(init?.body))).toEqual({ locked: true });
+				lockedNow = true;
+				return jsonResponse(200, summary({ locked: true }));
+			},
+			'/api/v1/albums/al1?limit=1': () =>
+				lockedNow ? jsonResponse(200, { ...detailState, locked: true }) : jsonResponse(200, detailState)
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The lock toggle lives in the edit dialog (E6, §7.9): the bar's
+	// Rename (the dialog opener) is the door to it.
+	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	const lockToggle = dialog?.querySelector<HTMLInputElement>('[data-testid="album-lock-toggle"]');
+	expect(lockToggle).not.toBeNull();
+	expect(lockToggle?.checked).toBe(false);
+	lockToggle!.checked = true;
+	lockToggle!.dispatchEvent(new Event('change', { bubbles: true }));
+	await settle();
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
@@ -707,14 +963,13 @@ test('the lock toggle PATCHes locked; the badge and notice follow and curation d
 	expect(document.body.querySelector('.album-detail__locked-notice')?.textContent).toContain(
 		'until you unlock it'
 	);
-	// The locked gate is visual too: curation and property writes
-	// disable until the unlock, and the delete hides until the
-	// unlock (the permission matrix pins deletion to the unlocked
-	// state).
-	expect(buttonByLabel('Rename').disabled).toBe(true);
+	// The frozen faces: the cover disables and the delete hides until
+	// the unlock (the permission matrix pins deletion to the unlocked
+	// state) -- but the dialog opener stays LIVE, because it is the
+	// unlock's own door (the lock row inside).
+	expect(buttonByLabel('Rename').disabled).toBe(false);
 	expect(buttonByLabel('Set cover…').disabled).toBe(true);
 	expect(() => buttonByLabel('Delete album')).toThrow();
-	expect(() => buttonByLabel('Unlock')).not.toThrow();
 	unmount(page);
 	flushSync();
 });

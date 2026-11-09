@@ -9,10 +9,15 @@
 	// THE APP FRAME (R2-1's consistency arm): the shell shares the
 	// content shell's structure, so it shares the frame treatment
 	// too -- the h-dvh flex column pins the top bar by layout, main
-	// is the one scroll container (the admin sidebar's own sticky
-	// offset re-anchors to it), the scroll root takes the focus at
+	// is the one scroll container (the admin rail's own sticky
+	// top-0 pins flush to it), the scroll root takes the focus at
 	// mount so keyboard scrolling follows it, and push navigations
 	// reset it (popstate keeps the offset).
+	//
+	// THE FULL-BLEED PIN (2026-11-09, the admin-shell specimen):
+	// main carries NO padding -- the content column owns its own
+	// gutter (the admin layout's wrapper), so the flush rail and
+	// the full-height column split the frame's whole extent.
 	import { _ } from 'svelte-i18n';
 	import { afterNavigate, goto } from '$app/navigation';
 	import OfflineStrip from '$lib/events/OfflineStrip.svelte';
@@ -75,8 +80,10 @@
 	     content shell mounts, one instance per shell. -->
 	<ShortcutsDialog bind:open={shortcutsOpen} />
 	<!-- The frame's one scroll container (the content shell's rule,
-	     mirrored for consistency). -->
-	<main bind:this={main} tabindex="-1" class="tool-main flex-1 min-h-0 overflow-y-auto p-6 focus-visible:outline-none">
+	     mirrored for consistency). The 2026-11-09 full-bleed pin: NO
+	     padding -- the admin content column below owns its gutter, so
+	     the flush rail splits the scroll extent edge to edge. -->
+	<main bind:this={main} tabindex="-1" class="tool-main flex-1 min-h-0 overflow-y-auto focus-visible:outline-none">
 		{@render children()}
 	</main>
 </div>
