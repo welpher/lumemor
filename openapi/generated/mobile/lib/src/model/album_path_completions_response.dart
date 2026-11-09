@@ -12,10 +12,10 @@ part 'album_path_completions_response.g.dart';
 /// The path completion answer: the pickable source directories of the creation dialog's combobox. 
 ///
 /// Properties:
-/// * [paths] - Full absolute directory paths inside the completion domain -- at or under a configured mount root, outside the server's managed tree, real directories (symlinked entries are never listed). Deduplicated, sorted ascending, at most 20 rows. The empty array is an honest \"nothing matches\", never an error. 
+/// * [paths] - Full absolute directory paths of the container's visible filesystem -- outside the server's managed tree, real directories (symlinked entries are never listed). Deduplicated, sorted ascending, at most 20 rows. The empty array is an honest \"nothing matches\", never an error. 
 @BuiltValue()
 abstract class AlbumPathCompletionsResponse implements Built<AlbumPathCompletionsResponse, AlbumPathCompletionsResponseBuilder> {
-  /// Full absolute directory paths inside the completion domain -- at or under a configured mount root, outside the server's managed tree, real directories (symlinked entries are never listed). Deduplicated, sorted ascending, at most 20 rows. The empty array is an honest \"nothing matches\", never an error. 
+  /// Full absolute directory paths of the container's visible filesystem -- outside the server's managed tree, real directories (symlinked entries are never listed). Deduplicated, sorted ascending, at most 20 rows. The empty array is an honest \"nothing matches\", never an error. 
   @BuiltValueField(wireName: r'paths')
   BuiltList<String> get paths;
 

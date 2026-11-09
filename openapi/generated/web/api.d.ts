@@ -534,6 +534,18 @@ export interface paths {
          *     location that can no longer receive it fails the batch the
          *     same way).
          *
+         *     The external trash arm also carries the album lock, the
+         *     owner's content-protection freeze: a live external asset
+         *     that is a member of a LOCKED directory album answers 409
+         *     `ALBUM_LOCKED` before any file moves (the same refusal the
+         *     album's rescan and property writes answer -- the lock stops
+         *     the deletion of the album's photos, and it stops it
+         *     server-side, not just by hiding the affordance). The whole
+         *     batch rolls back on the refusal, exactly like a move
+         *     failure; an already-trashed row never trips the gate (the
+         *     idempotent no-op), and the restore arm never does either
+         *     -- recovery is not the deletion the freeze governs.
+         *
          *     Events publish AFTER the commit, one per asset whose state
          *     actually changed -- the idempotent no-op stays silent, the
          *     same discipline as the single-asset restore: `asset.trashed`
@@ -1112,17 +1124,32 @@ export interface paths {
         put?: never;
         /**
          * Create one directory album from an existing path.
-         * @description Creates one directory album owned by the caller: the album
-         *     IS a source -- the request names an existing directory the
-         *     server validates and references in place, the files stay
-         *     where they are (zero copy, zero move; the rescan that fills
-         *     the album's membership is a later flow). No type field
-         *     exists: this endpoint IS directory creation, the one
-         *     creatable album type of the albums-as-sources design -- the
+         * @description Creates one directory album owned by the calling
+         *     ADMINISTRATOR: the album IS a source -- the request names an
+         *     existing directory the server validates and references in
+         *     place, the files stay where they are (zero copy, zero move;
+         *     the rescan that fills the album's membership is a later flow).
+         *     No type field exists: this endpoint IS directory creation, the
+         *     one creatable album type of the albums-as-sources design -- the
          *     curation-into-a-container story is gone (virtual albums
          *     already owned keep their edit and delete faces, but nothing
          *     creates one anymore), and every account's sync album is born
          *     with the account.
+         *
+         *     Mounting an existing photo directory is a CONFIGURATION act:
+         *     it points the application at a filesystem location, and a
+         *     plain member never sees the container's filesystem at all.
+         *     Creation is therefore the administrator's alone (the E6
+         *     boundary ruling): a signed-in member whose role is not
+         *     `admin` answers 403 `AUTH_FORBIDDEN` before any part of the
+         *     request is considered -- the refusal-matrix semantics of the
+         *     admin surfaces. Members contribute photos through the upload
+         *     stream and are untouched by this guard. The trust boundary is
+         *     the compose file's own mounts: the operator controls what the
+         *     container can see, and the application layer neither can nor
+         *     needs to restrict the operator further -- the mount-root
+         *     allowlist of the previous design retired whole with this
+         *     ruling, and no software-layer allowlist stands behind it.
          *
          *     The title is trimmed and must span 1-64 Unicode characters
          *     (the count is over runes, so multi-byte titles stay within
@@ -1139,23 +1166,31 @@ export interface paths {
          *     - it must be a directory (`ALBUM_PATH_NOT_DIRECTORY`),
          *     - the server must be able to list it
          *       (`ALBUM_PATH_NOT_READABLE`),
-         *     - symlinks are resolved and the RESOLVED path is the domain
-         *       subject: a typed path that sits inside a mount root but
-         *       resolves outside one answers
-         *       `ALBUM_PATH_SYMLINK_ESCAPE`,
-         *     - the resolved path must never sit inside the server's own
-         *       managed data tree (`ALBUM_PATH_IN_MANAGED_TREE`), whatever
-         *       the allowlist says,
-         *     - it must not overlap or nest another directory album's root
-         *       -- equal to, inside, or containing one, on the whole
-         *       instance (`ALBUM_PATH_OVERLAPS`),
-         *     - it must sit at or under one of the configured mount roots
-         *       (`ALBUM_PATH_OUTSIDE_ROOTS`; the default allowlist is
-         *       empty, which keeps directory album creation closed until
-         *       an administrator opens a root).
+         *     - the RESOLVED path (symlinks evaluated) must never sit
+         *       inside the server's own managed data tree
+         *       (`ALBUM_PATH_IN_MANAGED_TREE`) -- the one confine that
+         *       survived the allowlist retirement: the application's own
+         *       originals, derivatives and trash never become an album
+         *       source, whatever the container can see. The
+         *       allowlist-domain and root-overlap branches of the previous
+         *       matrix died with the allowlist: with creation in the
+         *       administrator's hands, a second album over the same tree
+         *       is an operator's visible choice, not an attack to refuse.
          *
          *     The album row stores the RESOLVED absolute path, so a later
          *     symlink swap can never repoint an existing album.
+         *
+         *     After the matrix passes, the server probes the directory's
+         *     writability exactly ONCE: it writes a uniquely named probe
+         *     file, reads it back, and removes it. A directory that refuses
+         *     any step is a perfectly legitimate album source -- the
+         *     probe's failure is NOT a creation failure -- and the fact
+         *     lands on the row as `sourceWritable: false`, honestly
+         *     reported in the response: photos of a read-only directory
+         *     cannot be deleted through the application, and the creation
+         *     answer says so instead of every later deletion discovering
+         *     it. The truth is discovered at creation and never re-probed
+         *     at runtime.
          *
          *     `audience` is the album's audience, the full grantee set of
          *     view ACL rows the creation lands in the same request: the
@@ -1170,9 +1205,9 @@ export interface paths {
          *     exactly as `GET /albums` lists it: `callerRole` `owner`,
          *     `type` `directory`, an empty `coverAssetIds` array (never
          *     null) and `itemCount` 0, nothing being a member yet -- plus
-         *     the honest audience report. The write publishes one
-         *     `album.created` event and one `album.shared` event per
-         *     audience row that landed.
+         *     the honest audience report and the `sourceWritable` fact.
+         *     The write publishes one `album.created` event and one
+         *     `album.shared` event per audience row that landed.
          */
         post: operations["createAlbum"];
         delete?: never;
@@ -1192,49 +1227,54 @@ export interface paths {
          * Complete a directory album's source path.
          * @description The source-path completion of the album creation dialog: the
          *     typed prefix in, the pickable directories out. The call is
-         *     user-scoped -- every signed-in member may create a directory
-         *     album, so every signed-in member may complete a path; the
-         *     admin role adds nothing here.
+         *     ADMIN-scoped: mounting an existing photo directory is the
+         *     administrator's act, so the completion that browses the
+         *     filesystem on the dialog's behalf is the administrator's
+         *     too -- a signed-in member answers 403 `AUTH_FORBIDDEN`
+         *     before the prefix is even read (the members' contribution
+         *     path is the upload stream; a member never needs to see the
+         *     container's filesystem).
          *
-         *     The completion domain is EXACTLY the creation validation
-         *     domain, the one pin of this endpoint: only directories that
-         *     sit at or under a configured mount root are ever listed --
-         *     the same roots the creation's `ALBUM_PATH_OUTSIDE_ROOTS`
-         *     branch enforces, plus the same managed-tree exclusion
-         *     (a root the server itself stores data under contributes
-         *     nothing). A root that does not exist (yet -- removable
-         *     media), is not a directory, or resolves inside the managed
-         *     tree contributes no rows, so the completion can never
-         *     suggest a path the creation would refuse for being outside
-         *     the allowlist.
+         *     The completion domain is the container's REAL visible
+         *     filesystem: whatever the operating system lets the server
+         *     read, drilled segment by segment. The compose file's mounts
+         *     ARE the boundary -- the operator decides what the container
+         *     sees, and the completion honestly reflects that visibility
+         *     instead of a software-layer allowlist (the E6 retirement:
+         *     the mount-root allowlist that used to confine this endpoint
+         *     died whole, with its settings face and its validation
+         *     branches). The ONE exclusion that stays is the server's own
+         *     managed data tree: no row ever names the application's
+         *     originals, derivatives or trash, whatever prefix would
+         *     match them -- the same confine the creation's
+         *     `ALBUM_PATH_IN_MANAGED_TREE` branch enforces, kept honest on
+         *     both sides of the pair.
          *
          *     The matching rule, driven by the typed prefix:
          *
-         *     - an empty (or absent) prefix lists the mount roots
-         *       themselves -- the dialog's first open, "start here";
-         *     - a prefix that is a leading string of a root's path lists
-         *       those roots (typing "/Vol" finds "/Volumes/Photos");
+         *     - an empty (or absent) prefix lists the filesystem root
+         *       itself (`/`) -- the dialog's first open, "start here";
+         *     - a prefix of exactly `/` lists the root's top-level
+         *       directories (the separator says "I am at the root, show me
+         *       what it holds");
          *     - otherwise the entries of the prefix's parent directory
          *       whose names start with the prefix's last segment are
-         *       listed as full paths (typing "/Volumes/Photos/2" lists
-         *       "/Volumes/Photos/2026-spring");
+         *       listed as full paths (typing `/mnt/fam` lists
+         *       `/mnt/family-archive`);
          *     - a trailing separator switches to the children of the
-         *       cleaned prefix itself (typing "/Volumes/Photos/" drills
-         *       into the root), and no root row rides along then -- the
+         *       cleaned prefix itself (typing `/mnt/family-archive/`
+         *       drills into it), and no extra row rides along then -- the
          *       trailing slash says "I am inside this directory".
          *
          *     Only real directories are listed (symlinked entries are
          *     not), the rows are deduplicated, sorted ascending, and
          *     capped at 20 -- past the cap the user narrows by typing;
-         *     there is no pagination. A prefix that matches nothing in the
-         *     domain answers the empty list, never an error -- a relative
-         *     prefix, an unreadable parent, a path outside every root all
-         *     answer `paths: []`, so the endpoint leaks nothing about the
-         *     filesystem beyond the allowlist.
+         *     there is no pagination. A prefix that matches nothing
+         *     answers the empty list, never an error -- a relative prefix
+         *     and an unreadable parent both answer `paths: []`.
          *
-         *     The completion runs a bounded read: one settings row plus at
-         *     most one directory listing, and the response carries at most
-         *     20 rows.
+         *     The completion runs a bounded read: at most one directory
+         *     listing, and the response carries at most 20 rows.
          */
         get: operations["completeAlbumPath"];
         put?: never;
@@ -1308,6 +1348,18 @@ export interface paths {
          *     at creation; the property patch carries no field for it).
          *     Virtual and sync albums omit it.
          *
+         *     `sourceWritable` rides beside it, on the `directory` albums
+         *     only: the creation-time write probe's fact, false for a
+         *     read-only source. `allowAppDeletion` and `deletable` ride
+         *     the owner's view of a `directory` album only: the
+         *     deletability switch's stored state (the edit dialog's
+         *     toggle) and the wall's delete-affordance derivation
+         *     (owner, writable source, switch on, unlocked -- computed
+         *     server-side, pure data, no runtime probing). A viewer's
+         *     response carries none of the three faces a write would
+         *     need, and a read-only source never carries a true
+         *     `deletable` whatever the switch says.
+         *
          *     `shares` rides only the owner's view: the album's grantee
          *     list, one entry per `album_shares` row in the grant order
          *     (`grantedAt` ascending), each carrying the grantee's id,
@@ -1365,8 +1417,8 @@ export interface paths {
         /**
          * Patch one album's properties.
          * @description The owner's partial edit of the album's properties: `title`,
-         *     `coverAssetId` and `locked`, any subset, at
-         *     least one field (a body that carries none -- JSON null counts
+         *     `coverAssetId`, `locked` and `allowAppDeletion`, any subset,
+         *     at least one field (a body that carries none -- JSON null counts
          *     as absent, the patch discipline of the asset surface -- is a
          *     client bug and answers 400). The response is the album's wall
          *     card after the edit.
@@ -1383,10 +1435,10 @@ export interface paths {
          *     permanent delete's own discipline).
          *
          *     The locked gate: a locked album refuses the property and
-         *     curation fields (`title`, `coverAssetId`)
-         *     with 409 `ALBUM_LOCKED` -- unlock first. The `locked` field
-         *     itself is never gated: a patch of only `locked: false` IS the
-         *     unlock.
+         *     curation fields (`title`, `coverAssetId`,
+         *     `allowAppDeletion`) with 409 `ALBUM_LOCKED` -- unlock first.
+         *     The `locked` field itself is never gated: a patch of only
+         *     `locked: false` IS the unlock.
          *
          *     Cover validation (the spec's application-layer pin): a
          *     present `coverAssetId` must be a LIVE member of THIS album --
@@ -1398,6 +1450,14 @@ export interface paths {
          *     `album_cover_not_member`. A `coverAssetId` that is absent (or
          *     JSON null, which decodes as absent) leaves the pin
          *     unchanged.
+         *
+         *     The deletability switch (`allowAppDeletion`) is the
+         *     directory album's own field: a patch that carries it on a
+         *     virtual album answers 400 `VALIDATION_FAILED` with the
+         *     message key `album_deletable_not_directory` (a virtual
+         *     album's deletions never move files, so the switch has no
+         *     home there). The write is idempotent -- repeating the stored
+         *     value converges.
          *
          *     The write publishes one `album.updated` event on every
          *     successful patch, whatever fields changed -- the convergent
@@ -3215,72 +3275,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/settings/mount-roots": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The directory-album mount-root allowlist.
-         * @description The instance's mount-root allowlist: the absolute directory
-         *     paths a directory album's source may live at or under -- the
-         *     trust boundary of the albums-as-sources design. The family
-         *     instance's boundary is drawn at the roots: anything outside
-         *     them (another process's data, system directories, the
-         *     server's own originals) can never become an album, whatever
-         *     the filesystem lets the server read.
-         *
-         *     The stored list is the answer, verbatim and in the order it
-         *     was saved. The default is the empty list -- the "closed"
-         *     posture: no directory album can be created until an
-         *     administrator opens at least one root.
-         *
-         *     This read answers the CONFIGURATION, not the live domain: a
-         *     root that does not exist yet (removable media, a mount that
-         *     comes and goes), one that is not a directory, or one that
-         *     resolves inside the server's managed tree stays listed here
-         *     while contributing nothing to the path completion and the
-         *     creation validation -- an admin configuring a not-yet-
-         *     mounted path is a supported state, and the setting is the
-         *     honest record of what was configured. A corrupt setting row
-         *     answers the empty list with the corruption logged
-         *     server-side -- the closed state is the safe state.
-         */
-        get: operations["getMountRootsSettings"];
-        /**
-         * Save the directory-album mount-root allowlist.
-         * @description Replaces the allowlist wholesale (full-set semantics, the
-         *     settings surface's discipline): the request carries the
-         *     COMPLETE list, an empty list closing directory album
-         *     creation again.
-         *
-         *     Every entry must be an absolute path (a leading separator)
-         *     within the 4,096-byte bound; the server cleans each value,
-         *     collapses duplicates after the clean, and stores the
-         *     resulting list (the response answers the stored value, so a
-         *     cleaned or deduplicated entry shows up honestly). At most 32
-         *     entries. Existence is deliberately NOT required: a root may
-         *     be configured before the volume is mounted, and it
-         *     contributes to the completion and validation domains only
-         *     once it exists (the `GET` face's live-domain note).
-         *
-         *     The write takes effect immediately: the next path
-         *     completion and the next album creation read the saved list.
-         *     Like the sibling settings faces (storage, trash,
-         *     transcoding), the write publishes no event: instance
-         *     settings are the admin surface's own state, and the admin's
-         *     own response carries the saved value.
-         */
-        put: operations["updateMountRootsSettings"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3791,52 +3785,17 @@ export interface components {
             keepOriginal: boolean;
         };
         /**
-         * @description The mount-root allowlist answer of `GET /admin/settings/
-         *     mount-roots` and `PUT /admin/settings/mount-roots`: the
-         *     stored list verbatim (the PUT's answer carries the cleaned,
-         *     deduplicated value in first-occurrence order). The empty
-         *     list is the default closed posture, never an error.
-         */
-        MountRootsSettingsResponse: {
-            /**
-             * @description The configured mount roots: absolute directory paths,
-             *     at most 32, stored as written. A root's live usability
-             *     (exists, is a directory, outside the managed tree) is
-             *     the completion and creation domains' concern, not this
-             *     list's -- the list is the honest record of the
-             *     configuration.
-             */
-            roots: string[];
-        };
-        /**
-         * @description Payload of `PUT /admin/settings/mount-roots`: the COMPLETE
-         *     replacement allowlist. The field must ride the body -- an
-         *     explicit empty array closes directory album creation, while
-         *     an absent field is a client bug the 400 names.
-         */
-        MountRootsSettingsUpdateRequest: {
-            /**
-             * @description Every mount root of the new allowlist, at most 32
-             *     entries. Each must be an absolute path within the
-             *     4,096-byte bound; the server cleans each value and
-             *     collapses duplicates after the clean. Existence is not
-             *     required -- a root may be configured before the volume
-             *     is mounted.
-             */
-            roots: string[];
-        };
-        /**
          * @description The path completion answer: the pickable source directories
          *     of the creation dialog's combobox.
          */
         AlbumPathCompletionsResponse: {
             /**
-             * @description Full absolute directory paths inside the completion
-             *     domain -- at or under a configured mount root, outside
-             *     the server's managed tree, real directories (symlinked
-             *     entries are never listed). Deduplicated, sorted
-             *     ascending, at most 20 rows. The empty array is an honest
-             *     "nothing matches", never an error.
+             * @description Full absolute directory paths of the container's visible
+             *     filesystem -- outside the server's managed tree, real
+             *     directories (symlinked entries are never listed).
+             *     Deduplicated, sorted ascending, at most 20 rows. The
+             *     empty array is an honest "nothing matches", never an
+             *     error.
              */
             paths: string[];
         };
@@ -5620,6 +5579,41 @@ export interface components {
              */
             rootPath?: string;
             /**
+             * @description The creation-time write probe's fact: whether the
+             *     source directory could be written, read back and
+             *     removed from when the album was created. Present
+             *     exactly on `directory` albums, both roles -- the fact is
+             *     the album's own, not a role's. `false` is not an error
+             *     state: a readable but read-only directory is a
+             *     legitimate source whose photos cannot be deleted through
+             *     the application. The truth is discovered exactly once,
+             *     at creation; nothing re-probes it at runtime.
+             */
+            sourceWritable?: boolean;
+            /**
+             * @description The owner's deletability switch: whether deleting this
+             *     album's photos THROUGH the application -- the trash move
+             *     of the source file -- is permitted. Present exactly on
+             *     the OWNER's view of a `directory` album (the edit
+             *     dialog's switch state; a viewer holds no write
+             *     affordance to read it for). A read-only source carries
+             *     the stored value too, but it governs nothing there: the
+             *     derived `deletable` face stays false whatever it says.
+             */
+            allowAppDeletion?: boolean;
+            /**
+             * @description The wall's delete-affordance derivation, computed
+             *     server-side and carried as one boolean: the caller is
+             *     the owner, the source was writable at creation, the
+             *     deletability switch is on, and the album is not locked.
+             *     Present exactly on the OWNER's view of a `directory`
+             *     album. The derivation is pure data -- no runtime probing
+             *     -- and it drives the affordance only: the delete itself
+             *     stays the operating system's authority, and a move it
+             *     refuses answers the honest error.
+             */
+            deletable?: boolean;
+            /**
              * @description The caller's relation to this album: the owner holds the
              *     write affordances, a viewer is read-only.
              * @enum {string}
@@ -5733,10 +5727,12 @@ export interface components {
              * @description The source directory: an existing absolute path the
              *     server validates against the path matrix (existence,
              *     directory-ness, readability, symlink resolution, the
-             *     managed tree, root overlap, the mount-root allowlist)
-             *     before creating anything. The album row stores the
-             *     RESOLVED absolute path -- symlink segments evaluated --
-             *     so a later symlink swap cannot repoint the album.
+             *     managed tree) before creating anything. The album row
+             *     stores the RESOLVED absolute path -- symlink segments
+             *     evaluated -- so a later symlink swap cannot repoint the
+             *     album. After the matrix passes, the server probes the
+             *     directory's writability once and records the fact; a
+             *     read-only directory is a valid source, never a refusal.
              */
             rootPath: string;
             /**
@@ -5753,12 +5749,25 @@ export interface components {
          * @description The creation answer: the fresh directory album's wall card
          *     (the summary exactly as `GET /albums` lists it) plus the
          *     honest audience report -- the requested ids that did not
-         *     become audience, each with its reason. The card's companions
-         *     are the creation-time constants: `callerRole` `owner`,
-         *     `isShared` true exactly when the audience landed a row, an
-         *     empty `coverAssetIds`, `itemCount` 0.
+         *     become audience, each with its reason -- and the creation
+         *     probe's `sourceWritable` fact. The card's companions are the
+         *     creation-time constants: `callerRole` `owner`, `isShared`
+         *     true exactly when the audience landed a row, an empty
+         *     `coverAssetIds`, `itemCount` 0.
          */
         AlbumCreateResponse: components["schemas"]["AlbumSummary"] & {
+            /**
+             * @description The creation-time write probe's fact of the album
+             *     this response just created: `true` when the probe
+             *     file landed, read back and removed cleanly; `false`
+             *     for a readable but read-only source. The creation
+             *     SUCCEEDED either way -- a read-only directory is a
+             *     legitimate album -- and `false` is the honest
+             *     feedback the dialog renders (photos of this
+             *     directory cannot be deleted through the
+             *     application).
+             */
+            sourceWritable: boolean;
             /**
              * @description The requested audience ids that stayed ungranted:
              *     the album's own owner and every id that names no
@@ -5796,13 +5805,34 @@ export interface components {
              */
             coverAssetId?: string;
             /**
-             * @description The owner's lock. `true` freezes the album's curation
-             *     and property fields against later writes (this same
-             *     endpoint refuses them with 409 until the owner patches
-             *     `locked: false` -- the unlock, never gated itself).
-             *     Locking does not gate the album's delete.
+             * @description The owner's lock, the content-protection switch: `true`
+             *     freezes the album's curation and property fields against
+             *     later writes (this same endpoint refuses them with 409
+             *     until the owner patches `locked: false` -- the unlock,
+             *     never gated itself) AND freezes the content itself --
+             *     the directory rescan and the deletion of the album's
+             *     photos answer the same 409 while the lock holds. The
+             *     audience face stays open under a lock (its own pin: a
+             *     lock protects content, not visibility), and the album's
+             *     own delete answers the same 409 every write does.
              */
             locked?: boolean;
+            /**
+             * @description The owner's deletability switch of a DIRECTORY album:
+             *     whether the album's photos may be deleted through the
+             *     application (the trash move of the source file). On for
+             *     a writable source by default; the owner who manages
+             *     file-system deletions themselves turns it off, and the
+             *     wall's delete affordances disappear with it (the derived
+             *     `deletable` face of the detail read). A patch carrying
+             *     the field on a virtual album answers 400 with the
+             *     message key `album_deletable_not_directory` -- the
+             *     switch is the directory album's own, a virtual album's
+             *     deletions never move files. Idempotent: repeating the
+             *     stored value converges, and the switch joins the
+             *     property fields the lock refuses (409 until unlocked).
+             */
+            allowAppDeletion?: boolean;
         };
         /**
          * @description The membership removal body: the list of asset ids to remove
@@ -6010,7 +6040,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_LOCKED" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_SYMLINK_ESCAPE" | "ALBUM_PATH_IN_MANAGED_TREE" | "ALBUM_PATH_OVERLAPS" | "ALBUM_PATH_OUTSIDE_ROOTS" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_LOCKED" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -6759,6 +6789,23 @@ export interface operations {
              *     or bearer token is absent, expired or revoked.
              */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The album is locked: the `trash` action named a live
+             *     external asset that is a member of a locked directory
+             *     album, and the lock -- the owner's content-protection
+             *     freeze over the album's photos -- refuses the deletion
+             *     before any file moves. The whole batch rolled back:
+             *     nothing was written and every file already moved was
+             *     moved back.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7715,7 +7762,10 @@ export interface operations {
             /**
              * @description The album exists; the response is its wall card (the
              *     creation-time zeros: no member, no cover) with the
-             *     audience report. The grants that landed are the request's
+             *     audience report and the probe's `sourceWritable` fact --
+             *     `false` for a readable but read-only source, a legitimate
+             *     album whose photos cannot be deleted through the
+             *     application. The grants that landed are the request's
              *     usable ids; the `skipped` entries are the rest.
              */
             201: {
@@ -7734,9 +7784,7 @@ export interface operations {
              *     or past the 4,096-byte bound; the audience carries more
              *     than 200 ids. The path validation matrix answers its own
              *     codes: `ALBUM_PATH_NOT_FOUND`, `ALBUM_PATH_NOT_DIRECTORY`,
-             *     `ALBUM_PATH_NOT_READABLE`, `ALBUM_PATH_SYMLINK_ESCAPE`,
-             *     `ALBUM_PATH_IN_MANAGED_TREE`, `ALBUM_PATH_OVERLAPS`,
-             *     `ALBUM_PATH_OUTSIDE_ROOTS`.
+             *     `ALBUM_PATH_NOT_READABLE`, `ALBUM_PATH_IN_MANAGED_TREE`.
              */
             400: {
                 headers: {
@@ -7751,6 +7799,21 @@ export interface operations {
              *     or bearer token is absent, expired or revoked.
              */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`: mounting an existing photo directory is a
+             *     configuration act, and the members' contribution path is
+             *     the upload stream. The refusal arrives before any part
+             *     of the request -- title, path, audience -- is considered.
+             */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7773,11 +7836,11 @@ export interface operations {
         parameters: {
             query?: {
                 /**
-                 * @description The path fragment typed so far. Absent or empty lists the
-                 *     mount roots. Values past 4,096 bytes answer 400 -- the
-                 *     filesystem's own path ceiling, so no honest typing ever
-                 *     hits it.
-                 * @example /Volumes/Photos/2
+                 * @description The path fragment typed so far. Absent or empty lists
+                 *     the filesystem root itself. Values past 4,096 bytes
+                 *     answer 400 -- the filesystem's own path ceiling, so no
+                 *     honest typing ever hits it.
+                 * @example /mnt/fam
                  */
                 prefix?: string;
             };
@@ -7788,10 +7851,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /**
-             * @description The completion rows: full absolute directory paths inside
-             *     the allowlist domain, deduplicated, sorted ascending, at
-             *     most 20. The empty list is an honest answer (nothing in
-             *     the domain matches the prefix), never an error.
+             * @description The completion rows: full absolute directory paths of
+             *     the container's visible filesystem, never inside the
+             *     server's managed tree, deduplicated, sorted ascending,
+             *     at most 20. The empty list is an honest answer (nothing
+             *     visible matches the prefix), never an error.
              */
             200: {
                 headers: {
@@ -7819,6 +7883,22 @@ export interface operations {
              *     or bearer token is absent, expired or revoked.
              */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`: the completion browses the container's
+             *     filesystem on the creation dialog's behalf, and that
+             *     browse belongs to the same configuration act the
+             *     creation itself is. The refusal arrives before the
+             *     prefix is read.
+             */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8044,10 +8124,11 @@ export interface operations {
             /**
              * @description The request is invalid: the body is not valid JSON or
              *     carries no field; a present title is empty,
-             *     whitespace-only or spans more than 64 characters; the
-             *     description exceeds its bound; or a present
-             *     `coverAssetId` is not a live member of this album (the
-             *     message key `album_cover_not_member`).
+             *     whitespace-only or spans more than 64 characters; a
+             *     present `coverAssetId` is not a live member of this
+             *     album (the message key `album_cover_not_member`); or a
+             *     present `allowAppDeletion` names a non-directory album
+             *     (the message key `album_deletable_not_directory`).
              */
             400: {
                 headers: {
@@ -8099,9 +8180,9 @@ export interface operations {
             };
             /**
              * @description The album is locked and the patch touches a property or
-             *     curation field (`title`, `description`, `coverAssetId`).
-             *     Unlock first -- a patch of only `locked: false` is the
-             *     unlock and is never gated.
+             *     curation field (`title`, `coverAssetId`,
+             *     `allowAppDeletion`). Unlock first -- a patch of only
+             *     `locked: false` is the unlock and is never gated.
              */
             409: {
                 headers: {
@@ -11260,136 +11341,6 @@ export interface operations {
                 };
             };
             /** @description The validated profile could not be written. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    getMountRootsSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /**
-             * @description The stored allowlist: at most 32 absolute paths. The
-             *     empty list is the default, not an error.
-             */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MountRootsSettingsResponse"];
-                };
-            };
-            /**
-             * @description Authentication is missing or no longer valid: the cookie
-             *     or bearer token is absent, expired or revoked.
-             */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description The caller is authenticated but their role is not
-             *     `admin`.
-             */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Unexpected server failure. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    updateMountRootsSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MountRootsSettingsUpdateRequest"];
-            };
-        };
-        responses: {
-            /**
-             * @description The allowlist was saved; the response carries the stored
-             *     value (cleaned, deduplicated, in first-occurrence order).
-             */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MountRootsSettingsResponse"];
-                };
-            };
-            /**
-             * @description The request is invalid: the body is not valid JSON, the
-             *     `roots` field is absent, the list carries more than 32
-             *     entries, or an entry is empty, relative, or past the
-             *     4,096-byte bound. Nothing was written.
-             */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description Authentication is missing or no longer valid: the cookie
-             *     or bearer token is absent, expired or revoked.
-             */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description The caller is authenticated but their role is not
-             *     `admin`.
-             */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description The validated allowlist could not be written. */
             500: {
                 headers: {
                     [name: string]: unknown;

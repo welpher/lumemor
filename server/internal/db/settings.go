@@ -8,9 +8,10 @@
 // adds the trash retention's writer (the admin surface's save), the
 // storage template's read/write seam, and the video transcoding
 // profile's read/write pair (the transcode and thumbnail jobs'
-// preset source). The albums-as-sources milestone (E4) adds the
-// mount-root allowlist's read/write pair: the directory-album trust
-// boundary the path completion and the album creation share.
+// preset source). The albums-as-sources milestone (E4) once added
+// the mount-root allowlist's pair here too; the E6 boundary ruling
+// retired it whole -- the compose file's mounts ARE the boundary
+// now, and no allowlist row remains for this table to interpret.
 package db
 
 import (
@@ -53,24 +54,6 @@ const (
 	// bound, the poster-frame switch, the failure policy) as one
 	// JSON object.
 	TranscodingSettingsKey = "transcoding_settings"
-
-	// AllowedMountRootsKey is the instance_settings key holding the
-	// mount-root allowlist: the absolute directory paths a directory
-	// album's source may live at-or-under. The stored value is a
-	// JSON array of strings; the default is the empty array, the
-	// "closed" posture (no directory album can be created until an
-	// administrator opens at least one root).
-	AllowedMountRootsKey = "allowed_mount_roots"
-
-	// MountRootsMaxEntries bounds the allowlist the admin surface
-	// accepts: a family instance has a handful of photo mounts, and
-	// the bound keeps the completion's domain read bounded too.
-	MountRootsMaxEntries = 32
-
-	// MountRootMaxBytes bounds one configured root path: the
-	// filesystem's own path ceiling, so a stored root can always be
-	// handed to the operating system verbatim.
-	MountRootMaxBytes = 4096
 )
 
 // TranscodingProfile is the instance's video transcoding settings:
@@ -266,65 +249,6 @@ func SaveTranscodingSettings(ctx context.Context, q *dbgen.Queries, profile Tran
 		Value: value,
 	}); err != nil {
 		return fmt.Errorf("db: write instance setting %s: %w", TranscodingSettingsKey, err)
-	}
-	return nil
-}
-
-// AllowedMountRoots reads the instance's mount-root allowlist, the
-// directory-album trust boundary. A missing setting row answers the
-// empty list (the default posture: directory album creation closed).
-// A row that is not a JSON array of strings -- a broken array, a
-// non-string element, an entry past the length or count bounds --
-// ALSO answers the empty list together with the error describing
-// it: the completion and the creation validation read this on every
-// request and must never fail over a corrupt settings row (the admin
-// surface validates before it saves, so a bad row is a corruption
-// the caller logs while the boundary stays closed -- the corrupt
-// state is the safe state, exactly like the trash retention's and
-// the transcoding profile's corrupt-row discipline).
-//
-// The answer is the STORED list verbatim; whether each root actually
-// exists, is a directory, and sits outside the managed tree is the
-// caller's domain computation (api), not this leaf's.
-func AllowedMountRoots(ctx context.Context, q *dbgen.Queries) ([]string, error) {
-	raw, err := q.GetInstanceSetting(ctx, AllowedMountRootsKey)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("db: read instance setting %s: %w", AllowedMountRootsKey, err)
-	}
-	var stored []string
-	if err := json.Unmarshal(raw, &stored); err != nil {
-		return nil, fmt.Errorf("db: instance setting %s = %s is not a JSON array of strings", AllowedMountRootsKey, raw)
-	}
-	if len(stored) > MountRootsMaxEntries {
-		return nil, fmt.Errorf("db: instance setting %s holds %d entries, over the bound of %d",
-			AllowedMountRootsKey, len(stored), MountRootsMaxEntries)
-	}
-	for _, root := range stored {
-		if root == "" || len(root) > MountRootMaxBytes {
-			return nil, fmt.Errorf("db: instance setting %s holds an empty entry or one past the %d-byte bound",
-				AllowedMountRootsKey, MountRootMaxBytes)
-		}
-	}
-	return stored, nil
-}
-
-// SaveAllowedMountRoots writes the instance's mount-root allowlist
-// as one JSON array of strings (the raw writer). The caller
-// validates the list's shape (absolute paths, the count and length
-// bounds, the collapse of duplicates); this leaf only writes.
-func SaveAllowedMountRoots(ctx context.Context, q *dbgen.Queries, roots []string) error {
-	value, err := json.Marshal(roots)
-	if err != nil {
-		return fmt.Errorf("db: encode instance setting %s: %w", AllowedMountRootsKey, err)
-	}
-	if err := q.SetInstanceSettingRaw(ctx, dbgen.SetInstanceSettingRawParams{
-		Key:   AllowedMountRootsKey,
-		Value: value,
-	}); err != nil {
-		return fmt.Errorf("db: write instance setting %s: %w", AllowedMountRootsKey, err)
 	}
 	return nil
 }

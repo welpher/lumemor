@@ -61,27 +61,6 @@ func (e *env) rescanAssetByPath(t *testing.T, owner uuid.UUID, path string) (res
 	return row, true
 }
 
-// setMountRoots saves the mount-root allowlist through the admin
-// face, opening the directory-album trust boundary over the given
-// root.
-func (e *env) setMountRoots(t *testing.T, roots ...string) {
-	t.Helper()
-	quoted := make([]string, len(roots))
-	for i, root := range roots {
-		quoted[i] = `"` + root + `"`
-	}
-	body := `{"roots":[` + strings.Join(quoted, ",") + `]}`
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings/mount-roots", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(e.cookie)
-	rec := httptest.NewRecorder()
-	e.router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("PUT /admin/settings/mount-roots status = %d, want %d (body %q)",
-			rec.Code, http.StatusOK, rec.Body.String())
-	}
-}
-
 // createDirectoryAlbum creates one directory album through the API
 // over the given source directory and answers its id.
 func (e *env) createDirectoryAlbum(t *testing.T, title, source string) uuid.UUID {
@@ -198,7 +177,6 @@ func TestAlbumRescanThreeArms(t *testing.T) {
 	writeSourceFile(t, filepath.Join(source, "a.jpg"), golden, stamp)
 	writeSourceFile(t, filepath.Join(source, "b.jpg"), plain, stamp)
 
-	e.setMountRoots(t, root)
 	album := e.createDirectoryAlbum(t, "Family archive", source)
 
 	// The first scan: the add arm over the whole source.
@@ -395,7 +373,6 @@ func TestAlbumRescanIdempotent(t *testing.T) {
 		t.Fatalf("write the noise file: %v", err)
 	}
 
-	e.setMountRoots(t, root)
 	album := e.createDirectoryAlbum(t, "Family archive", source)
 
 	if state := e.waitRescanFinished(t, e.rescan(t, album)); state != "succeeded" {
@@ -514,7 +491,6 @@ func TestAlbumRescanSkipsSymlinks(t *testing.T) {
 		t.Fatalf("symlink the directory entry: %v", err)
 	}
 
-	e.setMountRoots(t, root)
 	album := e.createDirectoryAlbum(t, "Family archive", source)
 
 	if state := e.waitRescanFinished(t, e.rescan(t, album)); state != "succeeded" {
@@ -587,7 +563,6 @@ func TestAlbumRescanDuplicates(t *testing.T) {
 	writeSourceFile(t, filepath.Join(source, "same-content.jpg"), golden, stamp)
 	writeSourceFile(t, filepath.Join(source, "trashed-content.jpg"), plain, stamp)
 
-	e.setMountRoots(t, root)
 	album := e.createDirectoryAlbum(t, "Family archive", source)
 
 	if state := e.waitRescanFinished(t, e.rescan(t, album)); state != "succeeded" {
@@ -655,7 +630,6 @@ func TestAlbumRescanRootGuard(t *testing.T) {
 	stamp := time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
 	writeSourceFile(t, filepath.Join(source, "a.jpg"), jpegBytes(t), stamp)
 
-	e.setMountRoots(t, root)
 	album := e.createDirectoryAlbum(t, "Family archive", source)
 	if state := e.waitRescanFinished(t, e.rescan(t, album)); state != "succeeded" {
 		t.Fatalf("the first rescan closed %s, want succeeded", state)

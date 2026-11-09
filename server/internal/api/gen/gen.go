@@ -319,9 +319,6 @@ const (
 	ALBUMPATHNOTDIRECTORY  ErrorCode = "ALBUM_PATH_NOT_DIRECTORY"
 	ALBUMPATHNOTFOUND      ErrorCode = "ALBUM_PATH_NOT_FOUND"
 	ALBUMPATHNOTREADABLE   ErrorCode = "ALBUM_PATH_NOT_READABLE"
-	ALBUMPATHOUTSIDEROOTS  ErrorCode = "ALBUM_PATH_OUTSIDE_ROOTS"
-	ALBUMPATHOVERLAPS      ErrorCode = "ALBUM_PATH_OVERLAPS"
-	ALBUMPATHSYMLINKESCAPE ErrorCode = "ALBUM_PATH_SYMLINK_ESCAPE"
 	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
 	ASSETNOTREADY          ErrorCode = "ASSET_NOT_READY"
 	ASSETRESTOREMOVEFAILED ErrorCode = "ASSET_RESTORE_MOVE_FAILED"
@@ -358,12 +355,6 @@ func (e ErrorCode) Valid() bool {
 	case ALBUMPATHNOTFOUND:
 		return true
 	case ALBUMPATHNOTREADABLE:
-		return true
-	case ALBUMPATHOUTSIDEROOTS:
-		return true
-	case ALBUMPATHOVERLAPS:
-		return true
-	case ALBUMPATHSYMLINKESCAPE:
 		return true
 	case ASSETNOTFOUND:
 		return true
@@ -993,10 +984,12 @@ type AlbumCreateRequest struct {
 	// RootPath The source directory: an existing absolute path the
 	// server validates against the path matrix (existence,
 	// directory-ness, readability, symlink resolution, the
-	// managed tree, root overlap, the mount-root allowlist)
-	// before creating anything. The album row stores the
-	// RESOLVED absolute path -- symlink segments evaluated --
-	// so a later symlink swap cannot repoint the album.
+	// managed tree) before creating anything. The album row
+	// stores the RESOLVED absolute path -- symlink segments
+	// evaluated -- so a later symlink swap cannot repoint the
+	// album. After the matrix passes, the server probes the
+	// directory's writability once and records the fact; a
+	// read-only directory is a valid source, never a refusal.
 	RootPath string `json:"rootPath"`
 
 	// Title The album's display title, trimmed server-side; it must
@@ -1009,10 +1002,11 @@ type AlbumCreateRequest struct {
 // AlbumCreateResponse The creation answer: the fresh directory album's wall card
 // (the summary exactly as `GET /albums` lists it) plus the
 // honest audience report -- the requested ids that did not
-// become audience, each with its reason. The card's companions
-// are the creation-time constants: `callerRole` `owner`,
-// `isShared` true exactly when the audience landed a row, an
-// empty `coverAssetIds`, `itemCount` 0.
+// become audience, each with its reason -- and the creation
+// probe's `sourceWritable` fact. The card's companions are the
+// creation-time constants: `callerRole` `owner`, `isShared`
+// true exactly when the audience landed a row, an empty
+// `coverAssetIds`, `itemCount` 0.
 type AlbumCreateResponse struct {
 	// CallerRole The caller's relation to this album: `owner` items belong
 	// to the own group, `viewer` items to the shared group. The
@@ -1066,6 +1060,17 @@ type AlbumCreateResponse struct {
 	// landed.
 	Skipped []AlbumAudienceSkip `json:"skipped"`
 
+	// SourceWritable The creation-time write probe's fact of the album
+	// this response just created: `true` when the probe
+	// file landed, read back and removed cleanly; `false`
+	// for a readable but read-only source. The creation
+	// SUCCEEDED either way -- a read-only directory is a
+	// legitimate album -- and `false` is the honest
+	// feedback the dialog renders (photos of this
+	// directory cannot be deleted through the
+	// application).
+	SourceWritable bool `json:"sourceWritable"`
+
 	// Title The album's display title.
 	Title string `json:"title"`
 
@@ -1100,6 +1105,16 @@ type AlbumCreateResponseType string
 // the caller's role, the live member count and one keyset page
 // of the live items.
 type AlbumDetail struct {
+	// AllowAppDeletion The owner's deletability switch: whether deleting this
+	// album's photos THROUGH the application -- the trash move
+	// of the source file -- is permitted. Present exactly on
+	// the OWNER's view of a `directory` album (the edit
+	// dialog's switch state; a viewer holds no write
+	// affordance to read it for). A read-only source carries
+	// the stored value too, but it governs nothing there: the
+	// derived `deletable` face stays false whatever it says.
+	AllowAppDeletion *bool `json:"allowAppDeletion,omitempty"`
+
 	// CallerRole The caller's relation to this album: the owner holds the
 	// write affordances, a viewer is read-only.
 	CallerRole AlbumDetailCallerRole `json:"callerRole"`
@@ -1108,6 +1123,17 @@ type AlbumDetail struct {
 	// column; the wall derives its collage fallback, the detail
 	// carries the pin itself.
 	CoverAssetId *openapi_types.UUID `json:"coverAssetId"`
+
+	// Deletable The wall's delete-affordance derivation, computed
+	// server-side and carried as one boolean: the caller is
+	// the owner, the source was writable at creation, the
+	// deletability switch is on, and the album is not locked.
+	// Present exactly on the OWNER's view of a `directory`
+	// album. The derivation is pure data -- no runtime probing
+	// -- and it drives the affordance only: the delete itself
+	// stays the operating system's authority, and a move it
+	// refuses answers the honest error.
+	Deletable *bool `json:"deletable,omitempty"`
 
 	// Id Identifier of the album.
 	Id openapi_types.UUID `json:"id"`
@@ -1156,6 +1182,17 @@ type AlbumDetail struct {
 	// empty array when the album holds no grants; viewer
 	// responses never carry it at all.
 	Shares *[]AlbumShareEntry `json:"shares,omitempty"`
+
+	// SourceWritable The creation-time write probe's fact: whether the
+	// source directory could be written, read back and
+	// removed from when the album was created. Present
+	// exactly on `directory` albums, both roles -- the fact is
+	// the album's own, not a role's. `false` is not an error
+	// state: a readable but read-only directory is a
+	// legitimate source whose photos cannot be deleted through
+	// the application. The truth is discovered exactly once,
+	// at creation; nothing re-probes it at runtime.
+	SourceWritable *bool `json:"sourceWritable,omitempty"`
 
 	// Title The album's display title.
 	Title string `json:"title"`
@@ -1261,6 +1298,21 @@ type AlbumOwnerRef struct {
 // the album itself. The write publishes one `album.updated`
 // event whatever fields changed.
 type AlbumPatch struct {
+	// AllowAppDeletion The owner's deletability switch of a DIRECTORY album:
+	// whether the album's photos may be deleted through the
+	// application (the trash move of the source file). On for
+	// a writable source by default; the owner who manages
+	// file-system deletions themselves turns it off, and the
+	// wall's delete affordances disappear with it (the derived
+	// `deletable` face of the detail read). A patch carrying
+	// the field on a virtual album answers 400 with the
+	// message key `album_deletable_not_directory` -- the
+	// switch is the directory album's own, a virtual album's
+	// deletions never move files. Idempotent: repeating the
+	// stored value converges, and the switch joins the
+	// property fields the lock refuses (409 until unlocked).
+	AllowAppDeletion *bool `json:"allowAppDeletion,omitempty"`
+
 	// CoverAssetId The pinned cover asset. When present it must be a LIVE
 	// member of THIS album (the membership row exists and the
 	// asset is not trashed, not hidden, not a Live Photo
@@ -1270,11 +1322,16 @@ type AlbumPatch struct {
 	// unchanged.
 	CoverAssetId *openapi_types.UUID `json:"coverAssetId,omitempty"`
 
-	// Locked The owner's lock. `true` freezes the album's curation
-	// and property fields against later writes (this same
-	// endpoint refuses them with 409 until the owner patches
-	// `locked: false` -- the unlock, never gated itself).
-	// Locking does not gate the album's delete.
+	// Locked The owner's lock, the content-protection switch: `true`
+	// freezes the album's curation and property fields against
+	// later writes (this same endpoint refuses them with 409
+	// until the owner patches `locked: false` -- the unlock,
+	// never gated itself) AND freezes the content itself --
+	// the directory rescan and the deletion of the album's
+	// photos answer the same 409 while the lock holds. The
+	// audience face stays open under a lock (its own pin: a
+	// lock protects content, not visibility), and the album's
+	// own delete answers the same 409 every write does.
 	Locked *bool `json:"locked,omitempty"`
 
 	// Title The album's display title, trimmed server-side; when
@@ -1286,12 +1343,12 @@ type AlbumPatch struct {
 // AlbumPathCompletionsResponse The path completion answer: the pickable source directories
 // of the creation dialog's combobox.
 type AlbumPathCompletionsResponse struct {
-	// Paths Full absolute directory paths inside the completion
-	// domain -- at or under a configured mount root, outside
-	// the server's managed tree, real directories (symlinked
-	// entries are never listed). Deduplicated, sorted
-	// ascending, at most 20 rows. The empty array is an honest
-	// "nothing matches", never an error.
+	// Paths Full absolute directory paths of the container's visible
+	// filesystem -- outside the server's managed tree, real
+	// directories (symlinked entries are never listed).
+	// Deduplicated, sorted ascending, at most 20 rows. The
+	// empty array is an honest "nothing matches", never an
+	// error.
 	Paths []string `json:"paths"`
 }
 
@@ -2298,35 +2355,6 @@ type ModelSlot string
 // group; `custom` models were registered by the scan of a
 // directory an administrator placed.
 type ModelSource string
-
-// MountRootsSettingsResponse The mount-root allowlist answer of `GET /admin/settings/
-// mount-roots` and `PUT /admin/settings/mount-roots`: the
-// stored list verbatim (the PUT's answer carries the cleaned,
-// deduplicated value in first-occurrence order). The empty
-// list is the default closed posture, never an error.
-type MountRootsSettingsResponse struct {
-	// Roots The configured mount roots: absolute directory paths,
-	// at most 32, stored as written. A root's live usability
-	// (exists, is a directory, outside the managed tree) is
-	// the completion and creation domains' concern, not this
-	// list's -- the list is the honest record of the
-	// configuration.
-	Roots []string `json:"roots"`
-}
-
-// MountRootsSettingsUpdateRequest Payload of `PUT /admin/settings/mount-roots`: the COMPLETE
-// replacement allowlist. The field must ride the body -- an
-// explicit empty array closes directory album creation, while
-// an absent field is a client bug the 400 names.
-type MountRootsSettingsUpdateRequest struct {
-	// Roots Every mount root of the new allowlist, at most 32
-	// entries. Each must be an absolute path within the
-	// 4,096-byte bound; the server cleans each value and
-	// collapses duplicates after the clean. Existence is not
-	// required -- a root may be configured before the volume
-	// is mounted.
-	Roots []string `json:"roots"`
-}
 
 // MoveFaceRequest One face's move onto an existing face cluster.
 type MoveFaceRequest struct {
@@ -3401,10 +3429,10 @@ type ActivateModelJSONBody = map[string]interface{}
 
 // CompleteAlbumPathParams defines parameters for CompleteAlbumPath.
 type CompleteAlbumPathParams struct {
-	// Prefix The path fragment typed so far. Absent or empty lists the
-	// mount roots. Values past 4,096 bytes answer 400 -- the
-	// filesystem's own path ceiling, so no honest typing ever
-	// hits it.
+	// Prefix The path fragment typed so far. Absent or empty lists
+	// the filesystem root itself. Values past 4,096 bytes
+	// answer 400 -- the filesystem's own path ceiling, so no
+	// honest typing ever hits it.
 	Prefix *string `form:"prefix,omitempty" json:"prefix,omitempty"`
 }
 
@@ -3628,9 +3656,6 @@ type SearchAssetsParamsLocale string
 // ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
 type ActivateModelJSONRequestBody = ActivateModelJSONBody
 
-// UpdateMountRootsSettingsJSONRequestBody defines body for UpdateMountRootsSettings for application/json ContentType.
-type UpdateMountRootsSettingsJSONRequestBody = MountRootsSettingsUpdateRequest
-
 // UpdateStorageSettingsJSONRequestBody defines body for UpdateStorageSettings for application/json ContentType.
 type UpdateStorageSettingsJSONRequestBody = StorageSettingsUpdateRequest
 
@@ -3732,12 +3757,6 @@ type ServerInterface interface {
 	// ReresolvePlaces Start a full place re-resolution run.
 	// (POST /admin/places/reresolve)
 	ReresolvePlaces(w http.ResponseWriter, r *http.Request)
-	// GetMountRootsSettings The directory-album mount-root allowlist.
-	// (GET /admin/settings/mount-roots)
-	GetMountRootsSettings(w http.ResponseWriter, r *http.Request)
-	// UpdateMountRootsSettings Save the directory-album mount-root allowlist.
-	// (PUT /admin/settings/mount-roots)
-	UpdateMountRootsSettings(w http.ResponseWriter, r *http.Request)
 	// GetStorageSettings Read the storage template setting.
 	// (GET /admin/settings/storage)
 	GetStorageSettings(w http.ResponseWriter, r *http.Request)
@@ -3981,18 +4000,6 @@ func (_ Unimplemented) RerunModel(w http.ResponseWriter, r *http.Request, id str
 // ReresolvePlaces Start a full place re-resolution run.
 // (POST /admin/places/reresolve)
 func (_ Unimplemented) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// GetMountRootsSettings The directory-album mount-root allowlist.
-// (GET /admin/settings/mount-roots)
-func (_ Unimplemented) GetMountRootsSettings(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// UpdateMountRootsSettings Save the directory-album mount-root allowlist.
-// (PUT /admin/settings/mount-roots)
-func (_ Unimplemented) UpdateMountRootsSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4533,34 +4540,6 @@ func (siw *ServerInterfaceWrapper) ReresolvePlaces(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReresolvePlaces(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetMountRootsSettings operation middleware
-func (siw *ServerInterfaceWrapper) GetMountRootsSettings(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetMountRootsSettings(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// UpdateMountRootsSettings operation middleware
-func (siw *ServerInterfaceWrapper) UpdateMountRootsSettings(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateMountRootsSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6586,12 +6565,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/admin/settings/mount-roots", wrapper.GetMountRootsSettings)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/admin/settings/mount-roots", wrapper.UpdateMountRootsSettings)
 	})
 
 	return r
