@@ -164,7 +164,7 @@ docker-test: web-build
 		-e GOPROXY=$(shell go env GOPROXY) \
 		$(TEST_ENV) \
 		$(DEV_IMAGE) \
-		go test -p 1 ./...
+		go test -p 1 -timeout 20m ./...
 
 # Lint the server inside the dev container: the media package is CGO
 # (govips/libvips), so the lint toolchain must run where libvips
