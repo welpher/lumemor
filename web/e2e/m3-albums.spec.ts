@@ -134,7 +134,7 @@
 // to its starting route, so a failure report names the exact scene
 // that broke.
 
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
@@ -218,9 +218,18 @@ test.beforeAll(async ({ playwright }) => {
 	// documents): the photos are never committed -- the bootstrap
 	// copies them in, the trash scene moves one into the managed
 	// trash area, and the restore returns it, so the next run's
-	// re-seed is a no-op copy. The bind is live, so the container
-	// sees the files the moment they land.
+	// re-seed is a no-op copy. The sweep first is the determinism:
+	// the directory persists across every run on the host (this
+	// spec's two seeds, the acceptance chain's one), and a stale
+	// photo would leave the rescan's membership counting leftovers.
+	// The bind is live, so the container sees the files the moment
+	// they land.
 	await mkdir(RW_SOURCE_HOST_DIR, { recursive: true });
+	for (const entry of await readdir(RW_SOURCE_HOST_DIR)) {
+		if (entry !== 'README.md') {
+			await rm(path.join(RW_SOURCE_HOST_DIR, entry), { force: true });
+		}
+	}
 	await copyFile(RW_SEED_A, path.join(RW_SOURCE_HOST_DIR, PHOTO_RW_A_NAME));
 	await copyFile(RW_SEED_B, path.join(RW_SOURCE_HOST_DIR, PHOTO_RW_B_NAME));
 

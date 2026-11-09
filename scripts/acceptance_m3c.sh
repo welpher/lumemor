@@ -446,13 +446,18 @@ prepare_bind_mount() {
 # the deletion chain's restore returns it. The bind is live, so the
 # container sees the file the moment it lands; the directory's
 # ownership (prepare_bind_mount above) is what the probe and the
-# trash move exercise.
+# trash move exercise. The sweep first is the determinism: the
+# directory persists across every run on the host (this chain's one
+# seed, the e2e spec's two, a probe wart), and a stale photo would
+# leave the scan's membership counting leftovers -- everything that
+# is not the README goes.
 seed_rw_fixture() {
     [ -f "$rw_seed_template" ] \
         || fail "fixture missing: $rw_seed_template -- the writable source's seed template"
     mkdir -p "$rw_source_host_dir"
+    find "$rw_source_host_dir" -mindepth 1 -maxdepth 1 -type f ! -name 'README.md' -delete
     cp "$rw_seed_template" "$rw_source_host_dir/$rw_fixture_photo"
-    echo "    the writable source fixture holds $rw_mount_root/$rw_fixture_photo"
+    echo "    the writable source fixture holds $rw_mount_root/$rw_fixture_photo (alone)"
 }
 
 start_stack() {
