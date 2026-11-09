@@ -5,63 +5,94 @@
 # its own compose stack and tearing it down fully, including the
 # database volume) runs first and must be green before the M3c phases
 # start. Then two stack lifetimes of this repository's own compose
-# deployment walk the sharing milestone's story:
+# deployment walk the sharing milestone's story, E6's album autonomy
+# included:
 #
-# Phase 1 (the sharing story over the API, two accounts): the stack
-# starts fresh, the first-run admin is created and signed in (the
-# session's identity face asserted: the login body and the session
-# list both carry the account's userId and role -- the M3c identity
-# seam), and a MEMBER account is provisioned through the admin API
-# and signs in with its own session. The member uploads one photo of
-# their own (their sync stream) -- the story's ONLY upload: an E4
-# album is a source, so the admin gathers no photos by upload. The
-# album is created the E4 way: the admin opens the fixture mount in
-# the instance's mount-root allowlist (PUT /admin/settings/
-# mount-roots, the trust boundary -- the path completion then lists
-# the fixture's directories, the completion-domain proof), and POST
-# /albums carries the pinned triple (title, rootPath, audience) with
-# the MEMBER in the audience at create and the admin's own id beside
-# it: the owner id answers the honest skip in the create's audience
-# report (the E4 face of the curation-era honest skip -- the report
-# is per-entry, never an error). The rescan then fills the
-# membership: POST /albums/{id}/rescan answers 202 with the run's
-# id, the album_rescan job run reaches succeeded, and the two
-# fixture photos are ingested BY REFERENCE (storage_kind external,
-# file_path the real source paths, taken_at_source file -- zero
-# copy, zero move; the read-only bind is the pin held by
-# construction) through the same pipeline fan-out an upload's,
-# converging the two faces into the one cluster (the B4 people arm's
-# structure, now over external rows). The member's whole shared
-# surface is asserted: the wall's shared group (the honest zero
-# before the scan, the live count after), the timeline's inclusion
-# (the union's shared arm beside the member's own sync stream), the
-# read-only detail (callerRole viewer), the per-user favorite, the
-# timeline-exclusion toggle with its retraction and re-include, and
-# the people surface's B4 sharing arm (the sharee sees the shared
-# assets' faces as a cluster; labels stay per-user -- the sharee
-# names it, the owner's unnamed region never hears about it). The
-# sharee's write attempts answer the refusal matrix (the rescan, the
-# audience write and the delete all refuse the view-only share with
-# 403). The owner's audience write (PUT /albums/{id}/audience, the
-# full empty set) then retracts EVERYTHING the share gave the member
-# (the wall card, the timeline items, the detail read, the favorites
-# view, the people surface -- while the member's own photo and the
-# label row survive). The closing refusal: the album's delete
-# answers the single-shape 404 (a directory album's removal is its
-# own later flow, never the curation-era cascade) and the refusal
-# moved nothing -- the album, its membership and its now-empty share
-# rows stay, and the referenced photos never leave the source.
+# Phase 1 (the sharing story over the API, two accounts, plus the E6
+# autonomy faces): the stack starts fresh, the first-run admin is
+# created and signed in (the session's identity face asserted: the
+# login body and the session list both carry the account's userId and
+# role -- the M3c identity seam), and a MEMBER account is provisioned
+# through the admin API and signs in with its own session. The member
+# uploads one photo of their own (their sync stream) -- the story's
+# ONLY upload: an E4 album is a source, so the admin gathers no
+# photos by upload. THE E6 BOUNDARY: the mount-root allowlist is
+# retired -- the compose binds ARE the boundary -- so no root is
+# opened; instead the refusal matrix's new arms are pinned first (the
+# member's create-album POST and their path-completion call both
+# answer 403 AUTH_FORBIDDEN, and the member's create attempt lands no
+# row), then the SYSTEM-WIDE completion is drilled (the empty prefix
+# answers ["/"], the fixture mount's directories list without any
+# opening, and the managed data tree NEVER lists -- the storage root's
+# own directory answers its config sibling alone). The album is then
+# created the E4 way: POST /albums carries the pinned triple (title,
+# rootPath, audience) with the MEMBER in the audience at create and
+# the admin's own id beside it: the owner id answers the honest skip
+# in the create's audience report (the E4 face of the curation-era
+# honest skip -- the report is per-entry, never an error), and the
+# CREATION-TIME WRITE PROBE answers its fact honestly: the fixture
+# bind is read-only, so the response carries sourceWritable false --
+# feedback, never a failure. The rescan then fills the membership:
+# POST /albums/{id}/rescan answers 202 with the run's id, the
+# album_rescan job run reaches succeeded, and the two fixture photos
+# are ingested BY REFERENCE (storage_kind external, file_path the
+# real source paths, taken_at_source file -- zero copy, zero move;
+# the read-only bind is the pin held by construction) through the
+# same pipeline fan-out an upload's, converging the two faces into
+# the one cluster (the B4 people arm's structure, now over external
+# rows). The member's whole shared surface is asserted: the wall's
+# shared group (the honest zero before the scan, the live count
+# after), the timeline's inclusion (the union's shared arm beside the
+# member's own sync stream), the read-only detail (callerRole
+# viewer), the per-user favorite, the timeline-exclusion toggle with
+# its retraction and re-include (the member's own arm, then the
+# OWNER's own arm over the same album), and the people surface's B4
+# sharing arm (the sharee sees the shared assets' faces as a cluster;
+# labels stay per-user -- the sharee names it, the owner's unnamed
+# region never hears about it). The sharee's write attempts answer
+# the refusal matrix (the rescan, the audience write and the delete
+# all refuse the view-only share with 403). The owner's audience
+# write (PUT /albums/{id}/audience, the full empty set) then retracts
+# EVERYTHING the share gave the member (the wall card, the timeline
+# items, the detail read, the favorites view, the people surface --
+# while the member's own photo and the label row survive). The
+# closing refusal: the album's delete answers the single-shape 404
+# (a directory album's removal is its own later flow, never the
+# curation-era cascade) and the refusal moved nothing -- the album,
+# its membership and its now-empty share rows stay, and the
+# referenced photos never leave the source.
+#
+# The E6 autonomy faces (the closing section, over a WRITABLE source
+# fixture): the repo's compose file also binds
+# web/e2e/fixtures/m3-source-rw into the container WITHOUT :ro (the
+# seed file is staged by this script before the album references it
+# -- genuinely distinct bytes, see the fixture's README), and the
+# same administrator walks the deletion chain's every arm: the
+# writable creation answers sourceWritable TRUE; the rescan ingests
+# the file by reference; the owner's detail carries the deletability
+# faces (allowAppDeletion on, the derived deletable true); the
+# PATCH of the deletability switch flips the derived face (the
+# setting gates the affordance, pure data); the LOCK freezes the
+# delete -- the trash of the live external member answers 409
+# ALBUM_LOCKED BEFORE any file moves (the file stays in the source,
+# no trash home appears); the unlock frees it -- the trash then
+# MOVES the file into the managed trash area (the row carries the
+# trash path, the source directory loses the file), and the restore
+# moves it BACK (the row live again, the file returned -- the
+# fixture healed for the next run).
 #
 # Phase 2 (the e2e stack): a fresh stack whose models ride the SAME
 # storage bind mount; the Playwright spec web/e2e/m3-albums.spec.ts
 # walks the albums-as-sources story of the web app through a real
-# browser -- the sign-in, the create dialog's closed posture and
-# path completion against the mounted fixture, the rescan's
-# convergence, the edit dialog's audience grant, and the member's
-# read-only perspective (the shared section, the read-only detail,
-# the timeline inclusion, the viewer drawer's identity-aware
-# read-only state). The spec bootstraps itself (the first-run admin
-# and the member account through the APIs, the model group's
+# browser -- the sign-in, the create dialog's system-wide completion
+# (the managed tree never listed), the read-only creation's honest
+# report face and the writable creation's direct close, the rescans'
+# convergence, the edit dialog's audience grant and autonomy block,
+# the member's read-only perspective with the creation guard's
+# refusal matrix, and the deletable wall's delete-only selection
+# with its trash/restore round trip (the spec seeds and heals the
+# writable fixture itself). The spec bootstraps itself (the first-run
+# admin and the member account through the APIs, the model group's
 # download through the admin API), exactly the way every prior e2e
 # spec owns its stack's bootstrap.
 #
@@ -112,18 +143,35 @@ admin_password="correct-horse-battery"
 member_password="correct-horse-battery"
 member_photo="$repo_root/server/internal/ml/testdata/ocr-text.png"
 
-# The E4 source fixture: the repository's compose file binds the e2e
-# fixture tree (web/e2e/fixtures/m3-source, see its README) into the
-# container read-only at /mnt/e2e-source, and the story's album
-# references coastal-week under it -- the two face-portrait JPEGs the
-# upload stories seed, arriving through the source path this time
-# (referenced in place, never uploaded). The read-only bind is the
-# zero-copy pin held by construction: a scan that tried to write
-# into the source would fail loudly against it.
+# The E4 source fixtures (E6's boundary, both documented in their
+# READMEs): the repository's compose file binds the read-only fixture
+# tree (web/e2e/fixtures/m3-source) into the container at
+# /mnt/e2e-source (:ro -- the zero-copy pin held by construction, and
+# the write probe's honest false fact), and the writable sibling
+# (web/e2e/fixtures/m3-source-rw) WITHOUT :ro at /mnt/e2e-source-rw
+# (the deletion chain's true arm -- its seed file is staged below,
+# before the album references it). The story's album references
+# coastal-week under the read-only root -- the two face-portrait
+# JPEGs the upload stories seed, arriving through the source path
+# this time (referenced in place, never uploaded). The read-only bind
+# is the zero-copy pin held by construction: a scan that tried to
+# write into the source would fail loudly against it.
 mount_root="/mnt/e2e-source"
 source_dir="/mnt/e2e-source/coastal-week"
 fixture_photo_a="IMG_E4_0001.jpg"
 fixture_photo_b="IMG_E4_0002.jpg"
+
+# The writable fixture's arrangement (see web/e2e/fixtures/
+# m3-source-rw/README.md): the seeded file carries genuinely distinct
+# bytes (the cross-person portrait -- never a byte-identical copy of
+# the read-only fixture's pair or the member's upload, so the rescan's
+# owner+checksum dedup never links the stories' rows), and the trash
+# + restore round trip at the section's end returns it, so the tree
+# self-heals for the next run.
+rw_mount_root="/mnt/e2e-source-rw"
+rw_source_host_dir="$repo_root/web/e2e/fixtures/m3-source-rw"
+rw_seed_template="$repo_root/server/internal/ml/testdata/face-portrait-other.jpg"
+rw_fixture_photo="IMG_E6_0001.jpg"
 
 # The download source mode (see the header comment): the M3C_*
 # aliases win over the M3B_* variables so this script stays a
@@ -374,18 +422,37 @@ wait_healthy() {
 
 prepare_bind_mount() {
     # The container runs as the image's fixed uid/gid 10001 and the
-    # bind source must be writable by it before the server starts.
+    # bind sources must be writable by it before the server starts.
     # Docker only creates a missing source as root:root, so the
     # directory is created by the host user first and then chowned
     # through the image itself running as root -- the fresh-install
     # contract without sudo. The chown rides the app image, so it must
     # exist: build it here (a cached no-op when the image is current;
-    # `up -d --build` below re-checks it).
+    # `up -d --build` below re-checks it). The E6 writable source
+    # fixture joins the chown: the write probe creates and removes
+    # its own entry in that directory and the trash move renames out
+    # of it, so the DIRECTORY must be the container's to write (the
+    # photos the stories stage inside it later need no ownership of
+    # their own). The read-only fixture mount is never touched.
     mkdir -p lumemor
     compose build || fail "docker compose build failed"
     compose run --rm --no-deps --entrypoint /bin/sh -u 0 lumemor \
-        -c 'chown -R 10001:10001 /var/lib/lumemor' \
-        || fail "chown of ./lumemor to 10001:10001 through the image failed"
+        -c 'chown -R 10001:10001 /var/lib/lumemor /mnt/e2e-source-rw' \
+        || fail "chown of ./lumemor and the writable source fixture to 10001:10001 through the image failed"
+}
+
+# seed_rw_fixture stages the writable source fixture's photo: the
+# committed tree is the README alone, the runs copy the seed in, and
+# the deletion chain's restore returns it. The bind is live, so the
+# container sees the file the moment it lands; the directory's
+# ownership (prepare_bind_mount above) is what the probe and the
+# trash move exercise.
+seed_rw_fixture() {
+    [ -f "$rw_seed_template" ] \
+        || fail "fixture missing: $rw_seed_template -- the writable source's seed template"
+    mkdir -p "$rw_source_host_dir"
+    cp "$rw_seed_template" "$rw_source_host_dir/$rw_fixture_photo"
+    echo "    the writable source fixture holds $rw_mount_root/$rw_fixture_photo"
 }
 
 start_stack() {
@@ -674,19 +741,50 @@ grep -q '"items":\[\]' "$work_dir/member_unnamed_body" \
     || fail "the member's unnamed region is not empty before the share: $(cat "$work_dir/member_unnamed_body")"
 echo "    the member sees no cluster yet"
 
-echo "==> PUT /api/v1/admin/settings/mount-roots must open the e2e fixture mount (the trust boundary)"
-status="$(curl -sS -o "$work_dir/mount_roots_body" -b "$admin_jar" -w '%{http_code}' \
-    -X PUT -H 'Content-Type: application/json' \
-    -d "{\"roots\":[\"$mount_root\"]}" \
-    "$base_url/api/v1/admin/settings/mount-roots")" \
-    || fail "PUT /api/v1/admin/settings/mount-roots request failed"
-[ "$status" = "200" ] \
-    || fail "PUT /api/v1/admin/settings/mount-roots returned status $status, want 200: $(cat "$work_dir/mount_roots_body")"
-grep -q "\"roots\":\[\"$mount_root\"\]" "$work_dir/mount_roots_body" \
-    || fail "the saved allowlist is not the fixture mount alone: $(cat "$work_dir/mount_roots_body")"
-echo "    the fixture mount ($mount_root) is the instance's one allowed root"
+echo "==> the member's POST /api/v1/albums must answer 403 (the E6 creation guard)"
+# The refusal matrix's new arm (E6, web IA §7.5's third revision):
+# mounting an existing photo directory is a configuration act, so the
+# creation is the administrator's alone -- the member's attempt is
+# refused with the admin surfaces' own envelope, before any request
+# part is considered, and no row lands.
+status="$(curl -sS -o "$work_dir/member_create_refusal_body" -b "$member_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"title\":\"Member attempt\",\"rootPath\":\"$source_dir\",\"audience\":[]}" \
+    "$base_url/api/v1/albums")" \
+    || fail "POST /api/v1/albums (member) request failed"
+[ "$status" = "403" ] \
+    || fail "POST /api/v1/albums (member) returned status $status, want 403 (the creation is the administrator's): $(cat "$work_dir/member_create_refusal_body")"
+grep -q 'AUTH_FORBIDDEN' "$work_dir/member_create_refusal_body" \
+    || fail "the member's create refusal does not answer AUTH_FORBIDDEN: $(cat "$work_dir/member_create_refusal_body")"
+directory_album_rows="$(psql_query "SELECT count(*) FROM albums WHERE type = 'directory'")"
+[ "$directory_album_rows" = "0" ] \
+    || fail "the member's refused create landed $directory_album_rows directory album rows, want 0"
+echo "    the member's create answers 403 AUTH_FORBIDDEN and lands no row"
 
-echo "==> GET /api/v1/albums/path-completions must list the fixture's directories (the completion domain)"
+echo "==> the member's GET /api/v1/albums/path-completions must answer 403 (the completion is the admin's domain)"
+status="$(curl -sS -o "$work_dir/member_completion_refusal_body" -b "$member_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/path-completions?prefix=$mount_root")" \
+    || fail "GET /api/v1/albums/path-completions (member) request failed"
+[ "$status" = "403" ] \
+    || fail "GET /api/v1/albums/path-completions (member) returned status $status, want 403 (the completion browses the filesystem for the configuration act): $(cat "$work_dir/member_completion_refusal_body")"
+grep -q 'AUTH_FORBIDDEN' "$work_dir/member_completion_refusal_body" \
+    || fail "the member's completion refusal does not answer AUTH_FORBIDDEN: $(cat "$work_dir/member_completion_refusal_body")"
+echo "    the member's completion answers 403 AUTH_FORBIDDEN (the members' contribution path is the upload stream)"
+
+echo "==> GET /api/v1/albums/path-completions must drill the container's real filesystem (the E6 boundary)"
+# The system-wide domain (the allowlist retired with E6): the
+# completion's rows are the honest reflection of what the operating
+# system lets the server read, and the compose mounts ARE the
+# boundary -- no root was opened for anything below to list.
+status="$(curl -sS -o "$work_dir/completions_root_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/path-completions")" \
+    || fail "GET /api/v1/albums/path-completions (empty prefix) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/path-completions (empty prefix) returned status $status, want 200: $(cat "$work_dir/completions_root_body")"
+grep -q '"paths":\["/"\]' "$work_dir/completions_root_body" \
+    || fail "the empty prefix does not answer the filesystem root itself: $(cat "$work_dir/completions_root_body")"
+echo "    the empty prefix answers [\"/\"] -- the combobox's start-here row"
+
 status="$(curl -sS -o "$work_dir/completions_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/albums/path-completions?prefix=$mount_root/")" \
     || fail "GET /api/v1/albums/path-completions request failed"
@@ -694,7 +792,18 @@ status="$(curl -sS -o "$work_dir/completions_body" -b "$admin_jar" -w '%{http_co
     || fail "GET /api/v1/albums/path-completions returned status $status, want 200: $(cat "$work_dir/completions_body")"
 grep -q "\"paths\":\[\"$mount_root/coastal-week\",\"$mount_root/trip-2026\"\]" "$work_dir/completions_body" \
     || fail "the completion does not list the fixture's directories: $(cat "$work_dir/completions_body")"
-echo "    the drilled-in completion lists coastal-week and trip-2026 (the domain is the opened root)"
+echo "    the fixture mount lists its directories with no root opened (the bind is the boundary)"
+
+status="$(curl -sS -o "$work_dir/completions_managed_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/path-completions?prefix=/var/lib/lumemor/")" \
+    || fail "GET /api/v1/albums/path-completions (managed tree) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/path-completions (managed tree) returned status $status, want 200: $(cat "$work_dir/completions_managed_body")"
+grep -q '"/var/lib/lumemor/config"' "$work_dir/completions_managed_body" \
+    || fail "the storage root's own directory does not list its config sibling: $(cat "$work_dir/completions_managed_body")"
+grep -q '"/var/lib/lumemor/data"' "$work_dir/completions_managed_body" \
+    && fail "the completion listed the managed data tree: $(cat "$work_dir/completions_managed_body")"
+echo "    the managed data tree never lists (the one exclusion that stayed: the config sibling answers alone)"
 
 echo "==> POST /api/v1/albums must create the admin's directory album (the audience at create, the owner id honestly skipped)"
 status="$(curl -sS -o "$work_dir/album_body" -b "$admin_jar" -w '%{http_code}' \
@@ -712,6 +821,12 @@ grep -q '"itemCount":0' "$work_dir/album_body" \
     || fail "the created album's count is not zero: $(cat "$work_dir/album_body")"
 grep -q '"isShared":true' "$work_dir/album_body" \
     || fail "the created album's card does not carry the landed audience: $(cat "$work_dir/album_body")"
+# The write probe's honest fact (E6, §7.9): the fixture bind is
+# read-only, so the creation answers sourceWritable FALSE -- a fact
+# about the source, never a failure (the album is legitimate; its
+# photos just cannot be deleted through the application).
+grep -q '"sourceWritable":false' "$work_dir/album_body" \
+    || fail "the read-only creation does not carry sourceWritable false: $(cat "$work_dir/album_body")"
 # The E4 face of the curation-era honest skip: the audience report
 # carries each unusable id with its reason, never an error -- the
 # owner sees the album by construction, so the own id is the skip.
@@ -722,7 +837,7 @@ grep -q '"reason":"owner"' "$work_dir/album_body" \
 album_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/album_body")"
 [ -n "$album_id" ] \
     || fail "the created album carries no id: $(cat "$work_dir/album_body")"
-echo "    the album exists ($album_id), sourced at $source_dir; the member's grant landed, the owner id answered the honest skip"
+echo "    the album exists ($album_id), sourced at $source_dir; the member's grant landed, the owner id answered the honest skip, the probe answered the read-only fact"
 
 echo "==> the member's wall must list the album in the shared group with the honest zero count"
 status="$(curl -sS -o "$work_dir/member_wall_body" -b "$member_jar" -w '%{http_code}' \
@@ -971,6 +1086,46 @@ for wanted_id in "$member_photo_id" "$shared_a_id" "$shared_b_id"; do
 done
 echo "    the shared items returned with the re-include"
 
+echo "==> the owner's own timeline-exclusion toggle must retract and re-include the album's photos (the E6 arm)"
+# The same per-user preference, the OWNER's own row this time (the
+# edit dialog's second toggle): the admin's aggregated timeline drops
+# the album's photos while the preference holds, and the album's own
+# detail never filters for either caller whatever the switch says.
+status="$(curl -sS -o "$work_dir/admin_pref_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PUT -H 'Content-Type: application/json' \
+    -d '{"inTimeline":false}' \
+    "$base_url/api/v1/albums/$album_id/timeline-preference")" \
+    || fail "PUT /api/v1/albums/$album_id/timeline-preference (owner) request failed"
+[ "$status" = "200" ] \
+    || fail "PUT /api/v1/albums/$album_id/timeline-preference (owner) returned status $status, want 200: $(cat "$work_dir/admin_pref_body")"
+grep -q '"inTimeline":false' "$work_dir/admin_pref_body" \
+    || fail "the owner's preference response does not carry the stored switch: $(cat "$work_dir/admin_pref_body")"
+status="$(curl -sS -o "$work_dir/admin_timeline_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline")" \
+    || fail "GET /api/v1/assets/timeline (owner, excluded) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline (owner, excluded) returned status $status, want 200: $(cat "$work_dir/admin_timeline_body")"
+admin_timeline_ids="$(item_ids "$work_dir/admin_timeline_body" | tr '\n' ' ')"
+[ "$admin_timeline_ids" = "" ] \
+    || fail "the owner's excluded timeline holds [$admin_timeline_ids], want nothing (the album is the owner's only source): $(cat "$work_dir/admin_timeline_body")"
+status="$(curl -sS -o "$work_dir/admin_pref_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PUT -H 'Content-Type: application/json' \
+    -d '{"inTimeline":true}' \
+    "$base_url/api/v1/albums/$album_id/timeline-preference")" \
+    || fail "PUT /api/v1/albums/$album_id/timeline-preference (owner, re-include) request failed"
+[ "$status" = "200" ] \
+    || fail "PUT /api/v1/albums/$album_id/timeline-preference (owner, re-include) returned status $status, want 200: $(cat "$work_dir/admin_pref_body")"
+status="$(curl -sS -o "$work_dir/admin_timeline_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline")" \
+    || fail "GET /api/v1/assets/timeline (owner, re-included) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline (owner, re-included) returned status $status, want 200: $(cat "$work_dir/admin_timeline_body")"
+for wanted_id in "$shared_a_id" "$shared_b_id"; do
+    grep -q "\"$wanted_id\"" "$work_dir/admin_timeline_body" \
+        || fail "the owner's re-included timeline does not list $wanted_id: $(cat "$work_dir/admin_timeline_body")"
+done
+echo "    the owner's own exclusion retracted the album's photos and the re-include returned them"
+
 echo "==> the people surface's B4 sharing arm: the sharee sees the shared faces, labels stay per-user"
 status="$(curl -sS -o "$work_dir/member_unnamed_body" -b "$member_jar" -w '%{http_code}' \
     "$base_url/api/v1/people/unnamed")" \
@@ -1168,6 +1323,188 @@ status="$(curl -sS -o "$work_dir/admin_unnamed_body" -b "$admin_jar" -w '%{http_
 grep -q "\"$member_cluster_id\"" "$work_dir/admin_unnamed_body" \
     || fail "the owner's unnamed region lost the cluster (the photos never left): $(cat "$work_dir/admin_unnamed_body")"
 echo "    the owner's people surface keeps the faces (the photos never left)"
+
+# ---------------------------------------------------------------------------
+# The E6 album autonomy faces (web IA §7.9), over a WRITABLE source:
+# the probe's true arm, the deletability setting's derived face, the
+# lock's trash refusal, and the trash/restore round trip that moves
+# the source file itself.
+# ---------------------------------------------------------------------------
+
+echo "==> seeding the writable source fixture (the deletion chain's true arm)"
+seed_rw_fixture
+
+echo "==> POST /api/v1/albums must answer the write probe's TRUE fact over the writable source"
+status="$(curl -sS -o "$work_dir/rw_album_body" -b "$admin_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"title\":\"M3c Writable Album\",\"rootPath\":\"$rw_mount_root\",\"audience\":[]}" \
+    "$base_url/api/v1/albums")" \
+    || fail "POST /api/v1/albums (writable) request failed"
+[ "$status" = "201" ] \
+    || fail "POST /api/v1/albums (writable) returned status $status, want 201: $(cat "$work_dir/rw_album_body")"
+grep -q '"sourceWritable":true' "$work_dir/rw_album_body" \
+    || fail "the writable creation does not carry sourceWritable true: $(cat "$work_dir/rw_album_body")"
+rw_album_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/rw_album_body")"
+[ -n "$rw_album_id" ] \
+    || fail "the writable album carries no id: $(cat "$work_dir/rw_album_body")"
+echo "    the writable album exists ($rw_album_id) at $rw_mount_root, the probe answered true"
+
+echo "==> POST /api/v1/albums/{id}/rescan must return 202 and the run must reach succeeded"
+status="$(curl -sS -o "$work_dir/rw_rescan_body" -b "$admin_jar" -w '%{http_code}' \
+    -X POST "$base_url/api/v1/albums/$rw_album_id/rescan")" \
+    || fail "POST /api/v1/albums/$rw_album_id/rescan request failed"
+[ "$status" = "202" ] \
+    || fail "POST /api/v1/albums/$rw_album_id/rescan returned status $status, want 202: $(cat "$work_dir/rw_rescan_body")"
+grep -q '"jobRunId":"[^"]*"' "$work_dir/rw_rescan_body" \
+    || fail "POST /api/v1/albums/$rw_album_id/rescan carries no jobRunId: $(cat "$work_dir/rw_rescan_body")"
+deadline="$(( $(date +%s) + rescan_timeout_seconds ))"
+while :; do
+    status="$(curl -sS -o "$work_dir/jobs_body" -b "$admin_jar" -w '%{http_code}' \
+        "$base_url/api/v1/admin/jobs")" \
+        || fail "GET /api/v1/admin/jobs request failed"
+    [ "$status" = "200" ] \
+        || fail "GET /api/v1/admin/jobs returned status $status, want 200: $(cat "$work_dir/jobs_body")"
+    row="$(rescan_row)"
+    state="$(printf '%s\n' "$row" | sed -n 's/.*"state":"\([a-z]*\)".*/\1/p')"
+    if [ "$state" = "succeeded" ]; then
+        break
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the writable album's rescan run did not succeed within ${rescan_timeout_seconds}s (last row: $row)"
+    fi
+    if [ "$state" = "failed" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the writable album's rescan run failed: $row (see the server logs above)"
+    fi
+    sleep 3
+done
+echo "    the writable album's rescan run succeeded: $row"
+
+echo "==> the writable album's detail must carry the deletability faces"
+status="$(curl -sS -o "$work_dir/rw_detail_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$rw_album_id")" \
+    || fail "GET /api/v1/albums/$rw_album_id (writable) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/$rw_album_id (writable) returned status $status, want 200: $(cat "$work_dir/rw_detail_body")"
+grep -q '"itemCount":1' "$work_dir/rw_detail_body" \
+    || fail "the writable album's count is not the seeded one: $(cat "$work_dir/rw_detail_body")"
+grep -q '"sourceWritable":true' "$work_dir/rw_detail_body" \
+    || fail "the writable album's detail does not carry the probe's true fact: $(cat "$work_dir/rw_detail_body")"
+grep -q '"allowAppDeletion":true' "$work_dir/rw_detail_body" \
+    || fail "the writable album's deletability switch is not on by default: $(cat "$work_dir/rw_detail_body")"
+grep -q '"deletable":true' "$work_dir/rw_detail_body" \
+    || fail "the writable album's derived deletable face is not true (owner AND writable AND switch AND unlocked): $(cat "$work_dir/rw_detail_body")"
+rw_asset_id="$(sed -n 's/.*"assetId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/rw_detail_body")"
+[ -n "$rw_asset_id" ] \
+    || fail "the writable album's detail lists no member asset id: $(cat "$work_dir/rw_detail_body")"
+echo "    the detail carries the probe fact, the switch on, and the derived deletable face true ($rw_asset_id)"
+
+echo "==> PATCH allowAppDeletion must gate the derived face (the setting drives the affordance)"
+status="$(curl -sS -o "$work_dir/rw_patch_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PATCH -H 'Content-Type: application/json' \
+    -d '{"allowAppDeletion":false}' \
+    "$base_url/api/v1/albums/$rw_album_id")" \
+    || fail "PATCH /api/v1/albums/$rw_album_id (deletable off) request failed"
+[ "$status" = "200" ] \
+    || fail "PATCH /api/v1/albums/$rw_album_id (deletable off) returned status $status, want 200: $(cat "$work_dir/rw_patch_body")"
+status="$(curl -sS -o "$work_dir/rw_detail_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$rw_album_id")" \
+    || fail "GET /api/v1/albums/$rw_album_id (deletable off) request failed"
+grep -q '"allowAppDeletion":false' "$work_dir/rw_detail_body" \
+    || fail "the switch's off state did not land: $(cat "$work_dir/rw_detail_body")"
+grep -q '"deletable":false' "$work_dir/rw_detail_body" \
+    || fail "the derived face stayed true with the switch off (the setting must drive the affordance): $(cat "$work_dir/rw_detail_body")"
+status="$(curl -sS -o "$work_dir/rw_patch_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PATCH -H 'Content-Type: application/json' \
+    -d '{"allowAppDeletion":true}' \
+    "$base_url/api/v1/albums/$rw_album_id")" \
+    || fail "PATCH /api/v1/albums/$rw_album_id (deletable on) request failed"
+[ "$status" = "200" ] \
+    || fail "PATCH /api/v1/albums/$rw_album_id (deletable on) returned status $status, want 200: $(cat "$work_dir/rw_patch_body")"
+status="$(curl -sS -o "$work_dir/rw_detail_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$rw_album_id")" \
+    || fail "GET /api/v1/albums/$rw_album_id (deletable on) request failed"
+grep -q '"deletable":true' "$work_dir/rw_detail_body" \
+    || fail "the derived face did not return with the switch back on: $(cat "$work_dir/rw_detail_body")"
+echo "    the switch off killed the derived face; the switch on returned it (the idempotent round trip)"
+
+echo "==> PATCH locked must freeze the deletion (the lock's own derived face)"
+status="$(curl -sS -o "$work_dir/rw_lock_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PATCH -H 'Content-Type: application/json' \
+    -d '{"locked":true}' \
+    "$base_url/api/v1/albums/$rw_album_id")" \
+    || fail "PATCH /api/v1/albums/$rw_album_id (lock) request failed"
+[ "$status" = "200" ] \
+    || fail "PATCH /api/v1/albums/$rw_album_id (lock) returned status $status, want 200: $(cat "$work_dir/rw_lock_body")"
+status="$(curl -sS -o "$work_dir/rw_detail_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$rw_album_id")" \
+    || fail "GET /api/v1/albums/$rw_album_id (locked) request failed"
+grep -q '"locked":true' "$work_dir/rw_detail_body" \
+    || fail "the lock did not land: $(cat "$work_dir/rw_detail_body")"
+grep -q '"deletable":false' "$work_dir/rw_detail_body" \
+    || fail "the derived face stayed true under the lock (the lock folds into the derivation): $(cat "$work_dir/rw_detail_body")"
+echo "    the lock landed and the derived deletable face fell with it"
+
+echo "==> the trash of a live external member of the LOCKED album must refuse 409 BEFORE any file moves"
+status="$(curl -sS -o "$work_dir/rw_locked_trash_body" -b "$admin_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"action\":\"trash\",\"ids\":[\"$rw_asset_id\"]}" \
+    "$base_url/api/v1/assets/batch")" \
+    || fail "POST /api/v1/assets/batch (locked trash) request failed"
+[ "$status" = "409" ] \
+    || fail "POST /api/v1/assets/batch (locked trash) returned status $status, want 409 (the lock freezes deletion): $(cat "$work_dir/rw_locked_trash_body")"
+grep -q 'ALBUM_LOCKED' "$work_dir/rw_locked_trash_body" \
+    || fail "the locked trash refusal does not answer ALBUM_LOCKED: $(cat "$work_dir/rw_locked_trash_body")"
+rw_live="$(psql_query "SELECT count(*) FROM assets WHERE id = '$rw_asset_id' AND deleted_at IS NULL")"
+[ "$rw_live" = "1" ] \
+    || fail "the locked trash refusal touched the row (live rows: $rw_live, want 1)"
+[ -f "$rw_source_host_dir/$rw_fixture_photo" ] \
+    || fail "the locked trash refusal moved the source file away (it must stay before any file work)"
+[ ! -e "lumemor/data/trash/$rw_asset_id" ] \
+    || fail "the locked trash refusal left a trash home behind (the refusal runs before any file moves)"
+echo "    the locked trash answers 409 ALBUM_LOCKED; the row stayed live, the file never moved, no trash home appeared"
+
+echo "==> PATCH locked false must free the deletion, and the trash must then MOVE the file"
+status="$(curl -sS -o "$work_dir/rw_unlock_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PATCH -H 'Content-Type: application/json' \
+    -d '{"locked":false}' \
+    "$base_url/api/v1/albums/$rw_album_id")" \
+    || fail "PATCH /api/v1/albums/$rw_album_id (unlock) request failed"
+[ "$status" = "200" ] \
+    || fail "PATCH /api/v1/albums/$rw_album_id (unlock) returned status $status, want 200: $(cat "$work_dir/rw_unlock_body")"
+status="$(curl -sS -o "$work_dir/rw_trash_body" -b "$admin_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"action\":\"trash\",\"ids\":[\"$rw_asset_id\"]}" \
+    "$base_url/api/v1/assets/batch")" \
+    || fail "POST /api/v1/assets/batch (trash) request failed"
+[ "$status" = "200" ] \
+    || fail "POST /api/v1/assets/batch (trash) returned status $status, want 200: $(cat "$work_dir/rw_trash_body")"
+grep -q '"affected":1' "$work_dir/rw_trash_body" \
+    || fail "the trash did not affect the one member: $(cat "$work_dir/rw_trash_body")"
+grep -q '"missing":\[\]' "$work_dir/rw_trash_body" \
+    || fail "the trash reported missing ids: $(cat "$work_dir/rw_trash_body")"
+rw_trashed="$(psql_query "SELECT count(*) FROM assets WHERE id = '$rw_asset_id' AND deleted_at IS NOT NULL AND trash_path IS NOT NULL")"
+[ "$rw_trashed" = "1" ] \
+    || fail "the trashed row does not carry the soft delete and the trash path: $rw_trashed"
+[ ! -f "$rw_source_host_dir/$rw_fixture_photo" ] \
+    || fail "the source file did not leave the writable fixture (the trash move relocates it)"
+[ -f "lumemor/data/trash/$rw_asset_id/$rw_fixture_photo" ] \
+    || fail "the moved file did not land in the managed trash home"
+echo "    the unlocked trash moved the file: the row carries the trash path, the source lost the file, the trash home holds it"
+
+echo "==> POST /api/v1/trash/{id}/restore must move the file BACK and heal the fixture"
+status="$(curl -sS -o "$work_dir/rw_restore_body" -b "$admin_jar" -w '%{http_code}' \
+    -X POST "$base_url/api/v1/trash/$rw_asset_id/restore")" \
+    || fail "POST /api/v1/trash/$rw_asset_id/restore request failed"
+[ "$status" = "204" ] \
+    || fail "POST /api/v1/trash/$rw_asset_id/restore returned status $status, want 204: $(cat "$work_dir/rw_restore_body")"
+rw_restored="$(psql_query "SELECT count(*) FROM assets WHERE id = '$rw_asset_id' AND deleted_at IS NULL")"
+[ "$rw_restored" = "1" ] \
+    || fail "the restore did not return the row to live: $rw_restored"
+[ -f "$rw_source_host_dir/$rw_fixture_photo" ] \
+    || fail "the restore did not move the file back to the source (the fixture must heal)"
+echo "    the restore returned the row to live and the file to the source (the fixture healed)"
 if compose logs --no-color lumemor 2>/dev/null | grep -q 'panic'; then
     fail "the server panicked during the sharing phase (see compose logs)"
 fi
