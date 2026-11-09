@@ -12,7 +12,7 @@ import 'package:built_value/serializer.dart';
 
 part 'album_create_response.g.dart';
 
-/// The creation answer: the fresh directory album's wall card (the summary exactly as `GET /albums` lists it) plus the honest audience report -- the requested ids that did not become audience, each with its reason. The card's companions are the creation-time constants: `callerRole` `owner`, `isShared` true exactly when the audience landed a row, an empty `coverAssetIds`, `itemCount` 0. 
+/// The creation answer: the fresh directory album's wall card (the summary exactly as `GET /albums` lists it) plus the honest audience report -- the requested ids that did not become audience, each with its reason -- and the creation probe's `sourceWritable` fact. The card's companions are the creation-time constants: `callerRole` `owner`, `isShared` true exactly when the audience landed a row, an empty `coverAssetIds`, `itemCount` 0. 
 ///
 /// Properties:
 /// * [id] - Identifier of the album.
@@ -26,9 +26,14 @@ part 'album_create_response.g.dart';
 /// * [callerRole] - The caller's relation to this album: `owner` items belong to the own group, `viewer` items to the shared group. The web client sections the wall off this discriminator. 
 /// * [owner] - The owner attribution of a shared item: the account that owns the album. Present exactly when `callerRole` is `viewer`; own items omit it (the owner is the caller). 
 /// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `virtual` items omit it (they never feed the caller's own timeline, so there is nothing to exclude), and the pinned `sync` card omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). 
+/// * [sourceWritable] - The creation-time write probe's fact of the album this response just created: `true` when the probe file landed, read back and removed cleanly; `false` for a readable but read-only source. The creation SUCCEEDED either way -- a read-only directory is a legitimate album -- and `false` is the honest feedback the dialog renders (photos of this directory cannot be deleted through the application). 
 /// * [skipped] - The requested audience ids that stayed ungranted: the album's own owner and every id that names no usable account. Empty when the whole audience landed. 
 @BuiltValue()
 abstract class AlbumCreateResponse implements AlbumSummary, Built<AlbumCreateResponse, AlbumCreateResponseBuilder> {
+  /// The creation-time write probe's fact of the album this response just created: `true` when the probe file landed, read back and removed cleanly; `false` for a readable but read-only source. The creation SUCCEEDED either way -- a read-only directory is a legitimate album -- and `false` is the honest feedback the dialog renders (photos of this directory cannot be deleted through the application). 
+  @BuiltValueField(wireName: r'sourceWritable')
+  bool get sourceWritable;
+
   /// The requested audience ids that stayed ungranted: the album's own owner and every id that names no usable account. Empty when the whole audience landed. 
   @BuiltValueField(wireName: r'skipped')
   BuiltList<AlbumAudienceSkip> get skipped;
@@ -63,6 +68,31 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
         specifiedType: const FullType(AlbumOwnerRef),
       );
     }
+    yield r'title';
+    yield serializers.serialize(
+      object.title,
+      specifiedType: const FullType(String),
+    );
+    yield r'type';
+    yield serializers.serialize(
+      object.type,
+      specifiedType: const FullType(AlbumSummaryTypeEnum),
+    );
+    yield r'skipped';
+    yield serializers.serialize(
+      object.skipped,
+      specifiedType: const FullType(BuiltList, [FullType(AlbumAudienceSkip)]),
+    );
+    yield r'itemCount';
+    yield serializers.serialize(
+      object.itemCount,
+      specifiedType: const FullType(int),
+    );
+    yield r'sourceWritable';
+    yield serializers.serialize(
+      object.sourceWritable,
+      specifiedType: const FullType(bool),
+    );
     yield r'coverAssetIds';
     yield serializers.serialize(
       object.coverAssetIds,
@@ -77,16 +107,6 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
     yield serializers.serialize(
       object.id,
       specifiedType: const FullType(String),
-    );
-    yield r'title';
-    yield serializers.serialize(
-      object.title,
-      specifiedType: const FullType(String),
-    );
-    yield r'type';
-    yield serializers.serialize(
-      object.type,
-      specifiedType: const FullType(AlbumSummaryTypeEnum),
     );
     yield r'locked';
     yield serializers.serialize(
@@ -104,16 +124,6 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
     yield serializers.serialize(
       object.isShared,
       specifiedType: const FullType(bool),
-    );
-    yield r'skipped';
-    yield serializers.serialize(
-      object.skipped,
-      specifiedType: const FullType(BuiltList, [FullType(AlbumAudienceSkip)]),
-    );
-    yield r'itemCount';
-    yield serializers.serialize(
-      object.itemCount,
-      specifiedType: const FullType(int),
     );
     yield r'updatedAt';
     yield serializers.serialize(
@@ -151,6 +161,41 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
           if (valueDes == null) continue;
           result.owner.replace(valueDes);
           break;
+        case r'title':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.title = valueDes;
+          break;
+        case r'type':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(AlbumSummaryTypeEnum),
+          ) as AlbumSummaryTypeEnum;
+          result.type = valueDes;
+          break;
+        case r'skipped':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(AlbumAudienceSkip)]),
+          ) as BuiltList<AlbumAudienceSkip>;
+          result.skipped.replace(valueDes);
+          break;
+        case r'itemCount':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(int),
+          ) as int;
+          result.itemCount = valueDes;
+          break;
+        case r'sourceWritable':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.sourceWritable = valueDes;
+          break;
         case r'coverAssetIds':
           final valueDes = serializers.deserialize(
             value,
@@ -171,20 +216,6 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
             specifiedType: const FullType(String),
           ) as String;
           result.id = valueDes;
-          break;
-        case r'title':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(String),
-          ) as String;
-          result.title = valueDes;
-          break;
-        case r'type':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(AlbumSummaryTypeEnum),
-          ) as AlbumSummaryTypeEnum;
-          result.type = valueDes;
           break;
         case r'locked':
           final valueDes = serializers.deserialize(
@@ -207,20 +238,6 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
             specifiedType: const FullType(bool),
           ) as bool;
           result.isShared = valueDes;
-          break;
-        case r'skipped':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(BuiltList, [FullType(AlbumAudienceSkip)]),
-          ) as BuiltList<AlbumAudienceSkip>;
-          result.skipped.replace(valueDes);
-          break;
-        case r'itemCount':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(int),
-          ) as int;
-          result.itemCount = valueDes;
           break;
         case r'updatedAt':
           final valueDes = serializers.deserialize(

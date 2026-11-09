@@ -90,7 +90,6 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**activateModel**](doc/AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
-[*AdminApi*](doc/AdminApi.md) | [**getMountRootsSettings**](doc/AdminApi.md#getmountrootssettings) | **GET** /admin/settings/mount-roots | The directory-album mount-root allowlist.
 [*AdminApi*](doc/AdminApi.md) | [**getStorageSettings**](doc/AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [*AdminApi*](doc/AdminApi.md) | [**getTranscodingSettings**](doc/AdminApi.md#gettranscodingsettings) | **GET** /admin/settings/transcoding | Read the video transcoding settings.
 [*AdminApi*](doc/AdminApi.md) | [**getTrashSettings**](doc/AdminApi.md#gettrashsettings) | **GET** /admin/settings/trash | Read the trash retention setting.
@@ -100,7 +99,6 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**reresolvePlaces**](doc/AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
-[*AdminApi*](doc/AdminApi.md) | [**updateMountRootsSettings**](doc/AdminApi.md#updatemountrootssettings) | **PUT** /admin/settings/mount-roots | Save the directory-album mount-root allowlist.
 [*AdminApi*](doc/AdminApi.md) | [**updateStorageSettings**](doc/AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [*AdminApi*](doc/AdminApi.md) | [**updateTranscodingSettings**](doc/AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
 [*AdminApi*](doc/AdminApi.md) | [**updateTrashSettings**](doc/AdminApi.md#updatetrashsettings) | **PUT** /admin/settings/trash | Save the trash retention setting.
@@ -228,8 +226,6 @@ Class | Method | HTTP request | Description
  - [ModelScanResponse](doc/ModelScanResponse.md)
  - [ModelSlot](doc/ModelSlot.md)
  - [ModelSource](doc/ModelSource.md)
- - [MountRootsSettingsResponse](doc/MountRootsSettingsResponse.md)
- - [MountRootsSettingsUpdateRequest](doc/MountRootsSettingsUpdateRequest.md)
  - [MoveFaceRequest](doc/MoveFaceRequest.md)
  - [MoveFaceResponse](doc/MoveFaceResponse.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)

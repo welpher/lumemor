@@ -150,6 +150,10 @@ NON_ERROR_KEYS = {
     # not-excludable album kinds' key carried in a VALIDATION_FAILED
     # details.
     "album_pref_not_excludable",
+    # Album deletability message keys (E6): the deletability switch's
+    # directory-only refusal key carried in a VALIDATION_FAILED
+    # details.
+    "album_deletable_not_directory",
     # People surface UI strings (M3b Task 4): the three pages of the
     # people domain.
     "people_loading",

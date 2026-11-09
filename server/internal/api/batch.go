@@ -1,13 +1,14 @@
 // The batch handler (M2c Task 4, the external lifecycle widened by
-// E4): POST /assets/batch, the set-semantics surface of the curation
-// actions. One request applies one action (favorite, unfavorite,
-// hide, unhide, trash, restore) to a list of ids in ONE transaction:
-// resolution decides which ids are the caller's to act on, the
-// per-action primitives apply them (foreign and already-in-state ids
-// are no-ops, never errors), and the report partitions the distinct
-// ids into affected and missing. Events for the ids whose state
-// actually changed publish after the commit, the same
-// transition-only discipline as the single-asset endpoints.
+// E4 and E6's album autonomy): POST /assets/batch, the set-semantics
+// surface of the curation actions. One request applies one action
+// (favorite, unfavorite, hide, unhide, trash, restore) to a list of
+// ids in ONE transaction: resolution decides which ids are the
+// caller's to act on, the per-action primitives apply them (foreign
+// and already-in-state ids are no-ops, never errors), and the
+// report partitions the distinct ids into affected and missing.
+// Events for the ids whose state actually changed publish after the
+// commit, the same transition-only discipline as the single-asset
+// endpoints.
 //
 // The trash and restore arms split on the row's storage kind (E4,
 // the §A6/E4 table): a blob row is marked in place (the existing
@@ -18,7 +19,11 @@
 // system refuses fails the WHOLE batch with the move's own error
 // code, the transaction rolls back, and every file the batch
 // already moved is compensated back to where the rolled-back rows
-// still say it is.
+// still say it is. E6 adds the album lock's delete arm to the same
+// story: a live external member of a LOCKED directory album refuses
+// the trash with the curation writes' own 409 before any file
+// moves, the rescan endpoint's refusal applied to the deletion
+// itself.
 package api
 
 import (
@@ -64,6 +69,13 @@ var batchEventNames = map[apigen.BatchRequestAction]string{
 var (
 	errBatchTrashMove   = errors.New("the external file could not be moved into the trash")
 	errBatchRestoreMove = errors.New("the external file could not be moved back to its original location")
+
+	// errBatchAlbumLocked is the album lock's delete arm (E6, the
+	// content-protection freeze widened from the rescan to the
+	// deletion): the trash of a live external member of a locked
+	// directory album is refused before any file moves, with the
+	// curation writes' own 409 -- the owner unlocks first.
+	errBatchAlbumLocked = errors.New("the asset's album is locked")
 )
 
 // batchFileMove records one external lifecycle move the batch
@@ -200,6 +212,11 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 			// the client reads a state where nothing moved.
 			s.compensateBatchMoves(r, moves)
 			switch {
+			case errors.Is(err, errBatchAlbumLocked):
+				// The lock's refusal rolls the batch back exactly
+				// like a move failure: nothing moved, nothing was
+				// written, the rows stay live.
+				s.writeAlbumLocked(w)
 			case errors.Is(err, errBatchTrashMove):
 				s.logger.Error("the batch's external trash move failed", "error", err,
 					"asset_id", id, "method", r.Method, "path", r.URL.Path)
@@ -341,6 +358,21 @@ func (s *server) applyBatchAction(ctx context.Context, queries *dbgen.Queries, a
 			// below answers the zero-row no-op.
 			var move *batchFileMove
 			if !row.DeletedAt.Valid {
+				// The album lock's delete gate, ahead of any file
+				// work: a live external member of a LOCKED directory
+				// album refuses here -- the rescan endpoint's own
+				// refusal, the owner's content-protection freeze
+				// over the album's photos. The already-trashed row
+				// never reaches this arm (the idempotent no-op), and
+				// the restore below never does either: recovery is
+				// not the deletion the freeze governs.
+				locked, err := queries.CountLockedDirectoryAlbumsOfAsset(ctx, pgUUID(id))
+				if err != nil {
+					return false, nil, err
+				}
+				if locked > 0 {
+					return false, nil, errBatchAlbumLocked
+				}
 				trashPath, err := storage.MoveToTrash(s.dataDir, row.FilePath, id.String())
 				if err != nil {
 					return false, nil, fmt.Errorf("%w: %v", errBatchTrashMove, err)

@@ -69,8 +69,6 @@ doc/ModelResponseInputSize.md
 doc/ModelScanResponse.md
 doc/ModelSlot.md
 doc/ModelSource.md
-doc/MountRootsSettingsResponse.md
-doc/MountRootsSettingsUpdateRequest.md
 doc/MoveFaceRequest.md
 doc/MoveFaceResponse.md
 doc/PairingConsumeRequest.md
@@ -205,8 +203,6 @@ lib/src/model/model_response_input_size.dart
 lib/src/model/model_scan_response.dart
 lib/src/model/model_slot.dart
 lib/src/model/model_source.dart
-lib/src/model/mount_roots_settings_response.dart
-lib/src/model/mount_roots_settings_update_request.dart
 lib/src/model/move_face_request.dart
 lib/src/model/move_face_response.dart
 lib/src/model/pairing_consume_request.dart
@@ -321,8 +317,6 @@ test/model_response_test.dart
 test/model_scan_response_test.dart
 test/model_slot_test.dart
 test/model_source_test.dart
-test/mount_roots_settings_response_test.dart
-test/mount_roots_settings_update_request_test.dart
 test/move_face_request_test.dart
 test/move_face_response_test.dart
 test/pairing_consume_request_test.dart

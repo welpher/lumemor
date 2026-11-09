@@ -1,21 +1,26 @@
-// The albums-as-sources path domain (E4): the mount-root allowlist
-// as a live domain, the source-path completion behind GET
-// /albums/path-completions, and the path validation matrix the
-// directory album creation runs before anything is written.
+// The albums-as-sources path domain (E4, reshaped by E6's album
+// autonomy): the source-path completion behind GET
+// /albums/path-completions, the creation-time path validation
+// matrix, and the creation-time write probe that discovers the
+// source directory's writability once.
 //
-// One pin governs the whole file: the completion domain IS the
-// validation domain. Both read the same effective roots -- the
-// configured allowlist resolved to the directories that actually
-// exist, are directories, and sit outside the server's managed data
-// tree -- and the completion never lists a path the creation would
-// refuse for being outside the allowlist. The family instance's
-// trust boundary is drawn at the roots: anything outside them can
-// never become an album, whatever the filesystem lets the server
-// read.
+// Two rulings reshaped the file. First, the boundary: the
+// mount-root allowlist retired WHOLE -- the compose file's mounts
+// ARE the boundary (the operator controls what the container sees;
+// the software layer neither can nor needs to restrict the operator
+// further), so the completion's domain became the container's real
+// visible filesystem and the matrix lost its allowlist-domain and
+// root-overlap branches. The one confine that survives both sides
+// is the managed tree: the server's own data root never lists and
+// never becomes an album source. Second, the administration:
+// mounting an existing photo directory is a configuration act, so
+// the creation and the completion that browses for it are the
+// administrator's alone -- the handlers carry the guard, this file
+// carries the domain.
 package api
 
 import (
-	"context"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -26,8 +31,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/google/uuid"
+
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
-	"github.com/welpher/lumemor/server/internal/db"
+	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 )
 
 const (
@@ -44,8 +51,6 @@ const (
 
 // pathUnder reports whether path lies at or under root, component
 // boundaries only: "/a/b" is under "/a" but "/a/b-extra" is not.
-// The root "/" carries every absolute path (an administrator who
-// allows the filesystem root allows the filesystem).
 func pathUnder(path, root string) bool {
 	if path == root {
 		return true
@@ -56,80 +61,19 @@ func pathUnder(path, root string) bool {
 	return strings.HasPrefix(path, root+"/")
 }
 
-// pathUnderAny reports whether path lies at or under one of roots.
-func pathUnderAny(path string, roots []string) bool {
-	for _, root := range roots {
-		if pathUnder(path, root) {
-			return true
-		}
-	}
-	return false
-}
-
-// resolveMountRoot maps one configured root onto its live form: the
-// path cleaned and fully resolved (symlinks evaluated), proven to be
-// an existing directory outside the server's managed tree. A root
-// that fails any arm contributes nothing to the domain -- the
-// not-yet-mounted volume, the file where a directory was expected,
-// the root that resolves into the managed tree are all honestly
-// inert until the configuration changes, and the completion can
-// never suggest what the creation would refuse.
-func resolveMountRoot(configured, managedDir string) (string, bool) {
-	if configured == "" {
-		return "", false
-	}
-	resolved, err := filepath.EvalSymlinks(filepath.Clean(configured))
-	if err != nil {
-		return "", false
-	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.IsDir() {
-		return "", false
-	}
-	if pathUnder(resolved, filepath.Clean(managedDir)) {
-		return "", false
-	}
-	return resolved, true
-}
-
-// effectiveMountRoots computes the live domain: the stored allowlist
-// resolved root by root (an unusable root is skipped, not fatal --
-// the closed state stays closed, the working roots keep working),
-// deduplicated, sorted ascending. A corrupt setting row reads as the
-// empty list with the error logged server-side, the corrupt-row
-// discipline of every instance setting.
-func (s *server) effectiveMountRoots(ctx context.Context) []string {
-	stored, err := db.AllowedMountRoots(ctx, s.queries)
-	if err != nil {
-		s.logger.Error("read the mount roots setting; answering the empty allowlist", "error", err)
-	}
-	seen := make(map[string]bool, len(stored))
-	roots := make([]string, 0, len(stored))
-	for _, configured := range stored {
-		resolved, ok := resolveMountRoot(configured, s.dataDir)
-		if !ok || seen[resolved] {
-			continue
-		}
-		seen[resolved] = true
-		roots = append(roots, resolved)
-	}
-	sort.Strings(roots)
-	return roots
-}
-
 // validateAlbumRootPath runs the creation-time path matrix over one
 // candidate source path. It answers the RESOLVED absolute path (the
 // value the album row stores, so a later symlink swap can never
-// repoint the album), the failing branch's contract error code (the
+// repoint an album), the failing branch's contract error code (the
 // empty code means the path passed), and an error for the unexpected
 // I/O failures the caller answers with a 500. The branches, in
-// order: existence, directory-ness, readability, the resolved
-// allowlist domain (the symlink-escape arm distinguishes a typed
-// path that sat inside a root but resolved out of it), the managed
-// tree (refused whatever the allowlist says), and the overlap or
-// nesting against every other directory album's root on the
-// instance.
-func validateAlbumRootPath(roots []string, managedDir, rootPath string, existingRoots []string) (string, apigen.ErrorCode, error) {
+// order: existence, directory-ness, readability, and the managed
+// tree on the RESOLVED path. The allowlist-domain and root-overlap
+// arms of the E4 matrix retired with the allowlist itself: the
+// boundary is the compose mounts now, and with creation in the
+// administrator's hands a second album over the same tree is an
+// operator's visible choice, not an attack to refuse.
+func validateAlbumRootPath(managedDir, rootPath string) (string, apigen.ErrorCode, error) {
 	// The shape arm: the handler already names the empty, relative
 	// and over-long values; this guard keeps the matrix total for
 	// any caller.
@@ -192,38 +136,13 @@ func validateAlbumRootPath(roots []string, managedDir, rootPath string, existing
 		return "", "", fmt.Errorf("close the source path %q: %w", resolved, closeErr)
 	}
 
-	// The allowlist domain, on the RESOLVED path: what the album
-	// stores is what must sit at or under a live mount root. The
-	// typed path sitting inside a root while the resolution leaves
-	// them all is the symlink escape -- its own branch, distinct
-	// from the plainly-outside path.
-	if !pathUnderAny(resolved, roots) {
-		if pathUnderAny(clean, roots) {
-			return "", apigen.ALBUMPATHSYMLINKESCAPE, nil
-		}
-		return "", apigen.ALBUMPATHOUTSIDEROOTS, nil
-	}
-
-	// The managed tree: the server's own data root (originals/,
-	// derivatives, trash) is never an album source, whatever the
-	// allowlist says -- the branch stands between a misconfigured
-	// root and the feedback loop of referencing the managed files.
+	// The managed tree, on the RESOLVED path: the server's own data
+	// root (originals, derivatives, trash) is never an album source
+	// -- the branch that survived the allowlist retirement whole, a
+	// typed path outside the tree that resolves into it answering
+	// the same refusal as the tree itself.
 	if pathUnder(resolved, filepath.Clean(managedDir)) {
 		return "", apigen.ALBUMPATHINMANAGEDTREE, nil
-	}
-
-	// The overlap arm: no other directory album's root may be equal
-	// to, inside, or containing this one. The check runs across the
-	// whole instance (the pin has no owner scope): two albums
-	// mirroring the same tree is confusing double-scan state
-	// whatever accounts own them.
-	for _, other := range existingRoots {
-		if other == "" {
-			continue
-		}
-		if pathUnder(resolved, other) || pathUnder(other, resolved) {
-			return "", apigen.ALBUMPATHOVERLAPS, nil
-		}
 	}
 
 	return resolved, "", nil
@@ -240,14 +159,8 @@ func albumPathErrorMessage(code apigen.ErrorCode) string {
 		return "the source path is not a directory"
 	case apigen.ALBUMPATHNOTREADABLE:
 		return "the server cannot read the source path"
-	case apigen.ALBUMPATHSYMLINKESCAPE:
-		return "the source path resolves outside the allowed mount roots through a symlink"
 	case apigen.ALBUMPATHINMANAGEDTREE:
 		return "the source path sits inside the server's managed data tree"
-	case apigen.ALBUMPATHOVERLAPS:
-		return "the source path overlaps another directory album's root"
-	case apigen.ALBUMPATHOUTSIDEROOTS:
-		return "the source path is outside the allowed mount roots"
 	default:
 		return "the source path is invalid"
 	}
@@ -260,27 +173,92 @@ func (s *server) writeAlbumPathError(w http.ResponseWriter, code apigen.ErrorCod
 	s.writeError(w, http.StatusBadRequest, code, albumPathErrorMessage(code), nil)
 }
 
+// probeDirectoryWritable discovers, ONCE, whether the application
+// can delete through the directory: it writes a uniquely named
+// probe file, reads it back, and removes it. The three steps are
+// the delete's own shape -- the trash move renames a file OUT of
+// this directory, which needs exactly the write permission the
+// probe's write and remove exercise -- so a directory that passes
+// them all is a directory the delete flow can work with, and one
+// that refuses any step is a directory whose photos cannot be
+// deleted through the application. The probe never FAILS its
+// caller: the answer is a fact (the `sourceWritable` column), and a
+// false answer is a legitimate album, not a refused creation.
+//
+// The one state that leaves a wart is write-yes-remove-no (a
+// directory entry the process can create but not unlink): the
+// probe file stays, because the same refusal that failed the probe
+// would fail its cleanup. The wart is honest -- that directory is
+// already in a state its own owner must fix -- and the probe's
+// unique name keeps it identifiable.
+func probeDirectoryWritable(resolvedDir string) bool {
+	id, err := uuid.NewV7()
+	if err != nil {
+		// A UUIDv7 generation failure is a runtime outage with no
+		// honest "writable" claim to make; the conservative fact
+		// stands.
+		return false
+	}
+	payload := []byte(id.String())
+	probe := filepath.Join(resolvedDir, "probe-"+id.String())
+	if err := os.WriteFile(probe, payload, 0o644); err != nil {
+		return false
+	}
+	readBack, err := os.ReadFile(probe)
+	if err != nil {
+		// The write landed but the read could not see it: a
+		// half-broken directory. The remove is best-effort -- the
+		// write proved it might work.
+		_ = os.Remove(probe)
+		return false
+	}
+	if !bytes.Equal(readBack, payload) {
+		// Different bytes back than were written: not this
+		// process's file, or a filesystem playing games. Either
+		// way the directory is not honestly usable for deletes.
+		_ = os.Remove(probe)
+		return false
+	}
+	if err := os.Remove(probe); err != nil {
+		// Write-yes-remove-no: the wart state the comment above
+		// owns. The fact is false -- removal is half of every
+		// delete this application performs.
+		return false
+	}
+	return true
+}
+
 // completeAlbumRootPath lists the completion rows for one typed
-// prefix over the live domain: the pickable directories of the
-// creation dialog's combobox. The rows are always full absolute
-// paths at or under a live root and never inside the server's
-// managed tree -- the completion-domain pin: the endpoint never
-// lists a path the creation would refuse for being outside the
-// allowlist or inside the managed tree. The matching rule: the
-// roots whose paths the typed prefix leads, plus the entries of
-// the prefix's parent whose names start with the prefix's last
-// segment, both deduplicated, sorted ascending, capped at the row
-// limit. An empty prefix lists the roots; a trailing separator
-// drills into the cleaned prefix itself and suppresses the root
-// rows ("I am inside this directory"); a relative prefix, an
-// unreadable parent and a domain miss all answer the empty list --
-// never an error, and never a row outside the domain.
-func completeAlbumRootPath(roots []string, managedDir, prefix string) []string {
-	paths := make([]string, 0, len(roots))
+// prefix over the container's real visible filesystem: the pickable
+// directories of the creation dialog's combobox. The domain change
+// of the E6 retirement -- the allowlist that used to confine the
+// rows is gone, and the honest reflection of what the operating
+// system lets the server read takes its place. The ONE exclusion
+// that stays is the managed tree: no row ever names the server's
+// own data root or anything under it (a prefix drilled into the
+// managed tree answers its non-managed children only, and the root
+// itself is never suggested when it would be the managed tree). The
+// matching rule: an empty prefix lists the filesystem root itself;
+// a prefix of exactly "/" lists the root's top-level directories;
+// otherwise the entries of the prefix's parent whose names start
+// with the prefix's last segment; a trailing separator switches to
+// the children of the cleaned prefix itself and suppresses the
+// standalone row ("I am inside this directory"). Only real
+// directories are listed (symlinked entries are not), the rows are
+// deduplicated, sorted ascending, capped at the row limit, and a
+// relative prefix or an unreadable parent answers the empty list --
+// never an error, never a managed-tree row.
+func completeAlbumRootPath(managedDir, prefix string) []string {
+	managed := filepath.Clean(managedDir)
+	paths := make([]string, 0, albumPathCompletionLimit)
 	if prefix == "" {
-		paths = append(paths, roots...)
-		if len(paths) > albumPathCompletionLimit {
-			paths = paths[:albumPathCompletionLimit]
+		// The dialog's first open: the filesystem root itself, the
+		// one "start here" row. The degenerate managed-tree-is-root
+		// posture (a data root of "/") would make the root itself
+		// a managed-tree path; the exclusion stays total even
+		// there, and the completion answers nothing.
+		if !pathUnder("/", managed) {
+			paths = append(paths, "/")
 		}
 		return paths
 	}
@@ -290,44 +268,33 @@ func completeAlbumRootPath(roots []string, managedDir, prefix string) []string {
 
 	// The trailing separator carries meaning Clean would eat: it
 	// says the last segment is complete, so the completion lists
-	// the children of the cleaned prefix itself.
-	trailing := strings.HasSuffix(prefix, "/") && prefix != "/"
+	// the children of the cleaned prefix itself. A prefix of "/"
+	// joins this arm too -- the separator says "I am at the root,
+	// show me what it holds".
+	trailing := strings.HasSuffix(prefix, "/")
 	cleaned := filepath.Clean(prefix)
 	parent, base := filepath.Dir(cleaned), filepath.Base(cleaned)
 	if trailing {
 		parent, base = cleaned, ""
 	}
 
-	candidates := make(map[string]bool, len(roots))
-	if !trailing {
-		// The root arm: every root the typed prefix leads into.
-		// The effective roots are in the domain by construction
-		// (resolution dropped the unusable and the managed ones),
-		// so no filter applies here.
-		for _, root := range roots {
-			if strings.HasPrefix(root, cleaned) {
-				candidates[root] = true
-			}
-		}
-	}
+	candidates := make(map[string]bool)
 
 	// The drill arm: the parent's real directories (symlinked
 	// entries are never listed -- the rescan walks real trees and
 	// the validation resolves symlinks, so a suggestion the picker
 	// cannot trust is no suggestion) whose names match the last
-	// segment, kept only when they sit at or under a live root and
-	// outside the managed tree -- the confine, both axes of it (a
-	// root configured over an ancestor of the managed tree must
-	// not leak the server's own storage into the suggestions). A
-	// parent that cannot be read simply contributes nothing: the
-	// completion is a suggestion box, not a probe.
+	// segment, kept only when they sit outside the managed tree --
+	// the exclusion, on every row. A parent that cannot be read
+	// simply contributes nothing: the completion is a suggestion
+	// box, not a probe.
 	if entries, err := os.ReadDir(parent); err == nil {
 		for _, entry := range entries {
 			if !entry.IsDir() || !strings.HasPrefix(entry.Name(), base) {
 				continue
 			}
 			child := filepath.Join(parent, entry.Name())
-			if pathUnderAny(child, roots) && !pathUnder(child, filepath.Clean(managedDir)) {
+			if !pathUnder(child, managed) {
 				candidates[child] = true
 			}
 		}
@@ -345,14 +312,24 @@ func completeAlbumRootPath(roots []string, managedDir, prefix string) []string {
 
 // CompleteAlbumPath implements GET /api/v1/albums/path-completions:
 // the source-path completion of the creation dialog. The face is
-// user-scoped -- every signed-in member may create a directory
-// album, so every signed-in member may complete a path; the admin
-// role adds nothing. The answer is bounded work (one settings row
-// read, at most one directory listing, at most 20 rows), and the
-// empty list is an honest "nothing matches", never an error.
+// ADMIN-scoped -- mounting an existing photo directory is the
+// administrator's act, and the completion that browses the
+// container's filesystem on the dialog's behalf belongs to the same
+// configuration act; a plain member answers the admin surfaces'
+// own 403 before the prefix is read (the members' contribution
+// path is the upload stream, and a member never needs to see the
+// filesystem). The answer is bounded work (at most one directory
+// listing, at most 20 rows), and the empty list is an honest
+// "nothing matches", never an error.
 func (s *server) CompleteAlbumPath(w http.ResponseWriter, r *http.Request, params apigen.CompleteAlbumPathParams) {
-	if _, ok := authFrom(r.Context()); !ok {
+	requester, ok := authFrom(r.Context())
+	if !ok {
 		s.rejectUnauthenticated(w)
+		return
+	}
+	if requester.role != dbgen.UserRoleAdmin {
+		s.writeError(w, http.StatusForbidden, apigen.AUTHFORBIDDEN,
+			"administrator role required", nil)
 		return
 	}
 	prefix := ""
@@ -363,8 +340,7 @@ func (s *server) CompleteAlbumPath(w http.ResponseWriter, r *http.Request, param
 			return
 		}
 	}
-	roots := s.effectiveMountRoots(r.Context())
 	s.writeJSON(w, http.StatusOK, apigen.AlbumPathCompletionsResponse{
-		Paths: completeAlbumRootPath(roots, s.dataDir, prefix),
+		Paths: completeAlbumRootPath(s.dataDir, prefix),
 	})
 }

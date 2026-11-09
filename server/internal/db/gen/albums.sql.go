@@ -118,38 +118,44 @@ func (q *Queries) CountLiveAlbumMember(ctx context.Context, arg CountLiveAlbumMe
 }
 
 const createDirectoryAlbum = `-- name: CreateDirectoryAlbum :one
-INSERT INTO albums (id, owner_id, title, type, root_path)
-VALUES ($1, $2, $3, 'directory', $4)
+INSERT INTO albums (id, owner_id, title, type, root_path, source_writable)
+VALUES ($1, $2, $3, 'directory', $4, $5)
 RETURNING id
 `
 
 type CreateDirectoryAlbumParams struct {
-	ID       pgtype.UUID `json:"id"`
-	OwnerID  pgtype.UUID `json:"owner_id"`
-	Title    string      `json:"title"`
-	RootPath pgtype.Text `json:"root_path"`
+	ID             pgtype.UUID `json:"id"`
+	OwnerID        pgtype.UUID `json:"owner_id"`
+	Title          string      `json:"title"`
+	RootPath       pgtype.Text `json:"root_path"`
+	SourceWritable bool        `json:"source_writable"`
 }
 
-// The directory album creator (E4's albums-as-sources): the row
-// references an existing filesystem directory the server validated
-// against the path matrix BEFORE this statement ran -- exists, is a
-// directory, readable, outside the managed tree, inside a configured
-// mount root, no overlap or nesting with another directory album's
-// root -- and root_path stores the RESOLVED absolute path (symlinks
-// evaluated at validation time), so the album can never be silently
-// repointed by a later symlink swap. The id is generated
-// caller-side; the creation face carries title, path and audience
-// only (the description column died whole with the field). The wall
-// card's companions are the creation-time constants -- the caller's
-// own audience grants land right after -- so the handler reads the
-// fresh row's full card through GetAlbumSummary like every other
-// write response.
+// The directory album creator (E4's albums-as-sources, widened by
+// E6's album autonomy): the row references an existing filesystem
+// directory the server validated against the path matrix BEFORE
+// this statement ran -- exists, is a directory, readable, outside
+// the managed tree -- and root_path stores the RESOLVED absolute
+// path (symlinks evaluated at validation time), so the album can
+// never be silently repointed by a later symlink swap. The creation
+// is the administrator's act (the E6 boundary ruling: mounting an
+// existing photo directory is a configuration act), and
+// source_writable carries the write probe's answer over that
+// directory -- a fact, not a gate: a read-only source is a
+// legitimate album whose photos cannot be deleted through the
+// application. The id is generated caller-side; the creation face
+// carries title, path and audience only. The wall card's companions
+// are the creation-time constants -- the caller's own audience
+// grants land right after -- so the handler reads the fresh row's
+// full card through GetAlbumSummary like every other write
+// response.
 func (q *Queries) CreateDirectoryAlbum(ctx context.Context, arg CreateDirectoryAlbumParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, createDirectoryAlbum,
 		arg.ID,
 		arg.OwnerID,
 		arg.Title,
 		arg.RootPath,
+		arg.SourceWritable,
 	)
 	var id pgtype.UUID
 	err := row.Scan(&id)
@@ -238,7 +244,7 @@ func (q *Queries) EnsureSyncAlbum(ctx context.Context, arg EnsureSyncAlbumParams
 }
 
 const getAlbumForCaller = `-- name: GetAlbumForCaller :one
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        CASE
            WHEN al.owner_id = $1 THEN 'owner'::text
            ELSE 'viewer'::text
@@ -310,6 +316,8 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 		&i.Album.LastScannedAt,
 		&i.Album.CreatedAt,
 		&i.Album.UpdatedAt,
+		&i.Album.SourceWritable,
+		&i.Album.AllowAppDeletion,
 		&i.CallerRole,
 		&i.ItemCount,
 		&i.InTimeline,
@@ -319,7 +327,7 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 
 const getAlbumForTimelinePref = `-- name: GetAlbumForTimelinePref :one
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        CASE
            WHEN al.owner_id = $1 THEN 'owner'::text
            ELSE 'viewer'::text
@@ -373,6 +381,8 @@ func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTi
 		&i.Album.LastScannedAt,
 		&i.Album.CreatedAt,
 		&i.Album.UpdatedAt,
+		&i.Album.SourceWritable,
+		&i.Album.AllowAppDeletion,
 		&i.CallerRole,
 	)
 	return i, err
@@ -380,7 +390,7 @@ func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTi
 
 const getAlbumForWrite = `-- name: GetAlbumForWrite :one
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        EXISTS (
            SELECT 1 FROM album_shares s
            WHERE s.album_id = al.id AND s.user_id = $1
@@ -429,13 +439,15 @@ func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWritePara
 		&i.Album.LastScannedAt,
 		&i.Album.CreatedAt,
 		&i.Album.UpdatedAt,
+		&i.Album.SourceWritable,
+		&i.Album.AllowAppDeletion,
 		&i.SharedToCaller,
 	)
 	return i, err
 }
 
 const getAlbumSummary = `-- name: GetAlbumSummary :one
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        EXISTS (
            SELECT 1 FROM album_shares s WHERE s.album_id = al.id
        ) AS is_shared,
@@ -488,6 +500,8 @@ func (q *Queries) GetAlbumSummary(ctx context.Context, arg GetAlbumSummaryParams
 		&i.Album.LastScannedAt,
 		&i.Album.CreatedAt,
 		&i.Album.UpdatedAt,
+		&i.Album.SourceWritable,
+		&i.Album.AllowAppDeletion,
 		&i.IsShared,
 		&i.ItemCount,
 		&i.InTimeline,
@@ -656,46 +670,9 @@ func (q *Queries) ListAlbumShares(ctx context.Context, albumID pgtype.UUID) ([]L
 	return items, nil
 }
 
-const listDirectoryAlbumRoots = `-- name: ListDirectoryAlbumRoots :many
-SELECT id, root_path
-FROM albums
-WHERE type = 'directory'
-`
-
-type ListDirectoryAlbumRootsRow struct {
-	ID       pgtype.UUID `json:"id"`
-	RootPath pgtype.Text `json:"root_path"`
-}
-
-// Every directory album's stored root path across the WHOLE
-// instance, the overlap arm of the creation-time path matrix. The
-// check is deliberately not owner-scoped: two albums mirroring the
-// same tree (equal, containing, or contained roots) is confusing
-// double-scan state whatever accounts own them, and the family
-// instance has no case for it. The album count bounds the read.
-func (q *Queries) ListDirectoryAlbumRoots(ctx context.Context) ([]ListDirectoryAlbumRootsRow, error) {
-	rows, err := q.db.Query(ctx, listDirectoryAlbumRoots)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListDirectoryAlbumRootsRow
-	for rows.Next() {
-		var i ListDirectoryAlbumRootsRow
-		if err := rows.Scan(&i.ID, &i.RootPath); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listWallAlbumsForCaller = `-- name: ListWallAlbumsForCaller :many
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
@@ -726,7 +703,7 @@ WHERE al.owner_id = $1
 
 UNION ALL
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
@@ -753,7 +730,7 @@ WHERE al.owner_id = $1
 
 UNION ALL
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at,
+SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        'viewer'::text AS caller_role,
        u.id AS owner_user_id,
        u.email AS owner_email,
@@ -845,6 +822,8 @@ func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUI
 			&i.Album.LastScannedAt,
 			&i.Album.CreatedAt,
 			&i.Album.UpdatedAt,
+			&i.Album.SourceWritable,
+			&i.Album.AllowAppDeletion,
 			&i.CallerRole,
 			&i.OwnerUserID,
 			&i.OwnerEmail,
@@ -931,33 +910,40 @@ UPDATE albums
 SET title = COALESCE($1, title),
     cover_asset_id = COALESCE($2, cover_asset_id),
     locked = COALESCE($3, locked),
+    allow_app_deletion = COALESCE($4, allow_app_deletion),
     updated_at = now()
-WHERE id = $4
+WHERE id = $5
 RETURNING id
 `
 
 type UpdateAlbumFieldsParams struct {
-	Title        pgtype.Text `json:"title"`
-	CoverAssetID pgtype.UUID `json:"cover_asset_id"`
-	Locked       pgtype.Bool `json:"locked"`
-	AlbumID      pgtype.UUID `json:"album_id"`
+	Title            pgtype.Text `json:"title"`
+	CoverAssetID     pgtype.UUID `json:"cover_asset_id"`
+	Locked           pgtype.Bool `json:"locked"`
+	AllowAppDeletion pgtype.Bool `json:"allow_app_deletion"`
+	AlbumID          pgtype.UUID `json:"album_id"`
 }
 
 // The property patch: every field COALESCEs over the stored value,
 // so an absent (NULL) parameter keeps it and a present one replaces
 // it. The cover rides the same discipline -- a coverAssetId of JSON
 // null decodes as absent, the patch convention of the asset surface,
-// so the pin can change through this face but never clear.
-// updated_at moves with the write: the wall orders the own group by
-// it. No owner guard and no type guard here: the handler's gate
-// already resolved the caller's right to this write, and an album
-// deleted between the gate and the statement answers no row -- the
-// honest 404 of a gone album.
+// so the pin can change through this face but never clear. The
+// deletability switch (E6) joins the property fields: present
+// updates the owner's allow-app-deletion posture of the directory
+// album, absent keeps it, and the lock's gate lives in the handler
+// (the property fields' own refusal) with the type arm that keeps
+// the switch off virtual albums. updated_at moves with the write:
+// the wall orders the own group by it. No owner guard and no type
+// guard here: the handler's gate already resolved the caller's
+// right to this write, and an album deleted between the gate and
+// the statement answers no row -- the honest 404 of a gone album.
 func (q *Queries) UpdateAlbumFields(ctx context.Context, arg UpdateAlbumFieldsParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, updateAlbumFields,
 		arg.Title,
 		arg.CoverAssetID,
 		arg.Locked,
+		arg.AllowAppDeletion,
 		arg.AlbumID,
 	)
 	var id pgtype.UUID

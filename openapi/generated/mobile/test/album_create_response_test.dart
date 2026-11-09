@@ -73,6 +73,12 @@ void main() {
       // TODO
     });
 
+    // The creation-time write probe's fact of the album this response just created: `true` when the probe file landed, read back and removed cleanly; `false` for a readable but read-only source. The creation SUCCEEDED either way -- a read-only directory is a legitimate album -- and `false` is the honest feedback the dialog renders (photos of this directory cannot be deleted through the application). 
+    // bool sourceWritable
+    test('to test the property `sourceWritable`', () async {
+      // TODO
+    });
+
     // The requested audience ids that stayed ungranted: the album's own owner and every id that names no usable account. Empty when the whole audience landed. 
     // BuiltList<AlbumAudienceSkip> skipped
     test('to test the property `skipped`', () async {

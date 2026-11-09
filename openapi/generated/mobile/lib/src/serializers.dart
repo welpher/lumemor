@@ -76,8 +76,6 @@ import 'package:lumemor_api/src/model/model_response_input_size.dart';
 import 'package:lumemor_api/src/model/model_scan_response.dart';
 import 'package:lumemor_api/src/model/model_slot.dart';
 import 'package:lumemor_api/src/model/model_source.dart';
-import 'package:lumemor_api/src/model/mount_roots_settings_response.dart';
-import 'package:lumemor_api/src/model/mount_roots_settings_update_request.dart';
 import 'package:lumemor_api/src/model/move_face_request.dart';
 import 'package:lumemor_api/src/model/move_face_response.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
@@ -189,8 +187,6 @@ part 'serializers.g.dart';
   ModelScanResponse,
   ModelSlot,
   ModelSource,
-  MountRootsSettingsResponse,
-  MountRootsSettingsUpdateRequest,
   MoveFaceRequest,
   MoveFaceResponse,
   PairingConsumeRequest,

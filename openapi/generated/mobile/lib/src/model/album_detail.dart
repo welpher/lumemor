@@ -20,6 +20,9 @@ part 'album_detail.g.dart';
 /// * [locked] - The owner's lock (metadata to a viewer).
 /// * [coverAssetId] - The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
 /// * [rootPath] - The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Virtual and sync albums omit it. 
+/// * [sourceWritable] - The creation-time write probe's fact: whether the source directory could be written, read back and removed from when the album was created. Present exactly on `directory` albums, both roles -- the fact is the album's own, not a role's. `false` is not an error state: a readable but read-only directory is a legitimate source whose photos cannot be deleted through the application. The truth is discovered exactly once, at creation; nothing re-probes it at runtime. 
+/// * [allowAppDeletion] - The owner's deletability switch: whether deleting this album's photos THROUGH the application -- the trash move of the source file -- is permitted. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face stays false whatever it says. 
+/// * [deletable] - The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, the deletability switch is on, and the album is not locked. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
 /// * [callerRole] - The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
 /// * [itemCount] - The album's live member count, the same predicate as the items below. 
 /// * [items] - One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
@@ -52,6 +55,18 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   /// The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Virtual and sync albums omit it. 
   @BuiltValueField(wireName: r'rootPath')
   String? get rootPath;
+
+  /// The creation-time write probe's fact: whether the source directory could be written, read back and removed from when the album was created. Present exactly on `directory` albums, both roles -- the fact is the album's own, not a role's. `false` is not an error state: a readable but read-only directory is a legitimate source whose photos cannot be deleted through the application. The truth is discovered exactly once, at creation; nothing re-probes it at runtime. 
+  @BuiltValueField(wireName: r'sourceWritable')
+  bool? get sourceWritable;
+
+  /// The owner's deletability switch: whether deleting this album's photos THROUGH the application -- the trash move of the source file -- is permitted. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face stays false whatever it says. 
+  @BuiltValueField(wireName: r'allowAppDeletion')
+  bool? get allowAppDeletion;
+
+  /// The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, the deletability switch is on, and the album is not locked. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
+  @BuiltValueField(wireName: r'deletable')
+  bool? get deletable;
 
   /// The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
   @BuiltValueField(wireName: r'callerRole')
@@ -131,6 +146,27 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
       yield serializers.serialize(
         object.rootPath,
         specifiedType: const FullType(String),
+      );
+    }
+    if (object.sourceWritable != null) {
+      yield r'sourceWritable';
+      yield serializers.serialize(
+        object.sourceWritable,
+        specifiedType: const FullType(bool),
+      );
+    }
+    if (object.allowAppDeletion != null) {
+      yield r'allowAppDeletion';
+      yield serializers.serialize(
+        object.allowAppDeletion,
+        specifiedType: const FullType(bool),
+      );
+    }
+    if (object.deletable != null) {
+      yield r'deletable';
+      yield serializers.serialize(
+        object.deletable,
+        specifiedType: const FullType(bool),
       );
     }
     yield r'callerRole';
@@ -235,6 +271,30 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
           ) as String?;
           if (valueDes == null) continue;
           result.rootPath = valueDes;
+          break;
+        case r'sourceWritable':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(bool),
+          ) as bool?;
+          if (valueDes == null) continue;
+          result.sourceWritable = valueDes;
+          break;
+        case r'allowAppDeletion':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(bool),
+          ) as bool?;
+          if (valueDes == null) continue;
+          result.allowAppDeletion = valueDes;
+          break;
+        case r'deletable':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(bool),
+          ) as bool?;
+          if (valueDes == null) continue;
+          result.deletable = valueDes;
           break;
         case r'callerRole':
           final valueDes = serializers.deserialize(
