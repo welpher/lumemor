@@ -1105,7 +1105,11 @@ status="$(curl -sS -o "$work_dir/admin_timeline_body" -b "$admin_jar" -w '%{http
     || fail "GET /api/v1/assets/timeline (owner, excluded) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/assets/timeline (owner, excluded) returned status $status, want 200: $(cat "$work_dir/admin_timeline_body")"
-admin_timeline_ids="$(item_ids "$work_dir/admin_timeline_body" | tr '\n' ' ')"
+# The owner's timeline holds NOTHING after the exclusion (the album
+# is the admin's only source in this stack), so the extraction must
+# tolerate the empty answer -- grep exits 1 on no matches and the
+# script runs under pipefail.
+admin_timeline_ids="$(item_ids "$work_dir/admin_timeline_body" | tr '\n' ' ' || true)"
 [ "$admin_timeline_ids" = "" ] \
     || fail "the owner's excluded timeline holds [$admin_timeline_ids], want nothing (the album is the owner's only source): $(cat "$work_dir/admin_timeline_body")"
 status="$(curl -sS -o "$work_dir/admin_pref_body" -b "$admin_jar" -w '%{http_code}' \
