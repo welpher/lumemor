@@ -1105,6 +1105,24 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 		}
 	})
 
+	t.Run("UnwritableSourceKillsTheAffordance", func(t *testing.T) {
+		// The root-proof arm of the same derivation: procfs refuses
+		// the probe's write for uid 0 too, so the containerized
+		// gate sees the false fact's faces even where the
+		// permission arms skip.
+		if _, err := os.Stat("/proc"); err != nil {
+			t.Skipf("/proc is unavailable on this host (%v); the unwritable arm needs procfs", err)
+		}
+		unwritable := uuid.UUID(env.createAlbum(t, env.cookie, "Unwritable source", "/proc", nil).Id)
+		detail := env.getAlbumDetail(t, env.cookie, unwritable, "")
+		if detail.SourceWritable == nil || *detail.SourceWritable {
+			t.Errorf("sourceWritable = %v, want false (the probe failed over the unwritable source)", detail.SourceWritable)
+		}
+		if detail.Deletable == nil || *detail.Deletable {
+			t.Errorf("deletable = %v, want false (the source is unwritable, whatever the switch says)", detail.Deletable)
+		}
+	})
+
 	t.Run("ViewerSeesOnlyTheFact", func(t *testing.T) {
 		detail := env.getAlbumDetail(t, graceCookie, writable, "")
 		if detail.SourceWritable == nil || !*detail.SourceWritable {
