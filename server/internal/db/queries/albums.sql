@@ -387,6 +387,18 @@ DELETE FROM album_items
 WHERE album_id = sqlc.arg('album_id')
   AND asset_id = ANY(sqlc.arg('asset_ids')::uuid[]);
 
+-- name: ListAlbumsOfAsset :many
+-- The albums holding membership rows for one asset: the ids whose
+-- LIVE membership a trash or restore just changed (E6's deletability
+-- chain -- the membership row itself survives the trash, the live
+-- views' deleted_at filter is the change), so the handler can
+-- publish each album's items-changed convergence signal. The sync
+-- album never appears (its membership is implicit, no rows), and a
+-- trashed member still names its albums -- the row never left.
+SELECT DISTINCT ai.album_id
+FROM album_items ai
+WHERE ai.asset_id = sqlc.arg('asset_id');
+
 -- Album audience (E4, the albums-as-sources milestone): the
 -- full-set write behind PUT /albums/{albumId}/audience replaces the
 -- one-row grant/revoke pair. The set discipline is the batch

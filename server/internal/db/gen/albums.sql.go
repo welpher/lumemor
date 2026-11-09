@@ -670,6 +670,39 @@ func (q *Queries) ListAlbumShares(ctx context.Context, albumID pgtype.UUID) ([]L
 	return items, nil
 }
 
+const listAlbumsOfAsset = `-- name: ListAlbumsOfAsset :many
+SELECT DISTINCT ai.album_id
+FROM album_items ai
+WHERE ai.asset_id = $1
+`
+
+// The albums holding membership rows for one asset: the ids whose
+// LIVE membership a trash or restore just changed (E6's deletability
+// chain -- the membership row itself survives the trash, the live
+// views' deleted_at filter is the change), so the handler can
+// publish each album's items-changed convergence signal. The sync
+// album never appears (its membership is implicit, no rows), and a
+// trashed member still names its albums -- the row never left.
+func (q *Queries) ListAlbumsOfAsset(ctx context.Context, assetID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listAlbumsOfAsset, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var album_id pgtype.UUID
+		if err := rows.Scan(&album_id); err != nil {
+			return nil, err
+		}
+		items = append(items, album_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWallAlbumsForCaller = `-- name: ListWallAlbumsForCaller :many
 
 SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,

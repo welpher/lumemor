@@ -893,8 +893,12 @@ test.describe('the writable source scenes', () => {
 		await expect(page.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toBeVisible();
 		await expect(bar).toHaveCount(0);
 
-		// The honest convergence, the server's own answer: the
-		// album's live membership dropped to the survivor.
+		// The honest convergence, both faces: the album's own
+		// items-changed event (the trash lifecycle's new convergence
+		// signal) restarts the walk AND refetches the detail, so the
+		// bar's count drops with the wall's tile -- the server's own
+		// answer confirms it.
+		await expect(page.locator('.album-bar .album-detail__count')).toContainText('1 photo');
 		await expect
 			.poll(
 				async () => {
@@ -924,8 +928,10 @@ test.describe('the writable source scenes', () => {
 		).toBeVisible();
 
 		// The album's fresh answer carries both photos again: the
-		// restored row rejoined the membership, the count is honest,
-		// and the source tree holds both files for the next run (the
+		// restored row rejoined the membership (the restore publishes
+		// the same items-changed signal, so a wall that stayed on the
+		// page would restart its walk too), the count is honest, and
+		// the source tree holds both files for the next run (the
 		// fixture healed -- the bootstrap's re-seed is a no-op copy).
 		await page.goto(`/albums/${rwAlbumId}`);
 		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 60_000 });
