@@ -35,7 +35,13 @@
 //     rework: the permanent delete lives on the trash page alone).
 // 10. The trash view shows the retention countdown of the asset
 //     trashed through the viewer's action bar, and restores it.
-// 11. Signing out re-arms the route guard: the deep link redirects
+// 11. The interface-debt surfaces (the 2026-11-09 block): the
+//     drawer carries no settings door (the account dropdown is its
+//     only home, web IA §7.8), `?` opens the keyboard cheat sheet
+//     and `/` focuses the search box (§6), and dropping the network
+//     raises the offline strip until the browser's own SSE retry
+//     recovers (§6's pinned state).
+// 12. Signing out re-arms the route guard: the deep link redirects
 //     to the login page again.
 //
 // THE STATE HANDOFF: the scenes are serial (one stack, one story --
@@ -552,7 +558,58 @@ test.describe('the signed-in scenes', () => {
 		await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible();
 	});
 
-	test('scene 11: signing out re-arms the route guard', async ({ page }) => {
+	test('scene 11: the interface-debt surfaces — the drawer has no settings door, `?` opens the sheet, the offline strip rises', async ({ page }) => {
+		await page.goto('/timeline');
+		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
+
+		// The drawer (web IA §7.8's 2026-11-09 pin): the content
+		// sections carry NO settings entry for any role -- the
+		// account dropdown is settings' ONLY home.
+		await page.getByRole('button', { name: 'Open navigation' }).click();
+		const drawer = page.getByRole('navigation', { name: 'Navigation' });
+		await expect(drawer).toBeVisible();
+		await expect(drawer.getByRole('link', { name: 'Settings', exact: true })).toHaveCount(0);
+		await page.keyboard.press('Escape');
+		await expect(drawer).toHaveCount(0);
+
+		// The account dropdown carries the settings link instead --
+		// the single entry the pin leaves in place.
+		await page.getByRole('button', { name: 'Account' }).click();
+		await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
+		await page.keyboard.press('Escape');
+
+		// The `?` cheat sheet (§6): the collected bindings render in
+		// the two-column shape, grouped by context; Esc closes.
+		await page.keyboard.press('?');
+		const sheet = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+		await expect(sheet).toBeVisible();
+		await expect(sheet.getByText('Focus the search box')).toBeVisible();
+		await expect(sheet.getByText('Move to the previous or next photo')).toBeVisible();
+		await expect(sheet.getByText('Clear the selection')).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(sheet).toHaveCount(0);
+
+		// The `/` focus-search binding (§6): the stroke lands the
+		// focus on the topbar's search box.
+		await page.keyboard.press('/');
+		await expect(page.locator('input.topbar-search')).toBeFocused();
+
+		// The offline strip (§6's pinned state): taking the context
+		// offline kills the SSE stream -- the yellow band rises with
+		// the honest reconnecting copy; bringing the network back
+		// lets the browser's OWN EventSource retry recover, and the
+		// strip falls with it.
+		await page.context().setOffline(true);
+		await expect(
+			page.getByRole('status').filter({ hasText: 'Connection lost — reconnecting' })
+		).toBeVisible();
+		await page.context().setOffline(false);
+		await expect(
+			page.getByRole('status').filter({ hasText: 'Connection lost — reconnecting' })
+		).toHaveCount(0);
+	});
+
+	test('scene 12: signing out re-arms the route guard', async ({ page }) => {
 		await page.goto('/timeline');
 
 		// The account menu's sign-out revokes the session and lands on

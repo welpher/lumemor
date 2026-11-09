@@ -5,10 +5,14 @@
 // rescan reconciles the album's membership with what that
 // directory holds, the audience is an album property (the edit
 // dialog's audience face, the full-set PUT), and the member's side
-// of the share is the read-only view. The stack's lifecycle is
-// owned by the caller (the acceptance scripts' chaining pattern,
-// or one fresh stack per spec -- the first-run bootstrap below
-// expects its 201); the spec itself only talks to
+// of the share is the read-only view. Both pickers (the path
+// completion and the audience candidates) are PORTALED floating
+// layers (web IA §7.5's 2026-11-09 revision) -- anchored under
+// their triggers, living in the document outside the dialogs' DOM,
+// so the dialogs never change height for them. The stack's
+// lifecycle is owned by the caller (the acceptance scripts'
+// chaining pattern, or one fresh stack per spec -- the first-run
+// bootstrap below expects its 201); the spec itself only talks to
 // http://localhost:8244.
 //
 // THE STACK ARRANGEMENT (the honest source fixture, documented):
@@ -56,7 +60,8 @@
 //  3. The create dialog's closed posture: with no mount root open
 //     (the fresh instance's default), the path completion answers
 //     the honest no-roots note -- the refusal face of the empty
-//     allowlist.
+//     allowlist -- and the administrator's face carries the direct
+//     jump to the instance settings (the 2026-11-09 dogfood pin).
 //  4. The instance settings open the mount root: the "Album
 //     sources" section's closed posture, the hand-typed first root
 //     (the allowlist is empty, so nothing completes yet), the
@@ -76,8 +81,11 @@
 //     row must never fall to the panel's generic failure).
 //  8. The audience grant: the edit dialog's audience face -- the
 //     source row reads fixed, the picker offers the member, the
-//     save PUTs the full set (and the unchanged title writes
-//     nothing), and the chip reseeds from the refetched shares.
+//     add drains the two-account pool and collapses the picker
+//     (§7.6's 2026-11-09 pin: an empty picker state is never
+//     shown), the save PUTs the full set (and the unchanged title
+//     writes nothing), and the chip reseeds from the refetched
+//     shares with the add affordance honestly disabled.
 //  9. The member perspective: the member signs in through their
 //     own form, the wall's "Shared with you" section carries the
 //     album, the shared detail renders read-only (no owner
@@ -252,21 +260,32 @@ test.describe('the administrator scenes', () => {
 		// roots (the empty prefix lists them); the fresh instance's
 		// allowlist is empty, and the honest answer is the closed
 		// posture -- the note that names the administrator's move,
-		// never a pretense that the world is empty.
+		// never a pretense that the world is empty. The candidate
+		// block is a PORTALED floating layer (web IA §7.5's
+		// 2026-11-09 revision: fixed, anchored under the input, the
+		// dialog never changing height for it), so its rows live in
+		// the document at page level, outside the dialog's DOM.
 		await dialog.getByLabel('Path').click();
-		await expect(
-			dialog.getByText('No folders can be picked yet — an administrator must first open a mount root in the instance settings.')
-		).toBeVisible();
+		const suggest = page.locator('.path-completion__suggest');
+		await expect(suggest.getByText('No folders can be picked yet — an administrator must first open a mount root in the instance settings.')).toBeVisible();
+
+		// The admin's direct jump (the 2026-11-09 dogfood pin): the
+		// no-roots face carries an icon+text action linking to the
+		// instance settings, where the "Album sources" section owns
+		// the allowlist -- the note is no longer a dead end for the
+		// administrator who can act on it. (Scene 4 walks the
+		// settings themselves; the link's target is pinned, not
+		// walked, so the closing discipline below stays intact.)
+		const openRoots = page.getByRole('link', { name: 'Open mount roots' });
+		await expect(openRoots).toBeVisible();
+		await expect(openRoots).toHaveAttribute('href', '/admin/settings');
 
 		// The closing discipline (the keys footer's promise, walked):
 		// the list's Esc closes the list ALONE -- the dialog behind it
-		// stays -- and the modal's own Esc owns the next stroke. (The
-		// keyboard path is also the honest one for the close itself:
-		// a click on the footer's Cancel lands mid-collapse of the
-		// inline list -- the blur folds it, the footer jumps, the
-		// mouseup misses -- so the picker-bearing dialogs close
-		// through their own Escape.)
+		// stays -- and the modal's own Esc owns the next stroke.
+		// (The portaled layer leaves the document with the close.)
 		await dialog.getByLabel('Path').press('Escape');
+		await expect(suggest).toHaveCount(0);
 		await expect(dialog).toBeVisible();
 		await page.keyboard.press('Escape');
 		await expect(dialog).toHaveCount(0);
@@ -286,17 +305,17 @@ test.describe('the administrator scenes', () => {
 
 		// The first root is typed by hand (the allowlist is empty, so
 		// the add row's own completion has nothing to suggest -- its
-		// list renders the quiet no-match note and stays out of the
-		// way), added as a row, and saved as the complete replacement.
-		// The Esc before the click is the honest discipline: the
-		// inline list folds on the input's blur, and a click that
-		// begins while it stands lands where the folded layout moved
-		// the affordance from -- the list's own close key settles the
-		// layout first.
+		// layer renders the quiet no-match note and stays out of the
+		// way). The Esc before the click is the settled discipline:
+		// the completion's list closes on the input's blur, and the
+		// portaled layer leaves the document with the close (the
+		// dialog's height never moved for it either way -- §7.5's
+		// revision -- so the layout is already settled; the key simply
+		// keeps the scene's walk honest).
 		const draft = section.getByLabel('Add a root');
 		await draft.fill(MOUNT_ROOT);
 		await expect(
-			section.getByText('No matching folders under the allowed roots.')
+			page.getByText('No matching folders under the allowed roots.')
 		).toBeVisible();
 		await draft.press('Escape');
 		await section.getByRole('button', { name: 'Add root', exact: true }).click();
@@ -328,10 +347,12 @@ test.describe('the administrator scenes', () => {
 
 		// The path completion against the mounted fixture tree: the
 		// typed prefix's parent lists the matching directory, the row
-		// appears, Enter completes it into the field.
+		// appears (in the PORTALED floating layer, at page level --
+		// the dialog's DOM never carries it), Enter completes it into
+		// the field.
 		const pathField = dialog.getByLabel('Path');
 		await pathField.fill(`${MOUNT_ROOT}/coas`);
-		await expect(dialog.getByRole('option', { name: SOURCE_DIR })).toBeVisible();
+		await expect(page.getByRole('option', { name: SOURCE_DIR })).toBeVisible();
 		await pathField.press('Enter');
 		await expect(pathField).toHaveValue(SOURCE_DIR);
 
@@ -463,15 +484,24 @@ test.describe('the administrator scenes', () => {
 		await expect(dialog.getByText('Source · fixed')).toBeVisible();
 
 		// The audience face: the honest "Only you", then the picker
-		// offers the one other account (the caller's own is filtered
-		// out -- the identity seam's self filter), Enter adds the
-		// chip, and the picker stays open for the next.
+		// (a PORTALED floating layer at page level -- the dialog's
+		// DOM never carries it) offers the one other account (the
+		// caller's own is filtered out -- the identity seam's self
+		// filter), Enter adds the chip, and the DRAIN collapses the
+		// picker: this instance holds exactly two accounts, so the
+		// member's add empties the candidate pool, and §7.6's
+		// 2026-11-09 pin never shows an empty picker -- the layer
+		// falls, the add button disables, and the reserved
+		// no-candidates slot carries the words.
 		await expect(dialog.getByText('Only you')).toBeVisible();
 		await dialog.getByRole('button', { name: 'Add', exact: true }).click();
-		const picker = dialog.getByRole('listbox', { name: 'Candidate members' });
+		const picker = page.getByRole('listbox', { name: 'Candidate members' });
 		await expect(picker.getByRole('option', { name: MEMBER_EMAIL })).toBeVisible();
 		await picker.press('Enter');
 		await expect(dialog.locator('.audience-field__chip')).toContainText(MEMBER_EMAIL);
+		await expect(picker).toHaveCount(0);
+		await expect(dialog.getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
+		await expect(dialog.getByText('No other account is available.')).toBeVisible();
 
 		// The audience write's request shape: the FULL set, pinned
 		// against the real PUT the page sends.
@@ -490,12 +520,18 @@ test.describe('the administrator scenes', () => {
 		expect(patchUrls).toEqual([]);
 
 		// The honest convergence: the refetched detail's grants reseed
-		// the chips -- the member's row is the audience now.
+		// the chips -- the member's row is the audience now. The
+		// reseeded face also carries §7.6's pin the other way round:
+		// with the only other account already granted, the probed
+		// pool is KNOWN empty and the add affordance opens nothing.
 		await page.getByRole('button', { name: 'Properties', exact: true }).click();
 		await expect(page.getByRole('dialog', { name: 'Album properties', exact: true })).toBeVisible();
 		await expect(
 			page.getByRole('dialog', { name: 'Album properties', exact: true }).locator('.audience-field__chip')
 		).toContainText(MEMBER_EMAIL);
+		await expect(
+			page.getByRole('dialog', { name: 'Album properties', exact: true }).getByRole('button', { name: 'Add', exact: true })
+		).toBeDisabled();
 		await page
 			.getByRole('dialog', { name: 'Album properties', exact: true })
 			.getByRole('button', { name: 'Cancel', exact: true })

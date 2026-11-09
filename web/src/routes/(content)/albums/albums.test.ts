@@ -500,7 +500,10 @@ test('the create dialog carries the picked audience into the POST', async () => 
 	await settle();
 
 	// The candidate picker: the other accounts (the caller excluded).
-	const rows = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
+	// The rows live in the PORTALED floating layer (§7.5's revision:
+	// document.body, outside the dialog's DOM) -- document-level
+	// selectors find them.
+	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
 	expect(
 		rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)
 	).toEqual(['grace@example.com', 'ivy@example.com']);
@@ -558,7 +561,8 @@ test('the create dialog surfaces the honest skipped report before closing', asyn
 	fillField(dialog as ParentNode, '/Volumes/Photos/family', 'create-album-path');
 	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
-	const rows = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
+	// The rows live in the portaled floating layer (document-level).
+	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
 	rows[0]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 	flushSync();
 	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
