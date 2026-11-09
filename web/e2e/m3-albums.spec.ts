@@ -1,122 +1,155 @@
-// The albums-as-sources story of the web app (E4), walked end to
-// end against the real compose stack: an album IS a source. The
-// create dialog picks an EXISTING directory on the server's
-// filesystem (referenced in place -- zero copy, zero move), the
-// rescan reconciles the album's membership with what that
+// The albums-as-sources story of the web app (E4, reshaped by E6's
+// album autonomy), walked end to end against the real compose stack:
+// an album IS a source. The create dialog picks an EXISTING directory
+// on the server's filesystem (referenced in place -- zero copy, zero
+// move), the rescan reconciles the album's membership with what that
 // directory holds, the audience is an album property (the edit
-// dialog's audience face, the full-set PUT), and the member's side
-// of the share is the read-only view. Both pickers (the path
-// completion and the audience candidates) are PORTALED floating
-// layers (web IA §7.5's 2026-11-09 revision) -- anchored under
-// their triggers, living in the document outside the dialogs' DOM,
-// so the dialogs never change height for them. The stack's
-// lifecycle is owned by the caller (the acceptance scripts'
-// chaining pattern, or one fresh stack per spec -- the first-run
-// bootstrap below expects its 201); the spec itself only talks to
-// http://localhost:8244.
+// dialog's audience face, the full-set PUT), and the member's side of
+// the share is the read-only view. Both pickers (the path completion
+// and the audience candidates) are PORTALED floating layers (web IA
+// §7.5's 2026-11-09 revision) -- anchored under their triggers,
+// living in the document outside the dialogs' DOM, so the dialogs
+// never change height for them. The stack's lifecycle is owned by the
+// caller (the acceptance scripts' chaining pattern, or one fresh
+// stack per spec -- the first-run bootstrap below expects its 201);
+// the spec itself only talks to http://localhost:8244.
 //
-// THE STACK ARRANGEMENT (the honest source fixture, documented):
-// the repository's compose file binds
-// web/e2e/fixtures/m3-source into the lumemor container READ-ONLY
-// at /mnt/e2e-source (see that directory's README). The story's
-// directory album points at coastal-week under that root -- the
-// two face-portrait JPEGs the upload stories seed, arriving
-// through the source path this time. The read-only mount is the
-// zero-copy pin held by construction: a scan that tried to write
-// into the source would fail loudly against it. The mount rides
-// ONLY the repository's own compose file (the dogfood stack
-// composes its own file elsewhere and never sees it), and it is
-// inert until an administrator opens the root in the instance's
-// mount-root allowlist -- the default allowlist is empty, which is
-// exactly where this story starts. The models ride the SAME
-// storage bind mount the chained acceptances downloaded into --
-// ./lumemor persists across stack lifetimes, so the download run
-// the bootstrap triggers is warm (a digest re-verification); cold
-// (CI's first run), it is the real transfer, bounded like every
-// M3 story's cold bound.
+// THE STACK ARRANGEMENT (the honest source fixtures, documented):
+// the repository's compose file binds TWO fixture trees into the
+// lumemor container, and the binds themselves are the E6 boundary
+// (web IA §7.5's third revision: the mount-root allowlist retired
+// whole -- the operator controls the container's view, the
+// completion's domain is the container's REAL filesystem, and the
+// managed data tree never lists).
+//   - web/e2e/fixtures/m3-source, bound READ-ONLY at /mnt/e2e-source:
+//     the story's first album points at coastal-week under it -- the
+//     two face-portrait JPEGs the upload stories seed, arriving
+//     through the source path this time. The read-only bind pins the
+//     zero-copy ingest by construction AND answers the creation-time
+//     write probe with the honest false fact (§7.9: a read-only
+//     directory is a legitimate album whose photos cannot be deleted
+//     through the application -- feedback, never a failure).
+//   - web/e2e/fixtures/m3-source-rw, bound WITHOUT :ro at
+//     /mnt/e2e-source-rw: the probe's true arm and the deletability
+//     chain (see that fixture's README). The bootstrap below seeds
+//     its photos per run -- genuinely distinct bytes (the
+//     cross-person portraits, never the read-only fixture's pair, so
+//     the rescan's owner+checksum dedup never links the two stories'
+//     rows) -- and the trash scene's restore returns them, so the
+//     tree self-heals.
+// The models ride the SAME storage bind mount the chained
+// acceptances downloaded into -- ./lumemor persists across stack
+// lifetimes, so the download run the bootstrap triggers is warm (a
+// digest re-verification); cold (CI's first run), it is the real
+// transfer, bounded like every M3 story's cold bound.
 //
 // THE TWO-ACCOUNT DANCE (the sharing story's shape): the first-run
-// administrator owns the library and the album; a member account,
-// created through the admin API in the suite's bootstrap, becomes
-// the audience. The story's scenes sign each account in through
-// the login form in SEPARATE browser contexts -- the admin's
-// storage state first, then the member's own sign-in scene (the
-// two sessions never share a context) -- and the member's scenes
-// assert everything the audience grant gives: the wall's shared
-// section, the read-only detail, the timeline's inclusion of the
-// shared items, and the viewer drawer's identity-aware read-only
-// state.
+// administrator owns the library and the albums (E6: mounting an
+// existing photo directory is a configuration act, so the creation
+// entry and the completion are the ADMINISTRATOR'S alone); a member
+// account, created through the admin API in the suite's bootstrap,
+// becomes the audience. The story's scenes sign each account in
+// through the login form in SEPARATE browser contexts -- the admin's
+// storage state first, then the member's own sign-in scene (the two
+// sessions never share a context) -- and the member's scenes assert
+// everything the audience grant gives: the wall's shared section,
+// the read-only detail, the timeline's inclusion of the shared items,
+// the viewer drawer's identity-aware read-only state, and the E6
+// creation guard's refusal matrix (the member's wall carries no
+// create affordance; their create-album attempt and their completion
+// call both answer AUTH_FORBIDDEN).
 //
-// THE SCENES (the E4 surface, in order):
+// THE SCENES (the E4/E6 surface, in order):
 //
 //  1. The administrator signs in through the form and lands on the
 //     albums wall holding exactly the pinned "My photos" card (the
 //     default sync album -- a fresh account's wall is never empty;
 //     the count is honest at zero).
-//  2. The library bootstrap: the model group's download run is
-//     driven to succeeded through the admin API (the scan's
-//     pipeline needs it; this story uploads nothing -- the album's
-//     members arrive through the source).
-//  3. The create dialog's closed posture: with no mount root open
-//     (the fresh instance's default), the path completion answers
-//     the honest no-roots note -- the refusal face of the empty
-//     allowlist -- and the administrator's face carries the direct
-//     jump to the instance settings (the 2026-11-09 dogfood pin).
-//  4. The instance settings open the mount root: the "Album
-//     sources" section's closed posture, the hand-typed first root
-//     (the allowlist is empty, so nothing completes yet), the
-//     complete-replacement save, and the live-domain proof that
-//     the root now answers the completion.
-//  5. The create flow: the path completion lists coastal-week for
-//     a typed prefix, Enter completes it, the audience stays the
-//     honest "Only you", and the POST carries the pinned triple
-//     (title, rootPath, audience) -- the card lands with the
-//     honest zero count (creation references, it does not scan).
-//  6. The rescan: the trigger POSTs the run, the aria-live
-//     progress line converges to complete through the job events,
-//     and the album's membership becomes honest -- two tiles, two
-//     photos, the wall ready.
-//  7. The task panel: the rescan's job_runs row lists with its own
+//  2. The library bootstrap: the model group's download run is driven
+//     to succeeded through the admin API (the scan's pipeline needs
+//     it; this story uploads nothing -- both albums' members arrive
+//     through their sources).
+//  3. The completion's domain: the create dialog's path field asks
+//     the system-wide completion -- the empty prefix lists the
+//     filesystem root itself, the trailing-separator drill lists the
+//     container's /mnt children (both fixture mounts visible: the
+//     boundary is the compose bind), and the managed data tree NEVER
+//     lists (the storage root's own directory answers its config
+//     sibling alone). The closing discipline: the list's Esc closes
+//     the list alone, the modal's Esc owns the next stroke.
+//  4. The read-only album's creation: the completion lists
+//     coastal-week for a typed prefix, Enter completes it, the
+//     audience stays the honest "Only you", and the POST carries the
+//     pinned triple (title, rootPath, audience). The write probe
+//     answers sourceWritable false -- the creation FEEDBACK carries
+//     the read-only note and the Done affordance acknowledges it
+//     (the honest report face; the card lands with the honest zero
+//     count -- creation references, it does not scan).
+//  5. The rescan: the trigger POSTs the run, the aria-live progress
+//     line converges to complete through the job events, and the
+//     album's membership becomes honest -- two tiles, two photos,
+//     the wall ready.
+//  6. The task panel: the rescan's job_runs row lists with its own
 //     label (the contract's JobRunKind carries album_rescan -- the
 //     row must never fall to the panel's generic failure).
-//  8. The audience grant: the edit dialog's audience face -- the
-//     source row reads fixed, the picker offers the member, the
-//     add drains the two-account pool and collapses the picker
-//     (§7.6's 2026-11-09 pin: an empty picker state is never
-//     shown), the save PUTs the full set (and the unchanged title
-//     writes nothing), and the chip reseeds from the refetched
-//     shares with the add affordance honestly disabled.
-//  9. The member perspective: the member signs in through their
-//     own form, the wall's "Shared with you" section carries the
-//     album, the shared detail renders read-only (no owner
-//     affordance; the exclusion toggle is the member's own), and
-//     the member's timeline includes the shared items (the
-//     union's shared arm).
-// 10. The viewer's identity-aware drawer: a shared photo's info
-//     drawer renders the reads and the per-user favorite without
-//     any owner-only write affordance.
+//  7. The edit dialog: the autonomy block (E6, §7.9) -- the lock
+//     toggle and the caller's own timeline-exclusion toggle ride the
+//     dialog, while the deletability row DOES NOT render (the
+//     read-only source carries no row at all -- no dead affordance);
+//     the audience face then grants the member the view (the source
+//     row fixed, the picker, the drain collapse, the full-set PUT,
+//     the unchanged title writing nothing, the chip reseed).
+//  8. The member perspective: the member signs in through their own
+//     form, the wall's "Shared with you" section carries the album,
+//     the wall renders NO creation affordance (the guard's visual
+//     half), the member's create-album attempt and completion call
+//     both answer AUTH_FORBIDDEN (the refusal matrix's new arms),
+//     the shared detail renders read-only (no owner affordance; the
+//     exclusion toggle is the member's own), and the member's
+//     timeline includes the shared items (the union's shared arm).
+//  9. The viewer's identity-aware drawer: a shared photo's info
+//     drawer renders the reads and the per-user favorite without any
+//     owner-only write affordance.
+// 10. The writable album's creation (the probe's true arm): the
+//     completion's exact-match row for the writable fixture root, the
+//     same pinned triple, and sourceWritable true -- the writable,
+//     all-landed creation closes the dialog DIRECTLY (no report
+//     face), and the card lands.
+// 11. The writable album's rescan converges the seeded pair, and the
+//     edit dialog's deletability row RENDERS (checked on by default)
+//     beside the lock and exclusion toggles.
+// 12. The deletability chain: the deletable wall curates a
+//     DELETE-ONLY selection (the hover check, the batch bar offering
+//     Trash alone), the trash moves the file out of the source, the
+//     album's live membership converges to the survivor, the trash
+//     view carries the row, and the restore returns the file -- the
+//     album's fresh answer carries both photos again (the fixture
+//     healed).
 //
 // THE STATE HANDOFF: the scenes are serial (one stack, one story --
-// see playwright.config.ts). Scenes 1-8 share the admin's browser
-// session (scene 1 signs in and saves the storage state); scene 9
-// signs the member in through a fresh context and saves their own;
-// scene 10 replays the member's. Each scene navigates explicitly
+// see playwright.config.ts). Scenes 1-7 and 10-12 share the admin's
+// browser session (scene 1 signs in and saves the storage state);
+// scene 8 signs the member in through a fresh context and saves their
+// own; scene 9 replays the member's. Each scene navigates explicitly
 // to its starting route, so a failure report names the exact scene
 // that broke.
 
+import { copyFile, mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
 
 const specDir = fileURLToPath(new URL('.', import.meta.url));
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 
 // The compose stack's address (playwright.config.ts pins the same
 // value as the suite's baseURL).
 const BASE_URL = 'http://localhost:8244';
 
 // The story's two accounts: the first-run administrator (the setup
-// API's, the album's owner) and the member the administrator
+// API's, the albums' owner) and the member the administrator
 // provisions through the admin API in the suite's bootstrap. The
 // stack is always fresh, so the fixed identities are deterministic.
 const ADMIN_EMAIL = 'admin@m3c-e2e.invalid';
@@ -124,40 +157,73 @@ const ADMIN_PASSWORD = 'correct-horse-battery';
 const MEMBER_EMAIL = 'grace@m3c-e2e.invalid';
 const MEMBER_PASSWORD = 'correct-horse-battery';
 
-// The source fixture (the stack arrangement above): the mount root
-// the compose file binds read-only, and the directory under it the
-// story's album references in place.
+// The read-only source fixture (the stack arrangement above): the
+// bind the compose file mounts :ro, and the directory under it the
+// story's first album references in place.
 const MOUNT_ROOT = '/mnt/e2e-source';
 const SOURCE_DIR = '/mnt/e2e-source/coastal-week';
 
-// The two fixture photos the album gathers (the source tree's own
-// names -- the story asserts them as the tiles' links).
+// The writable sibling (the stack arrangement above): the bind
+// without :ro, and the seeded photos the deletability chain walks.
+// The seed bytes are the cross-person portrait pair -- genuinely
+// distinct from the read-only fixture's pair, so the rescan's
+// owner+checksum dedup never links the two stories' rows.
+const RW_MOUNT_ROOT = '/mnt/e2e-source-rw';
+const RW_SEED_A = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-other.jpg');
+const RW_SEED_B = path.join(
+	repoRoot,
+	'server/internal/ml/testdata/face-portrait-other-second.jpg'
+);
+const RW_SOURCE_HOST_DIR = path.join(specDir, 'fixtures/m3-source-rw');
+
+// The two fixture photos the read-only album gathers (the source
+// tree's own names -- the story asserts them as the tiles' links).
 const PHOTO_A_NAME = 'IMG_E4_0001.jpg';
 const PHOTO_B_NAME = 'IMG_E4_0002.jpg';
 
-// The story's album title.
+// The two seeded photos the writable album gathers (the fixture
+// README's arrangement; the trash scene moves the first and the
+// restore returns it).
+const PHOTO_RW_A_NAME = 'IMG_E6_0001.jpg';
+const PHOTO_RW_B_NAME = 'IMG_E6_0002.jpg';
+
+// The story's album titles.
 const ALBUM_TITLE = 'Coastal week 2026';
+const RW_ALBUM_TITLE = 'Field day 2026';
 
 // The download bound: the cold upstream transfer of the group (about
 // 351 MB) is minutes, the warm re-verification is seconds; both
 // allow the cold bound.
 const DOWNLOAD_TIMEOUT_MS = 900_000;
 
-// The storage-state files scene 1 (the admin) and scene 9 (the
+// The storage-state files scene 1 (the admin) and scene 8 (the
 // member) write and the later scenes replay (git-ignored, recreated
 // per run).
 const adminStatePath = `${specDir}/.auth/m3c-admin-state.json`;
 const memberStatePath = `${specDir}/.auth/m3c-member-state.json`;
 
-// The created album's id, captured by the create scene through the
+// The read-only album's id, captured by the create scene through the
 // wall card so the later scenes can deep-link deterministically.
 let albumId = '';
+
+// The writable album's id, captured the same way by its create scene.
+let rwAlbumId = '';
 
 // The member's user id, captured by the bootstrap so the audience
 // write's request shape can be pinned against the real id.
 let memberUserId = '';
 
 test.beforeAll(async ({ playwright }) => {
+	// The writable fixture's seeding (the arrangement its README
+	// documents): the photos are never committed -- the bootstrap
+	// copies them in, the trash scene moves one into the managed
+	// trash area, and the restore returns it, so the next run's
+	// re-seed is a no-op copy. The bind is live, so the container
+	// sees the files the moment they land.
+	await mkdir(RW_SOURCE_HOST_DIR, { recursive: true });
+	await copyFile(RW_SEED_A, path.join(RW_SOURCE_HOST_DIR, PHOTO_RW_A_NAME));
+	await copyFile(RW_SEED_B, path.join(RW_SOURCE_HOST_DIR, PHOTO_RW_B_NAME));
+
 	// The first-run bootstrap, the acceptance scripts' pattern: the
 	// setup API creates the administrator on the fresh instance; the
 	// signed-in admin then provisions the member account through the
@@ -199,7 +265,8 @@ test('scene 1: the administrator signs in and lands on the pinned My photos card
 	// The wall is never empty on a fresh account: the pinned default
 	// album leads the "Your albums" section with the localized
 	// display name (the stored internal title never renders) and the
-	// honest zero count, and the create action stays beside it.
+	// honest zero count, and the create action stays beside it -- the
+	// ADMINISTRATOR'S entry (E6: an admin session alone renders it).
 	const myPhotos = page.locator('a.album-card').filter({ hasText: 'My photos' });
 	await expect(myPhotos).toBeVisible();
 	await expect(myPhotos).toContainText('0 photos');
@@ -223,8 +290,8 @@ test.describe('the administrator scenes', () => {
 		test.setTimeout(DOWNLOAD_TIMEOUT_MS + 120_000);
 
 		// The model group's download first (this story uploads nothing
-		// -- the album's members arrive through the source scan -- but
-		// the scan's pipeline runs the same metadata/thumbnail/ML
+		// -- both albums' members arrive through their source scans --
+		// but the scans' pipelines run the same metadata/thumbnail/ML
 		// fan-out an upload's does, so the models must be ready for
 		// the tiles to converge the same way; the admin API is the M2
 		// story's seeding pattern -- the request rides the page's own
@@ -248,7 +315,7 @@ test.describe('the administrator scenes', () => {
 			.toBe('succeeded');
 	});
 
-	test('scene 3: the create dialog answers the honest no-roots note while the allowlist is closed', async ({
+	test('scene 3: the completion drills the container\'s real filesystem and never lists the managed tree', async ({
 		page
 	}) => {
 		await page.goto('/albums');
@@ -256,86 +323,51 @@ test.describe('the administrator scenes', () => {
 		const dialog = page.getByRole('dialog', { name: 'New album', exact: true });
 		await expect(dialog).toBeVisible();
 
-		// Focusing the path field alone asks the completion for the
-		// roots (the empty prefix lists them); the fresh instance's
-		// allowlist is empty, and the honest answer is the closed
-		// posture -- the note that names the administrator's move,
-		// never a pretense that the world is empty. The candidate
-		// block is a PORTALED floating layer (web IA §7.5's
-		// 2026-11-09 revision: fixed, anchored under the input, the
-		// dialog never changing height for it), so its rows live in
-		// the document at page level, outside the dialog's DOM.
-		await dialog.getByLabel('Path').click();
+		// The system-wide domain (E6, §7.5's third revision): the
+		// empty prefix on focus lists the filesystem ROOT ITSELF --
+		// the combobox's one "start here" row, the honest reflection
+		// of what the container sees (the allowlist's closed posture
+		// died with the allowlist). The candidate block is a PORTALED
+		// floating layer (web IA §7.5's 2026-11-09 revision), so its
+		// rows live in the document at page level, outside the
+		// dialog's DOM.
+		const pathField = dialog.getByLabel('Path');
+		await pathField.click();
 		const suggest = page.locator('.path-completion__suggest');
-		await expect(suggest.getByText('No folders can be picked yet — an administrator must first open a mount root in the instance settings.')).toBeVisible();
+		await expect(suggest.getByRole('option', { name: '/', exact: true })).toBeVisible();
 
-		// The admin's direct jump (the 2026-11-09 dogfood pin): the
-		// no-roots face carries an icon+text action linking to the
-		// instance settings, where the "Album sources" section owns
-		// the allowlist -- the note is no longer a dead end for the
-		// administrator who can act on it. (Scene 4 walks the
-		// settings themselves; the link's target is pinned, not
-		// walked, so the closing discipline below stays intact.)
-		const openRoots = page.getByRole('link', { name: 'Open mount roots' });
-		await expect(openRoots).toBeVisible();
-		await expect(openRoots).toHaveAttribute('href', '/admin/settings');
+		// The boundary is the compose bind: the trailing-separator
+		// drill into the container's /mnt lists BOTH fixture mounts --
+		// read-only and writable -- because the mounts themselves are
+		// what the container's world holds.
+		await pathField.fill('/mnt/');
+		await expect(suggest.getByRole('option', { name: MOUNT_ROOT, exact: true })).toBeVisible();
+		await expect(suggest.getByRole('option', { name: RW_MOUNT_ROOT, exact: true })).toBeVisible();
+
+		// The managed tree never lists (the one exclusion that stayed
+		// through the retirement): drilling the storage root's own
+		// directory answers its config sibling alone -- the data tree
+		// (originals, derivatives, trash) has no row, ever.
+		await pathField.fill('/var/lib/lumemor/');
+		await expect(
+			suggest.getByRole('option', { name: '/var/lib/lumemor/config', exact: true })
+		).toBeVisible();
+		await expect(
+			suggest.getByRole('option', { name: '/var/lib/lumemor/data', exact: true })
+		).toHaveCount(0);
 
 		// The closing discipline (the keys footer's promise, walked):
 		// the list's Esc closes the list ALONE -- the dialog behind it
-		// stays -- and the modal's own Esc owns the next stroke.
-		// (The portaled layer leaves the document with the close.)
-		await dialog.getByLabel('Path').press('Escape');
+		// stays -- and the modal's own Esc owns the next stroke. (The
+		// portaled layer leaves the document with the close.)
+		await pathField.press('Escape');
 		await expect(suggest).toHaveCount(0);
 		await expect(dialog).toBeVisible();
 		await page.keyboard.press('Escape');
 		await expect(dialog).toHaveCount(0);
 	});
 
-	test('scene 4: the instance settings open the e2e mount root', async ({ page }) => {
-		await page.goto('/admin/settings');
-		await expect(page).toHaveTitle('Settings · lumemor');
-
-		// The "Album sources" section renders the same closed posture
-		// the create dialog answered: no root is open yet.
-		const section = page.locator('[data-testid="admin-settings-mounts"]');
-		await expect(section.getByRole('heading', { name: 'Album sources' })).toBeVisible();
-		await expect(section.locator('[data-testid="mount-roots-empty"]')).toHaveText(
-			'No mount roots yet — directory album creation is closed until one is added.'
-		);
-
-		// The first root is typed by hand (the allowlist is empty, so
-		// the add row's own completion has nothing to suggest -- its
-		// layer renders the quiet no-match note and stays out of the
-		// way). The Esc before the click is the settled discipline:
-		// the completion's list closes on the input's blur, and the
-		// portaled layer leaves the document with the close (the
-		// dialog's height never moved for it either way -- §7.5's
-		// revision -- so the layout is already settled; the key simply
-		// keeps the scene's walk honest).
-		const draft = section.getByLabel('Add a root');
-		await draft.fill(MOUNT_ROOT);
-		await expect(
-			page.getByText('No matching folders under the allowed roots.')
-		).toBeVisible();
-		await draft.press('Escape');
-		await section.getByRole('button', { name: 'Add root', exact: true }).click();
-		await expect(section.locator('[data-testid="mount-roots-list"]')).toContainText(MOUNT_ROOT);
-		await section.getByRole('button', { name: 'Save roots', exact: true }).click();
-		await expect(page.getByText('Saved. New directory albums may reference these roots.')).toBeVisible();
-
-		// The root is not merely stored but LIVE: the completion's
-		// domain (exactly the creation validation's) now answers the
-		// mounted root -- the honest proof the fixture mount rides
-		// the container before the create dialog leans on it.
-		const completions = await page.request.get(
-			`/api/v1/albums/path-completions?prefix=${encodeURIComponent(MOUNT_ROOT)}`
-		);
-		expect(completions.status()).toBe(200);
-		const body = (await completions.json()) as { paths?: string[] };
-		expect(body.paths).toEqual([MOUNT_ROOT]);
-	});
-
-	test('scene 5: the create dialog completes the source path and posts the pinned triple', async ({
+	test('scene 4: the read-only album\'s creation carries the probe\'s honest report face', async ({
 		page
 	}) => {
 		await page.goto('/albums');
@@ -374,11 +406,31 @@ test.describe('the administrator scenes', () => {
 			audience: []
 		});
 
-		// The all-landed creation (nothing to skip) closes the dialog
-		// directly, and the SSE album.created echo converges the wall:
-		// the card lands with the honest zero count -- creation
-		// references the source, it does not scan it.
+		// The write probe's honest face (§7.9): the read-only bind
+		// answers sourceWritable FALSE -- a fact about the album's
+		// source, never a creation failure. The 201 landed the album;
+		// the response carries the fact.
+		const response = await post.response();
+		expect(response?.status()).toBe(201);
+		const createBody = (await response?.json()) as { sourceWritable?: boolean };
+		expect(createBody.sourceWritable).toBe(false);
+
+		// The report face holds the dialog: the read-only note names
+		// what the fact means (the photos cannot be deleted through
+		// the application), and the Done affordance acknowledges it.
+		// (The skipped half of the report face is empty here -- the
+		// audience was -- so the note is the face's whole content.)
+		await expect(
+			dialog.getByText(
+				'The album was created. This folder is read-only — its photos cannot be deleted through the app.'
+			)
+		).toBeVisible();
+		await dialog.getByRole('button', { name: 'Done', exact: true }).click();
 		await expect(dialog).toHaveCount(0);
+
+		// The SSE album.created echo converges the wall: the card
+		// lands with the honest zero count -- creation references the
+		// source, it does not scan it.
 		const card = page.locator('a.album-card').filter({ hasText: ALBUM_TITLE });
 		await expect(card).toBeVisible();
 		await expect(card).toContainText('0 photos');
@@ -388,7 +440,7 @@ test.describe('the administrator scenes', () => {
 		expect(albumId).not.toBe('');
 	});
 
-	test('scene 6: the rescan converges the album\'s membership with the source', async ({ page }) => {
+	test('scene 5: the rescan converges the album\'s membership with the source', async ({ page }) => {
 		await page.goto(`/albums/${albumId}`);
 		await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
 		await expect(page.getByText('This album has no photos yet.')).toBeVisible();
@@ -443,7 +495,7 @@ test.describe('the administrator scenes', () => {
 			.toBe(2);
 	});
 
-	test('scene 7: the task panel lists the rescan\'s row with its own label', async ({ page }) => {
+	test('scene 6: the task panel lists the rescan\'s row with its own label', async ({ page }) => {
 		await page.goto('/admin/jobs');
 		await expect(page.getByRole('heading', { level: 1, name: 'Jobs', exact: true })).toBeVisible();
 
@@ -458,7 +510,7 @@ test.describe('the administrator scenes', () => {
 		await expect(row.getByText('2 of 2 assets')).toBeVisible();
 	});
 
-	test('scene 8: the edit dialog\'s audience grants the member the view', async ({ page }) => {
+	test('scene 7: the edit dialog\'s autonomy block rides the audience grant', async ({ page }) => {
 		await page.goto(`/albums/${albumId}`);
 
 		// The PATCH collector: the save must write the audience PUT
@@ -483,15 +535,26 @@ test.describe('the administrator scenes', () => {
 		await expect(dialog.locator('.album-form__source')).toContainText(SOURCE_DIR);
 		await expect(dialog.getByText('Source · fixed')).toBeVisible();
 
+		// The autonomy block (E6, §7.9): the LOCK toggle and the
+		// caller's own TIMELINE-EXCLUSION toggle ride the dialog --
+		// but the DELETABILITY row does not render at all. The
+		// read-only source carries no row: no affordance exists for a
+		// write the application can never perform (the probe's false
+		// fact kills the row, scene 4's report face said why).
+		const autonomy = dialog.locator('[data-testid="album-autonomy"]');
+		await expect(autonomy).toBeVisible();
+		await expect(autonomy.locator('[data-testid="album-lock-toggle"]')).toBeVisible();
+		await expect(autonomy.locator('[data-testid="album-timeline-toggle"]')).toBeVisible();
+		await expect(autonomy.locator('[data-testid="album-deletable-toggle"]')).toHaveCount(0);
+
 		// The audience face: the honest "Only you", then the picker
 		// (a PORTALED floating layer at page level -- the dialog's
 		// DOM never carries it) offers the one other account (the
-		// caller's own is filtered out -- the identity seam's self
-		// filter), Enter adds the chip, and the DRAIN collapses the
-		// picker: this instance holds exactly two accounts, so the
-		// member's add empties the candidate pool, and §7.6's
-		// 2026-11-09 pin never shows an empty picker -- the layer
-		// falls, the add button disables, and the reserved
+		// identity seam's self filter), Enter adds the chip, and the
+		// DRAIN collapses the picker: this instance holds exactly two
+		// accounts, so the member's add empties the candidate pool,
+		// and §7.6's 2026-11-09 pin never shows an empty picker -- the
+		// layer falls, the add button disables, and the reserved
 		// no-candidates slot carries the words.
 		await expect(dialog.getByText('Only you')).toBeVisible();
 		await dialog.getByRole('button', { name: 'Add', exact: true }).click();
@@ -539,11 +602,13 @@ test.describe('the administrator scenes', () => {
 	});
 });
 
-// The member half of the story: scene 9 signs the member in through
+// The member half of the story: scene 8 signs the member in through
 // their own form (a fresh context -- the two accounts never share a
-// browser session) and saves their storage state; scene 10 replays
+// browser session) and saves their storage state; scene 9 replays
 // it.
-test('scene 9: the member signs in and sees the shared album read-only', async ({ browser }) => {
+test('scene 8: the member signs in, the creation guard refuses them, and the shared album reads view-only', async ({
+	browser
+}) => {
 	// The config's use-locale does not reach manually created
 	// contexts; pin it so the asserted strings render in English.
 	const context = await browser.newContext({ locale: 'en-US', timezoneId: 'UTC' });
@@ -563,6 +628,30 @@ test('scene 9: the member signs in and sees the shared album read-only', async (
 	await expect(card).toBeVisible();
 	await expect(card).toContainText(`Shared by ${ADMIN_EMAIL}`);
 	await expect(card).toContainText('2 photos');
+
+	// The creation guard's visual half (E6): mounting an existing
+	// photo directory is a configuration act, so the member's wall
+	// renders NO creation affordance at all.
+	await expect(page.getByRole('button', { name: 'New album', exact: true })).toHaveCount(0);
+
+	// The guard's server half, the refusal matrix's new arms: the
+	// member's create-album attempt and their completion call both
+	// answer AUTH_FORBIDDEN (the requests ride the member's own page
+	// context and its login cookie -- the same session the browser
+	// scenes walk).
+	const memberCreate = await page.request.post('/api/v1/albums', {
+		data: { title: 'Member attempt', rootPath: SOURCE_DIR, audience: [] }
+	});
+	expect(memberCreate.status()).toBe(403);
+	const memberCreateBody = (await memberCreate.json()) as { code?: string };
+	expect(memberCreateBody.code).toBe('AUTH_FORBIDDEN');
+
+	const memberCompletion = await page.request.get(
+		`/api/v1/albums/path-completions?prefix=${encodeURIComponent(MOUNT_ROOT)}`
+	);
+	expect(memberCompletion.status()).toBe(403);
+	const memberCompletionBody = (await memberCompletion.json()) as { code?: string };
+	expect(memberCompletionBody.code).toBe('AUTH_FORBIDDEN');
 
 	// The shared detail reads as viewer: no owner affordance ever
 	// renders (the properties dialog and the rescan are the owner's),
@@ -584,7 +673,7 @@ test('scene 9: the member signs in and sees the shared album read-only', async (
 	await expect(page.getByRole('link', { name: PHOTO_B_NAME, exact: true })).toBeVisible();
 	await expect(page.locator('.tile')).toHaveCount(2);
 
-	// Hand the member session to scene 10.
+	// Hand the member session to scene 9.
 	await context.storageState({ path: memberStatePath });
 	await context.close();
 });
@@ -592,7 +681,7 @@ test('scene 9: the member signs in and sees the shared album read-only', async (
 test.describe('the member viewer scenes', () => {
 	test.use({ storageState: memberStatePath });
 
-	test("scene 10: the viewer's drawer keeps the reads and the per-user favorite, never the owner-only writes", async ({
+	test("scene 9: the viewer's drawer keeps the reads and the per-user favorite, never the owner-only writes", async ({
 		page
 	}) => {
 		// A shared photo's viewer, deep-linked from the album detail.
@@ -622,8 +711,8 @@ test.describe('the member viewer scenes', () => {
 			'Restore',
 			'Delete permanently'
 		]) {
-			// The owner-only writes never render in either surface:
-			// no trash/restore in the BAR (the drawer never carried a
+			// The owner-only writes never render in either surface: no
+			// trash/restore in the BAR (the drawer never carried a
 			// curation button since the rework), no description edit.
 			await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 		}
@@ -632,5 +721,215 @@ test.describe('the member viewer scenes', () => {
 		// without a page reload (the optimistic per-user state).
 		await favorite.click();
 		await expect(page.getByRole('button', { name: 'Unfavorite', exact: true })).toBeVisible();
+	});
+});
+
+// The writable arm of the story (the E6 deletability chain, §7.9):
+// the admin's session replays; the scenes walk the probe's TRUE
+// fact, the deletability row it renders, the delete-only selection
+// it arms, and the trash/restore round trip that moves the source
+// file itself.
+test.describe('the writable source scenes', () => {
+	test.use({ storageState: adminStatePath });
+
+	test('scene 10: the writable source\'s creation answers the probe\'s true fact and closes directly', async ({
+		page
+	}) => {
+		await page.goto('/albums');
+		await page.getByRole('button', { name: 'New album', exact: true }).click();
+		const dialog = page.getByRole('dialog', { name: 'New album', exact: true });
+		await expect(dialog).toBeVisible();
+
+		await dialog.getByLabel('Title').fill(RW_ALBUM_TITLE);
+
+		// The completion's exact-match row: typing the writable
+		// fixture's full path answers the directory itself (the
+		// parent /mnt holds exactly one entry whose name starts with
+		// the typed last segment), Enter completes it.
+		const pathField = dialog.getByLabel('Path');
+		await pathField.fill(RW_MOUNT_ROOT);
+		await expect(page.getByRole('option', { name: RW_MOUNT_ROOT, exact: true })).toBeVisible();
+		await pathField.press('Enter');
+		await expect(pathField).toHaveValue(RW_MOUNT_ROOT);
+
+		await expect(dialog.getByText('Only you')).toBeVisible();
+
+		// The pinned triple, the same shape as the read-only story's.
+		const createPost = page.waitForRequest(
+			(request) => request.method() === 'POST' && request.url().endsWith('/api/v1/albums')
+		);
+		await dialog.getByRole('button', { name: 'Create album', exact: true }).click();
+		const post = await createPost;
+		expect(post.postDataJSON()).toEqual({
+			title: RW_ALBUM_TITLE,
+			rootPath: RW_MOUNT_ROOT,
+			audience: []
+		});
+
+		// The probe's TRUE arm: the writable bind answers
+		// sourceWritable true, and an all-landed, writable creation
+		// holds NO report -- the dialog closes directly (the
+		// acknowledgment face belongs to the honest problems alone).
+		const response = await post.response();
+		expect(response?.status()).toBe(201);
+		const createBody = (await response?.json()) as { sourceWritable?: boolean };
+		expect(createBody.sourceWritable).toBe(true);
+		await expect(dialog).toHaveCount(0);
+
+		// The card lands with the honest zero count.
+		const card = page.locator('a.album-card').filter({ hasText: RW_ALBUM_TITLE });
+		await expect(card).toBeVisible();
+		await expect(card).toContainText('0 photos');
+
+		// The writable album's id, for the later scenes' deep links.
+		rwAlbumId = (await card.getAttribute('href'))?.replace('/albums/', '') ?? '';
+		expect(rwAlbumId).not.toBe('');
+	});
+
+	test('scene 11: the writable album\'s rescan converges and the deletability row renders', async ({
+		page
+	}) => {
+		await page.goto(`/albums/${rwAlbumId}`);
+		await expect(page.locator('h1.album-bar__title')).toHaveText(RW_ALBUM_TITLE);
+		await expect(page.getByText('This album has no photos yet.')).toBeVisible();
+
+		// The rescan: the trigger POSTs the run and the aria-live
+		// progress line converges to complete through the job events
+		// (the same walk as the read-only story's scene 5).
+		const rescanPosted = page.waitForResponse(
+			(response) =>
+				response.request().method() === 'POST' &&
+				response.url().endsWith(`/api/v1/albums/${rwAlbumId}/rescan`)
+		);
+		await page.getByRole('button', { name: 'Rescan', exact: true }).click();
+		const answer = await rescanPosted;
+		expect(answer.status()).toBe(202);
+
+		const progress = page.locator('[data-testid="album-rescan-progress"]');
+		await expect(progress).toBeVisible();
+		await expect(progress).toContainText('Rescan complete.', { timeout: 120_000 });
+
+		// The membership converges onto the seeded pair, and the
+		// scan's pipeline runs both files to ready (the models are
+		// warm; the fan-out is the same one the read-only story
+		// waited for).
+		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 120_000 });
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
+		await expect(page.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toBeVisible();
+		await expect
+			.poll(
+				async () => {
+					const timeline = await page.request.get(
+						`/api/v1/assets/timeline?albumId=${encodeURIComponent(rwAlbumId)}`
+					);
+					expect(timeline.status()).toBe(200);
+					const body = (await timeline.json()) as { items?: Array<{ isReady: boolean }> };
+					return (body.items ?? []).filter((item) => item.isReady).length;
+				},
+				{ timeout: 120_000, intervals: [500, 1000, 2000, 5000] }
+			)
+			.toBe(2);
+
+		// The deletability row RENDERS for the writable source (the
+		// edit dialog's third toggle, present exactly when the probe
+		// answered true), on by default beside the lock and exclusion
+		// toggles -- the autonomy block's full shape.
+		await page.getByRole('button', { name: 'Properties', exact: true }).click();
+		const dialog = page.getByRole('dialog', { name: 'Album properties', exact: true });
+		await expect(dialog).toBeVisible();
+		const autonomy = dialog.locator('[data-testid="album-autonomy"]');
+		await expect(autonomy.locator('[data-testid="album-lock-toggle"]')).toBeVisible();
+		await expect(autonomy.locator('[data-testid="album-timeline-toggle"]')).toBeVisible();
+		const deletableToggle = autonomy.locator('[data-testid="album-deletable-toggle"]');
+		await expect(deletableToggle).toBeVisible();
+		await expect(deletableToggle).toBeChecked();
+		await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+		await expect(dialog).toHaveCount(0);
+	});
+
+	test('scene 12: the deletable wall trashes through the selection bar and the trash view\'s restore returns the file', async ({
+		page
+	}) => {
+		await page.goto(`/albums/${rwAlbumId}`);
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
+		await expect(page.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toBeVisible();
+
+		// The delete-only selection (the wall's capability gate rides
+		// the server-derived `deletable` face -- owner AND writable
+		// AND the switch AND unlocked, all four): the hover-reveal
+		// check is the selection entry, one click selects the tile.
+		await page
+			.getByRole('checkbox', { name: `Select: ${PHOTO_RW_A_NAME}`, exact: true })
+			.click();
+
+		// The batch bar rises with the DELETE-ONLY subset: Trash is
+		// the one action it offers (the album's wall curates deletion
+		// alone -- every other curatable wall's action is absent).
+		const bar = page.getByRole('toolbar', { name: '1 selected' });
+		await expect(bar).toBeVisible();
+		await expect(bar.getByRole('button', { name: 'Trash', exact: true })).toBeVisible();
+		for (const label of ['Favorite', 'Unfavorite', 'Hide', 'Unhide', 'Restore', 'Add tag']) {
+			await expect(bar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+		}
+
+		// The trash through the wall: the batch POST answers its
+		// honest report (one affected id), the tile leaves the wall
+		// immediately (the optimistic convergence), the survivor
+		// stays, and the selection bar falls (the success arm). The
+		// file itself MOVES into the managed trash area -- the
+		// external lifecycle's own delete, the operating system's
+		// authority over a writable source.
+		const batchPosted = page.waitForResponse(
+			(response) =>
+				response.request().method() === 'POST' &&
+				response.url().endsWith('/api/v1/assets/batch')
+		);
+		await bar.getByRole('button', { name: 'Trash', exact: true }).click();
+		const batch = await batchPosted;
+		expect(batch.status()).toBe(200);
+		const batchBody = (await batch.json()) as { affected?: number };
+		expect(batchBody.affected).toBe(1);
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toHaveCount(0);
+		await expect(page.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toBeVisible();
+		await expect(bar).toHaveCount(0);
+
+		// The honest convergence, the server's own answer: the
+		// album's live membership dropped to the survivor.
+		await expect
+			.poll(
+				async () => {
+					const detail = await page.request.get(`/api/v1/albums/${rwAlbumId}`);
+					expect(detail.status()).toBe(200);
+					const body = (await detail.json()) as { itemCount?: number };
+					return body.itemCount ?? 0;
+				},
+				{ timeout: 30_000, intervals: [500, 1000, 2000] }
+			)
+			.toBe(1);
+
+		// The trash view carries the row with its retention countdown
+		// -- the moved file waits there for the expiry or the restore.
+		await page.goto('/trash');
+		await expect(page.getByRole('heading', { level: 1, name: 'Trash', exact: true })).toBeVisible();
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
+		await expect(page.getByText(/^(Expiring soon|\d+ days? left)$/)).toBeVisible();
+
+		// The restore moves the file BACK to the recorded original
+		// location (the external lifecycle's restore arm): the row
+		// leaves the trash view and the view settles empty.
+		await page.getByRole('button', { name: 'Restore', exact: true }).click();
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toHaveCount(0);
+		await expect(
+			page.getByText('The trash is empty. Photos you delete appear here before they are removed for good.')
+		).toBeVisible();
+
+		// The album's fresh answer carries both photos again: the
+		// restored row rejoined the membership, the count is honest,
+		// and the source tree holds both files for the next run (the
+		// fixture healed -- the bootstrap's re-seed is a no-op copy).
+		await page.goto(`/albums/${rwAlbumId}`);
+		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 60_000 });
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
+		await expect(page.locator('.album-bar .album-detail__count')).toContainText('2 photos');
 	});
 });
