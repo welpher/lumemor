@@ -12,12 +12,16 @@ import Page from './+page.svelte';
 // honest owner attribution) -- with the collage covers (one
 // full-bleed, two split, three 2+1, four quad), the locked / shared
 // / excluded badges, the counts and the honest owner attribution on
-// the shared cards. The "New album" dialog creates one virtual
-// album; every album.* SSE event converges through ONE fresh wall
-// fetch (the collapsed single-flight of the people page), and the
-// refetched SERVER answer decides what changed. The events module
-// is mocked with a captured handler registry, the people page's
-// pattern.
+// the shared cards. The "New album" dialog creates one directory
+// album -- the entry is the ADMINISTRATOR'S alone (E6, §7.5's third
+// revision: pointing at the file system is configuration, a member
+// never sees the affordance), and the create's honest answers (the
+// skipped report, the write probe's read-only fact) hold the dialog
+// until acknowledged; every album.* SSE event converges through ONE
+// fresh wall fetch (the collapsed single-flight of the people
+// page), and the refetched SERVER answer decides what changed. The
+// events module is mocked with a captured handler registry, the
+// people page's pattern.
 
 const { handlers } = vi.hoisted(() => ({
 	handlers: [] as Array<(event: unknown) => void>
@@ -104,11 +108,12 @@ function wallRoutes(overrides: FetchRoute = {}): FetchRoute {
 		'/api/v1/albums': (init?: RequestInit) => {
 			if (init?.method === 'POST') {
 				const body = JSON.parse(String(init.body)) as { title: string };
-				const created = summary('al-new', { title: body.title, itemCount: 0 });
+				const created = summary('al-new', { title: body.title, itemCount: 0, type: 'directory' });
 				gainOwnCard(created);
 				// The creation answer always carries the honest skipped
-				// report (empty when the whole audience landed).
-				return jsonResponse(201, { ...created, skipped: [] });
+				// report and the write probe's fact (writable here; the
+				// read-only arm is its own test below).
+				return jsonResponse(201, { ...created, skipped: [], sourceWritable: true });
 			}
 			return jsonResponse(200, { albums: wallState });
 		},
@@ -377,7 +382,9 @@ test('the badges ride the cards: locked, shared, excluded', async () => {
 	flushSync();
 });
 
-test('an empty wall renders the empty state with the create affordance', async () => {
+test('an empty wall renders the empty state; the create affordance is the admin\'s alone (E6)', async () => {
+	// An admin's empty wall carries the creation entry.
+	await bootWallSession('u1', 'admin');
 	wallState = [];
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
 	const page = mountPage();
@@ -389,6 +396,21 @@ test('an empty wall renders the empty state with the create affordance', async (
 	expect(cards()).toHaveLength(0);
 	expect(buttonByText('New album')).toBeTruthy();
 	unmount(page);
+	flushSync();
+
+	// A member's wall (and the unauthenticated boot of the other
+	// tests) renders NO creation affordance at all: pointing at the
+	// file system is configuration, the server refuses the member's
+	// POST anyway -- the visual gate is the honest half.
+	await bootWallSession('u2', 'user');
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const memberPage = mountPage();
+	await settle();
+	const memberButton = Array.from(
+		document.body.querySelectorAll<HTMLButtonElement>('button')
+	).find((button) => button.textContent?.trim() === 'New album');
+	expect(memberButton).toBeUndefined();
+	unmount(memberPage);
 	flushSync();
 });
 
@@ -433,6 +455,9 @@ test('a dead session renders the session message, never credential text', async 
 });
 
 test('the create dialog POSTs the title, path and audience; the refetched wall gains the card', async () => {
+	// The creation entry is the administrator's (E6): the wall's
+	// button renders for an admin's session alone.
+	await bootWallSession('u1', 'admin');
 	const fetchMock = stubFetch(wallRoutes());
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
@@ -474,10 +499,11 @@ test('the create dialog POSTs the title, path and audience; the refetched wall g
 });
 
 test('the create dialog carries the picked audience into the POST', async () => {
-	// Signed in as ada (u1): the add-style picker's candidates are the
-	// other accounts (the identity seam's self filter). The users
-	// listing feeds the candidate rows; picking one adds its chip, and
-	// the POST carries its id.
+	// Signed in as ada (u1, an admin -- the creation entry's gate):
+	// the add-style picker's candidates are the other accounts (the
+	// identity seam's self filter). The users listing feeds the
+	// candidate rows; picking one adds its chip, and the POST carries
+	// its id.
 	await bootWallSession('u1', 'admin');
 	const fetchMock = stubFetch(
 		wallRoutes({
@@ -533,11 +559,13 @@ test('the create dialog carries the picked audience into the POST', async () => 
 });
 
 test('the create dialog surfaces the honest skipped report before closing', async () => {
-	// A session the store could not resolve (the degraded path): the
-	// picker offers the caller's own account too, and the server's
-	// skip report is the backstop -- the write lands, the report
-	// names what did not.
-	const created = { ...summary('al-new', { title: 'Family archive', type: 'directory' }), skipped: [{ userId: 'u1', reason: 'owner' }] };
+	// Signed in as an administrator whose id holds no row in the
+	// instance's member list: the picker offers every account, and
+	// the server's skip report is the backstop -- the write lands,
+	// the report names what did not (the picked account turned
+	// unusable server-side between the listing and the write).
+	await bootWallSession('u0', 'admin');
+	const created = { ...summary('al-new', { title: 'Family archive', type: 'directory' }), skipped: [{ userId: 'u1', reason: 'invalid_account' }], sourceWritable: true };
 	const fetchMock = stubFetch(
 		wallRoutes({
 			'/api/v1/albums': (init?: RequestInit) => {
@@ -583,7 +611,51 @@ test('the create dialog surfaces the honest skipped report before closing', asyn
 	flushSync();
 });
 
+test('a read-only source lands as a created album with the honest feedback, never a failure (E6)', async () => {
+	// The write probe's false arm: the creation SUCCEEDED (a
+	// read-only directory is a legitimate album), and the dialog
+	// holds the honest note until acknowledged -- the same report
+	// face the skipped list rides.
+	await bootWallSession('u1', 'admin');
+	const created = { ...summary('al-new', { title: 'Vault archive', type: 'directory' }), skipped: [], sourceWritable: false };
+	const fetchMock = stubFetch(
+		wallRoutes({
+			'/api/v1/albums': (init?: RequestInit) => {
+				if (init?.method === 'POST') {
+					gainOwnCard(created);
+					return jsonResponse(201, created);
+				}
+				return jsonResponse(200, { albums: wallState });
+			}
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByText('New album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	fillField(dialog as ParentNode, 'Vault archive', 'create-album-title');
+	fillField(dialog as ParentNode, '/mnt/readonly/archive', 'create-album-path');
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	// The write landed and the wall converged; the dialog holds the
+	// read-only fact with the Done affordance.
+	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe('Vault archive');
+	expect(modal()?.textContent).toContain('This folder is read-only');
+	buttonByText('Done', modal() as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(modal()).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
 test('the create dialog routes a path-matrix failure under the path field', async () => {
+	await bootWallSession('u1', 'admin');
 	const fetchMock = stubFetch(
 		wallRoutes({
 			'/api/v1/albums': (init?: RequestInit) => {
@@ -625,6 +697,7 @@ test('the create dialog routes a path-matrix failure under the path field', asyn
 });
 
 test('an invalid create draft never leaves the page', async () => {
+	await bootWallSession('u1', 'admin');
 	const fetchMock = stubFetch(wallRoutes());
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();

@@ -84,8 +84,6 @@ export 'package:lumemor_api/src/model/model_response_input_size.dart';
 export 'package:lumemor_api/src/model/model_scan_response.dart';
 export 'package:lumemor_api/src/model/model_slot.dart';
 export 'package:lumemor_api/src/model/model_source.dart';
-export 'package:lumemor_api/src/model/mount_roots_settings_response.dart';
-export 'package:lumemor_api/src/model/mount_roots_settings_update_request.dart';
 export 'package:lumemor_api/src/model/move_face_request.dart';
 export 'package:lumemor_api/src/model/move_face_response.dart';
 export 'package:lumemor_api/src/model/pairing_consume_request.dart';

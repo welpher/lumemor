@@ -1,26 +1,32 @@
 // The albums surface's data client (M3c Task 5, reshaped by E4's
-// albums-as-sources): the wall list, the detail read, the directory
-// creation (title + source path + audience, the honest skipped
-// report), the property patch, the virtual/directory delete, the
-// path completion of the creation dialog's combobox, the audience's
-// full-set PUT, the rescan trigger, the instance's member list and
-// the timeline preference write -- each behind the repo-wide
-// error-code convention: every failure outcome carries the error
-// code's i18n key (the envelope code lowercased, 'internal' for a
-// network failure or an unparseable body, 'session_expired' for a
-// 401).
+// albums-as-sources and E6's album autonomy): the wall list, the
+// detail read (the deletion faces included -- the write probe's
+// `sourceWritable` fact, the owner's `allowAppDeletion` switch, the
+// derived `deletable` affordance), the directory creation (title +
+// source path + audience, the honest skipped report and the probe's
+// read-only fact -- both admin-guarded writes now), the property
+// patch (title, cover, lock, deletability), the virtual/directory
+// delete, the path completion of the creation dialog's combobox
+// (the system-wide domain: the container's real visible filesystem,
+// the managed tree never listed), the audience's full-set PUT, the
+// rescan trigger, the instance's member list and the timeline
+// preference write -- each behind the repo-wide error-code
+// convention: every failure outcome carries the error code's i18n
+// key (the envelope code lowercased, 'internal' for a network
+// failure or an unparseable body, 'session_expired' for a 401).
 //
 // THE MESSAGE-KEY EXCEPTIONS (the people client's requires-label
 // pattern): the album write faces answer a handful of 400
 // VALIDATION_FAILED whose `details` carry a message key rather than
 // an error code of their own -- the cover validation
-// (`album_cover_not_member`) and the preference's not-excludable
-// kinds (`album_pref_not_excludable`). The error-key helper surfaces
-// those keys as the failure's errorKey, so the honest message
-// renders through the same resolveErrorText path every code takes.
-// (The share target rules' message keys retired with the
-// grant/revoke pair -- the audience write reports its skips in the
-// RESPONSE body, never as a 400.)
+// (`album_cover_not_member`), the preference's not-excludable kinds
+// (`album_pref_not_excludable`) and the deletability switch's
+// not-a-directory refusal (`album_deletable_not_directory`). The
+// error-key helper surfaces those keys as the failure's errorKey,
+// so the honest message renders through the same resolveErrorText
+// path every code takes. (The share target rules' message keys
+// retired with the grant/revoke pair -- the audience write reports
+// its skips in the RESPONSE body, never as a 400.)
 //
 // The wall's two groups arrive concatenated (the pinned sync card
 // first, then the own group, shared after); the page sections them
@@ -42,6 +48,9 @@ export type AlbumDetail = components['schemas']['AlbumDetail'];
 
 /** One grantee row of the owner's detail `shares` list. */
 export type AlbumShareEntry = components['schemas']['AlbumShareEntry'];
+
+/** The creation response's own shape (the summary card plus its facts). */
+type AlbumCreateResponse = components['schemas']['AlbumCreateResponse'];
 
 /** One requested audience id the write could not grant, with its reason. */
 export type AlbumAudienceSkip = components['schemas']['AlbumAudienceSkip'];
@@ -67,12 +76,14 @@ export type AlbumListResult =
 export type AlbumDetailResult = { ok: true; detail: AlbumDetail } | { ok: false; errorKey: string };
 
 /**
- * The creation's outcome: the created wall card plus the honest
- * audience report -- the requested ids that did not become audience
- * (the dialog surfaces them before closing).
+ * The creation's outcome: the created wall card, the honest audience
+ * report (the requested ids that did not become audience -- the
+ * dialog surfaces them before closing) and the write probe's
+ * `sourceWritable` fact (false is honest creation feedback -- a
+ * read-only source is a legitimate album -- never a failure).
  */
 export type AlbumCreateResult =
-	| { ok: true; album: AlbumSummary; skipped: AlbumAudienceSkip[] }
+	| { ok: true; album: AlbumSummary; skipped: AlbumAudienceSkip[]; sourceWritable: boolean }
 	| { ok: false; errorKey: string };
 
 /** The property patch's outcome (the response is the card after the edit). */
@@ -119,7 +130,8 @@ export const ALBUM_DETAIL_LIMIT = 1;
 /** The album write faces' message keys, surfaced as error keys. */
 const MESSAGE_KEYS: ReadonlySet<string> = new Set([
 	'album_cover_not_member',
-	'album_pref_not_excludable'
+	'album_pref_not_excludable',
+	'album_deletable_not_directory'
 ]);
 
 /**
@@ -244,16 +256,23 @@ function audienceSkipFrom(body: unknown): AlbumAudienceSkip | null {
 }
 
 /**
- * Structurally validate the creation's answer: the created wall card
- * plus the required honest `skipped` report (empty when the whole
- * audience landed).
+ * Structurally validate the creation's answer: the created wall card,
+ * the required honest `skipped` report (empty when the whole audience
+ * landed) and the required `sourceWritable` fact of the write probe
+ * (the creation succeeded either way -- false is feedback, not
+ * failure).
  */
-function createResponseFrom(body: unknown): { album: AlbumSummary; skipped: AlbumAudienceSkip[] } | null {
+function createResponseFrom(
+	body: unknown
+): { album: AlbumSummary; skipped: AlbumAudienceSkip[]; sourceWritable: boolean } | null {
 	const album = summaryFrom(body);
 	if (album === null) {
 		return null;
 	}
 	if (!isObject(body) || !Array.isArray(body.skipped)) {
+		return null;
+	}
+	if (typeof (body as Partial<AlbumCreateResponse>).sourceWritable !== 'boolean') {
 		return null;
 	}
 	const skipped: AlbumAudienceSkip[] = [];
@@ -264,7 +283,7 @@ function createResponseFrom(body: unknown): { album: AlbumSummary; skipped: Albu
 		}
 		skipped.push(skip);
 	}
-	return { album, skipped };
+	return { album, skipped, sourceWritable: (body as AlbumCreateResponse).sourceWritable };
 }
 
 /** Structurally validate one album detail; null when it is not one. */
@@ -313,6 +332,20 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 		}
 	}
 	if (candidate.inTimeline !== undefined && candidate.inTimeline !== true && candidate.inTimeline !== false) {
+		return null;
+	}
+	// The E6 deletion faces ride the directory albums: the probe's
+	// `sourceWritable` fact (both roles), the owner's
+	// `allowAppDeletion` switch and the derived `deletable`
+	// affordance (the owner's view alone) -- each optional, but a
+	// present value must be the boolean it names.
+	if (candidate.sourceWritable !== undefined && typeof candidate.sourceWritable !== 'boolean') {
+		return null;
+	}
+	if (candidate.allowAppDeletion !== undefined && typeof candidate.allowAppDeletion !== 'boolean') {
+		return null;
+	}
+	if (candidate.deletable !== undefined && typeof candidate.deletable !== 'boolean') {
 		return null;
 	}
 	return body as AlbumDetail;
@@ -372,11 +405,12 @@ export async function listAlbums(
 /**
  * GET /api/v1/albums/{albumId}: the album's metadata as the caller
  * sees it -- `callerRole` decides the write affordances, `shares`
- * rides the owner's view alone, `rootPath` the directory albums'
- * source row, `inTimeline` the excludable kinds. The caller's OWN
- * sync album answers here (read-only, the default album); a 404 is
- * the anti-enumeration pair (unknown id, another account's
- * unshared album, every foreign sync album).
+ * rides the owner's view alone, `rootPath` and the deletion faces
+ * (`sourceWritable`, the owner's `allowAppDeletion` and the derived
+ * `deletable`) the directory albums, `inTimeline` the excludable
+ * kinds. The caller's OWN sync album answers here (read-only, the
+ * default album); a 404 is the anti-enumeration pair (unknown id,
+ * another account's unshared album, every foreign sync album).
  */
 export async function fetchAlbumDetail(
 	albumId: string,
@@ -404,13 +438,19 @@ export async function fetchAlbumDetail(
 
 /**
  * POST /api/v1/albums: create one directory album -- the album IS a
- * source. The request names an existing directory (the server runs
- * the path validation matrix; every branch its own 400 error code)
- * and the audience the album starts with; the files stay where they
+ * source, and the write is the ADMINISTRATOR's (a member answers 403
+ * before any part of the request is considered: pointing at the
+ * file system is configuration, not curation). The request names an
+ * existing directory of the container's real visible filesystem (the
+ * server runs the path validation matrix; every branch its own 400
+ * error code; the managed tree is refused on the resolved path) and
+ * the audience the album starts with; the files stay where they
  * are, zero copy, zero move. The response is the created album's
- * wall card (the creation-time zeros: no member, no cover) plus the
+ * wall card (the creation-time zeros: no member, no cover), the
  * honest `skipped` report of the requested audience ids that did
- * not land (an unknown, disabled or own id) -- never errors.
+ * not land (an unknown, disabled or own id) and the write probe's
+ * `sourceWritable` fact -- a read-only source is a legitimate
+ * album, `false` is the honest feedback, never a failure.
  */
 export async function createAlbum(
 	input: { title: string; rootPath: string; audience: readonly string[] },
@@ -441,19 +481,26 @@ export async function createAlbum(
 	if (created === null) {
 		return { ok: false, errorKey: 'internal' };
 	}
-	return { ok: true, album: created.album, skipped: created.skipped };
+	return {
+		ok: true,
+		album: created.album,
+		skipped: created.skipped,
+		sourceWritable: created.sourceWritable
+	};
 }
 
 /**
  * GET /api/v1/albums/path-completions: the creation dialog's source
- * path completion. The domain is EXACTLY the creation validation
- * domain -- only directories at or under a configured mount root
- * (an empty allowlist answers nothing, so the first root is always
- * typed by hand or opened by an admin). The empty prefix lists the
- * roots themselves; a typed prefix narrows to the parent's matching
- * children; a trailing separator drills into the prefix itself.
- * The answer is at most 20 rows and the empty list is honest, never
- * an error.
+ * path completion. The write is the ADMINISTRATOR's (a member
+ * answers 403 before the prefix is read), and the domain is
+ * SYSTEM-WIDE (web IA §7.5's third revision: the allowlist retired
+ * with it -- the boundary is the compose mount itself): the
+ * container's real visible filesystem, drilled one segment at a
+ * time, the managed tree never listed on any row. The empty prefix
+ * lists the root itself (`["/"]`); a typed prefix narrows to the
+ * parent's matching children; a trailing separator drills into the
+ * prefix. The answer is at most 20 rows and the empty list is
+ * honest, never an error.
  */
 export async function completeAlbumPath(
 	prefix: string,
@@ -478,12 +525,17 @@ export async function completeAlbumPath(
 
 /**
  * PATCH /api/v1/albums/{albumId}: the owner's partial edit of the
- * properties (`title`, `coverAssetId`, `locked`, any
- * subset). The response is the album's wall card after the edit.
+ * properties (`title`, `coverAssetId`, `locked`,
+ * `allowAppDeletion`, any subset). The response is the album's wall
+ * card after the edit. The deletability switch is the DIRECTORY
+ * album's own (a virtual album answers the message key
+ * `album_deletable_not_directory`), and a locked album refuses the
+ * property fields with 409 until the owner patches `locked: false`
+ * -- the unlock, never gated itself.
  */
 export async function patchAlbum(
 	albumId: string,
-	patch: { title?: string; coverAssetId?: string; locked?: boolean },
+	patch: { title?: string; coverAssetId?: string; locked?: boolean; allowAppDeletion?: boolean },
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<AlbumPatchResult> {
 	let response: Response;

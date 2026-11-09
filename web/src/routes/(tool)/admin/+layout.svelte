@@ -1,10 +1,22 @@
 <script lang="ts">
-	// The admin section's sidebar: the IA's five management sections
-	// with Users, Settings, Models and the Jobs task panel live (the
-	// settings section carries the storage template), and the
+	// The admin section's sidebar (the 2026-11-09 full-bleed specimen:
+	// the rounded capsule is DEAD): the rail is a flush full-height
+	// track -- no outer radius, no outer border or shadow, no gap to
+	// the content, no top offset -- split from the content by its
+	// `border-r` alone, 200px wide, the five management sections with
+	// Users, Settings, Machine Learning and the Jobs task panel live
+	// (the settings page carries the storage template), and the
 	// remaining placeholder stays visible but disabled until its
 	// domain arrives -- the same placeholder discipline as the
 	// content shell's drawer.
+	//
+	// THE CONTENT COLUMN owns its own gutter (main carries no
+	// padding, the 2026-11-09 pin): the wrapper below holds the
+	// px-6/pt-4/pb-12 margins, and every admin page renders the
+	// page-header row (the title + the contextual action slot + the
+	// hairline) at its top. The row's min-h-full floor keeps the
+	// rail's track tall as the viewport even when a page's content
+	// is short -- the specimen's full-height split.
 	import { _ } from 'svelte-i18n';
 	import { page } from '$app/state';
 	import type { LayoutProps } from './$types';
@@ -27,8 +39,8 @@
 	];
 </script>
 
-<div class="admin flex gap-6 items-start">
-	<nav class="admin-nav sticky top-4 flex flex-col gap-2 w-[200px] box-content shrink-0 px-2 py-3 bg-card border border-border rounded-card shadow-card" aria-label={$_('admin_nav_label')}>
+<div class="admin flex min-h-full items-stretch">
+	<nav class="admin-nav sticky top-0 flex flex-col gap-2 w-[200px] shrink-0 py-3 px-2 bg-card border-r border-border" aria-label={$_('admin_nav_label')}>
 		<ul class="admin-nav__list flex flex-col gap-0.5 list-none">
 			{#each items as item (item.labelKey)}
 				<li>
@@ -62,7 +74,7 @@
 		</ul>
 		<p class="admin-nav__footnote mt-2 mx-2 pt-2.5 border-t border-border font-body font-normal text-[12px] leading-[1.4] text-text-faint">{$_('nav_coming_later')}</p>
 	</nav>
-	<div class="admin-body flex-1 min-w-0">
+	<div class="admin-body flex-1 min-w-0 px-6 pt-4 pb-12">
 		{@render children()}
 	</div>
 </div>

@@ -401,16 +401,18 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 }
 
 type Album struct {
-	ID            pgtype.UUID        `json:"id"`
-	OwnerID       pgtype.UUID        `json:"owner_id"`
-	Title         string             `json:"title"`
-	Type          AlbumType          `json:"type"`
-	Locked        bool               `json:"locked"`
-	CoverAssetID  pgtype.UUID        `json:"cover_asset_id"`
-	RootPath      pgtype.Text        `json:"root_path"`
-	LastScannedAt pgtype.Timestamptz `json:"last_scanned_at"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	ID               pgtype.UUID        `json:"id"`
+	OwnerID          pgtype.UUID        `json:"owner_id"`
+	Title            string             `json:"title"`
+	Type             AlbumType          `json:"type"`
+	Locked           bool               `json:"locked"`
+	CoverAssetID     pgtype.UUID        `json:"cover_asset_id"`
+	RootPath         pgtype.Text        `json:"root_path"`
+	LastScannedAt    pgtype.Timestamptz `json:"last_scanned_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	SourceWritable   bool               `json:"source_writable"`
+	AllowAppDeletion bool               `json:"allow_app_deletion"`
 }
 
 type AlbumItem struct {

@@ -27,6 +27,7 @@ import (
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/storage"
 	"github.com/welpher/lumemor/server/internal/trash"
 )
@@ -441,5 +442,217 @@ func TestTrashListingExcludesOrphans(t *testing.T) {
 	}
 	if kind, listed := ids[blob.Id]; !listed || kind != apigen.Blob {
 		t.Errorf("the trashed blob = (%v, %q), want it listed as blob", listed, kind)
+	}
+}
+
+// TestExternalTrashLockedAlbumGate pins the album lock's delete arm
+// (E6, §7.9's content-protection freeze widened from the rescan to
+// the deletion): a live external asset of a LOCKED directory album
+// refuses the batch's trash with the curation writes' own 409 before
+// any file moves, the whole batch rolls back -- a file the batch had
+// already moved for an unlocked sibling returns to its source --
+// and the arms the freeze does not govern stay honest: the
+// already-trashed row is the idempotent no-op, and the restore is
+// recovery, never the deletion the lock freezes.
+func TestExternalTrashLockedAlbumGate(t *testing.T) {
+	t.Run("LockedRefusesBeforeAnyMove", func(t *testing.T) {
+		e := newAssetEnv(t, testUploadLimit)
+		fixture := e.insertExternalAsset(t, filepath.Join(t.TempDir(), "locked-family"), "IMG_0007.jpg", []byte("locked bytes"), time.Now())
+
+		e.patchAlbum(t, e.cookie, fixture.album, `{"locked":true}`)
+
+		rec := e.postBatch(t, e.cookie, batchBody(t, "trash", []uuid.UUID{fixture.id}))
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("POST /assets/batch status = %d, want %d (body %q)",
+				rec.Code, http.StatusConflict, rec.Body.String())
+		}
+		apiErr, _ := decodeError(t, rec)
+		if apiErr.Code != apigen.ALBUMLOCKED {
+			t.Errorf("code = %q, want %q", apiErr.Code, apigen.ALBUMLOCKED)
+		}
+
+		// Nothing moved and nothing was written: the row stays live,
+		// the file stays at its source, the trash area holds
+		// nothing of the asset's.
+		if row := e.externalRow(t, fixture.id); row.DeletedAt.Valid {
+			t.Error("the row is trashed after the refused batch, want it live")
+		}
+		requireFileBytes(t, fixture.path, string(fixture.bytes))
+		requirePathGone(t, storage.TrashHome(e.dataDir, fixture.id.String()))
+
+		// The unlock lifts the freeze and the same batch moves.
+		e.patchAlbum(t, e.cookie, fixture.album, `{"locked":false}`)
+		report := e.batchAssets(t, e.cookie, "trash", fixture.id)
+		requireBatchReport(t, report, 1)
+		requirePathGone(t, fixture.path)
+	})
+
+	t.Run("RefusalRollsTheBatchBack", func(t *testing.T) {
+		e := newAssetEnv(t, testUploadLimit)
+		// Two assets in two albums: the first's album is unlocked
+		// (its move succeeds and must be compensated back), the
+		// second's is locked (the refusal).
+		movable := e.insertExternalAsset(t, filepath.Join(t.TempDir(), "movable-family"), "IMG_0008.jpg", []byte("movable bytes"), time.Now())
+		locked := e.insertExternalAsset(t, filepath.Join(t.TempDir(), "frozen-family"), "IMG_0009.jpg", []byte("frozen bytes"), time.Now())
+		e.patchAlbum(t, e.cookie, locked.album, `{"locked":true}`)
+
+		rec := e.postBatch(t, e.cookie, batchBody(t, "trash", []uuid.UUID{movable.id, locked.id}))
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("POST /assets/batch status = %d, want %d (body %q)",
+				rec.Code, http.StatusConflict, rec.Body.String())
+		}
+		apiErr, _ := decodeError(t, rec)
+		if apiErr.Code != apigen.ALBUMLOCKED {
+			t.Errorf("code = %q, want %q", apiErr.Code, apigen.ALBUMLOCKED)
+		}
+
+		// Nothing half-moved: both rows stay live, the movable file
+		// is compensated back to its source path, the trash area
+		// holds nothing of either asset's.
+		for _, fixture := range []externalFixture{movable, locked} {
+			if row := e.externalRow(t, fixture.id); row.DeletedAt.Valid {
+				t.Errorf("the row of %s is trashed after the refused batch, want it live", fixture.id)
+			}
+		}
+		requireFileBytes(t, movable.path, string(movable.bytes))
+		requireFileBytes(t, locked.path, string(locked.bytes))
+		requirePathGone(t, storage.TrashHome(e.dataDir, movable.id.String()))
+		requirePathGone(t, storage.TrashHome(e.dataDir, locked.id.String()))
+	})
+
+	t.Run("AlreadyTrashedRowIsTheNoOp", func(t *testing.T) {
+		e := newAssetEnv(t, testUploadLimit)
+		fixture := e.insertExternalAsset(t, filepath.Join(t.TempDir(), "twice-family"), "IMG_0010.jpg", []byte("twice bytes"), time.Now())
+		e.batchAssets(t, e.cookie, "trash", fixture.id)
+
+		// The row is already in the trash: the lock never sees it
+		// (the idempotent no-op skips the gate), and the repeat
+		// answers the same 200 set-semantics report.
+		e.patchAlbum(t, e.cookie, fixture.album, `{"locked":true}`)
+		report := e.batchAssets(t, e.cookie, "trash", fixture.id)
+		requireBatchReport(t, report, 1)
+	})
+
+	t.Run("RestoreIsNotGated", func(t *testing.T) {
+		e := newAssetEnv(t, testUploadLimit)
+		fixture := e.insertExternalAsset(t, filepath.Join(t.TempDir(), "restore-family"), "IMG_0011.jpg", []byte("restore bytes"), time.Now())
+		e.batchAssets(t, e.cookie, "trash", fixture.id)
+
+		// Recovery is not the deletion the freeze governs: the
+		// restore moves the file home under the lock.
+		e.patchAlbum(t, e.cookie, fixture.album, `{"locked":true}`)
+		report := e.batchAssets(t, e.cookie, "restore", fixture.id)
+		requireBatchReport(t, report, 1)
+		requireFileBytes(t, fixture.path, string(fixture.bytes))
+		if row := e.externalRow(t, fixture.id); row.DeletedAt.Valid {
+			t.Error("the row is still trashed after the locked restore, want it live")
+		}
+	})
+}
+
+// TestAlbumMembershipEvents pins the album walls' convergence signal
+// of the E6 deletability chain (§7.9): the trash and the restore of
+// an album member change the album's LIVE membership -- the derived
+// count the detail renders and the members the wall walks -- and the
+// album-narrowed wall converges exactly through album.items-changed,
+// the rescan's own restart signal, published here for the curation
+// arms that move the live membership without touching its rows (the
+// membership row survives the trash; the live views' deleted_at
+// filter is the change). Both restore surfaces carry the signal (the
+// batch arm and the trash view's single restore), the idempotent
+// repeat stays silent (the event discipline: only a state change
+// announces itself), and the arms that never touch a membership
+// publish nothing album-level.
+func TestAlbumMembershipEvents(t *testing.T) {
+	t.Run("BatchTrashAndRestorePublish", func(t *testing.T) {
+		e := newAssetEnv(t, testUploadLimit)
+		fixture := e.insertExternalAsset(t, filepath.Join(t.TempDir(), "event-family"), "IMG_0012.jpg", []byte("event bytes"), time.Now())
+
+		subCtx, subCancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer subCancel()
+		subscription := e.bus.Subscribe(subCtx, 0)
+		owner := e.sessionUserID(t)
+
+		report := e.batchAssets(t, e.cookie, "trash", fixture.id)
+		requireBatchReport(t, report, 1)
+		requireAlbumItemsChanged(t, subscription, fixture.album, owner)
+
+		// The restore answers the same signal: the live membership
+		// returns, and the album wall's walk restarts on it.
+		report = e.batchAssets(t, e.cookie, "restore", fixture.id)
+		requireBatchReport(t, report, 1)
+		requireAlbumItemsChanged(t, subscription, fixture.album, owner)
+
+		// The idempotent repeats never announce: neither the
+		// already-trashed no-op nor the already-live restore writes a
+		// row, so no album event follows either.
+		e.bus.Publish("test.marker", nil)
+		report = e.batchAssets(t, e.cookie, "trash", fixture.id)
+		requireBatchReport(t, report, 1)
+		report = e.batchAssets(t, e.cookie, "restore", fixture.id)
+		requireBatchReport(t, report, 1)
+		requireNextEventName(t, subscription, "test.marker")
+	})
+
+	t.Run("SingleRestorePublishes", func(t *testing.T) {
+		e := newAssetEnv(t, testUploadLimit)
+		fixture := e.insertExternalAsset(t, filepath.Join(t.TempDir(), "single-family"), "IMG_0013.jpg", []byte("single bytes"), time.Now())
+		e.batchAssets(t, e.cookie, "trash", fixture.id)
+
+		subCtx, subCancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer subCancel()
+		subscription := e.bus.Subscribe(subCtx, 0)
+		owner := e.sessionUserID(t)
+
+		rec := e.restoreAsset(t, e.cookie, fixture.id)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("POST /trash/{id}/restore status = %d, want %d (body %q)",
+				rec.Code, http.StatusNoContent, rec.Body.String())
+		}
+		requireAlbumItemsChanged(t, subscription, fixture.album, owner)
+	})
+}
+
+// requireAlbumItemsChanged consumes bus events until one
+// album.items-changed names the given album (the owner's payload),
+// failing the test on the subscription window's end. Events the
+// publication legitimately interleaves (the arms' own asset events)
+// are skipped -- the assertion is about the album event, not the
+// ordering.
+func requireAlbumItemsChanged(t *testing.T, subscription *events.Subscription, album, owner uuid.UUID) {
+	t.Helper()
+	for {
+		event, ok := subscription.Next()
+		if !ok {
+			t.Fatalf("no album.items-changed for %s reached the bus within the subscription window", album)
+		}
+		if event.Name != "album.items-changed" {
+			continue
+		}
+		got := eventPayload(t, event)
+		if got["albumId"] != album.String() {
+			t.Errorf("event albumId = %q, want %q", got["albumId"], album)
+		}
+		if got["userId"] != owner.String() {
+			t.Errorf("event userId = %q, want the owner %q", got["userId"], owner)
+		}
+		return
+	}
+}
+
+// requireNextEventName consumes bus events until one carries the
+// given name, failing on anything else first: the marker pattern for
+// asserting that NOTHING was published in between.
+func requireNextEventName(t *testing.T, subscription *events.Subscription, name string) {
+	t.Helper()
+	for {
+		event, ok := subscription.Next()
+		if !ok {
+			t.Fatalf("no %s event reached the bus within the subscription window", name)
+		}
+		if event.Name == name {
+			return
+		}
+		t.Errorf("an event was published between the marker and its read: %s", event.Name)
 	}
 }

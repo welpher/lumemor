@@ -36,6 +36,7 @@ import (
 	"github.com/riverqueue/river"
 
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/ml"
 	mlclip "github.com/welpher/lumemor/server/internal/ml/clip"
@@ -76,6 +77,7 @@ type ClipEmbedWorker struct {
 	pool     *pgxpool.Pool
 	dataDir  string
 	registry *ml.Registry
+	bus      *events.Bus
 	logger   *slog.Logger
 }
 
@@ -174,6 +176,20 @@ func (w *ClipEmbedWorker) work(ctx context.Context, job *river.Job[ClipEmbedArgs
 	}); err != nil {
 		return fmt.Errorf("store the embedding of asset %s: %w", assetID, err)
 	}
+
+	// THE LATE-EMBED CONVERGENCE (2026-11-10, the m3-search flake's
+	// second strike -- the structural gap this closes): the job lands
+	// AFTER the asset went ready (the M3a seam: pending_jobs never
+	// counted the ML), so the search page's live surfaces never
+	// re-executed -- a semantic hit that arrived late never appeared
+	// until some OTHER asset event or a manual reload. The upsert is
+	// the transition (a new row or a rerun's overwrite both change
+	// what a search would answer), so it publishes asset.updated and
+	// the established convergence (the refetch-on-event, burst
+	// collapsed) picks the new answer up.
+	w.bus.Publish("asset.updated", map[string]string{
+		"id": assetID.String(),
+	})
 
 	w.logger.Info("clip embedding complete", "asset_id", assetID,
 		"model_id", model.ID, "dims", len(embedding))

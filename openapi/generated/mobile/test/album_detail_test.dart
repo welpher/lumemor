@@ -43,6 +43,24 @@ void main() {
       // TODO
     });
 
+    // The creation-time write probe's fact: whether the source directory could be written, read back and removed from when the album was created. Present exactly on `directory` albums, both roles -- the fact is the album's own, not a role's. `false` is not an error state: a readable but read-only directory is a legitimate source whose photos cannot be deleted through the application. The truth is discovered exactly once, at creation; nothing re-probes it at runtime. 
+    // bool sourceWritable
+    test('to test the property `sourceWritable`', () async {
+      // TODO
+    });
+
+    // The owner's deletability switch: whether deleting this album's photos THROUGH the application -- the trash move of the source file -- is permitted. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face stays false whatever it says. 
+    // bool allowAppDeletion
+    test('to test the property `allowAppDeletion`', () async {
+      // TODO
+    });
+
+    // The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, the deletability switch is on, and the album is not locked. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
+    // bool deletable
+    test('to test the property `deletable`', () async {
+      // TODO
+    });
+
     // The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
     // String callerRole
     test('to test the property `callerRole`', () async {

@@ -20,6 +20,7 @@
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
+	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
 	import { listJobRuns, type JobRun } from '$lib/api/jobruns';
 	import { formatMegabytes } from '$lib/format';
 	import { subscribeJobEvents } from '$lib/events';
@@ -183,10 +184,12 @@
 			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready'}
-		<header class="jobs__header">
-			<h1 class="jobs__title mb-1 font-display font-bold text-[26px] text-text">{$_('admin_jobs_title')}</h1>
-			<p class="jobs__note font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_jobs_note')}</p>
-		</header>
+		<!-- The page-header row (the 2026-11-09 specimen): the title
+		     + the hairline; the task panel carries no page-level
+		     action, the row stands for the grammar's uniformity. The
+		     panel's own note rides under it as the lede. -->
+		<AdminPageHeader title={$_('admin_jobs_title')} />
+		<p class="jobs__note m-0 mb-1 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_jobs_note')}</p>
 
 		{#if jobs.length === 0}
 			<p class="jobs__empty box-content py-8 px-6 text-center font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card shadow-card">{$_('admin_jobs_empty')}</p>

@@ -592,6 +592,83 @@ func TestUpdateAlbum(t *testing.T) {
 	})
 }
 
+// TestUpdateAlbumDeletability pins the deletability switch's PATCH
+// face: the owner flips it on a directory album (idempotently, the
+// property patch's own convergence), the lock refuses it like every
+// property field (a mixed patch carrying the unlock is refused
+// whole -- unlock first, then edit), and a virtual album answers
+// the switch's own message key -- the setting is the directory
+// album's; a virtual album's deletions never move files.
+func TestUpdateAlbumDeletability(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	root := env.provisionMountRoot(t)
+
+	directory := uuid.UUID(env.createAlbum(t, env.cookie, "Deletable source",
+		sourceDir(t, root, "deletable"), nil).Id)
+	virtual := fixtureWriteAlbumID("77")
+	env.insertWallAlbum(t, virtual, adminID, "virtual", "Legacy picks", wallAlbumOpts{})
+	stored := func(t *testing.T, album uuid.UUID) int {
+		t.Helper()
+		return env.queryInt(t, "SELECT allow_app_deletion::int FROM albums WHERE id = $1", pgUUID(album))
+	}
+
+	t.Run("PatchesAndConverges", func(t *testing.T) {
+		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":false}`)
+		if got := stored(t, directory); got != 0 {
+			t.Errorf("stored allow_app_deletion = %d, want 0 (switched off)", got)
+		}
+		// Idempotent: repeating the stored value converges.
+		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":false}`)
+		if got := stored(t, directory); got != 0 {
+			t.Errorf("stored allow_app_deletion after the repeat = %d, want 0 (converged)", got)
+		}
+		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":true}`)
+		if got := stored(t, directory); got != 1 {
+			t.Errorf("stored allow_app_deletion after the flip back = %d, want 1", got)
+		}
+	})
+
+	t.Run("LockedAlbumRefusesTheSwitch", func(t *testing.T) {
+		env.patchAlbum(t, env.cookie, directory, `{"locked":true}`)
+		requireAlbumLocked(t, env.patchAlbumRaw(t, env.cookie, directory, `{"allowAppDeletion":false}`))
+		// A mixed patch carrying the unlock is refused whole: the
+		// unlock is its own step.
+		requireAlbumLocked(t, env.patchAlbumRaw(t, env.cookie, directory, `{"locked":false,"allowAppDeletion":false}`))
+		if got := stored(t, directory); got != 1 {
+			t.Errorf("stored allow_app_deletion = %d, want 1 (the locked refusals landed nothing)", got)
+		}
+		// The unlock, then the switch lands.
+		env.patchAlbum(t, env.cookie, directory, `{"locked":false}`)
+		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":false}`)
+		if got := stored(t, directory); got != 0 {
+			t.Errorf("stored allow_app_deletion after the unlock-then-switch = %d, want 0", got)
+		}
+		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":true}`) // leave it on
+	})
+
+	t.Run("VirtualAlbumRefusesTheSwitch", func(t *testing.T) {
+		rec := env.patchAlbumRaw(t, env.cookie, virtual, `{"allowAppDeletion":false}`)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("PATCH the virtual album status = %d, want %d (body %q)",
+				rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+		apiErr, _ := decodeError(t, rec)
+		if apiErr.Code != apigen.VALIDATIONFAILED {
+			t.Errorf("code = %q, want %q", apiErr.Code, apigen.VALIDATIONFAILED)
+		}
+		if apiErr.Details == nil {
+			t.Fatal("details absent, want the album_deletable_not_directory message key")
+		}
+		if key, _ := (*apiErr.Details)["key"]; key != "album_deletable_not_directory" {
+			t.Errorf("details.key = %v, want album_deletable_not_directory", key)
+		}
+		if got := stored(t, virtual); got != 1 {
+			t.Errorf("stored allow_app_deletion of the virtual album = %d, want 1 (untouched)", got)
+		}
+	})
+}
+
 // TestUpdateAlbumAuthorization pins the two-tier answer of the write
 // face: an album the caller cannot see answers the single-shape 404,
 // an album shared to the caller answers the honest 403 (the share is

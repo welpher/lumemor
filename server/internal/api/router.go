@@ -505,14 +505,6 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/admin/settings/trash", wrapper.UpdateTrashSettings)
 				r.Get("/admin/settings/transcoding", wrapper.GetTranscodingSettings)
 				r.Put("/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
-				// The mount-root allowlist face (E4,
-				// albums-as-sources): the directory-album trust
-				// boundary's read and wholesale save -- the same
-				// GET/PUT shape over one instance_settings row,
-				// bounded list validation in memory, the settings
-				// faces' own discipline.
-				r.Get("/admin/settings/mount-roots", wrapper.GetMountRootsSettings)
-				r.Put("/admin/settings/mount-roots", wrapper.UpdateMountRootsSettings)
 				// The model download trigger (M3a Task 3): the
 				// default group's first-boot download. The handler is
 				// one bounded row read plus one enqueue; the heavy

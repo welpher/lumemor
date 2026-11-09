@@ -4,14 +4,17 @@ import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
 
-// The admin user management page: the listing renders the accounts
-// with their role and disabled badges, a non-admin caller sees the
-// mapped auth_forbidden message (the page's own listing is the
-// probe -- the session contract carries no role), the create form
-// maps the 409 duplicate and the 400 validation onto the shared
-// i18n table and appends the created account, and the disable
-// toggle confirms first, adopts the PATCH response, and surfaces
-// the server's self-disable refusal as the mapped message.
+// The admin user management page (the 2026-11-09 modal pin): the
+// listing renders the accounts with their role and disabled badges,
+// a non-admin caller sees the mapped auth_forbidden message (the
+// page's own listing is the probe -- the session contract carries
+// no role), the create flow rides the page-header row's "New user"
+// button (UserPlus + text) into a MODAL whose fields and failure
+// surface are the inline form's own -- success closes it with the
+// listing converging, a failure keeps it open with the mapped error
+// inside -- and the disable toggle confirms first, adopts the PATCH
+// response, and surfaces the server's self-disable refusal as the
+// mapped message.
 
 const adminDefaults = {
 	name: 'Ada Lovelace',
@@ -95,12 +98,16 @@ function fillField(selector: string, value: string): void {
 	field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-function submitForm(): void {
-	const form = document.body.querySelector<HTMLFormElement>('form');
-	if (form === null) {
-		throw new Error('missing form');
-	}
-	form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+/** Open the creation modal through the header row's button. */
+function openCreateModal(): void {
+	const button = buttonByText('New user');
+	button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+}
+
+/** Submit the creation modal through its Create button. */
+function submitCreate(): void {
+	modalButton('Create user').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 }
 
 function rows(): HTMLElement[] {
@@ -193,7 +200,7 @@ test('a non-admin caller sees the mapped auth_forbidden message', async () => {
 	flushSync();
 });
 
-test('the create form posts the payload and appends the created account', async () => {
+test('the create modal posts the payload, closes on success and appends the created account', async () => {
 	const bodies: unknown[] = [];
 	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
@@ -217,10 +224,19 @@ test('the create form posts the payload and appends the created account', async 
 	const page = mountPage();
 	await settle();
 
+	// The header row's button (UserPlus + text, the primary-flow
+	// shape) opens the modal -- the inline section is gone.
+	const entry = buttonByText('New user');
+	expect(entry.querySelector('svg.lucide-user-plus')).not.toBeNull();
+	openCreateModal();
+	expect(document.body.querySelector('.modal__panel')?.getAttribute('aria-label')).toBe(
+		'Add a user'
+	);
+
 	fillField('#admin-user-name', 'Kid Hopper');
 	fillField('#admin-user-email', 'kid@example.com');
 	fillField('#admin-user-password', 'correct horse battery staple');
-	submitForm();
+	submitCreate();
 	await settle();
 
 	// The posted payload: the optional name, the credentials, and
@@ -233,11 +249,11 @@ test('the create form posts the payload and appends the created account', async 
 			role: 'user'
 		}
 	]);
-	// The created account joins the listing without a refetch.
+	// The created account joins the listing without a refetch, and
+	// success closed the modal (the fields reset with the next open).
 	expect(rows()).toHaveLength(3);
 	expect(document.body.textContent).toContain('Kid Hopper');
-	// The form reset.
-	expect(document.body.querySelector<HTMLInputElement>('#admin-user-email')?.value).toBe('');
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
 
 	unmount(page);
 	flushSync();
@@ -257,13 +273,20 @@ test('a duplicate email maps to the user_email_taken message', async () => {
 	const page = mountPage();
 	await settle();
 
+	openCreateModal();
 	fillField('#admin-user-email', 'grace@example.com');
 	fillField('#admin-user-password', 'correct horse battery staple');
-	submitForm();
+	submitCreate();
 	await settle();
 
-	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
+	// A failed create keeps the modal open with the mapped error
+	// inside (the disable confirm's pattern), the fields kept for
+	// correcting.
+	expect(document.body.querySelector('.modal__panel [role="alert"]')?.textContent).toContain(
 		'An account with this email address already exists.'
+	);
+	expect(document.body.querySelector<HTMLInputElement>('#admin-user-email')?.value).toBe(
+		'grace@example.com'
 	);
 	// The listing is untouched.
 	expect(rows()).toHaveLength(2);
@@ -290,12 +313,13 @@ test('a validation failure maps to the validation message', async () => {
 	const page = mountPage();
 	await settle();
 
+	openCreateModal();
 	fillField('#admin-user-email', 'kid@example.com');
 	fillField('#admin-user-password', 'short');
-	submitForm();
+	submitCreate();
 	await settle();
 
-	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
+	expect(document.body.querySelector('.modal__panel [role="alert"]')?.textContent).toContain(
 		'Please check your entries and try again.'
 	);
 

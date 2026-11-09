@@ -57,6 +57,10 @@ test('the tool shell is an h-dvh frame whose one scroller is <main>', () => {
 	expect(main?.className).toContain('overflow-y-auto');
 	expect(main?.className).toContain('flex-1');
 	expect(main?.className).toContain('min-h-0');
+	// THE FULL-BLEED PIN (2026-11-09): main carries NO padding -- the
+	// content column owns its own gutter, so the admin rail below
+	// splits the scroll extent edge to edge.
+	expect(main?.className).not.toContain('p-');
 	expect(main?.getAttribute('tabindex')).toBe('-1');
 
 	const topbar = document.body.querySelector<HTMLElement>('.tool-topbar');

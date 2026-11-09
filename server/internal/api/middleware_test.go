@@ -223,8 +223,6 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"PUT /api/v1/admin/settings/trash",
 		"GET /api/v1/admin/settings/transcoding",
 		"PUT /api/v1/admin/settings/transcoding",
-		"GET /api/v1/admin/settings/mount-roots",
-		"PUT /api/v1/admin/settings/mount-roots",
 	}
 	for _, route := range want {
 		if !got[route] {

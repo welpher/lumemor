@@ -13,7 +13,7 @@ void main() {
       // TODO
     });
 
-    // The source directory: an existing absolute path the server validates against the path matrix (existence, directory-ness, readability, symlink resolution, the managed tree, root overlap, the mount-root allowlist) before creating anything. The album row stores the RESOLVED absolute path -- symlink segments evaluated -- so a later symlink swap cannot repoint the album. 
+    // The source directory: an existing absolute path the server validates against the path matrix (existence, directory-ness, readability, symlink resolution, the managed tree) before creating anything. The album row stores the RESOLVED absolute path -- symlink segments evaluated -- so a later symlink swap cannot repoint the album. After the matrix passes, the server probes the directory's writability once and records the fact; a read-only directory is a valid source, never a refusal. 
     // String rootPath
     test('to test the property `rootPath`', () async {
       // TODO
