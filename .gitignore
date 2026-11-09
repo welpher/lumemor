@@ -25,6 +25,11 @@ server/internal/web/dist/
 # failure outputs (traces, screenshots, videos).
 web/e2e/.auth/
 web/test-results/
+# The writable source fixture's seeded photos (see that fixture's
+# README): seeded per run, moved by the trash story, returned by the
+# restore -- never committed; only the README is tracked.
+web/e2e/fixtures/m3-source-rw/*
+!web/e2e/fixtures/m3-source-rw/README.md
 
 # Flutter / Dart
 mobile/.dart_tool/

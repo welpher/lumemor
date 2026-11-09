@@ -82,14 +82,28 @@ services:
       # `docker run --rm -u 0 -v ./lumemor:/var/lib/lumemor <image>
       #  chown -R 10001:10001 /var/lib/lumemor`.
       - ./lumemor:/var/lib/lumemor
-      # The e2e source fixture (E4): the m3-albums story creates a
-      # directory album pointing at a real tree, and this bind is that
-      # tree -- read-only, because the reference-style ingest never
-      # writes into a source (see web/e2e/fixtures/m3-source/README.md
-      # for the arrangement and the dogfood note). Inert until an
-      # administrator opens /mnt/e2e-source in the mount-root
-      # allowlist (the default allowlist is empty).
+      # The e2e source fixtures (E4, widened by E6): the m3-albums
+      # story and the acceptance chains create directory albums
+      # pointing at real trees, and these binds ARE those trees -- the
+      # E6 boundary itself (the compose mounts are what the container
+      # sees; the mount-root allowlist layer is retired). The
+      # read-only bind pins the zero-copy ingest by construction (a
+      # scan that tried to write into the source would fail loudly
+      # against it) and answers the creation-time write probe with the
+      # honest false fact; see web/e2e/fixtures/m3-source/README.md.
       - ./web/e2e/fixtures/m3-source:/mnt/e2e-source:ro
+      # The writable sibling (E6): the write probe's true arm and the
+      # deletability chain -- the trash move out of the source, the
+      # restore's move back -- need a source the application can
+      # actually write, and this bind is that source. The photos are
+      # seeded per run (genuinely distinct bytes; see that fixture's
+      # README) and the stories' restores return them, so the
+      # committed tree is the README alone. On a Linux host the bind
+      # source must be owned by the container's uid 10001 before the
+      # probe can answer true (the acceptance chains chown it through
+      # the image, the prepare_bind_mount pattern); macOS desktop
+      # runtimes map the mount permissively and need nothing.
+      - ./web/e2e/fixtures/m3-source-rw:/mnt/e2e-source-rw
     environment:
       LUMEMOR_DATABASE_URL: "postgres://lumemor:lumemor@db:5432/lumemor?sslmode=disable"
       LUMEMOR_DATA_DIR: "/var/lib/lumemor/data"
