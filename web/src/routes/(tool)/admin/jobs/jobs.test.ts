@@ -68,6 +68,26 @@ const queuedRun = jobRun('0192f8d1-2e3f-4a5b-6c7d-8e9f0a1b2c3d', {
 	done: 0,
 	startedAt: null
 });
+// The E4 seam's pin: the contract's JobRunKind enum carries the
+// rescan and the places kinds, so their rows must validate and
+// render with their own labels -- a kind the validator rejects
+// would collapse the whole listing into the generic failure.
+const rescanRun = jobRun('0192f8e1-4f5a-6b7c-8d9e-0a1b2c3d4e5f', {
+	kind: 'album_rescan',
+	state: 'succeeded',
+	total: 2,
+	done: 2,
+	startedAt: '2026-11-03T12:00:00Z',
+	finishedAt: '2026-11-03T12:00:04Z'
+});
+const placesRun = jobRun('0192f8f1-5a6b-7c8d-9e0f-1a2b3c4d5e6a', {
+	kind: 'places_rerun',
+	state: 'succeeded',
+	total: 6,
+	done: 6,
+	startedAt: '2026-11-03T13:00:00Z',
+	finishedAt: '2026-11-03T13:00:12Z'
+});
 
 function jsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
@@ -152,7 +172,7 @@ afterEach(() => {
 });
 
 test('the listing renders each run with kind, state, per-kind units and times', async () => {
-	vi.stubGlobal('fetch', stubFetch([downloadRun, embedRun, ocrRun, queuedRun]));
+	vi.stubGlobal('fetch', stubFetch([downloadRun, embedRun, ocrRun, queuedRun, rescanRun, placesRun]));
 	const page = mountPage();
 	await settle();
 
@@ -162,16 +182,22 @@ test('the listing renders each run with kind, state, per-kind units and times', 
 	expect(text).toContain('Embedding rerun');
 	expect(text).toContain('Text recognition rerun');
 	expect(text).toContain('Face detection rerun');
+	// The E4 seam's kinds render their own labels, not raw kind
+	// strings (and the listing itself stays ready -- a rejected
+	// kind would have collapsed it into the generic failure).
+	expect(text).toContain('Album rescan');
+	expect(text).toContain('Places rerun');
 	expect(text).toContain('Running');
 	expect(text).toContain('Succeeded');
 	expect(text).toContain('Failed');
 	expect(text).toContain('Queued');
 	// The progress units per kind: bytes formatted MB for the
-	// download, asset counts for the reruns.
+	// download, asset counts for the reruns and the rescan.
 	expect(runCard(downloadRun.id).textContent).toContain('100.0 MB of 381.8 MB');
 	expect(runCard(embedRun.id).textContent).toContain('3 of 3 assets');
 	expect(runCard(ocrRun.id).textContent).toContain('4 of 5 assets');
 	expect(runCard(ocrRun.id).textContent).toContain('1 failed');
+	expect(runCard(rescanRun.id).textContent).toContain('2 of 2 assets');
 	// The start/finish timestamps, locale-formatted; a queued run has
 	// not started.
 	expect(runCard(embedRun.id).textContent).toContain('Started Nov 3, 2026');

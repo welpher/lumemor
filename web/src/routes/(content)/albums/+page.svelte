@@ -22,11 +22,11 @@
 	// (the next event retries); only the initial load's failure
 	// raises the error box.
 	import { _ } from 'svelte-i18n';
-	import { listAlbums, createAlbum, type AlbumSummary } from '$lib/api/albums';
+	import { listAlbums, createAlbum, type AlbumSummary, type AlbumAudienceSkip } from '$lib/api/albums';
 	import { subscribeAlbumEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
-	import AlbumPropertiesDialog from '$lib/albums/AlbumPropertiesDialog.svelte';
+	import CreateAlbumDialog from '$lib/albums/CreateAlbumDialog.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Plus from '@lucide/svelte/icons/plus';
 
@@ -37,11 +37,14 @@
 	/** The error-code i18n key of the last failed load ('' when none). */
 	let errorKey = $state('');
 
-	// The creation dialog: title only (the web IA's pinned flow);
-	// the created card lands through the refetch the write triggers.
+	// The creation dialog (E4: title + source path + audience); the
+	// created card lands through the refetch the write triggers, and
+	// the write's honest `skipped` report holds the dialog open until
+	// acknowledged.
 	let createOpen = $state(false);
 	let createBusy = $state(false);
 	let createErrorKey = $state('');
+	let createSkipped = $state<readonly AlbumAudienceSkip[] | null>(null);
 
 	// The single-flight guard: while one fetch runs, later triggers
 	// park (the burst's tail) and one trailing fetch runs when it
@@ -128,21 +131,42 @@
 	// The creation write: the response card IS the wall's truth for
 	// the new album, but the refetch the write triggers places it in
 	// the server's order -- the SSE album.created echo converges the
-	// same way (the single-flight collapses the pair).
-	async function submitCreate(title: string): Promise<void> {
+	// same way (the single-flight collapses the pair). The write's
+	// honest `skipped` report (the requested audience ids that did
+	// not land) holds the dialog open until acknowledged; an
+	// all-landed creation closes it directly.
+	async function submitCreate(
+		title: string,
+		rootPath: string,
+		audience: readonly { userId: string; email: string }[]
+	): Promise<void> {
 		if (createBusy) {
 			return;
 		}
 		createBusy = true;
 		createErrorKey = '';
-		const outcome = await createAlbum(title);
+		const outcome = await createAlbum({
+			title,
+			rootPath,
+			audience: audience.map((member) => member.userId)
+		});
 		createBusy = false;
 		if (!outcome.ok) {
 			createErrorKey = outcome.errorKey;
 			return;
 		}
-		createOpen = false;
+		createSkipped = outcome.skipped;
 		void runLoad(true);
+		if (outcome.skipped.length === 0) {
+			createOpen = false;
+		}
+	}
+
+	// The report's done: close the dialog and clear the report (the
+	// wall behind already converged through the write's refetch).
+	function finishCreate(): void {
+		createOpen = false;
+		createSkipped = null;
 	}
 
 	// The load and the SSE subscription live for the page's lifetime:
@@ -162,10 +186,10 @@
 </svelte:head>
 
 <section class="albums max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
-	<!-- The one toolbar of the wall: the virtual-album creation, the
+	<!-- The one toolbar of the wall: the directory-album creation, the
 	     web IA's primary action. -->
 	<div class="albums__toolbar flex justify-end items-center mb-3">
-		<Button onclick={() => { createErrorKey = ''; createOpen = true; }}><Plus size={20} aria-hidden="true" />{$_('albums_new')}</Button>
+		<Button onclick={() => { createErrorKey = ''; createSkipped = null; createOpen = true; }}><Plus size={20} aria-hidden="true" />{$_('albums_new')}</Button>
 	</div>
 
 	{#if firstLoad}
@@ -296,11 +320,11 @@
 	</a>
 {/snippet}
 
-<AlbumPropertiesDialog
+<CreateAlbumDialog
 	bind:open={createOpen}
-	titleKey="albums_create_title"
-	submitKey="albums_create_submit"
 	busy={createBusy}
 	errorKey={createErrorKey}
-	onsubmit={(title) => void submitCreate(title)}
+	skipped={createSkipped}
+	onsubmit={(title, rootPath, audience) => void submitCreate(title, rootPath, audience)}
+	ondone={finishCreate}
 />

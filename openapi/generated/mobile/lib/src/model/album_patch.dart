@@ -12,7 +12,6 @@ part 'album_patch.g.dart';
 ///
 /// Properties:
 /// * [title] - The album's display title, trimmed server-side; when present it must span 1-64 Unicode characters after the trim. 
-/// * [description] - The album's free-text description; the value replaces the stored text wholesale (an empty string clears it). At most 10,000 Unicode characters. 
 /// * [coverAssetId] - The pinned cover asset. When present it must be a LIVE member of THIS album (the membership row exists and the asset is not trashed, not hidden, not a Live Photo component row) -- otherwise the answer is 400 with the message key `album_cover_not_member`. Absent (or JSON null, which decodes as absent) leaves the pin unchanged. 
 /// * [locked] - The owner's lock. `true` freezes the album's curation and property fields against later writes (this same endpoint refuses them with 409 until the owner patches `locked: false` -- the unlock, never gated itself). Locking does not gate the album's delete. 
 @BuiltValue()
@@ -20,10 +19,6 @@ abstract class AlbumPatch implements Built<AlbumPatch, AlbumPatchBuilder> {
   /// The album's display title, trimmed server-side; when present it must span 1-64 Unicode characters after the trim. 
   @BuiltValueField(wireName: r'title')
   String? get title;
-
-  /// The album's free-text description; the value replaces the stored text wholesale (an empty string clears it). At most 10,000 Unicode characters. 
-  @BuiltValueField(wireName: r'description')
-  String? get description;
 
   /// The pinned cover asset. When present it must be a LIVE member of THIS album (the membership row exists and the asset is not trashed, not hidden, not a Live Photo component row) -- otherwise the answer is 400 with the message key `album_cover_not_member`. Absent (or JSON null, which decodes as absent) leaves the pin unchanged. 
   @BuiltValueField(wireName: r'coverAssetId')
@@ -60,13 +55,6 @@ class _$AlbumPatchSerializer implements PrimitiveSerializer<AlbumPatch> {
       yield r'title';
       yield serializers.serialize(
         object.title,
-        specifiedType: const FullType(String),
-      );
-    }
-    if (object.description != null) {
-      yield r'description';
-      yield serializers.serialize(
-        object.description,
         specifiedType: const FullType(String),
       );
     }
@@ -114,14 +102,6 @@ class _$AlbumPatchSerializer implements PrimitiveSerializer<AlbumPatch> {
           ) as String?;
           if (valueDes == null) continue;
           result.title = valueDes;
-          break;
-        case r'description':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType.nullable(String),
-          ) as String?;
-          if (valueDes == null) continue;
-          result.description = valueDes;
           break;
         case r'coverAssetId':
           final valueDes = serializers.deserialize(

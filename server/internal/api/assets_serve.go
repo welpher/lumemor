@@ -173,11 +173,13 @@ func (s *server) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id ope
 		return
 	}
 
-	// The stored file_path is the portable relative form the upload
-	// receiver recorded; the resolution refuses anything that would
-	// leave the originals tree (defense in depth against a corrupted
-	// row -- the values are server-generated).
-	path, err := storage.ResolveStoredPath(s.dataDir, row.FilePath)
+	// The stored file_path names where the bytes live: a blob row's
+	// portable relative form resolved against the data root (the
+	// originals-tree guard refusing anything that would leave it),
+	// or an external row's real absolute path (the directory album's
+	// source tree) -- the one kind-aware resolver every reader of
+	// file_path goes through.
+	path, err := storage.ResolveAssetPath(s.dataDir, row.FilePath, string(row.StorageKind))
 	if err != nil {
 		s.internalError(w, r, "resolve original file", err)
 		return

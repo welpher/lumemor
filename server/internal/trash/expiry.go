@@ -104,6 +104,51 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 
 	counts := ExpiryCounts{}
 	for _, row := range rows {
+		assetID := uuid.UUID(row.ID.Bytes)
+
+		// The external arm (E4, the §A6/E4 table's expiry row): the
+		// only file of ours is the TRASH COPY the move semantics
+		// landed -- keyed by the asset id alone, so no reference
+		// count exists to take and the removal is unconditional. The
+		// source file the row carried before the move is the
+		// family's own and is never touched (the containment check
+		// inside the removal enforces that even against a corrupted
+		// row); an orphaned external (the rescan's vanish arm,
+		// trash_path NULL, its source file already gone) purges the
+		// row alone.
+		if row.StorageKind == dbgen.StorageKindExternal {
+			deleted, err := expireAsset(ctx, pool, row, int32(retention))
+			if err != nil {
+				return counts, fmt.Errorf("trash expiry: expire asset %s: %w", assetID, err)
+			}
+			if deleted == 0 {
+				continue
+			}
+			counts.Expired++
+			var trashPath string
+			if row.TrashPath.Valid {
+				trashPath = row.TrashPath.String
+			}
+			if err := storage.RemoveExternalAssetFiles(dataDir, trashPath, assetID.String()); err != nil {
+				// Best-effort by design: the row is already deleted,
+				// so the failure is a leak, not data loss, and
+				// failing the run here would only retry a no-op.
+				slog.Error("trash expiry: remove files of expired external asset", "error", err, "asset_id", assetID)
+			}
+			if trashPath != "" {
+				// The trash copy was this row's one file of ours; an
+				// orphan's purge removed none.
+				counts.FilesRemoved++
+			}
+			if bus != nil && !row.IsComponent {
+				bus.Publish("asset.deleted", map[string]string{
+					"assetId": assetID.String(),
+					"kind":    string(row.MediaKind),
+				})
+			}
+			continue
+		}
+
 		// The shared-blob reference count runs BEFORE the row delete
 		// and excludes the row itself by id, so it answers the same
 		// whichever side of the delete it runs on. Every OTHER row
@@ -114,7 +159,7 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 			ID:       row.ID,
 		})
 		if err != nil {
-			return counts, fmt.Errorf("trash expiry: count file references of asset %s: %w", uuid.UUID(row.ID.Bytes), err)
+			return counts, fmt.Errorf("trash expiry: count file references of asset %s: %w", assetID, err)
 		}
 
 		// The guarded delete: a row restored (or already purged by a
@@ -127,14 +172,13 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 		// matches nothing rolls the sweep back with it.
 		deleted, err := expireAsset(ctx, pool, row, int32(retention))
 		if err != nil {
-			return counts, fmt.Errorf("trash expiry: expire asset %s: %w", uuid.UUID(row.ID.Bytes), err)
+			return counts, fmt.Errorf("trash expiry: expire asset %s: %w", assetID, err)
 		}
 		if deleted == 0 {
 			continue
 		}
 		counts.Expired++
 
-		assetID := uuid.UUID(row.ID.Bytes)
 		if err := storage.RemoveAssetFiles(dataDir, row.FilePath, assetID.String(), refs); err != nil {
 			// Best-effort by design: the row is already deleted, so
 			// the failure is a leak, not data loss, and failing the

@@ -31,7 +31,9 @@
 -- change: the blob stays in place (the file system half of the
 -- soft-delete contract) and the pipeline state is left alone (a
 -- trashed asset that finishes its pipeline is harmless; its
--- readiness just never surfaces anywhere).
+-- readiness just never surfaces anywhere). BLOB rows only -- the
+-- external rows' own entry point is SoftDeleteExternalAsset (the
+-- §A6/E4 move semantics; the storage kind is the discriminator).
 UPDATE assets SET
     deleted_at = now(),
     updated_at = now()
@@ -39,7 +41,32 @@ WHERE (assets.id = $1
        OR assets.live_photo_video_id = $1
        OR assets.id = (SELECT src.live_photo_video_id FROM assets src WHERE src.id = $1))
   AND assets.deleted_at IS NULL
-  AND assets.owner_id = $2;
+  AND assets.owner_id = $2
+  AND assets.storage_kind = 'blob';
+
+-- name: SoftDeleteExternalAsset :execrows
+-- The external row's trash entry point (E4, the §A6/E4 table's
+-- move semantics): the caller moved the file into the server's
+-- trash area BEFORE this statement ran (the move needs the
+-- operating system's permission; a failure there failed the whole
+-- batch and nothing was written), and the write records the truth
+-- of that move -- original_path keeps where the file came from,
+-- trash_path and file_path name where it now is (the row always
+-- names where the bytes are: the original download and the expiry
+-- read it, the restore moves it back). No pair predicate: external
+-- rows are standalone by construction (the rescan ingests one row
+-- per file, no Live Photo pairing), and the deleted_at IS NULL arm
+-- keeps the repeat trash a zero-row no-op like the blob arm's.
+UPDATE assets SET
+    deleted_at = now(),
+    original_path = file_path,
+    trash_path = sqlc.arg('trash_path'),
+    file_path = sqlc.arg('trash_path'),
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+  AND owner_id = sqlc.arg('owner_id')
+  AND storage_kind = 'external'
+  AND deleted_at IS NULL;
 
 -- name: ListTrash :many
 -- The trash view of one owner: every trashed, non-component asset
@@ -58,6 +85,14 @@ WHERE (assets.id = $1
 -- is a recovery view for recent deletes; older items age out
 -- through expiry on their own), and the ordering is what the
 -- client's trash page renders.
+--
+-- The E4 arm (2026-11-08 pin): an EXTERNAL row with no trash_path
+-- never appears. Those are the rescan's orphan marks -- the file
+-- vanished from the source, the row is deleted, and the trash has
+-- no meaning for it (the file was never the server's, there is
+-- nothing of ours to restore or expire away). Every other trashed
+-- row lists honestly whatever its storage kind: a blob in place,
+-- an external whose file the server holds in its trash area.
 SELECT a.*,
        GREATEST(
            CEIL(EXTRACT(epoch FROM (a.deleted_at + make_interval(days => sqlc.arg('retention_days')::int) - now())) / 86400),
@@ -67,6 +102,7 @@ FROM assets a
 WHERE a.owner_id = $1
   AND a.deleted_at IS NOT NULL
   AND a.is_component = false
+  AND NOT (a.storage_kind = 'external' AND a.trash_path IS NULL)
 ORDER BY a.deleted_at DESC
 LIMIT sqlc.arg('limit_count');
 
@@ -82,7 +118,9 @@ LIMIT sqlc.arg('limit_count');
 -- exactly like an unknown one. No membership re-insertion runs
 -- anywhere: soft delete never removed the album_items rows, and the
 -- timeline's deleted_at filter is what hid the asset, so clearing
--- the mark is the whole restore.
+-- the mark is the whole restore. BLOB rows only -- the external
+-- rows' own restore is RestoreExternalAsset (the §A6/E4 move-back
+-- semantics; the storage kind is the discriminator).
 UPDATE assets SET
     deleted_at = NULL,
     updated_at = now()
@@ -90,7 +128,32 @@ WHERE (assets.id = $1
        OR assets.live_photo_video_id = $1
        OR assets.id = (SELECT src.live_photo_video_id FROM assets src WHERE src.id = $1))
   AND assets.deleted_at IS NOT NULL
-  AND assets.owner_id = $2;
+  AND assets.owner_id = $2
+  AND assets.storage_kind = 'blob';
+
+-- name: RestoreExternalAsset :execrows
+-- The external row's restore (E4, the §A6/E4 table): the caller
+-- moved the file back to the row's recorded original location
+-- BEFORE this statement ran (a location that can no longer receive
+-- the file failed the request explicitly -- the row stays trashed,
+-- the file stays in the trash area), and the write lands the truth
+-- of that move: file_path names where the bytes are again, the
+-- original_path and trash_path record clears (the move is undone,
+-- no record of it stays), and the live views' deleted_at filter
+-- lifting is the whole timeline return -- the membership rows were
+-- never removed. The guards mirror the blob restore's: only a
+-- trashed external row of this owner matches, so the idempotent
+-- repeat and a racing trash converge to zero rows, never errors.
+UPDATE assets SET
+    deleted_at = NULL,
+    file_path = original_path,
+    original_path = NULL,
+    trash_path = NULL,
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+  AND owner_id = sqlc.arg('owner_id')
+  AND storage_kind = 'external'
+  AND deleted_at IS NOT NULL;
 
 -- name: ListExpiredAssets :many
 -- The expiry job's candidates: trashed rows whose retention window
@@ -110,7 +173,15 @@ WHERE (assets.id = $1
 -- rides along (M2d) so the run can keep the component rows' purges
 -- SILENT -- the trash view never lists components (the pair is
 -- represented by its photo), so their expiry events would be noise.
-SELECT id, file_path, media_kind, is_component FROM assets
+-- storage_kind and trash_path ride along (E4): an external row's
+-- file to remove is the TRASH COPY the move semantics landed
+-- (data/trash/<assetId>/, the server's own tree) -- never the
+-- source file_path the row carried before the move, which is the
+-- family's own file wherever it now sits. An orphaned external row
+-- (the rescan's vanish arm: trash_path NULL, the source file
+-- already gone) purges its row alone, nothing to remove.
+SELECT id, file_path, media_kind, is_component, storage_kind, trash_path
+FROM assets
 WHERE deleted_at IS NOT NULL
   AND deleted_at < now() - make_interval(days => sqlc.arg('retention_days')::int)
 ORDER BY deleted_at

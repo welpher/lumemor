@@ -47,14 +47,19 @@
 #     already-tagged pair), the tag-as-vocabulary FTS arm (a query
 #     hitting the tag NAME), the detail's caller-scoped tags row, and
 #     the tag filter.
-#   - The visibility (B4 and the union predicate): the member shares
-#     a curated album with the ADMIN (the sharee), and the sharee's
-#     search NEVER answers the member's private photo from EITHER arm
-#     -- its filename is the only text hit of the visibility query
-#     and it would rank first if either arm leaked -- while the
-#     sharee's tag facet stays empty and the places surface drops
-#     the private photo's city. The member's own search answers it
-#     first.
+#   - The visibility (B4 and the union predicate): the member opens a
+#     directory album over the source fixture (the fixture's four
+#     photos are byte-identical to four of the member's uploads, so
+#     the scan's owner+checksum dedup answers each file with the
+#     honest skip: the EXISTING rows gain the album's membership and
+#     the shared surface is exactly those four, no second assets)
+#     and grants the ADMIN the view at create (the audience rides
+#     the POST), and the sharee's search NEVER answers the member's
+#     private photo from EITHER arm -- its filename is the only text
+#     hit of the visibility query and it would rank first if either
+#     arm leaked -- while the sharee's tag facet stays empty and the
+#     places surface drops the private photo's city. The member's
+#     own search answers it first.
 #   - The places domain: the GPS photo resolves to Beijing (en
 #     "Beijing", zh-Hans 北京 -- the locale join), the private photo
 #     to its own city, and GET /places counts caller-visible.
@@ -115,6 +120,7 @@ base_url="http://localhost:8244"
 health_timeout_seconds=120
 download_timeout_seconds=900
 ml_timeout_seconds=420
+rescan_timeout_seconds=180
 
 admin_password="correct-horse-battery"
 member_password="correct-horse-battery"
@@ -141,6 +147,18 @@ face_portrait="$repo_root/server/internal/ml/testdata/face-portrait.jpg"
 face_portrait_orientation="$repo_root/server/internal/ml/testdata/face-portrait-orientation6.jpg"
 face_portrait_other="$repo_root/server/internal/ml/testdata/face-portrait-other.jpg"
 private_photo="$repo_root/server/internal/jobs/testdata/golden.jpg"
+
+# The E4 source fixture: the repository's compose file binds the e2e
+# fixture tree (web/e2e/fixtures/m3-source, see its README) into the
+# container read-only at /mnt/e2e-source, and the story's member
+# opens trip-2026 under it as the album's source -- the four
+# byte-identical copies of the member's own uploads above, so the
+# scan's owner+checksum dedup is the story's own arm (the honest
+# skip: the existing rows gain the membership, never a second
+# asset). The read-only bind is the zero-copy pin held by
+# construction.
+mount_root="/mnt/e2e-source"
+source_dir="/mnt/e2e-source/trip-2026"
 
 # The expected places of the two GPS-bearing photos (the pinned
 # GeoNames bake): Beijing (zh-Hans 北京) and Paris 16 Passy (no zh
@@ -1067,48 +1085,102 @@ echo "    the 合集 query's years facet: $tagtext_years"
 echo "    the tag name feeds the text path (its two members match)"
 
 # ---------------------------------------------------------------------------
-# The share: the member curates the album and grants the admin the
-# view (the sharee of the visibility story).
+# The share: the member opens the fixture directory as the album's
+# source and grants the admin the view at create (the sharee of the
+# visibility story).
 # ---------------------------------------------------------------------------
 
-echo "==> POST /api/v1/albums must create the member's virtual album"
+echo "==> PUT /api/v1/admin/settings/mount-roots must open the e2e fixture mount (the trust boundary)"
+status="$(curl -sS -o "$work_dir/mount_roots_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PUT -H 'Content-Type: application/json' \
+    -d "{\"roots\":[\"$mount_root\"]}" \
+    "$base_url/api/v1/admin/settings/mount-roots")" \
+    || fail "PUT /api/v1/admin/settings/mount-roots request failed"
+[ "$status" = "200" ] \
+    || fail "PUT /api/v1/admin/settings/mount-roots returned status $status, want 200: $(cat "$work_dir/mount_roots_body")"
+grep -q "\"roots\":\[\"$mount_root\"\]" "$work_dir/mount_roots_body" \
+    || fail "the saved allowlist is not the fixture mount alone: $(cat "$work_dir/mount_roots_body")"
+echo "    the fixture mount ($mount_root) is the instance's one allowed root"
+
+echo "==> the member's path completion must list the fixture's trip directory (the user domain)"
+status="$(curl -sS -o "$work_dir/completions_body" -b "$member_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/path-completions?prefix=$mount_root/tr")" \
+    || fail "GET /api/v1/albums/path-completions (member) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/path-completions (member) returned status $status, want 200: $(cat "$work_dir/completions_body")"
+grep -q "\"paths\":\[\"$source_dir\"\]" "$work_dir/completions_body" \
+    || fail "the member's completion does not list the trip directory: $(cat "$work_dir/completions_body")"
+echo "    the completion's domain is the opened root (every signed-in member may complete a path)"
+
+echo "==> POST /api/v1/albums must create the member's directory album (the audience at create)"
 status="$(curl -sS -o "$work_dir/album_body" -b "$member_jar" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
-    -d '{"title":"M3D Acceptance Album","description":"The search and places story"}' \
+    -d "{\"title\":\"M3D Acceptance Album\",\"rootPath\":\"$source_dir\",\"audience\":[\"$admin_user_id\"]}" \
     "$base_url/api/v1/albums")" \
     || fail "POST /api/v1/albums request failed"
 [ "$status" = "201" ] \
     || fail "POST /api/v1/albums returned status $status, want 201: $(cat "$work_dir/album_body")"
+grep -q '"callerRole":"owner"' "$work_dir/album_body" \
+    || fail "the created album's card is not the owner's: $(cat "$work_dir/album_body")"
+grep -q '"itemCount":0' "$work_dir/album_body" \
+    || fail "the created album's count is not zero: $(cat "$work_dir/album_body")"
+grep -q '"isShared":true' "$work_dir/album_body" \
+    || fail "the created album's card does not carry the landed audience: $(cat "$work_dir/album_body")"
+grep -q '"skipped":\[\]' "$work_dir/album_body" \
+    || fail "the create's audience report skipped the admin id: $(cat "$work_dir/album_body")"
 album_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/album_body")"
 [ -n "$album_id" ] \
     || fail "the created album carries no id: $(cat "$work_dir/album_body")"
-echo "    the album exists ($album_id), owned by the member"
+echo "    the album exists ($album_id), sourced at $source_dir; the admin's grant landed at create"
 
-echo "==> POST /api/v1/albums/{id}/items: the curated four land"
-status="$(curl -sS -o "$work_dir/items_body" -b "$member_jar" -w '%{http_code}' \
-    -H 'Content-Type: application/json' \
-    -d "{\"assetIds\":[\"$gps_id\",\"$ocr_id\",\"$portrait_id\",\"$twin_id\"]}" \
-    "$base_url/api/v1/albums/$album_id/items")" \
-    || fail "POST /api/v1/albums/$album_id/items (curated four) request failed"
-[ "$status" = "200" ] \
-    || fail "POST /api/v1/albums/$album_id/items (curated four) returned status $status, want 200: $(cat "$work_dir/items_body")"
-grep -q '"added":4' "$work_dir/items_body" \
-    || fail "the curated four did not land: $(cat "$work_dir/items_body")"
-grep -q '"skipped":0' "$work_dir/items_body" \
-    || fail "the curated four was partly skipped: $(cat "$work_dir/items_body")"
-echo "    the four shared photos are members (the private photo and the decoy stay out: the album IS the shared surface)"
+echo "==> POST /api/v1/albums/{id}/rescan must return 202 with the run's id"
+status="$(curl -sS -o "$work_dir/rescan_body" -b "$member_jar" -w '%{http_code}' \
+    -X POST "$base_url/api/v1/albums/$album_id/rescan")" \
+    || fail "POST /api/v1/albums/$album_id/rescan request failed"
+[ "$status" = "202" ] \
+    || fail "POST /api/v1/albums/$album_id/rescan returned status $status, want 202: $(cat "$work_dir/rescan_body")"
+grep -q '"jobRunId":"[^"]*"' "$work_dir/rescan_body" \
+    || fail "POST /api/v1/albums/$album_id/rescan carries no jobRunId: $(cat "$work_dir/rescan_body")"
+echo "    the rescan run started: $(cat "$work_dir/rescan_body")"
 
-echo "==> POST /api/v1/albums/{id}/shares must grant the ADMIN the view (the sharee)"
-status="$(curl -sS -o "$work_dir/share_body" -b "$member_jar" -w '%{http_code}' \
-    -H 'Content-Type: application/json' \
-    -d "{\"userId\":\"$admin_user_id\"}" \
-    "$base_url/api/v1/albums/$album_id/shares")" \
-    || fail "POST /api/v1/albums/$album_id/shares request failed"
-[ "$status" = "200" ] \
-    || fail "POST /api/v1/albums/$album_id/shares returned status $status, want 200: $(cat "$work_dir/share_body")"
-grep -q "\"userId\":\"$admin_user_id\"" "$work_dir/share_body" \
-    || fail "the share row does not name the admin: $(cat "$work_dir/share_body")"
-echo "    the admin holds the view (the sharee)"
+echo "==> the album's membership must converge onto the fixture's four photos (up to ${rescan_timeout_seconds}s)"
+deadline="$(( $(date +%s) + rescan_timeout_seconds ))"
+while :; do
+    status="$(curl -sS -o "$work_dir/album_detail_body" -b "$member_jar" -w '%{http_code}' \
+        "$base_url/api/v1/albums/$album_id")" \
+        || fail "GET /api/v1/albums/$album_id (member, scanning) request failed"
+    [ "$status" = "200" ] \
+        || fail "GET /api/v1/albums/$album_id (member, scanning) returned status $status, want 200: $(cat "$work_dir/album_detail_body")"
+    grep -q '"itemCount":4' "$work_dir/album_detail_body" && break
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the album's membership did not converge onto the fixture's four photos within ${rescan_timeout_seconds}s: $(cat "$work_dir/album_detail_body")"
+    fi
+    sleep 3
+done
+grep -q "\"rootPath\":\"$source_dir\"" "$work_dir/album_detail_body" \
+    || fail "the album's detail does not carry the source path: $(cat "$work_dir/album_detail_body")"
+echo "    the membership is the fixture's four photos"
+
+echo "==> the scan's owner+checksum dedup: the four same-bytes files are honest skips, not second assets"
+# The fixture's files are byte-identical to four of the member's own
+# uploads, so the add arm's dedup answers each with the honest skip:
+# the EXISTING rows gain the album's membership -- no second row, no
+# external ingest, the asset count stays the member's six.
+album_member_ids="$(grep -o '"assetId"[[:space:]]*:[[:space:]]*"[^"]*"' "$work_dir/album_detail_body" \
+    | sed 's/.*"\([^"]*\)"$/\1/' | sort | tr '\n' ' ' || true)"
+[ "$album_member_ids" = "$(printf '%s\n' "$gps_id" "$ocr_id" "$portrait_id" "$twin_id" | sort | tr '\n' ' ')" ] \
+    || fail "the album's members are [$album_member_ids], want the member's existing four rows: $(cat "$work_dir/album_detail_body")"
+asset_rows="$(psql_query 'SELECT count(*) FROM assets')"
+[ "$asset_rows" = "6" ] \
+    || fail "the scan created rows ($asset_rows assets, want the member's unchanged six)"
+external_rows="$(psql_query "SELECT count(*) FROM assets WHERE storage_kind = 'external'")"
+[ "$external_rows" = "0" ] \
+    || fail "the scan ingested external rows ($external_rows, want 0 -- the content was the member's own)"
+share_rows="$(psql_query "SELECT count(*) FROM album_shares WHERE album_id = '$album_id'")"
+[ "$share_rows" = "1" ] \
+    || fail "the create's audience landed $share_rows share rows, want 1 (the admin's grant)"
+echo "    the existing four rows gained the membership; the asset count stayed six (the private photo and the decoy stay out: the album IS the shared surface)"
 
 # ---------------------------------------------------------------------------
 # The visibility (B4 and the union predicate): the sharee's search

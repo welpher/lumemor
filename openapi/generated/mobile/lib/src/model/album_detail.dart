@@ -16,10 +16,10 @@ part 'album_detail.g.dart';
 /// Properties:
 /// * [id] - Identifier of the album.
 /// * [title] - The album's display title.
-/// * [description] - The album's free-text description (empty when unset).
 /// * [type] - The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
 /// * [locked] - The owner's lock (metadata to a viewer).
 /// * [coverAssetId] - The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
+/// * [rootPath] - The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Virtual and sync albums omit it. 
 /// * [callerRole] - The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
 /// * [itemCount] - The album's live member count, the same predicate as the items below. 
 /// * [items] - One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
@@ -36,10 +36,6 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   @BuiltValueField(wireName: r'title')
   String get title;
 
-  /// The album's free-text description (empty when unset).
-  @BuiltValueField(wireName: r'description')
-  String get description;
-
   /// The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
   @BuiltValueField(wireName: r'type')
   AlbumDetailTypeEnum get type;
@@ -52,6 +48,10 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   /// The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
   @BuiltValueField(wireName: r'coverAssetId')
   String? get coverAssetId;
+
+  /// The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Virtual and sync albums omit it. 
+  @BuiltValueField(wireName: r'rootPath')
+  String? get rootPath;
 
   /// The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
   @BuiltValueField(wireName: r'callerRole')
@@ -111,11 +111,6 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
       object.title,
       specifiedType: const FullType(String),
     );
-    yield r'description';
-    yield serializers.serialize(
-      object.description,
-      specifiedType: const FullType(String),
-    );
     yield r'type';
     yield serializers.serialize(
       object.type,
@@ -131,6 +126,13 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
       object.coverAssetId,
       specifiedType: const FullType.nullable(String),
     );
+    if (object.rootPath != null) {
+      yield r'rootPath';
+      yield serializers.serialize(
+        object.rootPath,
+        specifiedType: const FullType(String),
+      );
+    }
     yield r'callerRole';
     yield serializers.serialize(
       object.callerRole,
@@ -204,13 +206,6 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
           ) as String;
           result.title = valueDes;
           break;
-        case r'description':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(String),
-          ) as String;
-          result.description = valueDes;
-          break;
         case r'type':
           final valueDes = serializers.deserialize(
             value,
@@ -232,6 +227,14 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
           ) as String?;
           if (valueDes == null) continue;
           result.coverAssetId = valueDes;
+          break;
+        case r'rootPath':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(String),
+          ) as String?;
+          if (valueDes == null) continue;
+          result.rootPath = valueDes;
           break;
         case r'callerRole':
           final valueDes = serializers.deserialize(

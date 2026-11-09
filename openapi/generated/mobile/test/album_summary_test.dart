@@ -3,7 +3,7 @@ import 'package:lumemor_api/lumemor_api.dart';
 
 // tests for AlbumSummary
 void main() {
-  final instance = AlbumSummaryBuilder();
+  //final instance = AlbumSummaryBuilder();
   // TODO add properties to the builder and call build()
 
   group(AlbumSummary, () {
@@ -16,12 +16,6 @@ void main() {
     // The album's display title.
     // String title
     test('to test the property `title`', () async {
-      // TODO
-    });
-
-    // The album's free-text description (empty when unset).
-    // String description
-    test('to test the property `description`', () async {
       // TODO
     });
 

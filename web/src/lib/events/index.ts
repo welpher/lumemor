@@ -71,7 +71,7 @@ export type JobEvent = {
 	name: JobEventName;
 	/** The job_runs row the event announces. */
 	jobRunId: string;
-	/** The run's kind (model_download, the rerun kinds). */
+	/** The run's kind (model_download, the rerun kinds, the album rescan). */
 	kind: string;
 	/** The run's whole work, in the run's own units. */
 	total: number;
@@ -172,7 +172,7 @@ export type FaceEventListener = (event: FaceEvent) => void;
  * The albums surface's album.* events: the creation, the property
  * patch, the delete, the membership curation and the view-ACL
  * sharing writes. Every payload carries the album's id and one
- * user's id ONLY: titles, descriptions, covers, the lock state and
+ * user's id ONLY: titles, covers, the lock state and
  * the membership itself are album state the subscribers refetch,
  * never bus payload. On the two share events the `userId` is the
  * GRANTEE whose view of the album changed (the grantor is derivable

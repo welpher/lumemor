@@ -538,8 +538,9 @@ paths:
         the changed fields. Event names follow
         `<resource>.<past-tense verb>`:
 
-        - `asset.uploaded`, `asset.ready`, `asset.updated`,
-          `asset.trashed`, `asset.restored`, `asset.deleted`
+        - `asset.uploaded`, `asset.ready`, `asset.added`,
+          `asset.updated`, `asset.trashed`, `asset.restored`,
+          `asset.deleted`
         - `album.created`, `album.updated`, `album.deleted`,
           `album.items-changed`, `album.shared`, `album.unshared`
         - `auth.login_failed`
@@ -563,29 +564,47 @@ paths:
 
         The `album.*` events report the album write surface: creation
         (`album.created`), the property patch (`album.updated`), the
-        delete (`album.deleted`), the membership curation
-        (`album.items-changed`) and the view-ACL sharing
+        delete (`album.deleted`), the membership writes
+        (`album.items-changed`) and the audience writes
         (`album.shared`, `album.unshared`). Every payload carries
         ONLY the album's id and one user's `userId`: titles,
-        descriptions, covers, the lock state and the membership
-        itself are album state the subscribers refetch, never bus
-        payload. `album.updated` fires on every successful patch
-        (the convergent refetch makes the unconditional fire
-        harmless), `album.items-changed` exactly when a membership
-        write added or removed at least one row, and
-        `album.shared`/`album.unshared` exactly when a share grant
-        landed a new row or a revoke removed one -- every idempotent
-        no-op stays silent. On the two share events the `userId` is
+        covers, the lock state, the source path and
+        the membership itself are album state the subscribers
+        refetch, never bus payload. `album.updated` fires on every
+        successful patch (the convergent refetch makes the
+        unconditional fire harmless), `album.items-changed` exactly
+        when a membership write changed at least one row (the
+        removal arm, or the rescan's add arm growing the set), and
+        `album.shared`/`album.unshared` exactly when the audience
+        write (or a creation's initial audience) landed or removed a
+        row -- one event per row transition, every idempotent no-op
+        stays silent. On the two audience events the `userId` is
         the GRANTEE whose view of the album changed, not the acting
-        grantor: the grantor is derivable server-side, the grantee
-        is the state that changed, and the grant time and the
-        grantee's email never ride the bus.
+        owner: the owner is derivable server-side, the grantee is
+        the state that changed, and the grant time and the grantee's
+        email never ride the bus.
 
         The timeline-preference writes publish nothing at all: the
         per-user preference is self-affecting state -- the caller's
         own timeline is the only view that changes, and their own
         response carries the new value, so no other session has
         anything to refetch.
+
+        The `asset.added` event reports the directory rescan's add
+        arm: one event per file the scan ingested by reference (the
+        row, its membership and its pipeline jobs landed), the same
+        id-plus-kind payload every asset event carries. The rescan's
+        other two arms reuse the family's existing transitions: the
+        vanish arm fires `asset.trashed` (the row's state transition
+        -- though the orphan never appears in the trash view, the
+        file being the source's own), and the change arm fires
+        `asset.updated` (the snapshot changed and the metadata
+        pipeline re-runs). A rescan that changed nothing publishes
+        none of them. The membership the add arm grew announces
+        through `album.items-changed` exactly when at least one
+        membership row landed -- the same predicate the removal arm
+        fires under, widened to both directions of the membership
+        write.
 
         The server keeps the last five minutes of events in a ring
         buffer. Browser EventSource clients reconnect automatically and
@@ -1234,6 +1253,23 @@ paths:
         Photo pair included (trashing or restoring the photo carries
         its component video row along, whichever row the id names).
 
+        The trash arm splits on the row's storage kind, the §A6/E4
+        table's two semantics: a `blob` row is soft-deleted in
+        place (the file stays until expiry), while an `external`
+        row's file is MOVED into the server's trash area
+        (`data/trash/<assetId>/`) with `original_path` and
+        `trash_path` recorded on the row -- and the move needs the
+        operating system's permission. A file the server cannot
+        move (an unreadable source, an unwritable directory) fails
+        the WHOLE batch explicitly with 500
+        `ASSET_TRASH_MOVE_FAILED`: nothing moves, nothing is
+        written, the rows stay live -- the batch's one transaction
+        rolls back and every file already moved is moved back.
+        Restoring an external row moves the file back to its
+        recorded original location by the same discipline (a
+        location that can no longer receive it fails the batch the
+        same way).
+
         Events publish AFTER the commit, one per asset whose state
         actually changed -- the idempotent no-op stays silent, the
         same discipline as the single-asset restore: `asset.trashed`
@@ -1321,11 +1357,27 @@ paths:
                     code: AUTH_INVALID_CREDENTIALS
                     message: authentication required
         '500':
-          description: Unexpected server failure.
+          description: |
+            Unexpected server failure, or the external-move failure
+            of the trash arm: a `trash` (or `restore`) action over a
+            directory album's external asset whose file the server
+            could not move -- the operating system denied the
+            permission, or the recorded original location can no
+            longer receive the file. The whole batch rolled back:
+            nothing was written and every moved file was moved back.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              examples:
+                trashMoveFailed:
+                  value:
+                    code: ASSET_TRASH_MOVE_FAILED
+                    message: the file could not be moved into the trash
+                restoreMoveFailed:
+                  value:
+                    code: ASSET_RESTORE_MOVE_FAILED
+                    message: the file could not be moved back to its original location
   /assets/favorites:
     get:
       operationId: getFavorites
@@ -2592,6 +2644,7 @@ paths:
                       - id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
                         ownerId: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
                         kind: image
+                        storageKind: blob
                         originalFilename: IMG_1234.jpg
                         fileSize: 4821933
                         mimeType: image/jpeg
@@ -2643,6 +2696,17 @@ paths:
         views, not evicted from its albums). The component video row
         of a Live Photo is restored with its photo.
 
+        The restore splits on the row's storage kind, the §A6/E4
+        table's two semantics: a `blob` row's file never moved (the
+        mark was the whole trash), while an `external` row's file
+        was moved into the server's trash area -- the restore moves
+        it back to the `original_path` the row recorded. A location
+        that can no longer receive the file (the source folder
+        unmounted, the directory gone) fails the restore explicitly
+        with 500 `ASSET_RESTORE_MOVE_FAILED`: the row stays trashed
+        and the file stays in the trash area, exactly where a retry
+        after remounting finds it.
+
         The operation follows set semantics: restoring an asset that
         is already live succeeds (204, nothing to do) -- a client
         that races another restore, or asks twice, converges instead
@@ -2656,7 +2720,8 @@ paths:
         The retention countdown of the trash list is the only signal
         that a restore is still possible; after the row is gone, the
         content itself can only return through a re-upload (which the
-        upload idempotency answers as a fresh asset).
+        upload idempotency answers as a fresh asset) or, for a
+        directory album's source file, the next rescan's add arm.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -2702,11 +2767,21 @@ paths:
                     code: ASSET_NOT_FOUND
                     message: no asset with this identifier
         '500':
-          description: Unexpected server failure.
+          description: |
+            Unexpected server failure, or the external restore's
+            move failure: the file could not be moved back to its
+            recorded original location. The row stayed trashed and
+            the file stayed in the trash area -- a retry after the
+            source location returns is the recovery.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              examples:
+                restoreMoveFailed:
+                  value:
+                    code: ASSET_RESTORE_MOVE_FAILED
+                    message: the file could not be moved back to its original location
   /albums:
     get:
       operationId: listAlbums
@@ -2865,27 +2940,69 @@ paths:
       operationId: createAlbum
       tags:
         - albums
-      summary: Create one virtual album.
+      summary: Create one directory album from an existing path.
       description: |
-        Creates one virtual album owned by the caller -- the album
-        the wall lists, the detail shows and the curation endpoints
-        edit. The virtual album is the ONLY creatable type through
-        this face, so the request carries no type field: directory
-        albums arrive with their own milestone (they mirror a
-        filesystem path the server scans), and every account's sync
-        album is born with the account.
+        Creates one directory album owned by the caller: the album
+        IS a source -- the request names an existing directory the
+        server validates and references in place, the files stay
+        where they are (zero copy, zero move; the rescan that fills
+        the album's membership is a later flow). No type field
+        exists: this endpoint IS directory creation, the one
+        creatable album type of the albums-as-sources design -- the
+        curation-into-a-container story is gone (virtual albums
+        already owned keep their edit and delete faces, but nothing
+        creates one anymore), and every account's sync album is born
+        with the account.
 
         The title is trimmed and must span 1-64 Unicode characters
         (the count is over runes, so multi-byte titles stay within
-        the bound at the same length); the description is optional
-        bounded free text (10,000 characters, the asset
-        description's own bound) and defaults to the empty string.
+        the bound at the same length).
+
+        `rootPath` is the source directory, and it runs the path
+        validation matrix before anything is written, each branch
+        its own 400 error code:
+
+        - the path must be absolute (after a server-side clean; a
+          relative, empty or over-long value is a plain
+          `VALIDATION_FAILED`),
+        - it must exist (`ALBUM_PATH_NOT_FOUND`),
+        - it must be a directory (`ALBUM_PATH_NOT_DIRECTORY`),
+        - the server must be able to list it
+          (`ALBUM_PATH_NOT_READABLE`),
+        - symlinks are resolved and the RESOLVED path is the domain
+          subject: a typed path that sits inside a mount root but
+          resolves outside one answers
+          `ALBUM_PATH_SYMLINK_ESCAPE`,
+        - the resolved path must never sit inside the server's own
+          managed data tree (`ALBUM_PATH_IN_MANAGED_TREE`), whatever
+          the allowlist says,
+        - it must not overlap or nest another directory album's root
+          -- equal to, inside, or containing one, on the whole
+          instance (`ALBUM_PATH_OVERLAPS`),
+        - it must sit at or under one of the configured mount roots
+          (`ALBUM_PATH_OUTSIDE_ROOTS`; the default allowlist is
+          empty, which keeps directory album creation closed until
+          an administrator opens a root).
+
+        The album row stores the RESOLVED absolute path, so a later
+        symlink swap can never repoint an existing album.
+
+        `audience` is the album's audience, the full grantee set of
+        view ACL rows the creation lands in the same request: the
+        add-style picker's chips of the dialog, empty (or absent)
+        meaning "only me". Its semantics are the audience write's:
+        every id that cannot be granted -- an unknown or disabled
+        account, or the caller's own id (the owner sees the album by
+        construction) -- is skipped, never an error, and the
+        response's `skipped` list reports each with its reason.
 
         The response is the created album's wall card -- the summary
         exactly as `GET /albums` lists it: `callerRole` `owner`,
-        `isShared` false, an empty `coverAssetIds` array (never
-        null) and `itemCount` 0, nothing being a member yet. The
-        write publishes one `album.created` event.
+        `type` `directory`, an empty `coverAssetIds` array (never
+        null) and `itemCount` 0, nothing being a member yet -- plus
+        the honest audience report. The write publishes one
+        `album.created` event and one `album.shared` event per
+        audience row that landed.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -2897,44 +3014,73 @@ paths:
               $ref: '#/components/schemas/AlbumCreateRequest'
             examples:
               titled:
-                summary: A titled album with a description.
+                summary: A titled album sourced at a shared family archive.
                 value:
-                  title: Road trip 2026
-                  description: The coastal week in the van.
+                  title: Family archive
+                  rootPath: /Volumes/Photos/family
+                  audience:
+                    - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
               bare:
-                summary: The minimal creation, title only.
+                summary: The minimal creation, title and path only.
                 value:
                   title: Quick picks
+                  rootPath: /Volumes/Photos/2026-spring
       responses:
         '201':
           description: |
-            The album exists; the response is its wall card. The
-            counts are the creation-time zeros: no member, no share,
-            no cover.
+            The album exists; the response is its wall card (the
+            creation-time zeros: no member, no cover) with the
+            audience report. The grants that landed are the request's
+            usable ids; the `skipped` entries are the rest.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AlbumSummary'
+                $ref: '#/components/schemas/AlbumCreateResponse'
               examples:
                 freshAlbum:
-                  summary: The freshly created virtual album.
+                  summary: The freshly created directory album, one grantee landed.
                   value:
                     id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
-                    title: Road trip 2026
-                    description: The coastal week in the van.
-                    type: virtual
+                    title: Family archive
+                    description: ''
+                    type: directory
+                    locked: false
+                    isShared: true
+                    coverAssetIds: []
+                    itemCount: 0
+                    updatedAt: '2026-11-05T10:15:00Z'
+                    callerRole: owner
+                    inTimeline: true
+                    skipped: []
+                skippedAudience:
+                  summary: The creation landed, one requested audience id did not.
+                  value:
+                    id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072
+                    title: Family archive
+                    description: ''
+                    type: directory
                     locked: false
                     isShared: false
                     coverAssetIds: []
                     itemCount: 0
                     updatedAt: '2026-11-05T10:15:00Z'
                     callerRole: owner
+                    inTimeline: true
+                    skipped:
+                      - userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        reason: invalid_account
         '400':
           description: |
-            The request is invalid: the title is missing, empty,
-            whitespace-only, or spans more than 64 characters; or
-            the description exceeds its 10,000-character bound; or
-            the body is not valid JSON.
+            The request is invalid. `VALIDATION_FAILED` covers the
+            shape problems: the title is missing, empty,
+            whitespace-only or spans more than 64 characters; the
+            body is not valid JSON; `rootPath` is missing, relative,
+            or past the 4,096-byte bound; the audience carries more
+            than 200 ids. The path validation matrix answers its own
+            codes: `ALBUM_PATH_NOT_FOUND`, `ALBUM_PATH_NOT_DIRECTORY`,
+            `ALBUM_PATH_NOT_READABLE`, `ALBUM_PATH_SYMLINK_ESCAPE`,
+            `ALBUM_PATH_IN_MANAGED_TREE`, `ALBUM_PATH_OVERLAPS`,
+            `ALBUM_PATH_OUTSIDE_ROOTS`.
           content:
             application/json:
               schema:
@@ -2948,6 +3094,148 @@ paths:
                     details:
                       fields:
                         - title
+                pathNotFound:
+                  summary: The source directory does not exist.
+                  value:
+                    code: ALBUM_PATH_NOT_FOUND
+                    message: the source path does not exist
+                pathOutsideRoots:
+                  summary: No configured mount root covers the path.
+                  value:
+                    code: ALBUM_PATH_OUTSIDE_ROOTS
+                    message: the source path is outside the allowed mount roots
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /albums/path-completions:
+    get:
+      operationId: completeAlbumPath
+      tags:
+        - albums
+      summary: Complete a directory album's source path.
+      description: |
+        The source-path completion of the album creation dialog: the
+        typed prefix in, the pickable directories out. The call is
+        user-scoped -- every signed-in member may create a directory
+        album, so every signed-in member may complete a path; the
+        admin role adds nothing here.
+
+        The completion domain is EXACTLY the creation validation
+        domain, the one pin of this endpoint: only directories that
+        sit at or under a configured mount root are ever listed --
+        the same roots the creation's `ALBUM_PATH_OUTSIDE_ROOTS`
+        branch enforces, plus the same managed-tree exclusion
+        (a root the server itself stores data under contributes
+        nothing). A root that does not exist (yet -- removable
+        media), is not a directory, or resolves inside the managed
+        tree contributes no rows, so the completion can never
+        suggest a path the creation would refuse for being outside
+        the allowlist.
+
+        The matching rule, driven by the typed prefix:
+
+        - an empty (or absent) prefix lists the mount roots
+          themselves -- the dialog's first open, "start here";
+        - a prefix that is a leading string of a root's path lists
+          those roots (typing "/Vol" finds "/Volumes/Photos");
+        - otherwise the entries of the prefix's parent directory
+          whose names start with the prefix's last segment are
+          listed as full paths (typing "/Volumes/Photos/2" lists
+          "/Volumes/Photos/2026-spring");
+        - a trailing separator switches to the children of the
+          cleaned prefix itself (typing "/Volumes/Photos/" drills
+          into the root), and no root row rides along then -- the
+          trailing slash says "I am inside this directory".
+
+        Only real directories are listed (symlinked entries are
+        not), the rows are deduplicated, sorted ascending, and
+        capped at 20 -- past the cap the user narrows by typing;
+        there is no pagination. A prefix that matches nothing in the
+        domain answers the empty list, never an error -- a relative
+        prefix, an unreadable parent, a path outside every root all
+        answer `paths: []`, so the endpoint leaks nothing about the
+        filesystem beyond the allowlist.
+
+        The completion runs a bounded read: one settings row plus at
+        most one directory listing, and the response carries at most
+        20 rows.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: prefix
+          in: query
+          required: false
+          description: |
+            The path fragment typed so far. Absent or empty lists the
+            mount roots. Values past 4,096 bytes answer 400 -- the
+            filesystem's own path ceiling, so no honest typing ever
+            hits it.
+          schema:
+            type: string
+            maxLength: 4096
+          example: /Volumes/Photos/2
+      responses:
+        '200':
+          description: |
+            The completion rows: full absolute directory paths inside
+            the allowlist domain, deduplicated, sorted ascending, at
+            most 20. The empty list is an honest answer (nothing in
+            the domain matches the prefix), never an error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumPathCompletionsResponse'
+              examples:
+                roots:
+                  summary: An empty prefix lists the configured roots.
+                  value:
+                    paths:
+                      - /Volumes/Photos
+                      - /mnt/family-archive
+                drilledIn:
+                  summary: A mid-path fragment lists the matching children.
+                  value:
+                    paths:
+                      - /Volumes/Photos/2026-spring
+                      - /Volumes/Photos/2026-summer
+                nothingMatches:
+                  summary: A prefix outside the domain answers nothing.
+                  value:
+                    paths: []
+        '400':
+          description: |
+            The prefix exceeds the 4,096-byte bound (the generated
+            binder does not enforce query maxLength, the handler
+            does).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                prefixTooLong:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: prefix exceeds the limit of 4096 bytes
+                    details:
+                      fields:
+                        - prefix
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -3021,6 +3309,12 @@ paths:
         the owner chose, or null when unset -- the wall derives its
         collage fallback from the members, the detail carries the
         pin itself.
+
+        `rootPath` rides the `directory` albums only: the album's
+        source, the resolved absolute path the row stores -- the
+        edit dialog's read-only source line (the source is pinned
+        at creation; the property patch carries no field for it).
+        Virtual and sync albums omit it.
 
         `shares` rides only the owner's view: the album's grantee
         list, one entry per `album_shares` row in the grant order
@@ -3130,6 +3424,7 @@ paths:
                     type: directory
                     locked: false
                     coverAssetId: null
+                    rootPath: /Volumes/Photos/family
                     callerRole: viewer
                     itemCount: 0
                     items: []
@@ -3193,7 +3488,7 @@ paths:
       summary: Patch one album's properties.
       description: |
         The owner's partial edit of the album's properties: `title`,
-        `description`, `coverAssetId` and `locked`, any subset, at
+        `coverAssetId` and `locked`, any subset, at
         least one field (a body that carries none -- JSON null counts
         as absent, the patch discipline of the asset surface -- is a
         client bug and answers 400). The response is the album's wall
@@ -3211,7 +3506,7 @@ paths:
         permanent delete's own discipline).
 
         The locked gate: a locked album refuses the property and
-        curation fields (`title`, `description`, `coverAssetId`)
+        curation fields (`title`, `coverAssetId`)
         with 409 `ALBUM_LOCKED` -- unlock first. The `locked` field
         itself is never gated: a patch of only `locked: false` IS the
         unlock.
@@ -3474,170 +3769,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   /albums/{albumId}/items:
-    post:
-      operationId: addAlbumItems
-      tags:
-        - albums
-      summary: Add assets to one virtual album.
-      description: |
-        Adds assets to the caller's virtual album with the batch
-        surface's set semantics: one request, one list of at most 200
-        asset ids, one honest report `{added, skipped}`.
-
-        VIRTUAL albums only: directory albums manage their own
-        membership (the rescan flow, a later milestone) and sync
-        albums are no album resources; both answer the single-shape
-        404 like an unknown id.
-
-        Skip semantics (the batch surface's missing-ids discipline):
-        every id must belong to a live asset the CALLER owns -- the
-        owner-based live predicate (not trashed, not hidden, not a
-        Live Photo component row). Curating another account's shared
-        photos into a virtual album is the re-share feature and
-        arrives with its own milestone: the union deliberately does
-        not carry curation yet. A foreign account's asset, a
-        trashed, hidden or component row, and an unknown id are
-        silently skipped, never errors. An id that already sits in
-        the album is skipped too:
-        membership is a set, the add is idempotent. An all-skipped
-        request still answers 200 with `added` 0. Repeated ids
-        collapse to one application; the counts cover the distinct
-        ids. The inserted rows record the caller as `added_by`.
-
-        The locked gate applies: a locked album refuses the write
-        with 409 `ALBUM_LOCKED`. Authorization is the writes'
-        two-tier answer (invisible 404, shared-to-caller 403, the
-        owner or an admin override writes).
-
-        The write publishes one `album.items-changed` event exactly
-        when at least one row was added -- the idempotent no-op stays
-        silent.
-      security:
-        - cookieAuth: []
-        - bearerAuth: []
-      parameters:
-        - name: albumId
-          in: path
-          required: true
-          description: Identifier of the album.
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AlbumItemsRequest'
-            examples:
-              threePicks:
-                summary: Three asset ids to add.
-                value:
-                  assetIds:
-                    - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072
-                    - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073
-                    - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6074
-      responses:
-        '200':
-          description: |
-            The report over the request's distinct ids: `added`
-            counts the rows the request inserted, `skipped` the rest
-            -- already-members and ids the caller cannot act on
-            alike.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AddAlbumItemsResponse'
-              examples:
-                twoAdded:
-                  summary: Two new members, one already in.
-                  value:
-                    added: 2
-                    skipped: 1
-                allSkipped:
-                  summary: Nothing the caller can add.
-                  value:
-                    added: 0
-                    skipped: 3
-        '400':
-          description: |
-            The request is invalid: the body is not valid JSON, the
-            list is empty, or it carries more than 200 ids.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                tooManyIds:
-                  summary: Past the list bound.
-                  value:
-                    code: VALIDATION_FAILED
-                    message: assetIds exceed the limit of 200
-                    details:
-                      fields:
-                        - assetIds
-        '401':
-          description: |
-            Authentication is missing or no longer valid: the cookie
-            or bearer token is absent, expired or revoked.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                invalidCredentials:
-                  value:
-                    code: AUTH_INVALID_CREDENTIALS
-                    message: authentication required
-        '403':
-          description: |
-            The caller can see the album but is not its owner (an
-            album shared to the caller): the share is view-only, so
-            the curation write is an honest authorization failure.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                viewerWrite:
-                  value:
-                    code: AUTH_FORBIDDEN
-                    message: only the album's owner may write it
-        '404':
-          description: |
-            No such album for this caller: the id is unknown, the
-            album belongs to another account without a share to the
-            caller, it is a sync album, or it is a directory album
-            (whose membership is its own flow) -- indistinguishable
-            by design.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                albumNotFound:
-                  value:
-                    code: ALBUM_NOT_FOUND
-                    message: no such album for this caller
-        '409':
-          description: |
-            The album is locked: curation writes are refused until
-            the owner unlocks it.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                albumLocked:
-                  value:
-                    code: ALBUM_LOCKED
-                    message: the album is locked
-        '500':
-          description: Unexpected server failure.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
     delete:
       operationId: removeAlbumItems
       tags:
@@ -3645,11 +3776,18 @@ paths:
       summary: Remove assets from one virtual album.
       description: |
         Removes membership rows from the caller's virtual album:
-        `{removed, skipped}`, the same batch semantics as the add.
-        An id that is no member of the album -- never was, or
-        already removed -- is skipped; an all-skipped request still
-        answers 200 with `removed` 0. Repeated ids collapse; the
-        counts cover the distinct ids.
+        `{removed, skipped}`, the batch surface's set semantics --
+        the honest report, never per-item errors. An id that is no
+        member of the album -- never was, or already removed -- is
+        skipped; an all-skipped request still answers 200 with
+        `removed` 0. Repeated ids collapse; the counts cover the
+        distinct ids.
+
+        The rows this face removes are rows no face writes anymore
+        (the albums-as-sources design retired the membership add):
+        virtual albums created before E4, and whatever membership a
+        later flow leaves behind -- the removal is the tidy-up of
+        the set, not a curation flow.
 
         The removal carries no live predicate: a trashed member's
         row still leaves, the honest cleanup of the set (the live
@@ -3784,53 +3922,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /albums/{albumId}/shares:
-    post:
-      operationId: grantAlbumShare
+  /albums/{albumId}/audience:
+    put:
+      operationId: updateAlbumAudience
       tags:
         - albums
-      summary: Grant one account the view ACL of an album.
+      summary: Set one album's audience (the full grantee set).
       description: |
-        Grants an album's view ACL to another account: one
-        `album_shares` row, one more viewer. The grantee's read
-        access is immediate -- their wall lists the album in the
-        shared group, the detail answers with `callerRole` `viewer`
-        -- and the share is view-only forever: every write face of
-        the album stays the owner's.
+        The album's audience as ONE declarative write: the request
+        carries the complete set of accounts that may view the album,
+        and the server converges the `album_shares` rows onto
+        exactly that set -- grants land for the ids that are not
+        audience yet, rows leave for the grantees the set no longer
+        names. "Who can see" is an album property; this face is its
+        whole write surface (the one-row grant/revoke pair retired
+        with it -- one concept, one endpoint).
+
+        The write is IDEMPOTENT: the same set twice answers the same
+        state, the second request lands no row and fires no event
+        (`granted` and `revoked` both empty). An empty (or
+        all-skipped) set is the honest "only me": every row leaves
+        -- and the owner's own access is untouched by construction,
+        because the owner's visibility is the ownership row, never a
+        share row: the owner is not removable through this face
+        whatever the set says.
+
+        Skipped entries -- the requested ids that cannot become
+        audience -- are reported honestly, never errors: an unknown
+        or disabled account (`invalid_account` -- one reason for
+        both, so user ids cannot be probed through this face) and
+        the album's own owner (`owner` -- the owner sees the album
+        by construction; a row for them would be noise). Everything
+        else the request names lands or stays.
 
         Authorization is the writes' two-tier answer: an album the
         caller cannot see at all -- an unknown id, another account's
-        unshared album, every sync album -- answers the single-shape
-        404 `ALBUM_NOT_FOUND`, byte-identical to the read face, so
-        album ids cannot be probed; an album the caller CAN see but
-        does not own (an album shared to the caller) answers the
-        honest 403 `AUTH_FORBIDDEN` -- a sharee cannot share onward.
-        The owner grants, and an administrator may override the
-        owner check.
+        unshared album, every sync album (the caller's own included:
+        the sync stream's face is the timeline, and its audience
+        edit folds into the same single-shape 404) -- answers the
+        reads' byte-identical `ALBUM_NOT_FOUND`, so album ids cannot
+        be probed; an album the caller CAN see but does not own (an
+        album shared to the caller) answers the honest 403
+        `AUTH_FORBIDDEN` -- the share is view-only, a sharee cannot
+        edit the ACL. The owner writes, and an administrator may
+        override the owner check.
 
-        VIRTUAL and DIRECTORY albums are shareable; sync albums are
-        never -- a sync album id folds into the same single-shape
-        404 (the timeline is the sync album's face). `locked` does
-        NOT gate the grant: the freeze is a curation gate, and a
-        viewer only ever reads.
+        `locked` does NOT gate this face (the freeze is a curation
+        gate; an audience member only ever reads).
 
-        The grant is idempotent: re-granting to a current grantee
-        answers 200 with the existing row -- the same `grantedAt`,
-        the original grantor untouched -- and stays silent on the
-        activity stream.
-
-        Target rules (both answer 400 `VALIDATION_FAILED` with a
-        message key in `details.key`): the album's own owner is
-        never a grantee (`album_share_to_owner` -- the owner sees
-        the album by construction, a share row would be noise); an
-        unknown or disabled account is not a share target
-        (`album_share_user_invalid` -- the two cases answer the
-        same shape, so user ids cannot be probed through this
-        face).
-
-        The write publishes one `album.shared` event exactly when
-        the grant landed a new row: the payload carries the album's
-        id and the GRANTEE's user id, nothing else.
+        The write publishes one `album.shared` event per row that
+        landed and one `album.unshared` event per row that left --
+        the grant/revoke events' discipline carried over: the
+        payload carries the album's id and the GRANTEE's user id
+        (the account whose view of the album changed), and the
+        idempotent no-op stays silent.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -3847,61 +3992,99 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AlbumShareGrantRequest'
+              $ref: '#/components/schemas/AlbumAudienceRequest'
             examples:
-              familyMember:
-                summary: Grant the view ACL to one member account.
+              twoMembers:
+                summary: The audience becomes exactly these two accounts.
                 value:
-                  userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                  audience:
+                    - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                    - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+              onlyMe:
+                summary: The empty set -- the owner alone.
+                value:
+                  audience: []
       responses:
         '200':
           description: |
-            The share row after the write: the fresh row for a new
-            grantee, the existing row (its original `grantedAt`
-            untouched) for the idempotent re-grant.
+            The write's honest report: the audience as it stands
+            after the write (the grant order, the same list the
+            owner's detail carries as `shares`), the ids this write
+            granted and revoked, and the requested ids it skipped
+            with each one's reason.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AlbumShareResponse'
+                $ref: '#/components/schemas/AlbumAudienceResponse'
               examples:
-                freshGrant:
-                  summary: A new grantee's row.
+                freshSet:
+                  summary: Two grants landed, nothing left, nothing skipped.
                   value:
                     albumId: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
-                    userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
-                    grantedAt: '2026-11-05T09:30:00Z'
-                idempotentRegrant:
-                  summary: The re-grant answers the existing row.
+                    audience:
+                      - userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        email: grace@example.com
+                        grantedAt: '2026-11-05T09:30:00Z'
+                      - userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+                        email: hopper@example.com
+                        grantedAt: '2026-11-05T09:30:00Z'
+                    granted:
+                      - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                      - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+                    revoked: []
+                    skipped: []
+                idempotentRepeat:
+                  summary: The same set again -- nothing happens.
                   value:
                     albumId: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
-                    userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
-                    grantedAt: '2026-11-01T10:00:00Z'
+                    audience:
+                      - userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        email: grace@example.com
+                        grantedAt: '2026-11-05T09:30:00Z'
+                    granted: []
+                    revoked: []
+                    skipped: []
+                skippedEntry:
+                  summary: One requested id is not a usable account.
+                  value:
+                    albumId: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
+                    audience:
+                      - userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        email: grace@example.com
+                        grantedAt: '2026-11-05T09:30:00Z'
+                    granted:
+                      - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                    revoked: []
+                    skipped:
+                      - userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99
+                        reason: invalid_account
         '400':
           description: |
-            The request is invalid: the body is not valid JSON, or
-            the target violates a rule -- the album's own owner
-            (`album_share_to_owner`) or an unknown or disabled
-            account (`album_share_user_invalid`, the same shape for
-            both).
+            The request is invalid: the body is not valid JSON, the
+            `audience` field is absent (an explicit empty array --
+            "only me" -- is valid and required; the field must ride
+            the body), or the list carries more than 200 ids.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
-                shareToOwner:
-                  summary: The owner is never a grantee.
+                audienceMissing:
+                  summary: The field must ride the body, even empty.
                   value:
                     code: VALIDATION_FAILED
-                    message: an album's owner cannot be its grantee
+                    message: audience is required
                     details:
-                      key: album_share_to_owner
-                shareUserInvalid:
-                  summary: An unknown or disabled account.
+                      fields:
+                        - audience
+                tooManyIds:
+                  summary: Past the list bound.
                   value:
                     code: VALIDATION_FAILED
-                    message: the share target is not a usable account
+                    message: audience exceeds the limit of 200
                     details:
-                      key: album_share_user_invalid
+                      fields:
+                        - audience
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -3919,22 +4102,22 @@ paths:
           description: |
             The caller can see the album but is not its owner (an
             album shared to the caller): the share is view-only, so
-            sharing onward is an honest authorization failure.
+            editing the audience is an honest authorization failure.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
-                viewerShares:
+                viewerWrite:
                   value:
                     code: AUTH_FORBIDDEN
-                    message: only the album's owner may share it
+                    message: only the album's owner may edit its audience
         '404':
           description: |
             No such album for this caller: the id is unknown, the
             album belongs to another account without a share to the
-            caller, or it is a sync album -- indistinguishable by
-            design.
+            caller, or it is a sync album (the caller's own
+            included) -- indistinguishable by design.
           content:
             application/json:
               schema:
@@ -3950,39 +4133,69 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /albums/{albumId}/shares/{userId}:
-    delete:
-      operationId: revokeAlbumShare
+  /albums/{albumId}/rescan:
+    post:
+      operationId: rescanAlbum
       tags:
         - albums
-      summary: Revoke one account's view ACL of an album.
+      summary: Start one rescan of a directory album's source.
       description: |
-        Removes one `album_shares` row: the grantee's read access
-        ends immediately -- the album leaves their wall, the detail
-        answers the single-shape 404.
+        The E4 rescan trigger: one run that walks the directory
+        album's source root on the server and reconciles the album's
+        membership with what the filesystem holds. The walk never
+        follows symlinks -- a symlinked entry is skipped, a symlinked
+        subdirectory is never descended -- and each walk entry and
+        each live member resolves through exactly one arm of the
+        three-arm diff:
 
-        The owner (or an administrator) revokes any grantee. A
-        grantee may revoke their OWN row -- leaving a shared album
-        is the sharee's own right, the family semantics -- through
-        this same endpoint: the caller's own user id in the path is
-        the departure, whoever granted the row. A sharee cannot
-        revoke ANOTHER account's grant: 403 `AUTH_FORBIDDEN`, the
-        honest refusal of a caller who can see the album but holds
-        no power over its ACL.
+        - a file on disk no live member matches is ADDED by
+          reference-style ingest: a new asset row
+          (`storage_kind` `external`, `file_path` the file's real
+          absolute path, zero copy zero move) and its album
+          membership land in one transaction, and the existing
+          pipeline jobs (metadata, thumbnail, and for a video the
+          transcode) run over the referenced file exactly like an
+          upload's. An owner+checksum duplicate of content the owner
+          already holds never creates a second row: a live duplicate
+          gains the album membership, a trashed duplicate is left
+          alone (no revival semantics).
+        - a live member whose file is gone from disk is marked
+          `deleted_at` directly (the orphan arm's pinned semantics:
+          the file is not the server's and the trash has no meaning
+          for it) -- no missing state, no revival. If the file
+          returns, the next scan's add arm ingests it as a NEW row.
+        - a member whose mtime+size snapshot changed has its
+          checksum re-read and stored, the snapshot re-stamped, and
+          its metadata pipeline re-run (EXIF re-extracted, thumbnail
+          regenerated, the playable copy of a video re-encoded); the
+          ML arm follows the pipeline's own re-run path, which does
+          not re-fire -- readiness is already stamped.
 
-        Everything else mirrors the grant: the single-shape 404 for
-        the invisible ids (an unknown album, another account's
-        unshared album, every sync album), and `locked` never gates
-        -- revocation is not curation.
+        The run's `job_runs` row (`kind` `album_rescan`, carrying
+        the album's id) surfaces progress the way the places
+        re-resolution run does: `job.started` / `job.progress` /
+        `job.finished` on the activity stream, `total`/`done`
+        counting resolved walk entries plus vanished members and
+        `failed` the entries the run could not resolve. The
+        idempotent rescan is the pinned contract: a second run over
+        an unchanged directory performs zero asset writes and
+        publishes zero asset events (the run's own `job_runs`
+        bookkeeping is the progress surface, not product state).
 
-        The 204 is idempotent: revoking a share that is already
-        gone -- never granted, already revoked, or an id that names
-        no account -- is the state the caller asked for, so it
-        answers 204 again and stays silent on the activity stream.
+        The endpoint is idempotent the way the places
+        re-resolution is, scoped to the album: a rescan of THIS
+        album still in flight (`queued` or `running`) answers 200
+        with its identifier and starts nothing; another album's
+        rescan never blocks this one.
 
-        The write publishes one `album.unshared` event exactly when
-        a row left: the payload carries the album's id and the
-        revoked grantee's user id, nothing else.
+        Permission is the album writes' own: the owner (or an
+        administrator) proceeds, a sharee answers the honest 403,
+        everyone else folds into the album 404. A non-directory
+        album -- the caller's own sync album, a virtual album --
+        answers the same 404: the rescan is the directory album's
+        own flow, and ids stay unproammable. A locked album refuses
+        the rescan with 409: the scan rewrites the membership the
+        lock froze.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -3990,25 +4203,39 @@ paths:
         - name: albumId
           in: path
           required: true
-          description: Identifier of the album.
-          schema:
-            type: string
-            format: uuid
-        - name: userId
-          in: path
-          required: true
-          description: |
-            Identifier of the account whose share row leaves: any
-            grantee for the owner or an administrator, the caller's
-            own id for a sharee's departure.
+          description: Identifier of the directory album to rescan.
           schema:
             type: string
             format: uuid
       responses:
-        '204':
+        '200':
           description: |
-            The share row is gone -- or was already gone: the
-            idempotent revoke answers 204 either way, with no body.
+            A rescan of this album is already in flight (`queued` or
+            `running`); its identifier is returned and NO new run is
+            created or enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumRescanResponse'
+              examples:
+                inFlight:
+                  summary: The run currently scanning this album.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '202':
+          description: |
+            The rescan run was created (state `queued`) and its job
+            enqueued. The worker flips the run to `running` when the
+            walk begins.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumRescanResponse'
+              examples:
+                started:
+                  summary: The freshly created run.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -4024,24 +4251,24 @@ paths:
                     message: authentication required
         '403':
           description: |
-            The caller can see the album but is neither its owner
-            nor the departing grantee: a sharee cannot revoke
-            another account's grant.
+            The caller can see the album but is not its owner (an
+            album shared to the caller): the share is view-only, so
+            starting a rescan is an honest authorization failure.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
-                viewerRevokes:
+                viewerWrite:
                   value:
                     code: AUTH_FORBIDDEN
-                    message: only the album's owner or the grantee may revoke this share
+                    message: only the album's owner may rescan it
         '404':
           description: |
             No such album for this caller: the id is unknown, the
             album belongs to another account without a share to the
-            caller, or it is a sync album -- indistinguishable by
-            design.
+            caller, it is a sync album, or it is not a directory
+            album (a virtual album) -- indistinguishable by design.
           content:
             application/json:
               schema:
@@ -4051,12 +4278,36 @@ paths:
                   value:
                     code: ALBUM_NOT_FOUND
                     message: no such album for this caller
-        '500':
-          description: Unexpected server failure.
+        '409':
+          description: |
+            The album is locked: the rescan rewrites the membership
+            the lock froze, so the owner unlocks the album first.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              examples:
+                locked:
+                  value:
+                    code: ALBUM_LOCKED
+                    message: the album is locked
+        '500':
+          description: |
+            The run could not be started: no job queue is wired to
+            the API surface, or creating the run failed. The run
+            itself, once started, reports its own failures through
+            its `job_runs` row (state `failed`) -- an unreadable or
+            vanished source root closes the run failed, never the
+            membership silently.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: the rescan could not be started
   /albums/{albumId}/timeline-preference:
     put:
       operationId: setAlbumTimelinePreference
@@ -8753,6 +9004,205 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /admin/settings/mount-roots:
+    get:
+      operationId: getMountRootsSettings
+      tags:
+        - admin
+      summary: The directory-album mount-root allowlist.
+      description: |
+        The instance's mount-root allowlist: the absolute directory
+        paths a directory album's source may live at or under -- the
+        trust boundary of the albums-as-sources design. The family
+        instance's boundary is drawn at the roots: anything outside
+        them (another process's data, system directories, the
+        server's own originals) can never become an album, whatever
+        the filesystem lets the server read.
+
+        The stored list is the answer, verbatim and in the order it
+        was saved. The default is the empty list -- the "closed"
+        posture: no directory album can be created until an
+        administrator opens at least one root.
+
+        This read answers the CONFIGURATION, not the live domain: a
+        root that does not exist yet (removable media, a mount that
+        comes and goes), one that is not a directory, or one that
+        resolves inside the server's managed tree stays listed here
+        while contributing nothing to the path completion and the
+        creation validation -- an admin configuring a not-yet-
+        mounted path is a supported state, and the setting is the
+        honest record of what was configured. A corrupt setting row
+        answers the empty list with the corruption logged
+        server-side -- the closed state is the safe state.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            The stored allowlist: at most 32 absolute paths. The
+            empty list is the default, not an error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MountRootsSettingsResponse'
+              examples:
+                twoRoots:
+                  summary: A family instance with two photo mounts.
+                  value:
+                    roots:
+                      - /Volumes/Photos
+                      - /mnt/family-archive
+                closed:
+                  summary: The default posture -- nothing is allowed.
+                  value:
+                    roots: []
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      operationId: updateMountRootsSettings
+      tags:
+        - admin
+      summary: Save the directory-album mount-root allowlist.
+      description: |
+        Replaces the allowlist wholesale (full-set semantics, the
+        settings surface's discipline): the request carries the
+        COMPLETE list, an empty list closing directory album
+        creation again.
+
+        Every entry must be an absolute path (a leading separator)
+        within the 4,096-byte bound; the server cleans each value,
+        collapses duplicates after the clean, and stores the
+        resulting list (the response answers the stored value, so a
+        cleaned or deduplicated entry shows up honestly). At most 32
+        entries. Existence is deliberately NOT required: a root may
+        be configured before the volume is mounted, and it
+        contributes to the completion and validation domains only
+        once it exists (the `GET` face's live-domain note).
+
+        The write takes effect immediately: the next path
+        completion and the next album creation read the saved list.
+        Like the sibling settings faces (storage, trash,
+        transcoding), the write publishes no event: instance
+        settings are the admin surface's own state, and the admin's
+        own response carries the saved value.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MountRootsSettingsUpdateRequest'
+            examples:
+              openTwo:
+                summary: Open two mounts.
+                value:
+                  roots:
+                    - /Volumes/Photos
+                    - /mnt/family-archive
+              close:
+                summary: Close directory album creation.
+                value:
+                  roots: []
+      responses:
+        '200':
+          description: |
+            The allowlist was saved; the response carries the stored
+            value (cleaned, deduplicated, in first-occurrence order).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MountRootsSettingsResponse'
+              examples:
+                saved:
+                  summary: The freshly saved allowlist.
+                  value:
+                    roots:
+                      - /Volumes/Photos
+                      - /mnt/family-archive
+        '400':
+          description: |
+            The request is invalid: the body is not valid JSON, the
+            `roots` field is absent, the list carries more than 32
+            entries, or an entry is empty, relative, or past the
+            4,096-byte bound. Nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                relativeRoot:
+                  summary: A relative path is not a mount root.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: every root must be an absolute path
+                    details:
+                      fields:
+                        - roots
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: The validated allowlist could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   schemas:
     LoginRequest:
@@ -9403,6 +9853,87 @@ components:
         keepOriginal:
           type: boolean
           description: The failure policy to save.
+    MountRootsSettingsResponse:
+      type: object
+      description: |
+        The mount-root allowlist answer of `GET /admin/settings/
+        mount-roots` and `PUT /admin/settings/mount-roots`: the
+        stored list verbatim (the PUT's answer carries the cleaned,
+        deduplicated value in first-occurrence order). The empty
+        list is the default closed posture, never an error.
+      required:
+        - roots
+      properties:
+        roots:
+          type: array
+          maxItems: 32
+          description: |
+            The configured mount roots: absolute directory paths,
+            at most 32, stored as written. A root's live usability
+            (exists, is a directory, outside the managed tree) is
+            the completion and creation domains' concern, not this
+            list's -- the list is the honest record of the
+            configuration.
+          items:
+            type: string
+    MountRootsSettingsUpdateRequest:
+      type: object
+      description: |
+        Payload of `PUT /admin/settings/mount-roots`: the COMPLETE
+        replacement allowlist. The field must ride the body -- an
+        explicit empty array closes directory album creation, while
+        an absent field is a client bug the 400 names.
+      required:
+        - roots
+      properties:
+        roots:
+          type: array
+          maxItems: 32
+          description: |
+            Every mount root of the new allowlist, at most 32
+            entries. Each must be an absolute path within the
+            4,096-byte bound; the server cleans each value and
+            collapses duplicates after the clean. Existence is not
+            required -- a root may be configured before the volume
+            is mounted.
+          items:
+            type: string
+    AlbumPathCompletionsResponse:
+      type: object
+      description: |
+        The path completion answer: the pickable source directories
+        of the creation dialog's combobox.
+      required:
+        - paths
+      properties:
+        paths:
+          type: array
+          maxItems: 20
+          description: |
+            Full absolute directory paths inside the completion
+            domain -- at or under a configured mount root, outside
+            the server's managed tree, real directories (symlinked
+            entries are never listed). Deduplicated, sorted
+            ascending, at most 20 rows. The empty array is an honest
+            "nothing matches", never an error.
+          items:
+            type: string
+    AlbumRescanResponse:
+      type: object
+      description: |
+        The identifier of one directory album rescan run: the
+        `job_runs` row the rescan job drives and the `job.*` events
+        announce.
+      required:
+        - jobRunId
+      properties:
+        jobRunId:
+          type: string
+          format: uuid
+          description: |
+            UUIDv7 identifier of the run's `job_runs` row. `202`
+            carries the freshly created run; `200` the in-flight one
+            of THIS album the request joined instead.
     ModelDownloadResponse:
       type: object
       description: |
@@ -9546,7 +10077,9 @@ components:
         The kinds of job runs the instance records. The model
         download is one run; each machine learning slot's rerun is
         its own kind, named after the slot it redoes; the place
-        re-resolution is the places-data-update path's kind.
+        re-resolution is the places-data-update path's kind; the
+        album rescan is the directory album's source-reconciliation
+        run.
       enum:
         - model_download
         - face_detect_rerun
@@ -9554,6 +10087,7 @@ components:
         - clip_embed_rerun
         - ocr_rerun
         - places_rerun
+        - album_rescan
     JobRunState:
       type: string
       description: |
@@ -10415,6 +10949,7 @@ components:
         - id
         - ownerId
         - kind
+        - storageKind
         - originalFilename
         - fileSize
         - mimeType
@@ -10445,6 +10980,23 @@ components:
           enum:
             - image
             - video
+        storageKind:
+          type: string
+          description: |
+            Where the asset's original file lives. `blob` rows were
+            uploaded into the server's originals tree and were
+            soft-deleted in place (the file stays until expiry).
+            `external` rows reference a directory album's source file
+            and were moved INTO the server's trash area when the
+            owner trashed them -- the listing is honest for both
+            kinds, and a restore moves the external file back to its
+            recorded original location. External rows the rescan's
+            orphan arm marked deleted never appear here at all: the
+            file was never the server's and the trash has no meaning
+            for it.
+          enum:
+            - blob
+            - external
         originalFilename:
           type: string
           description: The file name the asset was uploaded with.
@@ -11494,7 +12046,6 @@ components:
       required:
         - id
         - title
-        - description
         - type
         - locked
         - isShared
@@ -11510,9 +12061,6 @@ components:
         title:
           type: string
           description: The album's display title.
-        description:
-          type: string
-          description: The album's free-text description (empty when unset).
         type:
           type: string
           enum:
@@ -11615,7 +12163,6 @@ components:
       required:
         - id
         - title
-        - description
         - type
         - locked
         - coverAssetId
@@ -11630,9 +12177,6 @@ components:
         title:
           type: string
           description: The album's display title.
-        description:
-          type: string
-          description: The album's free-text description (empty when unset).
         type:
           type: string
           enum:
@@ -11658,6 +12202,14 @@ components:
             - type: string
               format: uuid
             - type: 'null'
+        rootPath:
+          type: string
+          description: |
+            The album's source directory: the RESOLVED absolute path
+            the album row stores, present exactly on `directory`
+            albums (the edit dialog's read-only source line; the
+            property patch carries no field for it -- the source is
+            pinned at creation). Virtual and sync albums omit it.
         callerRole:
           type: string
           enum:
@@ -11769,12 +12321,18 @@ components:
     AlbumCreateRequest:
       type: object
       description: |
-        The creation body of one virtual album: the title and the
-        optional bounded description. No type field exists -- this
-        endpoint IS virtual creation, the only creatable album type
-        of the face.
+        The creation body of one directory album (E4's
+        albums-as-sources): the title, the existing directory the
+        album references in place, and the audience the album starts
+        with. No type field exists -- this endpoint IS directory
+        creation, the only creatable album type. No description
+        field either: it died whole (the 2026-11-08 owner
+        evaluation -- real-world fill rate near zero, the context
+        already carried by title/date-range+count/place/cover), and
+        the property patch carries no field that could set one.
       required:
         - title
+        - rootPath
       properties:
         title:
           type: string
@@ -11785,13 +12343,54 @@ components:
             span 1-64 Unicode characters after the trim (the count
             is over runes, so multi-byte titles stay within the
             bound at the same length).
-        description:
+        rootPath:
           type: string
-          maxLength: 10000
+          maxLength: 4096
           description: |
-            The album's free-text description; empty when absent.
-            At most 10,000 Unicode characters, the asset
-            description's own bound.
+            The source directory: an existing absolute path the
+            server validates against the path matrix (existence,
+            directory-ness, readability, symlink resolution, the
+            managed tree, root overlap, the mount-root allowlist)
+            before creating anything. The album row stores the
+            RESOLVED absolute path -- symlink segments evaluated --
+            so a later symlink swap cannot repoint the album.
+        audience:
+          type: array
+          maxItems: 200
+          description: |
+            The accounts the album starts being visible to: the
+            initial `album_shares` set, empty (or absent) meaning
+            "only me". Entries that cannot be granted -- an unknown
+            or disabled account, or the caller's own id -- are
+            skipped and reported in the response's `skipped` list,
+            never errors.
+          items:
+            type: string
+            format: uuid
+    AlbumCreateResponse:
+      description: |
+        The creation answer: the fresh directory album's wall card
+        (the summary exactly as `GET /albums` lists it) plus the
+        honest audience report -- the requested ids that did not
+        become audience, each with its reason. The card's companions
+        are the creation-time constants: `callerRole` `owner`,
+        `isShared` true exactly when the audience landed a row, an
+        empty `coverAssetIds`, `itemCount` 0.
+      allOf:
+        - $ref: '#/components/schemas/AlbumSummary'
+        - type: object
+          required:
+            - skipped
+          properties:
+            skipped:
+              type: array
+              description: |
+                The requested audience ids that stayed ungranted:
+                the album's own owner and every id that names no
+                usable account. Empty when the whole audience
+                landed.
+              items:
+                $ref: '#/components/schemas/AlbumAudienceSkip'
     AlbumPatch:
       type: object
       description: |
@@ -11813,13 +12412,6 @@ components:
             The album's display title, trimmed server-side; when
             present it must span 1-64 Unicode characters after the
             trim.
-        description:
-          type: string
-          maxLength: 10000
-          description: |
-            The album's free-text description; the value replaces
-            the stored text wholesale (an empty string clears it).
-            At most 10,000 Unicode characters.
         coverAssetId:
           type: string
           format: uuid
@@ -11842,9 +12434,9 @@ components:
     AlbumItemsRequest:
       type: object
       description: |
-        The membership write body: the list of asset ids to add to
-        or remove from one virtual album. Repeated ids collapse to
-        one application; the report's counts cover the distinct ids.
+        The membership removal body: the list of asset ids to remove
+        from one virtual album. Repeated ids collapse to one
+        application; the report's counts cover the distinct ids.
       required:
         - assetIds
       properties:
@@ -11853,37 +12445,12 @@ components:
           minItems: 1
           maxItems: 200
           description: |
-            The asset ids of the membership write, between 1 and 200
-            entries. The add skips -- never errors on -- every id
-            that is not a live caller-owned asset or that already
-            sits in the album; the remove skips the ids that are no
+            The asset ids of the membership removal, between 1 and
+            200 entries; the remove skips the ids that are no
             members.
           items:
             type: string
             format: uuid
-    AddAlbumItemsResponse:
-      type: object
-      description: |
-        The honest report of one membership add over the request's
-        distinct ids: what landed and what was skipped, foreign,
-        non-live and already-member ids alike.
-      required:
-        - added
-        - skipped
-      properties:
-        added:
-          type: integer
-          description: |
-            The membership rows the request inserted. Zero for an
-            all-skipped request, which is still a 200 -- batch
-            semantics, never an error.
-        skipped:
-          type: integer
-          description: |
-            The distinct ids that did not land: unknown ids, another
-            account's assets, trashed, hidden or component rows, and
-            the ids already sitting in the album (the idempotent
-            add).
     RemoveAlbumItemsResponse:
       type: object
       description: |
@@ -11904,44 +12471,110 @@ components:
           description: |
             The distinct ids that were no members of the album --
             never added, or already removed.
-    AlbumShareGrantRequest:
+    AlbumAudienceRequest:
       type: object
       description: |
-        The grant body: the account receiving the view ACL. The
-        target rules live in the endpoint's own answer -- the
-        album's owner and unusable accounts answer 400 there, never
-        a distinct shape here.
+        The audience write body: the COMPLETE grantee set, the state
+        the album's `album_shares` rows must converge to. The field
+        must ride the body -- an explicit empty array IS the valid
+        "only me" request (every row leaves), while an absent field
+        is a client bug the 400 names, the destructive-silent-
+        default guard of the settings writes.
       required:
-        - userId
+        - audience
       properties:
-        userId:
-          type: string
-          format: uuid
-          description: Identifier of the account receiving the view ACL.
-    AlbumShareResponse:
+        audience:
+          type: array
+          maxItems: 200
+          description: |
+            Every account that may view the album after this write,
+            between 0 and 200 entries. Repeated ids collapse to one
+            application. The owner's own id is skippable noise (the
+            owner sees the album by construction), and ids that name
+            no usable account are skipped with a reason -- never
+            errors.
+          items:
+            type: string
+            format: uuid
+    AlbumAudienceResponse:
       type: object
       description: |
-        One share row as the grant endpoint answers it: the album,
-        the grantee and the grant time. The idempotent re-grant
-        answers the existing row's values -- the original
-        `grantedAt` and grantor untouched.
+        The audience write's honest report: the audience as it
+        stands after the write, the transitions this write caused,
+        and the requested ids it skipped. The three id lists carry
+        only what the write actually did -- a concurrent writer's
+        rows surface in `audience`, never in a transition the
+        response claims.
       required:
         - albumId
-        - userId
-        - grantedAt
+        - audience
+        - granted
+        - revoked
+        - skipped
       properties:
         albumId:
           type: string
           format: uuid
-          description: Identifier of the shared album.
+          description: Identifier of the album the audience belongs to.
+        audience:
+          type: array
+          description: |
+            The grantee list after the write, one entry per
+            `album_shares` row in the grant order (`grantedAt`
+            ascending) -- the same list the owner's album detail
+            carries as `shares`, the edit dialog's chips.
+          items:
+            $ref: '#/components/schemas/AlbumShareEntry'
+        granted:
+          type: array
+          description: |
+            The ids whose rows THIS write landed -- empty for the
+            idempotent repeat of the stored set. One `album.shared`
+            event fired per entry.
+          items:
+            type: string
+            format: uuid
+        revoked:
+          type: array
+          description: |
+            The ids whose rows THIS write removed -- empty for the
+            idempotent repeat. One `album.unshared` event fired per
+            entry.
+          items:
+            type: string
+            format: uuid
+        skipped:
+          type: array
+          description: |
+            The requested ids that stayed ungranted, each with its
+            reason. Empty when the whole request was actionable.
+          items:
+            $ref: '#/components/schemas/AlbumAudienceSkip'
+    AlbumAudienceSkip:
+      type: object
+      description: |
+        One requested audience entry the write could not grant: the
+        id and the honest reason. The reason is a machine value the
+        client maps onto its own phrasing; it never probes the
+        account table further.
+      required:
+        - userId
+        - reason
+      properties:
         userId:
           type: string
           format: uuid
-          description: Identifier of the grantee account.
-        grantedAt:
+          description: The requested id that stayed ungranted.
+        reason:
           type: string
-          format: date-time
-          description: When the view ACL was granted (RFC 3339 UTC).
+          enum:
+            - owner
+            - invalid_account
+          description: |
+            Why the id was skipped: `owner` -- the album's own owner,
+            whose visibility is the ownership row, never a share row;
+            `invalid_account` -- an unknown or disabled account (the
+            same reason for both, so user ids cannot be probed).
     AlbumTimelinePreferenceRequest:
       type: object
       description: |
@@ -12074,8 +12707,17 @@ components:
             - PERSON_NOT_FOUND
             - ALBUM_NOT_FOUND
             - ALBUM_LOCKED
+            - ALBUM_PATH_NOT_FOUND
+            - ALBUM_PATH_NOT_DIRECTORY
+            - ALBUM_PATH_NOT_READABLE
+            - ALBUM_PATH_SYMLINK_ESCAPE
+            - ALBUM_PATH_IN_MANAGED_TREE
+            - ALBUM_PATH_OVERLAPS
+            - ALBUM_PATH_OUTSIDE_ROOTS
             - TAG_NOT_FOUND
             - TAG_NAME_TAKEN
+            - ASSET_TRASH_MOVE_FAILED
+            - ASSET_RESTORE_MOVE_FAILED
         message:
           type: string
           description: English technical description for debugging.

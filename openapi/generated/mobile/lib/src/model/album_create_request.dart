@@ -3,25 +3,31 @@
 //
 
 // ignore_for_file: unused_element
+import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
 part 'album_create_request.g.dart';
 
-/// The creation body of one virtual album: the title and the optional bounded description. No type field exists -- this endpoint IS virtual creation, the only creatable album type of the face. 
+/// The creation body of one directory album (E4's albums-as-sources): the title, the existing directory the album references in place, and the audience the album starts with. No type field exists -- this endpoint IS directory creation, the only creatable album type. No description field either: it died whole (the 2026-11-08 owner evaluation -- real-world fill rate near zero, the context already carried by title/date-range+count/place/cover), and the property patch carries no field that could set one. 
 ///
 /// Properties:
 /// * [title] - The album's display title, trimmed server-side; it must span 1-64 Unicode characters after the trim (the count is over runes, so multi-byte titles stay within the bound at the same length). 
-/// * [description] - The album's free-text description; empty when absent. At most 10,000 Unicode characters, the asset description's own bound. 
+/// * [rootPath] - The source directory: an existing absolute path the server validates against the path matrix (existence, directory-ness, readability, symlink resolution, the managed tree, root overlap, the mount-root allowlist) before creating anything. The album row stores the RESOLVED absolute path -- symlink segments evaluated -- so a later symlink swap cannot repoint the album. 
+/// * [audience] - The accounts the album starts being visible to: the initial `album_shares` set, empty (or absent) meaning \"only me\". Entries that cannot be granted -- an unknown or disabled account, or the caller's own id -- are skipped and reported in the response's `skipped` list, never errors. 
 @BuiltValue()
 abstract class AlbumCreateRequest implements Built<AlbumCreateRequest, AlbumCreateRequestBuilder> {
   /// The album's display title, trimmed server-side; it must span 1-64 Unicode characters after the trim (the count is over runes, so multi-byte titles stay within the bound at the same length). 
   @BuiltValueField(wireName: r'title')
   String get title;
 
-  /// The album's free-text description; empty when absent. At most 10,000 Unicode characters, the asset description's own bound. 
-  @BuiltValueField(wireName: r'description')
-  String? get description;
+  /// The source directory: an existing absolute path the server validates against the path matrix (existence, directory-ness, readability, symlink resolution, the managed tree, root overlap, the mount-root allowlist) before creating anything. The album row stores the RESOLVED absolute path -- symlink segments evaluated -- so a later symlink swap cannot repoint the album. 
+  @BuiltValueField(wireName: r'rootPath')
+  String get rootPath;
+
+  /// The accounts the album starts being visible to: the initial `album_shares` set, empty (or absent) meaning \"only me\". Entries that cannot be granted -- an unknown or disabled account, or the caller's own id -- are skipped and reported in the response's `skipped` list, never errors. 
+  @BuiltValueField(wireName: r'audience')
+  BuiltList<String>? get audience;
 
   AlbumCreateRequest._();
 
@@ -51,11 +57,16 @@ class _$AlbumCreateRequestSerializer implements PrimitiveSerializer<AlbumCreateR
       object.title,
       specifiedType: const FullType(String),
     );
-    if (object.description != null) {
-      yield r'description';
+    yield r'rootPath';
+    yield serializers.serialize(
+      object.rootPath,
+      specifiedType: const FullType(String),
+    );
+    if (object.audience != null) {
+      yield r'audience';
       yield serializers.serialize(
-        object.description,
-        specifiedType: const FullType(String),
+        object.audience,
+        specifiedType: const FullType(BuiltList, [FullType(String)]),
       );
     }
   }
@@ -88,13 +99,20 @@ class _$AlbumCreateRequestSerializer implements PrimitiveSerializer<AlbumCreateR
           ) as String;
           result.title = valueDes;
           break;
-        case r'description':
+        case r'rootPath':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(String),
-          ) as String?;
+            specifiedType: const FullType(String),
+          ) as String;
+          result.rootPath = valueDes;
+          break;
+        case r'audience':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>?;
           if (valueDes == null) continue;
-          result.description = valueDes;
+          result.audience.replace(valueDes);
           break;
         default:
           unhandled.add(key);

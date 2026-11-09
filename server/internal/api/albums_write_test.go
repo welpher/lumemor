@@ -1,19 +1,23 @@
-// Album surface write tests (M3c Task 2): virtual album creation,
-// the property patch (with the cover's live-member validation and the
+// Album surface write tests (M3c Task 2, reshaped by E4's
+// albums-as-sources): the directory album creation behind POST
+// /albums (title + the validated source path + the audience, with
+// the honest skip report of unusable audience entries), the
+// property patch (with the cover's live-member validation and the
 // locked gate), the delete (virtual only, cascades, never locked-
-// gated) and the membership curation with the batch's honest
-// {added|removed, skipped} report. The two-tier authorization answer
+// gated) and the membership removal with the batch's honest
+// {removed, skipped} report. The two-tier authorization answer
 // runs through every write: an invisible album answers the reads'
 // byte-identical 404, an album shared to the caller answers the
 // honest 403, and an administrator overrides the owner check. The
-// four live album.* events carry ids only -- no album state rides
+// live album.* events carry ids only -- no album state rides
 // the shared stream. Fixtures insert albums, memberships and assets
-// directly in the database; every write goes through the API.
+// directly in the database; every write goes through the API. The
+// path validation matrix and the completion domain live in
+// albumroots_test.go.
 package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,7 +29,8 @@ import (
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 )
 
-// albumIDBody builds a list of quoted ids for the membership bodies.
+// albumIDList builds a list of quoted ids for the audience and
+// membership bodies.
 func albumIDList(ids []uuid.UUID) string {
 	quoted := make([]string, len(ids))
 	for i, id := range ids {
@@ -34,9 +39,18 @@ func albumIDList(ids []uuid.UUID) string {
 	return strings.Join(quoted, ",")
 }
 
-// albumItemsBody assembles the membership write body.
+// albumItemsBody assembles the membership removal body.
 func albumItemsBody(ids ...uuid.UUID) string {
 	return `{"assetIds":[` + albumIDList(ids) + `]}`
+}
+
+// audienceBody assembles the audience set body; a nil audience
+// omits the field, an empty slice writes the explicit empty set.
+func audienceBody(ids []uuid.UUID) string {
+	if ids == nil {
+		return `{}`
+	}
+	return `{"audience":[` + albumIDList(ids) + `]}`
 }
 
 // writeAlbumRaw is the album write dispatcher: an empty body sends no
@@ -59,38 +73,47 @@ func (e *assetEnv) writeAlbumRaw(t *testing.T, cookie *http.Cookie, method, targ
 	return rec
 }
 
-// createAlbumBody assembles the creation body; a nil description
-// omits the field.
-func createAlbumBody(t *testing.T, title string, description *string) string {
+// createAlbumBody assembles the creation body: the title, the source
+// path, and the audience (a nil slice omits the field, an empty
+// slice writes the explicit empty set).
+func createAlbumBody(t *testing.T, title, rootPath string, audience []uuid.UUID) string {
 	t.Helper()
 	quotedTitle, err := json.Marshal(title)
 	if err != nil {
 		t.Fatalf("quote title %q: %v", title, err)
 	}
-	body := `{"title":` + string(quotedTitle)
-	if description != nil {
-		quotedDescription, err := json.Marshal(*description)
-		if err != nil {
-			t.Fatalf("quote description %q: %v", *description, err)
-		}
-		body += `,"description":` + string(quotedDescription)
+	quotedPath, err := json.Marshal(rootPath)
+	if err != nil {
+		t.Fatalf("quote rootPath %q: %v", rootPath, err)
+	}
+	body := `{"title":` + string(quotedTitle) + `,"rootPath":` + string(quotedPath)
+	if audience != nil {
+		body += `,"audience":[` + albumIDList(audience) + `]`
 	}
 	return body + "}"
 }
 
-// createAlbum fires POST /albums and decodes the 201 body.
-func (e *assetEnv) createAlbum(t *testing.T, cookie *http.Cookie, title string, description *string) apigen.AlbumSummary {
+// createAlbumRaw fires POST /albums with the raw body (a nil cookie
+// sends it unauthenticated).
+func (e *assetEnv) createAlbumRaw(t *testing.T, cookie *http.Cookie, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	rec := e.writeAlbumRaw(t, cookie, http.MethodPost, "/api/v1/albums", createAlbumBody(t, title, description))
+	return e.writeAlbumRaw(t, cookie, http.MethodPost, "/api/v1/albums", body)
+}
+
+// createAlbum fires POST /albums over one source path and decodes
+// the 201 body; a nil audience omits the field.
+func (e *assetEnv) createAlbum(t *testing.T, cookie *http.Cookie, title, rootPath string, audience []uuid.UUID) apigen.AlbumCreateResponse {
+	t.Helper()
+	rec := e.createAlbumRaw(t, cookie, createAlbumBody(t, title, rootPath, audience))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("POST /albums status = %d, want %d (body %q)",
 			rec.Code, http.StatusCreated, rec.Body.String())
 	}
-	var summary apigen.AlbumSummary
-	if err := json.Unmarshal(rec.Body.Bytes(), &summary); err != nil {
+	var response apigen.AlbumCreateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode create album body %q: %v", rec.Body.String(), err)
 	}
-	return summary
+	return response
 }
 
 // patchAlbumRaw fires PATCH /albums/{albumId} with the raw body.
@@ -120,33 +143,12 @@ func (e *assetEnv) deleteAlbumRaw(t *testing.T, cookie *http.Cookie, albumID uui
 	return e.writeAlbumRaw(t, cookie, http.MethodDelete, "/api/v1/albums/"+albumID.String(), "")
 }
 
-// postAlbumItems fires POST /albums/{albumId}/items with the raw body.
-func (e *assetEnv) postAlbumItems(t *testing.T, cookie *http.Cookie, albumID uuid.UUID, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	return e.writeAlbumRaw(t, cookie, http.MethodPost,
-		"/api/v1/albums/"+albumID.String()+"/items", body)
-}
-
 // deleteAlbumItems fires DELETE /albums/{albumId}/items with the raw
 // body.
 func (e *assetEnv) deleteAlbumItems(t *testing.T, cookie *http.Cookie, albumID uuid.UUID, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	return e.writeAlbumRaw(t, cookie, http.MethodDelete,
 		"/api/v1/albums/"+albumID.String()+"/items", body)
-}
-
-// decodeAddItemsReport decodes the 200 add report.
-func decodeAddItemsReport(t *testing.T, rec *httptest.ResponseRecorder) apigen.AddAlbumItemsResponse {
-	t.Helper()
-	if rec.Code != http.StatusOK {
-		t.Fatalf("POST /albums/{id}/items status = %d, want %d (body %q)",
-			rec.Code, http.StatusOK, rec.Body.String())
-	}
-	var report apigen.AddAlbumItemsResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
-		t.Fatalf("decode add items body %q: %v", rec.Body.String(), err)
-	}
-	return report
 }
 
 // decodeRemoveItemsReport decodes the 200 remove report.
@@ -244,8 +246,9 @@ func fixtureWriteAlbumID(suffix string) uuid.UUID {
 }
 
 // TestAlbumWritesRequireSession pins the 401 of every write face:
-// creation, the patch, the delete and both membership writes refuse
-// the unauthenticated caller before any handler logic runs.
+// creation, the audience write, the patch, the delete and the
+// membership removal refuse the unauthenticated caller before any
+// handler logic runs.
 func TestAlbumWritesRequireSession(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	albumID := fixtureWallAlbumID("ff").String()
@@ -256,9 +259,9 @@ func TestAlbumWritesRequireSession(t *testing.T) {
 		body   string
 	}{
 		{http.MethodPost, "/api/v1/albums", `{"title":"No session"}`},
+		{http.MethodPut, "/api/v1/albums/" + albumID + "/audience", `{"audience":[]}`},
 		{http.MethodPatch, "/api/v1/albums/" + albumID, `{"title":"No session"}`},
 		{http.MethodDelete, "/api/v1/albums/" + albumID, ""},
-		{http.MethodPost, "/api/v1/albums/" + albumID + "/items", `{"assetIds":["` + fixtureWallAssetID("ff").String() + `"]}`},
 		{http.MethodDelete, "/api/v1/albums/" + albumID + "/items", `{"assetIds":["` + fixtureWallAssetID("ff").String() + `"]}`},
 	} {
 		rec := env.writeAlbumRaw(t, nil, target.method, target.target, target.body)
@@ -267,28 +270,33 @@ func TestAlbumWritesRequireSession(t *testing.T) {
 }
 
 // TestCreateAlbum pins the creation: the ONLY creatable type is the
-// virtual album, the answer is the wall card of the fresh row (owner
-// role, no share, no cover, no members), and the wall lists it. The
-// title validation spans the trim, the rune count and the null body.
+// directory album (the albums-as-sources core), the answer is the
+// wall card of the fresh row (owner role, no cover, no members)
+// widened with the honest audience report, the wall lists it, and
+// the detail carries the stored source path. The title validation
+// spans the trim, the rune count and the null body; the audience's
+// unusable entries skip with their reasons while the album still
+// lands.
 func TestCreateAlbum(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
+	root := env.provisionMountRoot(t)
 
 	t.Run("CreatesAndListsOnWall", func(t *testing.T) {
-		description := "The coastal week in the van."
-		summary := env.createAlbum(t, env.cookie, "Road trip 2026", &description)
+		source := sourceDir(t, root, "family")
+		summary := env.createAlbum(t, env.cookie, "Family archive", source, nil)
 
-		if summary.Title != "Road trip 2026" || summary.Description != description {
-			t.Errorf("title/description = %q/%q, want the stored values", summary.Title, summary.Description)
+		if summary.Title != "Family archive" {
+			t.Errorf("title = %q, want the stored title", summary.Title)
 		}
-		if summary.Type != apigen.AlbumSummaryTypeVirtual {
-			t.Errorf("type = %q, want virtual (the only creatable type)", summary.Type)
+		if summary.Type != apigen.AlbumCreateResponseTypeDirectory {
+			t.Errorf("type = %q, want directory (the only creatable type)", summary.Type)
 		}
 		if summary.Locked {
 			t.Error("locked = true, want false")
 		}
 		if summary.IsShared {
-			t.Error("isShared = true, want false (nothing is shared yet)")
+			t.Error("isShared = true, want false (no audience landed)")
 		}
 		if summary.CoverAssetIds == nil || len(summary.CoverAssetIds) != 0 {
 			t.Errorf("coverAssetIds = %v, want an empty array (no members)", summary.CoverAssetIds)
@@ -296,7 +304,7 @@ func TestCreateAlbum(t *testing.T) {
 		if summary.ItemCount != 0 {
 			t.Errorf("itemCount = %d, want 0", summary.ItemCount)
 		}
-		if summary.CallerRole != apigen.AlbumSummaryCallerRoleOwner {
+		if summary.CallerRole != apigen.AlbumCreateResponseCallerRoleOwner {
 			t.Errorf("callerRole = %q, want owner", summary.CallerRole)
 		}
 		if summary.Owner != nil {
@@ -305,9 +313,15 @@ func TestCreateAlbum(t *testing.T) {
 		if summary.UpdatedAt.IsZero() {
 			t.Error("updatedAt = zero, want the creation time")
 		}
-		if got := env.queryInt(t, "SELECT count(*) FROM albums WHERE id = $1 AND type = 'virtual' AND owner_id = $2",
-			pgUUID(uuid.UUID(summary.Id)), pgUUID(adminID)); got != 1 {
-			t.Errorf("stored album rows = %d, want 1", got)
+		if summary.Skipped == nil || len(summary.Skipped) != 0 {
+			t.Errorf("skipped = %v, want the empty array (no audience requested)", summary.Skipped)
+		}
+		if summary.InTimeline == nil || !*summary.InTimeline {
+			t.Errorf("inTimeline = %v, want true (the directory card is excludable)", summary.InTimeline)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM albums WHERE id = $1 AND type = 'directory' AND owner_id = $2 AND root_path = $3",
+			pgUUID(uuid.UUID(summary.Id)), pgUUID(adminID), source); got != 1 {
+			t.Errorf("stored album rows = %d, want 1 (the row stores the resolved path %s)", got, source)
 		}
 
 		// The wall lists the new card after the pinned sync card
@@ -324,40 +338,103 @@ func TestCreateAlbum(t *testing.T) {
 			t.Fatalf("wall[1].id = %s, want the created album %s", wall.Albums[1].Id, summary.Id)
 		}
 		detail := env.getAlbumDetail(t, env.cookie, uuid.UUID(summary.Id), "")
-		if detail.Title != "Road trip 2026" || detail.ItemCount != 0 {
+		if detail.Title != "Family archive" || detail.ItemCount != 0 {
 			t.Errorf("detail title/itemCount = %q/%d, want the stored title and 0", detail.Title, detail.ItemCount)
+		}
+		if detail.RootPath == nil || *detail.RootPath != source {
+			t.Errorf("detail rootPath = %v, want the stored source %s", detail.RootPath, source)
 		}
 	})
 
 	t.Run("TrimsTitle", func(t *testing.T) {
-		summary := env.createAlbum(t, env.cookie, "  Weekend picks  ", nil)
+		summary := env.createAlbum(t, env.cookie, "  Weekend picks  ", sourceDir(t, root, "picks"), nil)
 		if summary.Title != "Weekend picks" {
 			t.Errorf("title = %q, want the trimmed %q", summary.Title, "Weekend picks")
 		}
 	})
 
-	t.Run("DescriptionDefaultsToEmpty", func(t *testing.T) {
-		summary := env.createAlbum(t, env.cookie, "No description", nil)
-		if summary.Description != "" {
-			t.Errorf("description = %q, want the empty default", summary.Description)
+	t.Run("AudienceLandsAndSkipsHonestly", func(t *testing.T) {
+		graceID, _ := env.createSecondUser(t, "create-audience-grace@example.com")
+		unknown := uuid.MustParse("70000000-0000-0000-0003-000000000001")
+		disabledID, _ := env.createSecondUser(t, "create-audience-disabled@example.com")
+		env.exec(t, "UPDATE users SET is_disabled = true WHERE id = $1", pgUUID(disabledID))
+		source := sourceDir(t, root, "audience")
+
+		// The request names the owner, a grantee, an unknown id and
+		// a disabled account: one lands, three skip with reasons,
+		// and the creation still answers 201.
+		summary := env.createAlbum(t, env.cookie, "Audience matrix", source,
+			[]uuid.UUID{adminID, graceID, unknown, disabledID, graceID})
+		albumID := uuid.UUID(summary.Id)
+
+		if summary.IsShared != true {
+			t.Error("isShared = false, want true (one audience row landed)")
+		}
+		if got := env.shareRowsOf(t, albumID); got != 1 {
+			t.Errorf("share rows = %d, want 1 (the usable grantee alone)", got)
+		}
+		if row := env.queryText(t,
+			"SELECT granted_by::text FROM album_shares WHERE album_id = $1 AND user_id = $2",
+			pgUUID(albumID), pgUUID(graceID)); row != adminID.String() {
+			t.Errorf("granted_by = %s, want the creating caller %s", row, adminID)
+		}
+		skipped := make(map[uuid.UUID]apigen.AlbumAudienceSkipReason, len(summary.Skipped))
+		for _, entry := range summary.Skipped {
+			skipped[uuid.UUID(entry.UserId)] = entry.Reason
+		}
+		if len(skipped) != 3 {
+			t.Fatalf("skipped = %v, want exactly the owner, the unknown id and the disabled account", summary.Skipped)
+		}
+		if reason := skipped[adminID]; reason != apigen.AlbumAudienceSkipReasonOwner {
+			t.Errorf("owner skip reason = %q, want owner", reason)
+		}
+		for _, id := range []uuid.UUID{unknown, disabledID} {
+			if reason := skipped[id]; reason != apigen.AlbumAudienceSkipReasonInvalidAccount {
+				t.Errorf("skip reason of %s = %q, want invalid_account", id, reason)
+			}
+		}
+		// The repeated grantee collapses: one row, one grant.
+		if got := env.queryInt(t, "SELECT count(*) FROM album_shares WHERE album_id = $1 AND user_id = $2",
+			pgUUID(albumID), pgUUID(graceID)); got != 1 {
+			t.Errorf("rows for the repeated grantee = %d, want 1 (repeated ids collapse)", got)
+		}
+		// The creation's events: album.created once, album.shared
+		// exactly once for the landed grantee, nothing for the
+		// skips -- the ring scan filtered on this album's unique id
+		// is independent of the earlier subtests' creations.
+		if events := eventsOfAlbum(t, env.bus, "album.created", albumID); len(events) != 1 {
+			t.Errorf("album.created events = %d, want 1", len(events))
+		}
+		events := eventsOfAlbum(t, env.bus, "album.shared", albumID)
+		if len(events) != 1 {
+			t.Fatalf("album.shared events = %d, want 1 (the landed grantee alone)", len(events))
+		}
+		if payload := events[0]; payload["userId"] != graceID.String() {
+			t.Errorf("album.shared payload userId = %s, want the grantee %s", payload["userId"], graceID)
+		}
+		for _, name := range []string{"album.unshared", "album.updated", "album.deleted", "album.items-changed"} {
+			if events := eventsOfAlbum(t, env.bus, name, albumID); len(events) != 0 {
+				t.Errorf("%s events = %d, want 0 (the creation fires nothing else)", name, len(events))
+			}
 		}
 	})
 
 	t.Run("ValidatesTitle", func(t *testing.T) {
+		unused := sourceDir(t, root, "unused")
 		for _, title := range []string{
 			"",                      // missing entirely
 			"   ",                   // whitespace only after the trim
 			strings.Repeat("a", 65), // past the bound
 		} {
-			rec := env.writeAlbumRaw(t, env.cookie, http.MethodPost, "/api/v1/albums",
-				createAlbumBody(t, title, nil))
+			rec := env.createAlbumRaw(t, env.cookie, createAlbumBody(t, title, unused, nil))
 			requireValidationFields(t, rec, "title")
 		}
 
 		// The boundary itself answers, and runes (not bytes) are
-		// the count: 64 ascii and a short CJK title both land.
-		env.createAlbum(t, env.cookie, strings.Repeat("a", 64), nil)
-		env.createAlbum(t, env.cookie, "家庭相册", nil)
+		// the count: 64 ascii and a short CJK title both land (each
+		// at its own source -- siblings never overlap).
+		env.createAlbum(t, env.cookie, strings.Repeat("a", 64), sourceDir(t, root, "ascii"), nil)
+		env.createAlbum(t, env.cookie, "家庭相册", sourceDir(t, root, "cjk"), nil)
 	})
 }
 
@@ -370,9 +447,7 @@ func TestUpdateAlbum(t *testing.T) {
 	adminID := env.sessionUserID(t)
 
 	album := fixtureWriteAlbumID("71")
-	env.insertWallAlbum(t, album, adminID, "virtual", "Original title", wallAlbumOpts{
-		description: "Original description.",
-	})
+	env.insertWallAlbum(t, album, adminID, "virtual", "Original title", wallAlbumOpts{})
 
 	// Two live members, three non-live members, one live non-member
 	// of the caller's own, and one live asset of another account.
@@ -398,15 +473,8 @@ func TestUpdateAlbum(t *testing.T) {
 
 	t.Run("PatchesEachField", func(t *testing.T) {
 		summary := env.patchAlbum(t, env.cookie, album, `{"title":"Renamed"}`)
-		if summary.Title != "Renamed" || summary.Description != "Original description." {
-			t.Errorf("title/description = %q/%q, want the patched title over the kept description",
-				summary.Title, summary.Description)
-		}
-
-		summary = env.patchAlbum(t, env.cookie, album, `{"description":"A new description."}`)
-		if summary.Description != "A new description." || summary.Title != "Renamed" {
-			t.Errorf("title/description = %q/%q, want the patched description over the kept title",
-				summary.Title, summary.Description)
+		if summary.Title != "Renamed" {
+			t.Errorf("title = %q, want the patched title", summary.Title)
 		}
 
 		cover := `{"coverAssetId":"` + older.String() + `"}`
@@ -435,20 +503,16 @@ func TestUpdateAlbum(t *testing.T) {
 		if got := env.queryText(t, "SELECT title FROM albums WHERE id = $1", pgUUID(album)); got != "Renamed" {
 			t.Errorf("stored title = %q, want Renamed", got)
 		}
-		if got := env.queryText(t, "SELECT description FROM albums WHERE id = $1", pgUUID(album)); got != "A new description." {
-			t.Errorf("stored description = %q, want the patched one", got)
-		}
 		if got := env.queryInt(t, "SELECT locked::int FROM albums WHERE id = $1", pgUUID(album)); got != 0 {
 			t.Errorf("stored locked = %d, want 0 (unlocked again)", got)
 		}
 	})
 
 	t.Run("PatchesMultipleFieldsAtOnce", func(t *testing.T) {
-		body := `{"title":"Combined","description":"One write.","locked":true}`
+		body := `{"title":"Combined","locked":true}`
 		summary := env.patchAlbum(t, env.cookie, album, body)
-		if summary.Title != "Combined" || summary.Description != "One write." || !summary.Locked {
-			t.Errorf("title/description/locked = %q/%q/%v, want all three landed",
-				summary.Title, summary.Description, summary.Locked)
+		if summary.Title != "Combined" || !summary.Locked {
+			t.Errorf("title/locked = %q/%v, want both landed", summary.Title, summary.Locked)
 		}
 		env.patchAlbum(t, env.cookie, album, `{"locked":false}`) // leave it unlocked
 	})
@@ -597,7 +661,6 @@ func TestUpdateAlbumLocked(t *testing.T) {
 	t.Run("RefusesPropertyFields", func(t *testing.T) {
 		for _, body := range []string{
 			`{"title":"Nope"}`,
-			`{"description":"Nope"}`,
 			`{"coverAssetId":"` + member.String() + `"}`,
 		} {
 			rec := env.patchAlbumRaw(t, env.cookie, album, body)
@@ -751,182 +814,10 @@ func TestDeleteAlbum(t *testing.T) {
 	})
 }
 
-// TestAddAlbumItems pins the membership add: live caller-owned
-// assets land with the caller as added_by, everything else skips
-// silently (foreign, trashed, hidden, component, unknown, and the
-// already-members -- the idempotent add), repeated ids collapse, and
-// the two-tier authorization plus the locked gate hold.
-func TestAddAlbumItems(t *testing.T) {
-	env := newAssetEnv(t, testUploadLimit)
-	adminID := env.sessionUserID(t)
-	graceID, graceCookie := env.createSecondUser(t, "add-items-grace@example.com")
-
-	album := fixtureWriteAlbumID("91")
-	env.insertWallAlbum(t, album, adminID, "virtual", "Curation", wallAlbumOpts{})
-	locked := fixtureWriteAlbumID("92")
-	env.insertWallAlbum(t, locked, adminID, "virtual", "Frozen", wallAlbumOpts{locked: true})
-	sharedToGrace := fixtureWriteAlbumID("93")
-	env.insertWallAlbum(t, sharedToGrace, adminID, "virtual", "Shared", wallAlbumOpts{})
-	env.shareWallAlbum(t, sharedToGrace, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
-	directory := fixtureWriteAlbumID("95")
-	env.insertWallAlbum(t, directory, adminID, "directory", "Archive", wallAlbumOpts{})
-
-	base := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
-	first := fixtureWallAssetID("91")
-	second := fixtureWallAssetID("92")
-	third := fixtureWallAssetID("93")
-	fourth := fixtureWallAssetID("94")
-	for i, asset := range []uuid.UUID{first, second, third, fourth} {
-		env.insertTimelineAsset(t, asset, adminID, base.Add(time.Duration(i)*time.Hour), timelineAssetOpts{})
-	}
-	foreign := fixtureWallAssetID("95")
-	env.insertTimelineAsset(t, foreign, graceID, base, timelineAssetOpts{})
-	trashed := fixtureWallAssetID("96")
-	env.insertTimelineAsset(t, trashed, adminID, base, timelineAssetOpts{deleted: true})
-	hidden := fixtureWallAssetID("97")
-	env.insertTimelineAsset(t, hidden, adminID, base, timelineAssetOpts{isHidden: true})
-	component := fixtureWallAssetID("98")
-	env.insertTimelineAsset(t, component, adminID, base, timelineAssetOpts{isComponent: true})
-	unknown := fixtureWallAssetID("99")
-
-	t.Run("AddsLiveCallerAssets", func(t *testing.T) {
-		report := decodeAddItemsReport(t, env.postAlbumItems(t, env.cookie, album, albumItemsBody(first, second, third)))
-		if report.Added != 3 || report.Skipped != 0 {
-			t.Errorf("added/skipped = %d/%d, want 3/0", report.Added, report.Skipped)
-		}
-		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(album)); got != 3 {
-			t.Errorf("membership rows = %d, want 3", got)
-		}
-		for _, asset := range []uuid.UUID{first, second, third} {
-			if got := env.queryText(t,
-				"SELECT added_by::text FROM album_items WHERE album_id = $1 AND asset_id = $2",
-				pgUUID(album), pgUUID(asset)); got != adminID.String() {
-				t.Errorf("added_by of %s = %s, want the caller %s", asset, got, adminID)
-			}
-		}
-
-		detail := env.getAlbumDetail(t, env.cookie, album, "")
-		if detail.ItemCount != 3 {
-			t.Errorf("detail itemCount = %d, want 3", detail.ItemCount)
-		}
-		wall := env.getAlbumWall(t, env.cookie)
-		for _, card := range wall.Albums {
-			if uuid.UUID(card.Id) == album && card.ItemCount != 3 {
-				t.Errorf("wall itemCount = %d, want 3", card.ItemCount)
-			}
-		}
-	})
-
-	t.Run("IdempotentReaddSkips", func(t *testing.T) {
-		report := decodeAddItemsReport(t, env.postAlbumItems(t, env.cookie, album, albumItemsBody(first, second, third)))
-		if report.Added != 0 || report.Skipped != 3 {
-			t.Errorf("added/skipped = %d/%d, want 0/3 (already members)", report.Added, report.Skipped)
-		}
-		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(album)); got != 3 {
-			t.Errorf("membership rows = %d, want 3 (the set is unchanged)", got)
-		}
-	})
-
-	t.Run("MixedNewAndExisting", func(t *testing.T) {
-		report := decodeAddItemsReport(t, env.postAlbumItems(t, env.cookie, album, albumItemsBody(first, fourth)))
-		if report.Added != 1 || report.Skipped != 1 {
-			t.Errorf("added/skipped = %d/%d, want 1/1 (the new member lands, the member skips)", report.Added, report.Skipped)
-		}
-		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(album)); got != 4 {
-			t.Errorf("membership rows = %d, want 4", got)
-		}
-	})
-
-	t.Run("SkipsForeignTrashedHiddenComponentUnknown", func(t *testing.T) {
-		report := decodeAddItemsReport(t, env.postAlbumItems(t, env.cookie, album,
-			albumItemsBody(foreign, trashed, hidden, component, unknown)))
-		if report.Added != 0 || report.Skipped != 5 {
-			t.Errorf("added/skipped = %d/%d, want 0/5 (all skipped, still a 200)", report.Added, report.Skipped)
-		}
-		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(album)); got != 4 {
-			t.Errorf("membership rows = %d, want 4 (nothing landed)", got)
-		}
-	})
-
-	t.Run("CollapsesRepeatedIds", func(t *testing.T) {
-		fresh := fixtureWallAssetID("9a")
-		env.insertTimelineAsset(t, fresh, adminID, base.Add(5*time.Hour), timelineAssetOpts{})
-		report := decodeAddItemsReport(t, env.postAlbumItems(t, env.cookie, album, albumItemsBody(fresh, fresh)))
-		if report.Added != 1 || report.Skipped != 0 {
-			t.Errorf("added/skipped = %d/%d, want 1/0 (repeated ids collapse to one application)",
-				report.Added, report.Skipped)
-		}
-		if got := env.queryInt(t,
-			"SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
-			pgUUID(album), pgUUID(fresh)); got != 1 {
-			t.Errorf("rows for the repeated id = %d, want 1", got)
-		}
-	})
-
-	t.Run("ValidatesListBounds", func(t *testing.T) {
-		rec := env.postAlbumItems(t, env.cookie, album, `{"assetIds":[]}`)
-		requireValidationFields(t, rec, "assetIds")
-
-		over := make([]uuid.UUID, 201)
-		for i := range over {
-			over[i] = uuid.MustParse(fmt.Sprintf("70000000-0000-0000-0002-%012x", i))
-		}
-		rec = env.postAlbumItems(t, env.cookie, album, albumItemsBody(over...))
-		requireValidationFields(t, rec, "assetIds")
-
-		rec = env.postAlbumItems(t, env.cookie, album, `{"assetIds":[`)
-		requireValidationFields(t, rec, "body")
-
-		// The 200 boundary itself answers -- the ids simply skip.
-		atCap := over[:200]
-		report := decodeAddItemsReport(t, env.postAlbumItems(t, env.cookie, album, albumItemsBody(atCap...)))
-		if report.Added != 0 || report.Skipped != 200 {
-			t.Errorf("added/skipped = %d/%d, want 0/200 at the cap boundary", report.Added, report.Skipped)
-		}
-	})
-
-	t.Run("RefusesLockedAlbum", func(t *testing.T) {
-		rec := env.postAlbumItems(t, env.cookie, locked, albumItemsBody(first))
-		requireAlbumLocked(t, rec)
-		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(locked)); got != 0 {
-			t.Errorf("locked album membership rows = %d, want 0", got)
-		}
-	})
-
-	t.Run("ShareeIsForbidden", func(t *testing.T) {
-		rec := env.postAlbumItems(t, graceCookie, sharedToGrace, albumItemsBody(first))
-		requireAlbumWriteForbidden(t, rec)
-	})
-
-	t.Run("StrangerIsNotFound", func(t *testing.T) {
-		rec := env.postAlbumItems(t, graceCookie, album, albumItemsBody(first))
-		requireAlbumNotFound(t, rec)
-	})
-
-	t.Run("RefusesDirectoryAlbum", func(t *testing.T) {
-		rec := env.postAlbumItems(t, env.cookie, directory, albumItemsBody(first))
-		requireAlbumNotFound(t, rec)
-		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(directory)); got != 0 {
-			t.Errorf("directory membership rows = %d, want 0 (the rescan owns membership)", got)
-		}
-	})
-
-	t.Run("RefusesSyncAlbum", func(t *testing.T) {
-		ownSync := env.syncAlbumIDOf(t, adminID)
-		rec := env.postAlbumItems(t, env.cookie, ownSync, albumItemsBody(first))
-		requireAlbumNotFound(t, rec)
-	})
-
-	t.Run("UnknownAlbum", func(t *testing.T) {
-		rec := env.postAlbumItems(t, env.cookie, fixtureWallAlbumID("ff"), albumItemsBody(first))
-		requireAlbumNotFound(t, rec)
-	})
-}
-
 // TestRemoveAlbumItems pins the membership remove: the rows that
 // exist leave, absent ids skip, the trashed member's row leaves too
 // (no live predicate on the removal), and the authorization, type
-// and lock gates mirror the add.
+// and lock gates hold.
 func TestRemoveAlbumItems(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -1028,43 +919,42 @@ func TestRemoveAlbumItems(t *testing.T) {
 	})
 }
 
-// TestAlbumWriteEvents pins the four live event names of the write
+// TestAlbumWriteEvents pins the live event names of the write
 // surface: creation, patch, membership change and delete, each with
 // the ids-only payload -- the album id and the acting user's id, and
-// nothing else. No album state (title, description, cover, lock,
+// nothing else. No album state (title, cover, lock,
 // counts, membership) ever rides the shared bus.
 func TestAlbumWriteEvents(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
+	root := env.provisionMountRoot(t)
 
-	// The full lifecycle through the write endpoints: create, patch,
-	// add two members, re-add one (the idempotent no-op), remove
-	// one, delete.
-	created := env.createAlbum(t, env.cookie, "The eventful album", nil)
-	albumID := uuid.UUID(created.Id)
-	env.patchAlbum(t, env.cookie, albumID, `{"description":"Now with a description."}`)
+	// The creation through the API: one album.created event. The
+	// lifecycle writes below ride a fixture virtual album (the
+	// directory album's own delete is its own flow, not this
+	// endpoint's).
+	created := env.createAlbum(t, env.cookie, "The eventful album", root, nil)
+	directoryID := uuid.UUID(created.Id)
+
+	album := fixtureWriteAlbumID("b0")
+	env.insertWallAlbum(t, album, adminID, "virtual", "The eventful album", wallAlbumOpts{})
+	env.patchAlbum(t, env.cookie, album, `{"title":"The renamed album"}`)
 
 	member := fixtureWallAssetID("b1")
 	second := fixtureWallAssetID("b2")
 	base := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
 	env.insertTimelineAsset(t, member, adminID, base, timelineAssetOpts{})
 	env.insertTimelineAsset(t, second, adminID, base.Add(time.Hour), timelineAssetOpts{})
+	env.addTimelineItem(t, album, member, adminID)
+	env.addTimelineItem(t, album, second, adminID)
 
-	addReport := decodeAddItemsReport(t, env.postAlbumItems(t, env.cookie, albumID, albumItemsBody(member, second)))
-	if addReport.Added != 2 {
-		t.Fatalf("the add report = %+v, want 2 added (the fixture is broken)", addReport)
-	}
-	readd := decodeAddItemsReport(t, env.postAlbumItems(t, env.cookie, albumID, albumItemsBody(member)))
-	if readd.Added != 0 {
-		t.Fatalf("the idempotent re-add report = %+v, want 0 added", readd)
-	}
-	removeReport := decodeRemoveItemsReport(t, env.deleteAlbumItems(t, env.cookie, albumID, albumItemsBody(member)))
+	removeReport := decodeRemoveItemsReport(t, env.deleteAlbumItems(t, env.cookie, album, albumItemsBody(member)))
 	if removeReport.Removed != 1 {
 		t.Fatalf("the remove report = %+v, want 1 removed", removeReport)
 	}
-	rec := env.deleteAlbumRaw(t, env.cookie, albumID)
+	rec := env.deleteAlbumRaw(t, env.cookie, album)
 	if rec.Code != http.StatusNoContent {
-		t.Fatalf("DELETE /albums/%s status = %d, want %d", albumID, rec.Code, http.StatusNoContent)
+		t.Fatalf("DELETE /albums/%s status = %d, want %d", album, rec.Code, http.StatusNoContent)
 	}
 
 	cases := []struct {
@@ -1073,7 +963,7 @@ func TestAlbumWriteEvents(t *testing.T) {
 	}{
 		{"album.created", 1},
 		{"album.updated", 1}, // the single patch, unconditional on success
-		{"album.items-changed", 2},
+		{"album.items-changed", 1},
 		{"album.deleted", 1},
 	}
 	for _, want := range cases {
@@ -1082,9 +972,15 @@ func TestAlbumWriteEvents(t *testing.T) {
 			t.Fatalf("%s events = %d, want exactly %d (payloads %v)",
 				want.name, len(payloads), want.count, payloads)
 		}
+		// The created event names the created directory album, the
+		// lifecycle events the fixture virtual album.
+		wantAlbum := album
+		if want.name == "album.created" {
+			wantAlbum = directoryID
+		}
 		for _, payload := range payloads {
-			if payload["albumId"] != albumID.String() {
-				t.Errorf("%s albumId = %q, want %s", want.name, payload["albumId"], albumID)
+			if payload["albumId"] != wantAlbum.String() {
+				t.Errorf("%s albumId = %q, want %s", want.name, payload["albumId"], wantAlbum)
 			}
 			if payload["userId"] != adminID.String() {
 				t.Errorf("%s userId = %q, want the acting caller %s", want.name, payload["userId"], adminID)
@@ -1094,7 +990,7 @@ func TestAlbumWriteEvents(t *testing.T) {
 				t.Errorf("%s payload = %v, want exactly the albumId/userId pair", want.name, payload)
 			}
 			for _, banned := range []string{
-				"title", "description", "type", "locked", "coverAssetId",
+				"title", "type", "locked", "coverAssetId",
 				"itemCount", "assetIds", "added", "removed", "skipped",
 			} {
 				if payload[banned] != "" {

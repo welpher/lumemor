@@ -13,9 +13,15 @@ void main() {
       // TODO
     });
 
-    // The album's free-text description; empty when absent. At most 10,000 Unicode characters, the asset description's own bound. 
-    // String description
-    test('to test the property `description`', () async {
+    // The source directory: an existing absolute path the server validates against the path matrix (existence, directory-ness, readability, symlink resolution, the managed tree, root overlap, the mount-root allowlist) before creating anything. The album row stores the RESOLVED absolute path -- symlink segments evaluated -- so a later symlink swap cannot repoint the album. 
+    // String rootPath
+    test('to test the property `rootPath`', () async {
+      // TODO
+    });
+
+    // The accounts the album starts being visible to: the initial `album_shares` set, empty (or absent) meaning \"only me\". Entries that cannot be granted -- an unknown or disabled account, or the caller's own id -- are skipped and reported in the response's `skipped` list, never errors. 
+    // BuiltList<String> audience
+    test('to test the property `audience`', () async {
       // TODO
     });
 

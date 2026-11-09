@@ -75,7 +75,7 @@ INSERT INTO assets (
 ) VALUES (
     $1, $2, 'blob', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12, 'import', $13
 )
-RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at
+RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime
 `
 
 type CreateAssetParams struct {
@@ -160,6 +160,7 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset
 		&i.DeviceAssetID,
 		&i.PendingJobs,
 		&i.ReadyAt,
+		&i.FileMtime,
 	)
 	return i, err
 }
@@ -183,7 +184,7 @@ func (q *Queries) CreateExifPlaceholder(ctx context.Context, arg CreateExifPlace
 }
 
 const getAsset = `-- name: GetAsset :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime FROM assets
 WHERE id = $1 AND owner_id = $2
 `
 
@@ -234,12 +235,13 @@ func (q *Queries) GetAsset(ctx context.Context, arg GetAssetParams) (Asset, erro
 		&i.DeviceAssetID,
 		&i.PendingJobs,
 		&i.ReadyAt,
+		&i.FileMtime,
 	)
 	return i, err
 }
 
 const getAssetByDeviceId = `-- name: GetAssetByDeviceId :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime FROM assets
 WHERE owner_id = $1 AND device_asset_id = $2
 ORDER BY deleted_at NULLS FIRST
 LIMIT 1
@@ -286,12 +288,13 @@ func (q *Queries) GetAssetByDeviceId(ctx context.Context, arg GetAssetByDeviceId
 		&i.DeviceAssetID,
 		&i.PendingJobs,
 		&i.ReadyAt,
+		&i.FileMtime,
 	)
 	return i, err
 }
 
 const getAssetByOwnerChecksum = `-- name: GetAssetByOwnerChecksum :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime FROM assets
 WHERE owner_id = $1 AND checksum = $2
 ORDER BY deleted_at NULLS FIRST
 LIMIT 1
@@ -339,6 +342,7 @@ func (q *Queries) GetAssetByOwnerChecksum(ctx context.Context, arg GetAssetByOwn
 		&i.DeviceAssetID,
 		&i.PendingJobs,
 		&i.ReadyAt,
+		&i.FileMtime,
 	)
 	return i, err
 }
@@ -469,6 +473,7 @@ func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) 
 
 const getAssetForMetadata = `-- name: GetAssetForMetadata :one
 SELECT a.file_path,
+       a.storage_kind,
        a.media_kind,
        a.taken_at,
        a.taken_at_source,
@@ -482,6 +487,7 @@ WHERE a.id = $1
 
 type GetAssetForMetadataRow struct {
 	FilePath      string             `json:"file_path"`
+	StorageKind   StorageKind        `json:"storage_kind"`
 	MediaKind     MediaKind          `json:"media_kind"`
 	TakenAt       pgtype.Timestamptz `json:"taken_at"`
 	TakenAtSource TakenAtSource      `json:"taken_at_source"`
@@ -499,12 +505,17 @@ type GetAssetForMetadataRow struct {
 // along (M2d) for the completion discipline: the metadata and
 // thumbnail jobs must not consume a component row's counter (the
 // transcode alone owns it), and the transcode job completes the
-// counter but never announces for a component.
+// counter but never announces for a component. storage_kind rides
+// along (E4): an external asset's file_path is the file's real
+// absolute path (the directory album's source tree), not a
+// originals-relative form, so the path resolution branches on the
+// kind -- the one column every job needs to find the bytes.
 func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetAssetForMetadataRow, error) {
 	row := q.db.QueryRow(ctx, getAssetForMetadata, id)
 	var i GetAssetForMetadataRow
 	err := row.Scan(
 		&i.FilePath,
+		&i.StorageKind,
 		&i.MediaKind,
 		&i.TakenAt,
 		&i.TakenAtSource,
@@ -516,7 +527,7 @@ func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetA
 }
 
 const getVisibleAsset = `-- name: GetVisibleAsset :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at FROM assets a
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime FROM assets a
 WHERE a.id = $1
   AND caller_asset_visible($2, a.id)
 `
@@ -567,6 +578,7 @@ func (q *Queries) GetVisibleAsset(ctx context.Context, arg GetVisibleAssetParams
 		&i.DeviceAssetID,
 		&i.PendingJobs,
 		&i.ReadyAt,
+		&i.FileMtime,
 	)
 	return i, err
 }

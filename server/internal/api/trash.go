@@ -1,17 +1,28 @@
-// The trash handlers (M2c Task 3): the owner-scoped trash listing
-// with its retention countdown, the idempotent restore, and the
-// explicit permanent delete. The permission model splits along the
-// two delete surfaces: the trash (soft delete, restore) is strictly
-// owner-scoped -- a foreign id answers the anti-enumeration 404,
-// byte-identical with an unknown one -- while the explicit permanent
-// delete also admits administrators, the application layer of the
-// spec's two-layer delete gate. The file half of every permanent
-// delete is the shared-file rule, which spans both storage eras:
-// legacy content-addressed rows store identical bytes of any owner
-// under one physical file (the original goes only when no other row
-// references it -- see CountAssetFileReferences), while
-// template-era rows are per-owner and unique; the derived copies are
-// keyed by the asset id alone and always go.
+// The trash handlers (M2c Task 3, the external lifecycle widened by
+// E4): the owner-scoped trash listing with its retention countdown,
+// the idempotent restore, and the explicit permanent delete. The
+// permission model splits along the two delete surfaces: the trash
+// (soft delete, restore) is strictly owner-scoped -- a foreign id
+// answers the anti-enumeration 404, byte-identical with an unknown
+// one -- while the explicit permanent delete also admits
+// administrators, the application layer of the spec's two-layer
+// delete gate.
+//
+// The file half splits on the row's storage kind (the §A6/E4
+// table): a blob row's file never moves through the lifecycle (the
+// shared-file rule spans both storage eras: legacy content-addressed
+// rows store identical bytes of any owner under one physical file,
+// the original going only when no other row references it -- see
+// CountAssetFileReferences -- while template-era rows are
+// per-owner and unique; the derived copies are keyed by the asset
+// id alone and always go), while an external row's file MOVES --
+// into data/trash/<assetId>/ when the owner trashes it (the move
+// runs in the batch handler, before the row's write, and its
+// failure fails the whole batch explicitly), back to the recorded
+// original location on restore, and away entirely at expiry or
+// permanent delete. The trash listing stays honest for both kinds;
+// the rescan's orphan marks (deleted externals with no trash file)
+// never appear in it.
 package api
 
 import (
@@ -77,6 +88,16 @@ func (s *server) GetTrash(w http.ResponseWriter, r *http.Request) {
 // is already live matches the guard's zero rows and the response
 // stays the 204 success, because the row is already in the desired
 // state. Only an unknown or foreign id answers 404.
+//
+// The external row splits from the blob (E4, the §A6/E4 table's
+// restore row): its file was MOVED into the server's trash area
+// when the owner trashed it, so the restore moves it back to the
+// row's recorded original location FIRST -- a location that can no
+// longer receive the file (the source folder unmounted, the
+// directory gone) fails the restore explicitly with 500
+// ASSET_RESTORE_MOVE_FAILED, the row staying trashed and the file
+// staying in the trash area exactly where a retry after remounting
+// finds it.
 func (s *server) RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -101,10 +122,54 @@ func (s *server) RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi
 		return
 	}
 
-	// The restore write itself: the WHERE guard makes re-restoring a
-	// live row (or a restore racing another restore) a zero-row
-	// no-op, not an error -- the row is already where the caller
-	// wants it.
+	// The external arm: the file moves back to the recorded original
+	// location before the row's mark clears, so the row going live
+	// and the file's return land together. The move failure answers
+	// its own code -- the pin's explicit failure, never a silent
+	// half-restore. A row that never sat in the move semantics (an
+	// orphan the rescan marked, trash_path NULL) skips the move: its
+	// file was never ours, there is nothing to move back.
+	if row.StorageKind == dbgen.StorageKindExternal && row.DeletedAt.Valid && row.TrashPath.Valid {
+		if err := storage.MoveFileBack(row.TrashPath.String, row.OriginalPath.String); err != nil {
+			s.logger.Error("move the external file back for restore", "error", err,
+				"asset_id", id, "method", r.Method, "path", r.URL.Path)
+			s.writeError(w, http.StatusInternalServerError, apigen.ASSETRESTOREMOVEFAILED,
+				"the file could not be moved back to its original location", nil)
+			return
+		}
+		restored, err := s.queries.RestoreExternalAsset(r.Context(), dbgen.RestoreExternalAssetParams{
+			ID:      pgUUID(id),
+			OwnerID: pgUUID(requester.userID),
+		})
+		if err != nil {
+			// The row write failed after the move: put the file back
+			// where the trash kept it, so the row (still trashed) and
+			// the file stay consistent and the retry starts clean.
+			if _, moveBackErr := storage.MoveToTrash(s.dataDir, row.OriginalPath.String, id.String()); moveBackErr != nil {
+				// The compensation failed too: the row still names
+				// the trash path it no longer sits at. The expiry's
+				// removal treats a missing trash file as success, so
+				// the lifecycle stays honest; the operator log line
+				// carries the inconsistency.
+				s.logger.Error("compensate the failed external restore", "error", moveBackErr,
+					"asset_id", id, "method", r.Method, "path", r.URL.Path)
+			}
+			s.internalError(w, r, "restore external asset", err)
+			return
+		}
+		if restored > 0 {
+			// Only a state change announces itself; the idempotent
+			// no-op stays silent.
+			s.publishAssetEvent("asset.restored", row)
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// The blob arm's restore write itself: the WHERE guard makes
+	// re-restoring a live row (or a restore racing another restore)
+	// a zero-row no-op, not an error -- the row is already where the
+	// caller wants it.
 	restored, err := s.queries.RestoreAsset(r.Context(), dbgen.RestoreAssetParams{
 		ID:      pgUUID(id),
 		OwnerID: pgUUID(requester.userID),
@@ -203,20 +268,34 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 // cluster's representative must re-home or dissolve BEFORE the
 // cascade touches it (the schema's foreign key holds every
 // representative to a live face -- see faces.sql's sweep queries).
+//
+// The file half splits on the storage kind (E4, the §A6/E4 table's
+// expiry row): a blob row's original goes under the shared-file
+// rule (the reference count decides -- another row on the same
+// file_path keeps it, only the row goes), while an external row's
+// only file of ours is the TRASH COPY a user-initiated trash landed
+// in data/trash/<assetID>/ -- a live external's source file is the
+// family's own and is never touched, whatever the caller asked the
+// server to delete.
 func (s *server) purgeAssetRow(r *http.Request, row dbgen.Asset) (bool, error) {
 	ctx := r.Context()
 	assetID := uuid.UUID(row.ID.Bytes)
 
-	// The reference count first: it excludes the row itself by id, so
-	// it stays meaningful whichever side of the row delete it runs
-	// on, and the task's pinned flow -- check, delete the row, then
-	// decide the file -- reads in exactly that order.
-	refs, err := s.queries.CountAssetFileReferences(ctx, dbgen.CountAssetFileReferencesParams{
-		FilePath: row.FilePath,
-		ID:       row.ID,
-	})
-	if err != nil {
-		return false, err
+	// The blob arm's reference count first: it excludes the row
+	// itself by id, so it stays meaningful whichever side of the row
+	// delete it runs on, and the task's pinned flow -- check, delete
+	// the row, then decide the file -- reads in exactly that order.
+	// The external arm counts nothing: its only file of ours is the
+	// trash copy, keyed by the asset id alone.
+	var refs int64
+	if row.StorageKind != dbgen.StorageKindExternal {
+		var err error
+		if refs, err = s.queries.CountAssetFileReferences(ctx, dbgen.CountAssetFileReferencesParams{
+			FilePath: row.FilePath,
+			ID:       row.ID,
+		}); err != nil {
+			return false, err
+		}
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -255,6 +334,21 @@ func (s *server) purgeAssetRow(r *http.Request, row dbgen.Asset) (bool, error) {
 
 	// The row is committed gone; the files follow best-effort. The
 	// context is captured while the request is still live.
+	if row.StorageKind == dbgen.StorageKindExternal {
+		// The trash copy alone is ours: a live external's source
+		// file is the family's, and the derived trees are keyed by
+		// the asset id. An orphaned row (trash_path NULL, the
+		// rescan's vanish arm) has no file of ours at all.
+		var trashPath string
+		if row.TrashPath.Valid {
+			trashPath = row.TrashPath.String
+		}
+		if err := storage.RemoveExternalAssetFiles(s.dataDir, trashPath, assetID.String()); err != nil {
+			s.logger.Error("remove files of permanently deleted external asset",
+				"error", err, "asset_id", assetID, "method", r.Method, "path", r.URL.Path)
+		}
+		return true, nil
+	}
 	if err := storage.RemoveAssetFiles(s.dataDir, row.FilePath, assetID.String(), refs); err != nil {
 		s.logger.Error("remove files of permanently deleted asset",
 			"error", err, "asset_id", assetID, "method", r.Method, "path", r.URL.Path)
@@ -265,12 +359,16 @@ func (s *server) purgeAssetRow(r *http.Request, row dbgen.Asset) (bool, error) {
 // trashItemFrom maps one trashed row onto the API shape. The
 // countdown arrives from the query itself (remaining_days), computed
 // against the database clock -- whole days rounded up, clamped at
-// zero once the deadline passed.
+// zero once the deadline passed. storageKind carries the row's
+// storage era (E4): the trash view is honest for both kinds, and
+// the external items are the ones whose restore moves a file back
+// to its recorded source location.
 func trashItemFrom(row dbgen.ListTrashRow) apigen.TrashItem {
 	return apigen.TrashItem{
 		Id:               uuid.UUID(row.ID.Bytes),
 		OwnerId:          uuid.UUID(row.OwnerID.Bytes),
 		Kind:             apigen.TrashItemKind(row.MediaKind),
+		StorageKind:      apigen.TrashItemStorageKind(row.StorageKind),
 		OriginalFilename: row.OriginalFilename,
 		FileSize:         row.FileSize,
 		MimeType:         row.MimeType,

@@ -82,6 +82,14 @@ services:
       # `docker run --rm -u 0 -v ./lumemor:/var/lib/lumemor <image>
       #  chown -R 10001:10001 /var/lib/lumemor`.
       - ./lumemor:/var/lib/lumemor
+      # The e2e source fixture (E4): the m3-albums story creates a
+      # directory album pointing at a real tree, and this bind is that
+      # tree -- read-only, because the reference-style ingest never
+      # writes into a source (see web/e2e/fixtures/m3-source/README.md
+      # for the arrangement and the dogfood note). Inert until an
+      # administrator opens /mnt/e2e-source in the mount-root
+      # allowlist (the default allowlist is empty).
+      - ./web/e2e/fixtures/m3-source:/mnt/e2e-source:ro
     environment:
       LUMEMOR_DATABASE_URL: "postgres://lumemor:lumemor@db:5432/lumemor?sslmode=disable"
       LUMEMOR_DATA_DIR: "/var/lib/lumemor/data"

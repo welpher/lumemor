@@ -13,12 +13,6 @@ void main() {
       // TODO
     });
 
-    // The album's free-text description; the value replaces the stored text wholesale (an empty string clears it). At most 10,000 Unicode characters. 
-    // String description
-    test('to test the property `description`', () async {
-      // TODO
-    });
-
     // The pinned cover asset. When present it must be a LIVE member of THIS album (the membership row exists and the asset is not trashed, not hidden, not a Live Photo component row) -- otherwise the answer is 400 with the message key `album_cover_not_member`. Absent (or JSON null, which decodes as absent) leaves the pin unchanged. 
     // String coverAssetId
     test('to test the property `coverAssetId`', () async {

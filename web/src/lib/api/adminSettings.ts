@@ -1,8 +1,11 @@
-// The admin settings clients (the storage-template feature and the
-// settings feature): the read and three-stage validated save behind
-// GET/PUT /admin/settings/storage, the trash retention pair behind
-// GET/PUT /admin/settings/trash, and the video transcoding profile
-// pair behind GET/PUT /admin/settings/transcoding.
+// The admin settings clients (the storage-template feature, the
+// settings feature and the albums-as-sources allowlist): the read
+// and three-stage validated save behind GET/PUT
+// /admin/settings/storage, the trash retention pair behind
+// GET/PUT /admin/settings/trash, the video transcoding profile pair
+// behind GET/PUT /admin/settings/transcoding, and the mount-root
+// allowlist pair behind GET/PUT /admin/settings/mount-roots (E4:
+// the directory album creation and path completion domains).
 //
 // ERROR MAPPING (the repo-wide convention): every failure outcome
 // carries the error code's i18n key -- the envelope code lowercased
@@ -29,6 +32,9 @@ export type TrashSettings = components['schemas']['TrashSettingsResponse'];
 
 /** The transcoding settings, exactly the contract's TranscodingSettingsResponse shape. */
 export type TranscodingSettings = components['schemas']['TranscodingSettingsResponse'];
+
+/** The mount-root allowlist, exactly the contract's MountRootsSettingsResponse shape. */
+export type MountRootsSettings = components['schemas']['MountRootsSettingsResponse'];
 
 /** The read's outcome: the settings document, or the failure's i18n key. */
 export type StorageSettingsResult =
@@ -58,6 +64,16 @@ export type TranscodingSettingsResult =
 /** The transcoding save's outcome: the saved settings, or the failure's i18n key. */
 export type TranscodingSettingsSaveResult =
 	| { ok: true; settings: TranscodingSettings }
+	| { ok: false; errorKey: string };
+
+/** The mount-roots read's outcome: the allowlist, or the failure's i18n key. */
+export type MountRootsSettingsResult =
+	| { ok: true; settings: MountRootsSettings }
+	| { ok: false; errorKey: string };
+
+/** The mount-roots save's outcome: the cleaned allowlist, or the failure's i18n key. */
+export type MountRootsSettingsSaveResult =
+	| { ok: true; settings: MountRootsSettings }
 	| { ok: false; errorKey: string };
 
 const SETTINGS_ENDPOINT = '/api/v1/admin/settings/storage';
@@ -184,6 +200,7 @@ export async function saveStorageSettings(
 
 const TRASH_ENDPOINT = '/api/v1/admin/settings/trash';
 const TRANSCODING_ENDPOINT = '/api/v1/admin/settings/transcoding';
+const MOUNT_ROOTS_ENDPOINT = '/api/v1/admin/settings/mount-roots';
 
 /** Structurally validate one trash settings body; null when it is not one. */
 function trashSettingsFrom(body: unknown): TrashSettings | null {
@@ -212,6 +229,23 @@ function transcodingSettingsFrom(body: unknown): TranscodingSettings | null {
 		return null;
 	}
 	return body as TranscodingSettings;
+}
+
+/**
+ * Structurally validate one mount-roots body; null when it is not
+ * one. The list is the honest record of the configuration (a root's
+ * live usability is the completion and creation domains' concern),
+ * so only the shape is checked: a `roots` array of strings.
+ */
+function mountRootsSettingsFrom(body: unknown): MountRootsSettings | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<MountRootsSettings>;
+	if (!Array.isArray(candidate.roots) || candidate.roots.some((root) => typeof root !== 'string')) {
+		return null;
+	}
+	return body as MountRootsSettings;
 }
 
 /**
@@ -348,6 +382,80 @@ export async function saveTranscodingSettings(
 		return { ok: false, errorKey: 'internal' };
 	}
 	const saved = transcodingSettingsFrom(body);
+	if (saved === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, settings: saved };
+}
+
+/**
+ * GET /api/v1/admin/settings/mount-roots: the directory album
+ * source allowlist, stored verbatim. The empty list is the default
+ * closed posture (directory album creation and its path completion
+ * answer nothing until an administrator opens a root), never an
+ * error. A 403 is the signed-in non-admin caller
+ * (auth_forbidden), not a session failure.
+ */
+export async function getMountRootsSettings(
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<MountRootsSettingsResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(MOUNT_ROOTS_ENDPOINT, undefined, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const settings = mountRootsSettingsFrom(body);
+	if (settings === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, settings };
+}
+
+/**
+ * PUT /admin/settings/mount-roots: replace the COMPLETE allowlist
+ * (an explicit empty array closes directory album creation; the
+ * field must ride the body). The 200 body is the cleaned,
+ * deduplicated list in first-occurrence order -- the section adopts
+ * it as the fresh state; a 400 maps to validation_failed.
+ */
+export async function saveMountRootsSettings(
+	roots: readonly string[],
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<MountRootsSettingsSaveResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			MOUNT_ROOTS_ENDPOINT,
+			{
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ roots: [...roots] })
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const saved = mountRootsSettingsFrom(body);
 	if (saved === null) {
 		return { ok: false, errorKey: 'internal' };
 	}

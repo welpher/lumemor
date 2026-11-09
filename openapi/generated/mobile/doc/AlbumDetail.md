@@ -10,10 +10,10 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **id** | **String** | Identifier of the album. | 
 **title** | **String** | The album's display title. | 
-**description** | **String** | The album's free-text description (empty when unset). | 
 **type** | **String** | The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404.  | 
 **locked** | **bool** | The owner's lock (metadata to a viewer). | 
 **coverAssetId** | **String** | The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself.  | 
+**rootPath** | **String** | The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Virtual and sync albums omit it.  | [optional] 
 **callerRole** | **String** | The caller's relation to this album: the owner holds the write affordances, a viewer is read-only.  | 
 **itemCount** | **int** | The album's live member count, the same predicate as the items below.  | 
 **items** | [**BuiltList&lt;AlbumItem&gt;**](AlbumItem.md) | One page of the album's live members, `takenAt` descending with the asset id as the tiebreak.  | 

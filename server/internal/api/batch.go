@@ -1,19 +1,33 @@
-// The batch handler (M2c Task 4): POST /assets/batch, the set-semantics
-// surface of the curation actions. One request applies one action
-// (favorite, unfavorite, hide, unhide, trash, restore) to a list of
-// ids in ONE transaction: resolution decides which ids are the
-// caller's to act on, the per-action primitives apply them (foreign
-// and already-in-state ids are no-ops, never errors), and the report
-// partitions the distinct ids into affected and missing. Events for
-// the ids whose state actually changed publish after the commit, the
-// same transition-only discipline as the single-asset endpoints.
+// The batch handler (M2c Task 4, the external lifecycle widened by
+// E4): POST /assets/batch, the set-semantics surface of the curation
+// actions. One request applies one action (favorite, unfavorite,
+// hide, unhide, trash, restore) to a list of ids in ONE transaction:
+// resolution decides which ids are the caller's to act on, the
+// per-action primitives apply them (foreign and already-in-state ids
+// are no-ops, never errors), and the report partitions the distinct
+// ids into affected and missing. Events for the ids whose state
+// actually changed publish after the commit, the same
+// transition-only discipline as the single-asset endpoints.
+//
+// The trash and restore arms split on the row's storage kind (E4,
+// the §A6/E4 table): a blob row is marked in place (the existing
+// queries, Live Photo pair included), while an external row's file
+// MOVES -- into the server's trash area on trash, back to the
+// recorded original location on restore -- ahead of the row's write
+// and inside the batch's own failure story: a move the operating
+// system refuses fails the WHOLE batch with the move's own error
+// code, the transaction rolls back, and every file the batch
+// already moved is compensated back to where the rolled-back rows
+// still say it is.
 package api
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -21,6 +35,7 @@ import (
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/storage"
 )
 
 // batchIDLimit is the request bound pinned by the contract: the
@@ -39,6 +54,54 @@ var batchEventNames = map[apigen.BatchRequestAction]string{
 	apigen.Restore: "asset.restored",
 	apigen.Hide:    "asset.updated",
 	apigen.Unhide:  "asset.updated",
+}
+
+// The external lifecycle's move failures, the one error class the
+// batch answers with its own codes (the §A6/E4 pin: the move needs
+// the operating system's permission, and no permission means the
+// delete fails explicitly -- never a silent skip, never a nameless
+// 500 either).
+var (
+	errBatchTrashMove   = errors.New("the external file could not be moved into the trash")
+	errBatchRestoreMove = errors.New("the external file could not be moved back to its original location")
+)
+
+// batchFileMove records one external lifecycle move the batch
+// performed ahead of its row write (trash: source to the trash
+// home; restore: the trash home back to the recorded original
+// location), together with the trash home the move created -- the
+// compensation empties the home back out. The batch's failure paths
+// compensate the collected moves in reverse order -- the files
+// return to exactly where they were, so a rolled-back transaction
+// leaves nothing half-moved.
+type batchFileMove struct {
+	from      string
+	to        string
+	trashHome string
+}
+
+// compensateBatchMoves undoes the collected moves (best-effort, in
+// reverse order): the transaction rolled back, so the rows still
+// describe the pre-move state and the files must match it -- each
+// moved file returns to its source path, and the trash home a
+// trash-move created goes away with it (it is empty the moment the
+// file left). A failed compensation is logged for the operator --
+// the row never claimed the moved file, so a stray copy is a leak
+// the trash area's own layout keeps visible, never data loss.
+func (s *server) compensateBatchMoves(r *http.Request, moves []batchFileMove) {
+	for i := len(moves) - 1; i >= 0; i-- {
+		if err := storage.MoveFileBack(moves[i].to, moves[i].from); err != nil {
+			s.logger.Error("compensate the external lifecycle move of a failed batch",
+				"error", err, "from", moves[i].to, "to", moves[i].from,
+				"method", r.Method, "path", r.URL.Path)
+			continue
+		}
+		if moves[i].trashHome != "" {
+			// The home is empty now (the file just left); the remove
+			// is a no-op when anything else sits inside it.
+			_ = os.Remove(moves[i].trashHome)
+		}
+	}
 }
 
 // BatchAssets implements POST /api/v1/assets/batch: one action over
@@ -117,18 +180,43 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 	// One application per resolved id, in request order. The guards
 	// inside each primitive make every item a no-op or a write, never
 	// an error, so the loop has no per-item failure path -- which is
-	// what lets the whole batch commit as the one transaction it is.
-	// changed collects the ids whose state actually transitioned: the
-	// event discipline below reports changes, not repeats.
+	// what lets the whole batch commit as the one transaction it is
+	// -- EXCEPT the external lifecycle's moves, the one failure the
+	// §A6/E4 pin demands answer explicitly: a move that fails fails
+	// the batch, the transaction rolls back, and the moves the batch
+	// already performed are compensated (the files return to where
+	// they were). changed collects the ids whose state actually
+	// transitioned: the event discipline below reports changes, not
+	// repeats.
 	var changed []uuid.UUID
+	var moves []batchFileMove
 	for _, id := range ids {
 		if _, ok := kinds[id]; !ok {
 			continue // unresolvable: ignored, reported in missing
 		}
-		transitioned, err := applyBatchAction(ctx, queries, request.Action, requester.userID, id)
+		transitioned, move, err := s.applyBatchAction(ctx, queries, request.Action, requester.userID, id)
 		if err != nil {
-			s.internalError(w, r, "apply batch action", err)
+			// The compensation runs before the response is written:
+			// the client reads a state where nothing moved.
+			s.compensateBatchMoves(r, moves)
+			switch {
+			case errors.Is(err, errBatchTrashMove):
+				s.logger.Error("the batch's external trash move failed", "error", err,
+					"asset_id", id, "method", r.Method, "path", r.URL.Path)
+				s.writeError(w, http.StatusInternalServerError, apigen.ASSETTRASHMOVEFAILED,
+					"the file could not be moved into the trash", nil)
+			case errors.Is(err, errBatchRestoreMove):
+				s.logger.Error("the batch's external restore move failed", "error", err,
+					"asset_id", id, "method", r.Method, "path", r.URL.Path)
+				s.writeError(w, http.StatusInternalServerError, apigen.ASSETRESTOREMOVEFAILED,
+					"the file could not be moved back to its original location", nil)
+			default:
+				s.internalError(w, r, "apply batch action", err)
+			}
 			return
+		}
+		if move != nil {
+			moves = append(moves, *move)
 		}
 		if transitioned {
 			changed = append(changed, id)
@@ -136,6 +224,9 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		// The rows never landed: the moved files return to where the
+		// rolled-back rows still say they are.
+		s.compensateBatchMoves(r, moves)
 		s.internalError(w, r, "commit batch", err)
 		return
 	}
@@ -199,48 +290,117 @@ func resolveBatchTargets(ctx context.Context, queries *dbgen.Queries, action api
 // applyBatchAction runs one resolved id's share of the batch inside
 // the caller's transaction, reporting whether the row's state
 // actually changed (the signal the event discipline needs: repeats
-// stay silent). Favorite and unfavorite never report a transition --
-// they publish no events at all, whatever they write. Trash and
-// restore are the trash lifecycle's own queries, pair predicates
-// included: trashing a Live Photo carries its component video row
-// along, so one request id can move two rows while counting once.
-func applyBatchAction(ctx context.Context, queries *dbgen.Queries, action apigen.BatchRequestAction, owner, id uuid.UUID) (bool, error) {
+// stay silent) and the external lifecycle's move when one performed
+// (nil for every arm that moves nothing -- the caller collects the
+// moves for its failure compensations). Favorite and unfavorite
+// never report a transition -- they publish no events at all,
+// whatever they write. Trash and restore are the trash lifecycle's
+// own queries, pair predicates included for the blob rows (trashing
+// a Live Photo carries its component video row along, so one
+// request id can move two rows while counting once), while the
+// external rows take the §A6/E4 move semantics: the file moves
+// first (inside the batch's failure story), the row's write records
+// the move's truth. The external arms are single-row by
+// construction -- the rescan never pairs Live Photos -- and the
+// guards keep the already-in-state ids no-ops (the move is skipped
+// alongside the write, so a repeat trash touches no file either).
+func (s *server) applyBatchAction(ctx context.Context, queries *dbgen.Queries, action apigen.BatchRequestAction, owner, id uuid.UUID) (bool, *batchFileMove, error) {
 	switch action {
 	case apigen.Favorite:
 		_, err := queries.FavoriteAsset(ctx, dbgen.FavoriteAssetParams{
 			UserID:  pgUUID(owner),
 			AssetID: pgUUID(id),
 		})
-		return false, err
+		return false, nil, err
 	case apigen.Unfavorite:
 		_, err := queries.UnfavoriteAsset(ctx, dbgen.UnfavoriteAssetParams{
 			UserID:  pgUUID(owner),
 			AssetID: pgUUID(id),
 		})
-		return false, err
+		return false, nil, err
 	case apigen.Hide, apigen.Unhide:
 		rows, err := queries.SetAssetHidden(ctx, dbgen.SetAssetHiddenParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(owner),
 			Hidden:  action == apigen.Hide,
 		})
-		return rows > 0, err
+		return rows > 0, nil, err
 	case apigen.Trash:
+		row, err := queries.GetAsset(ctx, dbgen.GetAssetParams{
+			ID:      pgUUID(id),
+			OwnerID: pgUUID(owner),
+		})
+		if err != nil {
+			return false, nil, err
+		}
+		if row.StorageKind == dbgen.StorageKindExternal {
+			// The move semantics: a live row's file moves into the
+			// trash home ahead of the write; a row already in the
+			// trash (or an orphan the rescan marked, whose file is
+			// not ours to move at all) skips the move and the write
+			// below answers the zero-row no-op.
+			var move *batchFileMove
+			if !row.DeletedAt.Valid {
+				trashPath, err := storage.MoveToTrash(s.dataDir, row.FilePath, id.String())
+				if err != nil {
+					return false, nil, fmt.Errorf("%w: %v", errBatchTrashMove, err)
+				}
+				move = &batchFileMove{
+					from:      row.FilePath,
+					to:        trashPath,
+					trashHome: storage.TrashHome(s.dataDir, id.String()),
+				}
+				rows, err := queries.SoftDeleteExternalAsset(ctx, dbgen.SoftDeleteExternalAssetParams{
+					ID:        pgUUID(id),
+					OwnerID:   pgUUID(owner),
+					TrashPath: pgtype.Text{String: trashPath, Valid: true},
+				})
+				return rows > 0, move, err
+			}
+			return false, nil, nil
+		}
 		rows, err := queries.SoftDeleteAsset(ctx, dbgen.SoftDeleteAssetParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(owner),
 		})
-		return rows > 0, err
+		return rows > 0, nil, err
 	case apigen.Restore:
+		row, err := queries.GetAsset(ctx, dbgen.GetAssetParams{
+			ID:      pgUUID(id),
+			OwnerID: pgUUID(owner),
+		})
+		if err != nil {
+			return false, nil, err
+		}
+		if row.StorageKind == dbgen.StorageKindExternal {
+			// The move-back semantics: a row that sat in the trash
+			// area (trash_path recorded) has its file moved back to
+			// the original location ahead of the write; a live row,
+			// or an orphan mark whose file was never ours, skips the
+			// move and the write below answers the zero-row no-op.
+			var move *batchFileMove
+			if row.DeletedAt.Valid && row.TrashPath.Valid {
+				if err := storage.MoveFileBack(row.TrashPath.String, row.OriginalPath.String); err != nil {
+					return false, nil, fmt.Errorf("%w: %v", errBatchRestoreMove, err)
+				}
+				move = &batchFileMove{from: row.TrashPath.String, to: row.OriginalPath.String}
+				rows, err := queries.RestoreExternalAsset(ctx, dbgen.RestoreExternalAssetParams{
+					ID:      pgUUID(id),
+					OwnerID: pgUUID(owner),
+				})
+				return rows > 0, move, err
+			}
+			return false, nil, nil
+		}
 		rows, err := queries.RestoreAsset(ctx, dbgen.RestoreAssetParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(owner),
 		})
-		return rows > 0, err
+		return rows > 0, nil, err
 	default:
 		// Unreachable: the action was validated at the door. The arm
 		// exists so the switch stays total over future enum values.
-		return false, fmt.Errorf("unknown batch action %q", action)
+		return false, nil, fmt.Errorf("unknown batch action %q", action)
 	}
 }
 
