@@ -41,6 +41,13 @@ last.
   every refusal).
 - Removal thoroughness (grep to zero for anything the block retires).
 - Honest-report semantics (set writes, idempotency, event discipline).
-- House discipline: all-English, banned names, i18n parity, icon-first,
-  the comment voice.
+- House discipline: all-English (with the AGENTS.md exemption classes),
+  banned names, i18n parity, icon-first, the comment voice.
 - Gate lines re-run by the reviewer, not trusted from the report.
+
+The house-discipline greps a review runs on the diff's added lines:
+
+```
+git diff <base>..<head> | grep -iE '^\+.*(banned-a|banned-b)'   # zero
+# CJK scan of added lines — only the exemption classes may carry it
+```

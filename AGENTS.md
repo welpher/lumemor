@@ -20,7 +20,12 @@ implementation.
 
 - **All-English repository**: code, comments, commits, and task artifacts.
   Reference-project names never appear here (reviews grep for them; write
-  "the reference project" when comparing).
+  "the reference project" when comparing). **Exemption classes** (the
+  established interpretation): the zh-Hans locale's values (`i18n/zh-Hans.json`
+  is Chinese by definition); cited display names inside contract descriptions
+  (e.g. the sync album's localized name); task briefs/reports quoting a pin's
+  text. The check: `git grep -iE 'banned-a|banned-b'` over the surface plus a
+  CJK scan of added lines, with the exemptions judged by a human.
 - **Global product**: every deployment serves one family, the product serves
   families worldwide. No default may assume a single market, language, or
   region. Chinese is a first-class citizen, not the constraint.
