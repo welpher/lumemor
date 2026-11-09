@@ -11,19 +11,24 @@
 # Phase 1 (the search and places story over the API, two accounts):
 # the stack starts fresh, the first-run admin is created and signed
 # in, a MEMBER account is provisioned through the admin API and signs
-# in with its own session, and the default model group downloads
-# through the admin API -- the FIVE-model group now, whose newest
-# member is the CLIP TEXT TOWER (the semantic arm's query encoder):
-# the listing asserts it active, and an explicit PATCH through the
-# models API re-asserts the activation the download's empty-slot rule
-# already performed. The member then owns the whole library, six
-# seeded photos: the Beijing GPS photo (the golden derivative whose
-# EXIF coordinates resolve to Beijing), the Chinese OCR photo (the
-# rendered text image whose extracted text carries 海边), the
-# same-person face pair (the semantically-clustered subject set), the
-# wildcard decoy (a filename the live-wildcard bug would glob but the
-# literal query does not match), and the private photo (a
-# filename-only text hit with a place of its own).
+# in with its own session (the sharee of the story's visibility arm),
+# and the default model group downloads through the admin API -- the
+# FIVE-model group now, whose newest member is the CLIP TEXT TOWER
+# (the semantic arm's query encoder): the listing asserts it active,
+# and an explicit PATCH through the models API re-asserts the
+# activation the download's empty-slot rule already performed. The
+# ADMINISTRATOR then owns the whole library, six seeded photos: the
+# Beijing GPS photo (the golden derivative whose EXIF coordinates
+# resolve to Beijing), the Chinese OCR photo (the rendered text image
+# whose extracted text carries 海边), the same-person face pair (the
+# semantically-clustered subject set), the wildcard decoy (a filename
+# the live-wildcard bug would glob but the literal query does not
+# match), and the private photo (a filename-only text hit with a
+# place of its own). (The E6 reshape: the library's owner is the
+# administrator because the story's album -- the visibility arm's
+# vehicle -- is a directory album, and E6 pins directory album
+# creation to the administrator alone; every assertion below keeps
+# its shape, the member is the bare sharee.)
 #
 # The search semantics are then asserted arm by arm:
 #   - The FTS arm: a Chinese keyword (海边) hits the OCR text; an
@@ -39,26 +44,31 @@
 #     every visible asset exactly once, the both-arms photo first,
 #     byte-identically on the repeat (determinism), and the
 #     mode-tagged cursor walks the same order in pages.
-#   - The filters and facets: the person filter (the member's
-#     labeled face cluster), the place filter (Beijing's GeoNames
-#     id), and the seven facet dimensions' honest counts.
+#   - The filters and facets: the person filter (the owner's labeled
+#     face cluster), the place filter (Beijing's GeoNames id), and
+#     the seven facet dimensions' honest counts.
 #   - The tags domain: the idempotent create (201 then 200 with the
 #     same id), the batch assign's honest skips (a bogus id, then the
 #     already-tagged pair), the tag-as-vocabulary FTS arm (a query
 #     hitting the tag NAME), the detail's caller-scoped tags row, and
 #     the tag filter.
-#   - The visibility (B4 and the union predicate): the member opens a
-#     directory album over the source fixture (the fixture's four
-#     photos are byte-identical to four of the member's uploads, so
-#     the scan's owner+checksum dedup answers each file with the
-#     honest skip: the EXISTING rows gain the album's membership and
-#     the shared surface is exactly those four, no second assets)
-#     and grants the ADMIN the view at create (the audience rides
-#     the POST), and the sharee's search NEVER answers the member's
-#     private photo from EITHER arm -- its filename is the only text
+#   - The visibility (B4 and the union predicate): the E6 creation
+#     guard is pinned first (the member's create-album POST and their
+#     path-completion call both answer 403 AUTH_FORBIDDEN -- mounting
+#     an existing photo directory is the administrator's configuration
+#     act), then the ADMINISTRATOR opens the directory album over the
+#     source fixture (the fixture's four photos are byte-identical to
+#     four of the admin's uploads, so the scan's owner+checksum dedup
+#     answers each file with the honest skip: the EXISTING rows gain
+#     the album's membership and the shared surface is exactly those
+#     four, no second assets; the read-only bind answers the
+#     creation-time write probe's honest false fact) and grants the
+#     MEMBER the view at create (the audience rides the POST), and
+#     the sharee's search NEVER answers the administrator's private
+#     photo from EITHER arm -- its filename is the only text
 #     hit of the visibility query and it would rank first if either
 #     arm leaked -- while the sharee's tag facet stays empty and the
-#     places surface drops the private photo's city. The member's
+#     places surface drops the private photo's city. The owner's
 #     own search answers it first.
 #   - The places domain: the GPS photo resolves to Beijing (en
 #     "Beijing", zh-Hans 北京 -- the locale join), the private photo
@@ -150,13 +160,15 @@ private_photo="$repo_root/server/internal/jobs/testdata/golden.jpg"
 
 # The E4 source fixture: the repository's compose file binds the e2e
 # fixture tree (web/e2e/fixtures/m3-source, see its README) into the
-# container read-only at /mnt/e2e-source, and the story's member
-# opens trip-2026 under it as the album's source -- the four
-# byte-identical copies of the member's own uploads above, so the
+# container read-only at /mnt/e2e-source, and the story's
+# ADMINISTRATOR opens trip-2026 under it as the album's source (E6:
+# the creation is the administrator's alone) -- the four
+# byte-identical copies of the admin's own uploads above, so the
 # scan's owner+checksum dedup is the story's own arm (the honest
 # skip: the existing rows gain the membership, never a second
 # asset). The read-only bind is the zero-copy pin held by
-# construction.
+# construction, and it answers the creation-time write probe's
+# honest false fact.
 mount_root="/mnt/e2e-source"
 source_dir="/mnt/e2e-source/trip-2026"
 
@@ -756,32 +768,32 @@ grep -q '"activated":{"id":"cnclip-vit-b16-text","slot":"clip_text"}' "$work_dir
     || fail "the activation response does not name the text tower active in its slot: $(cat "$work_dir/activate_body")"
 echo "    the text tower is ACTIVE through the models API (the semantic arm is armed)"
 
-echo "==> the member uploads the seeded library (six photos, the member owns them all)"
+echo "==> the administrator uploads the seeded library (six photos, the admin owns them all)"
 for fixture in "$gps_photo" "$ocr_photo" "$face_portrait" "$face_portrait_orientation" "$face_portrait_other" "$private_photo"; do
     [ -f "$fixture" ] || fail "fixture missing: $fixture"
 done
 gps_id="$(upload_fixture \
     "$gps_photo" IMG_M3D_GPS.jpg image/jpeg \
-    "m3d-acceptance-${run_stamp}-gps" "2026-06-20T12:00:00Z" gps "$member_jar")"
+    "m3d-acceptance-${run_stamp}-gps" "2026-06-20T12:00:00Z" gps "$admin_jar")"
 ocr_id="$(upload_fixture \
     "$ocr_photo" IMG_M3D_OCR_50%.png image/png \
-    "m3d-acceptance-${run_stamp}-ocr" "2026-07-15T12:00:00Z" ocr "$member_jar")"
+    "m3d-acceptance-${run_stamp}-ocr" "2026-07-15T12:00:00Z" ocr "$admin_jar")"
 portrait_id="$(upload_fixture \
     "$face_portrait" IMG_M3D_FACE_A.jpg image/jpeg \
-    "m3d-acceptance-${run_stamp}-portrait" "2026-05-10T12:00:00Z" portrait "$member_jar")"
+    "m3d-acceptance-${run_stamp}-portrait" "2026-05-10T12:00:00Z" portrait "$admin_jar")"
 twin_id="$(upload_fixture \
     "$face_portrait_orientation" IMG_M3D_FACE_B.jpg image/jpeg \
-    "m3d-acceptance-${run_stamp}-twin" "2026-05-11T12:00:00Z" twin "$member_jar")"
+    "m3d-acceptance-${run_stamp}-twin" "2026-05-11T12:00:00Z" twin "$admin_jar")"
 decoy_id="$(upload_fixture \
     "$face_portrait_other" IMG_M3D_508.jpg image/jpeg \
-    "m3d-acceptance-${run_stamp}-decoy" "2026-08-01T12:00:00Z" decoy "$member_jar")"
+    "m3d-acceptance-${run_stamp}-decoy" "2026-08-01T12:00:00Z" decoy "$admin_jar")"
 private_id="$(upload_fixture \
     "$private_photo" IMG_M3D_人脸.jpg image/jpeg \
-    "m3d-acceptance-${run_stamp}-private" "2026-04-01T12:00:00Z" private "$member_jar")"
+    "m3d-acceptance-${run_stamp}-private" "2026-04-01T12:00:00Z" private "$admin_jar")"
 for pair in "gps:$gps_id" "ocr:$ocr_id" "portrait:$portrait_id" "twin:$twin_id" "decoy:$decoy_id" "private:$private_id"; do
     label="${pair%%:*}"
     id="${pair#*:}"
-    wait_asset_ready "$id" "$label" "$member_jar"
+    wait_asset_ready "$id" "$label" "$admin_jar"
 done
 
 echo "==> the ML products must land in the database (up to ${ml_timeout_seconds}s)"
@@ -838,7 +850,7 @@ echo "    the GPS photo resolves Beijing ($beijing_place_id); the private photo 
 # ---------------------------------------------------------------------------
 
 echo "==> the FTS arm: a Chinese keyword query must hit the OCR text"
-search_get "$member_jar" "query=$query_seaside_encoded" seaside
+search_get "$admin_jar" "query=$query_seaside_encoded" seaside
 seaside_ids="$(search_item_ids "$work_dir/search_body" || true)"
 seaside_count="$(printf '%s\n' "$seaside_ids" | grep -c . || true)"
 printf '%s\n' "$seaside_ids" | grep -q "^$ocr_id$" \
@@ -851,7 +863,7 @@ seaside_ocr_hits="$(printf '%s\n' "$seaside_ids" | grep -c "^$ocr_id$" || true)"
 echo "    the OCR photo answers the 海边 query exactly once (the text hit fused with its semantic rank)"
 
 echo "==> an English substring query must hit a filename"
-search_get "$member_jar" "query=$query_filename" filename
+search_get "$admin_jar" "query=$query_filename" filename
 filename_ids="$(search_item_ids "$work_dir/search_body" || true)"
 printf '%s\n' "$filename_ids" | grep -q "^$portrait_id$" \
     || fail "the $query_filename query does not answer the portrait (its filename): $(cat "$work_dir/search_body")"
@@ -861,12 +873,12 @@ filename_first="$(printf '%s\n' "$filename_ids" | head -1)"
 echo "    the filename substring hit leads the page"
 
 echo "==> the wildcards stay literal (the query-mode facet domain is the observable)"
-search_get "$member_jar" "query=$query_percent_encoded" percent
+search_get "$admin_jar" "query=$query_percent_encoded" percent
 percent_years="$(grep -o '"years":\[[^]]*\]' "$work_dir/search_body" || true)"
 echo "    the 50% query's years facet: $percent_years"
 [ "$percent_years" = '"years":[{"assetCount":1,"year":2026}]' ] \
     || fail "the 50% query's years facet is $percent_years, want the single literal-percent hit (the OCR photo): $(cat "$work_dir/search_body")"
-search_get "$member_jar" "query=$query_underscore" underscore
+search_get "$admin_jar" "query=$query_underscore" underscore
 underscore_years="$(grep -o '"years":\[[^]]*\]' "$work_dir/search_body" || true)"
 echo "    the 50_ query's years facet: $underscore_years"
 [ "$underscore_years" = '"years":[]' ] \
@@ -878,7 +890,7 @@ echo "    50% matches the literal text, 50_ matches nothing (the wildcards carry
 # ---------------------------------------------------------------------------
 
 echo "==> the semantic arm: a descriptive query matching no text answers the embedded library with the subject first"
-search_get "$member_jar" "query=$query_semantic_encoded" semantic
+search_get "$admin_jar" "query=$query_semantic_encoded" semantic
 semantic_ids="$(search_item_ids "$work_dir/search_body" || true)"
 semantic_count="$(printf '%s\n' "$semantic_ids" | grep -c . || true)"
 [ "$semantic_count" = "6" ] \
@@ -899,15 +911,15 @@ done
 echo "    no text anywhere matches 女宇航员 (the empty text domain proves it); the face pair leads the embedded ranking"
 
 echo "==> the merge: the same query twice answers byte-identical pages (determinism)"
-search_get "$member_jar" "query=$query_seaside_encoded" seaside
+search_get "$admin_jar" "query=$query_seaside_encoded" seaside
 cp "$work_dir/search_body" "$work_dir/seaside_body_first"
-search_get "$member_jar" "query=$query_seaside_encoded" seaside-repeat
+search_get "$admin_jar" "query=$query_seaside_encoded" seaside-repeat
 cmp -s "$work_dir/seaside_body_first" "$work_dir/search_body" \
     || fail "the repeated 海边 query answered a different page (determinism): $(head -c 400 "$work_dir/seaside_body_first") vs $(head -c 400 "$work_dir/search_body")"
 echo "    the repeated query answers the identical page"
 
 echo "==> the mode-tagged cursor walks the fused order (query mode, limit 4)"
-search_get "$member_jar" "query=$query_seaside_encoded&limit=4" seaside-page1
+search_get "$admin_jar" "query=$query_seaside_encoded&limit=4" seaside-page1
 page1_ids="$(search_item_ids "$work_dir/search_body" || true)"
 page1_count="$(printf '%s\n' "$page1_ids" | grep -c . || true)"
 [ "$page1_count" = "4" ] \
@@ -917,7 +929,7 @@ rank_cursor="$(sed -n 's/.*"nextCursor":"\([^"]*\)".*/\1/p' "$work_dir/search_bo
     || fail "the 海边 page 1 carries no nextCursor: $(cat "$work_dir/search_body")"
 # The cursor rides the URL-safe base64 alphabet raw (no percent
 # escaping is needed -- the wire form is its own encoding).
-search_get "$member_jar" "query=$query_seaside_encoded&limit=4&cursor=$rank_cursor" seaside-page2
+search_get "$admin_jar" "query=$query_seaside_encoded&limit=4&cursor=$rank_cursor" seaside-page2
 page2_ids="$(search_item_ids "$work_dir/search_body" || true)"
 grep -q '"nextCursor"' "$work_dir/search_body" \
     && fail "the 海边 page 2 carries a nextCursor, want the exhausted walk: $(cat "$work_dir/search_body")"
@@ -931,7 +943,7 @@ walked_order="$(printf '%s ' $walked_ids)"
 echo "    the two pages concatenate to the unpaged fused order"
 
 echo "==> a mismatched cursor mode must answer 400"
-mismatch_status="$(search_get_raw "$member_jar" "cursor=$rank_cursor")"
+mismatch_status="$(search_get_raw "$admin_jar" "cursor=$rank_cursor")"
 [ "$mismatch_status" = "400" ] \
     || fail "the rank cursor in the browse mode returned status $mismatch_status, want 400 (the mode tag)"
 grep -q 'VALIDATION_FAILED' "$work_dir/search_raw_body" \
@@ -942,18 +954,18 @@ echo "    the rank cursor in the browse mode answers 400 VALIDATION_FAILED"
 # The people face: the cluster label the person filter consumes.
 # ---------------------------------------------------------------------------
 
-echo "==> the member labels the face pair's cluster"
-status="$(curl -sS -o "$work_dir/unnamed_body" -b "$member_jar" -w '%{http_code}' \
+echo "==> the owner labels the face pair's cluster"
+status="$(curl -sS -o "$work_dir/unnamed_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/people/unnamed")" \
-    || fail "GET /api/v1/people/unnamed (member) request failed"
+    || fail "GET /api/v1/people/unnamed (owner) request failed"
 [ "$status" = "200" ] \
-    || fail "GET /api/v1/people/unnamed (member) returned status $status, want 200: $(cat "$work_dir/unnamed_body")"
+    || fail "GET /api/v1/people/unnamed (owner) returned status $status, want 200: $(cat "$work_dir/unnamed_body")"
 cluster_id="$(sed -n 's/.*"clusterId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/unnamed_body")"
 [ -n "$cluster_id" ] \
-    || fail "the member's unnamed region lists no cluster: $(cat "$work_dir/unnamed_body")"
+    || fail "the owner's unnamed region lists no cluster: $(cat "$work_dir/unnamed_body")"
 grep -q '"faceCount":2' "$work_dir/unnamed_body" \
-    || fail "the member's cluster does not carry both faces of the pair: $(cat "$work_dir/unnamed_body")"
-status="$(curl -sS -o "$work_dir/label_body" -b "$member_jar" -w '%{http_code}' \
+    || fail "the owner's cluster does not carry both faces of the pair: $(cat "$work_dir/unnamed_body")"
+status="$(curl -sS -o "$work_dir/label_body" -b "$admin_jar" -w '%{http_code}' \
     -X PUT -H 'Content-Type: application/json' \
     -d '{"name":"Acceptance Person"}' \
     "$base_url/api/v1/people/$cluster_id/label")" \
@@ -963,7 +975,7 @@ status="$(curl -sS -o "$work_dir/label_body" -b "$member_jar" -w '%{http_code}' 
 echo "    the cluster ($cluster_id) is labeled Acceptance Person"
 
 echo "==> the person filter must answer the pair's photos"
-search_get "$member_jar" "personIds=$cluster_id" person-filter
+search_get "$admin_jar" "personIds=$cluster_id" person-filter
 person_ids="$(search_item_ids "$work_dir/search_body" || true)"
 person_count="$(printf '%s\n' "$person_ids" | grep -c . || true)"
 [ "$person_count" = "2" ] \
@@ -975,7 +987,7 @@ done
 echo "    the person filter answers exactly the pair"
 
 echo "==> the place filter must answer the GPS photo"
-search_get "$member_jar" "placeIds=$beijing_place_id" place-filter
+search_get "$admin_jar" "placeIds=$beijing_place_id" place-filter
 place_ids="$(search_item_ids "$work_dir/search_body" || true)"
 place_count="$(printf '%s\n' "$place_ids" | grep -c . || true)"
 [ "$place_count" = "1" ] \
@@ -989,8 +1001,8 @@ echo "    the place filter answers the Beijing photo (the GeoNames id round-trip
 # caller-scoped surfaces.
 # ---------------------------------------------------------------------------
 
-echo "==> POST /api/v1/tags must create the member's tag (201 fresh)"
-status="$(curl -sS -o "$work_dir/tag_create_body" -b "$member_jar" -w '%{http_code}' \
+echo "==> POST /api/v1/tags must create the owner's tag (201 fresh)"
+status="$(curl -sS -o "$work_dir/tag_create_body" -b "$admin_jar" -w '%{http_code}' \
     -X POST -H 'Content-Type: application/json' \
     -d '{"name":"精选合集"}' \
     "$base_url/api/v1/tags")" \
@@ -1003,7 +1015,7 @@ tag_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_di
 echo "    the tag 精选合集 exists ($tag_id)"
 
 echo "==> POST /api/v1/tags with the same name must answer the existing tag (200, idempotent)"
-status="$(curl -sS -o "$work_dir/tag_create2_body" -b "$member_jar" -w '%{http_code}' \
+status="$(curl -sS -o "$work_dir/tag_create2_body" -b "$admin_jar" -w '%{http_code}' \
     -X POST -H 'Content-Type: application/json' \
     -d '{"name":"精选合集"}' \
     "$base_url/api/v1/tags")" \
@@ -1015,7 +1027,7 @@ grep -q "\"id\":\"$tag_id\"" "$work_dir/tag_create2_body" \
 echo "    the duplicate ask converges on the same row"
 
 echo "==> POST /api/v1/tags/{id}/assets must report the honest skips (a bogus id, then the already-tagged pair)"
-status="$(curl -sS -o "$work_dir/tag_assign_body" -b "$member_jar" -w '%{http_code}' \
+status="$(curl -sS -o "$work_dir/tag_assign_body" -b "$admin_jar" -w '%{http_code}' \
     -X POST -H 'Content-Type: application/json' \
     -d "{\"assetIds\":[\"$gps_id\",\"$ocr_id\",\"00000000-0000-0000-0000-000000000000\"]}" \
     "$base_url/api/v1/tags/$tag_id/assets")" \
@@ -1027,7 +1039,7 @@ grep -q '"added":2' "$work_dir/tag_assign_body" \
 grep -q '"skipped":1' "$work_dir/tag_assign_body" \
     || fail "the bogus id did not answer the honest skip: $(cat "$work_dir/tag_assign_body")"
 echo "    added 2, skipped 1 (the bogus id)"
-status="$(curl -sS -o "$work_dir/tag_assign2_body" -b "$member_jar" -w '%{http_code}' \
+status="$(curl -sS -o "$work_dir/tag_assign2_body" -b "$admin_jar" -w '%{http_code}' \
     -X POST -H 'Content-Type: application/json' \
     -d "{\"assetIds\":[\"$gps_id\",\"$ocr_id\"]}" \
     "$base_url/api/v1/tags/$tag_id/assets")" \
@@ -1041,7 +1053,7 @@ grep -q '"skipped":2' "$work_dir/tag_assign2_body" \
 echo "    the re-assignment answers added 0, skipped 2 (the idempotent set)"
 
 echo "==> GET /api/v1/tags must list the vocabulary with the honest count"
-status="$(curl -sS -o "$work_dir/tags_body" -b "$member_jar" -w '%{http_code}' \
+status="$(curl -sS -o "$work_dir/tags_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/tags")" \
     || fail "GET /api/v1/tags request failed"
 [ "$status" = "200" ] \
@@ -1055,17 +1067,17 @@ grep -q '"assetCount":2' "$work_dir/tags_body" \
 echo "    the vocabulary lists the tag over its two members"
 
 echo "==> the asset detail must carry the CALLER's tags"
-status="$(curl -sS -o "$work_dir/detail_body" -b "$member_jar" -w '%{http_code}' \
+status="$(curl -sS -o "$work_dir/detail_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/assets/$gps_id")" \
-    || fail "GET /api/v1/assets/$gps_id (member) request failed"
+    || fail "GET /api/v1/assets/$gps_id (owner) request failed"
 [ "$status" = "200" ] \
-    || fail "GET /api/v1/assets/$gps_id (member) returned status $status, want 200: $(cat "$work_dir/detail_body")"
+    || fail "GET /api/v1/assets/$gps_id (owner) returned status $status, want 200: $(cat "$work_dir/detail_body")"
 grep -q '"tags":\[{"id":"'"$tag_id"'","name":"精选合集"}\]' "$work_dir/detail_body" \
-    || fail "the member's asset detail does not carry the caller's tag: $(cat "$work_dir/detail_body")"
-echo "    the member's detail carries the tag row"
+    || fail "the owner's asset detail does not carry the caller's tag: $(cat "$work_dir/detail_body")"
+echo "    the owner's detail carries the tag row"
 
 echo "==> the tag filter must answer the tagged photos"
-search_get "$member_jar" "tagIds=$tag_id" tag-filter
+search_get "$admin_jar" "tagIds=$tag_id" tag-filter
 tag_filtered_ids="$(search_item_ids "$work_dir/search_body" || true)"
 tag_filtered_count="$(printf '%s\n' "$tag_filtered_ids" | grep -c . || true)"
 [ "$tag_filtered_count" = "2" ] \
@@ -1077,7 +1089,7 @@ done
 echo "    the tag filter answers the two tagged photos"
 
 echo "==> the FTS arm joins the caller's tag vocabulary at query time"
-search_get "$member_jar" "query=$query_tag_text_encoded" tag-text
+search_get "$admin_jar" "query=$query_tag_text_encoded" tag-text
 tagtext_years="$(grep -o '"years":\[[^]]*\]' "$work_dir/search_body" || true)"
 echo "    the 合集 query's years facet: $tagtext_years"
 [ "$tagtext_years" = '"years":[{"assetCount":2,"year":2026}]' ] \
@@ -1085,37 +1097,58 @@ echo "    the 合集 query's years facet: $tagtext_years"
 echo "    the tag name feeds the text path (its two members match)"
 
 # ---------------------------------------------------------------------------
-# The share: the member opens the fixture directory as the album's
-# source and grants the admin the view at create (the sharee of the
-# visibility story).
+# The share (the E6 shape): the creation guard is pinned first (the
+# member's configuration acts are refused), then the ADMINISTRATOR
+# opens the fixture directory as the album's source and grants the
+# MEMBER the view at create (the sharee of the visibility story).
 # ---------------------------------------------------------------------------
 
-echo "==> PUT /api/v1/admin/settings/mount-roots must open the e2e fixture mount (the trust boundary)"
-status="$(curl -sS -o "$work_dir/mount_roots_body" -b "$admin_jar" -w '%{http_code}' \
-    -X PUT -H 'Content-Type: application/json' \
-    -d "{\"roots\":[\"$mount_root\"]}" \
-    "$base_url/api/v1/admin/settings/mount-roots")" \
-    || fail "PUT /api/v1/admin/settings/mount-roots request failed"
-[ "$status" = "200" ] \
-    || fail "PUT /api/v1/admin/settings/mount-roots returned status $status, want 200: $(cat "$work_dir/mount_roots_body")"
-grep -q "\"roots\":\[\"$mount_root\"\]" "$work_dir/mount_roots_body" \
-    || fail "the saved allowlist is not the fixture mount alone: $(cat "$work_dir/mount_roots_body")"
-echo "    the fixture mount ($mount_root) is the instance's one allowed root"
-
-echo "==> the member's path completion must list the fixture's trip directory (the user domain)"
-status="$(curl -sS -o "$work_dir/completions_body" -b "$member_jar" -w '%{http_code}' \
-    "$base_url/api/v1/albums/path-completions?prefix=$mount_root/tr")" \
+echo "==> the member's GET /api/v1/albums/path-completions must answer 403 (the completion is the admin's domain)"
+# E6, web IA §7.5's third revision: the completion browses the
+# container's filesystem on the creation dialog's behalf, so it rides
+# the same configuration act the creation does -- a plain member never
+# sees the filesystem.
+status="$(curl -sS -o "$work_dir/member_completion_refusal_body" -b "$member_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/path-completions?prefix=$mount_root")" \
     || fail "GET /api/v1/albums/path-completions (member) request failed"
-[ "$status" = "200" ] \
-    || fail "GET /api/v1/albums/path-completions (member) returned status $status, want 200: $(cat "$work_dir/completions_body")"
-grep -q "\"paths\":\[\"$source_dir\"\]" "$work_dir/completions_body" \
-    || fail "the member's completion does not list the trip directory: $(cat "$work_dir/completions_body")"
-echo "    the completion's domain is the opened root (every signed-in member may complete a path)"
+[ "$status" = "403" ] \
+    || fail "GET /api/v1/albums/path-completions (member) returned status $status, want 403 (the completion is the administrator's domain): $(cat "$work_dir/member_completion_refusal_body")"
+grep -q 'AUTH_FORBIDDEN' "$work_dir/member_completion_refusal_body" \
+    || fail "the member's completion refusal does not answer AUTH_FORBIDDEN: $(cat "$work_dir/member_completion_refusal_body")"
+echo "    the member's completion answers 403 AUTH_FORBIDDEN"
 
-echo "==> POST /api/v1/albums must create the member's directory album (the audience at create)"
-status="$(curl -sS -o "$work_dir/album_body" -b "$member_jar" -w '%{http_code}' \
+echo "==> the administrator's completion must list the fixture's trip directory (the system-wide domain)"
+# The E6 boundary: the compose binds ARE the boundary, so the trip
+# directory lists with no root opened -- the honest reflection of what
+# the container sees (the same domain the m3c chain drills fully).
+status="$(curl -sS -o "$work_dir/completions_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/path-completions?prefix=$mount_root/tr")" \
+    || fail "GET /api/v1/albums/path-completions (admin) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/path-completions (admin) returned status $status, want 200: $(cat "$work_dir/completions_body")"
+grep -q "\"paths\":\[\"$source_dir\"\]" "$work_dir/completions_body" \
+    || fail "the completion does not list the trip directory: $(cat "$work_dir/completions_body")"
+echo "    the completion lists the trip directory (the bind is the boundary)"
+
+echo "==> the member's POST /api/v1/albums must answer 403 (the E6 creation guard)"
+status="$(curl -sS -o "$work_dir/member_create_refusal_body" -b "$member_jar" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
-    -d "{\"title\":\"M3D Acceptance Album\",\"rootPath\":\"$source_dir\",\"audience\":[\"$admin_user_id\"]}" \
+    -d "{\"title\":\"Member attempt\",\"rootPath\":\"$source_dir\",\"audience\":[]}" \
+    "$base_url/api/v1/albums")" \
+    || fail "POST /api/v1/albums (member) request failed"
+[ "$status" = "403" ] \
+    || fail "POST /api/v1/albums (member) returned status $status, want 403 (mounting an existing photo directory is the administrator's act): $(cat "$work_dir/member_create_refusal_body")"
+grep -q 'AUTH_FORBIDDEN' "$work_dir/member_create_refusal_body" \
+    || fail "the member's create refusal does not answer AUTH_FORBIDDEN: $(cat "$work_dir/member_create_refusal_body")"
+member_attempt_rows="$(psql_query "SELECT count(*) FROM albums WHERE type = 'directory' AND title = 'Member attempt'")"
+[ "$member_attempt_rows" = "0" ] \
+    || fail "the member's refused create landed a row, want none"
+echo "    the member's create answers 403 AUTH_FORBIDDEN and lands no row"
+
+echo "==> POST /api/v1/albums must create the admin's directory album (the audience at create, the probe's honest fact)"
+status="$(curl -sS -o "$work_dir/album_body" -b "$admin_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"title\":\"M3D Acceptance Album\",\"rootPath\":\"$source_dir\",\"audience\":[\"$member_user_id\"]}" \
     "$base_url/api/v1/albums")" \
     || fail "POST /api/v1/albums request failed"
 [ "$status" = "201" ] \
@@ -1127,14 +1160,16 @@ grep -q '"itemCount":0' "$work_dir/album_body" \
 grep -q '"isShared":true' "$work_dir/album_body" \
     || fail "the created album's card does not carry the landed audience: $(cat "$work_dir/album_body")"
 grep -q '"skipped":\[\]' "$work_dir/album_body" \
-    || fail "the create's audience report skipped the admin id: $(cat "$work_dir/album_body")"
+    || fail "the create's audience report skipped the member id: $(cat "$work_dir/album_body")"
+grep -q '"sourceWritable":false' "$work_dir/album_body" \
+    || fail "the read-only creation does not carry the probe's honest false fact: $(cat "$work_dir/album_body")"
 album_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/album_body")"
 [ -n "$album_id" ] \
     || fail "the created album carries no id: $(cat "$work_dir/album_body")"
-echo "    the album exists ($album_id), sourced at $source_dir; the admin's grant landed at create"
+echo "    the album exists ($album_id), sourced at $source_dir; the member's grant landed at create, the probe answered the read-only fact"
 
 echo "==> POST /api/v1/albums/{id}/rescan must return 202 with the run's id"
-status="$(curl -sS -o "$work_dir/rescan_body" -b "$member_jar" -w '%{http_code}' \
+status="$(curl -sS -o "$work_dir/rescan_body" -b "$admin_jar" -w '%{http_code}' \
     -X POST "$base_url/api/v1/albums/$album_id/rescan")" \
     || fail "POST /api/v1/albums/$album_id/rescan request failed"
 [ "$status" = "202" ] \
@@ -1146,11 +1181,11 @@ echo "    the rescan run started: $(cat "$work_dir/rescan_body")"
 echo "==> the album's membership must converge onto the fixture's four photos (up to ${rescan_timeout_seconds}s)"
 deadline="$(( $(date +%s) + rescan_timeout_seconds ))"
 while :; do
-    status="$(curl -sS -o "$work_dir/album_detail_body" -b "$member_jar" -w '%{http_code}' \
+    status="$(curl -sS -o "$work_dir/album_detail_body" -b "$admin_jar" -w '%{http_code}' \
         "$base_url/api/v1/albums/$album_id")" \
-        || fail "GET /api/v1/albums/$album_id (member, scanning) request failed"
+        || fail "GET /api/v1/albums/$album_id (owner, scanning) request failed"
     [ "$status" = "200" ] \
-        || fail "GET /api/v1/albums/$album_id (member, scanning) returned status $status, want 200: $(cat "$work_dir/album_detail_body")"
+        || fail "GET /api/v1/albums/$album_id (owner, scanning) returned status $status, want 200: $(cat "$work_dir/album_detail_body")"
     grep -q '"itemCount":4' "$work_dir/album_detail_body" && break
     if [ "$(date +%s)" -ge "$deadline" ]; then
         compose logs --no-color --tail 200 lumemor || true
@@ -1163,38 +1198,38 @@ grep -q "\"rootPath\":\"$source_dir\"" "$work_dir/album_detail_body" \
 echo "    the membership is the fixture's four photos"
 
 echo "==> the scan's owner+checksum dedup: the four same-bytes files are honest skips, not second assets"
-# The fixture's files are byte-identical to four of the member's own
+# The fixture's files are byte-identical to four of the admin's own
 # uploads, so the add arm's dedup answers each with the honest skip:
 # the EXISTING rows gain the album's membership -- no second row, no
-# external ingest, the asset count stays the member's six.
+# external ingest, the asset count stays the admin's six.
 album_member_ids="$(grep -o '"assetId"[[:space:]]*:[[:space:]]*"[^"]*"' "$work_dir/album_detail_body" \
     | sed 's/.*"\([^"]*\)"$/\1/' | sort | tr '\n' ' ' || true)"
 [ "$album_member_ids" = "$(printf '%s\n' "$gps_id" "$ocr_id" "$portrait_id" "$twin_id" | sort | tr '\n' ' ')" ] \
-    || fail "the album's members are [$album_member_ids], want the member's existing four rows: $(cat "$work_dir/album_detail_body")"
+    || fail "the album's members are [$album_member_ids], want the admin's existing four rows: $(cat "$work_dir/album_detail_body")"
 asset_rows="$(psql_query 'SELECT count(*) FROM assets')"
 [ "$asset_rows" = "6" ] \
-    || fail "the scan created rows ($asset_rows assets, want the member's unchanged six)"
+    || fail "the scan created rows ($asset_rows assets, want the admin's unchanged six)"
 external_rows="$(psql_query "SELECT count(*) FROM assets WHERE storage_kind = 'external'")"
 [ "$external_rows" = "0" ] \
-    || fail "the scan ingested external rows ($external_rows, want 0 -- the content was the member's own)"
+    || fail "the scan ingested external rows ($external_rows, want 0 -- the content was the admin's own)"
 share_rows="$(psql_query "SELECT count(*) FROM album_shares WHERE album_id = '$album_id'")"
 [ "$share_rows" = "1" ] \
-    || fail "the create's audience landed $share_rows share rows, want 1 (the admin's grant)"
+    || fail "the create's audience landed $share_rows share rows, want 1 (the member's grant)"
 echo "    the existing four rows gained the membership; the asset count stayed six (the private photo and the decoy stay out: the album IS the shared surface)"
 
 # ---------------------------------------------------------------------------
 # The visibility (B4 and the union predicate): the sharee's search
-# never answers the member's private photo from either arm.
+# never answers the owner's private photo from either arm.
 # ---------------------------------------------------------------------------
 
-echo "==> the sharee's search must never answer the member's private photo (both arms)"
-search_get "$admin_jar" "query=$query_visibility_encoded" sharee-visibility
+echo "==> the sharee's search must never answer the owner's private photo (both arms)"
+search_get "$member_jar" "query=$query_visibility_encoded" sharee-visibility
 sharee_ids="$(search_item_ids "$work_dir/search_body" || true)"
 sharee_count="$(printf '%s\n' "$sharee_ids" | grep -c . || true)"
 [ "$sharee_count" = "4" ] \
     || fail "the sharee's 人脸 search answers $sharee_count items, want the four shared (the semantic arm over the union): $(cat "$work_dir/search_body")"
 printf '%s\n' "$sharee_ids" | grep -q "^$private_id$" \
-    && fail "the sharee's search answered the member's private photo (the text arm leaked through the union predicate): $(cat "$work_dir/search_body")"
+    && fail "the sharee's search answered the owner's private photo (the text arm leaked through the union predicate): $(cat "$work_dir/search_body")"
 printf '%s\n' "$sharee_ids" | grep -q "^$decoy_id$" \
     && fail "the sharee's search answered the unshared decoy: $(cat "$work_dir/search_body")"
 for wanted_id in "$gps_id" "$ocr_id" "$portrait_id" "$twin_id"; do
@@ -1203,19 +1238,19 @@ for wanted_id in "$gps_id" "$ocr_id" "$portrait_id" "$twin_id"; do
 done
 echo "    the sharee sees exactly the four shared photos -- the private photo (the query's only TEXT hit, an unguarded rank leader) never answers"
 
-echo "==> the member's own search answers the private photo FIRST (the both-arms rank leader)"
-search_get "$member_jar" "query=$query_visibility_encoded" owner-visibility
+echo "==> the owner's own search answers the private photo FIRST (the both-arms rank leader)"
+search_get "$admin_jar" "query=$query_visibility_encoded" owner-visibility
 owner_ids="$(search_item_ids "$work_dir/search_body" || true)"
 owner_count="$(printf '%s\n' "$owner_ids" | grep -c . || true)"
 [ "$owner_count" = "6" ] \
-    || fail "the member's 人脸 search answers $owner_count items, want all 6: $(cat "$work_dir/search_body")"
+    || fail "the owner's 人脸 search answers $owner_count items, want all 6: $(cat "$work_dir/search_body")"
 owner_first="$(printf '%s\n' "$owner_ids" | head -1)"
 [ "$owner_first" = "$private_id" ] \
-    || fail "the member's 人脸 search's first item is $owner_first, want the private photo (its text hit plus its semantic rank outrank the single-path hits): $(cat "$work_dir/search_body")"
+    || fail "the owner's 人脸 search's first item is $owner_first, want the private photo (its text hit plus its semantic rank outrank the single-path hits): $(cat "$work_dir/search_body")"
 echo "    the owner's own search answers the private photo first"
 
 echo "==> the sharee's tag facet stays empty and the places surface drops the private city"
-search_get "$admin_jar" "" sharee-browse
+search_get "$member_jar" "" sharee-browse
 grep -q '"tags":\[\]' "$work_dir/search_body" \
     || fail "the sharee's tag facet is not empty (another account's tags surfaced, B4): $(cat "$work_dir/search_body")"
 grep -q '"people":\[\]' "$work_dir/search_body" \
@@ -1228,53 +1263,53 @@ printf '%s' "$sharee_places" | grep -q "2988394" \
     && fail "the sharee's places facet carries the private photo's city: $sharee_places"
 echo "    the sharee's tags and people facets are empty; the places facet carries the shared city alone"
 
-echo "==> the sharee's asset detail carries no tags of the member's"
-status="$(curl -sS -o "$work_dir/sharee_detail_body" -b "$admin_jar" -w '%{http_code}' \
+echo "==> the sharee's asset detail carries no tags of the owner's"
+status="$(curl -sS -o "$work_dir/sharee_detail_body" -b "$member_jar" -w '%{http_code}' \
     "$base_url/api/v1/assets/$gps_id")" \
     || fail "GET /api/v1/assets/$gps_id (sharee) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/assets/$gps_id (sharee) returned status $status, want 200: $(cat "$work_dir/sharee_detail_body")"
 grep -q '"tags":\[\]' "$work_dir/sharee_detail_body" \
-    || fail "the sharee's asset detail carries the member's tags (B4 leak): $(cat "$work_dir/sharee_detail_body")"
+    || fail "the sharee's asset detail carries the owner's tags (B4 leak): $(cat "$work_dir/sharee_detail_body")"
 echo "    the sharee's detail of the same asset carries an empty tags row (per-user state)"
 
 # ---------------------------------------------------------------------------
-# The facet counts over the member's whole library (the honest counts
+# The facet counts over the owner's whole library (the honest counts
 # of all seven dimensions).
 # ---------------------------------------------------------------------------
 
-echo "==> the member's browse facets carry the honest counts of all seven dimensions"
-search_get "$member_jar" "" member-browse
+echo "==> the owner's browse facets carry the honest counts of all seven dimensions"
+search_get "$admin_jar" "" owner-browse
 grep -q "\"people\":\[{\"assetCount\":2,\"id\":\"$cluster_id\",\"name\":\"Acceptance Person\"}\]" \
     "$work_dir/search_body" \
-    || fail "the member's people facet is not the labeled pair's count: $(cat "$work_dir/search_body")"
-member_places="$(grep -o '"places":\[[^]]*\]' "$work_dir/search_body" || true)"
-echo "    the member's places facet: $member_places"
-printf '%s' "$member_places" | grep -q '{"assetCount":1,"country":"CN","name":"Beijing","placeId":1816670}' \
-    || fail "the member's places facet does not carry Beijing: $member_places"
-printf '%s' "$member_places" | grep -q '{"assetCount":1,"country":"FR","name":"'"$paris_name"'"' \
-    || fail "the member's places facet does not carry the private photo's city: $member_places"
-member_years="$(grep -o '"years":\[[^]]*\]' "$work_dir/search_body" || true)"
-echo "    the member's years facet: $member_years"
-printf '%s' "$member_years" | grep -q '{"assetCount":5,"year":2026}' \
-    || fail "the member's years facet does not carry the five 2026 photos: $member_years"
-printf '%s' "$member_years" | grep -q '{"assetCount":1,"year":2023}' \
-    || fail "the member's years facet does not carry the private photo's 2023: $member_years"
+    || fail "the owner's people facet is not the labeled pair's count: $(cat "$work_dir/search_body")"
+owner_places="$(grep -o '"places":\[[^]]*\]' "$work_dir/search_body" || true)"
+echo "    the owner's places facet: $owner_places"
+printf '%s' "$owner_places" | grep -q '{"assetCount":1,"country":"CN","name":"Beijing","placeId":1816670}' \
+    || fail "the owner's places facet does not carry Beijing: $owner_places"
+printf '%s' "$owner_places" | grep -q '{"assetCount":1,"country":"FR","name":"'"$paris_name"'"' \
+    || fail "the owner's places facet does not carry the private photo's city: $owner_places"
+owner_years="$(grep -o '"years":\[[^]]*\]' "$work_dir/search_body" || true)"
+echo "    the owner's years facet: $owner_years"
+printf '%s' "$owner_years" | grep -q '{"assetCount":5,"year":2026}' \
+    || fail "the owner's years facet does not carry the five 2026 photos: $owner_years"
+printf '%s' "$owner_years" | grep -q '{"assetCount":1,"year":2023}' \
+    || fail "the owner's years facet does not carry the private photo's 2023: $owner_years"
 grep -q '"cameras":\[{"assetCount":2,"id":"Lumemor|Golden Camera","make":"Lumemor","model":"Golden Camera"}\]' \
     "$work_dir/search_body" \
-    || fail "the member's cameras facet is not the golden pair's two: $(cat "$work_dir/search_body")"
+    || fail "the owner's cameras facet is not the golden pair's two: $(cat "$work_dir/search_body")"
 grep -q '"kinds":\[{"assetCount":6,"kind":"image"}\]' "$work_dir/search_body" \
-    || fail "the member's kinds facet is not the six photos: $(cat "$work_dir/search_body")"
+    || fail "the owner's kinds facet is not the six photos: $(cat "$work_dir/search_body")"
 grep -q "\"albums\":\[{\"assetCount\":4,\"id\":\"$album_id\",\"title\":\"M3D Acceptance Album\"}\]" \
     "$work_dir/search_body" \
-    || fail "the member's albums facet is not the album's four members: $(cat "$work_dir/search_body")"
+    || fail "the owner's albums facet is not the album's four members: $(cat "$work_dir/search_body")"
 grep -q "\"tags\":\[{\"assetCount\":2,\"id\":\"$tag_id\",\"name\":\"精选合集\"}\]" \
     "$work_dir/search_body" \
-    || fail "the member's tags facet is not the tag's two members: $(cat "$work_dir/search_body")"
+    || fail "the owner's tags facet is not the tag's two members: $(cat "$work_dir/search_body")"
 echo "    people 2, places Beijing+Paris, years 2026x5+2023x1, cameras 2, kinds 6, albums 4, tags 2 -- every dimension honest"
 
 echo "==> the browse cursor walks the timeline order (the second mode)"
-search_get "$member_jar" "limit=4" browse-page1
+search_get "$admin_jar" "limit=4" browse-page1
 browse_page1_ids="$(search_item_ids "$work_dir/search_body" || true)"
 browse_page1_count="$(printf '%s\n' "$browse_page1_ids" | grep -c . || true)"
 [ "$browse_page1_count" = "4" ] \
@@ -1282,11 +1317,11 @@ browse_page1_count="$(printf '%s\n' "$browse_page1_ids" | grep -c . || true)"
 browse_cursor="$(sed -n 's/.*"nextCursor":"\([^"]*\)".*/\1/p' "$work_dir/search_body")"
 [ -n "$browse_cursor" ] \
     || fail "the browse page 1 carries no nextCursor: $(cat "$work_dir/search_body")"
-search_get "$member_jar" "limit=4&cursor=$browse_cursor" browse-page2
+search_get "$admin_jar" "limit=4&cursor=$browse_cursor" browse-page2
 browse_page2_ids="$(search_item_ids "$work_dir/search_body" || true)"
 grep -q '"nextCursor"' "$work_dir/search_body" \
     && fail "the browse page 2 carries a nextCursor, want the exhausted walk: $(cat "$work_dir/search_body")"
-search_get "$member_jar" "" browse-unpaged
+search_get "$admin_jar" "" browse-unpaged
 browse_unpaged_ids="$(search_item_ids "$work_dir/search_body" || true)"
 browse_walked="$(printf '%s\n' "$browse_page1_ids" "$browse_page2_ids")"
 browse_walked_order="$(printf '%s ' $browse_walked)"
@@ -1299,12 +1334,12 @@ echo "    the browse pages concatenate to the unpaged time order"
 # The places domain: the locale join and the caller-visible counts.
 # ---------------------------------------------------------------------------
 
-echo "==> GET /api/v1/places must answer the member's two cities with the locale names"
-status="$(curl -sS -o "$work_dir/places_body" -b "$member_jar" -w '%{http_code}' \
+echo "==> GET /api/v1/places must answer the owner's two cities with the locale names"
+status="$(curl -sS -o "$work_dir/places_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/places?locale=en")" \
-    || fail "GET /api/v1/places (member, en) request failed"
+    || fail "GET /api/v1/places (owner, en) request failed"
 [ "$status" = "200" ] \
-    || fail "GET /api/v1/places (member, en) returned status $status, want 200: $(cat "$work_dir/places_body")"
+    || fail "GET /api/v1/places (owner, en) returned status $status, want 200: $(cat "$work_dir/places_body")"
 grep -q "{\"assetCount\":1,\"country\":\"CN\",\"name\":\"$beijing_name_en\",\"placeId\":$beijing_place_id,\"representativeCoverAssetIds\":\[\"$gps_id\"\]}" \
     "$work_dir/places_body" \
     || fail "the en places listing does not carry Beijing with its canonical name and the GPS cover: $(cat "$work_dir/places_body")"
@@ -1313,11 +1348,11 @@ grep -q "{\"assetCount\":1,\"country\":\"FR\",\"name\":\"$paris_name\",\"placeId
     || fail "the en places listing does not carry the private photo's city: $(cat "$work_dir/places_body")"
 echo "    the en listing carries both cities, the GPS photo as Beijing's cover"
 
-status="$(curl -sS -o "$work_dir/places_zh_body" -b "$member_jar" -w '%{http_code}' \
+status="$(curl -sS -o "$work_dir/places_zh_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/places?locale=zh-Hans")" \
-    || fail "GET /api/v1/places (member, zh-Hans) request failed"
+    || fail "GET /api/v1/places (owner, zh-Hans) request failed"
 [ "$status" = "200" ] \
-    || fail "GET /api/v1/places (member, zh-Hans) returned status $status, want 200: $(cat "$work_dir/places_zh_body")"
+    || fail "GET /api/v1/places (owner, zh-Hans) returned status $status, want 200: $(cat "$work_dir/places_zh_body")"
 grep -q "{\"assetCount\":1,\"country\":\"CN\",\"name\":\"$beijing_name_zh\",\"placeId\":$beijing_place_id" \
     "$work_dir/places_zh_body" \
     || fail "the zh-Hans places listing does not carry Beijing as 北京 (the locale join): $(cat "$work_dir/places_zh_body")"
@@ -1327,7 +1362,7 @@ grep -q "{\"assetCount\":1,\"country\":\"FR\",\"name\":\"$paris_name\",\"placeId
 echo "    the zh-Hans listing joins 北京 (the display-only locale, the canonical fallback where no zh name exists)"
 
 echo "==> the sharee's GET /api/v1/places counts caller-visible (the private city retracts)"
-status="$(curl -sS -o "$work_dir/sharee_places_body" -b "$admin_jar" -w '%{http_code}' \
+status="$(curl -sS -o "$work_dir/sharee_places_body" -b "$member_jar" -w '%{http_code}' \
     "$base_url/api/v1/places?locale=en")" \
     || fail "GET /api/v1/places (sharee) request failed"
 [ "$status" = "200" ] \
