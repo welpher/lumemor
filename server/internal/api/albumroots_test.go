@@ -441,4 +441,25 @@ func TestCreateAlbumPathMatrix(t *testing.T) {
 		}
 		requireNoProbeFile(t, ro)
 	})
+
+	t.Run("UnwritableSourceIsStillCreated", func(t *testing.T) {
+		// The root-proof arm of the same pin: procfs refuses the
+		// file creation for uid 0 too (the write answers ENOENT),
+		// so the containerized gate exercises the probe's failure
+		// even where the permission arms skip. The album still
+		// lands, the fact is false, and no probe file ever existed
+		// to leave behind.
+		if _, err := os.Stat("/proc"); err != nil {
+			t.Skipf("/proc is unavailable on this host (%v); the unwritable arm needs procfs", err)
+		}
+		summary := env.createAlbum(t, env.cookie, "Unwritable source", "/proc", nil)
+		if summary.SourceWritable {
+			t.Error("sourceWritable = true, want the probe's false over a source the write cannot land in")
+		}
+		requireNoProbeFile(t, "/proc")
+		if got := env.queryInt(t, "SELECT source_writable::int FROM albums WHERE id = $1",
+			pgUUID(uuid.UUID(summary.Id))); got != 0 {
+			t.Errorf("stored source_writable = %d, want 0", got)
+		}
+	})
 }
