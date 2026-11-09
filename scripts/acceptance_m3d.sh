@@ -1168,7 +1168,7 @@ echo "==> the scan's owner+checksum dedup: the four same-bytes files are honest 
 # the EXISTING rows gain the album's membership -- no second row, no
 # external ingest, the asset count stays the member's six.
 album_member_ids="$(grep -o '"assetId"[[:space:]]*:[[:space:]]*"[^"]*"' "$work_dir/album_detail_body" \
-    | sed 's/.*"\([^"]*\)"$/\1/' | sort | tr '\n' ' ')"
+    | sed 's/.*"\([^"]*\)"$/\1/' | sort | tr '\n' ' ' || true)"
 [ "$album_member_ids" = "$(printf '%s\n' "$gps_id" "$ocr_id" "$portrait_id" "$twin_id" | sort | tr '\n' ' ')" ] \
     || fail "the album's members are [$album_member_ids], want the member's existing four rows: $(cat "$work_dir/album_detail_body")"
 asset_rows="$(psql_query 'SELECT count(*) FROM assets')"

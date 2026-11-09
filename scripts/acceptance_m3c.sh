@@ -531,8 +531,8 @@ create_member_and_login() {
     [ "$status" = "200" ] \
         || fail "the member's GET /api/v1/auth/sessions returned status $status, want 200: $(cat "$work_dir/member_sessions_body")"
     local entries with_identity
-    entries="$(grep -o '"userId"' "$work_dir/member_sessions_body" | wc -l | tr -d ' ')"
-    with_identity="$(grep -o "\"userId\":\"$member_user_id\"" "$work_dir/member_sessions_body" | wc -l | tr -d ' ')"
+    entries="$(grep -o '"userId"' "$work_dir/member_sessions_body" | wc -l | tr -d ' ' || true)"
+    with_identity="$(grep -o "\"userId\":\"$member_user_id\"" "$work_dir/member_sessions_body" | wc -l | tr -d ' ' || true)"
     [ "$entries" -ge 1 ] && [ "$entries" = "$with_identity" ] \
         || fail "the member's session list carries the identity on $with_identity of $entries entries: $(cat "$work_dir/member_sessions_body")"
     echo "    the session list carries the member's identity on every entry (the restore arm)"
@@ -817,7 +817,7 @@ while :; do
         || fail "GET /api/v1/assets/timeline (album, scanned) request failed"
     [ "$status" = "200" ] \
         || fail "GET /api/v1/assets/timeline (album, scanned) returned status $status, want 200: $(cat "$work_dir/album_timeline_body")"
-    ready_count="$(grep -o '"isReady":true' "$work_dir/album_timeline_body" | wc -l | tr -d ' ')"
+    ready_count="$(grep -o '"isReady":true' "$work_dir/album_timeline_body" | wc -l | tr -d ' ' || true)"
     [ "$ready_count" = "2" ] && break
     if [ "$(date +%s)" -ge "$deadline" ]; then
         compose logs --no-color --tail 200 lumemor || true
