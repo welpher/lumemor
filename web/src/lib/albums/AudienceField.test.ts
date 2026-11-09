@@ -5,13 +5,20 @@ import AudienceField from './AudienceField.svelte';
 
 // The audience field (web IA §7.6, the specimen's add-style pin):
 // the granted accounts as chips (avatar + email + the remove
-// mark), the dashed "Add" affordance, and the INLINE candidate
-// picker -- the users listing's candidates (every account minus
-// the draft's members minus the caller), the keyboard the keys
-// footer names (↑/↓ highlight, Enter adds, Esc closes the picker
-// alone), the per-open fetch with its honest failure line, and the
-// disabled account's note. The candidate rows are state selectors
-// (mousedown adds), the chip's remove mark is the one button.
+// mark), the dashed "Add" affordance, and the candidate picker as
+// a PORTALED floating layer (§7.5's 2026-11-09 second revision:
+// fixed, anchored under the chips row, the dialog never changing
+// height for it) -- the users listing's candidates (every account
+// minus the draft's members minus the caller), the keyboard the
+// keys footer names (↑/↓ highlight, Enter adds, Esc closes the
+// picker alone), the per-open fetch with its honest failure line,
+// and the disabled account's note. The candidate rows are state
+// selectors (mousedown adds), the chip's remove mark is the one
+// button. §7.6's 2026-11-09 pin: a KNOWN-empty candidate pool
+// disables the add affordance outright (a single-account instance,
+// or the multi-add draining the last candidate) and an empty
+// picker state is never shown -- the probe fetches the pool at
+// mount, and the drain collapses the open picker.
 
 function jsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
@@ -79,13 +86,19 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-test('the empty audience renders the honest "only you" note', () => {
+test('the empty audience renders the honest "only you" note; the mount probe fetches the pool', () => {
 	const fetchMock = vi.fn();
 	vi.stubGlobal('fetch', fetchMock);
 	mountField();
 
 	expect(document.body.querySelector('.audience-field__only-me')?.textContent).toBe('Only you');
-	expect(fetchMock).not.toHaveBeenCalled();
+	// §7.6's pin needs the pool KNOWN before the first open (the
+	// honest disabled button): the field probes the member list
+	// once at mount. The listing fails here (the bare mock answers
+	// nothing) -- an unknown pool keeps the button enabled, because
+	// the open IS the failed listing's retry path.
+	expect(fetchMock).toHaveBeenCalledTimes(1);
+	expect(addButton().disabled).toBe(false);
 });
 
 test('opening the picker fetches the member list and offers the other accounts', async () => {
@@ -97,8 +110,10 @@ test('opening the picker fetches the member list and offers the other accounts',
 	await settle();
 
 	// The candidates: every account minus the caller (the identity
-	// seam's self filter) minus the draft's members (none yet).
-	expect(fetchMock).toHaveBeenCalledTimes(1);
+	// seam's self filter) minus the draft's members (none yet). The
+	// mount probe plus the per-open fetch: two listings, the
+	// per-open discipline of the old share dialog.
+	expect(fetchMock).toHaveBeenCalledTimes(2);
 	expect(rowNames()).toEqual(['grace@example.com', 'ivy@example.com', 'hopper@example.com']);
 	// The keys footer rides the rows (the specimen's language).
 	expect(document.body.querySelector('.audience-field__keys')?.textContent).toContain(
@@ -241,34 +256,88 @@ test('the member-list failure renders inside the picker; the toggle retries', as
 	expect(failure?.textContent).toContain('Could not load the member list');
 
 	// The toggle affordance is the retry path: close, reopen, refetch
-	// (two opens, two fetches).
+	// (the mount probe's failed listing, the first open's failed
+	// listing, then the successful one -- three listings).
 	addButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	failing = false;
 	addButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	expect(fetchMock).toHaveBeenCalledTimes(2);
+	expect(fetchMock).toHaveBeenCalledTimes(3);
 	expect(rowNames()).toEqual(['grace@example.com', 'ivy@example.com', 'hopper@example.com']);
 });
 
-test('no candidates left renders the honest note', async () => {
+test('the multi-add drain collapses the picker and disables the add affordance (§7.6\'s pin)', async () => {
 	const fetchMock = vi.fn(async () => jsonResponse(200, usersBody));
 	vi.stubGlobal('fetch', fetchMock);
 	mountField({ selfId: 'u1' });
 
 	addButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
-	// Add every candidate: the picker re-derives to nothing.
+	// Add every candidate: each add leaves the pool smaller, the
+	// LAST one drains it -- and an empty picker state is never
+	// shown: the picker collapses itself the moment the last row
+	// leaves, the add button disables, and the no-candidates note
+	// takes the reserved slot under the chips row.
 	const addAll = document.body.querySelectorAll<HTMLElement>('[role="option"]');
 	for (const row of [...addAll]) {
 		row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 		flushSync();
 	}
 	expect(rowNames()).toEqual([]);
-	expect(document.body.querySelector('.audience-field__no-candidates')?.textContent).toContain(
-		'No other account is available.'
+	expect(document.body.querySelector('#audience-field-picker')).toBeNull();
+	expect(addButton().disabled).toBe(true);
+	expect(
+		document.body.querySelector('.audience-field__no-candidates')?.textContent
+	).toContain('No other account is available.');
+
+	// The drain's focus discipline: the add button just disabled (an
+	// unfocusable target), so the focus lands on the newest chip's
+	// remove mark -- the one enabled button left in the section.
+	// (The focus move rides the tick() promise; settle lets it land.)
+	await settle();
+	const marks = document.body.querySelectorAll<HTMLButtonElement>('.audience-field__chip-remove');
+	expect(document.activeElement).toBe(marks[marks.length - 1]);
+
+	// The disabled button opens nothing: the empty set earns no row.
+	addButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(document.body.querySelector('#audience-field-picker')).toBeNull();
+});
+
+test('a single-account instance permanently disables the add affordance (the probed pool is the caller alone)', async () => {
+	const fetchMock = vi.fn(async () =>
+		jsonResponse(200, {
+			users: [{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false }]
+		})
 	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountField({ selfId: 'u1' });
+	await settle();
+
+	// The probe landed: the pool is the caller alone -- KNOWN empty.
+	// The button is disabled (reduced opacity, not-allowed cursor,
+	// the honest native disabled semantics) with the reserved
+	// no-candidates slot carrying the words; no click, no open.
+	expect(fetchMock).toHaveBeenCalledTimes(1);
+	expect(addButton().disabled).toBe(true);
+	expect(addButton().className).toContain('disabled:opacity-55');
+	expect(addButton().className).toContain('disabled:cursor-not-allowed');
+	expect(
+		document.body.querySelector('.audience-field__no-candidates')?.textContent
+	).toContain('No other account is available.');
+
+	addButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(document.body.querySelector('#audience-field-picker')).toBeNull();
+
+	// The reserved slot never moves: the note's line is always in
+	// the layout (§7.5's companion pin -- the dialog's height is
+	// invariant to the note's comings and goings).
+	const slot = document.body.querySelector<HTMLElement>('.audience-field__slot');
+	expect(slot).not.toBeNull();
+	expect(slot?.className).toContain('h-[19px]');
 });
 
 test('a busy write disables the affordances', async () => {

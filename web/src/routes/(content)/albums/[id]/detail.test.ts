@@ -538,9 +538,12 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 
 	// The picker: the other accounts (the caller and the grant
 	// excluded -- hopper renders with the honest disabled note).
+	// The rows live in the PORTALED floating layer (§7.5's revision:
+	// document.body, outside the dialog's DOM) -- document-level
+	// selectors find them.
 	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
-	const rows = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
+	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
 	expect(
 		rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)
 	).toEqual(['ivy@example.com', 'hopper@example.com']);
@@ -549,9 +552,9 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	// The keyboard the specimen pins: the listbox drives, the loaded
 	// set highlights its first row, Enter adds the highlighted
 	// candidate, the picker stays open.
-	const listbox = dialog?.querySelector<HTMLElement>('#audience-field-picker');
+	const listbox = document.body.querySelector<HTMLElement>('#audience-field-picker');
 	expect(
-		dialog?.querySelectorAll('[role="option"]')[0]?.getAttribute('aria-selected')
+		listbox?.querySelectorAll('[role="option"]')[0]?.getAttribute('aria-selected')
 	).toBe('true');
 	listbox?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 	flushSync();
@@ -563,10 +566,12 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 		'ivy@example.com'
 	]);
 
-	// Esc closes the picker alone -- the dialog stays.
+	// Esc closes the picker alone -- the dialog stays. (The portaled
+	// layer leaves the document with the close; the dialog's own DOM
+	// never carried it.)
 	listbox?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 	flushSync();
-	expect(dialog?.querySelector('#audience-field-picker')).toBeNull();
+	expect(document.body.querySelector('#audience-field-picker')).toBeNull();
 	expect(modal()).not.toBeNull();
 
 	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
@@ -613,7 +618,8 @@ test('a failed audience write keeps the dialog with the mapped error', async () 
 	const dialog = modal();
 	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
-	const rows = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
+	// The rows live in the portaled floating layer (document-level).
+	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
 	rows[0]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 	flushSync();
 	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(

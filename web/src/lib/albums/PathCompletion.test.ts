@@ -1,22 +1,27 @@
 import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
+import { probeSession, sessionStatus } from '$lib/auth/session.svelte';
 import PathCompletion from './PathCompletion.svelte';
 
-// The source-path completion combobox (the specimen's pinned
-// semantics, 2026-11-08): the typed prefix in, the pickable
-// directories out, the list expanding INLINE (a flow child -- the
-// dialog grows, zero occlusion by construction). The request
-// discipline: debounced ~250ms, single-flight (a burst parks behind
-// the in-flight request and ONE trailing fetch runs when it lands),
-// and a stale answer never overwrites a newer one (the generation
-// guard). The keyboard: ↑/↓ highlight, Enter completes, Esc closes
-// the list alone. The honest faces: the empty-prefix empty answer
-// is the NO-ROOTS posture (the allowlist is closed), and the
-// completion's own failure renders a line that points back at the
-// completion. Every case drives the component through an injected
-// fetch mock under fake timers (the debounce is the unit under
-// observation).
+// The source-path completion combobox: the typed prefix in, the
+// pickable directories out, the list a PORTALED floating layer
+// (§7.5's 2026-11-09 second revision: fixed, anchored under the
+// input through the shared `anchored` action, the dialog never
+// changing height for it). The request discipline: debounced
+// ~250ms, single-flight (a burst parks behind the in-flight
+// request and ONE trailing fetch runs when it lands), and a stale
+// answer never overwrites a newer one (the generation guard). The
+// keyboard: ↑/↓ highlight, Enter completes, Esc closes the list
+// alone. The honest faces: the empty-prefix empty answer is the
+// NO-ROOTS posture (the allowlist is closed), and the completion's
+// own failure renders as a line that points back at the completion.
+// The no-roots face carries the admin's direct jump to the instance
+// settings (the 2026-11-09 dogfood pin) and the validation slot
+// under the field swaps the hint and the failure at ONE height
+// (§7.5's companion pin). Every case drives the component through
+// an injected fetch mock under fake timers (the debounce is the
+// unit under observation).
 
 type Held = { resolve: (paths: string[]) => void };
 
@@ -27,9 +32,31 @@ function jsonResponse(status: number, body: unknown): Response {
 	});
 }
 
+/** Boot the session store signed in with the given role (or out on null). */
+async function bootSession(role: 'admin' | 'user' | null): Promise<void> {
+	if (role === null) {
+		vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	} else {
+		vi.stubGlobal('fetch', vi.fn(async () =>
+			jsonResponse(200, [
+				{
+					id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
+					kind: 'WEB',
+					userId: '6f9c2d18-9a4c-4a1b-b1a1-00000000000a',
+					role,
+					deviceName: 'Mozilla/5.0 (test)',
+					createdAt: '2026-11-01T10:00:00Z',
+					lastSeenAt: '2026-11-02T10:00:00Z'
+				}
+			])
+		));
+	}
+	await probeSession();
+}
+
 /** Mount the combobox with a captured path binding. */
-function mountField(props: { path?: string; failure?: string } = {}) {
-	const state = { path: props.path ?? '', failure: props.failure ?? '' };
+function mountField(props: { path?: string; failure?: string; hint?: string } = {}) {
+	const state = { path: props.path ?? '', failure: props.failure ?? '', hint: props.hint ?? '' };
 	const field = mount(PathCompletion, {
 		target: document.body,
 		props: {
@@ -37,6 +64,7 @@ function mountField(props: { path?: string; failure?: string } = {}) {
 			label: 'Path',
 			id: 'test-path',
 			placeholder: '/Volumes/Photos',
+			hint: state.hint,
 			failure: state.failure,
 			onsubmit: undefined
 		}
@@ -55,6 +83,11 @@ function mountField(props: { path?: string; failure?: string } = {}) {
 beforeEach(async () => {
 	document.body.textContent = '';
 	vi.useFakeTimers();
+	// The session store is module state shared by this file's tests:
+	// every case starts signed out and boots its own role when it
+	// needs one (the no-roots action's gate).
+	await bootSession(null);
+	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
 });
 
@@ -263,8 +296,104 @@ test('the empty prefix lists the roots; the empty answer over an empty prefix is
 	// The keys footer rides the row list only -- nothing to
 	// navigate here.
 	expect(keysFooter()).toBeNull();
+	// The signed-out session holds no role: the admin's direct jump
+	// never renders (the note alone is the honest face).
+	expect(document.body.querySelector('.path-completion__no-roots-action')).toBeNull();
 
 	unmount(again.component);
+	flushSync();
+});
+
+test('the no-roots note carries the ADMIN\'S direct jump to the instance settings (the dogfood pin)', async () => {
+	await bootSession('admin');
+	const empty = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: [] }));
+	vi.stubGlobal('fetch', empty);
+	const { component } = mountField();
+	focus();
+	await advance(300);
+
+	// The note itself stays honest (the allowlist is closed, the
+	// administrator must open a root), and the admin's face adds the
+	// direct action: icon + text (§7.2's primary-flow shape), jumping
+	// to the instance settings where the "Album sources" section
+	// owns the allowlist.
+	expect(document.body.querySelector('.path-completion__no-roots')?.textContent).toContain(
+		'No folders can be picked yet'
+	);
+	const action = document.body.querySelector<HTMLAnchorElement>('.path-completion__no-roots-action');
+	expect(action?.getAttribute('href')).toBe('/admin/settings');
+	expect(action?.textContent?.trim()).toBe('Open mount roots');
+	// The icon leads the label, decorative (the icon-first rule).
+	const icon = action?.querySelector('svg');
+	expect(icon).not.toBeNull();
+	expect(action?.firstElementChild).toBe(icon);
+	expect(icon?.getAttribute('aria-hidden')).toBe('true');
+
+	unmount(component);
+	flushSync();
+});
+
+test("a member's no-roots note keeps the honest dead end without the admin jump", async () => {
+	await bootSession('user');
+	const empty = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: [] }));
+	vi.stubGlobal('fetch', empty);
+	const { component } = mountField();
+	focus();
+	await advance(300);
+
+	expect(document.body.querySelector('.path-completion__no-roots')?.textContent).toContain(
+		'No folders can be picked yet'
+	);
+	expect(document.body.querySelector('.path-completion__no-roots-action')).toBeNull();
+
+	unmount(component);
+	flushSync();
+});
+
+test('the validation slot swaps the hint and the failure at ONE height (§7.5\'s companion pin)', async () => {
+	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: [] }));
+	vi.stubGlobal('fetch', fetchMock);
+	const hint = 'Choose an existing folder — the album references it in place.';
+
+	// The standing face: the hint fills the reserved slot.
+	const withHint = mountField({ hint });
+	const hintSlot = document.body.querySelector<HTMLElement>('.path-completion__slot');
+	expect(hintSlot).not.toBeNull();
+	expect(hintSlot?.textContent).toContain('Choose an existing folder');
+	expect(hintSlot?.className).toContain('h-[37px]');
+	expect(hintSlot?.className).toContain('path-completion__hint');
+	expect(hintSlot?.className).not.toContain('path-completion__failure');
+	// The input's described-by partner is the slot itself: the hint
+	// is a description exactly as the failure is.
+	expect(document.body.querySelector<HTMLInputElement>('#test-path')?.getAttribute('aria-describedby')).toBe('test-path-note');
+	unmount(withHint.component);
+	flushSync();
+
+	// The failure face: the SAME slot, the SAME reserved height, the
+	// failure's words and color replacing the hint's -- slot-replace,
+	// never slot-add, so the dialog's height never moves for the
+	// validation's comings and goings.
+	const withFailure = mountField({ hint, failure: 'That folder does not exist.' });
+	const failureSlot = document.body.querySelector<HTMLElement>('.path-completion__slot');
+	expect(failureSlot).not.toBeNull();
+	expect(failureSlot?.textContent).toContain('That folder does not exist.');
+	expect(failureSlot?.textContent).not.toContain('Choose an existing folder');
+	expect(failureSlot?.className).toContain('h-[37px]');
+	expect(failureSlot?.className).toContain('path-completion__failure');
+	expect(failureSlot?.className).not.toContain('path-completion__hint');
+	expect(failureSlot?.getAttribute('role')).toBe('alert');
+	expect(document.body.querySelector<HTMLInputElement>('#test-path')?.getAttribute('aria-invalid')).toBe('true');
+	unmount(withFailure.component);
+	flushSync();
+
+	// The bare field (the settings' add-root row): the slot still
+	// stands -- one reserved line -- empty and quiet.
+	const bare = mountField();
+	const bareSlot = document.body.querySelector<HTMLElement>('.path-completion__slot');
+	expect(bareSlot).not.toBeNull();
+	expect(bareSlot?.textContent).toBe('');
+	expect(bareSlot?.className).toContain('h-[19px]');
+	unmount(bare.component);
 	flushSync();
 });
 
