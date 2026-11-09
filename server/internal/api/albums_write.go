@@ -28,6 +28,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,6 +81,39 @@ func (s *server) publishAlbumEvent(name string, albumID, userID uuid.UUID) {
 		"albumId": albumID.String(),
 		"userId":  userID.String(),
 	})
+}
+
+// publishAlbumMembershipEvents reports the album walls' convergence
+// signal for every album whose LIVE membership the trash lifecycle
+// just changed (E6, §7.9's deletability chain): the changed ids'
+// membership rows name the albums, and each album carries ONE
+// album.items-changed event, deduplicated across the ids -- the
+// rescan's own restart signal, published for the curation arms that
+// move the live membership without touching its rows. The requester
+// is the write's owner (the lifecycle arms are owner-scoped), so the
+// payload's acting user is theirs. A read failure is logged and
+// skipped: the asset events already carried the state change, and a
+// wall that misses its restart signal converges on the next one.
+func (s *server) publishAlbumMembershipEvents(ctx context.Context, requester uuid.UUID, ids []uuid.UUID) {
+	if s.events == nil || len(ids) == 0 {
+		return
+	}
+	seen := make(map[uuid.UUID]bool)
+	for _, id := range ids {
+		albums, err := s.queries.ListAlbumsOfAsset(ctx, pgUUID(id))
+		if err != nil {
+			s.logger.Warn("list the albums of a trash-lifecycle write", "error", err, "asset_id", id)
+			continue
+		}
+		for _, albumID := range albums {
+			album := uuid.UUID(albumID.Bytes)
+			if seen[album] {
+				continue
+			}
+			seen[album] = true
+			s.publishAlbumEvent("album.items-changed", album, requester)
+		}
+	}
 }
 
 // albumTitle trims the title and bounds its rune count; it answers

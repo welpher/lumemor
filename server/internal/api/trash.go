@@ -161,6 +161,12 @@ func (s *server) RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi
 			// Only a state change announces itself; the idempotent
 			// no-op stays silent.
 			s.publishAssetEvent("asset.restored", row)
+			// The album walls' convergence signal rides the same state
+			// change: the restored member rejoined every holding
+			// album's live membership, and the album-narrowed wall
+			// restarts its walk on this event (E6's deletability
+			// chain -- the batch arm publishes the same signal).
+			s.publishAlbumMembershipEvents(r.Context(), requester.userID, []uuid.UUID{uuid.UUID(id)})
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -182,6 +188,9 @@ func (s *server) RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi
 		// Only a state change announces itself; the idempotent no-op
 		// stays silent.
 		s.publishAssetEvent("asset.restored", row)
+		// The same album signal as the external arm: a blob member's
+		// restore rejoins its albums' live membership identically.
+		s.publishAlbumMembershipEvents(r.Context(), requester.userID, []uuid.UUID{uuid.UUID(id)})
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

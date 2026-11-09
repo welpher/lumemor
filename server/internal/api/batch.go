@@ -258,6 +258,20 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The album walls' convergence signal (E6, §7.9's deletability
+	// chain): the trash and the restore of an album member change the
+	// album's LIVE membership -- the derived count the detail renders
+	// and the members the wall walks -- while the membership rows
+	// themselves never move. The album-narrowed wall converges
+	// exactly through album.items-changed (the rescan's own restart
+	// signal), so these two arms publish it for every album holding
+	// the changed ids. The favorites and the hide/unhide arms never
+	// move the trash lifecycle's live predicate and publish nothing
+	// album-level; a refused batch never reaches this block at all.
+	if request.Action == apigen.Trash || request.Action == apigen.Restore {
+		s.publishAlbumMembershipEvents(r.Context(), requester.userID, changed)
+	}
+
 	// The report: affected counts every distinct id the server
 	// resolved and applied -- including the idempotent no-ops -- and
 	// missing lists the rest, in first-appearance order.
