@@ -1,92 +1,56 @@
-# AGENTS.md
+# AGENTS.md — lumemor
 
-Rules for AI coding agents working in the lumemor repository. Human
-contributors should also read [CONTRIBUTING.md](CONTRIBUTING.md); this
-file covers the mechanical ground rules that keep the repository
-consistent no matter who (or what) writes the code.
+The entry point for agents AND humans. The design/decision record lives in a
+separate private repository (the specs are the semantic authority — read the
+relevant spec before touching a pinned surface); this repository is the
+implementation.
 
-## Language
+## Sources of truth
 
-- All repository content is **English only**: code, comments, commit
-  messages, documentation, issues, and CI logs.
+- **The design repo's specs** — semantic pins (web IA §7 chain, data model,
+  tech stack). Conflicts between code and spec resolve in the spec's favor.
+- **`Makefile`** — the gate commands (`make web-check`, `make docker-lint`,
+  `make docker-test`, `make api-check`, `make check-i18n`).
+- **`CODEMAP.md`** — the repository map.
+- **`docs/rules/`** — the per-language code conventions (Go, web, commits).
+- **`.superpowers/sdd/<block>/`** — the per-block task briefs and reports
+  (working artifacts, historical once the block merges).
 
-## Reference projects
+## The iron rules
 
-- Self-hosted photo libraries other than lumemor are treated as
-  **reference projects**. Reading their source to learn domain concepts
-  is allowed and encouraged.
-- The boundary is strict: **never copy** from reference projects — no
-  code, no UI copy, no API shapes. Everything committed here is written
-  from scratch, guided by lumemor's own design docs.
-- **Never name reference projects** in any file, commit message, issue,
-  or generated output. Always use the phrase "reference projects".
+- **All-English repository**: code, comments, commits, and task artifacts.
+  Reference-project names never appear here (reviews grep for them; write
+  "the reference project" when comparing).
+- **Global product**: every deployment serves one family, the product serves
+  families worldwide. No default may assume a single market, language, or
+  region. Chinese is a first-class citizen, not the constraint.
+- **Contract-first**: edit `openapi/lumemor.yaml` by hand, regenerate, and
+  end with a clean-tree `make api-check` (zero drift). sqlc queries change in
+  the same loop. Migrations come in up+down pairs with honest comments.
+- **The e2e hard rule**: any diff touching `web/e2e/**` or product code an
+  e2e scene exercises must run the affected spec against a real stack before
+  task close — ONE FRESH STACK LIFETIME PER SPEC (each spec's fixture
+  bootstraps its own first-run admin; two specs on one lifetime answer 409).
+- **Gates before close**: the five checks above, on the final tree, quoted in
+  the task report.
 
-## Generated code
+## The workflow shape
 
-Never hand-edit generated output. Change the source of truth and
-regenerate through the Makefile:
+Blocks (milestone/extension) are implemented serially on one branch: task
+briefs dispatch to implementer agents, each writing a report; ONE independent
+review at the end of the branch; then PR → CI (5 checks) → merge commit.
+Commit style: conventional, present tense, one decision per commit.
 
-| Generated path | Source of truth | Regenerate |
-|---|---|---|
-| `server/internal/api/gen/` | `openapi/lumemor.yaml` | `make api-gen` |
-| `openapi/generated/` | `openapi/lumemor.yaml` | `make api-gen` |
-| `server/internal/db/gen/` | `server/sqlc.yaml` + `server/internal/db/queries/` | `make sqlc-gen` |
+## Environment realities (restricted network)
 
-`make api-check` fails when a fresh regeneration differs from the
-committed artifacts — run it after touching the OpenAPI contract, and
-re-run `make sqlc-gen` (leaving the tree clean) after touching the
-queries or schema.
+- Proxy: `export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 all_proxy=socks5://127.0.0.1:7890`
+- Build mirrors: `LUMEMOR_BUILD_GOPROXY='https://goproxy.cn,direct'
+  LUMEMOR_BUILD_APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+  LUMEMOR_BUILD_GEONAMES_MIRROR=http://host.docker.internal:8931`
+- The dogfood stack: `~/lumemor-dogfood` (port 8244; STOP it before any
+  throwaway stack uses 8244, restore it after).
 
-## Conventions
+## Concurrent sessions
 
-- **Error codes map to i18n keys by lowercasing**:
-  `SETUP_ALREADY_COMPLETED` → `setup_already_completed`. All
-  translation keys, UI strings included, are lowercase snake_case.
-- **Translations** live in `i18n/` as flat JSON. `en.json` is the
-  source of truth; every other language file carries the same key set
-  and the same `{placeholder}` names. Check with
-  `python3 scripts/check_i18n.py`.
-- **Default port: 8244.** The server binary, the compose deployment,
-  and the acceptance script all assume it.
-- **Commits** follow Conventional Commits (`feat:`, `fix:`, `docs:`,
-  `chore:`, `refactor:`, ...) with an English imperative subject line.
-- **Time assertions against DB values** must truncate to microseconds:
-  PostgreSQL stores `timestamptz` at microsecond precision while Linux wall
-  clocks carry nanoseconds — an untruncated Go time can never round-trip
-  `Equal` against a database value on Linux (macOS clocks happen to be
-  microsecond-resolution, which hides the bug locally and surfaces it on
-  CI runners).
-- **Toolchain versions** (sqlc, oapi-codegen, openapi-generator,
-  openapi-typescript, spectral, golangci-lint) are pinned in the root
-  `Makefile` and the dev image. Extend the Makefile instead of
-  duplicating or restructuring its targets.
-
-## Before reporting work as done
-
-Run the same checks CI runs. Media-pipeline packages (libvips CGO,
-exiftool, ffmpeg) are **containerized** — the host installs nothing; run
-those through the dev image:
-
-```sh
-cd server
-gofmt -l .            # empty output
-go vet ./...
-golangci-lint run     # pinned v2.15.0; or `make docker-lint` from the repo root
-go test ./...         # needs a local Docker daemon (testcontainers);
-                      # media-dependent tests skip with a message on hosts
-                      # without the toolchain
-go build ./...
-cd ..
-make api-lint
-make api-check        # regenerates artifacts; the git tree must stay clean
-make web-install web-check web-build
-                      # web gate: svelte-check + vitest, then the
-                      # adapter-static build staged into
-                      # server/internal/web/dist for the Go embed --
-                      # docker-test below compiles the embed, so
-                      # web-build must run first
-python3 scripts/check_i18n.py
-make docker-test      # authoritative full suite (dev image, Linux parity
-                      # with CI — platform-dependent failures surface here
-                      # before CI does)
-```
+When another agent works this tree: never `git add -A`; explicit paths only;
+a clean-tree `make api-check` before closing any task.
