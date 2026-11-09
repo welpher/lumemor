@@ -112,3 +112,77 @@ test('the back-to-content mark carries its icon', () => {
 	unmount(app);
 	flushSync();
 });
+
+// --- the offline strip and the `?` sheet (web IA §6, the shared shell organs) --
+
+const { connectionState } = vi.hoisted(() => ({
+	// The offline strip's truth, mocked at the store the strip
+	// reads: the tool shell mounts the SAME strip the content shell
+	// does -- its jobs and models surfaces subscribe to the shared
+	// SSE stream, so a dropped connection is this shell's truth too.
+	connectionState: {
+		status: 'closed' as 'closed' | 'connecting' | 'open' | 'down',
+		downSince: null as number | null
+	}
+}));
+
+vi.mock('$lib/events/connection.svelte', () => ({
+	streamStatus: () => connectionState.status,
+	streamDownSince: () => connectionState.downSince,
+	markStreamConnecting: () => undefined,
+	markStreamOpen: () => undefined,
+	markStreamDown: () => undefined,
+	markStreamClosed: () => undefined
+}));
+
+beforeEach(() => {
+	connectionState.status = 'closed';
+	connectionState.downSince = null;
+});
+
+test('the offline strip pins above the tool topbar on a dropped connection', () => {
+	// The healthy stream renders nothing.
+	connectionState.status = 'open';
+	const healthy = mountLayout();
+	flushSync();
+	expect(document.body.querySelector('.offline-strip')).toBeNull();
+	unmount(healthy);
+	flushSync();
+
+	// The dropped connection rises the same yellow band, as the
+	// frame's FIRST CHILD above the tool shell's simplified bar.
+	connectionState.status = 'down';
+	connectionState.downSince = Date.now();
+	const dropped = mountLayout();
+	flushSync();
+
+	const shell = document.body.querySelector<HTMLElement>('.tool');
+	if (shell === null) {
+		throw new Error('missing tool shell');
+	}
+	const strip = document.body.querySelector<HTMLElement>('.offline-strip');
+	expect(strip).not.toBeNull();
+	expect(shell.firstElementChild).toBe(strip);
+	expect(shell.firstElementChild?.nextElementSibling?.className).toContain('tool-topbar');
+
+	unmount(dropped);
+	flushSync();
+});
+
+test('the `?` sheet mounts with the tool shell and answers the toggle', () => {
+	const app = mountLayout();
+	flushSync();
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
+
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', cancelable: true, bubbles: true }));
+	flushSync();
+	const sheet = document.body.querySelector<HTMLElement>('.modal__panel[role="dialog"]');
+	expect(sheet?.getAttribute('aria-label')).toBe('Keyboard shortcuts');
+
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true }));
+	flushSync();
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
+
+	unmount(app);
+	flushSync();
+});

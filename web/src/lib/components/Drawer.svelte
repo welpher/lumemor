@@ -5,15 +5,18 @@
 	// albums wall's entry live since the M3c surface; the places
 	// grid's entry live since the M3d surface), plus the hidden
 	// view's entry, which moved here from the timeline's toolbar in
-	// R2-11 -- it sits with the other list views (favorites/trash) --
-	// and the settings page's entry (the settings feature), which
-	// closes the content list: the account's own surface, above the
-	// admin divider. Below the content list, behind a divider, the
-	// admin panel's entry renders only for an admin's session (the
-	// identity seam's role arm, the M2d deferred item: a member
-	// account never sees the management surface's door). Memories
-	// stays a visible-but-disabled placeholder until its polish-block
-	// domain arrives.
+	// R2-11 -- it sits with the other list views (favorites/trash).
+	// The list is the IA's eight content sections and NOTHING else:
+	// the settings entry that once closed this list is gone (the
+	// 2026-11-09 pin, web IA §7.8 -- the account dropdown is
+	// settings' ONLY home, landed with the dropdown's own link; a
+	// duplicate door in the drawer was navigation debt, not reach).
+	// Below the content list, behind a divider, the admin panel's
+	// entry renders only for an admin's session (the identity seam's
+	// role arm, the M2d deferred item: a member account never sees
+	// the management surface's door). Memories stays a
+	// visible-but-disabled placeholder until its polish-block domain
+	// arrives.
 	//
 	// THE LEADING ICONS (R2-5): every item LEADS with its lucide icon
 	// (24-grid, 2px round caps, currentColor -- the icon language of
@@ -31,7 +34,6 @@
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Shield from '@lucide/svelte/icons/shield';
-	import Settings from '@lucide/svelte/icons/settings';
 	import type { Component } from 'svelte';
 
 	type DrawerItem = {
@@ -52,8 +54,7 @@
 		{ labelKey: 'nav_memories', href: '/memories', disabled: true, icon: Sparkles },
 		{ labelKey: 'nav_favorites', href: '/favorites', disabled: false, icon: Star },
 		{ labelKey: 'hidden_title', href: '/hidden', disabled: false, icon: EyeOff },
-		{ labelKey: 'nav_trash', href: '/trash', disabled: false, icon: Trash2 },
-		{ labelKey: 'nav_settings', href: '/settings', disabled: false, icon: Settings }
+		{ labelKey: 'nav_trash', href: '/trash', disabled: false, icon: Trash2 }
 	];
 
 	// The admin panel's entry (the tool shell's door): an

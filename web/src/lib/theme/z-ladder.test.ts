@@ -33,11 +33,13 @@ function rung(name: string): number {
 }
 
 test('the app ladder climbs in exactly the documented order', () => {
-	// The pin's order (content < sticky chrome < drawer < modal),
-	// with our app's richer middle rungs frozen from the values the
+	// The pin's order (content < sticky chrome < drawer < modal), with
+	// our app's richer middle rungs frozen from the values the
 	// surfaces already carried: page-fixed surfaces, the top bar's
 	// menu, the floating toolbars, the status panel, the info
-	// drawer, the scrims, the nav drawer, and the modal on top.
+	// drawer, the scrims, the nav drawer, the modal, and the
+	// portaled picker layers above the modal they serve (web IA
+	// §7.5's floating pickers).
 	const order = [
 		'z-tile-chip',
 		'z-tile-check',
@@ -52,7 +54,8 @@ test('the app ladder climbs in exactly the documented order', () => {
 		'z-aside',
 		'z-scrim',
 		'z-drawer',
-		'z-modal'
+		'z-modal',
+		'z-dropdown'
 	];
 	for (const [index, name] of order.entries()) {
 		if (index === 0) {

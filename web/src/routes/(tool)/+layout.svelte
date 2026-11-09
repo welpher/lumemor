@@ -15,6 +15,8 @@
 	// reset it (popstate keeps the offset).
 	import { _ } from 'svelte-i18n';
 	import { afterNavigate, goto } from '$app/navigation';
+	import OfflineStrip from '$lib/events/OfflineStrip.svelte';
+	import ShortcutsDialog from '$lib/components/ShortcutsDialog.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import type { LayoutProps } from './$types';
 
@@ -22,6 +24,13 @@
 
 	// The frame's scroll root (the one scroll container of the shell).
 	let main: HTMLElement | undefined = $state();
+
+	// The shortcut sheet's open state (the ShortcutsDialog owns its
+	// own `?` toggle; the tool shell mounts it so the app's reference
+	// is reachable from the management surfaces too -- the sheet
+	// names each binding's context, so its rows stay honest wherever
+	// it opens).
+	let shortcutsOpen = $state(false);
 
 	// The frame's scroll reset and focus (the content shell's rule,
 	// mirrored for consistency -- see that shell's note for the
@@ -43,6 +52,14 @@
 </script>
 
 <div class="tool h-dvh flex flex-col overflow-hidden">
+	<!-- The offline strip (web IA §6): the frame's FIRST child, above
+	     the topbar, exactly as the content shell mounts it. The tool
+	     shell earns the strip honestly: its jobs and models surfaces
+	     subscribe to the SAME shared SSE stream (job.* events), so a
+	     dropped connection is this shell's truth too -- and on the
+	     routes without a subscriber the store reads 'closed' (nothing
+	     live, nothing lost), so the strip simply never rises there. -->
+	<OfflineStrip />
 	<header class="tool-topbar flex items-center gap-3 px-4 py-2 border-b border-border bg-card">
 		<button
 			class="tool-topbar__back inline-flex items-center justify-center w-9 h-9 rounded-control bg-transparent text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
@@ -54,6 +71,9 @@
 		</button>
 		<span class="tool-topbar__brand font-display font-bold text-[20px] text-text">{$_('app_name')}</span>
 	</header>
+	<!-- The `?` shortcut sheet (web IA §6): the same shared Modal the
+	     content shell mounts, one instance per shell. -->
+	<ShortcutsDialog bind:open={shortcutsOpen} />
 	<!-- The frame's one scroll container (the content shell's rule,
 	     mirrored for consistency). -->
 	<main bind:this={main} tabindex="-1" class="tool-main flex-1 min-h-0 overflow-y-auto p-6 focus-visible:outline-none">
