@@ -140,13 +140,20 @@ RUN set -eux; \
 # The GeoNames reference data (M3d places), fetched and verified here
 # so the runtime stage below receives exactly the bytes this build
 # checked -- the places distribution discipline: build-time bake,
-# sha256-pinned, ZERO runtime network. The three sources:
+# ZERO runtime network. The three sources:
 #
 # - cities500.zip: every populated place of population >= 500
-#   (~237k rows, the resolution grid's centroids);
+#   (~237k rows, the resolution grid's centroids). Upstream
+#   regenerates this dump near-daily now (four byte changes in two
+#   days, 2026-11-08..09), so it carries the same bound discipline
+#   as alternateNamesV2: a size sanity range plus a zip integrity
+#   test. The loader's data-version marker (the sha256 digest of
+#   the staged files) re-imports when the bytes change -- drifting
+#   data is designed for, not fought;
 # - admin1CodesASCII.txt: the first-level administrative divisions
 #   (the admin1_code column of places and the locale names of the
-#   admin1 entities);
+#   admin1 entities) -- still sha256-pinned: it drifts rarely, and
+#   a changed admin1 stays the maintainer's deliberate re-pin;
 # - alternateNamesV2.zip: the multilingual names. Only the zh rows
 #   of the known geoname ids survive the bake (the en display names
 #   come from the canonical names by the data model's uniform rule,
@@ -160,24 +167,29 @@ RUN set -eux; \
 # staged files) changes, and the in-memory resolution grid builds
 # from the imported rows -- no runtime download, no external call,
 # the zero-cloud promise kept. The dumps update upstream over time:
-# a changed dump fails the pinned digest on the next build (drift
-# detection, same as the model pins), and re-pinning is the
-# maintainer's deliberate act. GeoNames data is CC BY 4.0
+# admin1's digest pin makes a change the maintainer's deliberate
+# re-pin; cities500 and alternateNamesV2 ride their bounds (the
+# upstream regenerates them near-daily) and the data-version marker
+# re-imports the drift. GeoNames data is CC BY 4.0
 # (attribution: geonames.org).
 #
 # GEONAMES_MIRROR overrides the base URL (https://download.geonames
 # .org/export/dump) for restricted networks -- a mirror of the same
-# byte paths; the per-file sha256 stays pinned either way, so
-# anything but the pinned bytes fails the build. The download can go
-# through a proxy via the predefined https_proxy build arg (same as
-# the onnxruntime fetch above).
+# byte paths; the verification discipline (admin1's digest pin, the
+# two bounds) applies to mirror bytes exactly the same way. The
+# download can go through a proxy via the predefined https_proxy
+# build arg (same as the onnxruntime fetch above).
 ARG GEONAMES_MIRROR=""
 RUN set -eux; \
     geo_base="https://download.geonames.org/export/dump"; \
     if [ -n "$GEONAMES_MIRROR" ]; then geo_base="${GEONAMES_MIRROR}"; fi; \
     mkdir -p /out/geo /tmp/geo; \
     curl -fsSL --retry 3 -o /tmp/geo/cities500.zip "${geo_base}/cities500.zip"; \
-    echo "5cb3f5ba1cc8606eac5f80299e04d89bdd517045b1f876ba4fb01e4950f364ed  /tmp/geo/cities500.zip" | sha256sum -c -; \
+    cities_bytes=$(stat -c%s /tmp/geo/cities500.zip); \
+    if [ "$cities_bytes" -lt 13000000 ] || [ "$cities_bytes" -gt 15000000 ]; then \
+        echo "cities500.zip size $cities_bytes outside the sanity bound (13-15 MB)" >&2; exit 1; \
+    fi; \
+    unzip -tq /tmp/geo/cities500.zip > /dev/null; \
     curl -fsSL --retry 3 -o /out/geo/admin1CodesASCII.txt "${geo_base}/admin1CodesASCII.txt"; \
     echo "2e4867f5397acb056ea26377601b57af37cb4c81399770225018e9e439e91ad3  /out/geo/admin1CodesASCII.txt" | sha256sum -c -; \
     curl -fsSL --retry 3 -o /tmp/geo/alternateNamesV2.zip "${geo_base}/alternateNamesV2.zip"; \
