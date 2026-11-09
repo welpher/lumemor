@@ -20,9 +20,13 @@ tree is bound into the lumemor container WITHOUT `:ro`, at
   from the read-only fixture's pair, so the rescan's owner+checksum
   dedup never links the two stories' rows) in as `IMG_E6_*.jpg`. The
   trash scene moves one of them into the managed trash area and the
-  restore returns it, so the tree self-heals for the next run. Only
-  this README is tracked; `web/e2e/fixtures/m3-source-rw/*` is
-  git-ignored with this file excepted.
+  restore returns it, so the tree self-heals for the next run. The
+  seeder sweeps first: the directory persists across every run on
+  the host (the spec's two seeds, the chains' one), and a stale
+  photo would leave the rescan's membership counting leftovers --
+  everything that is not this README goes. Only the README is
+  tracked; `web/e2e/fixtures/m3-source-rw/*` is git-ignored with
+  this file excepted.
 - The directory -- not the files -- is what the container's uid 10001
   must be able to write: the write probe creates and removes its own
   `probe-<uuid>` entry, and the trash move is a rename out of the
