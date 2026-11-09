@@ -289,10 +289,28 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 	// The source line of the edit dialog: the directory album's
 	// stored root, present exactly on the directory type (fixtures
 	// may carry a NULL root; the row is the honest source of the
-	// field).
-	if album.Album.Type == dbgen.AlbumTypeDirectory && album.Album.RootPath.Valid {
-		rootPath := album.Album.RootPath.String
-		detail.RootPath = &rootPath
+	// field). The deletion chain's faces ride the same directory
+	// arm (E6, §7.9): the probe's source-writable fact on both
+	// roles (a fact is the album's own, not a role's), and -- the
+	// owner's view alone, the write-affordance faces a viewer holds
+	// none of -- the deletability switch's stored state and the
+	// derived `deletable` conjunction (owner, writable source,
+	// switch on, unlocked), computed here as pure data: no runtime
+	// probing exists, by the same pin that discovered the fact
+	// exactly once at creation.
+	if album.Album.Type == dbgen.AlbumTypeDirectory {
+		if album.Album.RootPath.Valid {
+			rootPath := album.Album.RootPath.String
+			detail.RootPath = &rootPath
+		}
+		sourceWritable := album.Album.SourceWritable
+		detail.SourceWritable = &sourceWritable
+		if album.CallerRole == "owner" {
+			allowAppDeletion := album.Album.AllowAppDeletion
+			detail.AllowAppDeletion = &allowAppDeletion
+			deletable := sourceWritable && allowAppDeletion && !album.Album.Locked
+			detail.Deletable = &deletable
+		}
 	}
 	// The owner-only grantee list (the share management dialog's
 	// rows): the field rides the owner's view and only that view --

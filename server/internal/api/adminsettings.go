@@ -1,14 +1,12 @@
 // The admin settings handlers (the storage-template feature and the
 // settings feature): the storage template's read and three-stage
 // validated save of GET/PUT /admin/settings/storage, the trash
-// retention's GET/PUT /admin/settings/trash, the video
-// transcoding profile's GET/PUT /admin/settings/transcoding, and
-// the mount-root allowlist's GET/PUT /admin/settings/mount-roots
-// (the directory-album trust boundary of the albums-as-sources
-// milestone). The permission model is the admin role itself: every
-// route of this surface sits behind requireSession AND requireAdmin
-// (see the router), so a signed-in caller without the role answers
-// 403 AUTH_FORBIDDEN before any handler runs.
+// retention's GET/PUT /admin/settings/trash, and the video
+// transcoding profile's GET/PUT /admin/settings/transcoding. The
+// permission model is the admin role itself: every route of this
+// surface sits behind requireSession AND requireAdmin (see the
+// router), so a signed-in caller without the role answers 403
+// AUTH_FORBIDDEN before any handler runs.
 package api
 
 import (
@@ -17,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -342,94 +339,15 @@ func transcodingSettingsResponse(profile db.TranscodingProfile) apigen.Transcodi
 	}
 }
 
-// GetMountRootsSettings implements GET /api/v1/admin/settings/
-// mount-roots: the stored mount-root allowlist, the directory-album
-// trust boundary. The answer is the CONFIGURATION verbatim, not the
-// live domain -- a not-yet-mounted root stays listed while
-// contributing nothing to the completion and the creation
-// validation (the PUT's own description pins the split). The
-// accessor's corrupt-row discipline (empty list + logged error)
-// keeps the read honest over a broken row: the closed state is the
-// safe state.
-func (s *server) GetMountRootsSettings(w http.ResponseWriter, r *http.Request) {
-	roots, err := db.AllowedMountRoots(r.Context(), s.queries)
-	if err != nil {
-		s.logger.Error("read the mount roots setting; answering the empty allowlist", "error", err)
-		roots = nil
-	}
-	if roots == nil {
-		roots = []string{}
-	}
-	s.writeJSON(w, http.StatusOK, apigen.MountRootsSettingsResponse{Roots: roots})
-}
-
-// UpdateMountRootsSettings implements PUT /api/v1/admin/settings/
-// mount-roots: the wholesale allowlist replacement. Every entry must
-// be an absolute path within the byte bound; the values are cleaned
-// and deduplicated (first occurrence wins), and the stored list is
-// the answer. Existence is deliberately not required -- a root may
-// be configured before the volume is mounted and turns live when
-// the volume does. The field must ride the body even when empty (an
-// explicit empty array closes directory album creation; an absent
-// field is a client bug, the destructive-silent-default guard).
-func (s *server) UpdateMountRootsSettings(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		s.writeValidationError(w, "request body could not be read", []string{"body"})
-		return
-	}
-	var req apigen.MountRootsSettingsUpdateRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		message := "request body must be valid JSON"
-		var fields []interface{}
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
-			message = "request body exceeds the size limit"
-			fields = []interface{}{"body"}
-		}
-		var details *map[string]interface{}
-		if fields != nil {
-			details = &map[string]interface{}{"fields": fields}
-		}
-		s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, details)
-		return
-	}
-	// The presence guard: nil means the field never rode the body
-	// (or rode as JSON null), and the silent "close everything"
-	// default is exactly the destructive default this guard exists
-	// for -- an honest close is the explicit empty array.
-	if req.Roots == nil {
-		s.writeValidationError(w, "roots is required", []string{"roots"})
-		return
-	}
-	if len(req.Roots) > db.MountRootsMaxEntries {
-		s.writeValidationError(w,
-			fmt.Sprintf("roots exceed the limit of %d", db.MountRootsMaxEntries), []string{"roots"})
-		return
-	}
-	for _, root := range req.Roots {
-		if root == "" || !filepath.IsAbs(root) || len(root) > db.MountRootMaxBytes {
-			s.writeValidationError(w, "every root must be an absolute path within the length bound", []string{"roots"})
-			return
-		}
-	}
-
-	// The stored form: cleaned, deduplicated, first-occurrence order
-	// -- the response answers it, so a cleaned or collapsed entry
-	// shows up honestly.
-	stored := make([]string, 0, len(req.Roots))
-	seen := make(map[string]bool, len(req.Roots))
-	for _, root := range req.Roots {
-		cleaned := filepath.Clean(root)
-		if seen[cleaned] {
-			continue
-		}
-		seen[cleaned] = true
-		stored = append(stored, cleaned)
-	}
-	if err := db.SaveAllowedMountRoots(r.Context(), s.queries, stored); err != nil {
-		s.internalError(w, r, "save the mount roots", err)
-		return
-	}
-	s.writeJSON(w, http.StatusOK, apigen.MountRootsSettingsResponse{Roots: stored})
-}
+// GetMountRootsSettings and UpdateMountRootsSettings once lived
+// here: the mount-root allowlist pair of E4's albums-as-sources,
+// the directory-album trust boundary's read and wholesale save.
+// The E6 boundary ruling retired the layer whole -- the compose
+// file's mounts ARE the boundary (the operator controls what the
+// container sees; the application layer neither can nor needs to
+// restrict the operator further), and mounting an existing photo
+// directory became the administrator's own act, guarded at the
+// creation and completion faces instead of confined by a list. The
+// handlers, their contract paths, their settings row accessors and
+// their validation all went together -- no half-retired surface
+// answers a route the contract no longer names.

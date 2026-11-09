@@ -1,15 +1,18 @@
 // The album surface writes (M3c Task 2, reshaped by E4's
-// albums-as-sources): the directory album creator behind POST
-// /albums (the write face's only creatable type -- the request
-// names an existing path the server validates and references in
-// place), the property patch behind PATCH /albums/{albumId} (with
-// the cover's live-member validation and the locked gate), the
-// virtual-only delete behind DELETE /albums/{albumId} (never
-// locked-gated -- locking is a curation freeze, not a tombstone)
-// and the membership removal behind DELETE /albums/{albumId}/items
-// (batch semantics: the honest {removed, skipped} report, never
-// per-item errors; the membership ADD is gone -- albums are
-// sources, not curation targets).
+// albums-as-sources and E6's album autonomy): the directory album
+// creator behind POST /albums (the write face's only creatable type
+// -- the request names an existing path the server validates and
+// references in place; the face is the administrator's, and the
+// creation-time write probe lands the source-writable fact), the
+// property patch behind PATCH /albums/{albumId} (with the cover's
+// live-member validation, the locked gate, and the deletability
+// switch of the directory albums), the virtual-only delete behind
+// DELETE /albums/{albumId} (locked-gated like every album write:
+// the freeze is a state to clear, not a wall to climb) and the
+// membership removal behind DELETE /albums/{albumId}/items (batch
+// semantics: the honest {removed, skipped} report, never per-item
+// errors; the membership ADD is gone -- albums are sources, not
+// curation targets).
 //
 // Every write shares the two-tier authorization answer: an album the
 // caller cannot see at all (unknown, foreign-unshared, every sync
@@ -25,6 +28,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,6 +81,39 @@ func (s *server) publishAlbumEvent(name string, albumID, userID uuid.UUID) {
 		"albumId": albumID.String(),
 		"userId":  userID.String(),
 	})
+}
+
+// publishAlbumMembershipEvents reports the album walls' convergence
+// signal for every album whose LIVE membership the trash lifecycle
+// just changed (E6, §7.9's deletability chain): the changed ids'
+// membership rows name the albums, and each album carries ONE
+// album.items-changed event, deduplicated across the ids -- the
+// rescan's own restart signal, published for the curation arms that
+// move the live membership without touching its rows. The requester
+// is the write's owner (the lifecycle arms are owner-scoped), so the
+// payload's acting user is theirs. A read failure is logged and
+// skipped: the asset events already carried the state change, and a
+// wall that misses its restart signal converges on the next one.
+func (s *server) publishAlbumMembershipEvents(ctx context.Context, requester uuid.UUID, ids []uuid.UUID) {
+	if s.events == nil || len(ids) == 0 {
+		return
+	}
+	seen := make(map[uuid.UUID]bool)
+	for _, id := range ids {
+		albums, err := s.queries.ListAlbumsOfAsset(ctx, pgUUID(id))
+		if err != nil {
+			s.logger.Warn("list the albums of a trash-lifecycle write", "error", err, "asset_id", id)
+			continue
+		}
+		for _, albumID := range albums {
+			album := uuid.UUID(albumID.Bytes)
+			if seen[album] {
+				continue
+			}
+			seen[album] = true
+			s.publishAlbumEvent("album.items-changed", album, requester)
+		}
+	}
 }
 
 // albumTitle trims the title and bounds its rune count; it answers
@@ -225,17 +262,34 @@ func (s *server) albumItemsIDs(w http.ResponseWriter, assetIds []openapi_types.U
 // is a legacy shape nothing creates anymore) -- and the source path
 // runs the full validation matrix before anything is written: each
 // failing branch answers its own 400 error code, and the album row
-// stores the RESOLVED path. The request's audience lands in the
-// same write through the full-set semantics of the audience face:
-// unusable ids are skipped and reported, never errors. The response
-// is the fresh row's wall card -- the owner role, no members, no
-// cover -- widened with the honest audience report, and the write
-// publishes album.created plus one album.shared per audience row
-// that landed.
+// stores the RESOLVED path. The face is the ADMINISTRATOR's (the
+// E6 boundary ruling: mounting an existing photo directory is a
+// configuration act -- a plain member answers the admin surfaces'
+// own 403 before any part of the request is considered, and the
+// members' contribution path stays the upload stream). After the
+// matrix passes, the write probe discovers the source's writability
+// once; the fact lands on the row and rides the response -- a
+// read-only directory is a legitimate source, and "photos of this
+// directory cannot be deleted through the application" is honest
+// creation feedback, never a failure. The request's audience lands
+// in the same write through the full-set semantics of the audience
+// face: unusable ids are skipped and reported, never errors. The
+// response is the fresh row's wall card -- the owner role, no
+// members, no cover -- widened with the probe's fact and the honest
+// audience report, and the write publishes album.created plus one
+// album.shared per audience row that landed.
 func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
 		s.rejectUnauthenticated(w)
+		return
+	}
+	if requester.role != dbgen.UserRoleAdmin {
+		// The configuration act's own refusal, the admin surfaces'
+		// semantics: the member is signed in, just not entitled to
+		// point the application at a filesystem location.
+		s.writeError(w, http.StatusForbidden, apigen.AUTHFORBIDDEN,
+			"administrator role required", nil)
 		return
 	}
 
@@ -278,22 +332,10 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// The path matrix: the domain (the live mount roots) and the
-	// overlap arm (every existing directory album's root) feed it,
-	// and the answer is the resolved path the row will store.
-	roots := s.effectiveMountRoots(ctx)
-	rootRows, err := s.queries.ListDirectoryAlbumRoots(ctx)
-	if err != nil {
-		s.internalError(w, r, "load the directory album roots", err)
-		return
-	}
-	existing := make([]string, 0, len(rootRows))
-	for _, row := range rootRows {
-		if row.RootPath.Valid {
-			existing = append(existing, row.RootPath.String)
-		}
-	}
-	resolved, failure, err := validateAlbumRootPath(roots, s.dataDir, request.RootPath, existing)
+	// The path matrix: existence, directory-ness, readability, the
+	// managed tree on the resolved path. The answer is the resolved
+	// path the row will store.
+	resolved, failure, err := validateAlbumRootPath(s.dataDir, request.RootPath)
 	if err != nil {
 		s.internalError(w, r, "validate the source path", err)
 		return
@@ -306,6 +348,13 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// The creation-time write probe: the ONE moment the source's
+	// writability is discovered. The answer is a fact, not a gate --
+	// a read-only directory is a legitimate source whose photos
+	// cannot be deleted through the application, and the response
+	// says so instead of the creation failing.
+	writable := probeDirectoryWritable(resolved)
 
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -320,6 +369,7 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 			String: resolved,
 			Valid:  true,
 		},
+		SourceWritable: writable,
 	}); err != nil {
 		s.internalError(w, r, "create the album", err)
 		return
@@ -339,26 +389,29 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.writeJSON(w, http.StatusCreated, albumCreateResponse(summary, skipped))
+	s.writeJSON(w, http.StatusCreated, albumCreateResponse(summary, writable, skipped))
 }
 
-// albumCreateResponse widens one wall card with the creation's
-// honest audience report: the summary fields copy verbatim (the
-// generated allOf flattening makes the widening a field copy), and
-// the skipped list rides along -- never nil, so the JSON carries
-// the empty array.
-func albumCreateResponse(card apigen.AlbumSummary, skipped []apigen.AlbumAudienceSkip) apigen.AlbumCreateResponse {
+// albumCreateResponse widens one wall card with the creation's two
+// honest companions: the probe's source-writable fact (the
+// "this directory is read-only" feedback the dialog renders -- a
+// fact, never a failure) and the audience report. The summary
+// fields copy verbatim (the generated allOf flattening makes the
+// widening a field copy), and the skipped list rides along -- never
+// nil, so the JSON carries the empty array.
+func albumCreateResponse(card apigen.AlbumSummary, sourceWritable bool, skipped []apigen.AlbumAudienceSkip) apigen.AlbumCreateResponse {
 	response := apigen.AlbumCreateResponse{
-		Id:            card.Id,
-		Title:         card.Title,
-		Type:          apigen.AlbumCreateResponseType(card.Type),
-		Locked:        card.Locked,
-		IsShared:      card.IsShared,
-		CoverAssetIds: card.CoverAssetIds,
-		ItemCount:     card.ItemCount,
-		UpdatedAt:     card.UpdatedAt,
-		CallerRole:    apigen.AlbumCreateResponseCallerRole(card.CallerRole),
-		Skipped:       skipped,
+		Id:             card.Id,
+		Title:          card.Title,
+		Type:           apigen.AlbumCreateResponseType(card.Type),
+		Locked:         card.Locked,
+		IsShared:       card.IsShared,
+		CoverAssetIds:  card.CoverAssetIds,
+		ItemCount:      card.ItemCount,
+		UpdatedAt:      card.UpdatedAt,
+		CallerRole:     apigen.AlbumCreateResponseCallerRole(card.CallerRole),
+		SourceWritable: sourceWritable,
+		Skipped:        skipped,
 	}
 	if response.Skipped == nil {
 		response.Skipped = []apigen.AlbumAudienceSkip{}
@@ -373,12 +426,14 @@ func albumCreateResponse(card apigen.AlbumSummary, skipped []apigen.AlbumAudienc
 }
 
 // UpdateAlbum implements PATCH /api/v1/albums/{albumId}: the owner's
-// partial edit of the three properties -- any subset, at least one
+// partial edit of the four properties -- any subset, at least one
 // field, JSON null counting as absent. The locked gate refuses the
 // property fields on a locked album (the locked field itself is
-// never gated: a patch of locked alone IS the unlock); the cover
+// never gated: a patch of locked alone IS the unlock), the cover
 // validation refuses every id that is not a live member of the album
-// itself. The write publishes album.updated unconditionally on
+// itself, and the deletability switch is the directory album's own
+// (a virtual album answers the field's own 400, not a generic
+// refusal). The write publishes album.updated unconditionally on
 // success -- the convergent refetch makes the unconditional fire
 // harmless -- and the response is the album's wall card after the
 // edit.
@@ -395,7 +450,8 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 	if request.Title == nil &&
-		request.CoverAssetId == nil && request.Locked == nil {
+		request.CoverAssetId == nil && request.Locked == nil &&
+		request.AllowAppDeletion == nil {
 		s.writeValidationError(w, "the patch must carry a field", []string{"body"})
 		return
 	}
@@ -407,11 +463,19 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 
+	// The deletability switch is the directory album's own field: a
+	// virtual album's deletions never move files, so the switch has
+	// no home there -- the refusal names the field's own condition.
+	if request.AllowAppDeletion != nil && gate.Album.Type != dbgen.AlbumTypeDirectory {
+		s.writeMessageKey(w, "the deletability switch is a directory album's own setting", "album_deletable_not_directory")
+		return
+	}
+
 	// The locked gate: the album refuses its property and curation
 	// fields until the owner unlocks it. A mixed patch carrying the
 	// unlock is refused whole -- unlock first, then edit.
 	if gate.Album.Locked &&
-		(request.Title != nil || request.CoverAssetId != nil) {
+		(request.Title != nil || request.CoverAssetId != nil || request.AllowAppDeletion != nil) {
 		s.writeAlbumLocked(w)
 		return
 	}
@@ -449,6 +513,12 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 	}
 	if request.Locked != nil {
 		params.Locked = pgtype.Bool{Bool: *request.Locked, Valid: true}
+	}
+	if request.AllowAppDeletion != nil {
+		// The owner's deletability posture, the edit dialog's switch:
+		// repeating the stored value converges through the COALESCE
+		// write like every property field.
+		params.AllowAppDeletion = pgtype.Bool{Bool: *request.AllowAppDeletion, Valid: true}
 	}
 
 	if _, err := s.queries.UpdateAlbumFields(ctx, params); err != nil {

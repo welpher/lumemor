@@ -34,15 +34,6 @@ void main() {
       // TODO
     });
 
-    // The directory-album mount-root allowlist.
-    //
-    // The instance's mount-root allowlist: the absolute directory paths a directory album's source may live at or under -- the trust boundary of the albums-as-sources design. The family instance's boundary is drawn at the roots: anything outside them (another process's data, system directories, the server's own originals) can never become an album, whatever the filesystem lets the server read.  The stored list is the answer, verbatim and in the order it was saved. The default is the empty list -- the \"closed\" posture: no directory album can be created until an administrator opens at least one root.  This read answers the CONFIGURATION, not the live domain: a root that does not exist yet (removable media, a mount that comes and goes), one that is not a directory, or one that resolves inside the server's managed tree stays listed here while contributing nothing to the path completion and the creation validation -- an admin configuring a not-yet- mounted path is a supported state, and the setting is the honest record of what was configured. A corrupt setting row answers the empty list with the corruption logged server-side -- the closed state is the safe state. 
-    //
-    //Future<MountRootsSettingsResponse> getMountRootsSettings() async
-    test('test getMountRootsSettings', () async {
-      // TODO
-    });
-
     // Read the storage template setting.
     //
     // The storage settings read of the admin surface: the instance's upload path template, the sample path it renders, and the built-in preset list the settings section's dropdown fills from.  The template is the path grammar every NEW upload renders its file placement from: `originals/<ownerUserId>/<rendered>.<ext>`, with the per-user root pinning one directory tree per account. The grammar is variable substitution plus `{{#if album}}...{{else}}...{{/if}}` conditionals over the file (`{{filename}}`, `{{ext}}`, `{{filetype}}`, `{{filetypefull}}`), date (`{{y}} {{yy}} {{M}} {{MM}} {{MMM}} {{MMMM}} {{d}} {{dd}} {{W}} {{WW}} {{H}} {{HH}} {{h}} {{hh}} {{m}} {{mm}} {{s}} {{ss}} {{SSS}}`), album (`{{album}}`, `{{album-startDate-*}}`, `{{album-endDate-*}}`), camera (`{{make}} {{model}} {{lensModel}}`) and id (`{{assetId}}`, `{{assetIdShort}}`) families. Compilation is strict -- an unknown variable or a malformed conditional is an error, never a silent blank.  THE RENDERING CONTRACT (what changing the template does and never does): the path is rendered exactly once, at ingest, from the taken-at fallback chain (the file's EXIF header time, else the client-reported `deviceCreatedAt`, else the upload time) and the values known at that moment. Later metadata refinement NEVER re-paths an asset -- a refined taken-at, an album membership joined after upload, none of it moves a file. Existing assets keep the paths they were ingested under; there is deliberately NO migration of stored files when the template changes (moving files after ingest is the architecture photo libraries have lost data to; lumemor never moves them). New uploads follow the new template from the moment it is saved. Album variables render empty for direct uploads: the only album an upload joins at ingest is the system sync stream, which is not a naming source.  The sample path is the current template rendered over a fixed sample asset (an image named `IMG_1234.jpg`, taken `2023:07:14 10:15:30.123 +05:30`, camera `Acme Alpha 5` with the `24-70mm f/2.8` lens, no album, under the sample owner `0192f8c1-0000-7000-8000-000000000001`) with the extension appended -- exactly the shape a real upload of that file would land at under this template. The response never fails over a corrupt setting row: the default template answers instead, and the server log carries the corruption. 
@@ -121,15 +112,6 @@ void main() {
     //
     //Future<ModelScanResponse> scanModels() async
     test('test scanModels', () async {
-      // TODO
-    });
-
-    // Save the directory-album mount-root allowlist.
-    //
-    // Replaces the allowlist wholesale (full-set semantics, the settings surface's discipline): the request carries the COMPLETE list, an empty list closing directory album creation again.  Every entry must be an absolute path (a leading separator) within the 4,096-byte bound; the server cleans each value, collapses duplicates after the clean, and stores the resulting list (the response answers the stored value, so a cleaned or deduplicated entry shows up honestly). At most 32 entries. Existence is deliberately NOT required: a root may be configured before the volume is mounted, and it contributes to the completion and validation domains only once it exists (the `GET` face's live-domain note).  The write takes effect immediately: the next path completion and the next album creation read the saved list. Like the sibling settings faces (storage, trash, transcoding), the write publishes no event: instance settings are the admin surface's own state, and the admin's own response carries the saved value. 
-    //
-    //Future<MountRootsSettingsResponse> updateMountRootsSettings(MountRootsSettingsUpdateRequest mountRootsSettingsUpdateRequest) async
-    test('test updateMountRootsSettings', () async {
       // TODO
     });
 

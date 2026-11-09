@@ -277,34 +277,27 @@ WHERE al.id = sqlc.arg('album_id')
   AND al.type <> 'sync';
 
 -- name: CreateDirectoryAlbum :one
--- The directory album creator (E4's albums-as-sources): the row
--- references an existing filesystem directory the server validated
--- against the path matrix BEFORE this statement ran -- exists, is a
--- directory, readable, outside the managed tree, inside a configured
--- mount root, no overlap or nesting with another directory album's
--- root -- and root_path stores the RESOLVED absolute path (symlinks
--- evaluated at validation time), so the album can never be silently
--- repointed by a later symlink swap. The id is generated
--- caller-side; the creation face carries title, path and audience
--- only (the description column died whole with the field). The wall
--- card's companions are the creation-time constants -- the caller's
--- own audience grants land right after -- so the handler reads the
--- fresh row's full card through GetAlbumSummary like every other
--- write response.
-INSERT INTO albums (id, owner_id, title, type, root_path)
-VALUES (sqlc.arg('id'), sqlc.arg('owner_id'), sqlc.arg('title'), 'directory', sqlc.arg('root_path'))
+-- The directory album creator (E4's albums-as-sources, widened by
+-- E6's album autonomy): the row references an existing filesystem
+-- directory the server validated against the path matrix BEFORE
+-- this statement ran -- exists, is a directory, readable, outside
+-- the managed tree -- and root_path stores the RESOLVED absolute
+-- path (symlinks evaluated at validation time), so the album can
+-- never be silently repointed by a later symlink swap. The creation
+-- is the administrator's act (the E6 boundary ruling: mounting an
+-- existing photo directory is a configuration act), and
+-- source_writable carries the write probe's answer over that
+-- directory -- a fact, not a gate: a read-only source is a
+-- legitimate album whose photos cannot be deleted through the
+-- application. The id is generated caller-side; the creation face
+-- carries title, path and audience only. The wall card's companions
+-- are the creation-time constants -- the caller's own audience
+-- grants land right after -- so the handler reads the fresh row's
+-- full card through GetAlbumSummary like every other write
+-- response.
+INSERT INTO albums (id, owner_id, title, type, root_path, source_writable)
+VALUES (sqlc.arg('id'), sqlc.arg('owner_id'), sqlc.arg('title'), 'directory', sqlc.arg('root_path'), sqlc.arg('source_writable'))
 RETURNING id;
-
--- name: ListDirectoryAlbumRoots :many
--- Every directory album's stored root path across the WHOLE
--- instance, the overlap arm of the creation-time path matrix. The
--- check is deliberately not owner-scoped: two albums mirroring the
--- same tree (equal, containing, or contained roots) is confusing
--- double-scan state whatever accounts own them, and the family
--- instance has no case for it. The album count bounds the read.
-SELECT id, root_path
-FROM albums
-WHERE type = 'directory';
 
 -- name: GetAlbumSummary :one
 -- The album row with the wall card's honest companions: whether any
@@ -338,16 +331,21 @@ WHERE al.id = sqlc.arg('album_id');
 -- so an absent (NULL) parameter keeps it and a present one replaces
 -- it. The cover rides the same discipline -- a coverAssetId of JSON
 -- null decodes as absent, the patch convention of the asset surface,
--- so the pin can change through this face but never clear.
--- updated_at moves with the write: the wall orders the own group by
--- it. No owner guard and no type guard here: the handler's gate
--- already resolved the caller's right to this write, and an album
--- deleted between the gate and the statement answers no row -- the
--- honest 404 of a gone album.
+-- so the pin can change through this face but never clear. The
+-- deletability switch (E6) joins the property fields: present
+-- updates the owner's allow-app-deletion posture of the directory
+-- album, absent keeps it, and the lock's gate lives in the handler
+-- (the property fields' own refusal) with the type arm that keeps
+-- the switch off virtual albums. updated_at moves with the write:
+-- the wall orders the own group by it. No owner guard and no type
+-- guard here: the handler's gate already resolved the caller's
+-- right to this write, and an album deleted between the gate and
+-- the statement answers no row -- the honest 404 of a gone album.
 UPDATE albums
 SET title = COALESCE(sqlc.narg('title'), title),
     cover_asset_id = COALESCE(sqlc.arg('cover_asset_id'), cover_asset_id),
     locked = COALESCE(sqlc.narg('locked'), locked),
+    allow_app_deletion = COALESCE(sqlc.narg('allow_app_deletion'), allow_app_deletion),
     updated_at = now()
 WHERE id = sqlc.arg('album_id')
 RETURNING id;
@@ -388,6 +386,18 @@ WHERE id = sqlc.arg('album_id')
 DELETE FROM album_items
 WHERE album_id = sqlc.arg('album_id')
   AND asset_id = ANY(sqlc.arg('asset_ids')::uuid[]);
+
+-- name: ListAlbumsOfAsset :many
+-- The albums holding membership rows for one asset: the ids whose
+-- LIVE membership a trash or restore just changed (E6's deletability
+-- chain -- the membership row itself survives the trash, the live
+-- views' deleted_at filter is the change), so the handler can
+-- publish each album's items-changed convergence signal. The sync
+-- album never appears (its membership is implicit, no rows), and a
+-- trashed member still names its albums -- the row never left.
+SELECT DISTINCT ai.album_id
+FROM album_items ai
+WHERE ai.asset_id = sqlc.arg('asset_id');
 
 -- Album audience (E4, the albums-as-sources milestone): the
 -- full-set write behind PUT /albums/{albumId}/audience replaces the

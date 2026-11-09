@@ -102,6 +102,50 @@ func TestMoveToTrashCrossDeviceFallback(t *testing.T) {
 	requireGone(t, TrashHome(dataDir, "0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f11"))
 }
 
+// TestMoveFileCrossDeviceSuccess pins the copy-then-remove fallback's
+// SUCCESS arm on a real cross-filesystem pair (the EXDEV audit of
+// E6's album autonomy: the trash move of a directory album's source
+// file faces the mount-versus-data-root split on every delete). The
+// probe file sits on /dev/shm -- tmpfs on the Linux dev container,
+// a directory the host may not have (macOS has no portable second
+// filesystem; those hosts skip, and `make docker-test` runs the arm
+// for real) -- and the target in the test's own tree. A rename probe
+// first proves the pair really is cross-device: a same-device pair
+// would exercise the rename arm instead of the fallback, so it skips
+// honestly. The move itself then answers success with the bytes
+// intact at the target and nothing left at the source -- the exact
+// two-step every cross-device trash move runs.
+func TestMoveFileCrossDeviceSuccess(t *testing.T) {
+	if _, err := os.Stat("/dev/shm"); err != nil {
+		t.Skipf("/dev/shm is unavailable on this host (%v); the cross-device arm needs a second filesystem -- run the suite in the dev container (make docker-test)", err)
+	}
+	source := filepath.Join("/dev/shm", "lumemor-exdev-probe")
+	if err := os.WriteFile(source, []byte("cross-device bytes"), 0o644); err != nil {
+		t.Skipf("write the probe into /dev/shm: %v (the cross-device arm needs a writable tmpfs)", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(source) })
+
+	target := filepath.Join(t.TempDir(), "IMG_0006.jpg")
+	if err := os.Rename(source, target); err == nil {
+		// The pair turned out same-device (a container that mounts
+		// /dev/shm over the same filesystem as the temp tree): the
+		// rename arm would run, not the fallback. Put the file back
+		// and say so instead of pinning the wrong arm.
+		if err := os.Rename(target, source); err != nil {
+			t.Fatalf("restore the probe file after the same-device rename: %v", err)
+		}
+		t.Skip("the pair is same-device; the fallback arm needs two filesystems")
+	}
+
+	if err := moveFile(source, target); err != nil {
+		t.Fatalf("moveFile across devices: %v", err)
+	}
+	requireGone(t, source)
+	if moved, err := os.ReadFile(target); err != nil || string(moved) != "cross-device bytes" {
+		t.Errorf("the moved bytes = (%q, %v), want the copied content", moved, err)
+	}
+}
+
 // TestMoveFileBackRefusesMissingDestination pins the restore's
 // honest refusal: an original location that no longer exists fails
 // the move instead of fabricating the path (a fabricated directory

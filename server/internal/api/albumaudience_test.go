@@ -345,7 +345,13 @@ func TestUpdateAlbumAudienceAuthorization(t *testing.T) {
 	env.putAlbumAudience(t, env.cookie, shared, graceID)
 
 	unshared := uuid.UUID(env.createAlbum(t, env.cookie, "Private", sourceDir(t, root, "auth-private"), nil).Id)
-	graceOwn := uuid.UUID(env.createAlbum(t, graceCookie, "Grace's own", sourceDir(t, root, "grace-own"), nil).Id)
+	// Grace's own album is seeded directly: creation is the
+	// administrator's act now (the E6 boundary ruling), but the
+	// authorization matrix this test pins needs a MEMBER-owned
+	// album all the same -- the admin-override arm exercises the
+	// owner check, not the creation guard.
+	graceOwn := fixtureWallAlbumID("78")
+	env.insertWallAlbum(t, graceOwn, graceID, "directory", "Grace's own", wallAlbumOpts{})
 
 	t.Run("ShareeIsForbidden", func(t *testing.T) {
 		// A sharee cannot edit the ACL at all -- not even to remove

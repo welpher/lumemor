@@ -150,6 +150,10 @@ NON_ERROR_KEYS = {
     # not-excludable album kinds' key carried in a VALIDATION_FAILED
     # details.
     "album_pref_not_excludable",
+    # Album deletability message keys (E6): the deletability switch's
+    # directory-only refusal key carried in a VALIDATION_FAILED
+    # details.
+    "album_deletable_not_directory",
     # People surface UI strings (M3b Task 4): the three pages of the
     # people domain.
     "people_loading",
@@ -317,6 +321,7 @@ NON_ERROR_KEYS = {
     "admin_users_field_password",
     "admin_users_field_role",
     "admin_users_create_submit",
+    "admin_users_new",
     # Admin model management and job task panel UI strings
     # (M3a Task 5).
     "admin_models_loading",
@@ -417,13 +422,17 @@ NON_ERROR_KEYS = {
     "albums_action_rename",
     "albums_action_properties",
     "albums_action_cover",
-    "albums_action_lock",
-    "albums_action_unlock",
     "albums_action_delete",
     "albums_delete_title",
     "albums_delete_body",
     "albums_delete_confirm",
     "albums_locked_notice",
+    "albums_lock_label",
+    "albums_lock_note",
+    "albums_timeline_label",
+    "albums_timeline_note",
+    "albums_deletable_label",
+    "albums_deletable_note",
     "albums_excluded_notice",
     "albums_action_exclude",
     "albums_action_include",
@@ -440,14 +449,13 @@ NON_ERROR_KEYS = {
     "albums_source_tag",
     "albums_create_report",
     "albums_create_done",
+    "albums_create_readonly",
     "albums_path_field",
     "albums_path_placeholder",
     "albums_path_hint",
     "albums_path_required",
     "albums_path_suggestions_label",
     "albums_path_loading",
-    "albums_path_no_roots",
-    "albums_path_no_roots_action",
     "albums_path_no_match",
     "albums_path_completion_failed",
     "albums_keys_select",
@@ -516,17 +524,6 @@ NON_ERROR_KEYS = {
     # Mount-roots UI strings (E4's albums-as-sources): the admin
     # settings section that manages the directory albums' source
     # allowlist.
-    "admin_settings_mounts_title",
-    "admin_settings_mounts_note",
-    "admin_settings_mounts_empty",
-    "admin_settings_mounts_add_label",
-    "admin_settings_mounts_placeholder",
-    "admin_settings_mounts_invalid",
-    "admin_settings_mounts_add",
-    "admin_settings_mounts_remove",
-    "admin_settings_mounts_save",
-    "admin_settings_mounts_saved",
-    "admin_settings_mounts_contract",
     "admin_settings_transcode_concurrency_4",
     "admin_settings_transcode_contract",
     "admin_settings_transcode_keep",

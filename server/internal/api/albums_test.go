@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -1008,6 +1009,138 @@ func TestAlbumDetailViewer(t *testing.T) {
 		}
 		if page.NextCursor != nil {
 			t.Error("nextCursor set on the final page, want absent")
+		}
+	})
+}
+
+// TestAlbumDetailDeletionFaces pins the deletion chain's detail
+// faces (E6, §7.9): the source-writable fact rides directory albums
+// on both roles, the deletability switch and the derived `deletable`
+// face ride the owner's view alone, and the derivation is honest
+// over every arm -- a read-only source or a switched-off or locked
+// album answers false without any runtime probing, and a viewer
+// never receives the write faces at all.
+func TestAlbumDetailDeletionFaces(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "deletion-faces-grace@example.com")
+	root := env.provisionMountRoot(t)
+
+	// A writable-source directory album, shared to grace for the
+	// viewer view of the same album.
+	writable := uuid.UUID(env.createAlbum(t, env.cookie, "Writable source",
+		sourceDir(t, root, "writable"), nil).Id)
+	env.shareWallAlbum(t, writable, graceID, adminID, time.Date(2026, 11, 8, 9, 0, 0, 0, time.UTC))
+
+	// A read-only-source directory album: the directory is made
+	// read-only BEFORE the creation, so the probe itself fails and
+	// the stored fact is false (skipped as root: the kernel lets
+	// root write anything).
+	readOnlyDir := sourceDir(t, root, "read-only")
+	if os.Geteuid() != 0 {
+		if err := os.Chmod(readOnlyDir, 0o555); err != nil {
+			t.Fatalf("chmod the read-only source: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(readOnlyDir, 0o755) })
+	}
+	readOnly := uuid.UUID(env.createAlbum(t, env.cookie, "Read-only source", readOnlyDir, nil).Id)
+
+	// A legacy virtual album: no faces at all.
+	virtual := fixtureWallAlbumID("76")
+	env.insertWallAlbum(t, virtual, adminID, "virtual", "Legacy picks", wallAlbumOpts{})
+
+	t.Run("OwnerOfAWritableUnlockedAlbum", func(t *testing.T) {
+		detail := env.getAlbumDetail(t, env.cookie, writable, "")
+		if detail.SourceWritable == nil || !*detail.SourceWritable {
+			t.Errorf("sourceWritable = %v, want true (the probe passed)", detail.SourceWritable)
+		}
+		if detail.AllowAppDeletion == nil || !*detail.AllowAppDeletion {
+			t.Errorf("allowAppDeletion = %v, want true (the default)", detail.AllowAppDeletion)
+		}
+		if detail.Deletable == nil || !*detail.Deletable {
+			t.Errorf("deletable = %v, want true (owner, writable, on, unlocked)", detail.Deletable)
+		}
+	})
+
+	t.Run("SwitchOffKillsTheAffordance", func(t *testing.T) {
+		env.patchAlbum(t, env.cookie, writable, `{"allowAppDeletion":false}`)
+		detail := env.getAlbumDetail(t, env.cookie, writable, "")
+		if detail.SourceWritable == nil || !*detail.SourceWritable {
+			t.Errorf("sourceWritable = %v, want true (the fact is untouched by the switch)", detail.SourceWritable)
+		}
+		if detail.AllowAppDeletion == nil || *detail.AllowAppDeletion {
+			t.Errorf("allowAppDeletion = %v, want false (switched off)", detail.AllowAppDeletion)
+		}
+		if detail.Deletable == nil || *detail.Deletable {
+			t.Errorf("deletable = %v, want false (the switch is off)", detail.Deletable)
+		}
+		env.patchAlbum(t, env.cookie, writable, `{"allowAppDeletion":true}`) // back on
+	})
+
+	t.Run("LockKillsTheAffordance", func(t *testing.T) {
+		env.patchAlbum(t, env.cookie, writable, `{"locked":true}`)
+		detail := env.getAlbumDetail(t, env.cookie, writable, "")
+		if detail.AllowAppDeletion == nil || !*detail.AllowAppDeletion {
+			t.Errorf("allowAppDeletion = %v, want true (the lock does not flip the switch)", detail.AllowAppDeletion)
+		}
+		if detail.Deletable == nil || *detail.Deletable {
+			t.Errorf("deletable = %v, want false (locked)", detail.Deletable)
+		}
+		env.patchAlbum(t, env.cookie, writable, `{"locked":false}`)
+	})
+
+	t.Run("ReadOnlySourceKillsTheAffordance", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("the read-only arm is untestable as root: the kernel lets root write anything")
+		}
+		detail := env.getAlbumDetail(t, env.cookie, readOnly, "")
+		if detail.SourceWritable == nil || *detail.SourceWritable {
+			t.Errorf("sourceWritable = %v, want false (the probe failed over the read-only source)", detail.SourceWritable)
+		}
+		if detail.AllowAppDeletion == nil || !*detail.AllowAppDeletion {
+			t.Errorf("allowAppDeletion = %v, want true (the stored switch, governing nothing)", detail.AllowAppDeletion)
+		}
+		if detail.Deletable == nil || *detail.Deletable {
+			t.Errorf("deletable = %v, want false (the source is read-only, whatever the switch says)", detail.Deletable)
+		}
+	})
+
+	t.Run("UnwritableSourceKillsTheAffordance", func(t *testing.T) {
+		// The root-proof arm of the same derivation: procfs refuses
+		// the probe's write for uid 0 too, so the containerized
+		// gate sees the false fact's faces even where the
+		// permission arms skip.
+		if _, err := os.Stat("/proc"); err != nil {
+			t.Skipf("/proc is unavailable on this host (%v); the unwritable arm needs procfs", err)
+		}
+		unwritable := uuid.UUID(env.createAlbum(t, env.cookie, "Unwritable source", "/proc", nil).Id)
+		detail := env.getAlbumDetail(t, env.cookie, unwritable, "")
+		if detail.SourceWritable == nil || *detail.SourceWritable {
+			t.Errorf("sourceWritable = %v, want false (the probe failed over the unwritable source)", detail.SourceWritable)
+		}
+		if detail.Deletable == nil || *detail.Deletable {
+			t.Errorf("deletable = %v, want false (the source is unwritable, whatever the switch says)", detail.Deletable)
+		}
+	})
+
+	t.Run("ViewerSeesOnlyTheFact", func(t *testing.T) {
+		detail := env.getAlbumDetail(t, graceCookie, writable, "")
+		if detail.SourceWritable == nil || !*detail.SourceWritable {
+			t.Errorf("sourceWritable = %v, want true (the fact rides the viewer's view too)", detail.SourceWritable)
+		}
+		if detail.AllowAppDeletion != nil {
+			t.Errorf("allowAppDeletion = %v, want absent on the viewer's view (no write affordance to read it for)", detail.AllowAppDeletion)
+		}
+		if detail.Deletable != nil {
+			t.Errorf("deletable = %v, want absent on the viewer's view (a sharee holds no delete affordance)", detail.Deletable)
+		}
+	})
+
+	t.Run("VirtualAlbumCarriesNoFaces", func(t *testing.T) {
+		detail := env.getAlbumDetail(t, env.cookie, virtual, "")
+		if detail.SourceWritable != nil || detail.AllowAppDeletion != nil || detail.Deletable != nil {
+			t.Errorf("deletion faces = (%v, %v, %v), want all absent on a virtual album",
+				detail.SourceWritable, detail.AllowAppDeletion, detail.Deletable)
 		}
 	})
 }

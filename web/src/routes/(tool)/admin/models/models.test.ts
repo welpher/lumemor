@@ -198,13 +198,20 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-test('the listing renders slot-grouped cards with every model fact', async () => {
+test('the listing renders the Machine learning page-header row and slot-grouped cards with every model fact', async () => {
 	vi.stubGlobal(
 		'fetch',
 		stubFetch(modelsRoutes([detector, clipA, clipB, textTower]))
 	);
 	const page = mountPage();
 	await settle();
+
+	// THE 2026-11-09 NAMING PIN (§7.8): the page is the Machine
+	// Learning workbench -- the page-header row's title carries the
+	// domain name (the rail's item echoes it), the hairline under it.
+	const header = document.body.querySelector<HTMLElement>('.page-header');
+	expect(header?.querySelector('h1')?.textContent).toBe('Machine learning');
+	expect(header?.className).toContain('border-b');
 
 	const text = document.body.textContent ?? '';
 	// The slot sections, in the enum's declaration order (the

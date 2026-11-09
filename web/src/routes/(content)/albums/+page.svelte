@@ -13,6 +13,14 @@
 	// display name (album_all_photos), the contract's client-side
 	// convention.
 	//
+	// THE CREATION ENTRY IS THE ADMINISTRATOR'S (E6, web IA §7.5's
+	// third revision): pointing at the file system is configuration,
+	// so the "New album" button renders for an admin's session alone
+	// -- a member never sees it (the server refuses their POST with
+	// 403 regardless; the visual gate is the honest half). Members
+	// contribute photos through upload and sync, never through album
+	// creation.
+	//
 	// SSE CONVERGENCE: every album.* event converges through ONE
 	// fresh wall fetch, collapsed single-flight (a burst parks in a
 	// queue and costs one trailing fetch). The refetched SERVER
@@ -24,6 +32,7 @@
 	import { _ } from 'svelte-i18n';
 	import { listAlbums, createAlbum, type AlbumSummary, type AlbumAudienceSkip } from '$lib/api/albums';
 	import { subscribeAlbumEvents } from '$lib/events';
+	import { sessionRole } from '$lib/auth/session.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
 	import CreateAlbumDialog from '$lib/albums/CreateAlbumDialog.svelte';
@@ -39,12 +48,21 @@
 
 	// The creation dialog (E4: title + source path + audience); the
 	// created card lands through the refetch the write triggers, and
-	// the write's honest `skipped` report holds the dialog open until
-	// acknowledged.
+	// the write's honest answers -- the `skipped` report, the write
+	// probe's `sourceWritable` fact (E6: a read-only source is a
+	// legitimate album, the fact is creation feedback, never a
+	// failure) -- hold the dialog open until acknowledged.
 	let createOpen = $state(false);
 	let createBusy = $state(false);
 	let createErrorKey = $state('');
 	let createSkipped = $state<readonly AlbumAudienceSkip[] | null>(null);
+	let createWritable = $state<boolean | null>(null);
+
+	// The admin entry (E6): the session's own role read, the drawer's
+	// pattern -- components read the store directly, no prop
+	// shadowing. A member's wall renders no creation affordance at
+	// all.
+	const adminSession = $derived(sessionRole() === 'admin');
 
 	// The single-flight guard: while one fetch runs, later triggers
 	// park (the burst's tail) and one trailing fetch runs when it
@@ -156,8 +174,12 @@
 			return;
 		}
 		createSkipped = outcome.skipped;
+		createWritable = outcome.sourceWritable;
 		void runLoad(true);
-		if (outcome.skipped.length === 0) {
+		// The honest answers hold the dialog: any skipped id, or the
+		// read-only source fact, keeps the report face until the
+		// Done affordance acknowledges it.
+		if (outcome.skipped.length === 0 && outcome.sourceWritable) {
 			createOpen = false;
 		}
 	}
@@ -167,6 +189,7 @@
 	function finishCreate(): void {
 		createOpen = false;
 		createSkipped = null;
+		createWritable = null;
 	}
 
 	// The load and the SSE subscription live for the page's lifetime:
@@ -187,10 +210,14 @@
 
 <section class="albums max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
 	<!-- The one toolbar of the wall: the directory-album creation, the
-	     web IA's primary action. -->
-	<div class="albums__toolbar flex justify-end items-center mb-3">
-		<Button onclick={() => { createErrorKey = ''; createSkipped = null; createOpen = true; }}><Plus size={20} aria-hidden="true" />{$_('albums_new')}</Button>
-	</div>
+	     web IA's primary action -- THE ADMIN'S ALONE (E6: mounting an
+	     existing photo directory is configuration, a member never
+	     sees the affordance). -->
+	{#if adminSession}
+		<div class="albums__toolbar flex justify-end items-center mb-3">
+			<Button onclick={() => { createErrorKey = ''; createSkipped = null; createWritable = null; createOpen = true; }}><Plus size={20} aria-hidden="true" />{$_('albums_new')}</Button>
+		</div>
+	{/if}
 
 	{#if firstLoad}
 		<p class="albums__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('albums_loading')}</p>
@@ -325,6 +352,7 @@
 	busy={createBusy}
 	errorKey={createErrorKey}
 	skipped={createSkipped}
+	sourceWritable={createWritable}
 	onsubmit={(title, rootPath, audience) => void submitCreate(title, rootPath, audience)}
 	ondone={finishCreate}
 />

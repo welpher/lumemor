@@ -18,6 +18,7 @@
 	import { _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
 	import {
 		activateModel,
 		listModels,
@@ -322,10 +323,12 @@
 			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
 		</div>
 	{:else if status === 'ready'}
-		<header class="models__header">
-			<h1 class="models__title mb-1 font-display font-bold text-[26px] text-text">{$_('admin_models_title')}</h1>
-			<p class="models__note font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_models_note')}</p>
-		</header>
+		<!-- The page-header row (the 2026-11-09 specimen): the title
+		     + the hairline; the workbench carries no page-level
+		     action, the row stands for the grammar's uniformity. The
+		     page's own note rides under it as the lede. -->
+		<AdminPageHeader title={$_('admin_models_title')} />
+		<p class="models__note m-0 mb-1 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_models_note')}</p>
 
 		{#if wipedNotice !== null}
 			<p

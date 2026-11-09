@@ -23,13 +23,12 @@
 	// trailing fetch runs when it lands), and a stale answer NEVER
 	// overwrites a newer one (every run carries a generation; only
 	// the newest generation's answer applies). The empty prefix
-	// lists the mount roots themselves (the contract's "start
-	// here"); an empty answer over an empty prefix is the honest
-	// NO-ROOTS state -- the allowlist is closed, and the dialog says
-	// so instead of pretending the world is empty. The completion's
-	// own failure renders as a line that points back at the
-	// completion (retry by typing or re-focusing), never as a write
-	// error.
+	// lists the container's root itself (the system-wide domain of
+	// §7.5's third revision -- the allowlist and its no-roots
+	// posture retired with it); an empty answer is the honest
+	// no-match note, never an error state. The completion's own
+	// failure renders as a line that points back at the completion
+	// (retry by typing or re-focusing), never as a write error.
 	//
 	// THE KEYBOARD: ↑/↓ move the highlight over the rows (clamped,
 	// the list opens closed on ArrowDown), Enter completes the
@@ -41,10 +40,8 @@
 	// outside the Modal's focus trap by the spec's own pin.
 	import { _ } from 'svelte-i18n';
 	import { completeAlbumPath } from '$lib/api/albums';
-	import { sessionRole } from '$lib/auth/session.svelte';
 	import { anchored } from '$lib/components/anchored';
 	import Folder from '@lucide/svelte/icons/folder';
-	import HardDrive from '@lucide/svelte/icons/hard-drive';
 
 	type Props = {
 		/** The draft path (bindable): a completion writes its row into it. */
@@ -76,19 +73,8 @@
 	let open = $state(false);
 	/** The highlighted row's index (-1 = none). */
 	let activeIndex = $state(-1);
-	/** The current run's face: loading, the rows, the empty notes, the failure. */
+	/** The current run's face: loading, the rows, the empty note, the failure. */
 	let phase = $state<CompletionState>("idle");
-	/**
-	 * Whether the last answer was the EMPTY-PREFIX empty list -- the
-	 * no-roots posture (the allowlist is closed), surfaced honestly
-	 * instead of a bare "nothing matched".
-	 */
-	let emptyPrefixAnswer = $state(false);
-
-	/** The admin's direct door out of the dead end (the owner's
-	 * 2026-11-09 dogfood finding): the session's role decides. */
-	const adminSession = $derived(sessionRole() === 'admin');
-
 	// The single-flight pair: the running flag parks later triggers,
 	// the queued flag runs ONE trailing fetch when the flight lands
 	// (the wall's runLoad collapse, applied to a combobox).
@@ -143,7 +129,6 @@
 		}
 		if (outcome.ok) {
 			paths = outcome.paths;
-			emptyPrefixAnswer = prefix.trim() === '';
 			phase = "ready";
 			activeIndex = paths.length > 0 ? 0 : -1;
 		} else {
@@ -285,33 +270,11 @@
 			{:else if phase === 'failed'}
 				<p class="path-completion__failed m-0 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-danger-text" role="alert">{$_('albums_path_completion_failed')}</p>
 			{:else if paths.length === 0}
-				{#if emptyPrefixAnswer}
-					<!-- The honest no-roots posture: the allowlist is closed,
-					     the admin must open a root first. For the ADMIN the
-					     note is no longer a dead end (the 2026-11-09 dogfood
-					     finding): a direct icon+text action (§7.2's primary
-					     flow shape) jumps to the instance settings, where the
-					     "Album sources" section owns the allowlist -- the
-					     member keeps the note alone, the honest face of
-					     "an administrator must do this". The role is the
-					     session store's own read (the drawer's pattern:
-					     components read the store directly, no prop
-					     shadowing). -->
-					<div class="path-completion__no-roots-block px-3 py-2">
-						<p class="path-completion__no-roots m-0 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_('albums_path_no_roots')}</p>
-						{#if adminSession}
-							<a
-								class="path-completion__no-roots-action mt-1.5 inline-flex items-center gap-2 px-2 py-1.5 rounded-control bg-transparent font-body font-semibold text-[13px] leading-[1.4] text-link text-left no-underline cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
-								href="/admin/settings"
-							>
-								<HardDrive size={16} class="shrink-0" aria-hidden="true" />
-								{$_('albums_path_no_roots_action')}
-							</a>
-						{/if}
-					</div>
-				{:else}
-					<p class="path-completion__no-match m-0 px-3 py-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_('albums_path_no_match')}</p>
-				{/if}
+				<!-- The honest empty answer: nothing under the typed prefix
+			         matches (the system-wide domain has no closed posture to
+			         report -- the allowlist and its no-roots face retired with
+			         E6). -->
+				<p class="path-completion__no-match m-0 px-3 py-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_('albums_path_no_match')}</p>
 			{:else}
 				{#each paths as candidate, index (candidate)}
 					<!-- The row: the state-selector (not an action button)

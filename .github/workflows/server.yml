@@ -104,7 +104,11 @@ jobs:
 
       - name: Test
         working-directory: server
-        run: go test ./...
+        # The per-package timeout rides at 20m (Go's default is 10m):
+        # the api package legitimately runs ~7m on a healthy runner
+        # (the ML/ffmpeg fixtures) and slow days multiply that past
+        # the default cap -- slow by design, not stuck.
+        run: go test -timeout 20m ./...
         # The database tests use testcontainers, which talks to the
         # Docker daemon available on ubuntu-latest runners.
 

@@ -14,16 +14,19 @@ import {
 } from './albums';
 import { sessionStatus } from '$lib/auth/session.svelte';
 
-// The albums surface's data client (E4's albums-as-sources reshape):
-// the wall list, the detail read, the directory creation (title +
-// source path + audience, the honest skipped report), the property
-// patch, the virtual/directory delete, the path completion of the
-// creation dialog's combobox, the audience's full-set PUT, the
-// rescan trigger, the member list and the timeline preference --
-// each behind the repo-wide error-code convention, and the cover
-// validation's message key surfaced as an error key (the people
-// client's requires-label pattern). Every case drives one call
-// through an injected fetch mock.
+// The albums surface's data client (E4's albums-as-sources reshape,
+// completed by E6's album autonomy): the wall list, the detail read
+// (the deletion faces included), the directory creation (title +
+// source path + audience, the honest skipped report and the write
+// probe's sourceWritable fact -- both admin-guarded writes), the
+// property patch (title, cover, lock, deletability), the
+// virtual/directory delete, the path completion of the creation
+// dialog's combobox, the audience's full-set PUT, the rescan
+// trigger, the member list and the timeline preference -- each
+// behind the repo-wide error-code convention, and the write faces'
+// message keys surfaced as error keys (the people client's
+// requires-label pattern). Every case drives one call through an
+// injected fetch mock.
 
 const ownCard: AlbumSummary = {
 	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
@@ -170,11 +173,14 @@ test('fetchAlbumDetail reads the metadata page with the lean limit', async () =>
 	}
 });
 
-test('fetchAlbumDetail reads the directory album source row', async () => {
+test('fetchAlbumDetail reads the directory album source row and the E6 deletion faces', async () => {
 	const directoryDetail = {
 		...detailBody,
 		type: 'directory',
-		rootPath: '/Volumes/Photos/family'
+		rootPath: '/Volumes/Photos/family',
+		sourceWritable: true,
+		allowAppDeletion: false,
+		deletable: false
 	};
 	vi.stubGlobal(
 		'fetch',
@@ -186,7 +192,23 @@ test('fetchAlbumDetail reads the directory album source row', async () => {
 	expect(outcome.ok).toBe(true);
 	if (outcome.ok) {
 		expect(outcome.detail.rootPath).toBe('/Volumes/Photos/family');
+		// The probe's fact, the owner's switch and the derived
+		// affordance ride the directory detail as-is.
+		expect(outcome.detail.sourceWritable).toBe(true);
+		expect(outcome.detail.allowAppDeletion).toBe(false);
+		expect(outcome.detail.deletable).toBe(false);
 	}
+
+	// A drifted face (the fact is not the boolean it names) maps to
+	// the generic failure, never a broken surface.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${ownCard.id}?limit=1`]: () =>
+				jsonResponse(200, { ...directoryDetail, sourceWritable: 'maybe' })
+		})
+	);
+	expect(await fetchAlbumDetail(ownCard.id)).toEqual({ ok: false, errorKey: 'internal' });
 });
 
 test('fetchAlbumDetail maps the single-shape 404', async () => {
@@ -201,7 +223,7 @@ test('fetchAlbumDetail maps the single-shape 404', async () => {
 	expect(outcome).toEqual({ ok: false, errorKey: 'album_not_found' });
 });
 
-test('createAlbum POSTs the title, source path and audience, and answers the report', async () => {
+test('createAlbum POSTs the title, source path and audience, and answers the report with the probe fact', async () => {
 	const fetchMock = stubFetch({
 		'/api/v1/albums': (init?: RequestInit) => {
 			const body = JSON.parse(String(init?.body));
@@ -213,6 +235,7 @@ test('createAlbum POSTs the title, source path and audience, and answers the rep
 			return jsonResponse(201, {
 				...directoryCard,
 				isShared: true,
+				sourceWritable: false,
 				skipped: [{ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99', reason: 'invalid_account' }]
 			});
 		}
@@ -231,7 +254,37 @@ test('createAlbum POSTs the title, source path and audience, and answers the rep
 		expect(outcome.skipped).toEqual([
 			{ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99', reason: 'invalid_account' }
 		]);
+		// The write probe's fact rides the answer: false is honest
+		// creation feedback (a read-only source), never a failure.
+		expect(outcome.sourceWritable).toBe(false);
 	}
+});
+
+test('createAlbum maps the member 403 and refuses a body without the probe fact', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/albums': () =>
+				jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' })
+		})
+	);
+	expect(await createAlbum({ title: 'X', rootPath: '/Volumes/Photos', audience: [] })).toEqual({
+		ok: false,
+		errorKey: 'auth_forbidden'
+	});
+
+	// The fact is required: a drifted answer maps to the generic
+	// failure like any unparseable body.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/albums': () => jsonResponse(201, { ...directoryCard, skipped: [] })
+		})
+	);
+	expect(await createAlbum({ title: 'X', rootPath: '/Volumes/Photos', audience: [] })).toEqual({
+		ok: false,
+		errorKey: 'internal'
+	});
 });
 
 test('createAlbum surfaces the path matrix codes unmangled', async () => {
@@ -239,11 +292,11 @@ test('createAlbum surfaces the path matrix codes unmangled', async () => {
 		'fetch',
 		stubFetch({
 			'/api/v1/albums': () =>
-				jsonResponse(400, { code: 'ALBUM_PATH_OUTSIDE_ROOTS', message: 'outside the roots' })
+				jsonResponse(400, { code: 'ALBUM_PATH_NOT_FOUND', message: 'the source path does not exist' })
 		})
 	);
 	const outcome = await createAlbum({ title: 'X', rootPath: '/elsewhere', audience: [] });
-	expect(outcome).toEqual({ ok: false, errorKey: 'album_path_outside_roots' });
+	expect(outcome).toEqual({ ok: false, errorKey: 'album_path_not_found' });
 
 	vi.stubGlobal(
 		'fetch',
@@ -279,15 +332,15 @@ test('completeAlbumPath reads the completion rows for a typed prefix', async () 
 	});
 });
 
-test('completeAlbumPath sends no query for the empty prefix (the roots listing)', async () => {
+test('completeAlbumPath sends no query for the empty prefix (the root listing)', async () => {
 	const fetchMock = stubFetch({
-		'/api/v1/albums/path-completions': () => jsonResponse(200, { paths: ['/Volumes/Photos'] })
+		'/api/v1/albums/path-completions': () => jsonResponse(200, { paths: ['/'] })
 	});
 	vi.stubGlobal('fetch', fetchMock);
 
 	const outcome = await completeAlbumPath('');
 
-	expect(outcome).toEqual({ ok: true, paths: ['/Volumes/Photos'] });
+	expect(outcome).toEqual({ ok: true, paths: ['/'] });
 	expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/albums/path-completions');
 });
 
@@ -329,7 +382,22 @@ test('patchAlbum PATCHes the carried subset and answers the card', async () => {
 	expect(outcome).toEqual({ ok: true, album: ownCard });
 });
 
-test('patchAlbum surfaces the locked 409 and the cover message key', async () => {
+test('patchAlbum PATCHes the deletability switch like every property field', async () => {
+	const fetchMock = stubFetch({
+		[`/api/v1/albums/${directoryCard.id}`]: (init?: RequestInit) => {
+			expect(init?.method).toBe('PATCH');
+			const body = JSON.parse(String(init?.body));
+			expect(body).toEqual({ allowAppDeletion: false });
+			return jsonResponse(200, directoryCard);
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	const outcome = await patchAlbum(directoryCard.id, { allowAppDeletion: false });
+	expect(outcome).toEqual({ ok: true, album: directoryCard });
+});
+
+test('patchAlbum surfaces the locked 409 and the write faces\' message keys', async () => {
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
@@ -356,6 +424,24 @@ test('patchAlbum surfaces the locked 409 and the cover message key', async () =>
 	expect(await patchAlbum(ownCard.id, { coverAssetId: 'x' })).toEqual({
 		ok: false,
 		errorKey: 'album_cover_not_member'
+	});
+
+	// The deletability switch's own refusal: a virtual album answers
+	// the message key, not a generic validation text.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${ownCard.id}`]: () =>
+				jsonResponse(400, {
+					code: 'VALIDATION_FAILED',
+					message: 'the deletability switch is a directory album\'s own setting',
+					details: { key: 'album_deletable_not_directory' }
+				})
+		})
+	);
+	expect(await patchAlbum(ownCard.id, { allowAppDeletion: false })).toEqual({
+		ok: false,
+		errorKey: 'album_deletable_not_directory'
 	});
 });
 
