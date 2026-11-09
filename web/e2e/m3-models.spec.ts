@@ -111,9 +111,11 @@ test('scene 1: signing in through the form lands on the empty models page', asyn
 	await page.getByLabel('Password').fill(ADMIN_PASSWORD);
 	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-	// The post-login target round-trips onto the admin models page.
+	// The post-login target round-trips onto the admin models page,
+	// whose page-header row names the renamed surface (the 2026-11-09
+	// naming pin: the domain-named "Machine learning").
 	await expect(page).toHaveURL(/\/admin\/models$/);
-	await expect(page.getByRole('heading', { level: 1, name: 'Models', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { level: 1, name: 'Machine learning', exact: true })).toBeVisible();
 
 	// The empty state carries the honest copy and the download CTA --
 	// the v1 form of the wizard's model download step.
