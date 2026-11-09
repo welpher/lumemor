@@ -594,16 +594,24 @@ test.describe('the signed-in scenes', () => {
 		await page.keyboard.press('/');
 		await expect(page.locator('input.topbar-search')).toBeFocused();
 
-		// The offline strip (§6's pinned state): taking the context
-		// offline kills the SSE stream -- the yellow band rises with
-		// the honest reconnecting copy; bringing the network back
-		// lets the browser's OWN EventSource retry recover, and the
-		// strip falls with it.
-		await page.context().setOffline(true);
+		// The offline strip (§6's pinned state): the SSE stream dies at
+		// the network layer -- the events request is aborted at the
+		// route (the surgical equivalent of the connection dropping:
+		// the page itself stays healthy, only the stream is gone).
+		// The reload re-opens the stream into the abort, the yellow
+		// band rises with the honest reconnecting count, and
+		// un-routing lets the browser's OWN EventSource retry land --
+		// the strip falls with a recovery nobody had to wire, because
+		// the browser owns the retry. (A context-wide setOffline
+		// leaves the ALREADY-ESTABLISHED stream untouched -- CDP's
+		// network emulation gates new requests only -- so the route
+		// abort is the deterministic drop.)
+		await page.route('**/api/v1/events', (route) => route.abort());
+		await page.reload();
 		await expect(
 			page.getByRole('status').filter({ hasText: 'Connection lost — reconnecting' })
 		).toBeVisible();
-		await page.context().setOffline(false);
+		await page.unroute('**/api/v1/events');
 		await expect(
 			page.getByRole('status').filter({ hasText: 'Connection lost — reconnecting' })
 		).toHaveCount(0);
