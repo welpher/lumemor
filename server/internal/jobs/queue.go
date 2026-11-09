@@ -271,6 +271,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		pool:     cfg.Pool,
 		dataDir:  cfg.DataDir,
 		registry: registry,
+		bus:      cfg.Bus,
 		logger:   logger,
 	})
 	river.AddWorker(workers, &OcrWorker{

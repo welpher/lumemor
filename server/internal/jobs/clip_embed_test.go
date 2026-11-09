@@ -88,6 +88,7 @@ func (e *env) clipEmbedWorker() *ClipEmbedWorker {
 		pool:     e.pool,
 		dataDir:  e.dataDir,
 		registry: e.registry,
+		bus:      e.bus,
 		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
@@ -349,6 +350,14 @@ func TestSeamWiresClipAndOcrAtAssetReady(t *testing.T) {
 	}
 	if got := countEvents(e.bus, "asset.ready"); got != 1 {
 		t.Errorf("asset.ready events = %d, want exactly 1", got)
+	}
+	// THE LATE-EMBED CONVERGENCE (2026-11-10): the embed's landing
+	// publishes asset.updated exactly once -- the search page's
+	// refetch-on-event picks the late semantic hit up; without the
+	// event the hit stayed invisible until a manual reload (the
+	// m3-search flake's structural root).
+	if got := countEvents(e.bus, "asset.updated"); got != 1 {
+		t.Errorf("asset.updated events = %d, want the embed's exactly 1", got)
 	}
 }
 
