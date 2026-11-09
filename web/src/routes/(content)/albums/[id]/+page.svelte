@@ -30,34 +30,47 @@
 	// the PAGE's own concern here, the same shape the timeline page
 	// owns for its walk.
 	//
-	// THE PINNED CHOICES:
+	// THE PINNED CHOICES (E4, the albums-as-sources reshape):
 	//
 	// - The action set follows the role and the type: the owner of a
 	//   virtual album holds rename / set cover (picked from the
-	//   rendered members) / lock toggle / share management / add
-	//   photos (the handoff to the timeline's selection flow) /
-	//   delete; the owner of a directory album holds the properties /
-	//   the timeline-exclusion toggle and the rescan placeholder
-	//   (disabled with the honest "later update" note -- directory
-	//   albums arrive with their own milestone); a viewer holds the
-	//   exclusion toggle (their own preference) and the leave
-	//   affordance (the revoke of their own share row, the identity
-	//   seam's departure). The owner of a SYNC album (the default
+	//   rendered members) / lock toggle / delete; the owner of a
+	//   directory album holds the properties (the edit dialog: title
+	//   + the read-only source row + the audience) / the
+	//   timeline-exclusion toggle / the rescan trigger (E4: the
+	//   three-arm diff run, its progress surfaced through the job
+	//   events the run's identifier keys); a viewer holds the
+	//   exclusion toggle (their own preference) alone -- the
+	//   sharee's departure went with the revoke endpoint it rode
+	//   (the audience write is owner-domain; the member side is the
+	//   read-only view). The owner of a SYNC album (the default
 	//   "My photos" album) holds NOTHING: system-managed, read-only
 	//   -- the explicit empty arm below, zero write affordances, and
 	//   the server refuses every write face of the id anyway.
 	//   Read-only is VISUAL: a sharee never sees a write affordance,
 	//   the server keeps refusing them.
-	// - The locked gate is visual too: while locked, the curation and
-	//   property actions disable (the unlock is the lock toggle
-	//   itself, never gated), while the delete and the share stay
+	// - The share management died as a dialog of its own (web IA
+	//   §7.6): "who can see" is an album property, edited in the
+	//   same properties dialog through the audience PUT's full-set
+	//   semantics. The locked gate is visual too: while locked, the
+	//   curation and property actions disable (the unlock is the
+	//   lock toggle itself, never gated), while the delete stays
 	//   (locked gates neither).
 	// - Every write adopts its own response (the property patch and
 	//   the lock carry the wall card after the edit, the preference
 	//   carries the stored switch) or converges through the detail
-	//   refetch (the share pair's grantee list is the refetched
+	//   refetch (the audience write's grantee list is the refetched
 	//   `shares`); no client-side invention -- the SSE self-echoes
 	//   converge the same way, collapsed.
+	// - The rescan's live progress rides the activity stream's
+	//   job.* events (the models download page's mechanism, keyed by
+	//   the run identifier the trigger answers): progress events
+	//   update the run in place, the finish lands the final state,
+	//   and the membership the scan moved converges through the
+	//   album events the run publishes. The run's live view is
+	//   page-scoped (the honest limit: no user-domain face lists a
+	//   run by album, so a navigation away loses the line while the
+	//   run itself completes server-side).
 	// - SSE: the album events that touch THIS album refetch the
 	//   metadata (album.deleted's 404 renders the honest error state);
 	//   album.items-changed additionally restarts the items walk --
@@ -70,17 +83,14 @@
 	import {
 		deleteAlbum,
 		fetchAlbumDetail,
-		grantAlbumShare,
-		listUsers,
 		patchAlbum,
-		revokeAlbumShare,
+		rescanAlbum,
 		setAlbumTimelinePreference,
-		type AlbumDetail,
-		type UserSummary
+		updateAlbumAudience,
+		type AlbumDetail
 	} from '$lib/api/albums';
 	import { createTimelineClient } from '$lib/api/timeline';
-	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
-	import { sessionUserId } from '$lib/auth/session.svelte';
+	import { subscribeAlbumEvents, subscribeAssetEvents, subscribeJobEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { publishWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
@@ -89,19 +99,15 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import AlbumPropertiesDialog from '$lib/albums/AlbumPropertiesDialog.svelte';
 	import CoverPickerDialog from '$lib/albums/CoverPickerDialog.svelte';
-	import ShareDialog from '$lib/albums/ShareDialog.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import Images from '@lucide/svelte/icons/images';
 	import Lock from '@lucide/svelte/icons/lock';
 	import LockOpen from '@lucide/svelte/icons/lock-open';
-	import Share2 from '@lucide/svelte/icons/share-2';
-	import ImagePlus from '@lucide/svelte/icons/image-plus';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import CalendarOff from '@lucide/svelte/icons/calendar-off';
 	import Calendar from '@lucide/svelte/icons/calendar';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
-	import LogOut from '@lucide/svelte/icons/log-out';
 	import X from '@lucide/svelte/icons/x';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -119,7 +125,7 @@
 	// bar toggles share the flag).
 	let writeBusy = $state(false);
 
-	// The properties dialog (rename / properties).
+	// The properties dialog (the E4 edit: title + source + audience).
 	let propertiesOpen = $state(false);
 	let propertiesErrorKey = $state('');
 
@@ -127,32 +133,26 @@
 	let coverOpen = $state(false);
 	let coverErrorKey = $state('');
 
-	// The share dialog: the member list fetched on open, the grantee
-	// list riding the detail's own `shares`.
-	let shareOpen = $state(false);
-	let shareErrorKey = $state('');
-	let shareUsers = $state<UserSummary[]>([]);
-	let shareLoading = $state(false);
-
-	// The share dialog: the member list is the server's; the pick list
-	// filters the current grantees AND the caller's own account -- the
-	// identity seam's userId names the one account the grant's own
-	// target rule refuses (`album_share_to_owner`), so the dialog
-	// never offers it in the first place.
-	const shareCandidates = $derived(
-		shareUsers.filter(
-			(user) =>
-				user.id !== sessionUserId() &&
-				!(detail?.shares ?? []).some((share) => share.userId === user.id)
-		)
-	);
-
 	// The delete confirm.
 	let deleteOpen = $state(false);
 	let deleteErrorKey = $state('');
 
-	// The exclusion toggle's honest failure (the bar owns the line).
-	let exclusionErrorKey = $state('');
+	// The bar actions' honest failure (the lock, the exclusion, the
+	// rescan trigger): the bar owns the line.
+	let actionErrorKey = $state('');
+
+	// The rescan run this page triggered (or joined): the run's
+	// identifier keys the job events the progress rides. Null until
+	// a trigger lands; the live view is page-scoped, the honest
+	// limit noted above.
+	type RescanRun = {
+		id: string;
+		state: 'queued' | 'running' | 'succeeded' | 'failed';
+		total: number;
+		done: number;
+		failed: number;
+	};
+	let rescanRun = $state<RescanRun | null>(null);
 
 	// THE WALL WALK (the page's own data concern): the timeline
 	// client over the album narrow, constructed ONCE per mount (a
@@ -262,7 +262,6 @@
 	/** Adopt a write response's wall card into the detail's fields. */
 	function applyWriteFields(next: {
 		title: string;
-		description: string;
 		locked: boolean;
 		itemCount: number;
 	}): void {
@@ -270,29 +269,61 @@
 			detail = {
 				...detail,
 				title: next.title,
-				description: next.description,
 				locked: next.locked,
 				itemCount: next.itemCount
 			};
 		}
 	}
 
-	// The properties write: the PATCH response is the album's wall
-	// card after the edit -- the fields adopt it.
-	async function submitProperties(title: string, description: string): Promise<void> {
+	// The properties write (the E4 edit dialog): the page diffs the
+	// drafts against the LIVE detail and writes only the changed
+	// halves -- a same-value title PATCH would still publish its
+	// album.updated event, and a same-set audience PUT is the
+	// contract's silent no-op, so a no-change save writes nothing at
+	// all. The PATCH response is the album's wall card after the
+	// edit (the fields adopt it); the audience write's report
+	// converges through the detail refetch -- the refetched `shares`
+	// is the dialog's chips on the next open, the honest answer for
+	// any id the write skipped.
+	async function submitProperties(
+		title: string,
+		audience: readonly { userId: string; email: string }[]
+	): Promise<void> {
 		const id = untrack(() => albumId);
 		if (writeBusy || detail === null || id === '') {
 			return;
 		}
-		writeBusy = true;
-		propertiesErrorKey = '';
-		const outcome = await patchAlbum(id, { title, description });
-		writeBusy = false;
-		if (!outcome.ok) {
-			propertiesErrorKey = outcome.errorKey;
+		const wantsTitle = title !== detail.title;
+		const currentIds = new Set((detail.shares ?? []).map((share) => share.userId));
+		const nextIds = new Set(audience.map((member) => member.userId));
+		const wantsAudience =
+			nextIds.size !== currentIds.size ||
+			[...nextIds].some((userId) => !currentIds.has(userId));
+		if (!wantsTitle && !wantsAudience) {
+			propertiesOpen = false;
 			return;
 		}
-		applyWriteFields(outcome.album);
+		writeBusy = true;
+		propertiesErrorKey = '';
+		if (wantsTitle) {
+			const outcome = await patchAlbum(id, { title });
+			if (!outcome.ok) {
+				writeBusy = false;
+				propertiesErrorKey = outcome.errorKey;
+				return;
+			}
+			applyWriteFields(outcome.album);
+		}
+		if (wantsAudience) {
+			const outcome = await updateAlbumAudience(id, [...nextIds]);
+			if (!outcome.ok) {
+				writeBusy = false;
+				propertiesErrorKey = outcome.errorKey;
+				return;
+			}
+		}
+		writeBusy = false;
+		await convergeDetail();
 		propertiesOpen = false;
 	}
 
@@ -309,7 +340,7 @@
 		if (!outcome.ok) {
 			// The toggle's honest failure: the bar owns the line
 			// through the shared error area.
-			exclusionErrorKey = outcome.errorKey;
+			actionErrorKey = outcome.errorKey;
 			return;
 		}
 		applyWriteFields(outcome.album);
@@ -336,64 +367,53 @@
 		coverOpen = false;
 	}
 
-	// The share dialog: the member list is the server's minimal face
-	// (every account); the pick list's filtering -- the current
-	// grantees and the caller's own account -- lives in the
-	// shareCandidates derivation above.
-	$effect(() => {
-		if (!shareOpen) {
+	// The rescan trigger (E4): POST the run, adopt the identifier it
+	// answers (202 the freshly created run, 200 the in-flight one of
+	// THIS album the request joined -- the endpoint's idempotence),
+	// and let the job events the run publishes drive the progress
+	// line below. The run's bookkeeping rides job_runs, not the
+	// album row: the write the trigger makes is the run itself.
+	async function startRescan(): Promise<void> {
+		const id = untrack(() => albumId);
+		if (writeBusy || detail === null || id === '' || detail.type !== 'directory') {
 			return;
 		}
-		shareUsers = [];
-		shareErrorKey = '';
-		shareLoading = true;
-		void (async () => {
-			const outcome = await listUsers();
-			if (!shareOpen) {
+		writeBusy = true;
+		actionErrorKey = '';
+		const outcome = await rescanAlbum(id);
+		writeBusy = false;
+		if (!outcome.ok) {
+			// The trigger's honest failure (a locked album's 409, a dead
+			// session): the bar's shared error line.
+			actionErrorKey = outcome.errorKey;
+			return;
+		}
+		rescanRun = { id: outcome.run.jobRunId, state: 'queued', total: 0, done: 0, failed: 0 };
+	}
+
+	// The SSE convergence of the run: progress events update the run
+	// in place (the events' counts are already numbers, the state
+	// already the run lifecycle's), the finish lands the final state.
+	// Only the run THIS page tracked applies -- another album's
+	// rescan (or any other job kind) never touches this line.
+	$effect(() => {
+		return subscribeJobEvents((event) => {
+			if (event.kind !== 'album_rescan') {
 				return;
 			}
-			shareLoading = false;
-			if (outcome.ok) {
-				shareUsers = outcome.users;
+			const run = rescanRun;
+			if (run === null || run.id !== event.jobRunId) {
+				return;
 			}
-		})();
+			rescanRun = {
+				...run,
+				total: event.total,
+				done: event.done,
+				failed: event.failed,
+				state: event.state
+			};
+		});
 	});
-
-	// The grant write: the refetched detail's `shares` array is the
-	// dialog's list (the SSE album.shared echo converges the same
-	// way, collapsed).
-	async function grantShare(userId: string): Promise<void> {
-		const id = untrack(() => albumId);
-		if (writeBusy || id === '') {
-			return;
-		}
-		writeBusy = true;
-		shareErrorKey = '';
-		const outcome = await grantAlbumShare(id, userId);
-		writeBusy = false;
-		if (!outcome.ok) {
-			shareErrorKey = outcome.errorKey;
-			return;
-		}
-		await convergeDetail();
-	}
-
-	// The revoke write: the same convergence.
-	async function revokeShare(userId: string): Promise<void> {
-		const id = untrack(() => albumId);
-		if (writeBusy || id === '') {
-			return;
-		}
-		writeBusy = true;
-		shareErrorKey = '';
-		const outcome = await revokeAlbumShare(id, userId);
-		writeBusy = false;
-		if (!outcome.ok) {
-			shareErrorKey = outcome.errorKey;
-			return;
-		}
-		await convergeDetail();
-	}
 
 	// The delete write: success leaves for the wall (a deep link may
 	// have no history to back through).
@@ -423,41 +443,16 @@
 			return;
 		}
 		writeBusy = true;
-		exclusionErrorKey = '';
+		actionErrorKey = '';
 		const outcome = await setAlbumTimelinePreference(id, !detail.inTimeline);
 		writeBusy = false;
 		if (!outcome.ok) {
-			exclusionErrorKey = outcome.errorKey;
+			actionErrorKey = outcome.errorKey;
 			return;
 		}
 		if (detail !== null) {
 			detail = { ...detail, inTimeline: outcome.preference.inTimeline };
 		}
-	}
-
-	// The sharee's departure (the identity seam's second consumer):
-	// the revoke of the CALLER'S OWN share row -- DELETE
-	// /albums/{id}/shares/{own id}. The owner can re-share at any
-	// time, so no confirm dialog stands in the way (the same
-	// icon-button shape the owner's own revoke rows carry). Success
-	// leaves for the wall: the album left the caller's view, the
-	// detail would 404 from here on. A failure renders through the
-	// bar's shared error line.
-	async function leaveAlbum(): Promise<void> {
-		const id = untrack(() => albumId);
-		const userId = sessionUserId();
-		if (writeBusy || id === '' || userId === null) {
-			return;
-		}
-		writeBusy = true;
-		exclusionErrorKey = '';
-		const outcome = await revokeAlbumShare(id, userId);
-		writeBusy = false;
-		if (!outcome.ok) {
-			exclusionErrorKey = outcome.errorKey;
-			return;
-		}
-		void goto('/albums');
 	}
 
 	// The shared unknown-code fallback (a code with no i18n entry
@@ -577,12 +572,14 @@
 		<!-- The action set, per callerRole x type, as icon-only
 		     buttons (the icon-first rule; the aria-labels are the
 		     actions' own strings): the owner of a virtual album holds
-		     the full write set; the owner of a directory album the
-		     properties / exclusion / rescan placeholder; the owner of
+		     the edit dialog (rename + audience), the cover, the lock
+		     and the delete; the owner of a directory album the edit
+		     dialog (properties + the source row + audience), the
+		     exclusion toggle and the rescan trigger; the owner of
 		     the sync album (the default album) holds nothing --
-		     system-managed; a viewer the exclusion toggle and the
-		     leave affordance -- both self-affecting writes the share
-		     holds. -->
+		     system-managed; a viewer the exclusion toggle alone (the
+		     departure went with the revoke endpoint it rode; the
+		     audience is owner-domain). -->
 		<div class="album-detail__actions ml-auto flex items-center gap-1">
 			{#if detail !== null && owner && virtual}
 				<IconButton disabled={writeBusy || locked} aria-label={$_('albums_action_rename')} onclick={() => { propertiesErrorKey = ''; propertiesOpen = true; }}>
@@ -597,12 +594,6 @@
 					{:else}
 						<Lock size={20} aria-hidden="true" />
 					{/if}
-				</IconButton>
-				<IconButton aria-label={$_('albums_action_share')} onclick={() => { shareErrorKey = ''; shareOpen = true; }}>
-					<Share2 size={20} aria-hidden="true" />
-				</IconButton>
-				<IconButton disabled={writeBusy || locked} aria-label={$_('albums_action_add_photos')} onclick={() => void goto(`/timeline?album=${encodeURIComponent(albumId)}`)}>
-					<ImagePlus size={20} aria-hidden="true" />
 				</IconButton>
 				{#if !locked}
 					<!-- The permission matrix pins deletion to the UNLOCKED
@@ -624,23 +615,28 @@
 						{/if}
 					</IconButton>
 				{/if}
-				<!-- The rescan placeholder: honest and disabled -- the
-				     directory album's own flow arrives with a later
-				     milestone, and the tooltip says so. -->
-				<IconButton disabled title={$_('albums_rescan_note')} aria-describedby="album-detail-rescan-note" aria-label={$_('albums_rescan_action')}>
+				<!-- The rescan trigger (E4): the directory album's own
+				     refresh -- the three-arm diff run over its source.
+				     One run at a time (the endpoint is idempotent, the
+				     button is not a spam surface), and a locked album
+				     refuses the scan (the 409 the server answers). -->
+				<IconButton
+					disabled={writeBusy || locked || (rescanRun !== null && (rescanRun.state === 'queued' || rescanRun.state === 'running'))}
+					aria-label={$_('albums_rescan_action')}
+					onclick={() => void startRescan()}
+				>
 					<RefreshCw size={20} aria-hidden="true" />
 				</IconButton>
 			{:else if detail !== null && owner && detail.type === 'sync'}
 				<!-- The default album's arm: NOTHING. The sync album is
 				     system-managed -- no rename, no cover, no lock, no
-				     share, no add-photos, no delete, no exclusion
-				     toggle. The arm renders zero affordances, and the
-				     server refuses every write face of the id anyway;
-				     the wall below is the whole page. -->
+				     audience, no delete, no exclusion toggle, no rescan.
+				     The arm renders zero affordances, and the server
+				     refuses every write face of the id anyway; the wall
+				     below is the whole page. -->
 			{:else if detail !== null && !owner}
-				<!-- The read-only share's own writes: the timeline
-				     exclusion (the caller's preference) and the
-				     departure (the caller's own share row). -->
+				<!-- The read-only share's own write: the timeline
+				     exclusion (the caller's preference) alone. -->
 				{#if excludable}
 					<IconButton disabled={writeBusy} aria-label={excluded ? $_('albums_action_include') : $_('albums_action_exclude')} onclick={() => void toggleExclusion()}>
 						{#if excluded}
@@ -650,9 +646,6 @@
 						{/if}
 					</IconButton>
 				{/if}
-				<IconButton disabled={writeBusy} aria-label={$_('albums_leave_action')} onclick={() => void leaveAlbum()}>
-					<LogOut size={20} aria-hidden="true" />
-				</IconButton>
 			{/if}
 		</div>
 	</header>
@@ -666,14 +659,40 @@
 		</div>
 	{:else if detail !== null}
 		<!-- The context block (the page's card-framed text: the
-		     description, the notices, the shared error line) -- the
+		     notices and the shared error line) -- the
 		     WALL below is full-flow edge-to-edge like every wall. -->
 		<div class="album-detail__body max-w-[1200px] mx-auto px-2">
-			{#if owner && detail.type === 'directory'}
-				<p id="album-detail-rescan-note" class="album-detail__rescan-note my-0 mb-3 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_('albums_rescan_note')}</p>
-			{/if}
-			{#if detail.description !== ''}
-				<p class="album-detail__description my-0 mb-3 font-body font-normal text-[15px] leading-[1.5] text-text-soft">{detail.description}</p>
+			{#if owner && detail.type === 'directory' && rescanRun !== null}
+				<!-- The rescan's live progress (the models download page's
+				     mechanism, keyed by the run identifier): the counts
+				     update in place off the job events, the finish lands
+				     the final state, and the membership the scan moved
+				     converges through the album events below. -->
+				<div class="album-detail__rescan my-0 mb-3 flex flex-col gap-1.5" aria-live="polite" data-testid="album-rescan-progress">
+					<p class="album-detail__rescan-state m-0 font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums">
+						{#if rescanRun.state === 'queued'}
+							{$_('albums_rescan_queued')}
+						{:else if rescanRun.state === 'running'}
+							{$_('albums_rescan_progress', { values: { done: rescanRun.done, total: rescanRun.total } })}
+						{:else if rescanRun.state === 'succeeded'}
+							{$_('albums_rescan_done')}
+						{:else}
+							{$_('albums_rescan_failed')}
+						{/if}
+					</p>
+					{#if rescanRun.state === 'running' && rescanRun.total > 0}
+						<div
+							class="album-detail__rescan-bar w-full h-2 bg-accent-soft rounded-control overflow-hidden animate-progress-in"
+							role="progressbar"
+							aria-valuemin={0}
+							aria-valuemax={rescanRun.total}
+							aria-valuenow={rescanRun.done}
+							aria-label={$_('albums_rescan_action')}
+						>
+							<div class="album-detail__rescan-fill h-full bg-accent transition-[width] duration-(--motion-base) ease-standard" style="width: {Math.min(100, Math.round((rescanRun.done / rescanRun.total) * 100))}%"></div>
+						</div>
+					{/if}
+				</div>
 			{/if}
 			{#if locked && owner && virtual}
 				<!-- The locked gate, honest: curation and property writes stay
@@ -683,10 +702,10 @@
 			{#if excluded}
 				<p class="album-detail__excluded-notice my-0 mb-3 font-body font-medium text-[13px] leading-[1.5] text-text-soft" role="status">{$_('albums_excluded_notice')}</p>
 			{/if}
-			{#if exclusionErrorKey !== ''}
-				<!-- The bar toggles' honest failure (the lock, the
-				     exclusion): the server's own answer. -->
-				<p class="album-detail__action-error my-0 mb-3 font-body font-medium text-[14px] leading-[1.5] text-danger-text" role="alert">{errorText(exclusionErrorKey)}</p>
+			{#if actionErrorKey !== ''}
+				<!-- The bar actions' honest failure (the lock, the
+				     exclusion, the rescan trigger): the server's own answer. -->
+				<p class="album-detail__action-error my-0 mb-3 font-body font-medium text-[14px] leading-[1.5] text-danger-text" role="alert">{errorText(actionErrorKey)}</p>
 			{/if}
 		</div>
 
@@ -739,11 +758,11 @@
 		titleKey="albums_properties_title"
 		submitKey="albums_properties_submit"
 		initialTitle={detail.title}
-		initialDescription={detail.description}
-		showDescription={true}
+		rootPath={detail.rootPath ?? ''}
+		shares={detail.shares ?? []}
 		busy={writeBusy}
 		errorKey={propertiesErrorKey}
-		onsubmit={(title, description) => void submitProperties(title, description)}
+		onsubmit={(title, audience) => void submitProperties(title, audience)}
 	/>
 
 	<CoverPickerDialog
@@ -753,17 +772,6 @@
 		busy={writeBusy}
 		errorKey={coverErrorKey}
 		onsubmit={(assetId) => void submitCover(assetId)}
-	/>
-
-	<ShareDialog
-		bind:open={shareOpen}
-		shares={detail.shares ?? []}
-		candidates={shareCandidates}
-		loading={shareLoading}
-		busy={writeBusy}
-		errorKey={shareErrorKey}
-		ongrant={(userId) => void grantShare(userId)}
-		onrevoke={(userId) => void revokeShare(userId)}
 	/>
 {/if}
 

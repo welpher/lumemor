@@ -12,6 +12,7 @@ Method | HTTP request | Description
 [**activateModel**](AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [**createUser**](AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [**downloadModels**](AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
+[**getMountRootsSettings**](AdminApi.md#getmountrootssettings) | **GET** /admin/settings/mount-roots | The directory-album mount-root allowlist.
 [**getStorageSettings**](AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [**getTranscodingSettings**](AdminApi.md#gettranscodingsettings) | **GET** /admin/settings/transcoding | Read the video transcoding settings.
 [**getTrashSettings**](AdminApi.md#gettrashsettings) | **GET** /admin/settings/trash | Read the trash retention setting.
@@ -21,6 +22,7 @@ Method | HTTP request | Description
 [**reresolvePlaces**](AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [**rerunModel**](AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [**scanModels**](AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
+[**updateMountRootsSettings**](AdminApi.md#updatemountrootssettings) | **PUT** /admin/settings/mount-roots | Save the directory-album mount-root allowlist.
 [**updateStorageSettings**](AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [**updateTranscodingSettings**](AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
 [**updateTrashSettings**](AdminApi.md#updatetrashsettings) | **PUT** /admin/settings/trash | Save the trash retention setting.
@@ -154,6 +156,49 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**ModelDownloadResponse**](ModelDownloadResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getMountRootsSettings**
+> MountRootsSettingsResponse getMountRootsSettings()
+
+The directory-album mount-root allowlist.
+
+The instance's mount-root allowlist: the absolute directory paths a directory album's source may live at or under -- the trust boundary of the albums-as-sources design. The family instance's boundary is drawn at the roots: anything outside them (another process's data, system directories, the server's own originals) can never become an album, whatever the filesystem lets the server read.  The stored list is the answer, verbatim and in the order it was saved. The default is the empty list -- the \"closed\" posture: no directory album can be created until an administrator opens at least one root.  This read answers the CONFIGURATION, not the live domain: a root that does not exist yet (removable media, a mount that comes and goes), one that is not a directory, or one that resolves inside the server's managed tree stays listed here while contributing nothing to the path completion and the creation validation -- an admin configuring a not-yet- mounted path is a supported state, and the setting is the honest record of what was configured. A corrupt setting row answers the empty list with the corruption logged server-side -- the closed state is the safe state. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getMountRootsSettings();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getMountRootsSettings: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**MountRootsSettingsResponse**](MountRootsSettingsResponse.md)
 
 ### Authorization
 
@@ -557,6 +602,53 @@ This endpoint does not need any parameter.
 ### HTTP request headers
 
  - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **updateMountRootsSettings**
+> MountRootsSettingsResponse updateMountRootsSettings(mountRootsSettingsUpdateRequest)
+
+Save the directory-album mount-root allowlist.
+
+Replaces the allowlist wholesale (full-set semantics, the settings surface's discipline): the request carries the COMPLETE list, an empty list closing directory album creation again.  Every entry must be an absolute path (a leading separator) within the 4,096-byte bound; the server cleans each value, collapses duplicates after the clean, and stores the resulting list (the response answers the stored value, so a cleaned or deduplicated entry shows up honestly). At most 32 entries. Existence is deliberately NOT required: a root may be configured before the volume is mounted, and it contributes to the completion and validation domains only once it exists (the `GET` face's live-domain note).  The write takes effect immediately: the next path completion and the next album creation read the saved list. Like the sibling settings faces (storage, trash, transcoding), the write publishes no event: instance settings are the admin surface's own state, and the admin's own response carries the saved value. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final MountRootsSettingsUpdateRequest mountRootsSettingsUpdateRequest = {"roots":["/Volumes/Photos","/mnt/family-archive"]}; // MountRootsSettingsUpdateRequest | 
+
+try {
+    final response = api.updateMountRootsSettings(mountRootsSettingsUpdateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->updateMountRootsSettings: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **mountRootsSettingsUpdateRequest** | [**MountRootsSettingsUpdateRequest**](MountRootsSettingsUpdateRequest.md)|  | 
+
+### Return type
+
+[**MountRootsSettingsResponse**](MountRootsSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)

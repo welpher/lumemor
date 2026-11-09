@@ -308,6 +308,7 @@ func TestSharedVisibilityAssets(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
 	graceID, graceCookie := env.createSecondUser(t, "assets-shared-grace@example.com")
+	root := env.provisionMountRoot(t)
 
 	// A real upload: the original's bytes exist, so the download
 	// answers them, and the pipeline never ran (the thumbnail's
@@ -323,10 +324,9 @@ func TestSharedVisibilityAssets(t *testing.T) {
 	created := decodeAsset(t, uploadRec)
 	shared := uuid.UUID(created.Id)
 
-	album := env.createAlbum(t, env.cookie, "Shared visibility", nil)
-	env.writeAlbumRaw(t, env.cookie, http.MethodPost,
-		"/api/v1/albums/"+uuid.UUID(album.Id).String()+"/items", albumItemsBody(shared))
-	env.grantAlbumShare(t, env.cookie, uuid.UUID(album.Id), graceID)
+	album := env.createAlbum(t, env.cookie, "Shared visibility", sourceDir(t, root, "visibility"), nil)
+	env.addTimelineItem(t, uuid.UUID(album.Id), shared, adminID)
+	env.putAlbumAudience(t, env.cookie, uuid.UUID(album.Id), graceID)
 
 	detailPath := "/api/v1/assets/" + shared.String()
 	originalPath := detailPath + "/original"
@@ -393,7 +393,7 @@ func TestSharedVisibilityAssets(t *testing.T) {
 	})
 
 	t.Run("RevocationRetractsTheReads", func(t *testing.T) {
-		env.revokeAlbumShareRaw(t, env.cookie, uuid.UUID(album.Id), graceID)
+		env.putAlbumAudience(t, env.cookie, uuid.UUID(album.Id))
 
 		for _, path := range []string{detailPath, originalPath, thumbPath} {
 			rec := env.serveGet(t, path, graceCookie, nil)
@@ -407,7 +407,7 @@ func TestSharedVisibilityAssets(t *testing.T) {
 	})
 
 	t.Run("OwnerOnlyWriteFacesKeepTheirShapes", func(t *testing.T) {
-		env.grantAlbumShare(t, env.cookie, uuid.UUID(album.Id), graceID)
+		env.putAlbumAudience(t, env.cookie, uuid.UUID(album.Id), graceID)
 
 		// PATCH: the 404 is the asset's own single shape.
 		rec := env.patchAssetRaw(t, graceCookie, shared, []byte(`{"description":"sharee edit"}`))

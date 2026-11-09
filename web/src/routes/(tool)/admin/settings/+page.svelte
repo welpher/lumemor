@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The admin settings page: the three settings sections below the
+	// The admin settings page: the four settings sections below the
 	// admin sidebar -- the storage template (the storage-template
 	// feature: the instance's upload path template with the sixteen
 	// built-in presets filling the input, a live sample preview of
@@ -8,10 +8,14 @@
 	// reason naming the admin's own template text; no translation
 	// table can pre-render it), the trash retention (the settings
 	// feature: whole days 0-365, 0 being immediate permanent delete,
-	// with the destructive warning line), and the video transcoding
+	// with the destructive warning line), the video transcoding
 	// profile (the preset, the concurrency bound, the poster-frame
 	// switch and the failure policy; the contract's new-ingests-only
-	// scope note).
+	// scope note), and the mount-root allowlist (E4, the
+	// albums-as-sources feature: the directory albums' source domain
+	// -- the removable root rows, the add row reusing the creation
+	// dialog's completion combobox, and the complete-replacement PUT
+	// whose cleaned answer the section adopts).
 	//
 	// THE 403 PAGE: a signed-in non-admin landing on this route sees
 	// the mapped auth_forbidden message -- the session contract
@@ -20,13 +24,18 @@
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
+	import PathCompletion from '$lib/albums/PathCompletion.svelte';
 	import {
+		getMountRootsSettings,
 		getStorageSettings,
 		getTrashSettings,
 		getTranscodingSettings,
+		saveMountRootsSettings,
 		saveStorageSettings,
 		saveTrashSettings,
 		saveTranscodingSettings,
+		type MountRootsSettings,
 		type StorageSettings,
 		type TranscodingSettings
 	} from '$lib/api/adminSettings';
@@ -37,6 +46,10 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import MonitorPlay from '@lucide/svelte/icons/monitor-play';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import HardDrive from '@lucide/svelte/icons/hard-drive';
+	import Folder from '@lucide/svelte/icons/folder';
+	import Plus from '@lucide/svelte/icons/plus';
+	import X from '@lucide/svelte/icons/x';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -75,6 +88,20 @@
 	let transcodingErrorKey = $state('');
 	let transcodingSaved = $state(false);
 
+	// The mount-roots form: the draft allowlist (removable rows) and
+	// the add row's path draft (the completion combobox, the same
+	// component the creation dialog uses -- its domain is exactly
+	// the roots this section manages, so the first root is always
+	// typed by hand while the list is empty, and every later one
+	// completes against the roots already open).
+	let formRoots = $state<string[]>([]);
+	let formRootDraft = $state('');
+	/** The add row's local refusal (a relative or duplicated path). */
+	let rootDraftInvalid = $state(false);
+	let savingMounts = $state(false);
+	let mountsErrorKey = $state('');
+	let mountsSaved = $state(false);
+
 	// The read, keyed on the retry tick. A superseded run -- the
 	// retry fired again, or the route left -- never applies.
 	$effect(() => {
@@ -83,15 +110,16 @@
 		errorKey = '';
 		let current = true;
 		void (async () => {
-			const [storage, trash, transcoding] = await Promise.all([
+			const [storage, trash, transcoding, mounts] = await Promise.all([
 				getStorageSettings(),
 				getTrashSettings(),
-				getTranscodingSettings()
+				getTranscodingSettings(),
+				getMountRootsSettings()
 			]);
 			if (!current) {
 				return;
 			}
-			// The three reads share one gate: they are one page, and
+			// The four reads share one gate: they are one page, and
 			// the admin-role probe belongs to whichever read answers
 			// first (any failure -- the role refusal, a session loss,
 			// an unparseable body -- is the page's failure).
@@ -110,7 +138,12 @@
 				errorKey = transcoding.errorKey;
 				return;
 			}
-			adoptSettings(storage.settings, trash.settings.retentionDays, transcoding.settings);
+			if (!mounts.ok) {
+				status = 'error';
+				errorKey = mounts.errorKey;
+				return;
+			}
+			adoptSettings(storage.settings, trash.settings.retentionDays, transcoding.settings, mounts.settings);
 			status = 'ready';
 		})();
 		return () => {
@@ -118,11 +151,12 @@
 		};
 	});
 
-	/** Adopt the three read documents as the sections' fresh state. */
+	/** Adopt the four read documents as the sections' fresh state. */
 	function adoptSettings(
 		next: StorageSettings,
 		retentionDays: number,
-		transcoding: TranscodingSettings
+		transcoding: TranscodingSettings,
+		mounts: MountRootsSettings
 	): void {
 		settings = next;
 		formTemplate = next.template;
@@ -136,6 +170,11 @@
 		formTranscoding = { ...transcoding };
 		transcodingErrorKey = '';
 		transcodingSaved = false;
+		formRoots = [...mounts.roots];
+		formRootDraft = '';
+		rootDraftInvalid = false;
+		mountsErrorKey = '';
+		mountsSaved = false;
 	}
 
 	/** The preset id of one template text, or the custom marker. */
@@ -179,7 +218,9 @@
 		const outcome = await saveStorageSettings(formTemplate);
 		saving = false;
 		if (outcome.ok) {
-			adoptSettings(outcome.settings, formRetentionDays, formTranscoding);
+			// The mounts section keeps its own draft (the save adopted
+			// nothing there): the roots the admin is mid-editing stay.
+			adoptSettings(outcome.settings, formRetentionDays, formTranscoding, { roots: formRoots });
 			savedNote = true;
 			return;
 		}
@@ -225,6 +266,59 @@
 			return;
 		}
 		transcodingErrorKey = outcome.errorKey;
+	}
+
+	// The mount-roots add row: the draft must be an absolute path the
+	// draft list does not already carry (the server cleans and
+	// deduplicates anyway; the local refusal keeps the list honest
+	// before any write). The combobox completes against the roots
+	// already OPEN -- the empty allowlist answers nothing, so the
+	// first root is always typed by hand.
+	function addRoot(): void {
+		if (savingMounts) {
+			return;
+		}
+		const draft = formRootDraft.trim();
+		rootDraftInvalid = false;
+		mountsSaved = false;
+		mountsErrorKey = '';
+		if (draft === '' || !draft.startsWith('/') || formRoots.includes(draft)) {
+			rootDraftInvalid = true;
+			return;
+		}
+		formRoots = [...formRoots, draft];
+		formRootDraft = '';
+	}
+
+	/** Remove one root row from the draft list. */
+	function removeRoot(root: string): void {
+		if (savingMounts) {
+			return;
+		}
+		mountsSaved = false;
+		mountsErrorKey = '';
+		formRoots = formRoots.filter((candidate) => candidate !== root);
+	}
+
+	async function handleMountsSubmit(event: SubmitEvent): Promise<void> {
+		event.preventDefault();
+		if (savingMounts) {
+			return;
+		}
+		savingMounts = true;
+		mountsErrorKey = '';
+		mountsSaved = false;
+		const outcome = await saveMountRootsSettings(formRoots);
+		savingMounts = false;
+		if (outcome.ok) {
+			// The PUT's answer is the cleaned, deduplicated list in
+			// first-occurrence order -- the section adopts it as the
+			// fresh state.
+			formRoots = [...outcome.settings.roots];
+			mountsSaved = true;
+			return;
+		}
+		mountsErrorKey = outcome.errorKey;
 	}
 
 	const presetChoices: ReadonlyArray<{ value: TranscodingSettings['preset']; labelKey: string }> = [
@@ -424,6 +518,72 @@
 					</div>
 				</form>
 				<p class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint">{$_('admin_settings_transcode_contract')}</p>
+			</Card>
+		</section>
+
+		<!-- The mount-roots section (E4, the albums-as-sources
+		     allowlist): the removable root rows, the add row reusing
+		     the creation dialog's completion combobox (its domain is
+		     EXACTLY the roots this section manages), and the
+		     complete-replacement PUT whose cleaned answer the section
+		     adopts. The empty list is the default closed posture --
+		     directory album creation is off until a root is opened. -->
+		<section class="settings__card w-[min(560px,100%)]" data-testid="admin-settings-mounts">
+			<Card>
+				<h2 class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text">
+					<HardDrive size={18} class="settings__section-icon text-accent" aria-hidden="true" />
+					{$_('admin_settings_mounts_title')}
+				</h2>
+				<p class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint">{$_('admin_settings_mounts_note')}</p>
+				<form class="settings__mounts flex flex-col gap-3.5" onsubmit={handleMountsSubmit}>
+					{#if formRoots.length === 0}
+						<p class="settings__mounts-empty m-0 font-body font-normal text-[13px] leading-[1.5] text-text-soft" data-testid="mount-roots-empty">{$_('admin_settings_mounts_empty')}</p>
+					{:else}
+						<ul class="settings__mounts-list flex flex-col gap-1.5 m-0 p-0 list-none" data-testid="mount-roots-list">
+							{#each formRoots as root (root)}
+								<li class="settings__mounts-row flex items-center gap-2 py-1.5 px-3 bg-card border border-border rounded-control">
+									<Folder size={16} class="text-accent shrink-0" aria-hidden="true" />
+									<span class="settings__mounts-path font-mono font-normal text-[13px] leading-[1.5] text-text-soft break-all">{root}</span>
+									<!-- The row's remove action is icon-only (the icon-first
+									     rule), named by its aria-label. -->
+									<IconButton
+										class="settings__mounts-remove ml-auto"
+										variant="danger"
+										disabled={savingMounts}
+										aria-label={$_('admin_settings_mounts_remove', { values: { path: root } })}
+										onclick={() => removeRoot(root)}
+									>
+										<X size={20} aria-hidden="true" />
+									</IconButton>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					<PathCompletion
+						bind:path={formRootDraft}
+						id="admin-mounts-path"
+						label={$_('admin_settings_mounts_add_label')}
+						placeholder={$_('admin_settings_mounts_placeholder')}
+						failure={rootDraftInvalid ? $_('admin_settings_mounts_invalid') : ''}
+						busy={savingMounts}
+					/>
+					<div class="settings__mounts-add-row flex justify-end">
+						<Button type="button" variant="ghost" disabled={savingMounts} onclick={addRoot}>
+							<Plus size={20} aria-hidden="true" />
+							{$_('admin_settings_mounts_add')}
+						</Button>
+					</div>
+					{#if mountsSaved}
+						<p class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft" role="status">{$_('admin_settings_mounts_saved')}</p>
+					{/if}
+					{#if mountsErrorKey !== ''}
+						<p class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(mountsErrorKey)}</p>
+					{/if}
+					<div class="settings__form-actions flex justify-end mt-1">
+						<Button type="submit" disabled={savingMounts}><Check size={20} aria-hidden="true" />{$_('admin_settings_mounts_save')}</Button>
+					</div>
+				</form>
+				<p class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint">{$_('admin_settings_mounts_contract')}</p>
 			</Card>
 		</section>
 	{/if}

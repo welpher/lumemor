@@ -1,31 +1,33 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import {
-	addAlbumItems,
+	completeAlbumPath,
 	createAlbum,
 	deleteAlbum,
 	fetchAlbumDetail,
-	grantAlbumShare,
 	listAlbums,
 	listUsers,
 	patchAlbum,
-	revokeAlbumShare,
+	rescanAlbum,
 	setAlbumTimelinePreference,
+	updateAlbumAudience,
 	type AlbumSummary
 } from './albums';
 import { sessionStatus } from '$lib/auth/session.svelte';
 
-// The albums surface's data client: the wall list, the detail read,
-// the creation/patch/delete writes, the curation add, the share
-// grant/revoke pair, the member list and the timeline preference --
-// each behind the repo-wide error-code convention, and the share
-// target rules' message keys surfaced as error keys (the people
+// The albums surface's data client (E4's albums-as-sources reshape):
+// the wall list, the detail read, the directory creation (title +
+// source path + audience, the honest skipped report), the property
+// patch, the virtual/directory delete, the path completion of the
+// creation dialog's combobox, the audience's full-set PUT, the
+// rescan trigger, the member list and the timeline preference --
+// each behind the repo-wide error-code convention, and the cover
+// validation's message key surfaced as an error key (the people
 // client's requires-label pattern). Every case drives one call
 // through an injected fetch mock.
 
 const ownCard: AlbumSummary = {
 	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 	title: 'Road trip 2026',
-	description: 'The coastal week in the van.',
 	type: 'virtual',
 	locked: false,
 	isShared: true,
@@ -40,25 +42,21 @@ const ownCard: AlbumSummary = {
 	callerRole: 'owner'
 };
 
-const sharedCard: AlbumSummary = {
-	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6091',
-	title: "Grace's highlights",
-	description: 'Shared with the family.',
-	type: 'virtual',
+const directoryCard: AlbumSummary = {
+	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6078',
+	title: 'Family archive',
+	type: 'directory',
 	locked: false,
-	isShared: true,
-	coverAssetIds: ['0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6092'],
-	itemCount: 17,
-	updatedAt: '2026-11-02T14:05:00Z',
-	callerRole: 'viewer',
-	owner: { id: '0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60', email: 'grace@example.com' },
-	inTimeline: true
+	isShared: false,
+	coverAssetIds: [],
+	itemCount: 0,
+	updatedAt: '2026-11-05T10:15:00Z',
+	callerRole: 'owner'
 };
 
 const detailBody = {
 	id: ownCard.id,
 	title: ownCard.title,
-	description: ownCard.description,
 	type: 'virtual',
 	locked: false,
 	coverAssetId: null,
@@ -119,40 +117,12 @@ beforeEach(async () => {
 test('listAlbums reads the wall: the own group then the shared group', async () => {
 	vi.stubGlobal(
 		'fetch',
-		stubFetch({ '/api/v1/albums': () => jsonResponse(200, { albums: [ownCard, sharedCard] }) })
+		stubFetch({ '/api/v1/albums': () => jsonResponse(200, { albums: [ownCard, directoryCard] }) })
 	);
 
 	const outcome = await listAlbums();
 
-	expect(outcome).toEqual({ ok: true, albums: [ownCard, sharedCard] });
-});
-
-test('listAlbums reads the pinned sync card of the default album', async () => {
-	// The caller's own sync album leads the wall: the internal
-	// 'Sync' title rides the card, the type keys the display name.
-	const syncCard: AlbumSummary = {
-		id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6061',
-		title: 'Sync',
-		description: '',
-		type: 'sync',
-		locked: false,
-		isShared: false,
-		coverAssetIds: [
-			'0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6076',
-			'0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6077'
-		],
-		itemCount: 1204,
-		updatedAt: '2026-11-05T07:30:00Z',
-		callerRole: 'owner'
-	};
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({ '/api/v1/albums': () => jsonResponse(200, { albums: [syncCard, ownCard] }) })
-	);
-
-	const outcome = await listAlbums();
-
-	expect(outcome).toEqual({ ok: true, albums: [syncCard, ownCard] });
+	expect(outcome).toEqual({ ok: true, albums: [ownCard, directoryCard] });
 });
 
 test('listAlbums maps a dead session to the session key', async () => {
@@ -200,30 +170,23 @@ test('fetchAlbumDetail reads the metadata page with the lean limit', async () =>
 	}
 });
 
-test('fetchAlbumDetail reads the caller own sync album read-only', async () => {
-	// The default album's detail: the type 'sync' with the owner
-	// role, no excludable field, and the owner's always-empty shares
-	// list (no share row can name a sync album).
-	const syncDetail = {
-		id: ownCard.id,
-		title: 'Sync',
-		description: '',
-		type: 'sync',
-		locked: false,
-		coverAssetId: null,
-		callerRole: 'owner',
-		itemCount: 1204,
-		items: [],
-		shares: []
+test('fetchAlbumDetail reads the directory album source row', async () => {
+	const directoryDetail = {
+		...detailBody,
+		type: 'directory',
+		rootPath: '/Volumes/Photos/family'
 	};
 	vi.stubGlobal(
 		'fetch',
-		stubFetch({ [`/api/v1/albums/${ownCard.id}?limit=1`]: () => jsonResponse(200, syncDetail) })
+		stubFetch({ [`/api/v1/albums/${ownCard.id}?limit=1`]: () => jsonResponse(200, directoryDetail) })
 	);
 
 	const outcome = await fetchAlbumDetail(ownCard.id);
 
-	expect(outcome).toEqual({ ok: true, detail: syncDetail });
+	expect(outcome.ok).toBe(true);
+	if (outcome.ok) {
+		expect(outcome.detail.rootPath).toBe('/Volumes/Photos/family');
+	}
 });
 
 test('fetchAlbumDetail maps the single-shape 404', async () => {
@@ -238,25 +201,50 @@ test('fetchAlbumDetail maps the single-shape 404', async () => {
 	expect(outcome).toEqual({ ok: false, errorKey: 'album_not_found' });
 });
 
-test('createAlbum POSTs the title and description, and answers the card', async () => {
+test('createAlbum POSTs the title, source path and audience, and answers the report', async () => {
 	const fetchMock = stubFetch({
 		'/api/v1/albums': (init?: RequestInit) => {
 			const body = JSON.parse(String(init?.body));
-			expect(body).toEqual({ title: 'Road trip 2026', description: 'The coastal week.' });
-			return jsonResponse(201, { ...ownCard, isShared: false, coverAssetIds: [], itemCount: 0 });
+			expect(body).toEqual({
+				title: 'Family archive',
+				rootPath: '/Volumes/Photos/family',
+				audience: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70']
+			});
+			return jsonResponse(201, {
+				...directoryCard,
+				isShared: true,
+				skipped: [{ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99', reason: 'invalid_account' }]
+			});
 		}
 	});
 	vi.stubGlobal('fetch', fetchMock);
 
-	const outcome = await createAlbum('Road trip 2026', 'The coastal week.');
+	const outcome = await createAlbum({
+		title: 'Family archive',
+		rootPath: '/Volumes/Photos/family',
+		audience: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70']
+	});
 
 	expect(outcome.ok).toBe(true);
 	if (outcome.ok) {
-		expect(outcome.album.id).toBe(ownCard.id);
+		expect(outcome.album.type).toBe('directory');
+		expect(outcome.skipped).toEqual([
+			{ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99', reason: 'invalid_account' }
+		]);
 	}
 });
 
-test('createAlbum maps the title-bound 400', async () => {
+test('createAlbum surfaces the path matrix codes unmangled', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/albums': () =>
+				jsonResponse(400, { code: 'ALBUM_PATH_OUTSIDE_ROOTS', message: 'outside the roots' })
+		})
+	);
+	const outcome = await createAlbum({ title: 'X', rootPath: '/elsewhere', audience: [] });
+	expect(outcome).toEqual({ ok: false, errorKey: 'album_path_outside_roots' });
+
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
@@ -268,8 +256,62 @@ test('createAlbum maps the title-bound 400', async () => {
 				})
 		})
 	);
-	const outcome = await createAlbum('   ');
-	expect(outcome).toEqual({ ok: false, errorKey: 'validation_failed' });
+	expect(await createAlbum({ title: '   ', rootPath: '/Volumes/Photos', audience: [] })).toEqual({
+		ok: false,
+		errorKey: 'validation_failed'
+	});
+});
+
+test('completeAlbumPath reads the completion rows for a typed prefix', async () => {
+	const fetchMock = stubFetch({
+		'/api/v1/albums/path-completions?prefix=%2FVolumes%2FPhotos%2F2': () =>
+			jsonResponse(200, {
+				paths: ['/Volumes/Photos/2026-spring', '/Volumes/Photos/2026-summer']
+			})
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	const outcome = await completeAlbumPath('/Volumes/Photos/2');
+
+	expect(outcome).toEqual({
+		ok: true,
+		paths: ['/Volumes/Photos/2026-spring', '/Volumes/Photos/2026-summer']
+	});
+});
+
+test('completeAlbumPath sends no query for the empty prefix (the roots listing)', async () => {
+	const fetchMock = stubFetch({
+		'/api/v1/albums/path-completions': () => jsonResponse(200, { paths: ['/Volumes/Photos'] })
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	const outcome = await completeAlbumPath('');
+
+	expect(outcome).toEqual({ ok: true, paths: ['/Volumes/Photos'] });
+	expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/albums/path-completions');
+});
+
+test('completeAlbumPath accepts the honest empty answer and maps failures', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({ '/api/v1/albums/path-completions?prefix=%2Fnone': () => jsonResponse(200, { paths: [] }) })
+	);
+	expect(await completeAlbumPath('/none')).toEqual({ ok: true, paths: [] });
+
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/albums/path-completions?prefix=%2Fnone': () =>
+				jsonResponse(500, { code: 'INTERNAL' })
+		})
+	);
+	expect(await completeAlbumPath('/none')).toEqual({ ok: false, errorKey: 'internal' });
+
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({ '/api/v1/albums/path-completions?prefix=%2Fnone': () => jsonResponse(200, { paths: 'no' }) })
+	);
+	expect(await completeAlbumPath('/none')).toEqual({ ok: false, errorKey: 'internal' });
 });
 
 test('patchAlbum PATCHes the carried subset and answers the card', async () => {
@@ -317,6 +359,124 @@ test('patchAlbum surfaces the locked 409 and the cover message key', async () =>
 	});
 });
 
+test('updateAlbumAudience PUTs the full set and answers the honest report', async () => {
+	const fetchMock = stubFetch({
+		[`/api/v1/albums/${ownCard.id}/audience`]: (init?: RequestInit) => {
+			expect(init?.method).toBe('PUT');
+			const body = JSON.parse(String(init?.body));
+			expect(body).toEqual({
+				audience: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70', '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71']
+			});
+			return jsonResponse(200, {
+				albumId: ownCard.id,
+				audience: [
+					{
+						userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70',
+						email: 'grace@example.com',
+						grantedAt: '2026-11-05T09:30:00Z'
+					},
+					{
+						userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71',
+						email: 'hopper@example.com',
+						grantedAt: '2026-11-05T09:30:00Z'
+					}
+				],
+				granted: [
+					'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70',
+					'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71'
+				],
+				revoked: [],
+				skipped: [{ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99', reason: 'owner' }]
+			});
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	const outcome = await updateAlbumAudience(ownCard.id, [
+		'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70',
+		'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71'
+	]);
+
+	expect(outcome.ok).toBe(true);
+	if (outcome.ok) {
+		expect(outcome.report.audience).toHaveLength(2);
+		expect(outcome.report.skipped).toEqual([
+			{ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99', reason: 'owner' }
+		]);
+	}
+});
+
+test('updateAlbumAudience maps the empty-set 400 and the sharee 403', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${ownCard.id}/audience`]: () =>
+				jsonResponse(400, {
+					code: 'VALIDATION_FAILED',
+					message: 'the audience field must ride the body',
+					details: { fields: ['audience'] }
+				})
+		})
+	);
+	expect(await updateAlbumAudience(ownCard.id, [])).toEqual({
+		ok: false,
+		errorKey: 'validation_failed'
+	});
+
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${ownCard.id}/audience`]: () =>
+				jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'view-only share' })
+		})
+	);
+	expect(await updateAlbumAudience(ownCard.id, ['u3'])).toEqual({
+		ok: false,
+		errorKey: 'auth_forbidden'
+	});
+});
+
+test('rescanAlbum POSTs the trigger and answers the run identifier', async () => {
+	const fetchMock = stubFetch({
+		[`/api/v1/albums/${directoryCard.id}/rescan`]: (init?: RequestInit) => {
+			expect(init?.method).toBe('POST');
+			expect(init?.body).toBeUndefined();
+			return jsonResponse(202, { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10' });
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	const outcome = await rescanAlbum(directoryCard.id);
+
+	expect(outcome).toEqual({
+		ok: true,
+		run: { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10' }
+	});
+});
+
+test('rescanAlbum accepts the in-flight join and maps the locked 409', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${directoryCard.id}/rescan`]: () =>
+				jsonResponse(200, { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f11' })
+		})
+	);
+	expect(await rescanAlbum(directoryCard.id)).toEqual({
+		ok: true,
+		run: { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f11' }
+	});
+
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${directoryCard.id}/rescan`]: () =>
+				jsonResponse(409, { code: 'ALBUM_LOCKED', message: 'the album is locked' })
+		})
+	);
+	expect(await rescanAlbum(directoryCard.id)).toEqual({ ok: false, errorKey: 'album_locked' });
+});
+
 test('deleteAlbum issues the DELETE and accepts the 204', async () => {
 	const fetchMock = stubFetch({
 		[`/api/v1/albums/${ownCard.id}`]: (init?: RequestInit) => {
@@ -327,101 +487,6 @@ test('deleteAlbum issues the DELETE and accepts the 204', async () => {
 	vi.stubGlobal('fetch', fetchMock);
 
 	expect(await deleteAlbum(ownCard.id)).toEqual({ ok: true });
-});
-
-test('addAlbumItems POSTs the id list and answers the honest report', async () => {
-	const fetchMock = stubFetch({
-		[`/api/v1/albums/${ownCard.id}/items`]: (init?: RequestInit) => {
-			expect(init?.method).toBe('POST');
-			const body = JSON.parse(String(init?.body));
-			expect(body).toEqual({ assetIds: ['a1', 'a2', 'a3'] });
-			return jsonResponse(200, { added: 2, skipped: 1 });
-		}
-	});
-	vi.stubGlobal('fetch', fetchMock);
-
-	const outcome = await addAlbumItems(ownCard.id, ['a1', 'a2', 'a3']);
-	expect(outcome).toEqual({ ok: true, added: 2, skipped: 1 });
-});
-
-test('addAlbumItems surfaces the locked 409', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({
-			[`/api/v1/albums/${ownCard.id}/items`]: () =>
-				jsonResponse(409, { code: 'ALBUM_LOCKED', message: 'the album is locked' })
-		})
-	);
-	expect(await addAlbumItems(ownCard.id, ['a1'])).toEqual({ ok: false, errorKey: 'album_locked' });
-});
-
-test('grantAlbumShare POSTs the grantee and answers the row', async () => {
-	const fetchMock = stubFetch({
-		[`/api/v1/albums/${ownCard.id}/shares`]: (init?: RequestInit) => {
-			expect(init?.method).toBe('POST');
-			const body = JSON.parse(String(init?.body));
-			expect(body).toEqual({ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70' });
-			return jsonResponse(200, {
-				albumId: ownCard.id,
-				userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70',
-				grantedAt: '2026-11-05T09:30:00Z'
-			});
-		}
-	});
-	vi.stubGlobal('fetch', fetchMock);
-
-	const outcome = await grantAlbumShare(ownCard.id, '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70');
-	expect(outcome.ok).toBe(true);
-});
-
-test('grantAlbumShare surfaces the target-rule message keys', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({
-			[`/api/v1/albums/${ownCard.id}/shares`]: () =>
-				jsonResponse(400, {
-					code: 'VALIDATION_FAILED',
-					message: 'an album owner cannot be its grantee',
-					details: { key: 'album_share_to_owner' }
-				})
-		})
-	);
-	expect(await grantAlbumShare(ownCard.id, 'me-myself')).toEqual({
-		ok: false,
-		errorKey: 'album_share_to_owner'
-	});
-
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({
-			[`/api/v1/albums/${ownCard.id}/shares`]: () =>
-				jsonResponse(400, {
-					code: 'VALIDATION_FAILED',
-					message: 'the share target is not a usable account',
-					details: { key: 'album_share_user_invalid' }
-				})
-		})
-	);
-	expect(await grantAlbumShare(ownCard.id, 'unknown-user')).toEqual({
-		ok: false,
-		errorKey: 'album_share_user_invalid'
-	});
-});
-
-test('revokeAlbumShare issues the DELETE and accepts the 204', async () => {
-	const fetchMock = stubFetch({
-		[`/api/v1/albums/${ownCard.id}/shares/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70`]: (
-			init?: RequestInit
-		) => {
-			expect(init?.method).toBe('DELETE');
-			return new Response(null, { status: 204 });
-		}
-	});
-	vi.stubGlobal('fetch', fetchMock);
-
-	expect(await revokeAlbumShare(ownCard.id, '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70')).toEqual({
-		ok: true
-	});
 });
 
 test('listUsers reads the minimal member list', async () => {

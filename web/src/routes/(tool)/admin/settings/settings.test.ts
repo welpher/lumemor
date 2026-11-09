@@ -45,6 +45,10 @@ function transcodingBody(overrides: Record<string, unknown> = {}): Record<string
 	};
 }
 
+function mountsBody(roots: string[] = []): Record<string, unknown> {
+	return { roots };
+}
+
 function jsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -55,12 +59,13 @@ function jsonResponse(status: number, body: unknown): Response {
 /** Route table for the fetch stub; every test installs its own. */
 type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 
-/** The three read routes every mount fires, with default 200 bodies. */
+/** The four read routes every mount fires, with default 200 bodies. */
 function defaultReads(overrides: Partial<FetchRoute> = {}): FetchRoute {
 	return {
 		'/api/v1/admin/settings/storage': () => jsonResponse(200, settingsBody()),
 		'/api/v1/admin/settings/trash': () => jsonResponse(200, trashBody(30)),
 		'/api/v1/admin/settings/transcoding': () => jsonResponse(200, transcodingBody()),
+		'/api/v1/admin/settings/mount-roots': () => jsonResponse(200, mountsBody()),
 		...overrides
 	};
 }
@@ -93,8 +98,8 @@ function mountPage(): ReturnType<typeof mount> {
 	return page;
 }
 
-function buttonByText(text: string): HTMLButtonElement {
-	const buttons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'));
+function buttonByText(text: string, scope: ParentNode = document.body): HTMLButtonElement {
+	const buttons = Array.from(scope.querySelectorAll<HTMLButtonElement>('button'));
 	const found = buttons.find((button) => button.textContent?.trim() === text);
 	if (found === undefined) {
 		throw new Error(`missing button ${text}`);
@@ -377,6 +382,8 @@ test('a non-admin read shows the mapped auth_forbidden message', async () => {
 				'/api/v1/admin/settings/trash': () =>
 					jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' }),
 				'/api/v1/admin/settings/transcoding': () =>
+					jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' }),
+				'/api/v1/admin/settings/mount-roots': () =>
 					jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' })
 			})
 		)
@@ -397,4 +404,210 @@ test('an unparseable read maps to the generic failure', async () => {
 	await settle();
 
 	expect(document.body.textContent).toContain('Something went wrong');
+});
+
+// --- the mount-roots section (E4's albums-as-sources) --------------------------
+
+/** Fill the add row's completion combobox (the shared component). */
+function fillRootDraft(value: string): void {
+	const field = document.body.querySelector<HTMLInputElement>('#admin-mounts-path');
+	if (field === null) {
+		throw new Error('missing mount root draft field');
+	}
+	field.value = value;
+	field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+test('the mount-roots section renders the stored roots and the closed posture note', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/admin/settings/mount-roots': () =>
+					jsonResponse(200, mountsBody(['/Volumes/Photos', '/mnt/family-archive']))
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	const section = document.body.querySelector('[data-testid="admin-settings-mounts"]');
+	const rows = Array.from(section?.querySelectorAll<HTMLElement>('.settings__mounts-path') ?? []);
+	expect(rows.map((row) => row.textContent)).toEqual(['/Volumes/Photos', '/mnt/family-archive']);
+	// The contract note rides the section like the trash warning.
+	expect(section?.textContent).toContain('Removing a root deletes nothing');
+
+	// The remove affordance is icon-only, named by its aria-label.
+	const remove = section?.querySelector<HTMLButtonElement>(
+		`button[aria-label="Remove /Volumes/Photos"]`
+	);
+	expect(remove).not.toBeNull();
+	remove?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	expect(
+		Array.from(section?.querySelectorAll<HTMLElement>('.settings__mounts-path') ?? []).map(
+			(row) => row.textContent
+		)
+	).toEqual(['/mnt/family-archive']);
+});
+
+test('the empty allowlist renders the honest closed-posture note', async () => {
+	vi.stubGlobal('fetch', stubFetch(defaultReads()));
+	mountPage();
+	await settle();
+
+	const section = document.body.querySelector('[data-testid="admin-settings-mounts"]');
+	expect(section?.querySelector('[data-testid="mount-roots-empty"]')?.textContent).toContain(
+		'No mount roots yet'
+	);
+	expect(section?.querySelector('[data-testid="mount-roots-list"]')).toBeNull();
+});
+
+test('the add row appends an absolute path and refuses a relative one', async () => {
+	vi.stubGlobal('fetch', stubFetch(defaultReads()));
+	mountPage();
+	await settle();
+
+	const section = () => document.body.querySelector('[data-testid="admin-settings-mounts"]') as ParentNode;
+
+	// A relative draft refuses locally: the inline message names the
+	// bound, nothing lands in the list.
+	fillRootDraft('photos/family');
+	buttonByText('Add root', section()).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	expect(section().querySelector('.path-completion__failure')?.textContent).toContain(
+		'Roots are absolute paths'
+	);
+	expect(section().querySelector('[data-testid="mount-roots-list"]')).toBeNull();
+
+	// An absolute draft lands as a row and clears the input.
+	fillRootDraft('/Volumes/Photos');
+	buttonByText('Add root', section()).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	expect(
+		Array.from(section().querySelectorAll<HTMLElement>('.settings__mounts-path') ?? []).map(
+			(row) => row.textContent
+		)
+	).toEqual(['/Volumes/Photos']);
+	expect(
+		document.body.querySelector<HTMLInputElement>('#admin-mounts-path')?.value
+	).toBe('');
+});
+
+test('the add row completes against the opened roots through the shared combobox', async () => {
+	const fetchMock = stubFetch(
+		defaultReads({
+			'/api/v1/albums/path-completions?prefix=%2FVol': () =>
+				jsonResponse(200, { paths: ['/Volumes/Photos', '/Volumes/PhoneBackup'] })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	const section = () => document.body.querySelector('[data-testid="admin-settings-mounts"]') as ParentNode;
+	fillRootDraft('/Vol');
+
+	// The debounced single-flight: before the ~250ms window passes no
+	// request has fired (a real-time wait -- the debounce itself is
+	// the unit under observation here).
+	expect(
+		fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/albums/path-completions'))
+	).toHaveLength(0);
+
+	await new Promise((resolve) => setTimeout(resolve, 300));
+	await settle();
+
+	const rows = Array.from(
+		section().querySelectorAll<HTMLElement>('.path-completion__row-path') ?? []
+	);
+	expect(rows.map((row) => row.textContent)).toEqual(['/Volumes/Photos', '/Volumes/PhoneBackup']);
+
+	// The keyboard the specimen pins: ArrowDown moves the highlight
+	// (the first row is active on arrival), Enter completes into the
+	// draft, and the list closes.
+	const input = document.body.querySelector<HTMLInputElement>('#admin-mounts-path');
+	input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+	flushSync();
+	expect(
+		section().querySelectorAll('[role="option"]')[1]?.getAttribute('aria-selected')
+	).toBe('true');
+	input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+	flushSync();
+
+	expect(input?.value).toBe('/Volumes/PhoneBackup');
+	expect(section().querySelector('.path-completion__suggest')).toBeNull();
+
+	// The completed draft lands as a root row through the add button.
+	buttonByText('Add root', section()).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(
+		Array.from(section().querySelectorAll<HTMLElement>('.settings__mounts-path') ?? []).map(
+			(row) => row.textContent
+		)
+	).toEqual(['/Volumes/PhoneBackup']);
+});
+
+test('the mount-roots save PUTs the complete list and adopts the cleaned answer', async () => {
+	const fetchMock = stubFetch(
+		defaultReads({
+			'/api/v1/admin/settings/mount-roots': (init?: RequestInit) =>
+				init?.method === 'PUT'
+					? jsonResponse(200, mountsBody(['/mnt/family-archive', '/Volumes/Photos']))
+					: jsonResponse(200, mountsBody(['/mnt/family-archive']))
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	const section = () =>
+		document.body.querySelector('[data-testid="admin-settings-mounts"]') as ParentNode;
+	fillRootDraft('/Volumes/Photos');
+	buttonByText('Add root', section()).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	submitFormBy('admin-settings-mounts');
+	await settle();
+
+	const put = fetchMock.mock.calls.find(
+		(call) =>
+			String(call[0]).endsWith('/admin/settings/mount-roots') &&
+			(call[1] as RequestInit | undefined)?.method === 'PUT'
+	);
+	expect(put).toBeDefined();
+	expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({
+		roots: ['/mnt/family-archive', '/Volumes/Photos']
+	});
+	// The saved note follows the adopted (server-cleaned) answer.
+	expect(section().textContent).toContain('New directory albums may reference these roots');
+});
+
+test('a rejected mount-roots save shows the mapped error', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/admin/settings/mount-roots': (init?: RequestInit) =>
+					init?.method === 'PUT'
+						? jsonResponse(400, {
+								code: 'VALIDATION_FAILED',
+								message: 'roots: entry 33 exceeds the list bound',
+								details: { fields: ['roots'] }
+							})
+						: jsonResponse(200, mountsBody())
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	submitFormBy('admin-settings-mounts');
+	await settle();
+
+	expect(
+		document.body.querySelector('[data-testid="admin-settings-mounts"]')?.textContent
+	).toContain('Please check your entries and try again.');
 });

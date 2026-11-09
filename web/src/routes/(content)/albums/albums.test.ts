@@ -39,7 +39,6 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 	return {
 		id,
 		title: `Album ${id}`,
-		description: '',
 		type: 'virtual',
 		locked: false,
 		isShared: false,
@@ -53,7 +52,6 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 
 const roadTrip = summary('al1', {
 	title: 'Road trip 2026',
-	description: 'The coastal week.',
 	coverAssetIds: ['a1', 'a2', 'a3', 'a4'],
 	itemCount: 128,
 	isShared: true
@@ -81,7 +79,6 @@ const quickPicks = summary('al3', {
 });
 const graceHighlights = summary('al4', {
 	title: "Grace's highlights",
-	description: 'Shared with the family.',
 	coverAssetIds: ['g1', 'g2'],
 	itemCount: 17,
 	callerRole: 'viewer',
@@ -109,7 +106,9 @@ function wallRoutes(overrides: FetchRoute = {}): FetchRoute {
 				const body = JSON.parse(String(init.body)) as { title: string };
 				const created = summary('al-new', { title: body.title, itemCount: 0 });
 				gainOwnCard(created);
-				return jsonResponse(201, created);
+				// The creation answer always carries the honest skipped
+				// report (empty when the whole audience landed).
+				return jsonResponse(201, { ...created, skipped: [] });
 			}
 			return jsonResponse(200, { albums: wallState });
 		},
@@ -161,10 +160,10 @@ function buttonByText(text: string, scope: ParentNode = document.body): HTMLButt
 	return found;
 }
 
-function fillField(scope: ParentNode, value: string): void {
-	const field = scope.querySelector<HTMLInputElement>('input');
+function fillField(scope: ParentNode, value: string, id: string): void {
+	const field = scope.querySelector<HTMLInputElement>(`#${id}`);
 	if (field === null) {
-		throw new Error('missing dialog input');
+		throw new Error(`missing dialog input ${id}`);
 	}
 	field.value = value;
 	field.dispatchEvent(new Event('input', { bubbles: true }));
@@ -172,6 +171,36 @@ function fillField(scope: ParentNode, value: string): void {
 
 function modal(): HTMLElement | null {
 	return document.body.querySelector<HTMLElement>('.modal__panel');
+}
+
+/** The instance's minimal member list (the audience picker's source). */
+const usersBody = {
+	users: [
+		{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false },
+		{ id: 'u2', email: 'grace@example.com', role: 'user', isDisabled: false },
+		{ id: 'u3', email: 'ivy@example.com', role: 'user', isDisabled: false }
+	]
+};
+
+/** Boot the session store signed in as one of the fixture accounts. */
+async function bootWallSession(userId: string, role: 'admin' | 'user'): Promise<void> {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () =>
+			jsonResponse(200, [
+				{
+					id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
+					kind: 'WEB',
+					userId,
+					role,
+					deviceName: 'Mozilla/5.0 (test)',
+					createdAt: '2026-11-01T10:00:00Z',
+					lastSeenAt: '2026-11-02T10:00:00Z'
+				}
+			])
+		)
+	);
+	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 }
 
 /** Fire one parsed album event to every live subscriber. */
@@ -403,7 +432,7 @@ test('a dead session renders the session message, never credential text', async 
 	flushSync();
 });
 
-test('the create dialog POSTs the title and the refetched wall gains the card', async () => {
+test('the create dialog POSTs the title, path and audience; the refetched wall gains the card', async () => {
 	const fetchMock = stubFetch(wallRoutes());
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
@@ -414,7 +443,11 @@ test('the create dialog POSTs the title and the refetched wall gains the card', 
 	flushSync();
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('New album');
-	fillField(dialog as ParentNode, 'Weekend in the hills');
+	const fields = Array.from(dialog?.querySelectorAll<HTMLInputElement>('input') ?? []);
+	// The pinned order: the title above, the path below.
+	expect(fields.map((field) => field.id)).toEqual(['create-album-title', 'create-album-path']);
+	fillField(dialog as ParentNode, 'Weekend in the hills', 'create-album-title');
+	fillField(dialog as ParentNode, '/Volumes/Photos/hills', 'create-album-path');
 	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
 		new MouseEvent('click', { bubbles: true })
 	);
@@ -426,7 +459,8 @@ test('the create dialog POSTs the title and the refetched wall gains the card', 
 	expect(posts).toHaveLength(1);
 	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({
 		title: 'Weekend in the hills',
-		description: ''
+		rootPath: '/Volumes/Photos/hills',
+		audience: []
 	});
 	// The refetch placed the created card after the pinned sync card,
 	// at the head of the curated own group.
@@ -435,6 +469,153 @@ test('the create dialog POSTs the title and the refetched wall gains the card', 
 	);
 	expect(cards()[0]?.querySelector('.album-card__title')?.textContent).toBe('My photos');
 	expect(modal()).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the create dialog carries the picked audience into the POST', async () => {
+	// Signed in as ada (u1): the add-style picker's candidates are the
+	// other accounts (the identity seam's self filter). The users
+	// listing feeds the candidate rows; picking one adds its chip, and
+	// the POST carries its id.
+	await bootWallSession('u1', 'admin');
+	const fetchMock = stubFetch(
+		wallRoutes({
+			'/api/v1/users': () => jsonResponse(200, usersBody)
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByText('New album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	fillField(dialog as ParentNode, 'Family archive', 'create-album-title');
+	fillField(dialog as ParentNode, '/Volumes/Photos/family', 'create-album-path');
+
+	// The empty audience renders the honest "only you" note.
+	expect(dialog?.textContent).toContain('Only you');
+	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The candidate picker: the other accounts (the caller excluded).
+	const rows = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
+	expect(
+		rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)
+	).toEqual(['grace@example.com', 'ivy@example.com']);
+	rows[1]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+	flushSync();
+
+	// The chip landed (the picker stays open -- the specimen's
+	// state two); the caller is "only me" no more.
+	expect(dialog?.querySelector('.audience-field__chip')?.textContent).toContain('ivy@example.com');
+	expect(dialog?.textContent).not.toContain('Only you');
+
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/albums' && init?.method === 'POST'
+	);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({
+		title: 'Family archive',
+		rootPath: '/Volumes/Photos/family',
+		audience: ['u3']
+	});
+	unmount(page);
+	flushSync();
+});
+
+test('the create dialog surfaces the honest skipped report before closing', async () => {
+	// A session the store could not resolve (the degraded path): the
+	// picker offers the caller's own account too, and the server's
+	// skip report is the backstop -- the write lands, the report
+	// names what did not.
+	const created = { ...summary('al-new', { title: 'Family archive', type: 'directory' }), skipped: [{ userId: 'u1', reason: 'owner' }] };
+	const fetchMock = stubFetch(
+		wallRoutes({
+			'/api/v1/albums': (init?: RequestInit) => {
+				if (init?.method === 'POST') {
+					gainOwnCard(created);
+					return jsonResponse(201, created);
+				}
+				return jsonResponse(200, { albums: wallState });
+			},
+			'/api/v1/users': () => jsonResponse(200, usersBody)
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByText('New album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	fillField(dialog as ParentNode, 'Family archive', 'create-album-title');
+	fillField(dialog as ParentNode, '/Volumes/Photos/family', 'create-album-path');
+	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const rows = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
+	rows[0]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+	flushSync();
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	// The write landed (the refetch converged the wall behind), and
+	// the dialog holds the write's own honest report with the Done
+	// affordance -- never a silent close.
+	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe('Family archive');
+	expect(modal()?.textContent).toContain('1 requested member was not added');
+	buttonByText('Done', modal() as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	expect(modal()).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the create dialog routes a path-matrix failure under the path field', async () => {
+	const fetchMock = stubFetch(
+		wallRoutes({
+			'/api/v1/albums': (init?: RequestInit) => {
+				if (init?.method === 'POST') {
+					return jsonResponse(400, {
+						code: 'ALBUM_PATH_NOT_FOUND',
+						message: 'the source path does not exist'
+					});
+				}
+				return jsonResponse(200, { albums: wallState });
+			}
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByText('New album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	fillField(dialog as ParentNode, 'Weekend in the hills', 'create-album-title');
+	fillField(dialog as ParentNode, '/Volume/Photos/hills', 'create-album-path');
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	// The specimen's state four: the failure line sits under the path
+	// field and the input renders invalid -- the message points back
+	// at the completion, never a generic box.
+	const pathInput = dialog?.querySelector<HTMLInputElement>('#create-album-path');
+	expect(pathInput?.getAttribute('aria-invalid')).toBe('true');
+	const failure = dialog?.querySelector('.path-completion__failure');
+	expect(failure?.getAttribute('role')).toBe('alert');
+	expect(failure?.textContent).toContain('That folder does not exist.');
+	expect(modal()).not.toBeNull();
 	unmount(page);
 	flushSync();
 });
@@ -448,8 +629,9 @@ test('an invalid create draft never leaves the page', async () => {
 	buttonByText('New album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
-	// Whitespace only: the local 1-64 rune bound refuses it.
-	fillField(dialog as ParentNode, '   ');
+	// Whitespace title: the local 1-64 rune bound refuses it.
+	fillField(dialog as ParentNode, '   ', 'create-album-title');
+	fillField(dialog as ParentNode, '/Volumes/Photos/x', 'create-album-path');
 	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
 		new MouseEvent('click', { bubbles: true })
 	);
@@ -460,6 +642,18 @@ test('an invalid create draft never leaves the page', async () => {
 	);
 	expect(posts).toHaveLength(0);
 	expect(dialog?.textContent).toContain('Titles span 1 to 64 characters.');
+
+	// A relative path: the local absolute-path mirror refuses it.
+	fillField(dialog as ParentNode, 'A title', 'create-album-title');
+	fillField(dialog as ParentNode, 'photos/family', 'create-album-path');
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+	expect(posts).toHaveLength(0);
+	expect(dialog?.querySelector('.path-completion__failure')?.textContent).toContain(
+		'Pick the source folder'
+	);
 	unmount(page);
 	flushSync();
 });

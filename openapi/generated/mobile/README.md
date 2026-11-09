@@ -90,6 +90,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**activateModel**](doc/AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
+[*AdminApi*](doc/AdminApi.md) | [**getMountRootsSettings**](doc/AdminApi.md#getmountrootssettings) | **GET** /admin/settings/mount-roots | The directory-album mount-root allowlist.
 [*AdminApi*](doc/AdminApi.md) | [**getStorageSettings**](doc/AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [*AdminApi*](doc/AdminApi.md) | [**getTranscodingSettings**](doc/AdminApi.md#gettranscodingsettings) | **GET** /admin/settings/transcoding | Read the video transcoding settings.
 [*AdminApi*](doc/AdminApi.md) | [**getTrashSettings**](doc/AdminApi.md#gettrashsettings) | **GET** /admin/settings/trash | Read the trash retention setting.
@@ -99,21 +100,22 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**reresolvePlaces**](doc/AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
+[*AdminApi*](doc/AdminApi.md) | [**updateMountRootsSettings**](doc/AdminApi.md#updatemountrootssettings) | **PUT** /admin/settings/mount-roots | Save the directory-album mount-root allowlist.
 [*AdminApi*](doc/AdminApi.md) | [**updateStorageSettings**](doc/AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [*AdminApi*](doc/AdminApi.md) | [**updateTranscodingSettings**](doc/AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
 [*AdminApi*](doc/AdminApi.md) | [**updateTrashSettings**](doc/AdminApi.md#updatetrashsettings) | **PUT** /admin/settings/trash | Save the trash retention setting.
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
-[*AlbumsApi*](doc/AlbumsApi.md) | [**addAlbumItems**](doc/AlbumsApi.md#addalbumitems) | **POST** /albums/{albumId}/items | Add assets to one virtual album.
-[*AlbumsApi*](doc/AlbumsApi.md) | [**createAlbum**](doc/AlbumsApi.md#createalbum) | **POST** /albums | Create one virtual album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**completeAlbumPath**](doc/AlbumsApi.md#completealbumpath) | **GET** /albums/path-completions | Complete a directory album&#39;s source path.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**createAlbum**](doc/AlbumsApi.md#createalbum) | **POST** /albums | Create one directory album from an existing path.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**deleteAlbum**](doc/AlbumsApi.md#deletealbum) | **DELETE** /albums/{albumId} | Delete one virtual album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**getAlbum**](doc/AlbumsApi.md#getalbum) | **GET** /albums/{albumId} | One album&#39;s detail and one page of its items.
-[*AlbumsApi*](doc/AlbumsApi.md) | [**grantAlbumShare**](doc/AlbumsApi.md#grantalbumshare) | **POST** /albums/{albumId}/shares | Grant one account the view ACL of an album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**listAlbums**](doc/AlbumsApi.md#listalbums) | **GET** /albums | The caller&#39;s album wall.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**removeAlbumItems**](doc/AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one virtual album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**rescanAlbum**](doc/AlbumsApi.md#rescanalbum) | **POST** /albums/{albumId}/rescan | Start one rescan of a directory album&#39;s source.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**resetAlbumTimelinePreference**](doc/AlbumsApi.md#resetalbumtimelinepreference) | **DELETE** /albums/{albumId}/timeline-preference | Reset the caller&#39;s timeline preference of one album.
-[*AlbumsApi*](doc/AlbumsApi.md) | [**revokeAlbumShare**](doc/AlbumsApi.md#revokealbumshare) | **DELETE** /albums/{albumId}/shares/{userId} | Revoke one account&#39;s view ACL of an album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**setAlbumTimelinePreference**](doc/AlbumsApi.md#setalbumtimelinepreference) | **PUT** /albums/{albumId}/timeline-preference | Set the caller&#39;s timeline preference of one album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**updateAlbum**](doc/AlbumsApi.md#updatealbum) | **PATCH** /albums/{albumId} | Patch one album&#39;s properties.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**updateAlbumAudience**](doc/AlbumsApi.md#updatealbumaudience) | **PUT** /albums/{albumId}/audience | Set one album&#39;s audience (the full grantee set).
 [*AssetsApi*](doc/AssetsApi.md) | [**batchAssets**](doc/AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
 [*AssetsApi*](doc/AssetsApi.md) | [**deleteAsset**](doc/AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
 [*AssetsApi*](doc/AssetsApi.md) | [**getAsset**](doc/AssetsApi.md#getasset) | **GET** /assets/{id} | Fetch the detail of one owned asset.
@@ -164,13 +166,16 @@ Class | Method | HTTP request | Description
 
 ## Documentation For Models
 
- - [AddAlbumItemsResponse](doc/AddAlbumItemsResponse.md)
  - [AddTagAssetsResponse](doc/AddTagAssetsResponse.md)
  - [AdminCreateUserRequest](doc/AdminCreateUserRequest.md)
  - [AdminUserListResponse](doc/AdminUserListResponse.md)
  - [AdminUserPatch](doc/AdminUserPatch.md)
  - [AdminUserResponse](doc/AdminUserResponse.md)
+ - [AlbumAudienceRequest](doc/AlbumAudienceRequest.md)
+ - [AlbumAudienceResponse](doc/AlbumAudienceResponse.md)
+ - [AlbumAudienceSkip](doc/AlbumAudienceSkip.md)
  - [AlbumCreateRequest](doc/AlbumCreateRequest.md)
+ - [AlbumCreateResponse](doc/AlbumCreateResponse.md)
  - [AlbumDetail](doc/AlbumDetail.md)
  - [AlbumFacetCount](doc/AlbumFacetCount.md)
  - [AlbumItem](doc/AlbumItem.md)
@@ -178,9 +183,9 @@ Class | Method | HTTP request | Description
  - [AlbumItemsRequest](doc/AlbumItemsRequest.md)
  - [AlbumOwnerRef](doc/AlbumOwnerRef.md)
  - [AlbumPatch](doc/AlbumPatch.md)
+ - [AlbumPathCompletionsResponse](doc/AlbumPathCompletionsResponse.md)
+ - [AlbumRescanResponse](doc/AlbumRescanResponse.md)
  - [AlbumShareEntry](doc/AlbumShareEntry.md)
- - [AlbumShareGrantRequest](doc/AlbumShareGrantRequest.md)
- - [AlbumShareResponse](doc/AlbumShareResponse.md)
  - [AlbumSummary](doc/AlbumSummary.md)
  - [AlbumTimelinePreferenceRequest](doc/AlbumTimelinePreferenceRequest.md)
  - [AlbumTimelinePreferenceResponse](doc/AlbumTimelinePreferenceResponse.md)
@@ -223,6 +228,8 @@ Class | Method | HTTP request | Description
  - [ModelScanResponse](doc/ModelScanResponse.md)
  - [ModelSlot](doc/ModelSlot.md)
  - [ModelSource](doc/ModelSource.md)
+ - [MountRootsSettingsResponse](doc/MountRootsSettingsResponse.md)
+ - [MountRootsSettingsUpdateRequest](doc/MountRootsSettingsUpdateRequest.md)
  - [MoveFaceRequest](doc/MoveFaceRequest.md)
  - [MoveFaceResponse](doc/MoveFaceResponse.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)

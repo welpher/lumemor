@@ -6,44 +6,44 @@
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
-part 'album_share_grant_request.g.dart';
+part 'album_rescan_response.g.dart';
 
-/// The grant body: the account receiving the view ACL. The target rules live in the endpoint's own answer -- the album's owner and unusable accounts answer 400 there, never a distinct shape here. 
+/// The identifier of one directory album rescan run: the `job_runs` row the rescan job drives and the `job.*` events announce. 
 ///
 /// Properties:
-/// * [userId] - Identifier of the account receiving the view ACL.
+/// * [jobRunId] - UUIDv7 identifier of the run's `job_runs` row. `202` carries the freshly created run; `200` the in-flight one of THIS album the request joined instead. 
 @BuiltValue()
-abstract class AlbumShareGrantRequest implements Built<AlbumShareGrantRequest, AlbumShareGrantRequestBuilder> {
-  /// Identifier of the account receiving the view ACL.
-  @BuiltValueField(wireName: r'userId')
-  String get userId;
+abstract class AlbumRescanResponse implements Built<AlbumRescanResponse, AlbumRescanResponseBuilder> {
+  /// UUIDv7 identifier of the run's `job_runs` row. `202` carries the freshly created run; `200` the in-flight one of THIS album the request joined instead. 
+  @BuiltValueField(wireName: r'jobRunId')
+  String get jobRunId;
 
-  AlbumShareGrantRequest._();
+  AlbumRescanResponse._();
 
-  factory AlbumShareGrantRequest([void updates(AlbumShareGrantRequestBuilder b)]) = _$AlbumShareGrantRequest;
+  factory AlbumRescanResponse([void updates(AlbumRescanResponseBuilder b)]) = _$AlbumRescanResponse;
 
   @BuiltValueHook(initializeBuilder: true)
-  static void _defaults(AlbumShareGrantRequestBuilder b) => b;
+  static void _defaults(AlbumRescanResponseBuilder b) => b;
 
   @BuiltValueSerializer(custom: true)
-  static Serializer<AlbumShareGrantRequest> get serializer => _$AlbumShareGrantRequestSerializer();
+  static Serializer<AlbumRescanResponse> get serializer => _$AlbumRescanResponseSerializer();
 }
 
-class _$AlbumShareGrantRequestSerializer implements PrimitiveSerializer<AlbumShareGrantRequest> {
+class _$AlbumRescanResponseSerializer implements PrimitiveSerializer<AlbumRescanResponse> {
   @override
-  final Iterable<Type> types = const [AlbumShareGrantRequest, _$AlbumShareGrantRequest];
+  final Iterable<Type> types = const [AlbumRescanResponse, _$AlbumRescanResponse];
 
   @override
-  final String wireName = r'AlbumShareGrantRequest';
+  final String wireName = r'AlbumRescanResponse';
 
   Iterable<Object?> _serializeProperties(
     Serializers serializers,
-    AlbumShareGrantRequest object, {
+    AlbumRescanResponse object, {
     FullType specifiedType = FullType.unspecified,
   }) sync* {
-    yield r'userId';
+    yield r'jobRunId';
     yield serializers.serialize(
-      object.userId,
+      object.jobRunId,
       specifiedType: const FullType(String),
     );
   }
@@ -51,7 +51,7 @@ class _$AlbumShareGrantRequestSerializer implements PrimitiveSerializer<AlbumSha
   @override
   Object serialize(
     Serializers serializers,
-    AlbumShareGrantRequest object, {
+    AlbumRescanResponse object, {
     FullType specifiedType = FullType.unspecified,
   }) {
     return _serializeProperties(serializers, object, specifiedType: specifiedType).toList();
@@ -62,19 +62,19 @@ class _$AlbumShareGrantRequestSerializer implements PrimitiveSerializer<AlbumSha
     Object serialized, {
     FullType specifiedType = FullType.unspecified,
     required List<Object?> serializedList,
-    required AlbumShareGrantRequestBuilder result,
+    required AlbumRescanResponseBuilder result,
     required List<Object?> unhandled,
   }) {
     for (var i = 0; i < serializedList.length; i += 2) {
       final key = serializedList[i] as String;
       final value = serializedList[i + 1];
       switch (key) {
-        case r'userId':
+        case r'jobRunId':
           final valueDes = serializers.deserialize(
             value,
             specifiedType: const FullType(String),
           ) as String;
-          result.userId = valueDes;
+          result.jobRunId = valueDes;
           break;
         default:
           unhandled.add(key);
@@ -85,12 +85,12 @@ class _$AlbumShareGrantRequestSerializer implements PrimitiveSerializer<AlbumSha
   }
 
   @override
-  AlbumShareGrantRequest deserialize(
+  AlbumRescanResponse deserialize(
     Serializers serializers,
     Object serialized, {
     FullType specifiedType = FullType.unspecified,
   }) {
-    final result = AlbumShareGrantRequestBuilder();
+    final result = AlbumRescanResponseBuilder();
     final serializedList = (serialized as Iterable<Object?>).toList();
     final unhandled = <Object?>[];
     _deserializeProperties(

@@ -25,6 +25,12 @@ void main() {
       // TODO
     });
 
+    // Where the asset's original file lives. `blob` rows were uploaded into the server's originals tree and were soft-deleted in place (the file stays until expiry). `external` rows reference a directory album's source file and were moved INTO the server's trash area when the owner trashed them -- the listing is honest for both kinds, and a restore moves the external file back to its recorded original location. External rows the rescan's orphan arm marked deleted never appear here at all: the file was never the server's and the trash has no meaning for it. 
+    // String storageKind
+    test('to test the property `storageKind`', () async {
+      // TODO
+    });
+
     // The file name the asset was uploaded with.
     // String originalFilename
     test('to test the property `originalFilename`', () async {

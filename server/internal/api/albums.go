@@ -13,7 +13,7 @@
 // invisible and foreign-sync ids answer the same byte-identical
 // envelope, the anti-enumeration discipline of ASSET_NOT_FOUND on
 // the album face. The WRITE gates (albums_write.go,
-// albumshares.go, albumprefs.go) keep refusing every sync album,
+// albumaudience.go, albumprefs.go) keep refusing every sync album,
 // whoever owns it: the read admitting the caller's own sync opens
 // no write path.
 package api
@@ -99,7 +99,6 @@ func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role ap
 	return apigen.AlbumSummary{
 		Id:            uuid.UUID(album.ID.Bytes),
 		Title:         album.Title,
-		Description:   album.Description,
 		Type:          apigen.AlbumSummaryType(album.Type),
 		Locked:        album.Locked,
 		IsShared:      isShared,
@@ -279,7 +278,6 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 	detail := apigen.AlbumDetail{
 		Id:           albumId,
 		Title:        album.Album.Title,
-		Description:  album.Album.Description,
 		Type:         apigen.AlbumDetailType(album.Album.Type),
 		Locked:       album.Album.Locked,
 		CoverAssetId: nil,
@@ -287,6 +285,14 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		ItemCount:    int(album.ItemCount),
 		Items:        make([]apigen.AlbumItem, 0, len(rows)),
 		InTimeline:   timelinePrefField(album.Album.Type, album.CallerRole, album.InTimeline),
+	}
+	// The source line of the edit dialog: the directory album's
+	// stored root, present exactly on the directory type (fixtures
+	// may carry a NULL root; the row is the honest source of the
+	// field).
+	if album.Album.Type == dbgen.AlbumTypeDirectory && album.Album.RootPath.Valid {
+		rootPath := album.Album.RootPath.String
+		detail.RootPath = &rootPath
 	}
 	// The owner-only grantee list (the share management dialog's
 	// rows): the field rides the owner's view and only that view --

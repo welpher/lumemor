@@ -24,7 +24,9 @@ const JOB_RUN_KINDS: readonly string[] = [
 	'face_detect_rerun',
 	'face_recognize_rerun',
 	'clip_embed_rerun',
-	'ocr_rerun'
+	'ocr_rerun',
+	'places_rerun',
+	'album_rescan'
 ];
 
 /** The run lifecycle states of the contract's JobRunState enum. */

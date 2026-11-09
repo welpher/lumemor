@@ -247,33 +247,26 @@ test('a busy batch run disables the bar until the promise lands', async () => {
 	flushSync();
 });
 
-test('the dialog openers capture the ids at open; done clears the selection', () => {
+test('the dialog opener captures the ids at open; done clears the selection', () => {
 	const onbatch = vi.fn(async () => ({ ok: true }) as Outcome);
-	const onaddtoalbum = vi.fn();
 	const onaddtag = vi.fn();
 	const wall = mount(Wall, {
 		target: document.body,
-		props: { items, onbatch, onaddtoalbum, onaddtag }
+		props: { items, onbatch, onaddtag }
 	});
 	flushSync();
 
 	clickTileCheck(0);
 	clickTileCheck(2);
-	buttonByLabel('Add to album').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	buttonByLabel('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	flushSync();
 
 	// The ids are the ones captured AT OPEN (the current selection,
 	// handed over once) together with the done continuation.
-	expect(onaddtoalbum).toHaveBeenCalledTimes(1);
-	const [ids, done] = onaddtoalbum.mock.calls[0] as [string[], () => void];
+	expect(onaddtag).toHaveBeenCalledTimes(1);
+	const [ids, done] = onaddtag.mock.calls[0] as [string[], () => void];
 	expect(ids).toEqual(['a1', 'a3']);
 	expect(typeof done).toBe('function');
-
-	// The tag opener rides the same shape over the same selection.
-	buttonByLabel('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-	flushSync();
-	expect(onaddtag).toHaveBeenCalledTimes(1);
-	expect((onaddtag.mock.calls[0] as [string[]])[0]).toEqual(['a1', 'a3']);
 
 	// The pass lands (the page fires done from its report's done
 	// affordance): the wall applies its success arm -- the selection
@@ -287,14 +280,13 @@ test('the dialog openers capture the ids at open; done clears the selection', ()
 });
 
 test('the bar carries no dialog affordance the page did not wire', () => {
-	// The curated walls' shape: onbatch alone -- the album and tag
-	// openers are the timeline's alone.
+	// The curated walls' shape: onbatch alone -- the tag opener is
+	// the timeline's alone.
 	const onbatch = vi.fn(async () => ({ ok: true }) as Outcome);
 	const wall = mount(Wall, { target: document.body, props: { items, onbatch } });
 	flushSync();
 
 	clickTileCheck(0);
-	expect(() => buttonByLabel('Add to album')).toThrow();
 	expect(() => buttonByLabel('Add tag')).toThrow();
 	expect(document.body.querySelector('.batchbar')?.textContent).toContain('1 selected');
 

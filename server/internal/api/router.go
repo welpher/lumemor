@@ -92,6 +92,12 @@ type Deps struct {
 	// queue wired -- tests, wiring order); production passes the jobs
 	// queue, which implements it structurally.
 	PlacesReruns PlacesRerunEnqueuer
+	// AlbumRescans starts the directory album rescan runs: the
+	// rescan endpoint enqueues the album_rescan job through this
+	// seam. Nil keeps the endpoint answering 500 INTERNAL (no queue
+	// wired -- tests, wiring order); production passes the jobs
+	// queue, which implements it structurally.
+	AlbumRescans AlbumRescanEnqueuer
 }
 
 // AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
@@ -145,6 +151,18 @@ type PlacesRerunEnqueuer interface {
 	// identifier. The enqueue refuses a server without the place
 	// reference data: there is no grid to re-resolve against.
 	EnqueuePlacesRerun(ctx context.Context) (uuid.UUID, error)
+}
+
+// AlbumRescanEnqueuer starts one directory album rescan run. It is
+// the seam between the rescan endpoint and the job queue:
+// production passes the jobs package's Queue, which implements it
+// structurally.
+type AlbumRescanEnqueuer interface {
+	// EnqueueAlbumRescan creates the run's job_runs row and enqueues
+	// the River job in one transaction, returning the run's
+	// identifier. The caller has already gated the album (owner,
+	// type, lock); the enqueue trusts the gate's answer.
+	EnqueueAlbumRescan(ctx context.Context, albumID uuid.UUID) (uuid.UUID, error)
 }
 
 // NewRouter builds the HTTP routes of the server: the operational
@@ -205,6 +223,9 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		// The places re-resolution enqueue seam: nil is a valid (no
 		// queue) wiring.
 		placesReruns: deps.PlacesReruns,
+		// The album rescan enqueue seam: nil is a valid (no queue)
+		// wiring.
+		albumRescans: deps.AlbumRescans,
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
@@ -331,34 +352,49 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// covers are a second bounded read of at most four
 				// candidates per album.
 				r.Get("/albums", wrapper.ListAlbums)
+				// The source-path completion of the creation dialog
+				// (E4's albums-as-sources): one settings row read
+				// plus at most one directory listing, at most 20
+				// answer rows -- the bounded-JSON cost class. The
+				// static path-completions segment never contends
+				// with the /albums/{albumId} parameter below (chi
+				// prefers static patterns).
+				r.Get("/albums/path-completions", wrapper.CompleteAlbumPath)
 				r.Get("/albums/{albumId}", wrapper.GetAlbum)
-				// The album surface writes (M3c Task 2): virtual
-				// album creation, the property patch, the delete
-				// and the membership curation. All are bounded row
-				// writes -- the membership lists are capped at 200
-				// ids by the contract, and the cascades ride the
-				// row deletes -- so they belong in this group like
-				// every other bounded JSON handler. The static
-				// /albums/{albumId}/items segment never contends
-				// with the /albums/{albumId} routes (a longer path
-				// shape).
+				// The album surface writes (M3c Task 2, reshaped by
+				// E4): the directory album creation (the path
+				// validation matrix plus one bounded row insert and
+				// the audience grants), the property patch, the
+				// delete and the membership removal. All are
+				// bounded row writes -- the membership and audience
+				// lists are capped at 200 ids by the contract, and
+				// the cascades ride the row deletes -- so they
+				// belong in this group like every other bounded JSON
+				// handler. The static /albums/{albumId}/items
+				// segment never contends with the
+				// /albums/{albumId} routes (a longer path shape).
 				r.Post("/albums", wrapper.CreateAlbum)
 				r.Patch("/albums/{albumId}", wrapper.UpdateAlbum)
 				r.Delete("/albums/{albumId}", wrapper.DeleteAlbum)
-				r.Post("/albums/{albumId}/items", wrapper.AddAlbumItems)
 				r.Delete("/albums/{albumId}/items", wrapper.RemoveAlbumItems)
-				// The album sharing face (M3c Task 3): the view-ACL
-				// grant and revoke, and the instance's minimal
-				// member list the share dialog picks its grantee
-				// from. The grant is one bounded row write; the
-				// revoke deletes one row; the member list is one
-				// bounded read of the small users table. The
-				// /albums/{albumId}/shares segments never contend
-				// with the /albums/{albumId} routes (a longer path
-				// shape), and /users never contends with the
-				// /admin/users group (a different prefix).
-				r.Post("/albums/{albumId}/shares", wrapper.GrantAlbumShare)
-				r.Delete("/albums/{albumId}/shares/{userId}", wrapper.RevokeAlbumShare)
+				// The album audience face (E4, the
+				// albums-as-sources milestone): the full-set
+				// view-ACL write behind PUT
+				// /albums/{albumId}/audience, the one write surface
+				// of "who can see this album" (the one-row
+				// grant/revoke pair retired with it). Two bounded
+				// statements over at most 200 ids, the batch
+				// surface's cost class. The static audience segment
+				// never contends with the /albums/{albumId} routes
+				// (a longer path shape).
+				r.Put("/albums/{albumId}/audience", wrapper.UpdateAlbumAudience)
+				// The rescan trigger (E4, the
+				// albums-as-sources milestone): one bounded row read
+				// plus one enqueue; the walk over the source root and
+				// the three-arm diff live on the queue. The static
+				// rescan segment never contends with the
+				// /albums/{albumId} routes (a longer path shape).
+				r.Post("/albums/{albumId}/rescan", wrapper.RescanAlbum)
 				r.Get("/users", wrapper.ListInstanceUsers)
 				// The me-scoped user settings face (the settings
 				// feature): the caller's own profile, password and
@@ -469,6 +505,14 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/admin/settings/trash", wrapper.UpdateTrashSettings)
 				r.Get("/admin/settings/transcoding", wrapper.GetTranscodingSettings)
 				r.Put("/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
+				// The mount-root allowlist face (E4,
+				// albums-as-sources): the directory-album trust
+				// boundary's read and wholesale save -- the same
+				// GET/PUT shape over one instance_settings row,
+				// bounded list validation in memory, the settings
+				// faces' own discipline.
+				r.Get("/admin/settings/mount-roots", wrapper.GetMountRootsSettings)
+				r.Put("/admin/settings/mount-roots", wrapper.UpdateMountRootsSettings)
 				// The model download trigger (M3a Task 3): the
 				// default group's first-boot download. The handler is
 				// one bounded row read plus one enqueue; the heavy
@@ -594,6 +638,10 @@ type server struct {
 	// queue is wired and the re-resolution endpoint answers the
 	// generic internal error.
 	placesReruns PlacesRerunEnqueuer
+	// albumRescans starts the directory album rescan runs; nil means
+	// no queue is wired and the rescan endpoint answers the generic
+	// internal error.
+	albumRescans AlbumRescanEnqueuer
 
 	// textTowerCache keeps the search's semantic path warm: the
 	// active clip-text model's loaded session and tokenizer (loading

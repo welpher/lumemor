@@ -404,7 +404,6 @@ type Album struct {
 	ID            pgtype.UUID        `json:"id"`
 	OwnerID       pgtype.UUID        `json:"owner_id"`
 	Title         string             `json:"title"`
-	Description   string             `json:"description"`
 	Type          AlbumType          `json:"type"`
 	Locked        bool               `json:"locked"`
 	CoverAssetID  pgtype.UUID        `json:"cover_asset_id"`
@@ -468,6 +467,7 @@ type Asset struct {
 	DeviceAssetID    pgtype.Text        `json:"device_asset_id"`
 	PendingJobs      int32              `json:"pending_jobs"`
 	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
+	FileMtime        pgtype.Timestamptz `json:"file_mtime"`
 }
 
 type AssetTag struct {
@@ -543,6 +543,7 @@ type JobRun struct {
 	FinishedAt pgtype.Timestamptz `json:"finished_at"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+	AlbumID    pgtype.UUID        `json:"album_id"`
 }
 
 type Model struct {
