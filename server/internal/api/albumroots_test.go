@@ -68,7 +68,7 @@ func (e *assetEnv) completionsRaw(t *testing.T, cookie *http.Cookie, prefix stri
 }
 
 // completions decodes the 200 completion body.
-func (e *assetEnv) completions(t *testing.T, cookie *http.Cookie, prefix string) []string {
+func (e *assetEnv) completions(t *testing.T, cookie *http.Cookie, prefix string) []apigen.AlbumPathCompletion {
 	t.Helper()
 	rec := e.completionsRaw(t, cookie, prefix)
 	if rec.Code != http.StatusOK {
@@ -79,7 +79,7 @@ func (e *assetEnv) completions(t *testing.T, cookie *http.Cookie, prefix string)
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode completions body %q: %v", rec.Body.String(), err)
 	}
-	return response.Paths
+	return response.Completions
 }
 
 // requireAlbumPathError asserts one path matrix branch: the 400
@@ -95,14 +95,15 @@ func requireAlbumPathError(t *testing.T, rec *httptest.ResponseRecorder, code ap
 	}
 }
 
-// requirePaths asserts a completion answer exactly (order included).
-func requirePaths(t *testing.T, got []string, want ...string) {
+// requirePaths asserts a completion answer's paths exactly (order
+// included); the rows' write facts are the writable arms' business.
+func requirePaths(t *testing.T, got []apigen.AlbumPathCompletion, want ...string) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Fatalf("completions = %v, want %v", got, want)
 	}
 	for i := range want {
-		if got[i] != want[i] {
+		if got[i].Path != want[i] {
 			t.Fatalf("completions = %v, want %v", got, want)
 		}
 	}
@@ -183,8 +184,8 @@ func TestAlbumPathCompletions(t *testing.T) {
 		if !completionsContain(paths, "/usr") {
 			t.Errorf("completions of \"/\" = %v, want /usr among the rows", paths)
 		}
-		for _, path := range paths {
-			if path == "/" {
+		for _, row := range paths {
+			if row.Path == "/" {
 				t.Errorf("the standalone root row rode along the bare-separator drill")
 			}
 		}
@@ -218,9 +219,9 @@ func TestAlbumPathCompletions(t *testing.T) {
 		// that would match only managed paths answers nothing; and
 		// the data root's own children never surface.
 		parent := filepath.Dir(env.dataDir)
-		for _, path := range env.completions(t, env.cookie, parent+"/") {
-			if pathUnder(path, env.dataDir) {
-				t.Errorf("completion suggests the managed tree path %s", path)
+		for _, row := range env.completions(t, env.cookie, parent+"/") {
+			if pathUnder(row.Path, env.dataDir) {
+				t.Errorf("completion suggests the managed tree path %s", row.Path)
 			}
 		}
 		requirePaths(t, env.completions(t, env.cookie, env.dataDir+"/origi"))
@@ -242,11 +243,67 @@ func TestAlbumPathCompletions(t *testing.T) {
 		if len(paths) != 20 {
 			t.Fatalf("completions = %d rows, want the cap of 20", len(paths))
 		}
-		for i, path := range paths {
+		for i, row := range paths {
 			want := filepath.Join(root, fmt.Sprintf("bulk-%02d", i+1))
-			if path != want {
-				t.Fatalf("row %d = %s, want %s (the first 20, sorted)", i, path, want)
+			if row.Path != want {
+				t.Fatalf("row %d = %s, want %s (the first 20, sorted)", i, row.Path, want)
 			}
+		}
+	})
+
+	t.Run("WritableArms", func(t *testing.T) {
+		// The write fact rides every row: a writable directory
+		// answers true (and no probe file stays behind), a read-only
+		// one answers false as a FACT -- the row lists alongside the
+		// others, the refusal is information, never an error.
+		writable := filepath.Join(root, "writable")
+		if err := os.Mkdir(writable, 0o755); err != nil {
+			t.Fatalf("create %s: %v", writable, err)
+		}
+		rows := env.completions(t, env.cookie, root+"/writable")
+		if len(rows) != 1 || rows[0].Path != writable || !rows[0].Writable {
+			t.Fatalf("completions = %v, want the writable row with writable true", rows)
+		}
+		requireNoProbeFile(t, writable)
+
+		if os.Geteuid() == 0 {
+			t.Skip("the read-only arm is untestable as root: the kernel lets root write anything")
+		}
+		readOnly := filepath.Join(root, "read-only")
+		if err := os.Mkdir(readOnly, 0o755); err != nil {
+			t.Fatalf("create %s: %v", readOnly, err)
+		}
+		if err := os.Chmod(readOnly, 0o555); err != nil {
+			t.Fatalf("chmod the read-only row: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(readOnly, 0o755) })
+		roRows := env.completions(t, env.cookie, root+"/read")
+		if len(roRows) != 1 || roRows[0].Path != readOnly || roRows[0].Writable {
+			t.Fatalf("completions = %v, want the read-only row with writable false", roRows)
+		}
+		requireNoProbeFile(t, readOnly)
+	})
+
+	t.Run("UnwritableRowIsAFactNotAnError", func(t *testing.T) {
+		// The root-proof arm of the same fact: procfs refuses the
+		// probe's write for uid 0 too, so the containerized gate
+		// exercises the false arm even where the permission arms
+		// skip. The row lists like any other, never an error.
+		if _, err := os.Stat("/proc"); err != nil {
+			t.Skipf("/proc is unavailable on this host (%v); the unwritable arm needs procfs", err)
+		}
+		rows := env.completions(t, env.cookie, "/proc")
+		found := false
+		for _, row := range rows {
+			if row.Path == "/proc" {
+				found = true
+				if row.Writable {
+					t.Error("the /proc row's writable = true, want the probe's false")
+				}
+			}
+		}
+		if !found {
+			t.Error("the /proc row never surfaced (the listing skipped it)")
 		}
 	})
 
@@ -279,10 +336,10 @@ func TestAlbumPathCompletions(t *testing.T) {
 	})
 }
 
-// completionsContain reports whether the value sits in the rows.
-func completionsContain(paths []string, value string) bool {
-	for _, path := range paths {
-		if path == value {
+// completionsContain reports whether the path sits in the rows.
+func completionsContain(paths []apigen.AlbumPathCompletion, value string) bool {
+	for _, row := range paths {
+		if row.Path == value {
 			return true
 		}
 	}

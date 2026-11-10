@@ -75,16 +75,25 @@ WHERE a.id = sqlc.arg('id')
 
 -- name: GetAssetDetail :one
 -- The detail read of GET /assets/{id}: the asset row joined with the
--- exif hot fields the response flattens. The gate is the
--- caller-visible union: the owner's own arms (their
--- sync album holds every upload, whatever the row's state) plus
--- every album shared to the caller. The join only attaches the
--- sidecar of the row that matched. The LEFT JOIN keeps the detail
--- answering before and after the metadata job refined the sidecar:
--- hot fields are NULL until then. description and is_hidden ride
--- along: the PATCH response reuses this read after its
--- writes, so it serves the same shape the GET endpoint serves,
--- applied values included.
+-- exif hot fields the response flattens, plus the asset's resolved
+-- place (the metadata job's GPS resolution). The name rides as TWO
+-- nullable columns -- the request locale's place_names row and the
+-- canonical name -- because a place is optional on the asset: sqlc's
+-- inference over a bare COALESCE marks the result non-null, and the
+-- no-place rows would fail the scan. The handler folds the two with
+-- the `GET /places` join's exact discipline (the locale row when the
+-- place data carries one, the canonical name otherwise; places.name
+-- is NOT NULL, so a valid place_id always answers a name). The gate
+-- is the caller-visible union: the owner's own arms (their sync
+-- album holds every upload, whatever the row's state) plus every
+-- album shared to the caller. The join only attaches the sidecar of
+-- the row that matched. The LEFT JOINs keep the detail answering
+-- before and after the metadata job refined the sidecar: hot fields
+-- are NULL until then, and an asset with no resolved place (no GPS,
+-- or no baked place data) answers a null place face.
+-- description and is_hidden ride along: the PATCH response reuses
+-- this read after its writes, so it serves the same shape the GET
+-- endpoint serves, applied values included.
 SELECT a.id,
        a.owner_id,
        a.media_kind,
@@ -114,9 +123,15 @@ SELECT a.id,
        e.lat,
        e.lon,
        e.alt,
-       e.tz_offset
+       e.tz_offset,
+       p.id AS place_id,
+       pn.name AS locale_name,
+       p.name AS canonical_name
 FROM assets a
 LEFT JOIN exif e ON e.asset_id = a.id
+LEFT JOIN places p ON p.id = a.place_id
+LEFT JOIN place_names pn
+       ON pn.geoname_id = p.id AND pn.locale = sqlc.arg('locale')
 WHERE a.id = sqlc.arg('id')
   AND caller_asset_visible(sqlc.arg('viewer'), a.id);
 

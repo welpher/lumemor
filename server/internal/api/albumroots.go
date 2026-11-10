@@ -173,16 +173,17 @@ func (s *server) writeAlbumPathError(w http.ResponseWriter, code apigen.ErrorCod
 	s.writeError(w, http.StatusBadRequest, code, albumPathErrorMessage(code), nil)
 }
 
-// probeDirectoryWritable discovers, ONCE, whether the application
-// can delete through the directory: it writes a uniquely named
-// probe file, reads it back, and removes it. The three steps are
+// probeDirectoryWritable discovers whether the application can
+// delete through the directory: it writes a uniquely named probe
+// file, reads it back, and removes it. The three steps are
 // the delete's own shape -- the trash move renames a file OUT of
 // this directory, which needs exactly the write permission the
 // probe's write and remove exercise -- so a directory that passes
 // them all is a directory the delete flow can work with, and one
 // that refuses any step is a directory whose photos cannot be
 // deleted through the application. The probe never FAILS its
-// caller: the answer is a fact (the `sourceWritable` column), and a
+// caller: the answer is a fact (the `sourceWritable` column at
+// creation; the completion row's `writable` at listing time), and a
 // false answer is a legitimate album, not a refused creation.
 //
 // The one state that leaves a wart is write-yes-remove-no (a
@@ -319,8 +320,11 @@ func completeAlbumRootPath(managedDir, prefix string) []string {
 // own 403 before the prefix is read (the members' contribution
 // path is the upload stream, and a member never needs to see the
 // filesystem). The answer is bounded work (at most one directory
-// listing, at most 20 rows), and the empty list is an honest
-// "nothing matches", never an error.
+// listing, at most 20 rows, one three-step probe per row), and the
+// empty list is an honest "nothing matches", never an error. Each
+// row carries the write fact its probe discovered -- the dialog's
+// deletability-switch render condition, learned before any album
+// is created.
 func (s *server) CompleteAlbumPath(w http.ResponseWriter, r *http.Request, params apigen.CompleteAlbumPathParams) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -340,7 +344,15 @@ func (s *server) CompleteAlbumPath(w http.ResponseWriter, r *http.Request, param
 			return
 		}
 	}
+	paths := completeAlbumRootPath(s.dataDir, prefix)
+	completions := make([]apigen.AlbumPathCompletion, 0, len(paths))
+	for _, path := range paths {
+		completions = append(completions, apigen.AlbumPathCompletion{
+			Path:     path,
+			Writable: probeDirectoryWritable(path),
+		})
+	}
 	s.writeJSON(w, http.StatusOK, apigen.AlbumPathCompletionsResponse{
-		Paths: completeAlbumRootPath(s.dataDir, prefix),
+		Completions: completions,
 	})
 }

@@ -20,6 +20,7 @@ doc/AlbumItemAsset.md
 doc/AlbumItemsRequest.md
 doc/AlbumOwnerRef.md
 doc/AlbumPatch.md
+doc/AlbumPathCompletion.md
 doc/AlbumPathCompletionsResponse.md
 doc/AlbumRescanResponse.md
 doc/AlbumShareEntry.md
@@ -28,9 +29,11 @@ doc/AlbumTimelinePreferenceRequest.md
 doc/AlbumTimelinePreferenceResponse.md
 doc/AlbumWallResponse.md
 doc/AlbumsApi.md
+doc/AssetAlbumRef.md
 doc/AssetDetail.md
 doc/AssetFaceSummary.md
 doc/AssetPatch.md
+doc/AssetPlaceRef.md
 doc/AssetResponse.md
 doc/AssetTagSummary.md
 doc/AssetsApi.md
@@ -157,6 +160,7 @@ lib/src/model/album_item_asset.dart
 lib/src/model/album_items_request.dart
 lib/src/model/album_owner_ref.dart
 lib/src/model/album_patch.dart
+lib/src/model/album_path_completion.dart
 lib/src/model/album_path_completions_response.dart
 lib/src/model/album_rescan_response.dart
 lib/src/model/album_share_entry.dart
@@ -164,9 +168,11 @@ lib/src/model/album_summary.dart
 lib/src/model/album_timeline_preference_request.dart
 lib/src/model/album_timeline_preference_response.dart
 lib/src/model/album_wall_response.dart
+lib/src/model/asset_album_ref.dart
 lib/src/model/asset_detail.dart
 lib/src/model/asset_face_summary.dart
 lib/src/model/asset_patch.dart
+lib/src/model/asset_place_ref.dart
 lib/src/model/asset_response.dart
 lib/src/model/asset_tag_summary.dart
 lib/src/model/batch_request.dart
@@ -268,6 +274,7 @@ test/album_item_test.dart
 test/album_items_request_test.dart
 test/album_owner_ref_test.dart
 test/album_patch_test.dart
+test/album_path_completion_test.dart
 test/album_path_completions_response_test.dart
 test/album_rescan_response_test.dart
 test/album_share_entry_test.dart
@@ -276,9 +283,11 @@ test/album_timeline_preference_request_test.dart
 test/album_timeline_preference_response_test.dart
 test/album_wall_response_test.dart
 test/albums_api_test.dart
+test/asset_album_ref_test.dart
 test/asset_detail_test.dart
 test/asset_face_summary_test.dart
 test/asset_patch_test.dart
+test/asset_place_ref_test.dart
 test/asset_response_test.dart
 test/asset_tag_summary_test.dart
 test/assets_api_test.dart

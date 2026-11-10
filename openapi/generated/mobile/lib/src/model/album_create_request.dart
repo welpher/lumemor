@@ -9,11 +9,13 @@ import 'package:built_value/serializer.dart';
 
 part 'album_create_request.g.dart';
 
-/// The creation body of one directory album (albums-as-sources): the title, the existing directory the album references in place, and the audience the album starts with. No type field exists -- this endpoint IS directory creation, the only creatable album type. No description field either: it died whole (the 2026-11-08 owner evaluation -- real-world fill rate near zero, the context already carried by title/date-range+count/place/cover), and the property patch carries no field that could set one. 
+/// The creation body of one directory album (albums-as-sources): the title, the existing directory the album references in place, the audience the album starts with, and the two dialog switches of the create-time autonomy -- the deletability switch and the creator's timeline exclusion. No type field exists -- this endpoint IS directory creation, the only creatable album type. No description field either: it died whole (the 2026-11-08 owner evaluation -- real-world fill rate near zero, the context already carried by title/date-range+count/place/cover), and the property patch carries no field that could set one. 
 ///
 /// Properties:
 /// * [title] - The album's display title, trimmed server-side; it must span 1-64 Unicode characters after the trim (the count is over runes, so multi-byte titles stay within the bound at the same length). 
 /// * [rootPath] - The source directory: an existing absolute path the server validates against the path matrix (existence, directory-ness, readability, symlink resolution, the managed tree) before creating anything. The album row stores the RESOLVED absolute path -- symlink segments evaluated -- so a later symlink swap cannot repoint the album. After the matrix passes, the server probes the directory's writability once and records the fact; a read-only directory is a valid source, never a refusal. 
+/// * [allowAppDeletion] - The owner's deletability switch, carried from the creation dialog: whether the album's photos may be deleted through the application (the trash move of the source file). On by default; the dialog renders the switch only where the source is writable (the completion row's `writable` fact), and on a read-only source the stored value governs nothing -- the derived `deletable` face stays false whatever it says. Editable later through the property patch. 
+/// * [inTimeline] - The creator's timeline preference, carried from the creation dialog: `false` keeps the album out of the CREATOR's aggregated timeline from birth -- the same per-user switch `PUT /albums/{albumId}/timeline-preference` writes, landed in the creation itself (a per-user preference, not an album fact: it needs no photos to exist, so the creation is exactly the right moment). Absent or true feeds the timeline (the default -- no preference row is written). The exclusion is the creator's own: the audience members' feeds are governed by their own preference rows, never by this field. 
 /// * [audience] - The accounts the album starts being visible to: the initial `album_shares` set, empty (or absent) meaning \"only me\". Entries that cannot be granted -- an unknown or disabled account, or the caller's own id -- are skipped and reported in the response's `skipped` list, never errors. 
 @BuiltValue()
 abstract class AlbumCreateRequest implements Built<AlbumCreateRequest, AlbumCreateRequestBuilder> {
@@ -24,6 +26,14 @@ abstract class AlbumCreateRequest implements Built<AlbumCreateRequest, AlbumCrea
   /// The source directory: an existing absolute path the server validates against the path matrix (existence, directory-ness, readability, symlink resolution, the managed tree) before creating anything. The album row stores the RESOLVED absolute path -- symlink segments evaluated -- so a later symlink swap cannot repoint the album. After the matrix passes, the server probes the directory's writability once and records the fact; a read-only directory is a valid source, never a refusal. 
   @BuiltValueField(wireName: r'rootPath')
   String get rootPath;
+
+  /// The owner's deletability switch, carried from the creation dialog: whether the album's photos may be deleted through the application (the trash move of the source file). On by default; the dialog renders the switch only where the source is writable (the completion row's `writable` fact), and on a read-only source the stored value governs nothing -- the derived `deletable` face stays false whatever it says. Editable later through the property patch. 
+  @BuiltValueField(wireName: r'allowAppDeletion')
+  bool? get allowAppDeletion;
+
+  /// The creator's timeline preference, carried from the creation dialog: `false` keeps the album out of the CREATOR's aggregated timeline from birth -- the same per-user switch `PUT /albums/{albumId}/timeline-preference` writes, landed in the creation itself (a per-user preference, not an album fact: it needs no photos to exist, so the creation is exactly the right moment). Absent or true feeds the timeline (the default -- no preference row is written). The exclusion is the creator's own: the audience members' feeds are governed by their own preference rows, never by this field. 
+  @BuiltValueField(wireName: r'inTimeline')
+  bool? get inTimeline;
 
   /// The accounts the album starts being visible to: the initial `album_shares` set, empty (or absent) meaning \"only me\". Entries that cannot be granted -- an unknown or disabled account, or the caller's own id -- are skipped and reported in the response's `skipped` list, never errors. 
   @BuiltValueField(wireName: r'audience')
@@ -62,6 +72,20 @@ class _$AlbumCreateRequestSerializer implements PrimitiveSerializer<AlbumCreateR
       object.rootPath,
       specifiedType: const FullType(String),
     );
+    if (object.allowAppDeletion != null) {
+      yield r'allowAppDeletion';
+      yield serializers.serialize(
+        object.allowAppDeletion,
+        specifiedType: const FullType(bool),
+      );
+    }
+    if (object.inTimeline != null) {
+      yield r'inTimeline';
+      yield serializers.serialize(
+        object.inTimeline,
+        specifiedType: const FullType(bool),
+      );
+    }
     if (object.audience != null) {
       yield r'audience';
       yield serializers.serialize(
@@ -105,6 +129,22 @@ class _$AlbumCreateRequestSerializer implements PrimitiveSerializer<AlbumCreateR
             specifiedType: const FullType(String),
           ) as String;
           result.rootPath = valueDes;
+          break;
+        case r'allowAppDeletion':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(bool),
+          ) as bool?;
+          if (valueDes == null) continue;
+          result.allowAppDeletion = valueDes;
+          break;
+        case r'inTimeline':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(bool),
+          ) as bool?;
+          if (valueDes == null) continue;
+          result.inTimeline = valueDes;
           break;
         case r'audience':
           final valueDes = serializers.deserialize(

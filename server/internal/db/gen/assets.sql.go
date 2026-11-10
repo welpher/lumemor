@@ -377,14 +377,21 @@ SELECT a.id,
        e.lat,
        e.lon,
        e.alt,
-       e.tz_offset
+       e.tz_offset,
+       p.id AS place_id,
+       pn.name AS locale_name,
+       p.name AS canonical_name
 FROM assets a
 LEFT JOIN exif e ON e.asset_id = a.id
-WHERE a.id = $1
-  AND caller_asset_visible($2, a.id)
+LEFT JOIN places p ON p.id = a.place_id
+LEFT JOIN place_names pn
+       ON pn.geoname_id = p.id AND pn.locale = $1
+WHERE a.id = $2
+  AND caller_asset_visible($3, a.id)
 `
 
 type GetAssetDetailParams struct {
+	Locale string      `json:"locale"`
 	ID     pgtype.UUID `json:"id"`
 	Viewer pgtype.UUID `json:"viewer"`
 }
@@ -420,21 +427,33 @@ type GetAssetDetailRow struct {
 	Lon              pgtype.Float8      `json:"lon"`
 	Alt              pgtype.Float4      `json:"alt"`
 	TzOffset         pgtype.Text        `json:"tz_offset"`
+	PlaceID          pgtype.Int4        `json:"place_id"`
+	LocaleName       pgtype.Text        `json:"locale_name"`
+	CanonicalName    pgtype.Text        `json:"canonical_name"`
 }
 
 // The detail read of GET /assets/{id}: the asset row joined with the
-// exif hot fields the response flattens. The gate is the
-// caller-visible union: the owner's own arms (their
-// sync album holds every upload, whatever the row's state) plus
-// every album shared to the caller. The join only attaches the
-// sidecar of the row that matched. The LEFT JOIN keeps the detail
-// answering before and after the metadata job refined the sidecar:
-// hot fields are NULL until then. description and is_hidden ride
-// along: the PATCH response reuses this read after its
-// writes, so it serves the same shape the GET endpoint serves,
-// applied values included.
+// exif hot fields the response flattens, plus the asset's resolved
+// place (the metadata job's GPS resolution). The name rides as TWO
+// nullable columns -- the request locale's place_names row and the
+// canonical name -- because a place is optional on the asset: sqlc's
+// inference over a bare COALESCE marks the result non-null, and the
+// no-place rows would fail the scan. The handler folds the two with
+// the `GET /places` join's exact discipline (the locale row when the
+// place data carries one, the canonical name otherwise; places.name
+// is NOT NULL, so a valid place_id always answers a name). The gate
+// is the caller-visible union: the owner's own arms (their sync
+// album holds every upload, whatever the row's state) plus every
+// album shared to the caller. The join only attaches the sidecar of
+// the row that matched. The LEFT JOINs keep the detail answering
+// before and after the metadata job refined the sidecar: hot fields
+// are NULL until then, and an asset with no resolved place (no GPS,
+// or no baked place data) answers a null place face.
+// description and is_hidden ride along: the PATCH response reuses
+// this read after its writes, so it serves the same shape the GET
+// endpoint serves, applied values included.
 func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) (GetAssetDetailRow, error) {
-	row := q.db.QueryRow(ctx, getAssetDetail, arg.ID, arg.Viewer)
+	row := q.db.QueryRow(ctx, getAssetDetail, arg.Locale, arg.ID, arg.Viewer)
 	var i GetAssetDetailRow
 	err := row.Scan(
 		&i.ID,
@@ -467,6 +486,9 @@ func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) 
 		&i.Lon,
 		&i.Alt,
 		&i.TzOffset,
+		&i.PlaceID,
+		&i.LocaleName,
+		&i.CanonicalName,
 	)
 	return i, err
 }

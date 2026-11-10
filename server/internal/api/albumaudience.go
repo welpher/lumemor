@@ -9,8 +9,9 @@
 // (unknown, foreign-unshared, every sync album -- the caller's own
 // included, whose face is the timeline) answers the reads'
 // byte-identical single-shape 404, and a sharee answers the honest
-// 403. Locked never gates this face (the freeze is a curation gate;
-// an audience member only ever reads).
+// 403. The audience membership itself is the whole face: no album
+// state gates or filters the write (an audience member only ever
+// reads).
 package api
 
 import (
@@ -163,8 +164,8 @@ func (s *server) applyAlbumAudience(w http.ResponseWriter, r *http.Request, albu
 // own access is the ownership row and never moves. Authorization is
 // the writes' two-tier answer (invisible 404, sharee 403, the owner
 // or an admin override writes); sync albums fold into the 404
-// whatever the caller; locked never gates (the freeze is a curation
-// gate; an audience member only ever reads).
+// whatever the caller; the write's own authorization is the whole
+// gate (an audience member only ever reads).
 func (s *server) UpdateAlbumAudience(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -199,8 +200,6 @@ func (s *server) UpdateAlbumAudience(w http.ResponseWriter, r *http.Request, alb
 	if !ok {
 		return
 	}
-	// Locked never gates this face: the freeze is a curation gate,
-	// and an audience member only ever reads.
 
 	granted, revoked, skipped, ok := s.applyAlbumAudience(w, r, uuid.UUID(albumId),
 		requester.userID, uuid.UUID(gate.Album.OwnerID.Bytes), requested)

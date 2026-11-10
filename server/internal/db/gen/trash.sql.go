@@ -38,36 +38,6 @@ func (q *Queries) CountAssetFileReferences(ctx context.Context, arg CountAssetFi
 	return count, err
 }
 
-const countLockedDirectoryAlbumsOfAsset = `-- name: CountLockedDirectoryAlbumsOfAsset :one
-SELECT count(*) AS locked_albums
-FROM album_items ai
-JOIN albums al ON al.id = ai.album_id
-WHERE ai.asset_id = $1
-  AND al.type = 'directory'
-  AND al.locked
-`
-
-// The album lock's delete gate (the content-protection freeze
-// widened from the rescan to the deletion): how many LOCKED
-// directory albums the asset is a member of. The batch's external
-// trash arm asks this before moving a live row's file -- a nonzero
-// answer refuses the whole batch with the curation writes' own 409,
-// exactly the rescan endpoint's refusal (the owner unlocks first).
-// The lock rides the ALBUM rows, not the asset: one external file
-// can hold memberships of several directory albums (the overlap
-// arm of the old path matrix retired with the allowlist), so the
-// gate counts every containing album -- the freeze of any one of
-// them stops the file's deletion. Only directory albums count:
-// a virtual membership is not the file's home, and a lock on a
-// virtual album never froze a file move. The membership count of
-// one asset bounds the read.
-func (q *Queries) CountLockedDirectoryAlbumsOfAsset(ctx context.Context, assetID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countLockedDirectoryAlbumsOfAsset, assetID)
-	var locked_albums int64
-	err := row.Scan(&locked_albums)
-	return locked_albums, err
-}
-
 const deleteAssetPermanently = `-- name: DeleteAssetPermanently :execrows
 DELETE FROM assets
 WHERE id = $1

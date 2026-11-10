@@ -44,10 +44,9 @@ func bulkAlbumAssetID(i int) uuid.UUID {
 }
 
 // wallAlbumOpts carries the optional column values of a fixture
-// album; the zero value is a plain unlocked album with no pinned
-// cover and the insert time as updated_at.
+// album; the zero value is a plain album with no pinned cover and
+// the insert time as updated_at.
 type wallAlbumOpts struct {
-	locked       bool
 	coverAssetID *uuid.UUID
 	updatedAt    time.Time
 }
@@ -66,10 +65,10 @@ func (e *assetEnv) insertWallAlbum(t *testing.T, id, owner uuid.UUID, albumType,
 		updatedAt = time.Now()
 	}
 	if _, err := e.pool.Exec(context.Background(), `
-		INSERT INTO albums (id, owner_id, title, type, locked, cover_asset_id, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		INSERT INTO albums (id, owner_id, title, type, cover_asset_id, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
 		pgUUID(id), pgUUID(owner), title, albumType,
-		opts.locked, coverAssetID, updatedAt); err != nil {
+		coverAssetID, updatedAt); err != nil {
 		t.Fatalf("insert fixture album %s: %v", id, err)
 	}
 }
@@ -321,9 +320,6 @@ func TestAlbumWall(t *testing.T) {
 	}
 	if virtual.Type != apigen.AlbumSummaryTypeVirtual {
 		t.Errorf("wall[1].type = %q, want virtual", virtual.Type)
-	}
-	if virtual.Locked {
-		t.Error("wall[1].locked = true, want false")
 	}
 	// The share to Grace: the owner's isShared view.
 	if !virtual.IsShared {
@@ -709,9 +705,6 @@ func TestAlbumDetail(t *testing.T) {
 		if page.Type != apigen.AlbumDetailTypeVirtual {
 			t.Errorf("detail type = %q, want virtual", page.Type)
 		}
-		if page.Locked {
-			t.Error("detail locked = true, want false")
-		}
 		if page.CoverAssetId != nil {
 			t.Errorf("detail coverAssetId = %v, want null (no pin)", *page.CoverAssetId)
 		}
@@ -851,9 +844,6 @@ func TestSyncAlbumDetail(t *testing.T) {
 		if page.Type != apigen.AlbumDetailTypeSync {
 			t.Errorf("detail type = %q, want sync (the default album)", page.Type)
 		}
-		if page.Locked {
-			t.Error("detail locked = true, want false (system-managed, never locked)")
-		}
 		if page.CoverAssetId != nil {
 			t.Errorf("detail coverAssetId = %v, want null (no pin can land on a sync album)", *page.CoverAssetId)
 		}
@@ -941,9 +931,7 @@ func TestAlbumDetailViewer(t *testing.T) {
 	graceID, graceCookie := env.createSecondUser(t, "viewer-grace@example.com")
 
 	shared := fixtureWallAlbumID("51")
-	env.insertWallAlbum(t, shared, graceID, "virtual", "For the family", wallAlbumOpts{
-		locked: true,
-	})
+	env.insertWallAlbum(t, shared, graceID, "virtual", "For the family", wallAlbumOpts{})
 	newer := fixtureWallAssetID("51")
 	older := fixtureWallAssetID("52")
 	env.insertTimelineAsset(t, newer, graceID, time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
@@ -959,9 +947,6 @@ func TestAlbumDetailViewer(t *testing.T) {
 		}
 		if detail.Title != "For the family" {
 			t.Errorf("title = %q, want the stored value", detail.Title)
-		}
-		if !detail.Locked {
-			t.Error("locked = false, want true (metadata to a viewer)")
 		}
 		if detail.ItemCount != 2 {
 			t.Errorf("itemCount = %d, want 2", detail.ItemCount)
@@ -1017,8 +1002,8 @@ func TestAlbumDetailViewer(t *testing.T) {
 // faces: the source-writable fact rides directory albums
 // on both roles, the deletability switch and the derived `deletable`
 // face ride the owner's view alone, and the derivation is honest
-// over every arm -- a read-only source or a switched-off or locked
-// album answers false without any runtime probing, and a viewer
+// over every arm -- a read-only source or a switched-off switch
+// answers false without any runtime probing, and a viewer
 // never receives the write faces at all.
 func TestAlbumDetailDeletionFaces(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
@@ -1049,7 +1034,7 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 	virtual := fixtureWallAlbumID("76")
 	env.insertWallAlbum(t, virtual, adminID, "virtual", "Legacy picks", wallAlbumOpts{})
 
-	t.Run("OwnerOfAWritableUnlockedAlbum", func(t *testing.T) {
+	t.Run("OwnerOfAWritableAlbum", func(t *testing.T) {
 		detail := env.getAlbumDetail(t, env.cookie, writable, "")
 		if detail.SourceWritable == nil || !*detail.SourceWritable {
 			t.Errorf("sourceWritable = %v, want true (the probe passed)", detail.SourceWritable)
@@ -1058,7 +1043,7 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 			t.Errorf("allowAppDeletion = %v, want true (the default)", detail.AllowAppDeletion)
 		}
 		if detail.Deletable == nil || !*detail.Deletable {
-			t.Errorf("deletable = %v, want true (owner, writable, on, unlocked)", detail.Deletable)
+			t.Errorf("deletable = %v, want true (owner, writable, on)", detail.Deletable)
 		}
 	})
 
@@ -1075,18 +1060,6 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 			t.Errorf("deletable = %v, want false (the switch is off)", detail.Deletable)
 		}
 		env.patchAlbum(t, env.cookie, writable, `{"allowAppDeletion":true}`) // back on
-	})
-
-	t.Run("LockKillsTheAffordance", func(t *testing.T) {
-		env.patchAlbum(t, env.cookie, writable, `{"locked":true}`)
-		detail := env.getAlbumDetail(t, env.cookie, writable, "")
-		if detail.AllowAppDeletion == nil || !*detail.AllowAppDeletion {
-			t.Errorf("allowAppDeletion = %v, want true (the lock does not flip the switch)", detail.AllowAppDeletion)
-		}
-		if detail.Deletable == nil || *detail.Deletable {
-			t.Errorf("deletable = %v, want false (locked)", detail.Deletable)
-		}
-		env.patchAlbum(t, env.cookie, writable, `{"locked":false}`)
 	})
 
 	t.Run("ReadOnlySourceKillsTheAffordance", func(t *testing.T) {
