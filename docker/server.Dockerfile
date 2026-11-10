@@ -156,7 +156,7 @@ RUN set -eux; \
 #   a changed admin1 stays the maintainer's deliberate re-pin;
 # - alternateNamesV2.zip: the multilingual names. Only the zh rows
 #   of the known geoname ids survive the bake (the en display names
-#   come from the canonical names by the data model's uniform rule,
+#   come from the canonical names by the schema's uniform rule,
 #   so the en alternates would be dead weight; the loader re-applies
 #   both filters, so the staged subset parses to exactly the dataset
 #   the unfiltered dump would).

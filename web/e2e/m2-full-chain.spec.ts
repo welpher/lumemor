@@ -6,7 +6,7 @@
 // first-run bootstrap itself, exactly like the shell acceptance
 // scripts do, through the setup API.
 //
-// THE SCENES (the M2 milestone's full-chain script, in order):
+// THE SCENES (the full-chain script, in order):
 //
 //  1. A deep link to /timeline while signed out redirects to the
 //     login page carrying the path as the post-login target.
@@ -31,16 +31,16 @@
 //  8. Batch hide moves a tile to the hidden view; unhiding from
 //     there returns it to the timeline.
 //  9. The trash page's confirmed delete removes one asset for good
-//     (trashed there through the viewer's action bar, the R2-3
+//     (trashed there through the viewer's action bar, the viewer
 //     rework: the permanent delete lives on the trash page alone).
 // 10. The trash view shows the retention countdown of the asset
 //     trashed through the viewer's action bar, and restores it.
 // 11. The interface-debt surfaces (the 2026-11-09 block): the
 //     drawer carries no settings door (the account dropdown is its
-//     only home, web IA §7.8), `?` opens the keyboard cheat sheet
-//     and `/` focuses the search box (§6), and dropping the network
+//     only home), `?` opens the keyboard cheat sheet
+//     and `/` focuses the search box, and dropping the network
 //     raises the offline strip until the browser's own SSE retry
-//     recovers (§6's pinned state).
+//     recovers.
 // 12. Signing out re-arms the route guard: the deep link redirects
 //     to the login page again.
 //
@@ -124,7 +124,7 @@ function tile(page: Page, name: string) {
 }
 
 /** One tile's selection checkbox (revealed on hover or keyboard focus
- *  on every tile -- R2-11 made the check the selection entry, so it
+ *  on every tile -- the check IS the selection entry, so it
  *  surfaces regardless of any select mode). */
 function tileCheckbox(page: Page, name: string) {
 	return page.getByRole('checkbox', { name: `Select: ${name}`, exact: true });
@@ -441,7 +441,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(tile(page, PHOTO_A_NAME)).toHaveCount(0);
 
 		// The navigation drawer's Hidden entry opens the hidden view
-		// (R2-11: the timeline's toolbar link is gone -- the drawer
+		// (the timeline's toolbar link is gone -- the drawer
 		// owns the entry, beside favorites and trash): the tile lives
 		// there now. The populated view renders the wall itself (month
 		// groups, no page heading), so the document title is the
@@ -473,7 +473,7 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/timeline');
 		await tile(page, PHOTO_B_NAME).click();
 
-		// Trash it through the viewer's ACTION BAR (the R2-3 rework:
+		// Trash it through the viewer's ACTION BAR (the viewer rework:
 		// the curation affordances ride the bar's icon buttons and the
 		// info drawer is metadata-only; the permanent delete lives on
 		// the trash page alone): the drawer's trashed notice carries
@@ -516,7 +516,7 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/timeline');
 		await tile(page, PHOTO_A_NAME).click();
 
-		// Trash it through the viewer's ACTION BAR (the R2-3 rework
+		// Trash it through the viewer's ACTION BAR (the viewer rework
 		// moved the curation affordances from the drawer to the bar's
 		// icon buttons): the trashed notice appears in the drawer, and
 		// the timeline drops the tile.
@@ -557,7 +557,7 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/timeline');
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
 
-		// The drawer (web IA §7.8's 2026-11-09 pin): the content
+		// The drawer (the single-home rule): the content
 		// sections carry NO settings entry for any role -- the
 		// account dropdown is settings' ONLY home.
 		await page.getByRole('button', { name: 'Open navigation' }).click();
@@ -573,7 +573,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
 		await page.keyboard.press('Escape');
 
-		// The `?` cheat sheet (§6): the collected bindings render in
+		// The `?` cheat sheet: the collected bindings render in
 		// the two-column shape, grouped by context; Esc closes.
 		await page.keyboard.press('?');
 		const sheet = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
@@ -584,12 +584,12 @@ test.describe('the signed-in scenes', () => {
 		await page.keyboard.press('Escape');
 		await expect(sheet).toHaveCount(0);
 
-		// The `/` focus-search binding (§6): the stroke lands the
+		// The `/` focus-search binding: the stroke lands the
 		// focus on the topbar's search box.
 		await page.keyboard.press('/');
 		await expect(page.locator('input.topbar-search')).toBeFocused();
 
-		// The offline strip (§6's pinned state): the SSE stream dies at
+		// The offline strip: the SSE stream dies at
 		// the network layer -- the events request is aborted at the
 		// route (the surgical equivalent of the connection dropping:
 		// the page itself stays healthy, only the stream is gone).

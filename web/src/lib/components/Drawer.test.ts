@@ -75,7 +75,7 @@ test('closed renders nothing; open renders the eight content items in IA order',
 	const panel = document.body.querySelector<HTMLElement>('nav.drawer__panel');
 	expect(panel?.getAttribute('aria-label')).toBe('Navigation');
 
-	// The IA's route-table order, all eight visible -- the hidden
+	// The route-table order, all eight visible -- the hidden
 	// view's entry moved here from the timeline's toolbar and
 	// sits with the other list views (favorites/trash). The settings
 	// entry is gone: the account dropdown is its only

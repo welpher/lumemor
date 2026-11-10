@@ -107,7 +107,7 @@ func ValidTranscodingConcurrency(concurrency int) bool {
 
 // TrashRetentionDays reads the instance's trash retention in days.
 // A missing setting row answers the default (an instance that never
-// wrote the setting runs on the spec's default). A value that is not
+// wrote the setting runs on the documented default). A value that is not
 // a non-negative integer (the row exists but holds garbage) ALSO
 // answers the default, together with the error describing it: the
 // callers log the error and proceed on the returned value, because

@@ -4,7 +4,7 @@
 	// upload action and the account avatar. The avatar opens the
 	// dropdown that carries the two appearance toggles (theme and
 	// language, from the shared wiring task) and the logout action.
-	// The drawer carries the IA's content sections; the search box
+	// The drawer carries the content sections; the search box
 	// navigates to the search page (the commit is Enter, the
 	// search page owns the query state from there) and the upload
 	// action drives the queue overlay.

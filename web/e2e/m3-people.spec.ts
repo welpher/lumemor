@@ -48,7 +48,7 @@
 //     dialog, its detail's "Merge into…" folds it into the first
 //     person, and the named region shows the survivor with the
 //     merged face count while the merged-away person is gone.
-//  7. The viewer's face chips (the M3b Task 5 surface): a face card
+//  7. The viewer's face chips: a face card
 //     of the detail deep-links into the asset viewer, whose info
 //     drawer carries the person's name on the face's chip.
 //

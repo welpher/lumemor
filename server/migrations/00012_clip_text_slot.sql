@@ -3,8 +3,8 @@
 -- the clip-text functional slot the search's semantic path resolves
 -- its query encoder through.
 --
--- The enum carried stt unclaimed from the start ("the enum is built
--- once in full, zero-cost reserved" -- the data model's own words),
+-- The enum carried stt unclaimed from the start: the enum is built
+-- once in full, with the value reserved at zero cost,
 -- but no value for a text tower: this is the first
 -- slot addition, and it cannot ride clip_embed -- the registry pins
 -- AT MOST ONE ACTIVE MODEL PER SLOT (the models_active_slot_uq

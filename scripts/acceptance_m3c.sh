@@ -90,8 +90,8 @@
 # convergence, the edit dialog's audience grant and autonomy block,
 # the member's read-only perspective with the creation guard's
 # refusal matrix, and the deletable wall's delete-only selection
-# with its trash/restore round trip (the spec seeds and heals the
-# writable fixture itself). The spec bootstraps itself (the first-run
+# with its trash/restore round trip (the e2e spec seeds and heals the
+# writable fixture itself). The e2e spec bootstraps itself (the first-run
 # admin and the member account through the APIs, the model group's
 # download through the admin API), exactly the way every prior e2e
 # spec owns its stack's bootstrap.

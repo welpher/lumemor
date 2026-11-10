@@ -5,7 +5,7 @@
 // (soft delete, restore) is strictly owner-scoped -- a foreign id
 // answers the anti-enumeration 404, byte-identical with an unknown
 // one -- while the explicit permanent delete also admits
-// administrators, the application layer of the spec's two-layer
+// administrators, the application layer of the two-layer
 // delete gate.
 //
 // The file half splits on the row's storage kind: a

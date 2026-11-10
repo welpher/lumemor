@@ -455,7 +455,7 @@
 		<div class="person-detail__grid grid grid-cols-[repeat(auto-fill,minmax(min(200px,100%),1fr))] gap-3">
 			{#each detail.faces as face (face.id)}
 				<!-- One face: the crop links into the asset viewer at the
-				     face's asset (the IA's route-level viewer), the context
+				     face's asset (the route-level viewer), the context
 				     carries the file name and the capture date, and the
 				     move button opens the single-face move dialog. -->
 				<div

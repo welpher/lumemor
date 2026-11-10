@@ -96,7 +96,7 @@ var manifestSlotNames = map[ml.Slot]string{
 	ml.SlotOcr:           "ocr",
 }
 
-// registerFixtureModel lays the spec's model directory out under the
+// registerFixtureModel lays the fixture's model directory out under the
 // environment's models dir (manifest.json plus the weights, pinned by
 // digest -- the layout of a landed download), scans it into the
 // registry and returns the model id. It does NOT activate.
@@ -142,7 +142,7 @@ func (e *env) registerFixtureModel(t *testing.T, spec fixtureModelSpec) string {
 	return spec.id
 }
 
-// activateFixtureModel registers and activates the spec's model in its
+// activateFixtureModel registers and activates the fixture's model in its
 // slot, failing the test unless it became the active one.
 func (e *env) activateFixtureModel(t *testing.T, spec fixtureModelSpec) string {
 	t.Helper()

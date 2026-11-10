@@ -139,7 +139,7 @@ func TestMetadataJobResolvesPlace(t *testing.T) {
 	requirePlaceID(t, e, id, ptrInt32(placeParisFixtureID), "the re-run's resolution")
 }
 
-// TestMetadataJobPlaceBeyondThresholdIsNull pins the spec's hard
+// TestMetadataJobPlaceBeyondThresholdIsNull pins the hard
 // edge: GPS coordinates with no grid city within 25 km resolve to
 // NULL -- no fallback, no widening, the honest absence.
 func TestMetadataJobPlaceBeyondThresholdIsNull(t *testing.T) {

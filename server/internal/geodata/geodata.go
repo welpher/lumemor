@@ -15,7 +15,7 @@
 // releases every stale resolution, the state the admin
 // re-resolution run then refills.
 //
-// The locale discipline follows the data model: place_names carries
+// The locale discipline follows the schema: place_names carries
 // one row per (geoname id, locale) for the UI's language set -- the
 // en row of every city AND every admin1 entity comes from the
 // canonical name (one uniform rule, no special casing), the zh-Hans
@@ -78,7 +78,7 @@ const (
 const ResolutionRadiusKm = 25.0
 
 // Place is one places row: a GeoNames city centroid. The place
-// tables carry no audit columns (the data model exempts them:
+// tables carry no audit columns (the schema exempts them:
 // read-only imports, no application-side updates).
 type Place struct {
 	// ID is the GeoNames geonameid.

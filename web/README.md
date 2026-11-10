@@ -36,7 +36,7 @@ embed directive in `server/internal/web/embed.go` ("no matching files
 found") — that loud failure pins the build order; CI runs the web
 build before the Go build.
 
-## Route groups (directory contract from the web IA design)
+## Route groups (the directory-name contract)
 
 ```
 src/routes/

@@ -67,7 +67,7 @@ WHERE key = $1
 // startup import of the baked GeoNames rows and the read surface of
 // the caller-visible city grouping.
 //
-// places/place_names are reference tables in the data model's sense:
+// places/place_names are reference tables in the schema's sense:
 // read-only imports with no audit columns (the schema exempts them
 // deliberately -- no application-side updates, the import is the only
 // writer). The import replaces wholesale: the DELETE pair empties the

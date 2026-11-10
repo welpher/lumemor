@@ -38,7 +38,7 @@
 // Memory: the centroids ride one flat slice (20 bytes per row), the
 // grid holds one int32 index per centroid plus one slice header per
 // cell (64,800 cells) -- about 7 MiB for the ~185k-row cities500
-// bake, well inside the data model's budget.
+// bake, well inside the memory budget.
 package geodata
 
 import "math"

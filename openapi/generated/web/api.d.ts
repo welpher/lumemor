@@ -1440,7 +1440,7 @@ export interface paths {
          *     The `locked` field itself is never gated: a patch of only
          *     `locked: false` IS the unlock.
          *
-         *     Cover validation (the spec's application-layer pin): a
+         *     Cover validation (the application-layer check): a
          *     present `coverAssetId` must be a LIVE member of THIS album --
          *     the membership row exists and the asset passes the live
          *     predicate (not trashed, not hidden, not a Live Photo
