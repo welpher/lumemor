@@ -3,8 +3,8 @@ import type { PageLoad } from './$types';
 import { sessionStatus } from '$lib/auth/session.svelte';
 
 /**
- * The `/`-versus-`/timeline` decision of Task 3, resolved here (M2d
- * Task 4): an authenticated visitor landing on `/` is sent to the
+ * The `/`-versus-`/timeline` decision, resolved here: an
+ * authenticated visitor landing on `/` is sent to the
  * timeline, the app's home surface -- the welcome placeholder has
  * nothing to offer once the wall exists. The login flow's default
  * target stays `/timeline`, so nothing else moves.

@@ -517,8 +517,8 @@ export interface paths {
          *     Photo pair included (trashing or restoring the photo carries
          *     its component video row along, whichever row the id names).
          *
-         *     The trash arm splits on the row's storage kind, the §A6/E4
-         *     table's two semantics: a `blob` row is soft-deleted in
+         *     The trash arm splits on the row's storage kind, its
+         *     two semantics: a `blob` row is soft-deleted in
          *     place (the file stays until expiry), while an `external`
          *     row's file is MOVED into the server's trash area
          *     (`data/trash/<assetId>/`) with `original_path` and
@@ -661,7 +661,7 @@ export interface paths {
          *     write endpoints maintain, and the caller's own tags on the
          *     asset (`tags`, name ascending), which the detail view's tag
          *     section renders and the tags endpoints maintain -- another
-         *     account's tags on the same asset never surface here (B4).
+         *     account's tags on the same asset never surface here.
          *
          *     Access is the caller-visible gate: the asset's owner, and
          *     every member of an album the caller sees -- their own sync
@@ -708,8 +708,8 @@ export interface paths {
          *     `ASSET_NOT_FOUND` as an id that does not exist, byte for
          *     byte, so asset ids cannot be enumerated. (The file-system
          *     layer of the gate matters for directory albums, whose files
-         *     move on delete; it arrives with the album domain in a later
-         *     milestone -- blob originals live inside the server's own data
+         *     move on delete; it arrives with the album domain later --
+         *     blob originals live inside the server's own data
          *     directory.)
          *
          *     The ordinary client "delete" is the trash (soft delete
@@ -1025,8 +1025,8 @@ export interface paths {
          *     views, not evicted from its albums). The component video row
          *     of a Live Photo is restored with its photo.
          *
-         *     The restore splits on the row's storage kind, the §A6/E4
-         *     table's two semantics: a `blob` row's file never moved (the
+         *     The restore splits on the row's storage kind, its
+         *     two semantics: a `blob` row's file never moved (the
          *     mark was the whole trash), while an `external` row's file
          *     was moved into the server's trash area -- the restore moves
          *     it back to the `original_path` the row recorded. A location
@@ -1101,7 +1101,7 @@ export interface paths {
          *     as the tiebreak, fewer when the album holds fewer members,
          *     empty for an album with none. `itemCount` counts live
          *     members under the same predicate: trashed, hidden and Live
-         *     Photo component rows never count (A5 -- a hidden asset is
+         *     Photo component rows never count (a hidden asset is
          *     invisible to the whole family).
          *
          *     `isShared` reports whether the album carries at least one
@@ -1139,7 +1139,7 @@ export interface paths {
          *     Mounting an existing photo directory is a CONFIGURATION act:
          *     it points the application at a filesystem location, and a
          *     plain member never sees the container's filesystem at all.
-         *     Creation is therefore the administrator's alone (the E6
+         *     Creation is therefore the administrator's alone (the
          *     boundary ruling): a signed-in member whose role is not
          *     `admin` answers 403 `AUTH_FORBIDDEN` before any part of the
          *     request is considered -- the refusal-matrix semantics of the
@@ -1240,7 +1240,7 @@ export interface paths {
          *     read, drilled segment by segment. The compose file's mounts
          *     ARE the boundary -- the operator decides what the container
          *     sees, and the completion honestly reflects that visibility
-         *     instead of a software-layer allowlist (the E6 retirement:
+         *     instead of a software-layer allowlist (the retirement:
          *     the mount-root allowlist that used to confine this endpoint
          *     died whole, with its settings face and its validation
          *     branches). The ONE exclusion that stays is the server's own
@@ -1334,7 +1334,7 @@ export interface paths {
          *     `addedAt` and the minimal asset context the grid renders;
          *     `thumbnail` is the asset thumbnail endpoint's `tile`-size
          *     URL. Live members only: trashed, hidden and Live Photo
-         *     component rows never appear (A5 -- a hidden asset is
+         *     component rows never appear (a hidden asset is
          *     invisible to the whole family).
          *
          *     `coverAssetId` is the raw pinned column: the single asset
@@ -1488,8 +1488,8 @@ export interface paths {
          *
          *     The rows this face removes are rows no face writes anymore
          *     (the albums-as-sources design retired the membership add):
-         *     virtual albums created before E4, and whatever membership a
-         *     later flow leaves behind -- the removal is the tidy-up of
+         *     virtual albums from before the rework, and whatever
+         *     membership a later flow leaves behind -- the removal is the tidy-up of
          *     the set, not a curation flow.
          *
          *     The removal carries no live predicate: a trashed member's
@@ -1590,7 +1590,7 @@ export interface paths {
         put?: never;
         /**
          * Start one rescan of a directory album's source.
-         * @description The E4 rescan trigger: one run that walks the directory
+         * @description The rescan trigger: one run that walks the directory
          *     album's source root on the server and reconciles the album's
          *     membership with what the filesystem holds. The walk never
          *     follows symlinks -- a symlinked entry is skipped, a symlinked
@@ -1604,7 +1604,7 @@ export interface paths {
          *       absolute path, zero copy zero move) and its album
          *       membership land in one transaction, and the existing
          *       pipeline jobs (metadata, thumbnail, and for a video the
-         *       transcode) run over the referenced file exactly like an
+         *       transcode) run over that file exactly like an
          *       upload's. An owner+checksum duplicate of content the owner
          *       already holds never creates a second row: a live duplicate
          *       gains the album membership, a trashed duplicate is left
@@ -1747,7 +1747,7 @@ export interface paths {
          *     - the caller has labeled it with a `user_face_labels` row of
          *       their own.
          *
-         *     The B4 semantics of the people domain: face clusters are
+         *     The per-user-state semantics of the people domain: face clusters are
          *     GLOBAL structures of the instance (the same person's faces
          *     land in one cluster whatever account uploaded the photos),
          *     while names and the hidden switch are PRIVATE per user --
@@ -1790,7 +1790,7 @@ export interface paths {
          *     `user_face_labels` row of the caller. The moment the caller
          *     labels a cluster it moves to `GET /people` and out of this
          *     list; another account's label never moves it for this
-         *     caller (B4: clusters are global, labels are private per
+         *     caller (clusters are global, labels are private per
          *     user).
          *
          *     Pages are keyset-paginated with an opaque cursor over the
@@ -1833,7 +1833,7 @@ export interface paths {
          *     `label` is null when the caller has not labeled the cluster
          *     (the unnamed state). It is the CALLING user's label or no
          *     label at all: another account's label never shows here
-         *     (B4 -- clusters are global, labels are private per user).
+         *     (clusters are global, labels are private per user).
          *
          *     404 has a double meaning by design: the cluster id is
          *     unknown, or the cluster exists but none of its faces sits on
@@ -1868,8 +1868,8 @@ export interface paths {
         /**
          * Name one face cluster (the caller's private label).
          * @description Upserts the calling user's label of one face cluster: the
-         *     `user_face_labels` row keyed (userId, clusterId) -- the B4
-         *     write. The cluster must be visible to the caller (at least
+         *     `user_face_labels` row keyed (userId, clusterId) -- the
+         *     per-user write. The cluster must be visible to the caller (at least
          *     one of its faces sits on an asset visible to them -- their
          *     own, or one shared to them through an album, so a sharee
          *     names the people they see); an unknown or invisible cluster
@@ -1890,7 +1890,7 @@ export interface paths {
          *     the hidden switch keeps its state (a rename is not an
          *     unhide). The label is the caller's private state -- another
          *     account labeling the same cluster writes its own row and
-         *     neither sees the other's (B4).
+         *     neither sees the other's.
          *
          *     The write publishes `person.labeled` on the activity stream
          *     with the acting user's id in the payload.
@@ -1903,7 +1903,7 @@ export interface paths {
          *     cluster: the person returns to the caller's unnamed region
          *     (`GET /people/unnamed`) and out of the caller's named list.
          *     The cluster itself and every other account's label survive
-         *     (B4 -- labels are private per user; only the caller's own
+         *     (labels are private per user; only the caller's own
          *     row dies).
          *
          *     The write is idempotent once the cluster is visible: naming
@@ -1942,7 +1942,7 @@ export interface paths {
          *     Hidden people STAY in the caller's `GET /people` list
          *     carrying `isHidden` true (badge semantics, not a filter).
          *     The switch is the caller's private state: hiding a cluster
-         *     never touches another account's label row (B4).
+         *     never touches another account's label row.
          *
          *     The cluster must be visible to the caller -- an unknown or
          *     invisible cluster id answers the same byte-identical 404
@@ -2141,7 +2141,7 @@ export interface paths {
          *     pins, applied to cities.
          *
          *     `name` is the locale-joined display name: the
-         *     `place_names` row of the requested locale when the reference
+         *     `place_names` row of the requested locale when the place
          *     data carries one, the GeoNames canonical (English or
          *     romanized) name otherwise. Locale is a REQUEST parameter
          *     (the web app owns the active locale and passes it along);
@@ -2165,7 +2165,7 @@ export interface paths {
          *     Place resolution itself (which asset belongs to which city)
          *     is the ingestion pipeline's business -- the metadata job's
          *     GPS step and the admin re-resolution run -- and follows the
-         *     reference data baked into the server image; this endpoint
+         *     place data baked into the server image; this endpoint
          *     only reads what those wrote.
          */
         get: operations["listPlaces"];
@@ -2284,7 +2284,7 @@ export interface paths {
          *     like the places listing -- a family instance's vocabulary is
          *     a bounded set, one document.
          *
-         *     Tags are per-user state (B4, the favorites' privacy shape):
+         *     Tags are per-user state (the favorites' privacy shape):
          *     the tags' owner is always the caller, and no tag, name or
          *     count of another account ever surfaces here. The listing
          *     carries the vocabulary in full -- a tag whose every member is
@@ -2412,7 +2412,7 @@ export interface paths {
          *     shared to them), the same resolution the favorites arms of
          *     the batch endpoint apply. The union deliberately carries
          *     tags: a sharee tags what they see with THEIR OWN tag, and
-         *     the owner's tag on the same asset stays untouched (B4 -- the
+         *     the owner's tag on the same asset stays untouched (the
          *     assignment rows are per-user). An unknown id, another
          *     account's unshared asset, and any id the caller cannot see
          *     are silently skipped, never errors. An id that already
@@ -2553,8 +2553,8 @@ export interface paths {
          *     the response, not on a re-login).
          *
          *     THE DOWNLOAD PREFERENCES ARE DECLARATIVE: the batch and
-         *     whole-album download endpoints do not exist yet (they are a
-         *     later milestone's surface); the preferences persist here so
+         *     whole-album download endpoints do not exist yet (they arrive with a later
+         *     surface); the preferences persist here so
          *     those flows will read the account's default packaging when
          *     they arrive -- a stored preference is never silently
          *     dropped, it is simply not consumed yet. This is documented
@@ -2695,8 +2695,8 @@ export interface paths {
          *     own create endpoint, so it answers every account in one
          *     response: there is no pagination, no filtering and no
          *     ordering parameter. Account rows never disappear (deleting
-         *     an account together with its data is a later milestone's
-         *     disposal flow), so a refetch after any write reconciles the
+         *     an account together with its data is a later disposal
+         *     flow), so a refetch after any write reconciles the
          *     list completely.
          *
          *     The endpoint is admin-only: the session middleware
@@ -2943,7 +2943,7 @@ export interface paths {
          *     rows no active-model query could see. The run's scope is
          *     every image asset that finished its pipeline and is not in
          *     the trash (ML work belongs after asset readiness, and video
-         *     assets stay out of ML in this milestone); `total` and `done`
+         *     assets stay out of ML so far); `total` and `done`
          *     of the run's row count those assets and `failed` the ones
          *     whose rerun failed -- progress in asset counts, not bytes
          *     (the model download's row counts pinned bytes and failed
@@ -2956,8 +2956,8 @@ export interface paths {
          *     new one -- the rerun is manual, so a second click after a
          *     completed (or failed) run starts a fresh run.
          *
-         *     The per-asset ML workers of the slots arrive with the later
-         *     tasks of this milestone; until a slot's dispatch is wired, a
+         *     The per-asset ML workers of the slots arrive later;
+         *     until a slot's dispatch is wired, a
          *     rerun of that slot still creates the run but the run fails
          *     (state `failed`, zero progress) instead of pretending to
          *     have done work it cannot do.
@@ -3016,10 +3016,10 @@ export interface paths {
          * Start a full place re-resolution run.
          * @description The places-data-update path of the admin surface: one run
          *     that re-resolves the place of EVERY asset whose exif row
-         *     carries GPS coordinates, against the reference data the
+         *     carries GPS coordinates, against the baked place data the
          *     server currently runs on. The run that refills resolutions
          *     after the baked GeoNames data changed -- the startup import
-         *     of a rebuilt image replaces the reference tables and, through
+         *     of a rebuilt image replaces the place tables and, through
          *     the schema's ON DELETE SET NULL, releases every stale
          *     resolution; this run is the deliberate step that refills
          *     them. (The metadata job resolves every NEW upload on its
@@ -3037,7 +3037,7 @@ export interface paths {
          *     `running`) answers 200 with its identifier and starts
          *     nothing; a finished (or failed) run never blocks a new one.
          *
-         *     The run is API-only in this milestone: no admin page button
+         *     The run is API-only for now: no admin page button
          *     is wired to it yet (the job panel's listing shows its
          *     progress like any other run).
          */
@@ -3833,8 +3833,7 @@ export interface components {
          *     semantic arm -- the CLIP text tower that embeds queries into
          *     the vision tower's joint embedding space (it produces no
          *     per-asset rows, so its rerun endpoint answers 400
-         *     `MODEL_INVALID`); a speech slot arrives with a later
-         *     milestone.
+         *     `MODEL_INVALID`); a speech slot arrives later.
          * @enum {string}
          */
         ModelSlot: "face_detect" | "face_recognize" | "clip_embed" | "clip_text" | "ocr";
@@ -4289,7 +4288,7 @@ export interface components {
             /**
              * @description The asset's faces as the calling user sees them, strongest
              *     score first with the face id as the tiebreak. The array is
-             *     caller-scoped (B4): the asset being visible to the caller
+             *     caller-scoped: the asset being visible to the caller
              *     is the gate -- the faces ride on the detail's own
              *     permission -- and each entry's `label` is the caller's own
              *     label of the face's cluster, never another account's.
@@ -4300,7 +4299,7 @@ export interface components {
              */
             faces: components["schemas"]["AssetFaceSummary"][];
             /**
-             * @description The CALLER's tags on this asset (B4): the caller's own
+             * @description The CALLER's tags on this asset: the caller's own
              *     assignment rows joined to their own tag rows, sorted by
              *     name case-insensitively with the tag id as the tiebreak
              *     (the vocabulary listing's own ordering). Another
@@ -4316,8 +4315,8 @@ export interface components {
         /**
          * @description One face of the asset detail's `faces` array: the crop's
          *     identity, the detection score, the face's cluster and the
-         *     CALLER's label of that cluster. The label is per-user state
-         *     (B4): another account's label of the same global cluster never
+         *     CALLER's label of that cluster. The label is per-user state:
+         *     another account's label of the same global cluster never
          *     shows here. `clusterId` is null while the face waits for its
          *     first clustering assignment; such a face has no person yet and
          *     every assignment write on it answers the people surface's 404.
@@ -4359,8 +4358,8 @@ export interface components {
         /**
          * @description One entry of the asset detail's `tags` array: the caller's
          *     own tag as it rides the asset -- identity and name only, the
-         *     vocabulary's listing face carries the counts. Per-user state
-         *     (B4): the entry exists exactly because the CALLER's
+         *     vocabulary's listing face carries the counts. Per-user state:
+         *     the entry exists exactly because the CALLER's
          *     assignment row does.
          */
         AssetTagSummary: {
@@ -4795,7 +4794,7 @@ export interface components {
         /**
          * @description One named person of the caller's people list: a global face
          *     cluster carrying the caller's own label. The name and the
-         *     hidden switch are the caller's private label state (B4) --
+         *     hidden switch are the caller's private label state --
          *     another account labeling or hiding the same cluster never
          *     changes this view.
          */
@@ -4841,8 +4840,8 @@ export interface components {
          * @description One unnamed face cluster of the caller's unnamed region: a
          *     global cluster the caller sees through at least one visible
          *     asset and has not labeled themselves. Unlabeled for THIS
-         *     caller says nothing about another account's labels (B4 --
-         *     labels are private per user).
+         *     caller says nothing about another account's labels
+         *     (labels are private per user).
          */
         UnnamedClusterSummary: {
             /**
@@ -4902,7 +4901,7 @@ export interface components {
              * @description The caller's label of the cluster, or null when the
              *     caller has not labeled it (the unnamed state). It is the
              *     calling user's label or no label at all: another
-             *     account's label never shows here (B4).
+             *     account's label never shows here.
              */
             label: components["schemas"]["PersonLabel"] | null;
             /**
@@ -4993,8 +4992,8 @@ export interface components {
         };
         /**
          * @description The calling user's label state of one face cluster after a
-         *     label or hidden write: the caller's own row only (B4 --
-         *     another account's label never shows here).
+         *     label or hidden write: the caller's own row only
+         *     (another account's label never shows here).
          */
         PersonLabelResponse: {
             /**
@@ -5085,7 +5084,7 @@ export interface components {
             placeId: number;
             /**
              * @description The display name in the request's locale: the
-             *     `place_names` row of that locale when the reference data
+             *     `place_names` row of that locale when the place data
              *     carries one, the GeoNames canonical (English or
              *     romanized) name otherwise. A locale switch changes this
              *     join only, never an asset row.
@@ -5166,7 +5165,7 @@ export interface components {
          *     the current query and filters" (the dimension's own filter
          *     parameters excluded). Every facet is caller-scoped exactly
          *     like the surface it summarizes: places count visible assets,
-         *     tags and people are the caller's own (B4), albums are the
+         *     tags and people are the caller's own, albums are the
          *     ones the caller can see. The lists are ordered by
          *     `assetCount` descending with a deterministic per-dimension
          *     tiebreak; they are not paginated (bounded by the family
@@ -5176,7 +5175,7 @@ export interface components {
             /**
              * @description The caller's named, non-hidden people: one entry per
              *     labeled face cluster with a face on the current set.
-             *     Hidden labels never list (the B4 hidden switch removes
+             *     Hidden labels never list (the hidden switch removes
              *     the person from every face position).
              */
             people: components["schemas"]["PersonFacetCount"][];
@@ -5207,8 +5206,8 @@ export interface components {
              */
             albums: components["schemas"]["AlbumFacetCount"][];
             /**
-             * @description The CALLER's tags with members in the current set (B4:
-             *     another account's tags never surface).
+             * @description The CALLER's tags with members in the current set
+             *     (another account's tags never surface).
              */
             tags: components["schemas"]["TagFacetCount"][];
         };
@@ -5488,7 +5487,7 @@ export interface components {
             coverAssetIds: string[];
             /**
              * @description The album's live member count: trashed, hidden and Live
-             *     Photo component rows never count (A5 -- a hidden asset is
+             *     Photo component rows never count (a hidden asset is
              *     invisible to the whole family).
              */
             itemCount: number;
@@ -5705,8 +5704,8 @@ export interface components {
             thumbnail: string;
         };
         /**
-         * @description The creation body of one directory album (E4's
-         *     albums-as-sources): the title, the existing directory the
+         * @description The creation body of one directory album
+         *     (albums-as-sources): the title, the existing directory the
          *     album references in place, and the audience the album starts
          *     with. No type field exists -- this endpoint IS directory
          *     creation, the only creatable album type. No description
@@ -9406,7 +9405,7 @@ export interface operations {
                 /**
                  * @description Restrict the results to assets carrying one of the
                  *     CALLER's tags. Another account's tag ids drop out of the
-                 *     filter (B4: tags are per-user state).
+                 *     filter (tags are per-user state).
                  */
                 tagIds?: string[];
                 /**

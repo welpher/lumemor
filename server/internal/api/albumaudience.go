@@ -1,4 +1,4 @@
-// The album audience face (E4, the albums-as-sources milestone): the
+// The album audience face (the albums-as-sources rework): the
 // full-set write behind PUT /albums/{albumId}/audience, the one
 // write surface of "who can see this album". The audience is an
 // album property, and this endpoint converges the album_shares rows
@@ -60,7 +60,7 @@ func (s *server) publishAlbumShareEvent(name string, albumID, granteeID uuid.UUI
 // that keeps the id out of the audience. An unknown id and a
 // disabled account fold into the same invalid_account reason so user
 // ids cannot be probed through this face, the discipline the
-// one-row grant kept before E4 folded it into the set write.
+// one-row grant kept before the set write folded it in.
 func (s *server) albumAudiencePlan(ctx context.Context, ownerID uuid.UUID, requested []uuid.UUID) ([]uuid.UUID, []apigen.AlbumAudienceSkip, error) {
 	usable, err := s.queries.ListUsableShareTargets(ctx, pgUUIDs(requested))
 	if err != nil {

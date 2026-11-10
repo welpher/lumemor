@@ -1,4 +1,4 @@
-// The upload queue of the web app (the M2d plan's Task 5): a
+// The upload queue of the web app: a
 // module-level singleton over the three-state upload contract,
 //
 //   POST /api/v1/assets            (one photo per request, multipart)
@@ -32,7 +32,7 @@
 //   `created` answer leaves the item `processing` until the SSE
 //   `asset.ready` for that asset id arrives; `duplicate` is done
 //   immediately (a live asset is ready by definition).
-// - Each File object is enqueued verbatim; the Review Focus ③
+// - Each File object is enqueued verbatim; the pinned
 //   save-as semantics re-upload the very same bytes.
 //
 // THE STATE MACHINE (per item)
@@ -110,7 +110,7 @@ export type UploadQueueDeps = {
 	fetcher: typeof fetch;
 };
 
-/** The pinned concurrency cap of the M2d plan. */
+/** The pinned upload concurrency cap. */
 export const UPLOAD_CONCURRENCY = 3;
 
 /** The server's upload whitelist, format set v1 (the hint-level mirror). */

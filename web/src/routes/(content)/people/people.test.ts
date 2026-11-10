@@ -10,7 +10,7 @@ import Page from './+page.svelte';
 // listed), the empty and error states with their affordances, the
 // card links into the cluster detail, and the SSE convergence: every
 // person.* event refetches the list and the SERVER's answer decides
-// what changed (B4 -- labels are private per user, so an event from
+// what changed (labels are private per user, so an event from
 // another account's write must move nothing the server does not
 // move; the page never invents state). The events module is mocked
 // with a captured handler registry, the timeline page's pattern.
@@ -263,7 +263,7 @@ test('SSE person.hidden converges: the badge follows the refetched switch', asyn
 	flushSync();
 });
 
-test('a foreign label event moves nothing the server does not move (B4: server truth only)', async () => {
+test('a foreign label event moves nothing the server does not move (server truth only)', async () => {
 	peopleState = [ada];
 	vi.stubGlobal('fetch', stubFetch());
 	const page = mountPage();

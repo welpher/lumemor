@@ -13,7 +13,7 @@ part 'place_summary.g.dart';
 ///
 /// Properties:
 /// * [placeId] - The GeoNames geonameid of the place -- the `places` row's primary key and the `assets.place_id` foreign key the ingestion pipeline's resolution writes. 
-/// * [name] - The display name in the request's locale: the `place_names` row of that locale when the reference data carries one, the GeoNames canonical (English or romanized) name otherwise. A locale switch changes this join only, never an asset row. 
+/// * [name] - The display name in the request's locale: the `place_names` row of that locale when the place data carries one, the GeoNames canonical (English or romanized) name otherwise. A locale switch changes this join only, never an asset row. 
 /// * [country] - The place's ISO 3166-1 alpha-2 country code. The display country name is the client's business (its own locale table maps the code). 
 /// * [assetCount] - The place's caller-visible live assets -- the honest per-caller count, not the global member count. 
 /// * [representativeCoverAssetIds] - The place's cover candidates: its (up to) four most recent caller-visible live members, taken_at descending with the asset id as the tiebreak -- the wall's derived-cover discipline applied to city groups, newest first. 
@@ -23,7 +23,7 @@ abstract class PlaceSummary implements Built<PlaceSummary, PlaceSummaryBuilder> 
   @BuiltValueField(wireName: r'placeId')
   int get placeId;
 
-  /// The display name in the request's locale: the `place_names` row of that locale when the reference data carries one, the GeoNames canonical (English or romanized) name otherwise. A locale switch changes this join only, never an asset row. 
+  /// The display name in the request's locale: the `place_names` row of that locale when the place data carries one, the GeoNames canonical (English or romanized) name otherwise. A locale switch changes this join only, never an asset row. 
   @BuiltValueField(wireName: r'name')
   String get name;
 

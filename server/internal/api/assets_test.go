@@ -547,8 +547,8 @@ func TestUploadAssetTrashedState(t *testing.T) {
 
 	created := decodeAsset(t, env.postUpload(t, fields, files))
 
-	// The trash flow is M2c work; the test drives the soft-delete
-	// directly, which is the state it produces.
+	// The trash flow is another surface's work; the test drives the
+	// soft-delete directly, which is the state it produces.
 	env.exec(t, "UPDATE assets SET deleted_at = now() WHERE id = $1", created.Id)
 
 	reupload := env.postUpload(t, fields, files)
@@ -577,8 +577,8 @@ func TestUploadAssetTrashedState(t *testing.T) {
 	}
 }
 
-// TestUploadAssetConcurrent mirrors the setup concurrency pattern of
-// M1: two uploads of identical bytes, genuinely in flight at the same
+// TestUploadAssetConcurrent mirrors the setup concurrency pattern:
+// two uploads of identical bytes, genuinely in flight at the same
 // time, must resolve through the database constraint into exactly one
 // created asset and one duplicate answer.
 func TestUploadAssetConcurrent(t *testing.T) {
@@ -898,7 +898,7 @@ func (r *recordingEnqueuer) EnqueueTranscode(ctx context.Context, id uuid.UUID) 
 // the request context with its cancellation removed, so a client that
 // vanishes in the commit-to-enqueue window cannot fail the enqueue and
 // strand the asset's pending-jobs counter forever. The Live Photo arm
-// pins the M2d component enqueue: a video-family liveVideo part adds
+// pins the component enqueue: a video-family liveVideo part adds
 // exactly one transcode job -- for the COMPONENT id -- on the same
 // disconnect-safe context, while an image-family part adds none (the
 // enqueue mirrors the pending_jobs initialization).
@@ -1405,7 +1405,7 @@ func TestGetAssetByDeviceId(t *testing.T) {
 }
 
 // createSecondUser seeds a plain user directly in the database (admin
-// user management is M2d) and returns the user's id together with a
+// user management is a separate surface) and returns the user's id together with a
 // session cookie of that user. The row carries no sync album: callers
 // that need one insert it (fixtures) or let the upload path's ensure
 // create it, which is exactly the recovery the ensure exists for.

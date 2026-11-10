@@ -3,8 +3,8 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Layout from './+layout.svelte';
 
-// The admin section's layout under the 2026-11-09 full-bleed
-// specimen: the rail is a FLUSH FULL-HEIGHT TRACK (border-r as the
+// The admin section's layout under the full-bleed
+// rework: the rail is a FLUSH FULL-HEIGHT TRACK (border-r as the
 // only separator -- no outer radius, no outer border, no shadow, no
 // gap to the content, no top offset; the rounded capsule is dead),
 // and the content column owns the gutter main no longer carries
@@ -66,7 +66,7 @@ test('the content column owns the gutter main no longer carries', () => {
 	expect(body?.className).toContain('min-w-0');
 	expect(body?.className).toContain('px-6');
 	expect(body?.className).toContain('pt-4');
-	// The specimen's 48px bottom breathing room.
+	// The 48px bottom breathing room.
 	expect(body?.className).toContain('pb-12');
 
 	unmount(app);

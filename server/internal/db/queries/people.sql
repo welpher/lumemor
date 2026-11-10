@@ -1,7 +1,7 @@
--- People surface queries (M3b Task 1): the read side of the named
+-- People surface queries: the read side of the named
 -- region, the unnamed region's keyset pages and the cluster detail.
 --
--- The B4 semantics run through every query: face clusters are GLOBAL
+-- The per-user-state semantics run through every query: face clusters are GLOBAL
 -- rows (face_clusters / faces), while names and the hidden switch are
 -- PRIVATE per user (user_face_labels, keyed (user_id, cluster_id) --
 -- never an instance-level name). A caller's view of a cluster is
@@ -9,7 +9,7 @@
 -- its label state and its face count all come from the caller's own
 -- rows joined onto the global structure.
 --
--- Caller visibility is the album union (M3c Task 4): an asset is
+-- Caller visibility is the album union: an asset is
 -- visible to the caller when caller_asset_visible says so -- the
 -- caller's own sync and directory albums plus every album shared to
 -- them -- AND it is live (not trashed, not hidden, no Live Photo
@@ -20,7 +20,7 @@
 -- to different accounts). The card crop rides the same union: the
 -- best caller-visible live face (score DESC, face id ASC), never the
 -- global representative -- a representative on an asset the caller
--- cannot see would render a dead crop URL (the M3b handoff).
+-- cannot see would render a dead crop URL (the card-face rule).
 --
 -- The unnamed region's keyset predicate is the row-value comparison
 -- on the ordering key (face_count DESC, cluster_id DESC): the cursor
@@ -161,11 +161,11 @@ WHERE f.cluster_id = sqlc.arg('cluster_id')
   AND caller_asset_visible(sqlc.arg('user_id'), a.id)
 ORDER BY f.score DESC, f.id;
 
--- The write side (M3b Task 2). The label and hidden writes are
--- per-caller upserts on the (user_id, cluster_id) pair -- the B4
--- discipline's writes: they never read or touch another account's
+-- The write side. The label and hidden writes are
+-- per-caller upserts on the (user_id, cluster_id) pair -- the
+-- per-user-state discipline's writes: they never read or touch another account's
 -- row. The structural writes (merge, face move) stick to the
--- cluster-maintenance discipline M3a pinned for every
+-- cluster-maintenance discipline for every
 -- faces.cluster_id change: the member moves land inside ONE
 -- transaction together with the representative maintenance and the
 -- dissolution of the vacated clusters (whose labels cascade with
@@ -204,7 +204,7 @@ RETURNING name, is_hidden;
 -- name: CountVisibleClusters :one
 -- How many of the given clusters the caller holds CURATION over:
 -- at least one face on an asset the caller OWNS and that is live.
--- Deliberately owner-scoped (M3c Task 4): the merge is cluster
+-- Deliberately owner-scoped: the merge is cluster
 -- curation, and curation is the owner's alone -- a sharee who sees
 -- a cluster through a shared album reads it and labels it, but the
 -- structural faces never re-shape the shared clusters under their
@@ -292,7 +292,7 @@ WHERE fc.id = ANY(sqlc.arg('cluster_ids')::uuid[])
 -- name: GetFaceForCaller :one
 -- The face-move endpoint's face-side read and gate in one: the
 -- face's current cluster, over an asset the caller OWNS and that is
--- live. Deliberately owner-scoped (M3c Task 4): the face move is
+-- live. Deliberately owner-scoped: the face move is
 -- cluster curation, and curation is the owner's alone -- a sharee
 -- never moves a face of an album shared to them. A miss (unknown
 -- id, foreign or non-live asset) and a face the clustering has not
@@ -335,9 +335,9 @@ WHERE f.id = sqlc.arg('face_id')
   AND caller_asset_visible(sqlc.arg('user_id'), a.id);
 
 -- name: ListAssetFacesForCaller :many
--- The asset detail's faces (M3b Task 5): every face of one asset
--- with the CALLER's label state of its cluster -- the B4 discipline's
--- read: clusters are global, labels are private, so the LEFT JOIN
+-- The asset detail's faces: every face of one asset
+-- with the CALLER's label state of its cluster -- the
+-- per-user-state discipline's read: clusters are global, labels are private, so the LEFT JOIN
 -- picks the caller's row and another account's label never surfaces.
 -- The asset itself was already read visibility-scoped by the
 -- detail endpoint (the union gate answered its own 404 before this

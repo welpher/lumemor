@@ -1,5 +1,4 @@
-// The anchored floating layer (web IA §7.5's 2026-11-09 second
-// revision): the two dialog pickers -- the album path completion
+// The anchored floating layer: the two dialog pickers -- the album path completion
 // and the audience candidate list -- portal out of the Modal DOM to
 // document.body as position:fixed layers anchored under their
 // trigger, so the dialog NEVER changes height (the 2026-11-08
@@ -27,7 +26,7 @@
 // THE PORTAL: the action appends the node to document.body (out of
 // the Modal's DOM, above the modal on the z ladder -- see
 // --z-dropdown) and removes it on destroy. The layer's focus is
-// deliberately OUTSIDE the Modal's focus trap (the spec's pin); its
+// deliberately OUTSIDE the Modal's focus trap; its
 // own keydown handler owns its keys, and the trigger recovers the
 // focus on close (the components' own discipline, unchanged).
 

@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Layout from './+layout.svelte';
 
-// The tool shell's app frame (R2-1's consistency arm): the admin
+// The tool shell's app frame (the consistency arm): the admin
 // shell shares the content shell's structure (a top bar above one
 // scrollable column), so it gets the same h-dvh treatment -- the
 // top bar pinned by the frame, <main> the sole scroller, the scroll
@@ -115,7 +115,7 @@ test('the back-to-content mark carries its icon', () => {
 	flushSync();
 });
 
-// --- the offline strip and the `?` sheet (web IA §6, the shared shell organs) --
+// --- the offline strip and the `?` sheet --
 
 const { connectionState } = vi.hoisted(() => ({
 	// The offline strip's truth, mocked at the store the strip

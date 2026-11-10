@@ -1,11 +1,11 @@
 // Session state and the client half of the web authentication
-// contract (the M2a API surface): a boot-time probe of
+// contract: a boot-time probe of
 // GET /api/v1/auth/sessions decides whether the app boots into the
 // signed-in experience, the login form establishes a session, logout
 // revokes it, and any API 401 mid-session flips the state back to
 // unauthenticated (the interceptor in api.ts).
 //
-// THE CALLER IDENTITY (the M3c seam): the same session faces carry
+// THE CALLER IDENTITY (the identity seam): the same session faces carry
 // the signed-in account's `userId` and `role` -- the login response
 // at login time, every entry of the session list at restore time
 // (all entries belong to the caller; the first is the live answer).

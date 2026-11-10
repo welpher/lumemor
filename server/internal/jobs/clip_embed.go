@@ -1,4 +1,4 @@
-// The CLIP embedding job (M3a Task 8): the asset-ready seam's clip
+// The CLIP embedding job: the asset-ready seam's clip
 // arm and the clip rerun's per-asset unit. The job decodes the stored
 // original upright (the shared inference decode), runs the active
 // clip-embed model's vision tower over it, and upserts the embedding
@@ -9,7 +9,7 @@
 // THE INSERT GUARD: the embedding's length must equal the
 // clip_embeddings column's CURRENT dimension, read from the database
 // catalog at run time -- the insert-side half of the dimension policy
-// (Review Focus #5): a drifted state (an active model whose dimension
+// (a drifted state: an active model whose dimension
 // disagrees with the column, an activation that bypassed the
 // cross-dimension ALTER) fails the job BEFORE any insert, with zero
 // rows landing, instead of letting the database reject the vector
@@ -179,7 +179,7 @@ func (w *ClipEmbedWorker) work(ctx context.Context, job *river.Job[ClipEmbedArgs
 
 	// THE LATE-EMBED CONVERGENCE (2026-11-10, the m3-search flake's
 	// second strike -- the structural gap this closes): the job lands
-	// AFTER the asset went ready (the M3a seam: pending_jobs never
+	// AFTER the asset went ready (the seam's design: pending_jobs never
 	// counted the ML), so the search page's live surfaces never
 	// re-executed -- a semantic hit that arrived late never appeared
 	// until some OTHER asset event or a manual reload. The upsert is

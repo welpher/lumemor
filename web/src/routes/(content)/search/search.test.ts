@@ -172,7 +172,7 @@ test('no query opens the filter browse: the month-grouped wall, the chips, the c
 	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
 	expect(document.body.querySelectorAll('.wall__day-header')).toHaveLength(3);
 	expect(tiles()).toHaveLength(3);
-	// The refusal (web IA §7.4): the page wires no onbatch runner, so
+	// The refusal: the page wires no onbatch runner, so
 	// no check renders and no bar ever rises -- the tiles are pure
 	// navigation.
 	expect(document.body.querySelector('.tile__check')).toBeNull();

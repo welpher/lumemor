@@ -1,5 +1,5 @@
 // The onnxruntime runtime seam of the ml package: one process-wide
-// environment initialized from the shared library (M3a Task 2), and a
+// environment initialized from the shared library, and a
 // session wrapper that pins the load-time half of the dual checksum
 // verification -- every model file is digest-checked immediately
 // before the library parses it. The library itself is located through

@@ -1,13 +1,13 @@
-// Asset serving handlers (M2b Task 6): the JSON detail of an owned
+// Asset serving handlers: the JSON detail of an owned
 // asset, the derived thumbnail (or video poster) as a cacheable
 // static asset, and the original file as a download with Range
-// support. M2c Task 6 adds the video play stream: the transcoded
+// support. The video play stream adds the transcoded
 // web-safe MP4 served inline with the same static-asset discipline;
-// M2d extends it to the Live Photo component video, whose playable
-// copy arrives through its own transcode job. M3b Task 5 extends the
-// detail with the asset's faces (caller-scoped label state, the
+// the Live Photo component video extends it -- its playable
+// copy arrives through its own transcode job. The detail also
+// carries the asset's faces (caller-scoped label state, the
 // people section's read).
-// The permission model is the caller-visible union (M3c Task 4):
+// The permission model is the caller-visible union:
 // every read funnels through the union-gated sqlc query -- the
 // caller's own sync and directory arms plus every album shared to
 // them -- and a miss answers the anti-enumeration 404,
@@ -54,7 +54,7 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 	}
 
 	// The caller-visible union in the query is the permission check
-	// (M3c Task 4): the owner's own arms -- their sync album holds
+	//: the owner's own arms -- their sync album holds
 	// every upload, whatever the row's state -- plus every album
 	// shared to the caller. An id none of those cover resolves to no
 	// row, exactly like an unknown one, and the answer below is the
@@ -75,7 +75,7 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 	// The faces and the caller's tags ride on the detail's own
 	// permission: the row above proved the caller can see the asset,
 	// so its faces (each joined with the caller's label state) and
-	// its tags (the caller's own rows only, B4) need no gate of
+	// its tags (the caller's own rows only) need no gate of
 	// their own.
 	faces, err := s.assetFacesForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
 	if err != nil {
@@ -215,7 +215,7 @@ func (s *server) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id ope
 
 // PlayAsset implements GET /api/v1/assets/{id}/play: the transcoded
 // playable copy of a video asset -- a standalone video, or a Live
-// Photo's component video (M2d: the component counts a transcode of
+// Photo's component video (the component counts a transcode of
 // its own, so the pair's motion plays through this endpoint by the
 // component's id) -- streamed inline for playback (the client's
 // video element), with byte ranges for seeking. The stream is a
@@ -246,8 +246,8 @@ func (s *server) PlayAsset(w http.ResponseWriter, r *http.Request, id openapi_ty
 	// same envelope, byte for byte, as an unknown or a foreign id,
 	// rather than a distinct error that would leak the kind's shape
 	// for ids the caller may not even own. A Live Photo's component
-	// video row DOES have one (M2d reversed the M2c gate that 404ed
-	// it): the component counts a transcode job of its own, so its
+	// video row DOES have one (the component gate that 404ed it was
+	// reversed): the component counts a transcode job of its own, so its
 	// playable copy arrives exactly like any video's and the pair's
 	// motion plays through this endpoint by the component's id --
 	// HEVC components re-encoded to the web-safe pair every browser
@@ -381,7 +381,7 @@ func (s *server) writeAssetNotFound(w http.ResponseWriter) {
 // label state of each face's cluster -- the read both detail-serving
 // endpoints (GET and PATCH) share, so the PATCH response carries the
 // faces exactly as the GET serves them. The caller scoping is the
-// query's LEFT JOIN (B4): another account's label of the same global
+// query's LEFT JOIN: another account's label of the same global
 // cluster never surfaces. Callers must have proven the asset
 // caller-visible first; the faces carry no gate of their own.
 func (s *server) assetFacesForCaller(ctx context.Context, assetID, callerID pgtype.UUID) ([]apigen.AssetFaceSummary, error) {

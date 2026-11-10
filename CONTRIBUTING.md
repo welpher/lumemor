@@ -7,16 +7,18 @@ family; the product serves families worldwide.
 ## Read first
 
 - **`AGENTS.md`** — the entry point (written for agents and humans alike):
-  the sources of truth, the iron rules, the workflow shape.
-- **`docs/rules/`** — the per-language conventions (Go, web, commits &
+  the iron rules, the workflow shape, the gate commands.
+- **`docs/rules/`** — the repo's own conventions (Go, web, commits &
   process). `CODEMAP.md` maps the repository.
-- The design repository's specs are the semantic authority for every pinned
-  surface — read the relevant spec before changing a pinned behavior.
 
 ## The iron rules (violations close the PR)
 
-- **All-English repository** — code, comments, commits. Reference-project
-  names never appear; write "the reference project" when comparing.
+- **All-English repository** — code, comments, commits. The exemption
+  classes: the zh-Hans locale's values and cited display names inside
+  contract descriptions.
+- **No other-project comparisons** — comparisons to other photo projects
+  stay out of the code, comments, and commits entirely; state the decision
+  and its reason in this repo's own words.
 - **Global product** — no default assumes a single market, language, or
   region.
 - **Contract-first** — API changes start in `openapi/lumemor.yaml`, then
@@ -38,6 +40,8 @@ If your diff touches `web/e2e/**` or code an e2e scene exercises, run the
 affected spec against a real stack (one fresh stack lifetime per spec —
 see AGENTS.md for the procedure and the trap).
 
+Match the surrounding code's conventions — `docs/rules/` states them in
+full; the machines enforce format and lint, the review checks the rest.
 Commits: conventional, present tense, one decision per commit. PRs: one
 focused block; the review checks the semantic pins, the refusal matrices,
 the removal thoroughness, and re-runs the gates.

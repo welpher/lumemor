@@ -192,7 +192,7 @@ DELETE FROM sessions WHERE user_id = $1
 `
 
 // The password-change / TOTP-change hook: every session of the user
-// across all devices goes at once. No handler calls this yet in M2a;
+// across all devices goes at once. No handler calls this yet;
 // the query is the interface the v1.x account-security flow builds on.
 func (q *Queries) RevokeAllUserSessions(ctx context.Context, userID pgtype.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeAllUserSessions, userID)

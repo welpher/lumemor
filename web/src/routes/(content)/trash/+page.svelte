@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The trash page (M2d Task 8): the bounded listing of the
+	// The trash page: the bounded listing of the
 	// caller's soft-deleted assets with each row's retention
 	// countdown, the single restore, and the confirm-first permanent
 	// delete. The SSE subscription converges through the LISTING,

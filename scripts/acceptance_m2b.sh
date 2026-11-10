@@ -32,7 +32,7 @@ base_url="http://localhost:8244"
 health_timeout_seconds=120
 sse_timeout_seconds=60
 admin_password="correct-horse-battery"
-# The Task 4 golden fixture: a real 64x64 JPEG whose EXIF carries
+# The golden fixture: a real 64x64 JPEG whose EXIF carries
 # capture time with offset, GPS position and the camera fields, so the
 # metadata job has genuine tags to resolve.
 golden_fixture="$repo_root/server/internal/jobs/testdata/golden.jpg"

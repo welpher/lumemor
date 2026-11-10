@@ -1,4 +1,4 @@
-// The rescan endpoint (E4 Task 2): POST /albums/{albumId}/rescan,
+// The rescan endpoint: POST /albums/{albumId}/rescan,
 // the owner's manual trigger of the three-arm diff. The endpoint is
 // the places re-resolution's own shape applied to the album domain:
 // the permission is the album writes' two-tier answer (the owner or

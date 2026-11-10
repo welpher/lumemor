@@ -1,12 +1,12 @@
-// Trash lifecycle tests (M2c Task 3): the owner-scoped listing with
+// Trash lifecycle tests: the owner-scoped listing with
 // its retention countdown, the idempotent restore, the explicit
 // permanent delete with its permission split (owner or
-// administrator), and -- the mandated Review Focus cases -- the
+// administrator), and -- the mandated cases -- the
 // cross-owner shared blob whose file survives one owner's expiry
 // because another row still references it, and the restore-vs-expiry
 // race whose guard keeps a restored row alive. Soft deletes go
 // through the SoftDeleteAsset query (the endpoint of that operation
-// is Task 4's batch handler; the query is this task's deliverable),
+// is the batch handler; the query is this package's deliverable),
 // expiry through the real trash.RunExpiry.
 package api
 
@@ -55,8 +55,8 @@ func (e *assetEnv) uploadPhotoAs(t *testing.T, cookie *http.Cookie, deviceAssetI
 }
 
 // softDeleteAsset trashes the asset through the query the batch
-// handler of Task 4 will call: the query (with its owner guard and
-// its set-semantics arm) is this task's deliverable, so the tests
+// handler calls: the query (with its owner guard and
+// its set-semantics arm) is this package's deliverable, so the tests
 // exercise it directly instead of hand-writing UPDATE statements.
 // It returns the rows the write marked.
 func (e *assetEnv) softDeleteAsset(t *testing.T, id, owner uuid.UUID) int64 {
@@ -262,7 +262,7 @@ func busEventsOf(t *testing.T, bus *events.Bus, name string) []map[string]string
 	}
 }
 
-// TestTrashSharedBlobExpiry is the mandated Review Focus 1 case: two
+// TestTrashSharedBlobExpiry is the mandated shared-blob case: two
 // owners hold rows over the SAME physical file -- the shared-blob
 // state of assets ingested before the storage-template feature, whose
 // content-addressed paths let identical bytes of any owner share one
@@ -419,7 +419,7 @@ func TestTrashSoleReferenceExpiry(t *testing.T) {
 }
 
 // TestTrashRestoreBeforeExpirySurvives is the deterministic half of
-// the mandated restore-vs-expiry race (Review Focus 4): the row is
+// the mandated restore-vs-expiry race: the row is
 // backdated past the retention deadline but RESTORED before the run
 // -- the expiry's guarded delete must skip it, and the row and its
 // file survive.
@@ -479,7 +479,7 @@ func TestTrashRestoreBeforeExpirySurvives(t *testing.T) {
 // which is exactly why the no-op is the only honest answer. Only
 // unknown and foreign ids answer 404. The soft delete's own
 // set-semantics arm (re-trashing a trashed row marks nothing) is
-// pinned at the query level for Task 4's handler.
+// pinned at the query level for the batch handler.
 func TestTrashRestoreSetSemantics(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -489,7 +489,7 @@ func TestTrashRestoreSetSemantics(t *testing.T) {
 	neverTrashed := env.uploadPhotoAs(t, env.cookie, "trash-never", taken.Add(time.Hour), jpegColorFixture(t, color.RGBA{R: 0x01, G: 0x02, B: 0x03, A: 0xff}))
 
 	// The soft delete is idempotent at the query level: the repeat
-	// marks nothing (Task 4's handler answers both as the same 204).
+	// marks nothing (the handler answers both as the same 204).
 	if rows := env.softDeleteAsset(t, uuid.UUID(trashed.Id), adminID); rows != 1 {
 		t.Fatalf("first soft delete marked %d rows, want 1", rows)
 	}
@@ -603,7 +603,7 @@ func TestTrashDeletePermissions(t *testing.T) {
 // itself: it works on live and trashed rows alike (it is the surface
 // beside the trash, not a detour through it), it answers 404 once
 // the row is gone (a repeated request finds nothing left), it keeps
-// shared blobs under the reference rule, and it takes the Live Photo
+// shared blobs under the guarded shared-file rule, and it takes the Live Photo
 // pair together.
 func TestDeleteAssetSemantics(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
@@ -830,8 +830,8 @@ func TestTrashListSemantics(t *testing.T) {
 }
 
 // insertBulkTrashed seeds n directly-trashed rows of one owner in one
-// statement (the batch-action endpoint is Task 4's; the listing's
-// bound is a property of the rows, not the endpoint). The checksums
+// statement (the listing's bound is a property of the rows, not
+// the endpoint). The checksums
 // are distinct so the owner+checksum uniqueness holds across the
 // bulk.
 func (e *assetEnv) insertBulkTrashed(t *testing.T, owner uuid.UUID, n int, taken time.Time) {

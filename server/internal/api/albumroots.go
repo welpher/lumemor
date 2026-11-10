@@ -1,4 +1,4 @@
-// The albums-as-sources path domain (E4, reshaped by E6's album
+// The albums-as-sources path domain (reshaped by album
 // autonomy): the source-path completion behind GET
 // /albums/path-completions, the creation-time path validation
 // matrix, and the creation-time write probe that discovers the
@@ -69,7 +69,7 @@ func pathUnder(path, root string) bool {
 // I/O failures the caller answers with a 500. The branches, in
 // order: existence, directory-ness, readability, and the managed
 // tree on the RESOLVED path. The allowlist-domain and root-overlap
-// arms of the E4 matrix retired with the allowlist itself: the
+// arms of the path matrix retired with the allowlist itself: the
 // boundary is the compose mounts now, and with creation in the
 // administrator's hands a second album over the same tree is an
 // operator's visible choice, not an attack to refuse.
@@ -231,7 +231,7 @@ func probeDirectoryWritable(resolvedDir string) bool {
 // completeAlbumRootPath lists the completion rows for one typed
 // prefix over the container's real visible filesystem: the pickable
 // directories of the creation dialog's combobox. The domain change
-// of the E6 retirement -- the allowlist that used to confine the
+// of the retirement -- the allowlist that used to confine the
 // rows is gone, and the honest reflection of what the operating
 // system lets the server read takes its place. The ONE exclusion
 // that stays is the managed tree: no row ever names the server's

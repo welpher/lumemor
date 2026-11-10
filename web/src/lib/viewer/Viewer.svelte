@@ -9,7 +9,7 @@
 	// (the page's assign dialog first, then the info panel, then the
 	// route).
 	//
-	// THE ACTION BAR (R2-3): the top chrome carries the curation
+	// THE ACTION BAR: the top chrome carries the curation
 	// affordances as icon buttons -- the close mark, the favorite
 	// toggle (per-user state, everyone holds it), the info-panel
 	// toggle, and the trash/restore pair (owner-only, the identity
@@ -19,7 +19,7 @@
 	// surface never carries it. The bar surfaces the last action's
 	// failure inline (the mapped error line under the buttons).
 	//
-	// THE SPLIT INFO PANEL (R2-9/10): the panel is a right DOCKED
+	// THE SPLIT INFO PANEL: the panel is a right DOCKED
 	// region at lg+ -- the viewer root is a flex row, the media
 	// column flexes (flex-1 min-w-0) and the panel rides beside it
 	// occupying layout space, so the media stage re-fits through the
@@ -28,10 +28,10 @@
 	// because nothing about the fit is JS-computed). Below lg the
 	// same panel falls back to the overlay-drawer form (fixed,
 	// full-height over the right edge) and the action cluster keeps
-	// R2-3's left shift to clear it. The open preference persists in
+	// its left shift to clear it. The open preference persists in
 	// localStorage (one key, default closed) and restores on mount.
 	//
-	// THE GRADUAL ZOOM (R2-7/8): the in/out/reset buttons, the +/- keys
+	// THE GRADUAL ZOOM: the in/out/reset buttons, the +/- keys
 	// and the stage's double-click all drive one engine (see ./zoom.ts)
 	// -- every change animates through rAF interpolation (~300ms,
 	// cubicOut, interruptible: an input mid-flight takes over from the
@@ -155,7 +155,7 @@
 		onassigntag
 	}: Props = $props();
 
-	// The panel's open-preference persistence (R2-9): one key, default
+	// The panel's open-preference persistence: one key, default
 	// closed, restored on mount. Storage can be unavailable (private
 	// mode); the preference then lives for the session only.
 	const INFO_PANEL_STORAGE_KEY = 'lumemor:viewer:info-panel';
@@ -190,7 +190,7 @@
 		}
 	});
 
-	// The gradual zoom (R2-7/8): the engine owns the scale and its
+	// The gradual zoom: the engine owns the scale and its
 	// target; this component mirrors them into reactive state the
 	// template rides (the affordances read the target, the media
 	// transform reads the per-frame scale).
@@ -361,7 +361,7 @@
 			return;
 		}
 		if (event.key === '+' || event.key === '-') {
-			// The zoom's keyboard arm (R2-7): the same engine the
+			// The zoom's keyboard arm: the same engine the
 			// bar's buttons and the double-click ride. Videos keep
 			// their native controls' keyboard handling.
 			if (isImage) {
@@ -378,7 +378,7 @@
 		}
 	}
 
-	// The binary zoom toggle (R2-8): a double-click on the media flips
+	// The binary zoom toggle: a double-click on the media flips
 	// 1x/the zoomed ceiling through the same gradual animation. The
 	// Live Photo's press affordance owns its own clicks -- a double
 	// press is the press pair (play/stop), never a zoom toggle.
@@ -406,18 +406,18 @@
      photo surface needs no translucency and no blur behind it (the
      restrained surface strategy); only the controls that truly float
      over the media keep their glass. The root is the SPLIT ROW
-     (R2-10): the media column flexes, the docked panel (lg+) rides
+: the media column flexes, the docked panel (lg+) rides
      beside it. -->
 <div class="viewer fixed inset-0 z-(--z-page) flex bg-night" aria-busy={status === 'loading'}>
 	<div class="viewer__main flex flex-col flex-1 min-w-0">
-		<!-- The action bar (R2-3): the top chrome over the media, Night
+		<!-- The action bar: the top chrome over the media, Night
 	     surface, icon buttons named by their aria-labels -- the close
 	     mark, the favorite toggle, the trash/restore pair (owner-only),
-	     the zoom trio (R2-7, images) and the info-panel toggle; the
+	     the zoom trio (images) and the info-panel toggle; the
 	     last failed action's mapped error lands on the bar's wrap row
 	     (the batch bar's pattern). At lg+ the bar spans only the media
 	     column, so the docked panel can never cover it (the split's
-	     formalization of R2-3's left shift). -->
+	     formalization of the left shift). -->
 		<header class="viewer__bar flex flex-wrap items-center gap-3 px-4 py-2.5 text-cream-text">
 			<button
 				class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
@@ -433,7 +433,7 @@
 				{detail?.originalFilename ?? ''}
 			</p>
 			{#if detail !== null}
-				<!-- The action cluster's left shift (R2-3), now the OVERLAY
+				<!-- The action cluster's left shift, now the OVERLAY
 			     fallback's guard alone: below lg the panel is a fixed
 			     overlay over the right edge and would cover these
 			     buttons without the shift; at lg+ the split layout owns
@@ -472,7 +472,7 @@
 						</button>
 					{/if}
 					{#if isImage}
-						<!-- The zoom trio (R2-7): step in, step out, and the
+						<!-- The zoom trio: step in, step out, and the
 					     fit reset -- one step each, every change riding
 					     the gradual engine; the buttons disable at their
 					     clamp ends (the engine's targets, not the
@@ -538,7 +538,7 @@
 		</header>
 
 		<div class="viewer__stage-wrap relative flex-1 min-h-0 flex flex-col">
-			<!-- The gradual zoom (R2-8): the stage's media children scale
+			<!-- The gradual zoom: the stage's media children scale
 		     around the stage's center through --viewer-zoom (the
 		     engine drives the var per frame, the residual style rule
 		     below applies it to the image, placeholder and live
@@ -620,7 +620,7 @@
 						</p>
 					{/if}
 				{:else}
-					<!-- The placeholder cross-fades out (G6's placeholder
+					<!-- The placeholder cross-fades out (the placeholder
 				     fade) once the view-size copy's load event lands --
 				     the blurhash approximates the image's own average
 				     colors, so the exit rides under the image's fade-in
@@ -765,7 +765,7 @@
 	</div>
 
 	{#if drawerOpen && detail !== null}
-		<!-- The docked split region (R2-10): a flex sibling of the media
+		<!-- The docked split region: a flex sibling of the media
 		     column at lg+ (lg:static inside the row -- the stage re-fits
 		     through the flow), the fixed overlay drawer below lg. -->
 		<InfoDrawer {detail} {isOwner} onclose={() => (drawerOpen = false)} {onedit} {onassignface} {onassigntag} />
@@ -780,7 +780,7 @@
 		animation: viewer-in var(--motion-fast) var(--ease-standard);
 	}
 
-	/* The gradual zoom's application (R2-8): the engine writes
+	/* The gradual zoom's application: the engine writes
 	 * --viewer-zoom on the stage per frame and this one rule scales
 	 * the three media children off it. The rule is unconditional
 	 * (not gated on the zoomed marker class) so a zoom-OUT animates

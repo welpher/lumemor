@@ -1,4 +1,4 @@
-// Retention queue tests (M2c Task 3): the hourly periodic
+// Retention queue tests: the hourly periodic
 // registration of the trash expiry (pinned through its schedule
 // config and the started queue's bundle, never by waiting a
 // wall-clock hour), and the worker path end to end: a RetentionArgs

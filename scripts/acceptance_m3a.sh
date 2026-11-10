@@ -4,7 +4,7 @@
 # sequentially, each owning its own compose stack and tearing it down
 # fully, including the database volume) runs first and must be green
 # before the M3a phases start. Then three stack lifetimes of this
-# repository's own compose deployment walk the milestone's story:
+# repository's own compose deployment walk the ML story:
 #
 # Phase 1 (the degraded stack, no models): the stack starts with an
 # empty model registry, the first-run admin is created and signed in,
@@ -12,14 +12,14 @@
 # state with the timeline listing it -- while the database carries
 # ZERO intelligence rows (no faces, no clusters, no embeddings, no
 # OCR text, no job runs). The readiness seam never dispatches ML work
-# for an unfilled slot and nothing breaks: Review Focus #3's real
+# for an unfilled slot and nothing breaks: the real degraded
 # load.
 #
 # Phase 2 (the real-model full chain): the default model group
 # downloads through the production download service (POST
 # /api/v1/admin/models/download, the job_runs row polled to
 # succeeded), the listing shows all five models active with their
-# files present (the M3d text tower among them), and three fixtures upload -- the face portrait, its
+# files present (the CLIP text tower among them), and three fixtures upload -- the face portrait, its
 # EXIF-orientation twin of the SAME person, and the text-bearing OCR
 # image -- after which the ML products are asserted inside the
 # database container (docker compose exec db psql): faces with
@@ -27,7 +27,7 @@
 # rows exist with non-zero vectors, and ocr_texts carries non-empty
 # text. The same-person cluster facts (cluster membership and the
 # pair's cosine distance) are printed as the SFace-128d family-scale
-# observation for M3b.
+# observation for the people chain.
 #
 # Phase 3 (the e2e stack): a fresh stack whose models ride the SAME
 # storage bind mount (./lumemor persists across the script's stack
@@ -49,8 +49,8 @@
 #       huggingface.co URLs through an HF domain mirror instead.
 #   M3A_SOURCE=offline -- no network at all: the Hugging Face URL
 #       path structure is reconstructed under
-#       tools/models/cache/offline-root/ (symlinks to the Task 1
-#       local weights cache) and served over TLS by a mirror service
+#       tools/models/cache/offline-root/ (symlinks to the local
+#       weights cache) and served over TLS by a mirror service
 #       of the stack (the dev image's python running
 #       scripts/offline_mirror_server.py): the mirror rewrite keeps
 #       the https scheme, so the local source must speak TLS, and the
@@ -67,7 +67,7 @@
 # Requirements: docker with the compose plugin, curl, and (for the
 # chained web e2e, which the m2d chain installs) pnpm 9.15; the
 # offline mode additionally needs openssl and the lumemor-dev image
-# (built by any make docker-test / docker-lint run) plus the Task 1
+# (built by any make docker-test / docker-lint run) plus the local
 # weights cache under tools/models/cache/.
 
 set -euo pipefail
@@ -207,7 +207,7 @@ prepare_offline_source() {
         ch_PP-OCRv4_det_infer.onnx \
         ch_PP-OCRv4_rec_infer.onnx; do
         [ -f "$models_cache/$weight" ] \
-            || fail "the Task 1 weights cache is missing $models_cache/$weight -- the offline mode needs it"
+            || fail "the local weights cache is missing $models_cache/$weight -- the offline mode needs it"
     done
     docker image inspect "$dev_image" >/dev/null 2>&1 \
         || fail "the offline mirror rides the dev image $dev_image, which is absent -- run any make docker-test first to build it"
@@ -215,7 +215,7 @@ prepare_offline_source() {
         || fail "the offline mode needs openssl to mint the mirror certificate"
 
     # The seven pinned upstream artifacts at their Hugging Face URL
-    # paths (the M3d text tower and its tokenizer vocabulary among
+    # paths (the CLIP text tower and its tokenizer vocabulary among
     # them): what the mirror rewrite makes the download resolve.
     link_offline_file \
         "opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" \
@@ -500,13 +500,13 @@ wait_asset_ready() {
 # M2a, M2b and M2c acceptances and drives the M2 web story itself).
 # ---------------------------------------------------------------------------
 
-echo "==> running the prior milestone acceptances (the M2d chain owns its stacks)"
+echo "==> running the prior acceptances (the M2d chain owns its stacks)"
 bash scripts/acceptance_m2d.sh \
     || fail "scripts/acceptance_m2d.sh failed (see its output above)"
 echo "    acceptance_m2d (and its chained M1/M2a/M2b/M2c) passed after $(elapsed)s"
 
 # ---------------------------------------------------------------------------
-# Phase 1: the degraded stack (no models) -- Review Focus #3's load.
+# Phase 1: the degraded stack (no models) -- the degraded load.
 # ---------------------------------------------------------------------------
 
 echo "==> phase 1/3: the degraded stack (no models)"
@@ -707,7 +707,7 @@ teardown_stack
 echo "    phase 2 passed after $(elapsed)s"
 
 # ---------------------------------------------------------------------------
-# Phase 3: the e2e stack (the M3 model management story).
+# Phase 3: the e2e stack (the model management story).
 # ---------------------------------------------------------------------------
 
 # stage_fixture_model copies one self-made clip-embedding fixture into
@@ -742,7 +742,7 @@ stage_fixture_model() {
 EOF
 }
 
-echo "==> phase 3/3: the e2e stack (the M3 model management story)"
+echo "==> phase 3/3: the e2e stack (the model management story)"
 reset_stack_state
 # Phases 1-2 left ./lumemor chowned to the image uid; the fixture
 # staging below writes into it as the host user, so the tree comes
@@ -760,7 +760,7 @@ echo "==> running the Playwright spec (web/e2e/m3-models.spec.ts)"
 if ! (cd web && pnpm e2e e2e/m3-models.spec.ts); then
     echo "==> server logs at the time of the failure:"
     compose logs --no-color --tail 200 lumemor || true
-    fail "the M3 e2e spec failed (see the report above; artifacts under web/test-results/)"
+    fail "the models e2e spec failed (see the report above; artifacts under web/test-results/)"
 fi
 teardown_stack
 echo "    phase 3 passed after $(elapsed)s"

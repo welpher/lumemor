@@ -1,4 +1,4 @@
-// The admin model management and job panel endpoints (M3a Task 4):
+// The admin model management and job panel endpoints:
 // the model listing (the registry's rows plus the activation flags,
 // the files-present probe and the download run summary), the
 // activation switch (the registry's transactional switch wrapped so
@@ -10,7 +10,7 @@
 // role; every handler keeps the authContext-read shape of the rest of
 // the surface.
 //
-// The rerun's per-asset ML work is the milestone's later tasks'
+// The rerun's per-asset ML work is the workers'
 // business: the endpoint starts the run and the jobs package's driver
 // owns its row; the contract description states that boundary
 // honestly.
@@ -38,7 +38,7 @@ const (
 )
 
 // rerunKindOf maps each ML slot onto the job_runs kind of its rerun
-// runs. The vocabulary is pinned by the milestone plan (the jobs
+// runs. The vocabulary is pinned (the jobs
 // package pins the same strings; its endpoint-level test drives the
 // two against each other so they cannot drift apart).
 func rerunKindOf(slot dbgen.ModelSlot) (string, bool) {

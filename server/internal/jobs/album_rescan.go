@@ -1,4 +1,4 @@
-// The directory album rescan (E4 Task 2): the three-arm diff that
+// The directory album rescan: the three-arm diff that
 // reconciles a directory album's membership with what its source
 // root holds on the filesystem. The endpoint (POST
 // /albums/{id}/rescan) starts one run through EnqueueAlbumRescan;
@@ -74,8 +74,8 @@ import (
 )
 
 // AlbumRescanKind is the job_runs kind of the directory rescan runs
-// and the River job kind of their driver, pinned by the milestone
-// plan's vocabulary (the places rerun family's naming applied to the
+// and the River job kind of their driver, pinned by the shared
+// vocabulary (the places rerun family's naming applied to the
 // rescan domain: one driver, no per-asset dispatch -- the arms
 // resolve inline, the pipeline jobs the add arm enqueues are the
 // per-asset work).

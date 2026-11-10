@@ -111,7 +111,7 @@ describe('packRows: row math', () => {
 		// One panorama alone: natural height 1200/4 = 300 -- above the
 		// 216px target, and the tail SITS at the target: ordinary
 		// height, natural width (the day block flows beside its
-		// neighbors; the reference's last-row behavior).
+		// neighbors; the tail row's natural width).
 		const rows = packRows([itemAt('pano', 4)], WIDTH);
 		expect(rows).toHaveLength(1);
 		const row = rows[0];

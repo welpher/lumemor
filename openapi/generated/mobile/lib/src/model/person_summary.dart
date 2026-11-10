@@ -8,7 +8,7 @@ import 'package:built_value/serializer.dart';
 
 part 'person_summary.g.dart';
 
-/// One named person of the caller's people list: a global face cluster carrying the caller's own label. The name and the hidden switch are the caller's private label state (B4) -- another account labeling or hiding the same cluster never changes this view. 
+/// One named person of the caller's people list: a global face cluster carrying the caller's own label. The name and the hidden switch are the caller's private label state -- another account labeling or hiding the same cluster never changes this view. 
 ///
 /// Properties:
 /// * [clusterId] - Identifier of the face cluster.

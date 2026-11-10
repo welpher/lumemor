@@ -27,7 +27,7 @@ type UpsertClipEmbeddingParams struct {
 	Embedding pgvector_go.Vector `json:"embedding"`
 }
 
-// CLIP embedding queries (M3a Task 8): the embedding job's write
+// CLIP embedding queries: the embedding job's write
 // surface. The upsert keys on (asset_id, model_id) -- the primary key
 // the schema pins -- so a re-run of the job overwrites the same row
 // and a rerun of the model converges without piling rows. The

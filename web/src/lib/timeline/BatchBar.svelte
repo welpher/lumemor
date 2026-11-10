@@ -8,11 +8,10 @@
 	// presentation only: the page runs the actions and owns the
 	// selection. The add-tag affordance rides an optional callback
 	// (the flow carries a dialog and an endpoint of its own, not a
-	// batch action); the add-to-album affordance is GONE (E4, web IA
-	// §7.5 -- an album is a source, not a container photos get
+	// batch action); the add-to-album affordance is GONE (the albums-as-sources rework -- an album is a source, not a container photos get
 	// curated into).
 	//
-	// THE ICON-FIRST RULE (web IA §7.2, the 2026-11-07 owner pin):
+	// THE ICON-FIRST RULE:
 	// the bar is a TOOLBAR, so every action is an icon-only button
 	// (lucide, 20px, decorative) whose accessible name rides the
 	// aria-label -- the count line beside them carries the context,

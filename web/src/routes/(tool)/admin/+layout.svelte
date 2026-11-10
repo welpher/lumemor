@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The admin section's sidebar (the 2026-11-09 full-bleed specimen:
+	// The admin section's sidebar (the full-bleed rework:
 	// the rounded capsule is DEAD): the rail is a flush full-height
 	// track -- no outer radius, no outer border or shadow, no gap to
 	// the content, no top offset -- split from the content by its
@@ -11,12 +11,12 @@
 	// content shell's drawer.
 	//
 	// THE CONTENT COLUMN owns its own gutter (main carries no
-	// padding, the 2026-11-09 pin): the wrapper below holds the
+	// padding): the wrapper below holds the
 	// px-6/pt-4/pb-12 margins, and every admin page renders the
 	// page-header row (the title + the contextual action slot + the
 	// hairline) at its top. The row's min-h-full floor keeps the
 	// rail's track tall as the viewport even when a page's content
-	// is short -- the specimen's full-height split.
+	// is short -- the full-height split.
 	import { _ } from 'svelte-i18n';
 	import { page } from '$app/state';
 	import type { LayoutProps } from './$types';

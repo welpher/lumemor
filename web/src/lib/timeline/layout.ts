@@ -107,7 +107,7 @@ function naturalHeight(count: number, aspectSum: number, containerWidth: number)
 /** Close one row: tiles at height * aspect. A CLOSED row fills the
  * container width exactly (the justified invariant); a group's TAIL
  * row renders at the TARGET height with its natural widths --
- * never stretched, never grown (the reference's last-row behavior:
+ * never stretched, never grown (the tail row's behavior:
  * a day with two photos shows two ordinary-sized ones, and the day
  * BLOCK flows beside its neighbors). */
 function closeRow(
@@ -179,7 +179,7 @@ export type PackedDay = {
 	 * closed answers its single tail row's natural extent. Day
 	 * blocks flow horizontally and wrap -- the wall reads as a
 	 * gallery of days, sparse dates side by side instead of a hole
-	 * on the right (the reference timeline's shape).
+	 * on the right (the day-flow shape).
 	 */
 	width: number;
 };

@@ -1,5 +1,5 @@
-// The in-memory grid index the GPS resolution runs against (M3d Task
-// 1). The design pins the route: the Go process loads the places
+// The in-memory grid index the GPS resolution runs against. The
+// route is pinned: the Go process loads the places
 // centroids ONCE per process and answers nearest-city queries in
 // memory -- no SQL, no extensions, no country polygons.
 //

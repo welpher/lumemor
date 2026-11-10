@@ -1,4 +1,4 @@
-// The places surface (M3d Task 1): the caller's city grouping behind
+// The places surface: the caller's city grouping behind
 // GET /places and the admin re-resolution trigger behind
 // POST /admin/places/reresolve.
 //
@@ -129,11 +129,11 @@ func (s *server) ListPlaces(w http.ResponseWriter, r *http.Request, params apige
 
 // ReresolvePlaces implements POST /api/v1/admin/places/reresolve:
 // one run that re-resolves the place of every GPS-bearing asset
-// against the reference data the server currently runs on -- the
+// against the baked place data the server currently runs on -- the
 // places-data-update path. Idempotent the way the model rerun is: a
 // run of the kind still in flight answers 200 with its identifier,
-// anything else starts a fresh run. This milestone wires no admin
-// page button to it; the job panel lists the run like any other.
+// anything else starts a fresh run. No admin page button is wired
+// to it yet; the job panel lists the run like any other.
 func (s *server) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
 	if _, ok := authFrom(r.Context()); !ok {
 		s.rejectUnauthenticated(w)

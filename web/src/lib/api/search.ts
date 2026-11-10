@@ -1,4 +1,4 @@
-// The search surface's data client (M3d Task 4): the URL state
+// The search surface's data client: the URL state
 // mapping, the request builder, the page read and the store-backed
 // client the search page drives.
 //

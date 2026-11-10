@@ -15,7 +15,7 @@ import (
 )
 
 // The requeue sweep is the asset pipeline's recovery path, closing
-// the hard-gate handoff M2b's final review left open: an upload whose
+// the pipeline's hard-gate handoff: an upload whose
 // transaction committed but whose job enqueues failed (an insert
 // failure, or a crash in the commit-to-enqueue window -- the
 // disconnect window itself is already closed by the upload handler's
@@ -105,11 +105,11 @@ func RunRequeueSweep(ctx context.Context, pool *pgxpool.Pool, enqueuer AssetRequ
 		assetID := uuid.UUID(row.ID.Bytes)
 
 		// The row's media kind and role pick the jobs the recovery
-		// re-inserts. An image counts the two-job pipeline of M2b
-		// (metadata + thumbnail); a video counts THREE since Task 6's
+		// re-inserts. An image counts the two-job pipeline
+		// (metadata + thumbnail); a video counts THREE with the
 		// transcode job (metadata + thumbnail + transcode), matching
 		// the upload's pending_jobs initialization. A Live Photo's
-		// component row (M2d) counts ONE -- the transcode alone: its
+		// component row counts ONE -- the transcode alone: its
 		// counter was initialized to exactly that job, its metadata
 		// refinement rides the upload path and consumes nothing off
 		// the counter, so the recovery re-inserts the transcode only

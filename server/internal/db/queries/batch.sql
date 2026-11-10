@@ -1,10 +1,10 @@
--- Batch action queries (M2c Task 4, favorites widened M3c Task 4):
+-- Batch action queries (the favorites arms widened to caller-visible assets):
 -- the write side of the batch endpoint. The endpoint's contract is
 -- set semantics over one transaction: resolve the request's ids
 -- against the action's guard (the caller's ownership for the
 -- curation arms, the caller-visible union for the favorites arms),
 -- then apply one action per resolved id through the primitives here
--- (trash and restore reuse the trash lifecycle queries of Task 3,
+-- (trash and restore reuse the trash lifecycle queries,
 -- whose owner guards and pair predicates are the single-row
 -- authority). Every write carries its guard itself so a foreign or
 -- unknown id is a no-op, never an error -- the guards make items
@@ -34,7 +34,7 @@ WHERE id = ANY(sqlc.arg('ids')::uuid[])
 
 -- name: ResolveVisibleAssets :many
 -- The batch's id resolution for the FAVORITES arms (favorite,
--- unfavorite, M3c Task 4): which of the request's ids address an
+-- unfavorite): which of the request's ids address an
 -- asset the CALLER CAN SEE -- the album union (their own sync and
 -- directory arms plus every album shared to them), so a sharee
 -- favorites what they see. Like the owner resolution it applies no
@@ -81,7 +81,7 @@ WHERE user_id = sqlc.arg('user_id')
 -- unhiding one) simply coexists with the trash mark -- the row
 -- re-enters the live views still hidden once restored, which is the
 -- documented behavior of the hidden view. The PATCH endpoint
--- (M2c Task 5) reuses this write as its isHidden arm: one authority
+-- reuses this write as its isHidden arm: one authority
 -- for the switch, both surfaces agreeing on the state of an asset.
 UPDATE assets SET
     is_hidden = sqlc.arg('hidden'),

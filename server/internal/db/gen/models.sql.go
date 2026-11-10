@@ -109,7 +109,7 @@ const listModels = `-- name: ListModels :many
 SELECT id, slot, version, source, file_path, input_size, dim, params, is_active, added_at, updated_at FROM models ORDER BY slot ASC, id ASC
 `
 
-// Model registry queries (M3a Task 2): the models table is the
+// Model registry queries: the models table is the
 // authority for what is registered and which model is active per slot;
 // the sha256 authority is the per-model manifest on disk, read by the
 // registry, not the database. ActivateModel and DeactivateSlot run

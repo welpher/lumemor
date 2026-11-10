@@ -1,4 +1,4 @@
-// The places surface's data client (M3d Task 4): GET /places -- the
+// The places surface's data client: GET /places -- the
 // caller's city grouping with the locale display-name join, behind
 // the repo-wide error-code convention (every failure outcome
 // carries the error code's i18n key: the envelope code lowercased,

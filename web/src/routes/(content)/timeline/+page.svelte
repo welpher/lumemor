@@ -7,19 +7,19 @@
 	// rail scrubs the loaded months, and selection turns the wall
 	// into a curation surface with the floating batch bar. The
 	// month axis AND the selection flow are the wall's own organs
-	// (the 2026-11-08 pins -- web IA §7.3/§7.4), so they ride the
+	//, so they ride the
 	// shared Wall component. Everything around the wall here -- the
 	// data walk, the dialogs -- is the page's own concern: the page
 	// runs the batch writes the wall awaits and owns the add-tag
 	// dialog the wall's opener feeds with the ids captured at open.
 	//
-	// THE ADD-TO-ALBUM FLOW IS GONE (E4, web IA §7.5): an album is a
+	// THE ADD-TO-ALBUM FLOW IS GONE: an album is a
 	// source picked at creation, not a container photos get curated
 	// into -- the bar's album button, its dialog and the ?album=
 	// handoff all died together (the tag flow stays: tags are
 	// vocabulary, not containers).
 	//
-	// THE ADD-TAG FLOW (M3d Task 4): the bar's dialog tags the
+	// THE ADD-TAG FLOW: the bar's dialog tags the
 	// captured selection with one of the caller's existing tags, or
 	// creates the tag first (idempotently) -- the same honest
 	// report, the same `done` continuation. Tag writes are per-user
@@ -37,7 +37,7 @@
 	//
 	// Render windowing is row-level: every justified row carries
 	// content-visibility with its engine-computed height (see the
-	// Wall component); full virtualization stays an M3 option if the
+	// Wall component); full virtualization stays an option if the
 	// wall outgrows it.
 	import { _ } from 'svelte-i18n';
 	import { createTimelineClient, type BatchAction, type BatchOutcome } from '$lib/api/timeline';
@@ -87,7 +87,7 @@
 
 	// The add-tag flow: open the dialog over the wall's captured ids
 	// with the caller's vocabulary fetched fresh -- the pick list is
-	// the server's. Tag writes are per-user state (B4) and publish
+	// the server's. Tag writes are per-user state and publish
 	// nothing, so nothing here converges the wall: the report IS the
 	// outcome.
 	function openTagDialog(ids: readonly string[], done: () => void): void {
@@ -166,7 +166,7 @@
 	// The month axis, the selection flow and the batch bar (the
 	// jump, the active stop, the drag, the checks, the Esc exit, the
 	// busy/error choreography, the bar itself) all moved INTO the
-	// wall (the 2026-11-08 pins: the photo rendering, the right-edge
+	// wall (the photo rendering, the right-edge
 	// rail and the selection are one component). This page composes
 	// the wall, runs its batch writes and owns the dialogs.
 
@@ -239,7 +239,7 @@
      LEFT of the rail's own strip, never under it. -->
 <div class="timeline__gutter pe-[72px]">
 	<section class="timeline px-2" aria-busy={$timeline.status === 'loading'}>
-		<!-- No toolbar (R2-11): the timeline's header carries nothing but
+		<!-- No toolbar: the timeline's header carries nothing but
 	     what the top bar already owns (upload, search). The hidden
 	     view's entry moved to the navigation drawer; the selection
 	     entry is the tiles' check affordance (hover/keyboard-focus
@@ -269,7 +269,7 @@
 			</div>
 		{:else}
 			<!-- The unified wall (its month axis AND its selection flow are
-		     the wall's own organs -- the 2026-11-08 pins): the page
+		     the wall's own organs): the page
 		     keeps its data walk, its batch runs and its dialogs; the
 		     grouping, the packed rows, the tiles, the right-edge rail,
 		     the selection state and the batch bar are the one wall

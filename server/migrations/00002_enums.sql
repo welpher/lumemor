@@ -1,6 +1,6 @@
 -- +goose Up
--- Native enums for every enumerated value in the schema. Values are pinned
--- by the milestone plan; adding a value later requires a new migration.
+-- Native enums for every enumerated value in the schema. Values are pinned;
+-- adding a value later requires a new migration.
 
 CREATE TYPE user_role AS ENUM ('admin', 'user');
 CREATE TYPE media_kind AS ENUM ('image', 'video');

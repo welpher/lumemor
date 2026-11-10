@@ -1,5 +1,5 @@
 -- +goose Up
--- The E4 rescan's run row needs its subject: a `job_runs` row of
+-- The rescan's run row needs its subject: a `job_runs` row of
 -- the album_rescan kind belongs to one directory album, and the
 -- endpoint's in-flight guard ("a rescan of THIS album is already
 -- running -- join it, start nothing") must find that album's run

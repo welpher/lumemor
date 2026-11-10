@@ -1,5 +1,5 @@
 -- +goose Up
--- Upload idempotency (M2b): the device-side asset identity, and the
+-- Upload idempotency: the device-side asset identity, and the
 -- owner+checksum uniqueness completed to cover the trash.
 
 -- device_asset_id is the stable identity the uploading device assigned

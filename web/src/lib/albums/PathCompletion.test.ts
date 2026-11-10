@@ -5,7 +5,7 @@ import PathCompletion from './PathCompletion.svelte';
 
 // The source-path completion combobox: the typed prefix in, the
 // pickable directories out, the list a PORTALED floating layer
-// (§7.5's 2026-11-09 second revision: fixed, anchored under the
+// (fixed, anchored under the
 // input through the shared `anchored` action, the dialog never
 // changing height for it). The request discipline: debounced
 // ~250ms, single-flight (a burst parks behind the in-flight
@@ -13,12 +13,12 @@ import PathCompletion from './PathCompletion.svelte';
 // answer never overwrites a newer one (the generation guard). The
 // keyboard: ↑/↓ highlight, Enter completes, Esc closes the list
 // alone. The honest faces: the empty prefix lists the container's
-// root itself (E6's system-wide domain -- the allowlist and its
-// no-roots posture retired with §7.5's third revision), an empty
+// root itself (the system-wide domain -- the allowlist and its
+// no-roots posture retired), an empty
 // answer renders the plain no-match note, and the completion's own
 // failure renders as a line that points back at the completion.
 // The validation slot under the field swaps the hint and the
-// failure at ONE height (§7.5's companion pin). Every case drives
+// failure at ONE height. Every case drives
 // the component through an injected fetch mock under fake timers
 // (the debounce is the unit under observation).
 
@@ -112,7 +112,7 @@ test('a burst of keystrokes debounces into ONE request with the final prefix', a
 	expect(fetchMock).toHaveBeenCalledTimes(1);
 	expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/albums/path-completions?prefix=%2FVol');
 	expect(rows()).toEqual(['/Volumes/Photos']);
-	// The keys footer rides the row list (the specimen's language).
+	// The keys footer rides the row list.
 	expect(keysFooter()?.textContent).toContain('↑↓ Select');
 	expect(keysFooter()?.textContent).toContain('Enter Complete');
 
@@ -224,7 +224,7 @@ test('a row completes on mousedown (the state-selector semantics)', async () => 
 	flushSync();
 });
 
-test('the empty prefix lists the root itself; the honest empty answer is the plain no-match note (E6: the no-roots face retired)', async () => {
+test('the empty prefix lists the root itself; the honest empty answer is the plain no-match note (the no-roots face retired)', async () => {
 	// The system-wide domain: the empty prefix carries no query
 	// string and the server answers the container's root.
 	const fetchMock = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: ['/'] }));
@@ -242,7 +242,7 @@ test('the empty prefix lists the root itself; the honest empty answer is the pla
 
 	// The same empty answer (whatever the prefix): the plain
 	// no-match note -- the allowlist and its no-roots posture
-	// retired with E6, so there is no closed state to explain and
+	// retired, so there is no closed state to explain and
 	// no admin jump to offer (the component reads no role at all).
 	document.body.textContent = '';
 	const empty = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: [] }));
@@ -261,7 +261,7 @@ test('the empty prefix lists the root itself; the honest empty answer is the pla
 	flushSync();
 });
 
-test("the validation slot swaps the hint and the failure at ONE height (§7.5's companion pin)", async () => {
+test('the validation slot swaps the hint and the failure at ONE height ', async () => {
 	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: [] }));
 	vi.stubGlobal('fetch', fetchMock);
 	const hint = 'Choose an existing folder — the album references it in place.';

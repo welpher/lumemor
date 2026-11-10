@@ -206,7 +206,7 @@ test('the listing renders the Machine learning page-header row and slot-grouped 
 	const page = mountPage();
 	await settle();
 
-	// THE 2026-11-09 NAMING PIN (§7.8): the page is the Machine
+	// THE NAMING RULE: the page is the Machine
 	// Learning workbench -- the page-header row's title carries the
 	// domain name (the rail's item echoes it), the hairline under it.
 	const header = document.body.querySelector<HTMLElement>('.page-header');
@@ -599,7 +599,7 @@ test('a non-admin caller sees the mapped auth_forbidden message', async () => {
 	const page = mountPage();
 	await settle();
 
-	// The generic AUTH_FORBIDDEN message (the M3c albums branch made
+	// The generic AUTH_FORBIDDEN message (the albums branch made
 	// the code cover the album share face too, so the text stopped
 	// naming the admin surface).
 	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(

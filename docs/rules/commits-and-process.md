@@ -36,7 +36,7 @@ last.
 
 ## What reviews check (the recurring focus)
 
-- The semantic pins' faithfulness (spec → code, traced).
+- The semantic pins' faithfulness (contract → code, traced).
 - The refusal matrices (role/lock/ownership gates — both the happy arm and
   every refusal).
 - Removal thoroughness (grep to zero for anything the block retires).
@@ -48,8 +48,9 @@ last.
 The house-discipline greps a review runs on the diff's added lines:
 
 ```
-# the banned reference-project names: the two literals live only in the
-# design repo's convention pin -- this file spells no name; the review
-# reconstructs the grep there and expects zero added-line hits
+# the no-other-project-comparison discipline: comparisons to other photo
+# projects stay out of the added lines entirely (no names, no euphemisms,
+# no borrowed authority); the review greps for them and expects zero
+# added-line hits
 # CJK scan of added lines -- only the exemption classes may carry it
 ```

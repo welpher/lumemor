@@ -92,7 +92,7 @@ test('a ready asset requests the view-size derivative over the blurhash placehol
 });
 
 test('the tile serves the view derivative alone: no srcset, no sizes', () => {
-	// The 2026-11-07 blurry fix (owner pin 2): the tile/view DPR pair
+	// The 2026-11-07 blurry fix: the tile/view DPR pair
 	// is GONE. The pair relied on the browser re-evaluating a
 	// responsive-image candidate after the justified engine re-packed
 	// and the sizes hint changed on an already-loaded <img> -- which
@@ -147,7 +147,7 @@ test('the tile anchors into the viewer while selection is inactive', () => {
 });
 
 test('a tile with no onselect renders no checkbox: pure navigation', () => {
-	// The album detail's wall (R5): the callback's absence IS the
+	// The album detail's wall: the callback's absence IS the
 	// no-selection contract -- no check circle renders at all (not
 	// even the hover reveal), and the tile body stays the viewer
 	// anchor. The caller never wires a dead affordance.
@@ -193,7 +193,7 @@ test('the checkbox reflects the selection state and toggles without navigating',
 });
 
 test('the check affordance reveals on hover and keyboard focus regardless of the select mode', () => {
-	// R2-11: the selection entry IS the check. The affordance hides
+	// The selection entry IS the check. The affordance hides
 	// at rest but its reveal utilities are unconditional -- hover and
 	// keyboard focus surface it on EVERY tile (never only while a
 	// select mode is armed), and its click enters the selection even
@@ -242,7 +242,7 @@ test('badges: favorite star, live photo mark, video mark', () => {
 });
 
 test('the hover scrim rides over the photo: hidden at rest, revealed on hover and keyboard focus', () => {
-	// G3's restrained bottom veil: the Night-based gradient stays
+	// The restrained bottom veil: the Night-based gradient stays
 	// opacity-0 until the pointer or the keyboard focus enters the
 	// tile, never takes a pointer event, and never scales the photo.
 	const { tile } = mountTile({});
@@ -296,7 +296,7 @@ test('the favorite star is a hover-revealed state riding the scrim zone', () => 
 });
 
 test('the blurhash placeholder cross-fades out when the image loads', () => {
-	// G6: the placeholder drops to opacity-0 over the placeholder
+	// The placeholder drops to opacity-0 over the placeholder
 	// fade token once the thumbnail's load event lands.
 	const { tile } = mountTile({});
 	const canvas = tileRoot().querySelector<HTMLElement>('canvas.tile__placeholder');

@@ -1,4 +1,4 @@
-// The model download endpoint (M3a Task 3): the admin surface's
+// The model download endpoint: the admin surface's
 // trigger of the default model group's download. The route group
 // proves the admin role; the handler's own discipline is idempotence
 // -- a run that is still in flight (state queued or running) answers

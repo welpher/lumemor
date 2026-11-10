@@ -1,4 +1,4 @@
-// The face detection wrapper tests (M3a Task 6): the committed YuNet
+// The face detection wrapper tests: the committed YuNet
 // weights driven through the real wrapper on the real shared library.
 // The pins are the detection semantics -- one face found in the
 // portrait fixture, its box in per-mille units, its five landmarks in
@@ -6,8 +6,8 @@
 // refusals (a graph that does not speak the anchor-free output
 // convention). The wrapper's input geometry comes from the session's
 // own metadata, never from any manifest: the 2023mar graph pins
-// 1x3x640x640 (the fact Task 2 measured; the manifest's declared
-// inputSize is a display fact, corrected to 640 by this task), and
+// 1x3x640x640 (the fact the session metadata measured; the manifest's
+// declared inputSize is a display fact, corrected to 640), and
 // the type system is the pin -- Detect's only inputs are the session
 // and the raster, so no declared size can reach the tensor math.
 //
@@ -99,7 +99,7 @@ func gradientImage(width, height int) ml.Image {
 }
 
 // TestDetectFindsFaceInPortrait is the real-model pin: the portrait
-// fixture (a public-domain astronaut portrait Task 2 verified
+// fixture (a public-domain astronaut portrait verified
 // detectable) yields exactly one face -- the anchor-free decode finds
 // a neighborhood of candidates that the NMS collapses to the single
 // face -- with a score in the band the real weights produce, the box

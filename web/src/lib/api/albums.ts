@@ -1,5 +1,5 @@
-// The albums surface's data client (M3c Task 5, reshaped by E4's
-// albums-as-sources and E6's album autonomy): the wall list, the
+// The albums surface's data client (reshaped by the
+// albums-as-sources and album-autonomy reworks): the wall list, the
 // detail read (the deletion faces included -- the write probe's
 // `sourceWritable` fact, the owner's `allowAppDeletion` switch, the
 // derived `deletable` affordance), the directory creation (title +
@@ -327,7 +327,7 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 	if (candidate.inTimeline !== undefined && candidate.inTimeline !== true && candidate.inTimeline !== false) {
 		return null;
 	}
-	// The E6 deletion faces ride the directory albums: the probe's
+	// The deletion faces ride the directory albums: the probe's
 	// `sourceWritable` fact (both roles), the owner's
 	// `allowAppDeletion` switch and the derived `deletable`
 	// affordance (the owner's view alone) -- each optional, but a
@@ -484,7 +484,7 @@ export async function createAlbum(
  * GET /api/v1/albums/path-completions: the creation dialog's source
  * path completion. The write is the ADMINISTRATOR's (a member
  * answers 403 before the prefix is read), and the domain is
- * SYSTEM-WIDE (web IA §7.5's third revision: the allowlist retired
+ * SYSTEM-WIDE (the allowlist retired
  * with it -- the boundary is the compose mount itself): the
  * container's real visible filesystem, drilled one segment at a
  * time, the managed tree never listed on any row. The empty prefix

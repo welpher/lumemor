@@ -1,4 +1,4 @@
-// Places surface tests (M3d Task 1): the caller's city grouping and
+// Places surface tests: the caller's city grouping and
 // the admin re-resolution trigger. The read discipline mirrors the
 // people surface's: a place lists when it holds at least one
 // caller-visible live asset, counts are honest per caller (a sharee

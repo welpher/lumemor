@@ -1,4 +1,4 @@
-// The model registry (M3a Task 2): the models table is the authority
+// The model registry: the models table is the authority
 // for what is registered and which model fills each slot; the
 // per-model manifest on disk is the checksum authority. The registry
 // ties the two together -- activation verifies the files against their
@@ -38,7 +38,7 @@ import (
 // names (face-detect and friends) map onto them below.
 type Slot string
 
-// The five M3a/M3d slots. The database enum also carries stt, which
+// The five inference slots. The database enum also carries stt, which
 // stays unclaimed until a later milestone adds a speech model.
 const (
 	SlotFaceDetect    Slot = "face_detect"
@@ -520,7 +520,7 @@ type ModelFile struct {
 // file_path registers), with resolved paths and digests. The
 // multi-file consumers resolve their graphs this way: the OCR model's
 // directory pins the detection and recognition pair, and the OCR job
-// opens one session over each (M3a Task 8).
+// opens one session over each.
 func ModelFiles(model *Model) ([]ModelFile, error) {
 	dir := filepath.Dir(model.Path)
 	manifest, err := loadManifestModel(dir)
@@ -564,7 +564,7 @@ type rowQuerier interface {
 // dimension in the attribute's typmod). Two consumers share it: the
 // activation transaction's dimension switch (the cross-dimension
 // clear-and-ALTER of the registry) and the CLIP embedding job's INSERT
-// GUARD (M3a Task 8) -- the column's current dimension is the
+// GUARD -- the column's current dimension is the
 // database's truth, never an assumption, so an embedding whose length
 // disagrees with it is refused before any insert.
 func EmbeddingColumnDim(ctx context.Context, db rowQuerier) (int, error) {

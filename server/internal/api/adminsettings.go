@@ -340,9 +340,9 @@ func transcodingSettingsResponse(profile db.TranscodingProfile) apigen.Transcodi
 }
 
 // GetMountRootsSettings and UpdateMountRootsSettings once lived
-// here: the mount-root allowlist pair of E4's albums-as-sources,
-// the directory-album trust boundary's read and wholesale save.
-// The E6 boundary ruling retired the layer whole -- the compose
+// here: the mount-root allowlist pair of the albums-as-sources
+// rework, the directory-album trust boundary's read and wholesale
+// save. The boundary ruling retired the layer whole -- the compose
 // file's mounts ARE the boundary (the operator controls what the
 // container sees; the application layer neither can nor needs to
 // restrict the operator further), and mounting an existing photo

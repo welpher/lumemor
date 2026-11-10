@@ -1,9 +1,9 @@
-// The tags surface (M3d Task 2): the caller's private vocabulary
-// behind GET /tags (the search milestone's word list) with its CRUD
+// The tags surface: the caller's private vocabulary
+// behind GET /tags (the search surface's word list) with its CRUD
 // face (the idempotent create, the rename, the delete) and the batch
 // assignment face behind POST and DELETE /tags/{tagId}/assets.
 //
-// Tags are per-user state with the favorites' privacy shape (B4):
+// Tags are per-user state with the favorites' privacy shape:
 // every read and write is caller-scoped, the honest counts cover
 // caller-visible live assets only, and another account's tags never
 // surface anywhere -- a sharee sees their own tags on a shared asset
@@ -345,8 +345,8 @@ func (s *server) DeleteTag(w http.ResponseWriter, r *http.Request, tagId openapi
 // assignment add with the batch surface's set semantics. Resolution
 // and insert are one statement whose WHERE arm IS the resolution --
 // every id must address an asset the caller can see through the
-// album union (the M3d widening over the album-items add: a sharee
-// tags what they see, with their own tag) -- so unknown, foreign and
+// album union (the caller-visible widening over the album-items add: a
+// sharee tags what they see, with their own tag) -- so unknown, foreign and
 // invisible ids are the skipped of the honest report, never errors,
 // and an all-skipped request still answers 200. No live-state filter:
 // the assignment row is per-user state written whatever the asset's
@@ -432,7 +432,7 @@ func (s *server) RemoveTagAssets(w http.ResponseWriter, r *http.Request, tagId o
 }
 
 // assetTagsForCaller reads one asset's tags joined through the
-// CALLER's own tag rows (B4: another account's tags on the same
+// CALLER's own tag rows (another account's tags on the same
 // asset never surface), sorted by name case-insensitively with the
 // tag id as the tiebreak -- the read both detail-serving endpoints
 // (GET and PATCH) share, so the PATCH response carries the tags

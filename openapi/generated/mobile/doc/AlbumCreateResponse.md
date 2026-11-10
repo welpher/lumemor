@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 **locked** | **bool** | The owner's lock: a locked album refuses its owner's curation and property writes until unlocked. It is metadata to a viewer (viewers are read-only regardless).  | 
 **isShared** | **bool** | True when the album carries at least one `album_shares` row -- someone besides the owner can see it. Always true on shared-group items by construction.  | 
 **coverAssetIds** | **BuiltList&lt;String&gt;** | The collage source of the wall card: the pinned cover asset as a single-element list when the owner set one, otherwise the album's most recent live member assets (up to four, `takenAt` descending, the asset id as the tiebreak). Empty for an album with no live members.  | 
-**itemCount** | **int** | The album's live member count: trashed, hidden and Live Photo component rows never count (A5 -- a hidden asset is invisible to the whole family).  | 
+**itemCount** | **int** | The album's live member count: trashed, hidden and Live Photo component rows never count (a hidden asset is invisible to the whole family).  | 
 **updatedAt** | [**DateTime**](DateTime.md) | When the album row last changed (RFC 3339 UTC). | 
 **callerRole** | **String** | The caller's relation to this album: `owner` items belong to the own group, `viewer` items to the shared group. The web client sections the wall off this discriminator.  | 
 **owner** | [**AlbumOwnerRef**](AlbumOwnerRef.md) | The owner attribution of a shared item: the account that owns the album. Present exactly when `callerRole` is `viewer`; own items omit it (the owner is the caller).  | [optional] 

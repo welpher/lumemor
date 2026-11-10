@@ -1,4 +1,4 @@
-// The merge rule's pure arithmetic (M3d Task 3): the deterministic
+// The merge rule's pure arithmetic: the deterministic
 // two-path rank fusion and the ILIKE wildcard escaping. The rule is
 // integer by construction -- no float ties, no rounding, page cursors
 // carry exact values.

@@ -1,4 +1,4 @@
-// The viewer's gradual zoom engine (R2-7/8): every zoom change -- the
+// The viewer's gradual zoom engine: every zoom change -- the
 // action bar's step buttons, the +/- keys, the double-click binary --
 // animates the media's scale through requestAnimationFrame
 // interpolation, and the animation is INTERRUPTIBLE: an input that

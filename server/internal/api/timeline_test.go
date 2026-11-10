@@ -1,11 +1,11 @@
-// Timeline tests (M2c Task 2): the aggregated timeline's semantics
+// Timeline tests: the aggregated timeline's semantics
 // (dedup, per-user preference exclusion, the live-asset filters, the
 // second user's view, the album scope), the keyset pagination with
 // the taken_at tie boundary, and the sync-album wiring that makes
 // uploads surface in the timeline at all. Fixtures insert users,
 // albums, shares, preferences and assets directly in the database:
-// user management is M2d, album APIs later still, and the timeline
-// must be honest about rows no API can produce yet.
+// user management is later work, album APIs later still, and the
+// timeline must be honest about rows no API can produce yet.
 package api
 
 import (

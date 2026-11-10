@@ -13,7 +13,7 @@ import Page from './+page.svelte';
 // description edit (PATCH body, error mapping, the stored text
 // untouched on failure), the action bar's curation actions with
 // their optimistic flips and rollback (the permanent delete left
-// the viewer for the trash page in the R2-3 rework), and the
+// the viewer for the trash page in the viewer rework), and the
 // layered Escape. $app/state and $app/navigation are mocked because
 // the real router needs a running SvelteKit app; the events module
 // is mocked with a captured handler registry (the timeline page's
@@ -317,7 +317,7 @@ beforeEach(async () => {
 	navigationCallbacks.length = 0;
 	vi.clearAllMocks();
 	clearWallItems();
-	// The info panel's open preference persists in localStorage (R2-9):
+	// The info panel's open preference persists in localStorage:
 	// every test starts from the default (closed) unless it writes the
 	// key itself.
 	localStorage.clear();
@@ -620,7 +620,7 @@ test('a not-ready video shows the poster and waits for the SSE ready event', asy
 
 test('the bar trash action flips optimistically, rolls back on failure', async () => {
 	// The batch hangs until the test releases it, so the optimistic
-	// window is observable before the failure. (The R2-3 rework: the
+	// window is observable before the failure. (The viewer rework: the
 	// curation actions ride the viewer's action bar; the permanent
 	// delete left the viewer for the trash page.)
 	let release: ((response: Response) => void) | undefined;
@@ -717,7 +717,7 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 	expect(element('a.viewer__download').getAttribute('href')).toBe('/api/v1/assets/a2/original');
 
 	// The owner-only writes never render (read-only is visual, never
-	// grayed out -- the web IA's pinned rule): no trash in the bar,
+	// grayed out -- the pinned read-only rule): no trash in the bar,
 	// no edit in the drawer.
 	expect(() => barButton('Trash')).toThrow();
 	expect(document.body.textContent).not.toContain('Edit');
@@ -736,10 +736,10 @@ test('the action bar carries the curation icon actions; the permanent delete is 
 	const { app } = mountViewer('a2', viewerRoutes('a2'));
 	await settle();
 
-	// R2-3's bar: the close mark, the favorite toggle, the info-panel
+	// The action bar: the close mark, the favorite toggle, the info-panel
 	// toggle and (for the owner) the trash/restore pair, every button
-	// an icon button named by its aria-label. R2-7 widens the zoom
-	// controls to the in/out/reset trio.
+	// an icon button named by its aria-label. The zoom
+	// controls are the in/out/reset trio.
 	expect(() => barButton('Back to the timeline')).not.toThrow();
 	expect(() => barButton('Favorite')).not.toThrow();
 	expect(() => barButton('Photo information')).not.toThrow();
@@ -754,7 +754,7 @@ test('the action bar carries the curation icon actions; the permanent delete is 
 	expect(document.body.textContent).not.toContain('Delete permanently');
 
 	// With the info panel open, the action cluster keeps its overlay
-	// guard -- the left shift (R2-3) now serves only the <lg overlay
+	// guard -- the left shift now serves only the <lg overlay
 	// fallback form (lg:me-0); at lg+ the split layout itself clears
 	// the cluster (the split composition test below).
 	const actions = () => document.body.querySelector('.viewer__bar-actions');
@@ -768,7 +768,7 @@ test('the action bar carries the curation icon actions; the permanent delete is 
 });
 
 test('the info panel docks as a right split region at lg and falls back to the overlay below it', async () => {
-	// R2-10's composition: the viewer root is a flex ROW -- the media
+	// The split composition: the viewer root is a flex ROW -- the media
 	// column flexes (flex-1 min-w-0, the bar and the stage live inside
 	// it) and the panel rides BESIDE it as a real flex sibling
 	// (lg:static: it occupies layout space, so the stage re-fits
@@ -812,7 +812,7 @@ test('the info panel docks as a right split region at lg and falls back to the o
 });
 
 test('the info panel open preference persists across viewer sessions', async () => {
-	// R2-9: one localStorage key, default closed; the stored open
+	// One localStorage key, default closed; the stored open
 	// state restores on the next viewer mount, and closing persists
 	// back.
 	const first = mountViewer('a2', viewerRoutes('a2'));
@@ -843,7 +843,7 @@ test('the info panel open preference persists across viewer sessions', async () 
 });
 
 test('the +/- keys and the double-click ride the gradual zoom; a neighbor resets it', async () => {
-	// R2-7/8: the keyboard pair steps the same engine the bar's
+	// The gradual zoom: the keyboard pair steps the same engine the bar's
 	// buttons and the stage's double-click ride -- every change
 	// animates, and the affordances key on the engine's target (the
 	// zoomed stage flips synchronously with the intent). Navigating
@@ -919,7 +919,7 @@ test('the info panel is metadata-only: key-value rows with hairline dividers, no
 	await settle();
 	openDrawer();
 
-	// No actions section survived the R2-3 rework: the curation
+	// No actions section survived the rework: the curation
 	// affordances live in the bar.
 	expect(element('.info').textContent).not.toContain('Actions');
 
@@ -1226,7 +1226,7 @@ test('an in-progress description draft survives same-id detail replacements', as
 
 	// An actual asset change (the panel-open navigation to the
 	// neighbor) resets the edit mode: the neighbor's panel RESTORED
-	// OPEN (R2-9: the preference persists across viewer sessions, and
+	// OPEN (the preference persists across viewer sessions, and
 	// this test's first half left it open), so no toggle click is
 	// needed -- the read view renders and the draft never leaks
 	// across assets.
@@ -1378,7 +1378,7 @@ test('the drawer renders one chip per face with the caller-visible label states'
 	flushSync();
 
 	// A faceless asset: the honest empty line, never a bare heading.
-	// (The panel restored open -- R2-9's persistence, this test's own
+	// (The panel restored open -- the persistence, this test's own
 	// first half left it open -- so no toggle click precedes the
 	// assertion.)
 	const empty = mountViewer('a2', [
@@ -1615,7 +1615,7 @@ test("the drawer's file section renders the tags row: the caller's chips, the em
 	unmount(app);
 	flushSync();
 
-	// The first part left the panel's open preference behind (R2-9):
+	// The first part left the panel's open preference behind:
 	// drop it so the bare mount starts from the default (closed).
 	localStorage.removeItem('lumemor:viewer:info-panel');
 	// No tag yet: the honest empty note, the affordance still there.
@@ -1727,7 +1727,7 @@ test("the tags row's assign affordance is every viewer's own write (per-user sta
 	// A sharee's drawer: the description edit never renders (the
 	// identity seam's read-only arm), but the tags affordance does
 	// -- the tag write is the CALLER's own per-user row, and the
-	// union deliberately carries it (B4).
+	// union deliberately carries it.
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2', () =>
 			jsonResponse(

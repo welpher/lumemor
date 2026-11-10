@@ -1,4 +1,4 @@
-// The CLIP embedding wrapper tests (M3a Task 8): the wiring pins over
+// The CLIP embedding wrapper tests: the wiring pins over
 // the committed const512 fixture (a dynamic-geometry graph emitting a
 // non-unit constant vector, so the wrapper's defensive L2
 // normalization is observable -- the real vision tower already emits

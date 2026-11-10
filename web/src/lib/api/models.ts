@@ -1,4 +1,4 @@
-// The admin model management client (M3a Task 5): the listing behind
+// The admin model management client: the listing behind
 // GET /admin/models (with the download run summary), the download
 // trigger behind POST /admin/models/download, the activation switch
 // behind PATCH /admin/models/{id}, the rerun trigger behind POST

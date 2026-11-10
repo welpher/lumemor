@@ -2,8 +2,8 @@
 
 package media
 
-// The ML inference decode: the ML jobs (the face detection of Task 6,
-// the CLIP and OCR jobs of Task 8) consume the stored originals as
+// The ML inference decode: the ML jobs (face detection, the CLIP and
+// OCR jobs) consume the stored originals as
 // upright RGB rasters -- the EXIF orientation applied once (the same
 // render-time discipline the thumbnail job applies) and the long edge
 // bounded, so the heavy decode of a large original never hands a

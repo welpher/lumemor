@@ -15,7 +15,7 @@ part 'cluster_detail.g.dart';
 ///
 /// Properties:
 /// * [clusterId] - Identifier of the face cluster.
-/// * [label] - The caller's label of the cluster, or null when the caller has not labeled it (the unnamed state). It is the calling user's label or no label at all: another account's label never shows here (B4). 
+/// * [label] - The caller's label of the cluster, or null when the caller has not labeled it (the unnamed state). It is the calling user's label or no label at all: another account's label never shows here. 
 /// * [faces] - The cluster's faces on assets visible to the caller, strongest score first with the face id as the tiebreak. Faces on other accounts' assets never appear. 
 @BuiltValue()
 abstract class ClusterDetail implements Built<ClusterDetail, ClusterDetailBuilder> {
@@ -23,7 +23,7 @@ abstract class ClusterDetail implements Built<ClusterDetail, ClusterDetailBuilde
   @BuiltValueField(wireName: r'clusterId')
   String get clusterId;
 
-  /// The caller's label of the cluster, or null when the caller has not labeled it (the unnamed state). It is the calling user's label or no label at all: another account's label never shows here (B4). 
+  /// The caller's label of the cluster, or null when the caller has not labeled it (the unnamed state). It is the calling user's label or no label at all: another account's label never shows here. 
   @BuiltValueField(wireName: r'label')
   PersonLabel? get label;
 

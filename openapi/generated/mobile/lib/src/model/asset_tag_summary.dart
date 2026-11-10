@@ -8,7 +8,7 @@ import 'package:built_value/serializer.dart';
 
 part 'asset_tag_summary.g.dart';
 
-/// One entry of the asset detail's `tags` array: the caller's own tag as it rides the asset -- identity and name only, the vocabulary's listing face carries the counts. Per-user state (B4): the entry exists exactly because the CALLER's assignment row does. 
+/// One entry of the asset detail's `tags` array: the caller's own tag as it rides the asset -- identity and name only, the vocabulary's listing face carries the counts. Per-user state: the entry exists exactly because the CALLER's assignment row does. 
 ///
 /// Properties:
 /// * [id] - Identifier of the tag (the caller's own row).

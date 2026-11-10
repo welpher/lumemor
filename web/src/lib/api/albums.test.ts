@@ -14,8 +14,8 @@ import {
 } from './albums';
 import { sessionStatus } from '$lib/auth/session.svelte';
 
-// The albums surface's data client (E4's albums-as-sources reshape,
-// completed by E6's album autonomy): the wall list, the detail read
+// The albums surface's data client (the albums-as-sources reshape,
+// completed by album autonomy): the wall list, the detail read
 // (the deletion faces included), the directory creation (title +
 // source path + audience, the honest skipped report and the write
 // probe's sourceWritable fact -- both admin-guarded writes), the
@@ -173,7 +173,7 @@ test('fetchAlbumDetail reads the metadata page with the lean limit', async () =>
 	}
 });
 
-test('fetchAlbumDetail reads the directory album source row and the E6 deletion faces', async () => {
+test('fetchAlbumDetail reads the directory album source row and the deletion faces', async () => {
 	const directoryDetail = {
 		...detailBody,
 		type: 'directory',

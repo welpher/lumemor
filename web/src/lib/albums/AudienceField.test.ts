@@ -3,10 +3,10 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import AudienceField from './AudienceField.svelte';
 
-// The audience field (web IA §7.6, the specimen's add-style pin):
+// The audience field:
 // the granted accounts as chips (avatar + email + the remove
 // mark), the dashed "Add" affordance, and the candidate picker as
-// a PORTALED floating layer (§7.5's 2026-11-09 second revision:
+// a PORTALED floating layer (the floating-layer shape:
 // fixed, anchored under the chips row, the dialog never changing
 // height for it) -- the users listing's candidates (every account
 // minus the draft's members minus the caller), the keyboard the
@@ -14,7 +14,7 @@ import AudienceField from './AudienceField.svelte';
 // picker alone), the per-open fetch with its honest failure line,
 // and the disabled account's note. The candidate rows are state
 // selectors (mousedown adds), the chip's remove mark is the one
-// button. §7.6's 2026-11-09 pin: a KNOWN-empty candidate pool
+// button. The known-pool rule: a KNOWN-empty candidate pool
 // disables the add affordance outright (a single-account instance,
 // or the multi-add draining the last candidate) and an empty
 // picker state is never shown -- the probe fetches the pool at
@@ -92,7 +92,7 @@ test('the empty audience renders the honest "only you" note; the mount probe fet
 	mountField();
 
 	expect(document.body.querySelector('.audience-field__only-me')?.textContent).toBe('Only you');
-	// §7.6's pin needs the pool KNOWN before the first open (the
+	// The known-pool rule needs the pool KNOWN before the first open (the
 	// honest disabled button): the field probes the member list
 	// once at mount. The listing fails here (the bare mock answers
 	// nothing) -- an unknown pool keeps the button enabled, because
@@ -115,7 +115,7 @@ test('opening the picker fetches the member list and offers the other accounts',
 	// per-open discipline of the old share dialog.
 	expect(fetchMock).toHaveBeenCalledTimes(2);
 	expect(rowNames()).toEqual(['grace@example.com', 'ivy@example.com', 'hopper@example.com']);
-	// The keys footer rides the rows (the specimen's language).
+	// The keys footer rides the rows.
 	expect(document.body.querySelector('.audience-field__keys')?.textContent).toContain('Enter Add');
 });
 
@@ -134,8 +134,8 @@ test('the keyboard: Enter adds the highlighted candidate, Esc closes the picker 
 	listbox?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 	flushSync();
 
-	// The chip landed and the picker STAYS open (the specimen's
-	// state two: a chip exists while the candidates offer the next).
+	// The chip landed and the picker STAYS open (a
+	// chip exists while the candidates offer the next).
 	expect(
 		Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__chip-name')).map(
 			(chip) => chip.textContent
@@ -264,7 +264,7 @@ test('the member-list failure renders inside the picker; the toggle retries', as
 	expect(rowNames()).toEqual(['grace@example.com', 'ivy@example.com', 'hopper@example.com']);
 });
 
-test("the multi-add drain collapses the picker and disables the add affordance (§7.6's pin)", async () => {
+test('the multi-add drain collapses the picker and disables the add affordance', async () => {
 	const fetchMock = vi.fn(async () => jsonResponse(200, usersBody));
 	vi.stubGlobal('fetch', fetchMock);
 	mountField({ selfId: 'u1' });
@@ -329,7 +329,7 @@ test('a single-account instance permanently disables the add affordance (the pro
 	expect(document.body.querySelector('#audience-field-picker')).toBeNull();
 
 	// The reserved slot never moves: the note's line is always in
-	// the layout (§7.5's companion pin -- the dialog's height is
+	// the layout (the reserved-slot rule -- the dialog's height is
 	// invariant to the note's comings and goings).
 	const slot = document.body.querySelector<HTMLElement>('.audience-field__slot');
 	expect(slot).not.toBeNull();

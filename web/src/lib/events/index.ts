@@ -20,7 +20,7 @@
 // own on purpose -- hand-rolling it would only diverge from the
 // browser's. It does OBSERVE the browser's connection state (the
 // onopen/onerror handlers below) and report it into the connection
-// store, so the offline strip (web IA §6's pinned state) can tell
+// store, so the offline strip can tell
 // the user the truth: the stream is down, the browser is retrying,
 // it recovered. Observation only -- the retry schedule stays the
 // browser's secret (JS cannot read it), which is why the strip
@@ -96,7 +96,7 @@ export type JobRunState = 'queued' | 'running' | 'succeeded' | 'failed';
  * The people surface's person.* events: the label, hidden, merge and
  * face-move writes. Every payload carries the acting user's id
  * beside the cluster (or face) id ONLY: the label text and the
- * hidden switch are one account's private state (B4), so they never
+ * hidden switch are one account's private state, so they never
  * ride the shared stream -- a subscriber filters by the ids it
  * renders, never by another account's change, and the SERVER's
  * answer decides what actually moved.

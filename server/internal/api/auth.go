@@ -281,7 +281,7 @@ func expireSessionCookie(w http.ResponseWriter, r *http.Request) {
 }
 
 // sessionInfoFrom maps a session row onto the API shape, carrying the
-// account identity the session belongs to (the M3c seam: the login,
+// account identity the session belongs to (the identity seam: the login,
 // the session list and the pairing response all answer who is
 // calling, so a client restoring a session never needs a second
 // endpoint). Only the whitelisted fields travel: the token hash never

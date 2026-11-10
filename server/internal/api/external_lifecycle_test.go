@@ -1,5 +1,5 @@
-// The external asset lifecycle tests (E4 Task 2, Review Focus 5):
-// the §A6/E4 table's move semantics through the real surfaces -- the
+// The external asset lifecycle tests: the
+// external move semantics through the real surfaces -- the
 // batch trash arm MOVES the file into data/trash/<assetId>/ (records
 // original_path and trash_path, and the failure the operating system
 // refuses fails the whole batch explicitly with nothing
@@ -136,8 +136,8 @@ func (e *assetEnv) externalRow(t *testing.T, id uuid.UUID) dbgen.Asset {
 	return e.assetRowOf(t, id)
 }
 
-// TestExternalTrashAndRestore is the §A6/E4 table's first two rows
-// through the real surfaces: the batch trash arm moves the file
+// TestExternalTrashAndRestore is the external lifecycle's first two
+// rows through the real surfaces: the batch trash arm moves the file
 // into the server's trash area (original_path and trash_path
 // recorded, file_path naming where the bytes now are), the trash
 // listing shows the item honestly with its storage kind, and the
@@ -318,7 +318,7 @@ func TestExternalRestoreFailure(t *testing.T) {
 	requireFileBytes(t, trashed.TrashPath.String, string(fixture.bytes))
 }
 
-// TestExternalExpiry is the §A6/E4 table's expiry row: the run
+// TestExternalExpiry is the external expiry row: the run
 // purges the row and physically removes the trash copy; the
 // family's source location (wherever the file no longer sits) is
 // never touched. The orphan's row (the rescan's vanish arm, no
@@ -446,7 +446,7 @@ func TestTrashListingExcludesOrphans(t *testing.T) {
 }
 
 // TestExternalTrashLockedAlbumGate pins the album lock's delete arm
-// (E6, §7.9's content-protection freeze widened from the rescan to
+// (the content-protection freeze widened from the rescan to
 // the deletion): a live external asset of a LOCKED directory album
 // refuses the batch's trash with the curation writes' own 409 before
 // any file moves, the whole batch rolls back -- a file the batch had
@@ -551,7 +551,7 @@ func TestExternalTrashLockedAlbumGate(t *testing.T) {
 }
 
 // TestAlbumMembershipEvents pins the album walls' convergence signal
-// of the E6 deletability chain (§7.9): the trash and the restore of
+// of the deletability chain: the trash and the restore of
 // an album member change the album's LIVE membership -- the derived
 // count the detail renders and the members the wall walks -- and the
 // album-narrowed wall converges exactly through album.items-changed,

@@ -1,4 +1,4 @@
-// The OCR job tests (M3a Task 8): the worker wiring over the committed
+// The OCR job tests: the worker wiring over the committed
 // det+rec fixture pair registered as ONE two-file model (the registry's
 // multi-file convention: the manifest's first file is the detection
 // graph, the second the recognition graph), the upsert idempotence

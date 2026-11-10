@@ -1,4 +1,4 @@
-// The OCR job (M3a Task 8): the asset-ready seam's ocr arm and the
+// The OCR job: the asset-ready seam's ocr arm and the
 // ocr rerun's per-asset unit. The job resolves the active OCR model's
 // TWO graphs from its model directory (the registry's multi-file
 // convention: the manifest's first file is the detection graph, the

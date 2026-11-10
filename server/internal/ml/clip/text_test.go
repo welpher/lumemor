@@ -1,4 +1,4 @@
-// The CLIP text tower wrapper tests (M3d Task 3): the tokenizer's
+// The CLIP text tower wrapper tests: the tokenizer's
 // contract over the committed real vocabulary (the Chinese-CLIP BERT
 // WordPiece table) and the EmbedText wiring over the self-made
 // text-tower fixture graph. The fixture maps token ids to a

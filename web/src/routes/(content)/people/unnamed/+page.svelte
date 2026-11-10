@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The unnamed region of the people surface (web IA §3): the
+	// The unnamed region of the people surface: the
 	// caller's unlabeled face clusters as a keyset-paginated card
 	// grid (crop + honest face count), largest count first per the
 	// server's ordering. This region carries the two organizing paths
@@ -23,7 +23,7 @@
 	// first until the loaded window's depth is covered (or the region
 	// ends), so a scrolled page neither truncates nor misses the
 	// fresh cluster a recognition run announced. The refetched SERVER
-	// answer decides membership -- labels are private per user (B4),
+	// answer decides membership -- labels are private per user,
 	// so another account's write moves nothing the server does not
 	// move.
 	import { _ } from 'svelte-i18n';

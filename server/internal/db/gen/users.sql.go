@@ -175,7 +175,7 @@ type ListInstanceUsersMinimalRow struct {
 	IsDisabled bool        `json:"is_disabled"`
 }
 
-// User reads of the sharing face (M3c Task 3): the minimal member
+// User reads of the sharing face: the minimal member
 // list and the share-target lookup. Both select the safe identity
 // columns only -- a password hash never leaves the table through
 // any non-auth surface.
@@ -219,8 +219,8 @@ WHERE id = ANY($1::uuid[])
 // no row and a disabled account is filtered by the switch -- the
 // handler folds both into the same skipped reason so user ids
 // cannot be probed through the audience face, the discipline the
-// one-row share grant kept before E4 folded it into the full-set
-// write. The array bounds the scan (the contract caps the audience
+// one-row share grant kept before the full-set write folded it
+// in. The array bounds the scan (the contract caps the audience
 // at 200 ids).
 func (q *Queries) ListUsableShareTargets(ctx context.Context, dollar_1 []pgtype.UUID) ([]pgtype.UUID, error) {
 	rows, err := q.db.Query(ctx, listUsableShareTargets, dollar_1)

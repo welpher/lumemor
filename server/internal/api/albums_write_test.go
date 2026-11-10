@@ -1,5 +1,5 @@
-// Album surface write tests (M3c Task 2, reshaped by E4's
-// albums-as-sources): the directory album creation behind POST
+// Album surface write tests (reshaped by the albums-as-sources
+// rework): the directory album creation behind POST
 // /albums (title + the validated source path + the audience, with
 // the honest skip report of unusable audience entries), the
 // property patch (with the cover's live-member validation and the
