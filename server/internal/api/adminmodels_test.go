@@ -1,5 +1,5 @@
-// The admin model management and job panel endpoint tests (M3a Task
-// 4): the admin-role guard of the whole surface, the listing's mapping
+// The admin model management and job panel endpoint tests :
+// the admin-role guard of the whole surface, the listing's mapping
 // (registry rows plus the activation flags, the files-present probe
 // and the download run summary), the activation switch's two
 // semantics -- same-dimension switches keep every product row of the

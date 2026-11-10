@@ -1,4 +1,4 @@
-// The tags surface's data client (M3d Task 4): the vocabulary
+// The tags surface's data client: the vocabulary
 // listing, the idempotent create and the batch assignment add --
 // the three reads and writes the web's tag faces need (the search
 // facet's vocabulary is the search response's own; this module
@@ -8,7 +8,7 @@
 // lowercased, 'internal' for a network failure or an unparseable
 // body, 'session_expired' for a 401).
 //
-// B4 discipline (tags are per-user state): the listing is always
+// Per-user discipline (tags are per-user state): the listing is always
 // the CALLER's vocabulary, the create converges on the caller's own
 // row, and the assignment add writes the caller's own rows -- no
 // other account's tag ever surfaces through this client.

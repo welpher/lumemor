@@ -1,4 +1,4 @@
-// Asset attribute PATCH tests (M2c Task 5): the partial edit of the
+// Asset attribute PATCH tests: the partial edit of the
 // description and the hidden switch -- the applied values surfacing
 // in the response and the detail read, the timeline effect of the
 // hidden switch, the one-event-per-change discipline, the set
@@ -182,8 +182,8 @@ func TestPatchAssetDescription(t *testing.T) {
 
 // TestPatchAssetHiddenAffectsTimeline pins the visibility half: the
 // hidden switch the patch flips removes the asset from the timeline
-// (the live filter of the timeline query, Task 2's filter verified
-// through the endpoint, the same integration shape as the batch's),
+// (the live filter of the timeline query, verified through the
+// endpoint, the same integration shape as the batch's),
 // the unhide returns it, and each transition publishes one
 // asset.updated event.
 func TestPatchAssetHiddenAffectsTimeline(t *testing.T) {

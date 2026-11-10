@@ -1,4 +1,4 @@
-// The album timeline-preference face (M3c Task 4): the caller's
+// The album timeline-preference face: the caller's
 // per-user "keep this album out of my timeline" switch behind
 // PUT/DELETE /albums/{albumId}/timeline-preference. The scope is the
 // albums whose membership a caller could want out of their feed --

@@ -127,7 +127,7 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 		}
 	}
 	// The component guard mirrors the metadata job's: a Live Photo
-	// component row's counter counts its transcode alone (M2d), so a
+	// component row's counter counts its transcode alone, so a
 	// thumbnail completion (no enqueue path produces one for a
 	// component, but a stale or mis-routed job can reach here) must
 	// not consume the count or announce on its behalf.

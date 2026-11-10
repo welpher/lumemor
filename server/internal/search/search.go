@@ -1,4 +1,4 @@
-// Package search implements the unified search engine (M3d Task 3):
+// Package search implements the unified search engine:
 // the unaccented trigram-substring text path, the CLIP semantic path,
 // their deterministic rank fusion, the keyset pages of both modes and
 // the honest facet counts of the current filtered set minus each

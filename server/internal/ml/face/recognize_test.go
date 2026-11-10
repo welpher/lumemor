@@ -1,4 +1,4 @@
-// The face recognition wrapper tests (M3a Task 7): the alignment
+// The face recognition wrapper tests: the alignment
 // warp's pixel-level pins -- the canonical five-point template maps
 // an aligned raster onto itself byte-for-byte, and a known uniform
 // scale lands the output on the exact subsampled source pixels -- and

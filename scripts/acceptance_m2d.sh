@@ -61,7 +61,7 @@ teardown() {
 }
 trap teardown EXIT
 
-echo "==> running the prior milestone acceptances (each owns its own stack)"
+echo "==> running the prior acceptances (each owns its own stack)"
 # The chained regressions run sequentially, each fully down before the
 # next starts: they share this repository's compose project name and
 # the published port, so only one of them may be up at a time.
@@ -116,8 +116,8 @@ done
 echo "    server healthy after $(elapsed)s"
 
 echo "==> running the Playwright suite (web/e2e, the M2 full-chain story)"
-# The spec file is named: the suite grew a second spec with the M3a
-# milestone (m3-models.spec.ts), which runs against the M3a
+# The spec file is named: the suite grew a second spec,
+# m3-models.spec.ts, which runs against the M3a
 # acceptance's own stack -- the m2d chain pins its story here so both
 # suites stay deterministic against the stacks built for them.
 if ! (cd web && pnpm e2e e2e/m2-full-chain.spec.ts); then

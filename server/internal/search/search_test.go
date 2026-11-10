@@ -1,4 +1,4 @@
-// The search engine's pure-logic tests (M3d Task 3): the ILIKE
+// The search engine's pure-logic tests: the ILIKE
 // wildcard escaping and the deterministic two-arm rank fusion --
 // dedup by asset id, the integer rank-sum score, the (score DESC, id
 // ASC) ordering, and the arm-depth cut. The SQL behavior (scoping,

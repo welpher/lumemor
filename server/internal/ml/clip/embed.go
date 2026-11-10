@@ -1,6 +1,6 @@
-// The CLIP embedding wrapper (M3a Task 8): it feeds one decoded raster
+// The CLIP embedding wrapper: it feeds one decoded raster
 // to a CLIP vision tower and answers the L2-normalized image feature
-// the similarity search of a later milestone consumes.
+// the similarity search consumes.
 //
 // The preprocessing follows the CLIP family's public convention,
 // implemented here from scratch: the raster resizes to the session's

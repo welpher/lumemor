@@ -21,7 +21,7 @@
 	// bar renders, and the face assign flow of the drawer's People
 	// section -- while Viewer.svelte owns the presentation and
 	// interaction. The permanent delete is NOT this route's business
-	// since the R2-3 rework: it lives on the trash page alone.
+	// since the viewer rework: it lives on the trash page alone.
 	//
 	// THE PINNED CHOICES:
 	//
@@ -50,7 +50,7 @@
 	//   not the detail's isReady (a stale detail or a missed event
 	//   cannot wedge the poster); a not-ready answer keeps the
 	//   poster and the current asset's SSE events re-probe.
-	// - The face assign flow (M3b Task 5): a chip of the drawer's
+	// - The face assign flow: a chip of the drawer's
 	//   People section opens the assign dialog. Picking an existing
 	//   cluster POSTs the face move; choosing "new person" (offered
 	//   ONLY on unnamed-cluster chips) PUTs the caller's label on
@@ -62,7 +62,7 @@
 	//   write converges through the detail refetch: the faces array
 	//   IS the chips' truth, and the person.* events of other
 	//   sessions refetch it the same way (the server's answer
-	//   decides, B4 -- the page never patches local state).
+	//   decides -- the page never patches local state).
 	// - A deletion of the open asset (another session, the expiry
 	//   job) leaves the viewer through SSE (the detail would 404
 	//   from here on). Escape follows the history-back rule:
@@ -128,7 +128,7 @@
 	/** Bumping re-runs the detail fetch for the same id (the retry button). */
 	let retryTick = $state(0);
 
-	// The caller's ownership of the open asset (the M3c identity seam):
+	// The caller's ownership of the open asset (the identity seam):
 	// the session's userId against the asset's owner. A viewer -- the
 	// owner's share grants them the read -- sees the drawer without its
 	// owner-only write affordances (the description edit, the hide /
@@ -244,7 +244,7 @@
 	// asset's faces (their clusters or their ids) refetches the
 	// detail, whose faces array IS the chips' truth. Foreign sessions'
 	// events refetch the same answer and move nothing the server does
-	// not move (B4); an event off every rendered face adds no fetch.
+	// not move; an event off every rendered face adds no fetch.
 	// The subscription lives for the route's lifetime and unsubscribes
 	// on destroy.
 	$effect(() => {
@@ -463,9 +463,9 @@
 		void refetchDetail();
 	}
 
-	// The tag assign flow (M3d, the drawer's tags row): the dialog
+	// The tag assign flow (the drawer's tags row): the dialog
 	// (the batch bar's own, reused) over THIS asset's single id. The
-	// write is the caller's own per-user state (B4) -- every viewer
+	// write is the caller's own per-user state -- every viewer
 	// holds it, never the owner alone -- and the convergence is the
 	// detail refetch: the detail's tags array IS the row's truth.
 	/** The add-tag dialog's open state. */

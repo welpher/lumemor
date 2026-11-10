@@ -3,7 +3,7 @@ import { beforeEach, expect, test } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import ShortcutsDialog from './ShortcutsDialog.svelte';
 
-// The `?` shortcut sheet (web IA §6's pinned cheat sheet): the
+// The `?` shortcut sheet: the
 // shared Modal over the shell listing every binding the app
 // actually carries, in the two-column shape (kbd glyphs beside
 // plain-language actions) grouped by the context each binding

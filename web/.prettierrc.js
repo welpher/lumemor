@@ -25,8 +25,7 @@ export default {
 	// Wide on purpose: the existing templates carry long utility
 	// class strings and ~100-col statements as single lines; 120 is
 	// the width where those mostly pass and only genuinely over-long
-	// lines wrap (also the width the reference SvelteKit project
-	// pins -- same stack, same number).
+	// lines wrap.
 	printWidth: 120,
 	plugins: ['prettier-plugin-svelte']
 };

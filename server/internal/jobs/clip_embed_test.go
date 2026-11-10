@@ -1,12 +1,12 @@
-// The CLIP embedding job tests (M3a Task 8): the worker wiring over
+// The CLIP embedding job tests: the worker wiring over
 // the committed const512 fixture (the digest gate, the decode, the
 // embedding row landing with every field), the upsert idempotence (a
 // re-run overwrites, the primary key keeps one row, other models'
 // rows survive -- the coexistence policy), THE COLUMN-DIMENSION GUARD
-// (Review Focus #5's insert side: an active model whose embedding
+// (the insert side: an active model whose embedding
 // dimension disagrees with the column's current dimension fails the
 // job with zero rows), the degraded modes, and the readiness seam's
-// clip arm (the Task 6 tripwire flipped: an active clip model now
+// clip arm (the former tripwire flipped: an active clip model now
 // dispatches the embedding job).
 //
 // The inference-bearing tests skip on hosts without the onnxruntime
@@ -152,7 +152,7 @@ func TestClipEmbedJobPersistsEmbedding(t *testing.T) {
 // model-switch coexistence: a re-run of the same model overwrites the
 // same row (the primary key keeps one row, never a pile), and the
 // seeded row of a different model survives both runs untouched
-// (Review Focus #1's embedding side).
+// (the embedding side).
 func TestClipEmbedJobUpsertIdempotent(t *testing.T) {
 	requireThumbnails(t)
 	requireMlRuntime(t)
@@ -219,7 +219,7 @@ func repeatOnes(count int) string {
 }
 
 // TestClipEmbedJobDimensionGuardRejectsMismatch pins the insert-side
-// dimension guard (Review Focus #5): an active clip model whose
+// dimension guard: an active clip model whose
 // embedding dimension disagrees with the column's CURRENT dimension
 // (a 768-dim model activated behind the registry's back -- the ALTER
 // never ran) fails the job with zero rows landing, instead of letting
@@ -238,8 +238,8 @@ func TestClipEmbedJobDimensionGuardRejectsMismatch(t *testing.T) {
 	})
 	// Activate the drifted model directly in the table: the registry's
 	// activation would have re-dimensioned the column (the transaction
-	// of Task 2/4); bypassing it simulates the drifted state the guard
-	// exists for.
+	// own transaction); bypassing it simulates the drifted state the
+	// guard exists for.
 	if _, err := e.pool.Exec(context.Background(),
 		"UPDATE models SET is_active = true WHERE id = $1", drifted); err != nil {
 		t.Fatalf("force-activate the drifted model: %v", err)
@@ -310,9 +310,9 @@ func TestClipEmbedJobMissingAssetCompletes(t *testing.T) {
 // TestSeamWiresClipAndOcrAtAssetReady pins the seam's closed loop: an
 // image asset finishing its pipeline with the clip-embed AND ocr slots
 // active dispatches both jobs, both run through the real queue, and
-// both products land -- the tripwire Task 6 left (its
+// both products land -- the former tripwire (its
 // TestEnqueueMlJobsUnwiredSlots expected zero dispatches) flipped
-// green by this task's wiring.
+// green by the wiring.
 func TestSeamWiresClipAndOcrAtAssetReady(t *testing.T) {
 	requireExiftool(t)
 	requireThumbnails(t)

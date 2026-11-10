@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The icon-only action button of the paper surfaces: the square
-	// a11y-safe affordance the icon-first rule (web IA §7.2) sweeps
+	// a11y-safe affordance the icon-first rule sweeps
 	// the toolbars, row actions and overflow menus onto. The caller
 	// passes the lucide glyph as the child and the accessible name
 	// as the aria-label -- the glyph itself is decorative, the label

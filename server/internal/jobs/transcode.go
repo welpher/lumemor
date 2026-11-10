@@ -79,7 +79,7 @@ func (g *dynamicGate) enter(ctx context.Context, size int) func() {
 // TranscodeWorker runs the transcode job: the web-safe MP4 of a video
 // asset -- H.264 + AAC, +faststart -- written atomically to
 // storage/encoded/<assetID>/play.mp4. It serves standalone videos
-// (the third job of their three-job pipeline) and, since M2d, the
+// (the third job of their three-job pipeline) and the
 // Live Photo component video (the ONE job its counter counts -- the
 // component's playable stream is what the pair's motion plays
 // through, its completion stamps ready_at but never announces). The
@@ -225,7 +225,7 @@ func (w *TranscodeWorker) completeTranscode(ctx context.Context, assetID uuid.UU
 		// empties): the asset.ready announcement and the ML readiness
 		// seam, after the commit so a subscriber that turns around
 		// and reads the database sees the final state. A Live Photo
-		// component row (M2d) never announces and never enters the
+		// component row never announces and never enters the
 		// seam: its completion drains the one-job counter (the
 		// ready_at stamp is also what lets the requeue sweep stop
 		// matching the row), but the pair's announcement belongs to

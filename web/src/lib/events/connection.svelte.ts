@@ -1,6 +1,6 @@
 // The SSE connection state of the shared events stream, as the
-// offline strip consumes it (web IA §6's pinned state: 顶栏黄条 +
-// SSE 重连倒计时, paid here after E4). The events module
+// offline strip consumes it (the offline state: a top-bar yellow
+// strip plus the SSE reconnect countdown). The events module
 // (./index.ts) owns the stream's lifecycle and reports every
 // transition into this store -- the stream is CONSTRUCTED
 // ('connecting'), the browser's connection lands ('open'), the

@@ -1,6 +1,6 @@
 // Package ml holds the machine-learning foundation of the lumemor
-// server: the default model manifest (Task 1), the onnxruntime session
-// wrapper and the model registry (Task 2), and later the first-boot
+// server: the default model manifest, the onnxruntime session
+// wrapper and the model registry, and later the first-boot
 // download service and the inference wrappers (face detection, face
 // recognition, CLIP embedding, OCR).
 //

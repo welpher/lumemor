@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The flat justified wall (M3d Task 4, the search's query mode):
+	// The flat justified wall (the search's query mode):
 	// one ungrouped run of items packed by the SAME row layout engine
 	// the month-grouped wall packs with (packRows at the measured
 	// container width), rendered in the page's own order -- the rank
@@ -21,7 +21,7 @@
 	// height known from the engine's math (the same row-level
 	// windowing the month-grouped wall applies).
 	//
-	// THE NO-SELECTION PIN (web IA §7.4): the flat wall is pure
+	// THE NO-SELECTION PIN: the flat wall is pure
 	// navigation by design -- the selection flow is the month-grouped
 	// Wall's organ, and a rank list carries no curation surface. No
 	// selection props exist here at all (the search's query wall

@@ -11,8 +11,8 @@ import (
 )
 
 // The transcode discipline, the playable-copy sibling of the poster
-// extraction: the SAME ffmpeg subprocess discipline (security spec
-// section 3) -- a FIXED argument template, no shell, no
+// extraction: the SAME ffmpeg subprocess discipline
+// -- a FIXED argument template, no shell, no
 // user-controlled arguments (the input path is server-generated and
 // guarded by the job's asset path resolution, the output path is
 // derived from the asset id), a context timeout, the process-group

@@ -11,10 +11,10 @@ import (
 // ffmpegCommand builds the fixed ffmpeg poster invocation for macOS:
 // the plain template with no wrapper.
 //
-// Degradation (documented per the security spec): macOS offers no
+// Degradation (documented): macOS offers no
 // mechanism to apply an address-space cap to a child before exec --
 // no SysProcAttr field, and no prlimit(1) equivalent -- so the memory
-// limit of the spec's subprocess discipline cannot be applied here.
+// limit of the subprocess discipline cannot be applied here.
 // The remaining discipline is intact: the fixed argument template,
 // the context timeout, and the process-group kill. Development and CI
 // also run the suite inside the Linux dev container, where the cap is

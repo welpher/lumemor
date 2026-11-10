@@ -1,5 +1,5 @@
-// The batch handler (M2c Task 4, the external lifecycle widened by
-// E4 and E6's album autonomy): POST /assets/batch, the set-semantics
+// The batch handler (the external lifecycle widened by the
+// albums-as-sources and album-autonomy reworks): POST /assets/batch, the set-semantics
 // surface of the curation actions. One request applies one action
 // (favorite, unfavorite, hide, unhide, trash, restore) to a list of
 // ids in ONE transaction: resolution decides which ids are the
@@ -10,8 +10,8 @@
 // commit, the same transition-only discipline as the single-asset
 // endpoints.
 //
-// The trash and restore arms split on the row's storage kind (E4,
-// the §A6/E4 table): a blob row is marked in place (the existing
+// The trash and restore arms split on the row's storage kind: a
+// blob row is marked in place (the existing
 // queries, Live Photo pair included), while an external row's file
 // MOVES -- into the server's trash area on trash, back to the
 // recorded original location on restore -- ahead of the row's write
@@ -19,7 +19,7 @@
 // system refuses fails the WHOLE batch with the move's own error
 // code, the transaction rolls back, and every file the batch
 // already moved is compensated back to where the rolled-back rows
-// still say it is. E6 adds the album lock's delete arm to the same
+// still say it is. The album lock's delete arm joins the same
 // story: a live external member of a LOCKED directory album refuses
 // the trash with the curation writes' own 409 before any file
 // moves, the rescan endpoint's refusal applied to the deletion
@@ -62,7 +62,7 @@ var batchEventNames = map[apigen.BatchRequestAction]string{
 }
 
 // The external lifecycle's move failures, the one error class the
-// batch answers with its own codes (the §A6/E4 pin: the move needs
+// batch answers with its own codes (the move needs
 // the operating system's permission, and no permission means the
 // delete fails explicitly -- never a silent skip, never a nameless
 // 500 either).
@@ -70,7 +70,7 @@ var (
 	errBatchTrashMove   = errors.New("the external file could not be moved into the trash")
 	errBatchRestoreMove = errors.New("the external file could not be moved back to its original location")
 
-	// errBatchAlbumLocked is the album lock's delete arm (E6, the
+	// errBatchAlbumLocked is the album lock's delete arm (the
 	// content-protection freeze widened from the rescan to the
 	// deletion): the trash of a live external member of a locked
 	// directory album is refused before any file moves, with the
@@ -193,8 +193,8 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 	// inside each primitive make every item a no-op or a write, never
 	// an error, so the loop has no per-item failure path -- which is
 	// what lets the whole batch commit as the one transaction it is
-	// -- EXCEPT the external lifecycle's moves, the one failure the
-	// §A6/E4 pin demands answer explicitly: a move that fails fails
+	// -- EXCEPT the external lifecycle's moves, the one failure that
+	// must answer explicitly: a move that fails fails
 	// the batch, the transaction rolls back, and the moves the batch
 	// already performed are compensated (the files return to where
 	// they were). changed collects the ids whose state actually
@@ -258,7 +258,7 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// The album walls' convergence signal (E6, §7.9's deletability
+	// The album walls' convergence signal (the deletability
 	// chain): the trash and the restore of an album member change the
 	// album's LIVE membership -- the derived count the detail renders
 	// and the members the wall walks -- while the membership rows
@@ -329,7 +329,7 @@ func resolveBatchTargets(ctx context.Context, queries *dbgen.Queries, action api
 // own queries, pair predicates included for the blob rows (trashing
 // a Live Photo carries its component video row along, so one
 // request id can move two rows while counting once), while the
-// external rows take the §A6/E4 move semantics: the file moves
+// external rows take the external move semantics: the file moves
 // first (inside the batch's failure story), the row's write records
 // the move's truth. The external arms are single-row by
 // construction -- the rescan never pairs Live Photos -- and the
@@ -463,7 +463,7 @@ func pgUUIDs(ids []uuid.UUID) []pgtype.UUID {
 // publishAssetEventByID reports one asset event onto the activity
 // stream from the (id, kind) pair the batch resolution carries: the
 // resource id and its media kind, nothing more -- the event audience
-// discipline of M2a. The row-shaped variant in trash.go delegates
+// discipline. The row-shaped variant in trash.go delegates
 // here so every asset event renders the same payload.
 func (s *server) publishAssetEventByID(name string, id uuid.UUID, kind dbgen.MediaKind) {
 	if s.events == nil {

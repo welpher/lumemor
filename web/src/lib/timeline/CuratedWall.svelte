@@ -1,13 +1,12 @@
 <script lang="ts">
 	// The curated wall wrapper the favorites and hidden pages
-	// compose (M2d Task 8): the page-level concerns of a membership
+	// compose: the page-level concerns of a membership
 	// view -- the pagination client (driven with the view's
 	// membership semantics), the SSE convergence, the sentinel walk,
 	// the touch-friendly select-mode toggle, the wallItems
 	// publication the asset viewer navigates -- assembled around the
 	// shared Wall. The RENDERING is the one Wall component every
-	// photo surface composes, and so is the SELECTION FLOW (the
-	// 2026-11-08 pin, web IA §7.4): the month axis, the selection
+	// photo surface composes, and so is the SELECTION FLOW: the month axis, the selection
 	// state, the checks, the Escape exit and the batch bar all ride
 	// the wall here exactly as they do on the timeline. This wrapper
 	// tells the wall its endpoint, its view, its strings and its

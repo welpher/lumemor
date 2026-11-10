@@ -1,4 +1,4 @@
-// Face crop thumbnail tests (M3b Task 3): the people surface's pixel
+// Face crop thumbnail tests: the people surface's pixel
 // endpoint. The crop geometry is pinned deterministically -- exact
 // window rectangles through media.FaceCropWindow, and solid-color
 // quadrant derivatives whose averaged output proves which region the
@@ -443,8 +443,8 @@ func TestFaceThumbnailNotFound(t *testing.T) {
 	})
 }
 
-// TestFaceThumbnailETagChange pins the change signal (Review Focus
-// #5): the first response's ETag, the 304 of a replay, and the NEW
+// TestFaceThumbnailETagChange pins the change signal: the
+// first response's ETag, the 304 of a replay, and the NEW
 // ETag -- and fresh 200 -- after the face row's updated_at moves. The
 // signal bump is applied directly with an explicit later timestamp
 // (a cluster move through the API would bump it too, but a move

@@ -1,13 +1,12 @@
 <script lang="ts">
-	// The filter chips row of the search page (M3d Task 4, the
-	// specimen's chips): one pill per facet entry of the seven
+	// The filter chips row of the search page: one pill per facet entry of the seven
 	// dimensions, each carrying the facet's honest count (the
 	// rest-of-filters visible number the server computed) and its
 	// selected state. A chip is a TOGGLE: pressing it flips its
 	// dimension's filter and the search re-executes -- the page owns
 	// the filter state (URL-synced); this row owns the rendering.
 	//
-	// THE PILL LANGUAGE (the specimen's .chip): a rounded-full
+	// THE PILL LANGUAGE: a rounded-full
 	// outline in the soft text tone, the dimension-prefixed label
 	// and the tabular-nums count inside; hover takes the accent
 	// soft; the SELECTED chip fills with the accent and its count

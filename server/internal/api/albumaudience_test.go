@@ -1,4 +1,4 @@
-// Album audience tests (E4, the albums-as-sources milestone): the
+// Album audience tests (the albums-as-sources rework): the
 // full-set write behind PUT /albums/{albumId}/audience -- the
 // idempotent convergence onto the requested set, the honest skip
 // report of the unusable entries, the per-transition event
@@ -346,7 +346,7 @@ func TestUpdateAlbumAudienceAuthorization(t *testing.T) {
 
 	unshared := uuid.UUID(env.createAlbum(t, env.cookie, "Private", sourceDir(t, root, "auth-private"), nil).Id)
 	// Grace's own album is seeded directly: creation is the
-	// administrator's act now (the E6 boundary ruling), but the
+	// administrator's act now (the boundary ruling), but the
 	// authorization matrix this test pins needs a MEMBER-owned
 	// album all the same -- the admin-override arm exercises the
 	// owner check, not the creation guard.

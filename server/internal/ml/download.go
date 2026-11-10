@@ -1,4 +1,4 @@
-// The model download service (M3a Task 3): it lands the manifest's
+// The model download service: it lands the manifest's
 // models into the models dir, production driving the embedded default
 // group (pure links: upstream URLs plus pinned digests, the repository
 // committing no weights). Every file is fetched from its source URL --

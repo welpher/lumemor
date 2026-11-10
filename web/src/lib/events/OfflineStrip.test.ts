@@ -4,7 +4,7 @@ import { initI18n } from '$lib/i18n';
 import { subscribeAssetEvents } from './index';
 import OfflineStrip from './OfflineStrip.svelte';
 
-// The offline strip (web IA §6's pinned state): a thin yellow band
+// The offline strip: a thin yellow band
 // that rises when the shared SSE stream drops and falls when the
 // browser's own retry recovers it -- the connection store's 'down'
 // state rendered, the elapsed reconnecting seconds counted live.

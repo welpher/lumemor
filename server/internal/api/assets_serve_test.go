@@ -244,8 +244,8 @@ func TestGetAssetDetail(t *testing.T) {
 	}
 }
 
-// TestGetAssetDetailFaces pins the detail's faces array (M3b Task 5):
-// the caller-scoped label state (B4 -- another account's label on the
+// TestGetAssetDetailFaces pins the detail's faces array:
+// the caller-scoped label state (another account's label on the
 // same global cluster never shows here), the score ordering with the
 // face id as the tiebreak, the pre-clustering face (clusterId and
 // label both null), the empty array of a faceless asset, and the PATCH
@@ -290,7 +290,7 @@ func TestGetAssetDetailFaces(t *testing.T) {
 	// fLoose stays clusterless: the recognition run has not assigned it.
 	env.labelPersonCluster(t, adminID, cluster1, "Ada", false)
 	// Grace's own label of the same global cluster: private to her
-	// (B4) -- the admin's detail must keep showing the admin's label.
+	// -- the admin's detail must keep showing the admin's label.
 	env.labelPersonCluster(t, graceID, cluster1, "Grace Ada", true)
 
 	t.Run("FacesAreCallerScopedAndOrdered", func(t *testing.T) {
@@ -325,7 +325,7 @@ func TestGetAssetDetailFaces(t *testing.T) {
 			t.Errorf("faces[0].clusterId = %v, want the labeled cluster %s", strong.ClusterId, cluster1)
 		}
 		if strong.Label == nil || strong.Label.Name != "Ada" || strong.Label.IsHidden {
-			t.Errorf("faces[0].label = %+v, want the CALLER's {Ada, false} (B4: Grace's label never shows)",
+			t.Errorf("faces[0].label = %+v, want the CALLER's {Ada, false} (Grace's label never shows)",
 				strong.Label)
 		}
 		if want := "/api/v1/faces/" + fStrong.String() + "/thumbnail"; strong.Thumbnail != want {
@@ -394,7 +394,7 @@ func TestGetAssetDetailFaces(t *testing.T) {
 // every asset endpoint: a foreign id and an unknown id answer the same
 // 404, byte for byte, and unauthenticated requests answer 401. The
 // byte-identical comparison runs over the whole body, not just the
-// code -- the M2a login discipline carried into the asset domain.
+// code -- the login discipline carried into the asset domain.
 func TestAssetEndpointsOwnerScope(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	payload := jpegFixture(t)
@@ -715,8 +715,8 @@ func TestGetAssetOriginalRange(t *testing.T) {
 // validators and NO Content-Disposition (playback, not a download --
 // the original download stays on /original), the byte ranges, the
 // conditional 304, and the no-playable-stream 404 of an image asset.
-// A Live Photo's component video row plays like any video (M2d
-// reversed the M2c component gate): not-ready before its transcode,
+// A Live Photo's component video row plays like any video (the
+// component gate was reversed): not-ready before its transcode,
 // the transcoded stream afterwards.
 func TestGetAssetPlayServing(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
@@ -827,7 +827,7 @@ func TestGetAssetPlayServing(t *testing.T) {
 	}
 
 	// A Live Photo's component video row is video-kind and
-	// owner-visible, and (M2d) counts a transcode job of its own: the
+	// owner-visible, and counts a transcode job of its own: the
 	// play endpoint serves its transcoded stream exactly like a
 	// standalone video's. Before the transcode produced the file the
 	// answer is the not-ready state of every derived medium -- 404

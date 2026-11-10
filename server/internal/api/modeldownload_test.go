@@ -1,4 +1,4 @@
-// The model download endpoint tests (M3a Task 3): the admin-role guard
+// The model download endpoint tests: the admin-role guard
 // of the surface (403 for a signed-in plain user, 401 without a
 // session), the 202 of the first call (the run is enqueued through the
 // seam), the 200 idempotent return of the in-flight -- or, when none

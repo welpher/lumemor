@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The cluster detail of the people surface (web IA §3): the
+	// The cluster detail of the people surface: the
 	// caller's label state over the cluster's caller-visible faces,
 	// strongest first. The unnamed state (label null) renders the
 	// unnamed header and the naming CTA; a label renders the name
@@ -25,7 +25,7 @@
 	//   hidden change on it, a merge that dissolves or survives as
 	//   it, a face move onto or out of it) refetch the detail; the
 	//   refetched answer owns the truth -- a foreign label event
-	//   changes nothing here (B4: labels are private per user).
+	//   changes nothing here (labels are private per user).
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { _ } from 'svelte-i18n';
@@ -455,7 +455,7 @@
 		<div class="person-detail__grid grid grid-cols-[repeat(auto-fill,minmax(min(200px,100%),1fr))] gap-3">
 			{#each detail.faces as face (face.id)}
 				<!-- One face: the crop links into the asset viewer at the
-				     face's asset (the IA's route-level viewer), the context
+				     face's asset (the route-level viewer), the context
 				     carries the file name and the capture date, and the
 				     move button opens the single-face move dialog. -->
 				<div

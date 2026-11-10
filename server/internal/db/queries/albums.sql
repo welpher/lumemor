@@ -1,4 +1,4 @@
--- Album queries of the sync-album wiring (M2c Task 2): every user
+-- Album queries of the sync-album wiring: every user
 -- owns exactly one sync album -- the core backup stream the timeline
 -- aggregates -- and every upload lands in it. The creation points are
 -- the account-creation transactions; the upsert below also lets the
@@ -35,10 +35,10 @@ INSERT INTO album_items (album_id, asset_id, added_by)
 VALUES ($1, $2, $3)
 ON CONFLICT DO NOTHING;
 
--- Album reads (M3c Task 1): the wall, the cover candidates and the
+-- Album reads: the wall, the cover candidates and the
 -- detail face. The live-member predicate runs through all of them:
 -- deleted_at IS NULL AND is_hidden = false AND is_component = false,
--- the timeline's own definition of a live asset row (A5 -- a hidden
+-- the timeline's own definition of a live asset row (a hidden
 -- asset is invisible to the whole family, and a Live Photo's video
 -- component is never a tile of its own).
 
@@ -250,7 +250,7 @@ WHERE ai.album_id = sqlc.arg('album_id')
 ORDER BY a.taken_at DESC, a.id DESC
 LIMIT sqlc.arg('limit_count');
 
--- Album writes (M3c Task 2, reshaped by E4): creation, the property
+-- Album writes (reshaped by albums-as-sources): creation, the property
 -- patch, the delete, the membership removal and the write face's
 -- authorization
 -- gate. The reads' live-member predicate runs through the cover
@@ -277,14 +277,14 @@ WHERE al.id = sqlc.arg('album_id')
   AND al.type <> 'sync';
 
 -- name: CreateDirectoryAlbum :one
--- The directory album creator (E4's albums-as-sources, widened by
--- E6's album autonomy): the row references an existing filesystem
+-- The directory album creator (the albums-as-sources rework, widened
+-- by album autonomy): the row references an existing filesystem
 -- directory the server validated against the path matrix BEFORE
 -- this statement ran -- exists, is a directory, readable, outside
 -- the managed tree -- and root_path stores the RESOLVED absolute
 -- path (symlinks evaluated at validation time), so the album can
 -- never be silently repointed by a later symlink swap. The creation
--- is the administrator's act (the E6 boundary ruling: mounting an
+-- is the administrator's act (the boundary ruling: mounting an
 -- existing photo directory is a configuration act), and
 -- source_writable carries the write probe's answer over that
 -- directory -- a fact, not a gate: a read-only source is a
@@ -332,7 +332,7 @@ WHERE al.id = sqlc.arg('album_id');
 -- it. The cover rides the same discipline -- a coverAssetId of JSON
 -- null decodes as absent, the patch convention of the asset surface,
 -- so the pin can change through this face but never clear. The
--- deletability switch (E6) joins the property fields: present
+-- deletability switch joins the property fields: present
 -- updates the owner's allow-app-deletion posture of the directory
 -- album, absent keeps it, and the lock's gate lives in the handler
 -- (the property fields' own refusal) with the type arm that keeps
@@ -351,7 +351,7 @@ WHERE id = sqlc.arg('album_id')
 RETURNING id;
 
 -- name: CountLiveAlbumMember :one
--- The cover validation (the spec's application-layer pin): does the
+-- The cover validation (the application-layer check): does the
 -- given asset sit in this album as a LIVE member? The membership row
 -- must exist AND the asset must pass the live predicate -- a hidden,
 -- trashed or Live Photo component member is a member no more for
@@ -389,7 +389,7 @@ WHERE album_id = sqlc.arg('album_id')
 
 -- name: ListAlbumsOfAsset :many
 -- The albums holding membership rows for one asset: the ids whose
--- LIVE membership a trash or restore just changed (E6's deletability
+-- LIVE membership a trash or restore just changed (the deletability
 -- chain -- the membership row itself survives the trash, the live
 -- views' deleted_at filter is the change), so the handler can
 -- publish each album's items-changed convergence signal. The sync
@@ -399,7 +399,7 @@ SELECT DISTINCT ai.album_id
 FROM album_items ai
 WHERE ai.asset_id = sqlc.arg('asset_id');
 
--- Album audience (E4, the albums-as-sources milestone): the
+-- Album audience (the albums-as-sources rework): the
 -- full-set write behind PUT /albums/{albumId}/audience replaces the
 -- one-row grant/revoke pair. The set discipline is the batch
 -- surface's: the requested ids that cannot be granted -- unknown or
@@ -449,7 +449,7 @@ JOIN users u ON u.id = s.user_id
 WHERE s.album_id = sqlc.arg('album_id')
 ORDER BY s.granted_at ASC, s.user_id ASC;
 
--- Timeline preferences (M3c Task 4): the per-user "keep this album
+-- Timeline preferences: the per-user "keep this album
 -- out of my timeline" switch. The preference scopes the caller's own
 -- view only (the aggregated timeline's formula folds it inside its
 -- membership existential); the album's own items, the wall and every

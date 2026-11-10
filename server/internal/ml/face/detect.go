@@ -39,7 +39,7 @@ type Detection struct {
 	// Landmarks are the five face landmarks -- right eye, left eye,
 	// nose tip, right mouth corner, left mouth corner -- in pixel
 	// coordinates of the image Detect received. They are deliberately
-	// NOT part of the persisted face row: the recognition job (Task 7)
+	// NOT part of the persisted face row: the recognition job
 	// consumes them to align the crop, at whatever decode scale it
 	// owns.
 	Landmarks [5][2]float64

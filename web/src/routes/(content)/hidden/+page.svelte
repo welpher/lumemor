@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The hidden view page (M2d Task 8): the caller's hidden assets
+	// The hidden view page: the caller's hidden assets
 	// as a curated wall -- the owner-level visibility switch turned
 	// off, live rows only -- with the unhide action that returns a
 	// row to the timeline and ends its membership in this view.

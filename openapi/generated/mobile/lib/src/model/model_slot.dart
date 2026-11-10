@@ -9,7 +9,7 @@ import 'package:built_value/serializer.dart';
 
 part 'model_slot.g.dart';
 
-/// The functional slot a model fills. `face_detect`, `face_recognize`, `clip_embed` and `ocr` are the machine learning slots of the pipeline; `clip_text` is the search's semantic arm -- the CLIP text tower that embeds queries into the vision tower's joint embedding space (it produces no per-asset rows, so its rerun endpoint answers 400 `MODEL_INVALID`); a speech slot arrives with a later milestone. 
+/// The functional slot a model fills. `face_detect`, `face_recognize`, `clip_embed` and `ocr` are the machine learning slots of the pipeline; `clip_text` is the search's semantic arm -- the CLIP text tower that embeds queries into the vision tower's joint embedding space (it produces no per-asset rows, so its rerun endpoint answers 400 `MODEL_INVALID`); a speech slot arrives later. 
 class ModelSlot extends EnumClass {
 
   @BuiltValueEnumConst(wireName: r'face_detect')

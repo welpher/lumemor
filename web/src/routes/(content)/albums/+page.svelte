@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The album wall (web IA §2-§3): the cover-card grid in its two
+	// The album wall: the cover-card grid in its two
 	// sections -- the caller's own albums (the pinned sync card of
 	// the default "My photos" album first, then the virtual and
 	// directory albums in the server's own-group order) then the
@@ -13,8 +13,7 @@
 	// display name (album_all_photos), the contract's client-side
 	// convention.
 	//
-	// THE CREATION ENTRY IS THE ADMINISTRATOR'S (E6, web IA §7.5's
-	// third revision): pointing at the file system is configuration,
+	// THE CREATION ENTRY IS THE ADMINISTRATOR'S : pointing at the file system is configuration,
 	// so the "New album" button renders for an admin's session alone
 	// -- a member never sees it (the server refuses their POST with
 	// 403 regardless; the visual gate is the honest half). Members
@@ -46,10 +45,10 @@
 	/** The error-code i18n key of the last failed load ('' when none). */
 	let errorKey = $state('');
 
-	// The creation dialog (E4: title + source path + audience); the
+	// The creation dialog (title + source path + audience); the
 	// created card lands through the refetch the write triggers, and
 	// the write's honest answers -- the `skipped` report, the write
-	// probe's `sourceWritable` fact (E6: a read-only source is a
+	// probe's `sourceWritable` fact (a read-only source is a
 	// legitimate album, the fact is creation feedback, never a
 	// failure) -- hold the dialog open until acknowledged.
 	let createOpen = $state(false);
@@ -58,7 +57,7 @@
 	let createSkipped = $state<readonly AlbumAudienceSkip[] | null>(null);
 	let createWritable = $state<boolean | null>(null);
 
-	// The admin entry (E6): the session's own role read, the drawer's
+	// The admin entry: the session's own role read, the drawer's
 	// pattern -- components read the store directly, no prop
 	// shadowing. A member's wall renders no creation affordance at
 	// all.
@@ -210,7 +209,7 @@
 
 <section class="albums max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
 	<!-- The one toolbar of the wall: the directory-album creation, the
-	     web IA's primary action -- THE ADMIN'S ALONE (E6: mounting an
+	     primary action -- THE ADMIN'S ALONE (mounting an
 	     existing photo directory is configuration, a member never
 	     sees the affordance). -->
 	{#if adminSession}

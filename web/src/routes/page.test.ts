@@ -7,7 +7,7 @@ import Page from './+page.svelte';
 import { load } from './+page';
 
 // The root route: the component keeps its welcome smoke test, and
-// the load resolves the Task 3 deferred decision -- an authenticated
+// the load resolves the deferred decision -- an authenticated
 // visitor is redirected to the timeline (the app's home surface),
 // while an unauthenticated one keeps the guard matrix (the runtime
 // SessionGuard watcher bounces `/` to the login page).

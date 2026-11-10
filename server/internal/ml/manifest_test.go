@@ -180,7 +180,7 @@ func TestDefaultManifestURLsAreHTTPS(t *testing.T) {
 	}
 }
 
-// TestDefaultManifestPinsTheTextTower pins the search milestone's
+// TestDefaultManifestPinsTheTextTower pins the search surface's
 // text tower: it fills the clip-text slot, emits the same 512-dim
 // joint space the vision tower writes, and carries the tokenizer
 // vocabulary as its second file (the same upstream directory, the
@@ -214,9 +214,9 @@ func TestDefaultManifestPinsTheTextTower(t *testing.T) {
 	}
 }
 
-// TestDefaultManifestPinsYunetInputGeometry pins the correction Task 6
-// landed: the 2023mar detector graph measures its input at 640x640
-// (the session metadata Task 2 read off the real weights), and the
+// TestDefaultManifestPinsYunetInputGeometry pins the correction:
+// the 2023mar detector graph measures its input at 640x640
+// (the fact the session metadata reads off the real weights), and the
 // manifest's declared inputSize now states that fact -- the 320x320
 // declaration the manifest shipped with was the upstream demo's
 // default input, not the graph's. The declaration is display truth

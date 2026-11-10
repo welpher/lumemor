@@ -107,7 +107,7 @@ func TestUnknownPathServesSPAShell(t *testing.T) {
 }
 
 // TestSecurityHeadersOnSPASurface pins the root-level security header
-// chain over the HTML surface (the M2a handoff's page-level item,
+// chain over the HTML surface (the page-level item,
 // landed with the login flow): the SPA index the root serves and a
 // static asset of its hashed output both carry nosniff and the
 // Referrer-Policy, exactly like the API responses. The chain lives

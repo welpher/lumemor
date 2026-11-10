@@ -13,13 +13,13 @@ import (
 	"github.com/welpher/lumemor/server/internal/trash"
 )
 
-// The trash expiry's queue plumbing (M2c Task 3): the River periodic
+// The trash expiry's queue plumbing: the River periodic
 // job registration and the worker that runs the shared expiry
 // implementation of the trash package (the database-and-filesystem
 // operation itself lives there, next to its own tests, free of the
 // queue and the media pipeline). The expiry purges soft-deleted
 // assets whose retention window closed, under the shared-blob rule
-// the M2b handoff pinned: another row referencing the same physical
+// the pipeline handoff pinned: another row referencing the same physical
 // file keeps the file, only the row goes.
 
 // RetentionInterval is the periodic cadence of the trash expiry. One

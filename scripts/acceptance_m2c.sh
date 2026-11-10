@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M2c acceptance: verify the timeline & trash milestone end to end
+# M2c acceptance: verify the timeline & trash surface end to end
 # against the compose deployment -- the M2 milestone acceptance
 # itself.
 #
@@ -44,7 +44,7 @@ base_url="http://localhost:8244"
 health_timeout_seconds=120
 sse_timeout_seconds=90
 admin_password="correct-horse-battery"
-# The Task 6 video fixture: a real 101796-byte MP4 container that the
+# The video fixture: a real 101796-byte MP4 container that the
 # pipeline's ffprobe, poster and transcode jobs process for real.
 video_fixture="$repo_root/server/internal/media/testdata/tiny.mp4"
 # One timestamp for the run's unique identities (admin email, device

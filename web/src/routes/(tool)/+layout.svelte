@@ -1,12 +1,12 @@
 <script lang="ts">
-	// The tool shell of the web IA: the persistent-navigation shell
+	// The tool shell: the persistent-navigation shell
 	// behind /admin/* (and, later, /settings/*). Its top bar is the
-	// simplified one the IA pins -- a back-to-content mark with the
+	// simplified one -- a back-to-content mark with the
 	// wordmark instead of the content shell's full bar -- and the
 	// section navigation itself lives in the section layouts (the
 	// admin sidebar under (tool)/admin).
 	//
-	// THE APP FRAME (R2-1's consistency arm): the shell shares the
+	// THE APP FRAME (the consistency arm): the shell shares the
 	// content shell's structure, so it shares the frame treatment
 	// too -- the h-dvh flex column pins the top bar by layout, main
 	// is the one scroll container (the admin rail's own sticky
@@ -14,7 +14,7 @@
 	// mount so keyboard scrolling follows it, and push navigations
 	// reset it (popstate keeps the offset).
 	//
-	// THE FULL-BLEED PIN (2026-11-09, the admin-shell specimen):
+	// THE FULL-BLEED PIN (2026-11-09):
 	// main carries NO padding -- the content column owns its own
 	// gutter (the admin layout's wrapper), so the flush rail and
 	// the full-height column split the frame's whole extent.
@@ -57,7 +57,7 @@
 </script>
 
 <div class="tool h-dvh flex flex-col overflow-hidden">
-	<!-- The offline strip (web IA §6): the frame's FIRST child, above
+	<!-- The offline strip: the frame's FIRST child, above
 	     the topbar, exactly as the content shell mounts it. The tool
 	     shell earns the strip honestly: its jobs and models surfaces
 	     subscribe to the SAME shared SSE stream (job.* events), so a
@@ -76,7 +76,7 @@
 		</button>
 		<span class="tool-topbar__brand font-display font-bold text-[20px] text-text">{$_('app_name')}</span>
 	</header>
-	<!-- The `?` shortcut sheet (web IA §6): the same shared Modal the
+	<!-- The `?` shortcut sheet: the same shared Modal the
 	     content shell mounts, one instance per shell. -->
 	<ShortcutsDialog bind:open={shortcutsOpen} />
 	<!-- The frame's one scroll container (the content shell's rule,

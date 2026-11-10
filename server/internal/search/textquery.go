@@ -1,4 +1,4 @@
-// The text-query mode (M3d Task 3): the request whose query carries
+// The text-query mode: the request whose query carries
 // at least two runes. The two paths run inside the request's
 // transaction snapshot:
 //

@@ -7,7 +7,7 @@
 	// (it knows which lists to fetch and which ids to exclude -- its
 	// own cluster is never its own target) and the write; the dialog
 	// owns the choice's lifecycle (reseeded on open, defaulted to the
-	// first option). The optional new-person mode (M3b Task 5, the
+	// first option). The optional new-person mode (the
 	// viewer's assign flow) adds the second choice beside the picker:
 	// typing a name instead of picking a cluster -- offered only by
 	// callers that pass the `newPerson` shape, with the same local

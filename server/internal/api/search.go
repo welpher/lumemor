@@ -1,4 +1,4 @@
-// The search handler (M3d Task 3): GET /api/v1/search -- the unified
+// The search handler: GET /api/v1/search -- the unified
 // search's HTTP face. The parameter validation, the cursor codec and
 // the semantic arm's model resolution live here; the paths, the
 // merge, the facets and their SQL live in the internal search

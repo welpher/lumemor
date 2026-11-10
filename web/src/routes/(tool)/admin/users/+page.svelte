@@ -1,8 +1,8 @@
 <script lang="ts">
-	// The user management page of the admin surface (M2d Task 8,
-	// reshaped by the 2026-11-09 modal pin): the account listing
+	// The user management page of the admin surface (reshaped by the
+	// creation modal): the account listing
 	// (role and disabled badges), the create-user flow, and the
-	// disable/enable toggle. CREATION IS A MODAL now (web IA §7.8:
+	// disable/enable toggle. CREATION IS A MODAL now:
 	// the page-header row's right slot carries the "New user" button
 	// -- UserPlus + text, the primary-flow shape -- and the Modal
 	// holds the same fields the inline form held, the same failure
@@ -141,8 +141,7 @@
 		if (outcome.ok) {
 			// The listing is creation-ordered (oldest first), so the
 			// new account joins the end; the response is the fresh
-			// row, no refetch needed. Success closes the modal (the
-			// 2026-11-09 pin); a failure keeps it open with the
+			// row, no refetch needed. Success closes the modal; a failure keeps it open with the
 			// mapped error inside -- the disable confirm's pattern.
 			users = [...users, outcome.user];
 			createOpen = false;
@@ -250,7 +249,7 @@
 			>
 		</div>
 	{:else if status === 'ready'}
-		<!-- The page-header row (the 2026-11-09 specimen): the title
+		<!-- The page-header row: the title
 		     on the left, this page's own contextual action on the
 		     right -- the create-user button, UserPlus + text (the
 		     primary-flow shape). The listing is a full-width page:
@@ -376,7 +375,7 @@
 	{/if}
 </div>
 
-<!-- The creation modal (the 2026-11-09 pin): the same fields the
+<!-- The creation modal: the same fields the
      inline form held, the same failure surface (one mapped error
      line), success closing it and the listing converging. The busy
      write keeps it open; the cancel is inert while one runs. -->

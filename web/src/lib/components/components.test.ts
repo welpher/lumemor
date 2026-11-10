@@ -40,7 +40,7 @@ test('Button renders its label with each variant class', () => {
 });
 
 test('IconButton renders a bare icon button whose label rides the aria-label', () => {
-	// The icon-first action rule (web IA §7.2): every action affordance
+	// The icon-first action rule: every action affordance
 	// carries an icon; the icon-ONLY form is a square button whose
 	// accessible name is the aria-label the caller passes (the lucide
 	// glyph itself is decorative). The paper-palette sibling of the

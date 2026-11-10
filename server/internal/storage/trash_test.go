@@ -103,8 +103,8 @@ func TestMoveToTrashCrossDeviceFallback(t *testing.T) {
 }
 
 // TestMoveFileCrossDeviceSuccess pins the copy-then-remove fallback's
-// SUCCESS arm on a real cross-filesystem pair (the EXDEV audit of
-// E6's album autonomy: the trash move of a directory album's source
+// SUCCESS arm on a real cross-filesystem pair (the album autonomy
+// EXDEV audit: the trash move of a directory album's source
 // file faces the mount-versus-data-root split on every delete). The
 // probe file sits on /dev/shm -- tmpfs on the Linux dev container,
 // a directory the host may not have (macOS has no portable second

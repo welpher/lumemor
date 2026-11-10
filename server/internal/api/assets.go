@@ -1,4 +1,4 @@
-// Asset handlers of the upload endpoint (M2b): the multipart upload
+// Asset handlers of the upload endpoint: the multipart upload
 // with its idempotent three-state semantics, the Live Photo pairing,
 // and the device idempotency lookup.
 package api
@@ -679,8 +679,8 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	// timeline aggregates. The insert rides the upload transaction, so
 	// the asset and its album membership commit atomically: an upload
 	// that committed but stayed album-less would be invisible to every
-	// timeline. The component video row lands in the album TOO (M3c
-	// Task 4): the caller-visible union reads membership, so the
+	// timeline. The component video row lands in the album TOO: the
+	// caller-visible union reads membership, so the
 	// component stays reachable BY ITS ID through the detail, the
 	// original download and the play stream exactly like the contract
 	// documents -- while the membership stays invisible to every
@@ -813,7 +813,7 @@ func assetInsertParams(id, owner uuid.UUID, form uploadForm, up sealedUpload, ta
 	// thumbnail whatever its kind -- an image's three AVIF sizes, a
 	// video's poster frame), plus the transcode job when the photo
 	// row itself is a video (a standalone video upload: three jobs).
-	// A component video row (M2d) counts ONE job: the transcode that
+	// A component video row counts ONE job: the transcode that
 	// derives its playable stream -- HEVC Live Photo components need
 	// a web-safe copy for browser playback, and the pair's motion
 	// plays through the component's own id. The metadata job still
@@ -984,7 +984,7 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 // photo row itself is a video (a standalone video upload), the
 // transcode job that derives its playable web-safe MP4 (three jobs
 // total; the pending_jobs counter was initialized to match). The
-// component video gets no thumbnail, but (M2d) it gets the transcode
+// component video gets no thumbnail, but it gets the transcode
 // when its own part is video-family: its playable stream is what the
 // pair's motion plays through -- HEVC components re-encode to the
 // web-safe H.264/AAC pair every browser plays. The component's
@@ -1042,7 +1042,7 @@ func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset, liveVideo 
 
 // publishAssetUploaded reports the upload onto the activity stream:
 // the resource id and its media kind, nothing more -- the event
-// audience discipline of M2a.
+// audience discipline.
 func (s *server) publishAssetUploaded(row dbgen.Asset) {
 	if s.events == nil {
 		return

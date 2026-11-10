@@ -1,4 +1,4 @@
-// The ML rerun orchestration (M3a Task 4, closed by Task 8): the
+// The ML rerun orchestration (the rerun closure included): the
 // admin surface's rerun endpoint starts one run of a model's slot
 // through EnqueueMlRerun, and this driver walks the rerun scope --
 // every image asset that finished its pipeline and is not in the
@@ -10,7 +10,7 @@
 // download's runs do, the progress events throttled to at most one per
 // second.
 //
-// THE CLOSURE (Task 8): the dispatch seam's production wiring is now
+// THE CLOSURE: the dispatch seam's production wiring is now
 // REAL -- the queue's dispatchMlRerun enqueues the slot's per-asset ML
 // job (carrying the run's identifier) onto the ml queue. The per-asset
 // jobs complete asynchronously through River, so the counting works
@@ -53,7 +53,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/ml"
 )
 
-// The job_runs kinds of the rerun runs, pinned by the milestone plan's
+// The job_runs kinds of the rerun runs, pinned by the shared
 // vocabulary: one kind per ML slot, named after the slot it redoes.
 const (
 	FaceDetectRerunKind    = "face_detect_rerun"
@@ -64,7 +64,7 @@ const (
 
 // RerunKind maps an ML slot onto its rerun runs' job_runs kind. The
 // second return is false for a slot with no rerun (a slot outside the
-// ML pipeline of this milestone).
+// ML pipeline).
 func RerunKind(slot ml.Slot) (string, bool) {
 	switch slot {
 	case ml.SlotFaceDetect:

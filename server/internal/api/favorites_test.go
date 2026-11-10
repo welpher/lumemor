@@ -1,4 +1,4 @@
-// The favorites and hidden view tests (M2c Task 4): the two curated
+// The favorites and hidden view tests: the two curated
 // views' listings (selection, live filters, per-user isolation, the
 // per-user isFavorite flag), their keyset pagination (the same
 // machinery the timeline uses), and the isFavorite computation on the
@@ -379,7 +379,7 @@ func TestTimelineIsFavorite(t *testing.T) {
 	env.addTimelineItem(t, adminSync, a1, adminID)
 
 	// Each favorites their own asset (the batch actions are
-	// owner-scoped in this milestone).
+	// owner-scoped for now).
 	env.batchAssets(t, env.cookie, "favorite", a1)
 	env.batchAssets(t, graceCookie, "favorite", g1)
 

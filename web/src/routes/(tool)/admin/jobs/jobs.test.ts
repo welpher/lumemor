@@ -68,7 +68,7 @@ const queuedRun = jobRun('0192f8d1-2e3f-4a5b-6c7d-8e9f0a1b2c3d', {
 	done: 0,
 	startedAt: null
 });
-// The E4 seam's pin: the contract's JobRunKind enum carries the
+// The albums-as-sources seam's pin: the contract's JobRunKind enum carries the
 // rescan and the places kinds, so their rows must validate and
 // render with their own labels -- a kind the validator rejects
 // would collapse the whole listing into the generic failure.
@@ -185,7 +185,7 @@ test('the listing renders each run with kind, state, per-kind units and times', 
 	expect(text).toContain('Embedding rerun');
 	expect(text).toContain('Text recognition rerun');
 	expect(text).toContain('Face detection rerun');
-	// The E4 seam's kinds render their own labels, not raw kind
+	// The albums-as-sources kinds render their own labels, not raw kind
 	// strings (and the listing itself stays ready -- a rejected
 	// kind would have collapsed it into the generic failure).
 	expect(text).toContain('Album rescan');
@@ -364,7 +364,7 @@ test('a non-admin caller sees the mapped auth_forbidden message', async () => {
 	const page = mountPage();
 	await settle();
 
-	// The generic AUTH_FORBIDDEN message (the M3c albums branch made
+	// The generic AUTH_FORBIDDEN message (the albums branch made
 	// the code cover the album share face too, so the text stopped
 	// naming the admin surface).
 	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(

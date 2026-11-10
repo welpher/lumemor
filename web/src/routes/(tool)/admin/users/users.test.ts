@@ -190,7 +190,7 @@ test('a non-admin caller sees the mapped auth_forbidden message', async () => {
 	await settle();
 
 	expect(rows()).toHaveLength(0);
-	// The generic AUTH_FORBIDDEN message (the M3c albums branch made
+	// The generic AUTH_FORBIDDEN message (the albums branch made
 	// the code cover the album share face too, so the text stopped
 	// naming the admin surface).
 	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(

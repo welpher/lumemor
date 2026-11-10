@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The admin settings page (the 2026-11-09 specimen's geometry:
+	// The admin settings page (the geometry:
 	// the page-header row with its hairline, the centered 760
 	// column): the three settings sections -- the storage template
 	// (the storage-template feature: the instance's upload path
@@ -12,9 +12,9 @@
 	// being immediate permanent delete, with the destructive
 	// warning line), and the video transcoding profile (the preset,
 	// the concurrency bound, the poster-frame switch and the failure
-	// policy; the contract's new-ingests-only scope note). E4's
+	// policy; the contract's new-ingests-only scope note). The
 	// mount-root allowlist section is GONE: the allowlist retired
-	// whole with E6 (web IA §7.5's third revision -- the boundary is
+	// whole (the boundary is
 	// the compose mount itself, nothing left to list).
 	//
 	// THE 403 PAGE: a signed-in non-admin landing on this route sees
@@ -266,7 +266,7 @@
 			>
 		</div>
 	{:else if status === 'ready' && settings !== null}
-		<!-- The page-header row (the 2026-11-09 specimen: the title
+		<!-- The page-header row: the title
 		     echoing the rail's active section, the right action slot
 		     -- settings carries no page-level action, each section
 		     owns its save, but the row stands for uniformity -- and

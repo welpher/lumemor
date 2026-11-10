@@ -1,5 +1,5 @@
-// The in-memory grid index the GPS resolution runs against (M3d Task
-// 1). The design pins the route: the Go process loads the places
+// The in-memory grid index the GPS resolution runs against. The
+// route is pinned: the Go process loads the places
 // centroids ONCE per process and answers nearest-city queries in
 // memory -- no SQL, no extensions, no country polygons.
 //
@@ -38,7 +38,7 @@
 // Memory: the centroids ride one flat slice (20 bytes per row), the
 // grid holds one int32 index per centroid plus one slice header per
 // cell (64,800 cells) -- about 7 MiB for the ~185k-row cities500
-// bake, well inside the data model's budget.
+// bake, well inside the memory budget.
 package geodata
 
 import "math"

@@ -1,4 +1,4 @@
-// The face recognition wrappers (M3a Task 7): the alignment warp
+// The face recognition wrappers: the alignment warp
 // that carries a detected face's five landmarks onto the canonical
 // positions of the 112x112 aligned crop, and the embedding wrapper
 // that feeds the aligned crop to a recognition graph and answers the

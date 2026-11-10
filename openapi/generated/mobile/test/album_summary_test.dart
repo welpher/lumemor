@@ -43,7 +43,7 @@ void main() {
       // TODO
     });
 
-    // The album's live member count: trashed, hidden and Live Photo component rows never count (A5 -- a hidden asset is invisible to the whole family). 
+    // The album's live member count: trashed, hidden and Live Photo component rows never count (a hidden asset is invisible to the whole family). 
     // int itemCount
     test('to test the property `itemCount`', () async {
       // TODO

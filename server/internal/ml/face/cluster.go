@@ -1,11 +1,11 @@
-// The clusterer of the recognition pipeline (M3a Task 7): a textbook
+// The clusterer of the recognition pipeline: a textbook
 // brute-force DBSCAN over the L2-normalized embeddings, with the
 // cosine distance (one minus the dot product) as the neighborhood
 // metric. The faces of a family-scale library number in the low
 // thousands, so the O(n^2) pairwise scan -- every pair computed once
-// per job, in application memory -- is the honest cost the milestone
+// per job, in application memory -- is the honest cost
 // accepted; the incremental clustering of a larger library is a later
-// optimization, recorded in the task's report.
+// optimization.
 package mlface
 
 // The clustering defaults: the recognize model's params carry eps

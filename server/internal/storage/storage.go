@@ -40,7 +40,7 @@ func requireDataRoot(caller string) {
 // within one filesystem, so a layout that would break every upload
 // fails startup instead of the first upload attempt. The trash area
 // needs no probe of its own: the external asset's move into it
-// (E4's §A6/E4 semantics) falls back to copy-then-remove across
+// (the external move semantics) falls back to copy-then-remove across
 // filesystems, so a mount root on another device than the data root
 // is a slower trash, never a broken one. On success it records the
 // data root for the path helpers below.
@@ -50,7 +50,7 @@ func EnsureLayout(dataDir, configDir string) error {
 	for _, dir := range []string{
 		originals,
 		tmp,
-		// The external asset trash area (E4): trashing a directory
+		// The external asset trash area: trashing a directory
 		// album's referenced file moves it under trash/<assetID>/,
 		// the server's own tree, so expiry and the explicit delete
 		// own the file exactly like they own a blob. The directory
@@ -147,8 +147,8 @@ func ThumbPath(assetID, size string) string {
 // content-addressed paths where identical bytes of ANY owner share
 // one physical file (another owner's upload of the same photo, or a
 // live row, keeps it); assets ingested since live at per-owner
-// template paths that no other row can reference -- the references
-// count answers both eras with the one rule. Both removals are
+// template paths that no other row can reference -- the
+// referencing-rows count answers both eras with the one rule. Both removals are
 // best-effort and idempotent: a file already gone is success (the
 // delete that owned it may have run concurrently), and a failure is
 // returned for the caller to log -- the database row is already
@@ -200,10 +200,10 @@ func removeFileIfPresent(path string) error {
 }
 
 // RemoveExternalAssetFiles removes the on-disk artifacts of one
-// permanently deleted EXTERNAL asset (E4): the derived directories
+// permanently deleted EXTERNAL asset: the derived directories
 // (storage/thumbs/<assetID>/ and storage/encoded/<assetID>/) are
 // keyed by the asset id alone and always go, exactly like a blob's.
-// The original half follows the §A6/E4 table's move semantics: the
+// The original half follows the external move semantics: the
 // only file of an external row the server ever owns is the TRASH
 // COPY the user-initiated trash move landed under
 // data/trash/<assetID>/ (the caller passes the row's trash_path,
@@ -260,7 +260,7 @@ func RemoveExternalAssetFiles(dataDir, trashPath, assetID string) error {
 // PosterPath returns the path of the poster frame of a video asset
 // under the data root: storage/thumbs/<assetID>/poster.jpg. The poster
 // is a JPEG, not an AVIF thumbnail: it is extracted by ffmpeg from the
-// video's first frame, and Task 6 serves it wherever a video asset's
+// video's first frame, and the transcode job serves it wherever a video asset's
 // thumbnail is requested. It panics when EnsureLayout has not
 // succeeded yet.
 func PosterPath(assetID string) string {
@@ -319,7 +319,7 @@ const (
 //     values, defense in depth against a corrupted row);
 //
 //   - an external row's file_path IS the file's real absolute path
-//     (the directory album's source tree, E4: zero copy, zero move),
+//     (the directory album's source tree: zero copy, zero move),
 //     so the resolver cleans it and proves the two invariants the
 //     rescan guarantees at ingest -- absolute, and not pointing
 //     inside the server's own managed tree (an external file never

@@ -4,13 +4,13 @@ import { initI18n } from '$lib/i18n';
 import { probeSession, sessionStatus } from '$lib/auth/session.svelte';
 import Drawer from './Drawer.svelte';
 
-// The drawer contract from the web IA: eight content items (the
-// albums wall's entry live since the M3c surface; the hidden view's
-// entry moved here from the timeline's toolbar in R2-11), one
-// disabled M3 placeholder, the admin panel's role-gated entry (the
+// The drawer contract: eight content items (the
+// albums wall's entry live since the albums surface; the hidden view's
+// entry moved here from the timeline's toolbar), one
+// disabled placeholder, the admin panel's role-gated entry (the
 // identity seam: an admin's session renders it, a member's never
 // does), Escape and an outside click closing it. The settings entry
-// is GONE (the 2026-11-09 pin, web IA §7.8): the account dropdown's
+// is GONE: the account dropdown's
 // link is settings' only home, and this file pins the drawer's side
 // of that promise -- no /settings door here, for any role.
 
@@ -75,16 +75,16 @@ test('closed renders nothing; open renders the eight content items in IA order',
 	const panel = document.body.querySelector<HTMLElement>('nav.drawer__panel');
 	expect(panel?.getAttribute('aria-label')).toBe('Navigation');
 
-	// The IA's route-table order, all eight visible -- the hidden
-	// view's entry (R2-11) moved here from the timeline's toolbar and
+	// The route-table order, all eight visible -- the hidden
+	// view's entry moved here from the timeline's toolbar and
 	// sits with the other list views (favorites/trash). The settings
-	// entry is gone (the §7.8 pin): the account dropdown is its only
-	// home. The leading icons (R2-5) add a whitespace text node
+	// entry is gone: the account dropdown is its only
+	// home. The leading icons add a whitespace text node
 	// before each label, so the text assertions trim.
 	const labels = [...document.body.querySelectorAll('.drawer__item')].map((element) => element.textContent?.trim());
 	expect(labels).toEqual(['Timeline', 'Albums', 'People', 'Places', 'Memories', 'Favorites', 'Hidden', 'Trash']);
 
-	// Every item LEADS with its icon (R2-5): the svg is the item's
+	// Every item LEADS with its icon: the svg is the item's
 	// first element child, decorative (aria-hidden), and the text
 	// stays the accessible name -- the icon never replaces it.
 	const items = [...document.body.querySelectorAll<HTMLElement>('.drawer__item')];
@@ -99,8 +99,8 @@ test('closed renders nothing; open renders the eight content items in IA order',
 	const iconClasses = new Set(items.map((item) => item.querySelector('svg')?.getAttribute('class') ?? ''));
 	expect(iconClasses.size).toBe(8);
 
-	// The live links: the timeline, the M3c albums wall, the people,
-	// the M3d places grid, favorites, hidden and trash routes -- and
+	// The live links: the timeline, the albums wall, the people,
+	// the places grid, favorites, hidden and trash routes -- and
 	// NO /settings door (the account dropdown owns it alone).
 	const links = [...document.body.querySelectorAll<HTMLAnchorElement>('a.drawer__item')].map((link) =>
 		link.getAttribute('href')
@@ -108,7 +108,7 @@ test('closed renders nothing; open renders the eight content items in IA order',
 	expect(links).toEqual(['/timeline', '/albums', '/people', '/places', '/favorites', '/hidden', '/trash']);
 	expect(document.body.querySelector('a.drawer__item[href="/settings"]')).toBeNull();
 
-	// The M3 placeholder: present, visible, disabled.
+	// The placeholder: present, visible, disabled.
 	const disabled = [...document.body.querySelectorAll<HTMLButtonElement>('button.drawer__item--disabled')];
 	expect(disabled.map((button) => button.textContent?.trim())).toEqual(['Memories']);
 	expect(disabled.every((button) => button.disabled)).toBe(true);

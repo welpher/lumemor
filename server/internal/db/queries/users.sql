@@ -35,7 +35,7 @@ SET is_disabled = $2, updated_at = now()
 WHERE id = $1
 RETURNING id, name, email, role, is_disabled, created_at;
 
--- User reads of the sharing face (M3c Task 3): the minimal member
+-- User reads of the sharing face: the minimal member
 -- list and the share-target lookup. Both select the safe identity
 -- columns only -- a password hash never leaves the table through
 -- any non-auth surface.
@@ -54,8 +54,8 @@ ORDER BY email ASC;
 -- no row and a disabled account is filtered by the switch -- the
 -- handler folds both into the same skipped reason so user ids
 -- cannot be probed through the audience face, the discipline the
--- one-row share grant kept before E4 folded it into the full-set
--- write. The array bounds the scan (the contract caps the audience
+-- one-row share grant kept before the full-set write folded it
+-- in. The array bounds the scan (the contract caps the audience
 -- at 200 ids).
 SELECT id
 FROM users

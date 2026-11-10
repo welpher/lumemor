@@ -1,4 +1,4 @@
-// Shared-visibility tests (M3c Task 4): the caller-visible-asset
+// Shared-visibility tests: the caller-visible-asset
 // predicate's switchover, exercised through every read face it now
 // gates -- the people surface (sharee counts and the best-visible
 // card crop), the asset detail and media serving, and the favorites
@@ -39,7 +39,7 @@ func requireAssetStatus(t *testing.T, rec *httptest.ResponseRecorder, status int
 
 // TestSharedVisibilityPeople pins the people surface under sharing:
 // a sharee's people view counts (and details, and labels) the faces
-// on shared-album assets, labels stay per-user (B4), and a revoked
+// on shared-album assets, labels stay per-user, and a revoked
 // share retracts the faces. The structural faces stay owner-only.
 func TestSharedVisibilityPeople(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
@@ -63,7 +63,7 @@ func TestSharedVisibilityPeople(t *testing.T) {
 	env.addTimelineItem(t, sharedAlbum, aTrash, adminID)
 
 	// Grace's own asset with her face in the same global cluster
-	// (B4: one person across accounts), plus a cluster whose faces
+	// (one person across accounts), plus a cluster whose faces
 	// sit ONLY on the admin's shared album (the retraction arm).
 	g1 := fixturePeopleAssetID("d4")
 	env.insertOwnedAsset(t, g1, graceID, time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC), visibilityAssetOpts{})
@@ -134,7 +134,7 @@ func TestSharedVisibilityPeople(t *testing.T) {
 			t.Errorf("grace labeled faceCount = %d, want 2", people[0].FaceCount)
 		}
 		// The admin's view is untouched: the cluster stays unnamed
-		// for them, no label leaked across accounts (B4).
+		// for them, no label leaked across accounts.
 		page := env.getUnnamedPage(t, env.cookie, "")
 		requireUnnamedOrder(t, page.Items, cluster, sharedOnly)
 		if people := env.getPeopleList(t, env.cookie); len(people) != 0 {
@@ -182,7 +182,7 @@ func TestSharedVisibilityPeople(t *testing.T) {
 	})
 }
 
-// TestPersonCardBestVisibleFace pins the M3b handoff: the person
+// TestPersonCardBestVisibleFace pins the card-face rule: the person
 // card's crop derives from the best CALLER-VISIBLE live face (score
 // descending, the face id ascending as the tiebreak), never from the
 // global representative -- a representative on a trashed, hidden or

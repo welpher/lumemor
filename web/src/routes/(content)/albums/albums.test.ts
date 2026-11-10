@@ -5,7 +5,7 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 import type { AlbumSummary } from '$lib/api/albums';
 import Page from './+page.svelte';
 
-// The album wall (web IA §2-§3): the cover-card grid in its two
+// The album wall: the cover-card grid in its two
 // sections -- the caller's own albums (the pinned sync card of the
 // default "My photos" album first, its localized display name keyed
 // by `type === 'sync'`), then the albums shared to them (with the
@@ -13,8 +13,8 @@ import Page from './+page.svelte';
 // full-bleed, two split, three 2+1, four quad), the locked / shared
 // / excluded badges, the counts and the honest owner attribution on
 // the shared cards. The "New album" dialog creates one directory
-// album -- the entry is the ADMINISTRATOR'S alone (E6, §7.5's third
-// revision: pointing at the file system is configuration, a member
+// album -- the entry is the ADMINISTRATOR'S alone: pointing
+// at the file system is configuration, a member
 // never sees the affordance), and the create's honest answers (the
 // skipped report, the write probe's read-only fact) hold the dialog
 // until acknowledged; every album.* SSE event converges through ONE
@@ -369,7 +369,7 @@ test('the badges ride the cards: locked, shared, excluded', async () => {
 	flushSync();
 });
 
-test("an empty wall renders the empty state; the create affordance is the admin's alone (E6)", async () => {
+test("an empty wall renders the empty state; the create affordance is the admin's alone", async () => {
 	// An admin's empty wall carries the creation entry.
 	await bootWallSession('u1', 'admin');
 	wallState = [];
@@ -442,7 +442,7 @@ test('a dead session renders the session message, never credential text', async 
 });
 
 test('the create dialog POSTs the title, path and audience; the refetched wall gains the card', async () => {
-	// The creation entry is the administrator's (E6): the wall's
+	// The creation entry is the administrator's: the wall's
 	// button renders for an admin's session alone.
 	await bootWallSession('u1', 'admin');
 	const fetchMock = stubFetch(wallRoutes());
@@ -509,7 +509,7 @@ test('the create dialog carries the picked audience into the POST', async () => 
 	await settle();
 
 	// The candidate picker: the other accounts (the caller excluded).
-	// The rows live in the PORTALED floating layer (§7.5's revision:
+	// The rows live in the PORTALED floating layer (the floating-layer revision:
 	// document.body, outside the dialog's DOM) -- document-level
 	// selectors find them.
 	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
@@ -520,8 +520,8 @@ test('the create dialog carries the picked audience into the POST', async () => 
 	rows[1]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 	flushSync();
 
-	// The chip landed (the picker stays open -- the specimen's
-	// state two); the caller is "only me" no more.
+	// The chip landed (the picker stays open); the
+	// caller is "only me" no more.
 	expect(dialog?.querySelector('.audience-field__chip')?.textContent).toContain('ivy@example.com');
 	expect(dialog?.textContent).not.toContain('Only you');
 
@@ -595,7 +595,7 @@ test('the create dialog surfaces the honest skipped report before closing', asyn
 	flushSync();
 });
 
-test('a read-only source lands as a created album with the honest feedback, never a failure (E6)', async () => {
+test('a read-only source lands as a created album with the honest feedback, never a failure', async () => {
 	// The write probe's false arm: the creation SUCCEEDED (a
 	// read-only directory is a legitimate album), and the dialog
 	// holds the honest note until acknowledged -- the same report
@@ -667,7 +667,7 @@ test('the create dialog routes a path-matrix failure under the path field', asyn
 	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	// The specimen's state four: the failure line sits under the path
+	// The failure state: the failure line sits under the path
 	// field and the input renders invalid -- the message points back
 	// at the completion, never a generic box.
 	const pathInput = dialog?.querySelector<HTMLInputElement>('#create-album-path');

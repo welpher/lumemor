@@ -1,4 +1,4 @@
-// The scope composer (M3d Task 3): the shared WHERE fragments every
+// The scope composer: the shared WHERE fragments every
 // search statement builds on -- the timeline's live-row filters, the
 // caller-visible union predicate and the filter dimensions. Each
 // facet query re-composes the scope EXCLUDING its own dimension; the

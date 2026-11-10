@@ -108,8 +108,8 @@ NON_ERROR_KEYS = {
     "welcome_body",
     "common_cancel",
     "common_close",
-    # The offline strip and the `?` shortcut sheet (the interface-debt
-    # block, 2026-11-09): web IA §6's pinned state surfaces.
+    # The offline strip and the `?` shortcut sheet: the offline-state
+    # surfaces (delivered 2026-11-09).
     "offline_strip",
     "shortcuts_title",
     "shortcuts_anywhere_heading",
@@ -127,7 +127,7 @@ NON_ERROR_KEYS = {
     "shortcuts_action_picker_move",
     "shortcuts_action_picker_pick",
     "shortcuts_action_picker_close",
-    # Timeline wall UI strings (M2d Task 4).
+    # Timeline wall UI strings.
     "timeline_loading",
     "timeline_empty",
     "timeline_load_more",
@@ -136,25 +136,25 @@ NON_ERROR_KEYS = {
     "action_select",
     "action_done",
     "session_expired",
-    # People surface message keys (M3b): message keys carried in a
+    # People surface message keys: keys carried in a
     # VALIDATION_FAILED details, not error codes of their own.
     "person_hide_requires_label",
-    # Album surface message keys (M3c): the cover validation's
+    # Album surface message keys: the cover validation's
     # message key carried in a VALIDATION_FAILED details.
     "album_cover_not_member",
-    # Album sharing message keys (M3c Task 3): the grant target
+    # Album sharing message keys: the grant target
     # rules' keys carried in a VALIDATION_FAILED details.
     "album_share_to_owner",
     "album_share_user_invalid",
-    # Album timeline-preference message keys (M3c Task 4): the
+    # Album timeline-preference message keys: the
     # not-excludable album kinds' key carried in a VALIDATION_FAILED
     # details.
     "album_pref_not_excludable",
-    # Album deletability message keys (E6): the deletability switch's
+    # Album deletability message keys: the deletability switch's
     # directory-only refusal key carried in a VALIDATION_FAILED
     # details.
     "album_deletable_not_directory",
-    # People surface UI strings (M3b Task 4): the three pages of the
+    # People surface UI strings: the three pages of the
     # people domain.
     "people_loading",
     "people_empty",
@@ -203,7 +203,7 @@ NON_ERROR_KEYS = {
     "asset_favorite_label",
     "asset_live_photo_label",
     "asset_video_label",
-    # Upload queue overlay UI strings (M2d Task 5).
+    # Upload queue overlay UI strings.
     "upload_queue_title",
     "upload_state_waiting",
     "upload_state_uploading",
@@ -219,7 +219,7 @@ NON_ERROR_KEYS = {
     "upload_conflict_body",
     "upload_conflict_restore",
     "upload_conflict_save_as",
-    # Asset viewer UI strings (M2d Task 6).
+    # Asset viewer UI strings.
     "viewer_loading",
     "viewer_close",
     "viewer_previous",
@@ -263,7 +263,7 @@ NON_ERROR_KEYS = {
     "viewer_exif_none",
     "viewer_faces_placeholder",
     "viewer_places_placeholder",
-    # Viewer face chips and the assign dialog (M3b Task 5): the
+    # Viewer face chips and the assign dialog: the
     # people section of the asset detail drawer.
     "viewer_faces_unnamed",
     "viewer_faces_unclustered",
@@ -276,7 +276,6 @@ NON_ERROR_KEYS = {
     "viewer_assign_note",
     "viewer_face_not_grouped",
     # Trash, favorites, hidden and admin user management UI strings
-    # (M2d Task 8).
     "trash_note",
     "trash_loading",
     "trash_empty",
@@ -323,7 +322,6 @@ NON_ERROR_KEYS = {
     "admin_users_create_submit",
     "admin_users_new",
     # Admin model management and job task panel UI strings
-    # (M3a Task 5).
     "admin_models_loading",
     "admin_models_title",
     "admin_models_note",
@@ -394,8 +392,8 @@ NON_ERROR_KEYS = {
     "admin_settings_saved_note",
     "admin_settings_submit",
     "admin_settings_contract_note",
-    # Albums surface UI strings (M3c Task 5, reshaped by E4's
-    # albums-as-sources): the wall, the detail, the creation and
+    # Albums surface UI strings (reshaped by albums-as-sources):
+    # the wall, the detail, the creation and
     # edit dialogs' path completion and audience pickers, the
     # rescan's progress lines.
     "albums_title",
@@ -471,7 +469,7 @@ NON_ERROR_KEYS = {
     "albums_audience_failed",
     "albums_audience_no_candidates",
     "albums_audience_disabled_note",
-    # Search, places and tags UI strings (M3d Task 4): the search
+    # Search, places and tags UI strings: the search
     # page's box, chips and count line, the places grid's chrome,
     # and the tags dialog and drawer row.
     "search_query_placeholder",
@@ -521,7 +519,7 @@ NON_ERROR_KEYS = {
     "admin_settings_transcode_save",
     "admin_settings_transcode_saved",
     "admin_settings_transcode_contract",
-    # Mount-roots UI strings (E4's albums-as-sources): the admin
+    # Mount-roots UI strings (albums-as-sources): the admin
     # settings section that manages the directory albums' source
     # allowlist.
     "admin_settings_transcode_concurrency_4",

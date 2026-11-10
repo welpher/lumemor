@@ -1,4 +1,4 @@
-# The E6 writable source fixture
+# The writable source fixture
 
 The album autonomy story (`web/e2e/m3-albums.spec.ts` scene set and the
 acceptance chains) pins the deletability chain's TRUE arm end to end:
@@ -10,7 +10,7 @@ tree is bound into the lumemor container WITHOUT `:ro`, at
 `/mnt/e2e-source-rw` -- the writable sibling of the read-only
 `m3-source` mount.
 
-- The bind is the E6 boundary itself: no allowlist layer remains, the
+- The bind is the boundary itself: no allowlist layer remains, the
   compose mounts are what the container sees. An administrator's
   create dialog completes paths against this tree like any other the
   container holds.
@@ -22,7 +22,7 @@ tree is bound into the lumemor container WITHOUT `:ro`, at
   trash scene moves one of them into the managed trash area and the
   restore returns it, so the tree self-heals for the next run. The
   seeder sweeps first: the directory persists across every run on
-  the host (the spec's two seeds, the chains' one), and a stale
+  the host (the suite's two seeds, the chains' one), and a stale
   photo would leave the rescan's membership counting leftovers --
   everything that is not this README goes. Only the README is
   tracked; `web/e2e/fixtures/m3-source-rw/*` is git-ignored with

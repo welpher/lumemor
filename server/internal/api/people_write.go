@@ -1,15 +1,15 @@
-// The people surface writes (M3b Task 2): the caller's label and
+// The people surface writes: the caller's label and
 // hidden switches behind PUT/DELETE /people/{clusterId}/label and
 // PUT /people/{clusterId}/hidden, the cluster merge behind
 // POST /people/merge and the single face move behind
 // POST /faces/{faceId}/move.
 //
-// The B4 discipline runs through every label write: the writes are
+// The per-user-state discipline runs through every label write: the writes are
 // per-caller upserts on the (user_id, cluster_id) pair -- they never
 // read or touch another account's row, and duplicating another
 // account's name is fine (no NAME_TAKEN exists; families have real
 // duplicates). The structural writes stick to the cluster
-// maintenance discipline M3a pinned for every faces.cluster_id
+// maintenance discipline for every faces.cluster_id
 // change: member moves, representative re-pointing and the
 // dissolution of vacated clusters (labels cascading) land in ONE
 // transaction, never as bare member moves.
@@ -69,7 +69,7 @@ func (s *server) writeMessageKey(w http.ResponseWriter, message string, key stri
 // violation: on the people writes it can only mean a cluster
 // dissolved between the handler's visibility gate and the structural
 // write, so the same 404 the gate answers keeps that race honest
-// (the Task 1 read precedent, applied to writes).
+// (the read precedent, applied to writes).
 func personFKViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23503" // foreign_key_violation

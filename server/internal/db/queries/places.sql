@@ -1,8 +1,8 @@
--- Places reference-data queries (M3d Task 1): the idempotent
+-- Places reference-data queries: the idempotent
 -- startup import of the baked GeoNames rows and the read surface of
 -- the caller-visible city grouping.
 --
--- places/place_names are reference tables in the data model's sense:
+-- places/place_names are reference tables in the schema's sense:
 -- read-only imports with no audit columns (the schema exempts them
 -- deliberately -- no application-side updates, the import is the only
 -- writer). The import replaces wholesale: the DELETE pair empties the
@@ -16,7 +16,7 @@
 -- re-resolution run then refills.
 --
 -- The read surface's domain is the caller-visible asset union
--- (caller_asset_visible, M3c): the city grouping counts and covers
+-- (caller_asset_visible): the city grouping counts and covers
 -- only what the calling account can see, the same honest-counts
 -- discipline as the people surface. Place display names join through
 -- place_names at read time in the request's locale, falling back to

@@ -5,7 +5,7 @@
 	// of a failed row), the full-page drag-and-drop hot zone (with an
 	// edge-counted drag hint), and the three-state conflict dialog
 	// (restore the trashed copy / save as new / keep -- the pinned
-	// Review Focus ③ semantics live in the queue module).
+	// pinned conflict semantics live in the queue module).
 	//
 	// The queue survives route navigation (the module singleton); this
 	// component only renders and feeds it.
