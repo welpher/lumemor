@@ -8,7 +8,10 @@
 	// (the shared `anchored` action): the modal body's overflow can
 	// never clip it, and the dialog NEVER changes height for it. The
 	// rows: the folder glyph + the full path, the active
-	// highlight, the keys footer (↑↓ / Enter / Esc).
+	// highlight, the keys footer (↑↓ / Enter / Esc). Each row also
+	// carries the write fact the listing's probe discovered -- the
+	// caller learns it through `onpick` at the moment of the pick,
+	// the fact the create dialog's deletability row renders from.
 	//
 	// THE VALIDATION SLOT (the reserved-slot rule): the line under the
 	// field is a reserved fixed-height slot -- the hint and the
@@ -38,7 +41,7 @@
 	// the list is open (the combobox pattern); the layer floats
 	// outside the Modal's focus trap (a popover's focus contract).
 	import { _ } from 'svelte-i18n';
-	import { completeAlbumPath } from '$lib/api/albums';
+	import { completeAlbumPath, type AlbumPathCompletion } from '$lib/api/albums';
 	import { anchored } from '$lib/components/anchored';
 	import Folder from '@lucide/svelte/icons/folder';
 
@@ -57,17 +60,34 @@
 		failure?: string;
 		/** Writes run one at a time: the input disables while in flight. */
 		busy?: boolean;
+		/**
+		 * One picked row, with the write fact the listing's probe
+		 * discovered for it -- the create dialog's deletability row
+		 * renders exactly for a writable pick. The fact rides the
+		 * exact picked path: the caller compares its own draft against
+		 * the row and drops the fact the moment typing invalidates it.
+		 */
+		onpick?: (row: AlbumPathCompletion) => void;
 	};
 
-	let { path = $bindable(''), label, id, placeholder = '', hint = '', failure = '', busy = false }: Props = $props();
+	let {
+		path = $bindable(''),
+		label,
+		id,
+		placeholder = '',
+		hint = '',
+		failure = '',
+		busy = false,
+		onpick
+	}: Props = $props();
 
 	/** The debounce window the plan pins (~250ms). */
 	const DEBOUNCE_MS = 250;
 
 	type CompletionState = 'idle' | 'loading' | 'ready' | 'failed';
 
-	/** The last landed answer's rows (the server's, at most 20). */
-	let paths = $state<string[]>([]);
+	/** The last landed answer's rows (the server's, at most 20, each with its write fact). */
+	let rows = $state<AlbumPathCompletion[]>([]);
 	/** Whether the list renders at all. */
 	let open = $state(false);
 	/** The highlighted row's index (-1 = none). */
@@ -127,9 +147,9 @@
 			return;
 		}
 		if (outcome.ok) {
-			paths = outcome.paths;
+			rows = outcome.completions;
 			phase = 'ready';
-			activeIndex = paths.length > 0 ? 0 : -1;
+			activeIndex = rows.length > 0 ? 0 : -1;
 		} else {
 			phase = 'failed';
 		}
@@ -139,15 +159,16 @@
 		}
 	}
 
-	/** Complete one row into the field and close the list. */
+	/** Complete one row into the field, hand the row to the caller, and close the list. */
 	function complete(index: number): void {
-		const row = paths[index];
+		const row = rows[index];
 		if (row === undefined) {
 			return;
 		}
-		path = row;
+		path = row.path;
 		open = false;
 		activeIndex = -1;
+		onpick?.(row);
 	}
 
 	/** The keyboard the list owns; strokes it handles never reach the modal. */
@@ -159,11 +180,11 @@
 				open = true;
 				return;
 			}
-			if (paths.length === 0) {
+			if (rows.length === 0) {
 				return;
 			}
 			const direction = event.key === 'ArrowDown' ? 1 : -1;
-			activeIndex = Math.min(paths.length - 1, Math.max(0, activeIndex + direction));
+			activeIndex = Math.min(rows.length - 1, Math.max(0, activeIndex + direction));
 			return;
 		}
 		if (event.key === 'Enter') {
@@ -289,7 +310,7 @@
 				>
 					{$_('albums_path_completion_failed')}
 				</p>
-			{:else if paths.length === 0}
+			{:else if rows.length === 0}
 				<!-- The honest empty answer: nothing under the typed prefix
 			         matches (the system-wide domain has no closed posture to
 			         report -- the allowlist and its no-roots face retired). -->
@@ -299,7 +320,7 @@
 					{$_('albums_path_no_match')}
 				</p>
 			{:else}
-				{#each paths as candidate, index (candidate)}
+				{#each rows as candidate, index (candidate.path)}
 					<!-- The row: the state-selector (not an action button)
 					     shape -- the folder glyph + the
 					     full path, the active highlight, mousedown
@@ -324,7 +345,7 @@
 							aria-hidden="true"
 						/>
 						<span class="path-completion__row-path overflow-hidden text-ellipsis whitespace-nowrap"
-							>{candidate}</span
+							>{candidate.path}</span
 						>
 					</div>
 				{/each}

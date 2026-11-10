@@ -19,7 +19,7 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 // (the deletion faces included), the directory creation (title +
 // source path + audience, the honest skipped report and the write
 // probe's sourceWritable fact -- both admin-guarded writes), the
-// property patch (title, cover, lock, deletability), the
+// property patch (title, cover, deletability), the
 // virtual/directory delete, the path completion of the creation
 // dialog's combobox, the audience's full-set PUT, the rescan
 // trigger, the member list and the timeline preference -- each
@@ -32,7 +32,6 @@ const ownCard: AlbumSummary = {
 	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 	title: 'Road trip 2026',
 	type: 'virtual',
-	locked: false,
 	isShared: true,
 	coverAssetIds: [
 		'0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072',
@@ -49,7 +48,6 @@ const directoryCard: AlbumSummary = {
 	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6078',
 	title: 'Family archive',
 	type: 'directory',
-	locked: false,
 	isShared: false,
 	coverAssetIds: [],
 	itemCount: 0,
@@ -61,7 +59,6 @@ const detailBody = {
 	id: ownCard.id,
 	title: ownCard.title,
 	type: 'virtual',
-	locked: false,
 	coverAssetId: null,
 	callerRole: 'owner',
 	itemCount: 2,
@@ -260,6 +257,55 @@ test('createAlbum POSTs the title, source path and audience, and answers the rep
 	}
 });
 
+test('createAlbum POSTs the autonomy switches with the drafts it carries', async () => {
+	let first = true;
+	const fetchMock = stubFetch({
+		'/api/v1/albums': (init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body));
+			if (first) {
+				first = false;
+				// The exclusion rides the draft verbatim; the
+				// deletability switch rides only where the dialog
+				// rendered it.
+				expect(body).toEqual({
+					title: 'Family archive',
+					rootPath: '/Volumes/Photos/family',
+					audience: [],
+					inTimeline: false,
+					allowAppDeletion: false
+				});
+			} else {
+				expect(body).toEqual({
+					title: 'Family archive',
+					rootPath: '/Volumes/Photos/family',
+					audience: []
+				});
+			}
+			return jsonResponse(201, {
+				...directoryCard,
+				isShared: true,
+				sourceWritable: true,
+				skipped: []
+			});
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	// Both switches carried: the exclusion off, the deletability off
+	// (a writable pick's unchecked row).
+	await createAlbum({
+		title: 'Family archive',
+		rootPath: '/Volumes/Photos/family',
+		audience: [],
+		allowAppDeletion: false,
+		inTimeline: false
+	});
+
+	// Neither switch carried: the server's defaults govern.
+	await createAlbum({ title: 'Family archive', rootPath: '/Volumes/Photos/family', audience: [] });
+	expect(fetchMock.mock.calls).toHaveLength(2);
+});
+
 test('createAlbum maps the member 403 and refuses a body without the probe fact', async () => {
 	vi.stubGlobal(
 		'fetch',
@@ -315,11 +361,14 @@ test('createAlbum surfaces the path matrix codes unmangled', async () => {
 	});
 });
 
-test('completeAlbumPath reads the completion rows for a typed prefix', async () => {
+test('completeAlbumPath reads the completion rows with their write facts', async () => {
 	const fetchMock = stubFetch({
 		'/api/v1/albums/path-completions?prefix=%2FVolumes%2FPhotos%2F2': () =>
 			jsonResponse(200, {
-				paths: ['/Volumes/Photos/2026-spring', '/Volumes/Photos/2026-summer']
+				completions: [
+					{ path: '/Volumes/Photos/2026-spring', writable: true },
+					{ path: '/Volumes/Photos/2026-summer', writable: false }
+				]
 			})
 	});
 	vi.stubGlobal('fetch', fetchMock);
@@ -328,28 +377,31 @@ test('completeAlbumPath reads the completion rows for a typed prefix', async () 
 
 	expect(outcome).toEqual({
 		ok: true,
-		paths: ['/Volumes/Photos/2026-spring', '/Volumes/Photos/2026-summer']
+		completions: [
+			{ path: '/Volumes/Photos/2026-spring', writable: true },
+			{ path: '/Volumes/Photos/2026-summer', writable: false }
+		]
 	});
 });
 
 test('completeAlbumPath sends no query for the empty prefix (the root listing)', async () => {
 	const fetchMock = stubFetch({
-		'/api/v1/albums/path-completions': () => jsonResponse(200, { paths: ['/'] })
+		'/api/v1/albums/path-completions': () => jsonResponse(200, { completions: [{ path: '/', writable: true }] })
 	});
 	vi.stubGlobal('fetch', fetchMock);
 
 	const outcome = await completeAlbumPath('');
 
-	expect(outcome).toEqual({ ok: true, paths: ['/'] });
+	expect(outcome).toEqual({ ok: true, completions: [{ path: '/', writable: true }] });
 	expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/albums/path-completions');
 });
 
 test('completeAlbumPath accepts the honest empty answer and maps failures', async () => {
 	vi.stubGlobal(
 		'fetch',
-		stubFetch({ '/api/v1/albums/path-completions?prefix=%2Fnone': () => jsonResponse(200, { paths: [] }) })
+		stubFetch({ '/api/v1/albums/path-completions?prefix=%2Fnone': () => jsonResponse(200, { completions: [] }) })
 	);
-	expect(await completeAlbumPath('/none')).toEqual({ ok: true, paths: [] });
+	expect(await completeAlbumPath('/none')).toEqual({ ok: true, completions: [] });
 
 	vi.stubGlobal(
 		'fetch',
@@ -361,7 +413,20 @@ test('completeAlbumPath accepts the honest empty answer and maps failures', asyn
 
 	vi.stubGlobal(
 		'fetch',
-		stubFetch({ '/api/v1/albums/path-completions?prefix=%2Fnone': () => jsonResponse(200, { paths: 'no' }) })
+		stubFetch({
+			'/api/v1/albums/path-completions?prefix=%2Fnone': () => jsonResponse(200, { completions: ['no'] })
+		})
+	);
+	expect(await completeAlbumPath('/none')).toEqual({ ok: false, errorKey: 'internal' });
+
+	// A drifted row (the write fact missing) maps to the generic
+	// failure like any unparseable body -- the dialog never renders
+	// from a fact it does not have.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/albums/path-completions?prefix=%2Fnone': () => jsonResponse(200, { completions: [{ path: '/x' }] })
+		})
 	);
 	expect(await completeAlbumPath('/none')).toEqual({ ok: false, errorKey: 'internal' });
 });
@@ -371,13 +436,13 @@ test('patchAlbum PATCHes the carried subset and answers the card', async () => {
 		[`/api/v1/albums/${ownCard.id}`]: (init?: RequestInit) => {
 			expect(init?.method).toBe('PATCH');
 			const body = JSON.parse(String(init?.body));
-			expect(body).toEqual({ locked: false });
+			expect(body).toEqual({ title: 'Renamed archive' });
 			return jsonResponse(200, ownCard);
 		}
 	});
 	vi.stubGlobal('fetch', fetchMock);
 
-	const outcome = await patchAlbum(ownCard.id, { locked: false });
+	const outcome = await patchAlbum(ownCard.id, { title: 'Renamed archive' });
 	expect(outcome).toEqual({ ok: true, album: ownCard });
 });
 
@@ -396,19 +461,7 @@ test('patchAlbum PATCHes the deletability switch like every property field', asy
 	expect(outcome).toEqual({ ok: true, album: directoryCard });
 });
 
-test("patchAlbum surfaces the locked 409 and the write faces' message keys", async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({
-			[`/api/v1/albums/${ownCard.id}`]: () =>
-				jsonResponse(409, { code: 'ALBUM_LOCKED', message: 'the album is locked' })
-		})
-	);
-	expect(await patchAlbum(ownCard.id, { title: 'X' })).toEqual({
-		ok: false,
-		errorKey: 'album_locked'
-	});
-
+test("patchAlbum surfaces the write faces' message keys", async () => {
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
@@ -534,7 +587,7 @@ test('rescanAlbum POSTs the trigger and answers the run identifier', async () =>
 	});
 });
 
-test('rescanAlbum accepts the in-flight join and maps the locked 409', async () => {
+test('rescanAlbum accepts the in-flight join', async () => {
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
@@ -546,15 +599,6 @@ test('rescanAlbum accepts the in-flight join and maps the locked 409', async () 
 		ok: true,
 		run: { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f11' }
 	});
-
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({
-			[`/api/v1/albums/${directoryCard.id}/rescan`]: () =>
-				jsonResponse(409, { code: 'ALBUM_LOCKED', message: 'the album is locked' })
-		})
-	);
-	expect(await rescanAlbum(directoryCard.id)).toEqual({ ok: false, errorKey: 'album_locked' });
 });
 
 test('deleteAlbum issues the DELETE and accepts the 204', async () => {

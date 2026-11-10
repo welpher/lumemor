@@ -31,7 +31,7 @@
 	// owns for its walk.
 	//
 	// THE PINNED CHOICES (the albums-as-sources reshape, completed
-	// by the autonomy face):
+	// by the autonomy face, simplified by the lock's retirement):
 	//
 	// - The action set follows the role and the type: the owner of a
 	//   virtual album holds rename / set cover (picked from the
@@ -49,25 +49,16 @@
 	//   the server refuses every write face of the id anyway.
 	//   Read-only is VISUAL: a sharee never sees a write affordance,
 	//   the server keeps refusing them.
-	// - THE LOCK LIVES IN THE EDIT DIALOG (the five-piece
-	//   set's missing piece -- the same home as the timeline
-	//   exclusion and the deletability switch, one dialog for every
-	//   album-owned toggle), so the bar's dialog opener stays LIVE
-	//   under a lock: it is the unlock's door. The OTHER contextual
-	//   actions freeze under the lock honestly: the cover and the
-	//   delete on the virtual arm, the rescan on the directory arm
-	//   (the wall's delete affordance dies with `deletable`, the
-	//   server-derived face that folds the lock in).
-	// - THE WALL'S DELETE AFFORDANCE : the owner of a
+	// - THE WALL'S DELETE AFFORDANCE: the owner of a
 	//   DELETABLE directory album (owner AND writable source AND
-	//   the deletability switch AND unlocked -- all four, computed
-	//   server-side as `deletable`, pure data) curates a
+	//   the deletability switch -- computed server-side as
+	//   `deletable`, pure data) curates a
 	//   delete-only selection: `onbatch` is wired with the trash
 	//   action alone, so the wall's own selection machinery (the
 	//   hover check, the batch bar) renders exactly then and never
 	//   otherwise. A member's wall stays pure navigation.
-	// - Every write adopts its own response (the property patch and
-	//   the lock carry the wall card after the edit, the preference
+	// - Every write adopts its own response (the property patch
+	//   carries the wall card after the edit, the preference
 	//   carries the stored switch) or converges through the detail
 	//   refetch (the audience write's grantee list is the refetched
 	//   `shares`); no client-side invention -- the SSE self-echoes
@@ -175,11 +166,10 @@
 
 	const owner = $derived(detail?.callerRole === 'owner');
 	const virtual = $derived(detail?.type === 'virtual');
-	const locked = $derived(detail?.locked ?? false);
 	const excluded = $derived(detail?.inTimeline === false);
 	const excludable = $derived(detail?.inTimeline !== undefined);
 	// The wall's delete affordance: the server-derived face --
-	// owner AND writable source AND the switch AND unlocked, pure
+	// owner AND writable source AND the switch, pure
 	// data -- decides whether this wall curates at all.
 	const deletable = $derived(owner && detail?.type === 'directory' && detail.deletable === true);
 
@@ -268,12 +258,11 @@
 	const members = $derived(wallItems());
 
 	/** Adopt a write response's wall card into the detail's fields. */
-	function applyWriteFields(next: { title: string; locked: boolean; itemCount: number }): void {
+	function applyWriteFields(next: { title: string; itemCount: number }): void {
 		if (detail !== null) {
 			detail = {
 				...detail,
 				title: next.title,
-				locked: next.locked,
 				itemCount: next.itemCount
 			};
 		}
@@ -284,25 +273,18 @@
 	// halves -- a same-value title PATCH would still publish its
 	// album.updated event, and a same-set audience PUT is the
 	// contract's silent no-op, so a no-change save writes nothing at
-	// all. THE WRITE SEQUENCE respects the locked gate's shape: the
-	// UNLOCK writes first and ALONE (a locked album refuses a mixed
-	// patch whole), the property fields (title, the deletability
-	// switch) follow it, and the LOCK writes LAST (it freezes
-	// everything after it); the audience PUT and the caller's own
-	// timeline preference ride ungated either way (a lock
-	// protects content, not visibility; the preference is nobody's
-	// content). Each write's PATCH response is the album's wall card
-	// after the edit (the fields adopt it); the final detail
-	// refetch converges the faces the cards never carry (the
+	// all. THE WRITE SEQUENCE is the plain diff's order: the
+	// property fields (title, the deletability switch) ride ONE
+	// patch, the audience PUT and the caller's own timeline
+	// preference follow. Each write's PATCH response is the album's
+	// wall card after the edit (the fields adopt it); the final
+	// detail refetch converges the faces the cards never carry (the
 	// grantee list, the deletability state, the derived affordance).
 	async function submitProperties(draft: AlbumAutonomyDraft): Promise<void> {
 		const id = untrack(() => albumId);
 		if (writeBusy || detail === null || id === '') {
 			return;
 		}
-		const wasLocked = detail.locked;
-		const wantsUnlock = wasLocked && !draft.locked;
-		const wantsLock = !wasLocked && draft.locked;
 		const wantsTitle = draft.title !== detail.title;
 		const wantsDeletable =
 			detail.sourceWritable === true &&
@@ -314,24 +296,12 @@
 			nextIds.size !== currentIds.size || [...nextIds].some((userId) => !currentIds.has(userId));
 		const wantsExclusion =
 			detail.inTimeline !== undefined && draft.inTimeline !== undefined && draft.inTimeline !== detail.inTimeline;
-		if (!wantsUnlock && !wantsLock && !wantsTitle && !wantsDeletable && !wantsAudience && !wantsExclusion) {
+		if (!wantsTitle && !wantsDeletable && !wantsAudience && !wantsExclusion) {
 			propertiesOpen = false;
 			return;
 		}
 		writeBusy = true;
 		propertiesErrorKey = '';
-		if (wantsUnlock) {
-			// The unlock is the one write a lock never refuses, and a
-			// mixed patch carrying it is refused whole -- so it lands
-			// alone, before any property field.
-			const outcome = await patchAlbum(id, { locked: false });
-			if (!outcome.ok) {
-				writeBusy = false;
-				propertiesErrorKey = outcome.errorKey;
-				return;
-			}
-			applyWriteFields(outcome.album);
-		}
 		if (wantsTitle || wantsDeletable) {
 			const patch: { title?: string; allowAppDeletion?: boolean } = {};
 			if (wantsTitle) {
@@ -341,17 +311,6 @@
 				patch.allowAppDeletion = draft.allowAppDeletion;
 			}
 			const outcome = await patchAlbum(id, patch);
-			if (!outcome.ok) {
-				writeBusy = false;
-				propertiesErrorKey = outcome.errorKey;
-				return;
-			}
-			applyWriteFields(outcome.album);
-		}
-		if (wantsLock) {
-			// The lock lands LAST: it freezes the writes that follow
-			// it, and there are none left in this save.
-			const outcome = await patchAlbum(id, { locked: true });
 			if (!outcome.ok) {
 				writeBusy = false;
 				propertiesErrorKey = outcome.errorKey;
@@ -417,8 +376,8 @@
 		const outcome = await rescanAlbum(id);
 		writeBusy = false;
 		if (!outcome.ok) {
-			// The trigger's honest failure (a locked album's 409, a dead
-			// session): the bar's shared error line.
+			// The trigger's honest failure (a dead session): the bar's
+			// shared error line.
 			actionErrorKey = outcome.errorKey;
 			return;
 		}
@@ -597,22 +556,6 @@
 			>
 				{titleText}
 			</h1>
-			{#if locked}
-				<span
-					class="album-detail__badge album-detail__badge--locked hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
-				>
-					<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
-						<rect x="5" y="10.5" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.75" />
-						<path
-							d="M8 10.5V8a4 4 0 0 1 8 0v2.5"
-							stroke="currentColor"
-							stroke-width="1.75"
-							stroke-linecap="round"
-						/>
-					</svg>
-					{$_('albums_locked_badge')}
-				</span>
-			{/if}
 			{#if excluded}
 				<!-- The muted clock: the caller's own preference keeps this
 				     album's photos out of their aggregated timeline. (Below sm
@@ -647,17 +590,12 @@
 		     the edit dialog (rename + audience + the autonomy block),
 		     the cover and the delete; the owner of a directory album
 		     the edit dialog (properties: title + the source row +
-		     audience + the autonomy block of lock / exclusion /
+		     audience + the autonomy block of exclusion /
 		     deletability) and the rescan trigger; the owner of the
 		     sync album (the default album) holds nothing --
 		     system-managed; a viewer the exclusion toggle alone (the
 		     departure went with the revoke endpoint it rode; the
-		     audience is owner-domain). THE LOCK'S NEW HOME is the
-		     edit dialog, so the dialog opener stays LIVE
-		     under a lock -- it is the unlock's door -- while the
-		     other contextual actions freeze honestly: the cover and
-		     the delete on the virtual arm, the rescan on the
-		     directory arm. -->
+		     audience is owner-domain). -->
 		<div class="album-detail__actions ml-auto flex items-center gap-1">
 			{#if detail !== null && owner && virtual}
 				<IconButton
@@ -671,7 +609,7 @@
 					<PenLine size={20} aria-hidden="true" />
 				</IconButton>
 				<IconButton
-					disabled={writeBusy || locked}
+					disabled={writeBusy}
 					aria-label={$_('albums_action_cover')}
 					onclick={() => {
 						coverErrorKey = '';
@@ -680,22 +618,17 @@
 				>
 					<Images size={20} aria-hidden="true" />
 				</IconButton>
-				{#if !locked}
-					<!-- The permission matrix pins deletion to the UNLOCKED
-					     state: the owner unlocks first (the dialog's lock
-					     row), one step. -->
-					<IconButton
-						variant="danger"
-						disabled={writeBusy}
-						aria-label={$_('albums_action_delete')}
-						onclick={() => {
-							deleteErrorKey = '';
-							deleteOpen = true;
-						}}
-					>
-						<Trash2 size={20} aria-hidden="true" />
-					</IconButton>
-				{/if}
+				<IconButton
+					variant="danger"
+					disabled={writeBusy}
+					aria-label={$_('albums_action_delete')}
+					onclick={() => {
+						deleteErrorKey = '';
+						deleteOpen = true;
+					}}
+				>
+					<Trash2 size={20} aria-hidden="true" />
+				</IconButton>
 			{:else if detail !== null && owner && detail.type === 'directory'}
 				<IconButton
 					disabled={writeBusy}
@@ -710,11 +643,9 @@
 				<!-- The rescan trigger: the directory album's own
 				     refresh -- the three-arm diff run over its source.
 				     One run at a time (the endpoint is idempotent, the
-				     button is not a spam surface), and a locked album
-				     refuses the scan (the 409 the server answers). -->
+				     button is not a spam surface). -->
 				<IconButton
 					disabled={writeBusy ||
-						locked ||
 						(rescanRun !== null && (rescanRun.state === 'queued' || rescanRun.state === 'running'))}
 					aria-label={$_('albums_rescan_action')}
 					onclick={() => void startRescan()}
@@ -723,7 +654,7 @@
 				</IconButton>
 			{:else if detail !== null && owner && detail.type === 'sync'}
 				<!-- The default album's arm: NOTHING. The sync album is
-				     system-managed -- no rename, no cover, no lock, no
+				     system-managed -- no rename, no cover, no
 				     audience, no delete, no exclusion toggle, no rescan.
 				     The arm renders zero affordances, and the server
 				     refuses every write face of the id anyway; the wall
@@ -808,17 +739,6 @@
 					{/if}
 				</div>
 			{/if}
-			{#if locked && owner}
-				<!-- The locked gate, honest: the frozen faces stay off until
-				     the unlock (the edit dialog's lock row -- the bar's
-				     dialog opener is the door). -->
-				<p
-					class="album-detail__locked-notice my-0 mb-3 font-body font-medium text-[13px] leading-[1.5] text-text-soft"
-					role="status"
-				>
-					{$_('albums_locked_notice')}
-				</p>
-			{/if}
 			{#if excluded}
 				<p
 					class="album-detail__excluded-notice my-0 mb-3 font-body font-medium text-[13px] leading-[1.5] text-text-soft"
@@ -828,7 +748,7 @@
 				</p>
 			{/if}
 			{#if actionErrorKey !== ''}
-				<!-- The bar actions' honest failure (the lock, the
+				<!-- The bar actions' honest failure (the
 				     exclusion, the rescan trigger): the server's own answer. -->
 				<p
 					class="album-detail__action-error my-0 mb-3 font-body font-medium text-[14px] leading-[1.5] text-danger-text"
@@ -843,8 +763,8 @@
 		     page's own walk (the keyset client, the SSE convergence,
 		     the sentinel) around the shared Wall. The batch runner is
 		     wired exactly when the detail's derived `deletable` face
-		     holds -- the owner of an unlocked, writable,
-		     deletion-enabled directory album curates a DELETE-ONLY
+		     holds -- the owner of a writable, deletion-enabled
+		     directory album curates a DELETE-ONLY
 		     selection (the trash action alone); every other face
 		     passes no runner, so the tiles are pure navigation and no
 		     batch bar ever rises. -->
@@ -908,7 +828,6 @@
 		initialTitle={detail.title}
 		rootPath={detail.rootPath ?? ''}
 		shares={detail.shares ?? []}
-		initialLocked={detail.locked}
 		initialInTimeline={detail.inTimeline}
 		sourceWritable={detail.sourceWritable === true}
 		initialAllowDeletion={detail.allowAppDeletion ?? true}

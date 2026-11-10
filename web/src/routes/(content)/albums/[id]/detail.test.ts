@@ -8,11 +8,12 @@ import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
 
 // The album detail (the albums-as-sources reshape,
-// completed by the autonomy face): the metadata header with its
+// completed by the autonomy face, simplified by the lock's
+// retirement): the metadata header with its
 // callerRole x type action set -- the owner of a virtual album holds
 // rename / set cover / delete, the owner of a directory album the
 // properties edit (title + the read-only source row + the audience
-// + the autonomy block of lock / timeline exclusion / deletability)
+// + the autonomy block of timeline exclusion / deletability)
 // / rescan trigger with its job-event progress line, the owner of
 // the sync album (the default album) NOTHING -- system-managed,
 // read-only, the localized display name for the title -- a viewer
@@ -20,7 +21,7 @@ import Page from './+page.svelte';
 // endpoint it rode) -- over the wall that pages the album's own
 // timeline, curating a DELETE-ONLY selection exactly when the
 // server-derived `deletable` face holds (owner AND writable AND
-// the switch AND unlocked). Every write adopts its own response or
+// the switch). Every write adopts its own response or
 // converges through the detail refetch; the album.* SSE events for
 // THIS album refetch the metadata and restart the items walk on
 // membership changes; the rescan's progress rides the job.* events
@@ -80,7 +81,6 @@ function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 		id: 'al1',
 		title: 'Road trip 2026',
 		type: 'virtual',
-		locked: false,
 		isShared: false,
 		coverAssetIds: ['a1', 'a2'],
 		itemCount: 2,
@@ -94,7 +94,6 @@ let detailState: AlbumDetail = {
 	id: 'al1',
 	title: 'Road trip 2026',
 	type: 'virtual',
-	locked: false,
 	coverAssetId: null,
 	callerRole: 'owner',
 	itemCount: 2,
@@ -239,7 +238,6 @@ beforeEach(async () => {
 		id: 'al1',
 		title: 'Road trip 2026',
 		type: 'virtual',
-		locked: false,
 		coverAssetId: null,
 		callerRole: 'owner',
 		itemCount: 2,
@@ -289,10 +287,9 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	expect(document.body.querySelector('.album-detail__description')).toBeNull();
 	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
 
-	// The owner of a virtual album holds the write set MINUS the
-	// lock -- the lock toggle moved into the edit dialog (the
-	// autonomy block), so the bar holds rename (the dialog opener),
-	// the cover and the delete. The share action and the
+	// The owner of a virtual album holds the write set: rename
+	// (the dialog opener), the cover and the delete. The share
+	// action and the
 	// add-photos handoff are GONE with the curation removal
 	// and the share dialog's fold-in: the audience is an
 	// album property.
@@ -443,8 +440,7 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 	// album-narrowed timeline page.
 	expect(tiles()).toHaveLength(2);
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=view');
-	// No badges: never locked, never excluded (not excludable).
-	expect(document.body.querySelector('.album-detail__badge--locked')).toBeNull();
+	// No badges: never excluded (not excludable).
 	expect(document.body.querySelector('.album-detail__badge--excluded')).toBeNull();
 
 	for (const label of [
@@ -766,9 +762,10 @@ test('a read-only source renders NO deletability row and NO wall selection (the 
 	flushSync();
 	const dialog = modal();
 	// The row does not EXIST for a read-only source (no dead
-	// affordance) -- the lock and exclusion rows still stand.
+	// affordance) -- the exclusion row stands, and the retired lock
+	// leaves no row of its own.
 	expect(dialog?.querySelector('[data-testid="album-deletable-toggle"]')).toBeNull();
-	expect(dialog?.querySelector('[data-testid="album-lock-toggle"]')).not.toBeNull();
+	expect(dialog?.querySelector('[data-testid="album-lock-toggle"]')).toBeNull();
 	expect(dialog?.querySelector('[data-testid="album-timeline-toggle"]')).not.toBeNull();
 	unmount(page);
 	flushSync();
@@ -822,36 +819,33 @@ test("the dialog's exclusion row writes the caller's own preference on save", as
 	flushSync();
 });
 
-test('a locked album unlocks FIRST and alone: a mixed unlock-and-edit save writes two PATCHes in order', async () => {
-	const patches: Array<Record<string, unknown>> = [];
-	let step = 0;
+test('the retired lock leaves no trace: no lock row, no frozen fields, one plain diffed save', async () => {
+	// The lock's retirement is whole at the web face too: the dialog
+	// carries no lock row, no field ever freezes, and a save writes
+	// the plain diff of its draft -- no unlock-first sequencing, no
+	// notice line, no badge (the deletion/rescan affordances obey
+	// their own faces, never a lock).
+	let titleSaved = false;
 	detailState = {
 		...detailState,
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
-		locked: true,
 		sourceWritable: true,
 		allowAppDeletion: true,
-		deletable: false,
+		deletable: true,
 		inTimeline: true
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
 			'/api/v1/albums/al1': (init?: RequestInit) => {
-				patches.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-				step += 1;
-				if (step === 1) {
-					// The unlock lands ALONE (a mixed patch is refused whole).
-					expect(patches[0]).toEqual({ locked: false });
-					return jsonResponse(200, summary({ locked: false }));
-				}
-				// The property fields follow the unlock.
-				expect(patches[1]).toEqual({ title: 'Family archive 2026' });
-				return jsonResponse(200, summary({ title: 'Family archive 2026', locked: false }));
+				// The save writes the property diff in ONE patch.
+				expect(JSON.parse(String(init?.body))).toEqual({ title: 'Family archive 2026' });
+				titleSaved = true;
+				return jsonResponse(200, summary({ type: 'directory', title: 'Family archive 2026' }));
 			},
 			'/api/v1/albums/al1?limit=1': () =>
-				step > 0
-					? jsonResponse(200, { ...detailState, locked: false, title: 'Family archive 2026' })
+				titleSaved
+					? jsonResponse(200, { ...detailState, title: 'Family archive 2026' })
 					: jsonResponse(200, detailState)
 		})
 	);
@@ -859,61 +853,17 @@ test('a locked album unlocks FIRST and alone: a mixed unlock-and-edit save write
 	const page = mountPage();
 	await settle();
 
-	// Under the lock the property fields are frozen in the dialog
-	// (the server's own 409 gate, mirrored locally) -- the lock row
-	// is the door, and unchecking it frees the fields for the same
-	// save.
 	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
-	let dialog = modal();
-	expect(dialog?.querySelector<HTMLInputElement>('#album-title')?.disabled).toBe(true);
-	const lockToggle = dialog?.querySelector<HTMLInputElement>('[data-testid="album-lock-toggle"]');
-	expect(lockToggle?.checked).toBe(true);
-	lockToggle!.checked = false;
-	lockToggle!.dispatchEvent(new Event('change', { bubbles: true }));
-	await settle();
-	dialog = modal();
-	expect(dialog?.querySelector<HTMLInputElement>('#album-title')?.disabled).toBe(false);
-	fillField(dialog as ParentNode, 'Family archive 2026', 'album-title');
-	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-
-	expect(patches).toEqual([{ locked: false }, { title: 'Family archive 2026' }]);
-	expect(modal()).toBeNull();
-	// The locked notice died with the unlock.
-	expect(document.body.querySelector('.album-detail__locked-notice')).toBeNull();
-	unmount(page);
-	flushSync();
-});
-
-test("the dialog's lock row PATCHes locked; the badge and notice follow and the bar freezes honestly", async () => {
-	let lockedNow = false;
-	const fetchMock = stubFetch(
-		detailRoutes({
-			'/api/v1/albums/al1': (init?: RequestInit) => {
-				expect(JSON.parse(String(init?.body))).toEqual({ locked: true });
-				lockedNow = true;
-				return jsonResponse(200, summary({ locked: true }));
-			},
-			'/api/v1/albums/al1?limit=1': () =>
-				lockedNow ? jsonResponse(200, { ...detailState, locked: true }) : jsonResponse(200, detailState)
-		})
-	);
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-
-	// The lock toggle lives in the edit dialog : the bar's
-	// Rename (the dialog opener) is the door to it.
-	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
 	const dialog = modal();
-	const lockToggle = dialog?.querySelector<HTMLInputElement>('[data-testid="album-lock-toggle"]');
-	expect(lockToggle).not.toBeNull();
-	expect(lockToggle?.checked).toBe(false);
-	lockToggle!.checked = true;
-	lockToggle!.dispatchEvent(new Event('change', { bubbles: true }));
-	await settle();
+
+	// No lock row in the autonomy block; the fields are live.
+	expect(dialog?.querySelector('[data-testid="album-lock-toggle"]')).toBeNull();
+	expect(dialog?.querySelector<HTMLInputElement>('#album-title')?.disabled).toBe(false);
+	expect(document.body.querySelector('.album-detail__badge--locked')).toBeNull();
+	expect(document.body.querySelector('.album-detail__locked-notice')).toBeNull();
+
+	fillField(dialog as ParentNode, 'Family archive 2026', 'album-title');
 	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
@@ -921,15 +871,8 @@ test("the dialog's lock row PATCHes locked; the badge and notice follow and the 
 		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH'
 	);
 	expect(patches).toHaveLength(1);
-	expect(document.body.querySelector('.album-detail__badge--locked')?.textContent?.trim()).toBe('Locked');
-	expect(document.body.querySelector('.album-detail__locked-notice')?.textContent).toContain('until you unlock it');
-	// The frozen faces: the cover disables and the delete hides until
-	// the unlock (the permission matrix pins deletion to the unlocked
-	// state) -- but the dialog opener stays LIVE, because it is the
-	// unlock's own door (the lock row inside).
-	expect(buttonByLabel('Rename').disabled).toBe(false);
-	expect(buttonByLabel('Set cover…').disabled).toBe(true);
-	expect(() => buttonByLabel('Delete album')).toThrow();
+	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('Family archive 2026');
+	expect(modal()).toBeNull();
 	unmount(page);
 	flushSync();
 });
@@ -1099,8 +1042,7 @@ test('a failed rescan trigger surfaces the mapped error on the shared line', asy
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1/rescan': () =>
-				jsonResponse(409, { code: 'ALBUM_LOCKED', message: 'the album is locked' })
+			'/api/v1/albums/al1/rescan': () => jsonResponse(500, { code: 'INTERNAL', message: 'boom' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -1113,7 +1055,7 @@ test('a failed rescan trigger surfaces the mapped error on the shared line', asy
 	// No run line (nothing started); the bar's shared error line
 	// carries the server's own answer.
 	expect(document.body.querySelector('[data-testid="album-rescan-progress"]')).toBeNull();
-	expect(document.body.querySelector('.album-detail__action-error')?.textContent).toContain('This album is locked.');
+	expect(document.body.querySelector('.album-detail__action-error')?.textContent).toContain('Something went wrong.');
 	unmount(page);
 	flushSync();
 });

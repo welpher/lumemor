@@ -30,7 +30,14 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 /** Mount the combobox with a captured path binding. */
-function mountField(props: { path?: string; failure?: string; hint?: string } = {}) {
+function mountField(
+	props: {
+		path?: string;
+		failure?: string;
+		hint?: string;
+		onpick?: (row: { path: string; writable: boolean }) => void;
+	} = {}
+) {
 	const state = { path: props.path ?? '', failure: props.failure ?? '', hint: props.hint ?? '' };
 	const field = mount(PathCompletion, {
 		target: document.body,
@@ -41,7 +48,7 @@ function mountField(props: { path?: string; failure?: string; hint?: string } = 
 			placeholder: '/Volumes/Photos',
 			hint: state.hint,
 			failure: state.failure,
-			onsubmit: undefined
+			onpick: props.onpick
 		}
 	});
 	const component = field;
@@ -97,7 +104,9 @@ function keysFooter(): HTMLElement | null {
 }
 
 test('a burst of keystrokes debounces into ONE request with the final prefix', async () => {
-	const fetchMock = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: ['/Volumes/Photos'] }));
+	const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
+		jsonResponse(200, { completions: [{ path: '/Volumes/Photos', writable: true }] })
+	);
 	vi.stubGlobal('fetch', fetchMock);
 	const { component } = mountField();
 
@@ -121,10 +130,10 @@ test('a burst of keystrokes debounces into ONE request with the final prefix', a
 });
 
 test('single-flight: an in-flight request parks later triggers, one trailing fetch converges', async () => {
-	let held: ((paths: string[]) => void) | undefined;
+	let held: ((completions: { path: string; writable: boolean }[]) => void) | undefined;
 	const fetchMock = vi.fn(async (_input: RequestInfo | URL) => {
 		return new Promise<Response>((resolve) => {
-			held = (paths: string[]) => resolve(jsonResponse(200, { paths }));
+			held = (completions: { path: string; writable: boolean }[]) => resolve(jsonResponse(200, { completions }));
 		});
 	});
 	vi.stubGlobal('fetch', fetchMock);
@@ -145,14 +154,14 @@ test('single-flight: an in-flight request parks later triggers, one trailing fet
 	// The in-flight answer lands (the older prefix's rows, the
 	// single-flight's honest transient) and exactly ONE trailing
 	// fetch runs for the newest prefix.
-	held?.(['/a-folder']);
+	held?.([{ path: '/a-folder', writable: true }]);
 	await advance(300);
 	expect(fetchMock).toHaveBeenCalledTimes(2);
 	expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/v1/albums/path-completions?prefix=%2Fabc');
 
 	// The trailing answer owns the final state: the stale rows never
 	// survive it.
-	held?.(['/abc-folder']);
+	held?.([{ path: '/abc-folder', writable: false }]);
 	await advance(0);
 	expect(rows()).toEqual(['/abc-folder']);
 
@@ -161,7 +170,14 @@ test('single-flight: an in-flight request parks later triggers, one trailing fet
 });
 
 test('the keyboard: ↑/↓ highlight, Enter completes into the field, Esc closes the list alone', async () => {
-	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: ['/Volumes/Photos', '/Volumes/PhoneBackup'] }));
+	const fetchMock = vi.fn(async () =>
+		jsonResponse(200, {
+			completions: [
+				{ path: '/Volumes/Photos', writable: true },
+				{ path: '/Volumes/PhoneBackup', writable: false }
+			]
+		})
+	);
 	vi.stubGlobal('fetch', fetchMock);
 	const { component, input, readPath } = mountField();
 
@@ -207,9 +223,17 @@ test('the keyboard: ↑/↓ highlight, Enter completes into the field, Esc close
 });
 
 test('a row completes on mousedown (the state-selector semantics)', async () => {
-	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: ['/Volumes/Photos', '/Volumes/PhoneBackup'] }));
+	const fetchMock = vi.fn(async () =>
+		jsonResponse(200, {
+			completions: [
+				{ path: '/Volumes/Photos', writable: true },
+				{ path: '/Volumes/PhoneBackup', writable: false }
+			]
+		})
+	);
 	vi.stubGlobal('fetch', fetchMock);
-	const { component, readPath } = mountField();
+	const picked: Array<{ path: string; writable: boolean }> = [];
+	const { component, readPath } = mountField({ onpick: (row) => picked.push(row) });
 
 	type('/Vol');
 	await advance(300);
@@ -219,6 +243,9 @@ test('a row completes on mousedown (the state-selector semantics)', async () => 
 
 	expect(readPath()).toBe('/Volumes/PhoneBackup');
 	expect(document.body.querySelector('.path-completion__suggest')).toBeNull();
+	// The pick hands the row up with its write fact: the create
+	// dialog's deletability row renders from this fact.
+	expect(picked).toEqual([{ path: '/Volumes/PhoneBackup', writable: false }]);
 
 	unmount(component);
 	flushSync();
@@ -227,7 +254,9 @@ test('a row completes on mousedown (the state-selector semantics)', async () => 
 test('the empty prefix lists the root itself; the honest empty answer is the plain no-match note (the no-roots face retired)', async () => {
 	// The system-wide domain: the empty prefix carries no query
 	// string and the server answers the container's root.
-	const fetchMock = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: ['/'] }));
+	const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
+		jsonResponse(200, { completions: [{ path: '/', writable: true }] })
+	);
 	vi.stubGlobal('fetch', fetchMock);
 	const { component } = mountField();
 
@@ -245,7 +274,7 @@ test('the empty prefix lists the root itself; the honest empty answer is the pla
 	// retired, so there is no closed state to explain and
 	// no admin jump to offer (the component reads no role at all).
 	document.body.textContent = '';
-	const empty = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: [] }));
+	const empty = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { completions: [] }));
 	vi.stubGlobal('fetch', empty);
 	const again = mountField();
 	focus();
@@ -262,7 +291,7 @@ test('the empty prefix lists the root itself; the honest empty answer is the pla
 });
 
 test('the validation slot swaps the hint and the failure at ONE height ', async () => {
-	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: [] }));
+	const fetchMock = vi.fn(async () => jsonResponse(200, { completions: [] }));
 	vi.stubGlobal('fetch', fetchMock);
 	const hint = 'Choose an existing folder — the album references it in place.';
 
@@ -311,7 +340,7 @@ test('the validation slot swaps the hint and the failure at ONE height ', async 
 });
 
 test('a typed prefix with no match renders the honest empty note, never an error', async () => {
-	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: [] }));
+	const fetchMock = vi.fn(async () => jsonResponse(200, { completions: [] }));
 	vi.stubGlobal('fetch', fetchMock);
 	const { component } = mountField();
 
@@ -340,7 +369,7 @@ test('the completion failure renders a line that points back at the completion',
 });
 
 test('the write failure renders under the field with the invalid border', async () => {
-	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: [] }));
+	const fetchMock = vi.fn(async () => jsonResponse(200, { completions: [] }));
 	vi.stubGlobal('fetch', fetchMock);
 	const { component, input } = mountField({ failure: 'That folder does not exist.' });
 
@@ -355,7 +384,9 @@ test('the write failure renders under the field with the invalid border', async 
 
 test('the server-bounded row list renders as it arrives (at most 20 from the contract)', async () => {
 	const many = Array.from({ length: 20 }, (_, index) => `/Volumes/Photos/${index}`);
-	const fetchMock = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: many }));
+	const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
+		jsonResponse(200, { completions: many.map((path) => ({ path, writable: true })) })
+	);
 	vi.stubGlobal('fetch', fetchMock);
 	const { component } = mountField();
 
