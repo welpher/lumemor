@@ -71,10 +71,14 @@ api-check: api-gen
 web-install:
 	cd web && pnpm install
 
-# Type-check and unit-test the web app: svelte-check plus vitest. The
+# Check the web app: the machine layer's full gate -- prettier
+# (format:check), eslint, svelte-check, vitest. Mirrors the Go
+# side's gate shape (gofmt -> vet -> golangci-lint -> test). The
 # CI gate for web changes.
 .PHONY: web-check
 web-check:
+	cd web && pnpm run format:check
+	cd web && pnpm run lint
 	cd web && pnpm run check
 	cd web && pnpm run test
 

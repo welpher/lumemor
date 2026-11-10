@@ -22,7 +22,7 @@ the body (when needed) carries the reasoning. All-English (the iron rule).
 ## The gate checklist (quote output lines in reports)
 
 ```
-make web-check        # svelte-check 0/0 + the full unit suite
+make web-check        # format:check + eslint + svelte-check 0/0 + the unit suite
 make docker-lint      # gofmt/vet/golangci in the container
 make docker-test      # the full server suite
 make api-check        # clean-tree regeneration: zero drift
