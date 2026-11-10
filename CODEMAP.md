@@ -1,7 +1,6 @@
 # CODEMAP
 
-One page so you can add a feature without spelunking. The design repo's
-specs are the semantic authority for every pinned surface below.
+One page so you can add a feature without spelunking.
 
 ## server/ (Go)
 

@@ -1,9 +1,9 @@
 <script lang="ts">
-	// The named region of the people surface (web IA §3): the caller's
+	// The named region of the people surface: the caller's
 	// people as a card grid -- the representative face's crop, the
 	// caller's own name, the honest per-caller face count, and the
 	// hidden badge (hidden people STAY listed: the switch is a badge,
-	// not a filter -- Task 1's pinned semantics). The server sorts by
+	// not a filter). The server sorts by
 	// name; the page renders that order. Every card links into the
 	// cluster's detail.
 	//
@@ -11,7 +11,7 @@
 	// fresh list fetch, collapsed single-flight (a burst parks in a
 	// queue and costs one trailing fetch). The refetched SERVER
 	// answer decides what changed -- labels and the hidden switch are
-	// PRIVATE per user (B4), so an event from another account's write
+	// PRIVATE per user, so an event from another account's write
 	// must move nothing the server does not move: a labeled event for
 	// a cluster the caller's own list does not carry refetches the
 	// same answer and the page invents no card. A failed convergence

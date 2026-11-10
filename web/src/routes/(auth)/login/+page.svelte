@@ -5,7 +5,7 @@
 	// the 429's Retry-After, a disabled submit while a request is
 	// in flight, and the redirectTo round-trip on success. The bottom
 	// notes are placeholders for the mobile pairing entry (a later
-	// milestone's scope, per the web IA).
+	// milestone's scope).
 	import { goto } from '$app/navigation';
 	import { _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
@@ -138,8 +138,8 @@
 				</form>
 			</Card>
 		</div>
-		<!-- Placeholder notes for the mobile pairing entry (the web IA's
-		     bottom note); the QR flow is a later milestone's scope. -->
+		<!-- Placeholder notes for the mobile pairing entry; the QR flow
+		     is a later milestone's scope. -->
 		<p
 			class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center"
 		>

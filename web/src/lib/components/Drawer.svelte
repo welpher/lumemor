@@ -1,26 +1,26 @@
 <script lang="ts">
-	// The navigation drawer of the content shell (web IA: the
+	// The navigation drawer of the content shell (the
 	// hamburger opens it; Escape and a click outside close it). It
 	// carries the IA's content sections in route-table order (the
-	// albums wall's entry live since the M3c surface; the places
-	// grid's entry live since the M3d surface), plus the hidden
-	// view's entry, which moved here from the timeline's toolbar in
-	// R2-11 -- it sits with the other list views (favorites/trash).
+	// albums wall's entry live since the albums surface; the places
+	// grid's entry live since the places surface), plus the hidden
+	// view's entry, which moved here from the timeline's toolbar --
+	// it sits with the other list views (favorites/trash).
 	// The list is the IA's eight content sections and NOTHING else:
 	// the settings entry that once closed this list is gone (the
-	// 2026-11-09 pin, web IA §7.8 -- the account dropdown is
+	// 2026-11-09 single-home rule -- the account dropdown is
 	// settings' ONLY home, landed with the dropdown's own link; a
 	// duplicate door in the drawer was navigation debt, not reach).
 	// Below the content list, behind a divider, the admin panel's
 	// entry renders only for an admin's session (the identity seam's
-	// role arm, the M2d deferred item: a member account never sees
+	// role arm, the deferred item: a member account never sees
 	// the management surface's door). Memories stays a
 	// visible-but-disabled placeholder until its polish-block domain
 	// arrives.
 	//
-	// THE LEADING ICONS (R2-5): every item LEADS with its lucide icon
-	// (24-grid, 2px round caps, currentColor -- the icon language of
-	// brand spec §5); the icons are decorative (aria-hidden), the
+	// THE LEADING ICONS: every item LEADS with its lucide icon
+	// (24-grid, 2px round caps, currentColor -- the brand's icon
+	// language); the icons are decorative (aria-hidden), the
 	// text stays the accessible name -- an icon never replaces the
 	// label it leads.
 	import { _ } from 'svelte-i18n';
@@ -39,7 +39,7 @@
 	type DrawerItem = {
 		labelKey: string;
 		href: string;
-		/** Disabled items are M3 placeholders, not hidden: the IA's
+		/** Disabled items are future-scope placeholders, not hidden: the
 		 * content sections stay visible in a disabled state. */
 		disabled: boolean;
 		/** The leading icon component (decorative, aria-hidden). */
@@ -102,7 +102,7 @@
 			{#each items as item (item.labelKey)}
 				<li>
 					{#if item.disabled}
-						<!-- The M3 placeholders: present and visible, but inert
+						<!-- The future-scope placeholders: present and visible, but inert
 						     until their domains arrive; the title carries the
 						     coming-later note. No hover shift: a disabled row
 						     owes no affordance. The icon leads the label like

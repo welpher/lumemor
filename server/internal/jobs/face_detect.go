@@ -1,4 +1,4 @@
-// The face detection job (M3a Task 6): the asset-ready seam's first
+// The face detection job: the asset-ready seam's first
 // real arm. The pipeline jobs complete an image asset, the shared
 // completion step (announceAssetReady below, wired into the metadata,
 // thumbnail and transcode workers by queue.go) consults the
@@ -18,10 +18,10 @@
 // the recovery. The ML jobs deliberately never touch pending_jobs:
 // readiness means the serving copies exist.
 //
-// THE CHAINING RESTORE (Task 7, landing Task 6's pinned handover):
+// THE CHAINING RESTORE (the pinned handover, landed):
 // the detection completion enqueues the recognition job when the
 // recognize slot is active AND this run landed faces on the asset --
-// the one incremental detection-to-recognition link of the milestone
+// the one incremental detection-to-recognition link
 // (the model rerun surface is the other trigger, wiring its per-slot
 // arms as those land). The chain is the queue's method value wired
 // before the client starts; workers constructed directly (the unit
@@ -285,7 +285,7 @@ type mlDispatchFunc func(ctx context.Context, assetID uuid.UUID, kind dbgen.Medi
 // then).
 func announceAssetReady(ctx context.Context, bus *events.Bus, logger *slog.Logger, dispatch mlDispatchFunc, assetID uuid.UUID, kind dbgen.MediaKind, isComponent bool) {
 	if isComponent {
-		// A Live Photo component row never announces (M2d) and never
+		// A Live Photo component row never announces and never
 		// enters the seam: the pair's photo row owns the visible
 		// asset's announcement and ML surface.
 		return
@@ -315,11 +315,11 @@ func announceAssetReady(ctx context.Context, bus *events.Bus, logger *slog.Logge
 // a silent no-op -- the degraded mode that keeps uploads flowing and
 // the admin surface honest about the empty state.
 //
-// Task 8 closed the matrix: all three arms (face-detect, clip-embed,
+// The matrix is closed: all three arms (face-detect, clip-embed,
 // ocr) dispatch through their real workers -- the clip and ocr arms
-// landed with this task, flipping Task 6's tripwire test (its
-// TestEnqueueMlJobsUnwiredSlots expected zero dispatches while the
-// arms waited) into the wired expectation TestEnqueueMlJobsWiredSlots.
+// landed with their workers, flipping the unwired-era tripwire test
+// (its TestEnqueueMlJobsUnwiredSlots expected zero dispatches while
+// the arms waited) into the wired expectation TestEnqueueMlJobsWiredSlots.
 func (q *Queue) EnqueueMlJobs(ctx context.Context, assetID uuid.UUID, kind dbgen.MediaKind) error {
 	if kind != dbgen.MediaKindImage {
 		return nil

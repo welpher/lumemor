@@ -4,8 +4,8 @@ import { createTimelineClient, TIMELINE_PAGE_LIMIT, type TimelineClient, type Ti
 import { forceLogout, sessionStatus } from '$lib/auth/session.svelte';
 
 // The pagination client contract: keyset cursor walk with the pinned
-// page size, the in-flight guard (one fetch per trigger -- the M2d
-// review focus), id deduplication, the error/retry affordance's
+// page size, the in-flight guard (one fetch per trigger),
+// id deduplication, the error/retry affordance's
 // state, the SSE convergence of loaded items, and the batch runner's
 // optimistic updates with rollback. Every case drives the client
 // through an injected fetch mock; the SSE half feeds applyEvent the
@@ -423,7 +423,7 @@ describe('SSE convergence', () => {
 		// cursor sits below the evicted position, so pagination will
 		// never deliver the tile again -- the upsert must re-insert
 		// it, or the wall silently loses a photo the server still
-		// serves (the M2d full-chain story caught exactly this on the
+		// serves (the full-chain story caught exactly this on the
 		// trash page's restore).
 		const timeline = clientWith((url) => {
 			if (url.includes('a3')) {

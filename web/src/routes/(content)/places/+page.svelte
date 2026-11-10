@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The places page (M3d Task 4, the specimen's city grid): the
+	// The places page (the city grid): the
 	// caller's city grouping as a card grid -- the derived-cover
 	// collage over the place's representative ids (the album wall's
 	// own cover discipline: one full-bleed, two split, three the

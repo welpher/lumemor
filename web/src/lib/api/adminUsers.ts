@@ -1,4 +1,4 @@
-// The admin user management client (M2d Task 8): the listing behind
+// The admin user management client: the listing behind
 // GET /admin/users, the account creation behind POST /admin/users,
 // and the disabled toggle behind PATCH /admin/users/{id}.
 //

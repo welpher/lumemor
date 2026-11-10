@@ -1,11 +1,11 @@
 <script lang="ts">
-	// The album detail (web IA §2-§3): the metadata context with its
+	// The album detail: the metadata context with its
 	// callerRole x type action set over the wall that pages the
 	// album's own timeline (the timeline endpoint's `albumId`
 	// narrow -- the album's live members in the timeline's exact
 	// shape and keyset order).
 	//
-	// THE CONTEXTUAL BAR (the 2026-11-07 owner pin 3): the page
+	// THE CONTEXTUAL BAR: the page
 	// REPLACES the shell's global topbar while it is active -- the
 	// content shell hides its own bar on this route, and this page's
 	// bar (back, the album's title, the type x role action set as
@@ -20,8 +20,8 @@
 	// the page root sets --wall-sticky-offset so those headers stick
 	// BELOW the bar instead of under it.
 	//
-	// THE NO-SELECTION WALL (the 2026-11-07 owner pin 5, restated on
-	// the 2026-11-08 selection pin's new gate): the album context
+	// THE NO-SELECTION WALL (restated on
+	// the selection flow's new gate): the album context
 	// renders the shared Wall with NO curation -- no onbatch runner
 	// is wired, so no hover checkbox renders and no batch bar
 	// exists; the tiles are pure click-to-viewer navigation. The
@@ -30,15 +30,15 @@
 	// the PAGE's own concern here, the same shape the timeline page
 	// owns for its walk.
 	//
-	// THE PINNED CHOICES (E4's albums-as-sources reshape, completed
-	// by E6's autonomy face):
+	// THE PINNED CHOICES (the albums-as-sources reshape, completed
+	// by the autonomy face):
 	//
 	// - The action set follows the role and the type: the owner of a
 	//   virtual album holds rename / set cover (picked from the
 	//   rendered members) / delete; the owner of a directory album
 	//   holds the properties (the edit dialog: title + the read-only
 	//   source row + the audience + the autonomy block) / the rescan
-	//   trigger (E4: the three-arm diff run, its progress surfaced
+	//   trigger (the three-arm diff run, its progress surfaced
 	//   through the job events the run's identifier keys); a viewer
 	//   holds the exclusion toggle (their own preference) alone --
 	//   the sharee's departure went with the revoke endpoint it rode
@@ -49,7 +49,7 @@
 	//   the server refuses every write face of the id anyway.
 	//   Read-only is VISUAL: a sharee never sees a write affordance,
 	//   the server keeps refusing them.
-	// - THE LOCK LIVES IN THE EDIT DIALOG (E6, §7.9: the five-piece
+	// - THE LOCK LIVES IN THE EDIT DIALOG (the five-piece
 	//   set's missing piece -- the same home as the timeline
 	//   exclusion and the deletability switch, one dialog for every
 	//   album-owned toggle), so the bar's dialog opener stays LIVE
@@ -58,7 +58,7 @@
 	//   delete on the virtual arm, the rescan on the directory arm
 	//   (the wall's delete affordance dies with `deletable`, the
 	//   server-derived face that folds the lock in).
-	// - THE WALL'S DELETE AFFORDANCE (E6, §7.9): the owner of a
+	// - THE WALL'S DELETE AFFORDANCE : the owner of a
 	//   DELETABLE directory album (owner AND writable source AND
 	//   the deletability switch AND unlocked -- all four, computed
 	//   server-side as `deletable`, pure data) curates a
@@ -133,7 +133,7 @@
 	// bar toggles share the flag).
 	let writeBusy = $state(false);
 
-	// The properties dialog (the E4 edit: title + source + audience).
+	// The properties dialog (the edit: title + source + audience).
 	let propertiesOpen = $state(false);
 	let propertiesErrorKey = $state('');
 
@@ -169,7 +169,7 @@
 	// one), the SSE asset convergence, the sentinel and the
 	// wallItems publication. The wall's SELECTION exists exactly
 	// when this page wires the batch runner below (the `deletable`
-	// gate, E6): every other face is pure navigation (R5).
+	// gate): every other face is pure navigation.
 	const wall = untrack(() => createTimelineClient({ path: '/api/v1/assets/timeline', view: 'timeline', albumId }));
 	let wallResetKey = $state(0);
 
@@ -178,7 +178,7 @@
 	const locked = $derived(detail?.locked ?? false);
 	const excluded = $derived(detail?.inTimeline === false);
 	const excludable = $derived(detail?.inTimeline !== undefined);
-	// The wall's delete affordance (E6): the server-derived face --
+	// The wall's delete affordance: the server-derived face --
 	// owner AND writable source AND the switch AND unlocked, pure
 	// data -- decides whether this wall curates at all.
 	const deletable = $derived(owner && detail?.type === 'directory' && detail.deletable === true);
@@ -279,7 +279,7 @@
 		}
 	}
 
-	// The properties write (the E6 edit dialog): the page diffs the
+	// The properties write (the edit dialog): the page diffs the
 	// whole draft against the LIVE detail and writes only the changed
 	// halves -- a same-value title PATCH would still publish its
 	// album.updated event, and a same-set audience PUT is the
@@ -289,7 +289,7 @@
 	// patch whole), the property fields (title, the deletability
 	// switch) follow it, and the LOCK writes LAST (it freezes
 	// everything after it); the audience PUT and the caller's own
-	// timeline preference ride ungated either way (§7.9: a lock
+	// timeline preference ride ungated either way (a lock
 	// protects content, not visibility; the preference is nobody's
 	// content). Each write's PATCH response is the album's wall card
 	// after the edit (the fields adopt it); the final detail
@@ -401,7 +401,7 @@
 		coverOpen = false;
 	}
 
-	// The rescan trigger (E4): POST the run, adopt the identifier it
+	// The rescan trigger: POST the run, adopt the identifier it
 	// answers (202 the freshly created run, 200 the in-flight one of
 	// THIS album the request joined -- the endpoint's idempotence),
 	// and let the job events the run publishes drive the progress
@@ -468,7 +468,7 @@
 		void goto('/albums');
 	}
 
-	// The wall's batch runner (E6): the page's own client runs the
+	// The wall's batch runner: the page's own client runs the
 	// delete-only batch the wall's bar offers -- the same
 	// view-aware optimistic convergence every curatable wall uses
 	// (the trashed tiles leave immediately, the SSE events of the
@@ -576,7 +576,7 @@
      contextual bar: the bar is py-2 (16) around an h-9 row (36)
      plus its 1px border -- 53px. -->
 <section class="album-detail" style:--wall-sticky-offset="53px">
-	<!-- THE CONTEXTUAL BAR (R3): back + the title + the type x role
+	<!-- THE CONTEXTUAL BAR: back + the title + the type x role
 	     icon actions, pinned over the wall on the card palette. The
 	     shell's own topbar hides while this route is active (the
 	     content shell's route rule). -->
@@ -653,7 +653,7 @@
 		     system-managed; a viewer the exclusion toggle alone (the
 		     departure went with the revoke endpoint it rode; the
 		     audience is owner-domain). THE LOCK'S NEW HOME is the
-		     edit dialog (E6, §7.9), so the dialog opener stays LIVE
+		     edit dialog, so the dialog opener stays LIVE
 		     under a lock -- it is the unlock's door -- while the
 		     other contextual actions freeze honestly: the cover and
 		     the delete on the virtual arm, the rescan on the
@@ -707,7 +707,7 @@
 				>
 					<PenLine size={20} aria-hidden="true" />
 				</IconButton>
-				<!-- The rescan trigger (E4): the directory album's own
+				<!-- The rescan trigger: the directory album's own
 				     refresh -- the three-arm diff run over its source.
 				     One run at a time (the endpoint is idempotent, the
 				     button is not a spam surface), and a locked album
@@ -839,7 +839,7 @@
 			{/if}
 		</div>
 
-		<!-- THE WALL'S CAPABILITY GATE (R5, E6's deletable face): the
+		<!-- THE WALL'S CAPABILITY GATE (the deletable face): the
 		     page's own walk (the keyset client, the SSE convergence,
 		     the sentinel) around the shared Wall. The batch runner is
 		     wired exactly when the detail's derived `deletable` face

@@ -1,4 +1,4 @@
-// Album surface tests (M3c Task 1): the wall (the own group then the
+// Album surface tests: the wall (the own group then the
 // shared group, covers and counts honest over live members) and the
 // detail face (metadata plus the keyset-paged items, the single-shape
 // ALBUM_NOT_FOUND). Fixtures insert albums, shares and assets
@@ -440,7 +440,7 @@ func TestAlbumWallOrdering(t *testing.T) {
 
 // TestAlbumWallCoversAndCounts pins the wall's honesty: covers and
 // counts see live members only (hidden and trashed members excluded
-// everywhere, A5; Live Photo component rows excluded like every live
+// everywhere; Live Photo component rows excluded like every live
 // view), and a pinned cover wins over the derived one. The pinned
 // sync card obeys the same honesty over its own members.
 func TestAlbumWallCoversAndCounts(t *testing.T) {
@@ -1014,7 +1014,7 @@ func TestAlbumDetailViewer(t *testing.T) {
 }
 
 // TestAlbumDetailDeletionFaces pins the deletion chain's detail
-// faces (E6, §7.9): the source-writable fact rides directory albums
+// faces: the source-writable fact rides directory albums
 // on both roles, the deletability switch and the derived `deletable`
 // face ride the owner's view alone, and the derivation is honest
 // over every arm -- a read-only source or a switched-off or locked

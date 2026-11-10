@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n, setLocale } from '$lib/i18n';
 import Page from './+page.svelte';
 
-// The user settings page: the five sections of the specimen over the
+// The user settings page: the five sections over the
 // me-scoped endpoints. The profile save PATCHes and adopts the
 // answer; the password form's own confirm guard blocks a mismatched
 // pair before anything leaves the browser, and a successful change

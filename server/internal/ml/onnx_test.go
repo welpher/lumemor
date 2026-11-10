@@ -1,4 +1,4 @@
-// The onnxruntime session wrapper tests (M3a Task 2): the checksum
+// The onnxruntime session wrapper tests: the checksum
 // gate runs before any library load, so its rejections are pinned on
 // every host; the runtime guard and the identity round trip need the
 // shared library, so they carry the skip guard that keeps the host

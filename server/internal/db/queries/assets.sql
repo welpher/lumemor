@@ -1,6 +1,6 @@
--- Asset queries of the upload endpoint (M2b Task 3), the device
--- idempotency lookup, the metadata pipeline (M2b Task 4), and the
--- attribute PATCH (M2c Task 5).
+-- Asset queries of the upload endpoint, the device
+-- idempotency lookup, the metadata pipeline, and the
+-- attribute PATCH.
 -- CreateAsset pins the server-side column values of a fresh upload:
 -- storage_kind 'blob' (uploaded bytes live in the content-addressed
 -- originals tree), taken_at_source 'import' (the device-reported
@@ -8,7 +8,7 @@
 -- width/height 0 (dimensions are the metadata job's refinement).
 -- pending_jobs carries the pipeline count the uploader enqueues: 2
 -- for photo rows (metadata + thumbnail), 3 for standalone video rows
--- (+ transcode), and -- since the M2d Live Photo component transcode
+-- (+ transcode), and -- since the Live Photo component transcode
 -- -- 1 for a video-family component row (the transcode job that
 -- derives its playable stream; an image-family component counts
 -- none: no job of any kind can run for it). created_at/updated_at
@@ -76,13 +76,13 @@ WHERE a.id = sqlc.arg('id')
 -- name: GetAssetDetail :one
 -- The detail read of GET /assets/{id}: the asset row joined with the
 -- exif hot fields the response flattens. The gate is the
--- caller-visible union (M3c Task 4): the owner's own arms (their
+-- caller-visible union: the owner's own arms (their
 -- sync album holds every upload, whatever the row's state) plus
 -- every album shared to the caller. The join only attaches the
 -- sidecar of the row that matched. The LEFT JOIN keeps the detail
 -- answering before and after the metadata job refined the sidecar:
 -- hot fields are NULL until then. description and is_hidden ride
--- along (M2c Task 5): the PATCH response reuses this read after its
+-- along: the PATCH response reuses this read after its
 -- writes, so it serves the same shape the GET endpoint serves,
 -- applied values included.
 SELECT a.id,
@@ -134,11 +134,11 @@ INSERT INTO exif (asset_id, exif) VALUES ($1, $2);
 -- deviceTimeZone) until the metadata job itself has run. No row
 -- means the asset is gone; every job treats that as success so it
 -- does not retry forever against a deleted asset. is_component rides
--- along (M2d) for the completion discipline: the metadata and
+-- along for the completion discipline: the metadata and
 -- thumbnail jobs must not consume a component row's counter (the
 -- transcode alone owns it), and the transcode job completes the
 -- counter but never announces for a component. storage_kind rides
--- along (E4): an external asset's file_path is the file's real
+-- along: an external asset's file_path is the file's real
 -- absolute path (the directory album's source tree), not a
 -- originals-relative form, so the path resolution branches on the
 -- kind -- the one column every job needs to find the bytes.
@@ -197,11 +197,11 @@ ON CONFLICT (asset_id) DO UPDATE SET
 -- Dimensions refine from the same extraction (COALESCE keeps the
 -- existing value when the file reports none).
 --
--- place_id is the GPS resolution's write (M3d): when the job resolved
+-- place_id is the GPS resolution's write: when the job resolved
 -- the place (the in-memory grid is wired), the value -- the nearest
 -- city within the threshold or NULL for no GPS / beyond threshold --
 -- is the file's truth and lands unconditionally; when the grid is NOT
--- wired (a deployment without the reference data), the gate flag
+-- wired (a deployment without the baked place data), the gate flag
 -- stays false and the column keeps whatever it held, so a
 -- data-less boot never destroys resolutions a data-carrying boot
 -- produced.
@@ -232,7 +232,7 @@ WHERE id = sqlc.arg('id');
 -- completions may consume the counter at all is decided one layer
 -- up, by the jobs: the metadata and thumbnail workers skip the call
 -- for component rows entirely (the component's transcode alone owns
--- its counter, M2d). media_kind rides along
+-- its counter). media_kind rides along
 -- so the completion publishes the event with the asset's kind without
 -- a second read.
 UPDATE assets SET
@@ -251,8 +251,8 @@ UPDATE assets SET blurhash = $2, updated_at = now()
 WHERE id = $1;
 
 -- name: UpdateAssetDescription :execrows
--- The owner-scoped description write of PATCH /assets/{id} (M2c
--- Task 5). The description <> $1 arm is the set-semantics guard:
+-- The owner-scoped description write of PATCH /assets/{id}.
+-- The description <> $1 arm is the set-semantics guard:
 -- patching the text the row already carries matches nothing, so the
 -- idempotent repeat is the same success, updated_at stays un-stamped
 -- and the event stays silent -- the rows-affected count is the
@@ -270,13 +270,13 @@ WHERE id = sqlc.arg('id')
   AND description <> sqlc.arg('description');
 
 -- name: ListStuckAssets :many
--- The requeue sweep's stuck-row finder (M2c Task 1): assets whose
+-- The requeue sweep's stuck-row finder: assets whose
 -- upload committed -- pending_jobs counted the jobs the uploader
 -- meant to enqueue -- but whose readiness never arrived (ready_at
 -- still NULL). These are the rows an enqueue insert failure or a
 -- crash in the commit-to-enqueue window left with no (or missing)
 -- jobs in the queue; a re-upload answers duplicate without
--- re-enqueueing, so the sweep is their only recovery. Since the M2d
+-- re-enqueueing, so the sweep is their only recovery. Since the
 -- component transcode, a video-family component row counts one job
 -- and matches here like any row. Soft-deleted assets are deliberately
 -- excluded: a trashed asset is headed for expiry, not recovery.
@@ -294,7 +294,7 @@ WHERE id = sqlc.arg('id')
 -- completions drive it down). media_kind and is_component ride along
 -- because the sweep re-enqueues by the row's kind and role: two jobs
 -- for an image (metadata + thumbnail), three for a standalone video
--- since Task 6's transcode job split the video arm (metadata +
+-- since the transcode job split the video arm (metadata +
 -- thumbnail + transcode, matching the upload's pending_jobs
 -- initialization), and for a Live Photo component the transcode
 -- ALONE (the one job its counter counts; its metadata refinement

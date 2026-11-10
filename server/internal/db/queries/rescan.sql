@@ -1,4 +1,4 @@
--- Rescan queries (E4 Task 2): the three-arm diff's database half.
+-- Rescan queries: the three-arm diff's database half.
 -- The rescan worker walks a directory album's source root on the
 -- filesystem and reconciles it against the album's LIVE external
 -- members -- the rows the previous scans (or this run's earlier

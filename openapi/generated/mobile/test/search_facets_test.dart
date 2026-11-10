@@ -7,7 +7,7 @@ void main() {
   // TODO add properties to the builder and call build()
 
   group(SearchFacets, () {
-    // The caller's named, non-hidden people: one entry per labeled face cluster with a face on the current set. Hidden labels never list (the B4 hidden switch removes the person from every face position). 
+    // The caller's named, non-hidden people: one entry per labeled face cluster with a face on the current set. Hidden labels never list (the hidden switch removes the person from every face position). 
     // BuiltList<PersonFacetCount> people
     test('to test the property `people`', () async {
       // TODO
@@ -43,7 +43,7 @@ void main() {
       // TODO
     });
 
-    // The CALLER's tags with members in the current set (B4: another account's tags never surface). 
+    // The CALLER's tags with members in the current set (another account's tags never surface). 
     // BuiltList<TagFacetCount> tags
     test('to test the property `tags`', () async {
       // TODO

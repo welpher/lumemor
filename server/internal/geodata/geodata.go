@@ -1,5 +1,5 @@
-// Package geodata carries the place reference data plane (M3d Task
-// 1): the GeoNames bake's loader, its idempotent database import,
+// Package geodata carries the place reference-data plane:
+// the GeoNames bake's loader, its idempotent database import,
 // and the in-memory grid index the GPS resolution runs against.
 //
 // The distribution discipline is build-time: the Docker image
@@ -77,7 +77,7 @@ const (
 // NULL (no country-polygon fallback).
 const ResolutionRadiusKm = 25.0
 
-// Place is one places row: a GeoNames city centroid. The reference
+// Place is one places row: a GeoNames city centroid. The place
 // tables carry no audit columns (the data model exempts them:
 // read-only imports, no application-side updates).
 type Place struct {

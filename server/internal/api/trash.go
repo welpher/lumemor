@@ -1,5 +1,5 @@
-// The trash handlers (M2c Task 3, the external lifecycle widened by
-// E4): the owner-scoped trash listing with its retention countdown,
+// The trash handlers (the external lifecycle widened by
+// albums-as-sources): the owner-scoped trash listing with its retention countdown,
 // the idempotent restore, and the explicit permanent delete. The
 // permission model splits along the two delete surfaces: the trash
 // (soft delete, restore) is strictly owner-scoped -- a foreign id
@@ -8,8 +8,8 @@
 // administrators, the application layer of the spec's two-layer
 // delete gate.
 //
-// The file half splits on the row's storage kind (the §A6/E4
-// table): a blob row's file never moves through the lifecycle (the
+// The file half splits on the row's storage kind: a
+// blob row's file never moves through the lifecycle (the
 // shared-file rule spans both storage eras: legacy content-addressed
 // rows store identical bytes of any owner under one physical file,
 // the original going only when no other row references it -- see
@@ -89,8 +89,8 @@ func (s *server) GetTrash(w http.ResponseWriter, r *http.Request) {
 // stays the 204 success, because the row is already in the desired
 // state. Only an unknown or foreign id answers 404.
 //
-// The external row splits from the blob (E4, the §A6/E4 table's
-// restore row): its file was MOVED into the server's trash area
+// The external row splits from the blob (the restore row's own
+// semantics): its file was MOVED into the server's trash area
 // when the owner trashed it, so the restore moves it back to the
 // row's recorded original location FIRST -- a location that can no
 // longer receive the file (the source folder unmounted, the
@@ -164,7 +164,7 @@ func (s *server) RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi
 			// The album walls' convergence signal rides the same state
 			// change: the restored member rejoined every holding
 			// album's live membership, and the album-narrowed wall
-			// restarts its walk on this event (E6's deletability
+			// restarts its walk on this event (the deletability
 			// chain -- the batch arm publishes the same signal).
 			s.publishAlbumMembershipEvents(r.Context(), requester.userID, []uuid.UUID{uuid.UUID(id)})
 		}
@@ -278,9 +278,9 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 // cascade touches it (the schema's foreign key holds every
 // representative to a live face -- see faces.sql's sweep queries).
 //
-// The file half splits on the storage kind (E4, the §A6/E4 table's
-// expiry row): a blob row's original goes under the shared-file
-// rule (the reference count decides -- another row on the same
+// The file half splits on the storage kind (the expiry row's own
+// semantics): a blob row's original goes under the shared-file
+// rule (the referencing rows decide -- another row on the same
 // file_path keeps it, only the row goes), while an external row's
 // only file of ours is the TRASH COPY a user-initiated trash landed
 // in data/trash/<assetID>/ -- a live external's source file is the
@@ -369,7 +369,7 @@ func (s *server) purgeAssetRow(r *http.Request, row dbgen.Asset) (bool, error) {
 // countdown arrives from the query itself (remaining_days), computed
 // against the database clock -- whole days rounded up, clamped at
 // zero once the deadline passed. storageKind carries the row's
-// storage era (E4): the trash view is honest for both kinds, and
+// storage era: the trash view is honest for both kinds, and
 // the external items are the ones whose restore moves a file back
 // to its recorded source location.
 func trashItemFrom(row dbgen.ListTrashRow) apigen.TrashItem {
@@ -399,7 +399,7 @@ func trashItemFrom(row dbgen.ListTrashRow) apigen.TrashItem {
 // publishAssetEvent reports a trash lifecycle transition onto the
 // activity stream through the shared (id, kind) publisher: the
 // resource id and its media kind, nothing more -- the event audience
-// discipline of M2a.
+// discipline.
 func (s *server) publishAssetEvent(name string, row dbgen.Asset) {
 	s.publishAssetEventByID(name, uuid.UUID(row.ID.Bytes), row.MediaKind)
 }

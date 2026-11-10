@@ -1,4 +1,4 @@
-// The rescan endpoint tests (E4 Task 2): POST /albums/{albumId}/rescan's
+// The rescan endpoint tests: POST /albums/{albumId}/rescan's
 // own contract -- the two-tier authorization answer (unauthenticated
 // 401, sharee 403, invisible 404), the type gate (the rescan is the
 // directory album's own flow: virtual and sync albums fold into the

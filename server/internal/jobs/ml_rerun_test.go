@@ -1,10 +1,10 @@
-// The ML rerun orchestration tests (M3a Task 4, closed by Task 8): the
+// The ML rerun orchestration tests (the rerun closure included): the
 // rerun framework -- the job_runs row's lifecycle (created with the
 // asset count as its total, flipped to running when the driver picks
 // it up, closed with the converged counts), the per-asset dispatch
 // seam, the job.* events, and the rerun kinds' vocabulary.
 //
-// Task 8 replaced the fake per-asset dispatcher with the real one: the
+// The fake per-asset dispatcher was replaced with the real one: the
 // dispatcher enqueues the slot's per-asset ML job (carrying the run's
 // identifier) onto the ml queue, the workers report their own
 // completions into the run's row, and the driver waits for the counts
@@ -83,7 +83,7 @@ func (e *env) insertTrashedImage(t *testing.T, rel string) uuid.UUID {
 }
 
 // insertRerunVideo stores one video asset: out of the rerun's scope
-// (only image assets enter the ML pipeline in this milestone).
+// (only image assets enter the ML pipeline).
 func (e *env) insertRerunVideo(t *testing.T, rel string) uuid.UUID {
 	t.Helper()
 	id := e.insertAssetKind(t, rel, jpegBytes(t),

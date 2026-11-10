@@ -1,5 +1,5 @@
-// The albums-as-sources path domain tests (E4, reshaped by E6's
-// album autonomy): the mount-root allowlist's whole retirement
+// The albums-as-sources path domain tests (reshaped by album
+// autonomy): the mount-root allowlist's whole retirement
 // (the routes answer 404, and a second album over the same tree is
 // the operator's choice, not a refusal), the system-level
 // source-path completion (the container's real visible filesystem,
@@ -28,7 +28,7 @@ import (
 
 // provisionMountRoot creates one external directory -- a sibling of
 // the environment's data root, never inside it -- the shape a
-// compose mount exposes to the container. The E6 retirement removed
+// compose mount exposes to the container. The retirement removed
 // the allowlist save this helper once performed: the boundary is
 // the mounts themselves, so provisioning is filesystem work alone.
 // The caller derives source directories under it.
@@ -151,7 +151,7 @@ func TestMountRootsSettingsRetired(t *testing.T) {
 // root on the empty prefix, the root's children on the bare
 // separator, the parent's matching children for a mid-path
 // fragment, the trailing separator's drill-in), the row bound, the
-// managed-tree exclusion (the one confine that survived the E6
+// managed-tree exclusion (the one confine that survived the
 // retirement), and the admin guard over the browse.
 func TestAlbumPathCompletions(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)

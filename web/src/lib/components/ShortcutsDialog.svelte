@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The `?` shortcut sheet (web IA §6's 键盘速查表, paid after E4):
+	// The `?` shortcut sheet:
 	// the shared Modal over the shell, listing every keyboard binding
 	// the app ACTUALLY carries -- collected from the code, not the
 	// design's wishlist, so the sheet can never promise a stroke that

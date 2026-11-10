@@ -1,7 +1,7 @@
 // Package jobs runs the lumemor asset pipeline on a River queue
-// (PostgreSQL-native, over the shared pgxpool): the metadata job of
-// Task 4, the thumbnail job of Task 5, and the transcode job of
-// Task 6 -- three jobs per video asset, two per image. River owns its
+// (PostgreSQL-native, over the shared pgxpool): the metadata job,
+// the thumbnail job, and the transcode job --
+// three jobs per video asset, two per image. River owns its
 // queue tables (river_job and friends) -- they are created by River's
 // bundled migrations at startup and are deliberately not part of the
 // goose-managed schema.
@@ -35,7 +35,7 @@ import (
 const maxWorkers = 4
 
 // MlQueue is the River queue of the per-asset ML jobs (face
-// detection, face recognition, CLIP embedding, OCR -- M3a Tasks 6-8):
+// detection, face recognition, CLIP embedding, OCR):
 // its worker pool is deliberately SMALL, because the ML jobs are the
 // pipeline's only CPU-heavy work (onnxruntime inference over decoded
 // rasters), and the plan's discipline pins their concurrency
@@ -95,7 +95,7 @@ type Config struct {
 	// pure upstream links); tests point it at their local sources.
 	ModelsManifest *ml.Manifest
 	// MlRerunDispatch runs one asset's ML work of a rerun: the seam
-	// whose production wiring is the queue's real dispatcher (Task 8's
+	// whose production wiring is the queue's real dispatcher (the
 	// rerun closure -- the four slots' per-asset enqueues onto the ml
 	// queue). Production leaves it nil and the queue wires its own
 	// dispatcher; the rerun tests inject fakes of the same contract.
@@ -332,7 +332,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	// driver's real dispatch wire the same way: the recognition chain
 	// fires when faces land and the recognize slot is active, and the
 	// rerun dispatch (the queue's own dispatcher, unless the config
-	// injected one) is the seam Task 8 closed -- the four slots'
+	// injected one) is the closed seam -- the four slots'
 	// per-asset enqueues the rerun drivers wait on.
 	metadataWorker.mlDispatch = queue.EnqueueMlJobs
 	thumbnailWorker.mlDispatch = queue.EnqueueMlJobs

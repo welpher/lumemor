@@ -5,14 +5,14 @@
  * Tailwind v4 (CSS-first) consumes the same tokens: the @theme block
  * below maps every brand token to a theme variable so utilities can
  * reference them (bg-card, text-text-soft, rounded-control, ...).
- * The values are verbatim from the brand specification §3 table and
+ * The values are the brand palette, verbatim, and
  * the Layer 1/Layer 2 custom properties further down, which remain
  * the single source of truth: @theme duplicates the mapping for
  * utility generation, the unlayered layers below win the cascade for
  * every token, and the .dark flip keeps working through them.
  *
  * Layer 1 (raw palette) holds every color token of the brand
- * specification §3 verbatim, as `--color-<token>` custom properties
+ * palette, verbatim, as `--color-<token>` custom properties
  * named exactly after the token table. Raw values never change with
  * the theme.
  *
@@ -25,7 +25,7 @@
  * (6.1:1) and Blue 300 + Navy 900 text in dark (7.6:1), links
  * Blue 700 with Blue 800 hover in light and Blue 300 in dark.
  *
- * Typography, radii, shadows and motion follow spec §4/§5: Nunito for
+ * Typography, radii, shadows and motion follow the brand language: Nunito for
  * the wordmark and headings, a system stack for body text, card radii
  * 16-20px, overlay radii 20-24px, very light shadows, 150-250ms
  * ease-out transitions, and `prefers-reduced-motion` always honored.
@@ -43,7 +43,7 @@
 /* ------------------------------------------------------------------ */
 
 @theme {
-	/* Raw palette — brand spec §3, verbatim (mirrors Layer 1 below). */
+	/* Raw palette — the brand table, verbatim (mirrors Layer 1 below). */
 	--color-navy-900: #1b2a5b;
 	--color-navy-700: #2a3c75;
 	--color-blue-800: #164a96;
@@ -87,20 +87,20 @@
 	--color-border: color-mix(in srgb, var(--color-navy-900) 14%, transparent);
 	--color-border-strong: color-mix(in srgb, var(--color-navy-900) 28%, transparent);
 
-	/* Typography (spec §4) — mirrors Layer 2 below. */
+	/* Typography — mirrors Layer 2 below. */
 	--font-display: 'Nunito', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
 	--font-body:
 		system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Noto Sans SC', 'Helvetica Neue', Arial, sans-serif;
-	/* Body copy's global tracking (G5) — mirrors Layer 2 below. */
+	/* Body copy's global tracking — mirrors Layer 2 below. */
 	--tracking-body: 0.01em;
 
-	/* The tile's compact-badge breakpoint (G9): below this inline
+	/* The tile's compact-badge breakpoint: below this inline
 	 * size a tile's duration chip scales down instead of
 	 * overflowing its tile. Consumed by the @max-tile-compact
 	 * container variant. */
 	--container-tile-compact: 112px;
 
-	/* Radii (spec §5) — mirrors Layer 2 below. */
+	/* Radii — mirrors Layer 2 below. */
 	--radius-control: 12px;
 	--radius-card: 16px;
 	--radius-overlay: 20px;
@@ -109,14 +109,14 @@
 	 * overrides the same variables for the dark theme). */
 	--shadow-card: 0 1px 2px rgb(27 42 91 / 0.05), 0 2px 12px rgb(27 42 91 / 0.07);
 	--shadow-overlay: 0 12px 40px rgb(20 26 46 / 0.18), 0 2px 8px rgb(20 26 46 / 0.12);
-	/* The subtle text shadow of a chip over media (G9): theme-independent
+	/* The subtle text shadow of a chip over media: theme-independent
 	 * (a black shadow reads on both themes' night chips). */
 	--text-shadow-badge: 0 1px 2px rgb(0 0 0 / 0.55);
 
-	/* Motion (spec §5) — mirrors Layer 2 below. */
+	/* Motion — mirrors Layer 2 below. */
 	--ease-standard: ease-out;
 
-	/* The anti-flicker entrances (G6): one shared keyframe whose
+	/* The anti-flicker entrances: one shared keyframe whose
 	 * starting state (invisible) is held through the delay by the
 	 * `backwards` fill mode — an operation that resolves faster
 	 * than its indicator never flashes one. The delay values are
@@ -132,7 +132,7 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Layer 1: raw palette (brand spec §3, verbatim, theme-independent)  */
+/* Layer 1: raw palette (the brand table, verbatim, theme-independent) */
 /* ------------------------------------------------------------------ */
 
 :root {
@@ -192,13 +192,13 @@
 	--shadow-overlay: 0 12px 40px rgb(20 26 46 / 0.18), 0 2px 8px rgb(20 26 46 / 0.12);
 
 	/* ---------------------------------------------------------------- */
-	/* Typography (spec §4)                                             */
+	/* Typography                                                        */
 	/* ---------------------------------------------------------------- */
 
 	--font-display: 'Nunito', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
 	--font-body:
 		system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Noto Sans SC', 'Helvetica Neue', Arial, sans-serif;
-	/* Body copy's global tracking (G5): the ~0.01em tier the display
+	/* Body copy's global tracking: the ~0.01em tier the display
 	 * type already tunes with, now the body's rhythm too — the one
 	 * token every per-site tracking value folds into. */
 	--tracking-body: 0.01em;
@@ -207,7 +207,7 @@
 	/* Interface craft (web polish batch 2)                              */
 	/* ---------------------------------------------------------------- */
 
-	/* The anti-flicker timing (G6): progress indicators wait out a
+	/* The anti-flicker timing: progress indicators wait out a
 	 * 100ms grace and full loading lines 400ms before their first
 	 * paint, and the blurhash placeholder cross-fades out over
 	 * 100ms once the image's load event lands — nothing that
@@ -218,7 +218,7 @@
 	--motion-delay-loading: 400ms; /* a loading line's patience */
 	--motion-placeholder-fade: 100ms; /* the placeholder's exit */
 
-	/* The scrollbar language (G8): a thin rail whose thumb stays
+	/* The scrollbar language: a thin rail whose thumb stays
 	 * hidden until the pointer enters its scroll region, themed
 	 * through the semantic tokens so it flips with the theme. The
 	 * thumb rest color mixes the text ink translucently; the
@@ -227,7 +227,7 @@
 	--scrollbar-thumb: color-mix(in srgb, var(--color-text) 24%, transparent);
 	--scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent) 60%, transparent);
 
-	/* The stacking ladder (G7): every stacking decision resolves
+	/* The stacking ladder: every stacking decision resolves
 	 * through one of these named rungs — no component writes a
 	 * z-index of its own, so what covers what stays reviewable
 	 * here. The first two sections are SCOPED stacks (their values
@@ -261,7 +261,7 @@
 	--z-scrim: 90; /* dismissal scrims and the drop hint */
 	--z-drawer: 100; /* the navigation drawer's panel */
 	--z-modal: 110; /* the modal (backdrop and panel) */
-	--z-dropdown: 115; /* a portaled picker layer (web IA §7.5's floating pickers), above the modal it serves: anchored under its trigger inside the dialog's visual space, but living on the body outside the modal's DOM (its overflow never clips, and the dialog never grows for it) */
+	--z-dropdown: 115; /* a portaled picker layer, above the modal it serves: anchored under its trigger inside the dialog's visual space, but living on the body outside the modal's DOM (its overflow never clips, and the dialog never grows for it) */
 
 	/* ---------------------------------------------------------------- */
 	/* The justified photo wall (the wall's density rhythm)              */
@@ -289,7 +289,7 @@
 	--wall-fallback-aspect: 1.5; /* assumed aspect while dims are 0 */
 
 	/* ---------------------------------------------------------------- */
-	/* Radii, shadows' companions and motion (spec §5)                  */
+	/* Radii, shadows' companions and motion                             */
 	/* ---------------------------------------------------------------- */
 
 	--radius-control: 12px; /* buttons, inputs, chips */
@@ -356,7 +356,7 @@ html.dark {
 		background-color: var(--color-page);
 		/* Times, counts and other numerals align in tables and timelines. */
 		font-variant-numeric: tabular-nums;
-		/* The body copy's global tracking (G5) — one rhythm for every
+		/* The body copy's global tracking — one rhythm for every
 		 * run of text; the display type joins it by inheritance. */
 		letter-spacing: var(--tracking-body);
 		-webkit-font-smoothing: antialiased;
@@ -391,7 +391,7 @@ html.dark {
 		opacity: 1;
 	}
 
-	/* A clearly visible keyboard focus everywhere (IA §6). */
+	/* A clearly visible keyboard focus everywhere. */
 	:focus-visible {
 		outline: 2px solid var(--color-accent);
 		outline-offset: 2px;
@@ -409,7 +409,7 @@ html.dark {
 		border-color: var(--color-border);
 	}
 
-	/* The scrollbar language (G8), in two routes:
+	/* The scrollbar language, in two routes:
 	 *
 	 * 1. The STANDARD route (Chromium 121+, Firefox, Safari 18.2+):
 	 *    `scrollbar-width: thin` plus an invisible thumb that the
@@ -466,7 +466,7 @@ html.dark {
 }
 
 /*
- * Motion rules of spec §5: transitions run at 150-250ms ease-out and
+ * Motion rules: transitions run at 150-250ms ease-out and
  * collapse under `prefers-reduced-motion`, so no decoration can force
  * movement on motion-sensitive users.
  */

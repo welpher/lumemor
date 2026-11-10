@@ -1,5 +1,5 @@
-// The shared value type of the inference wrappers (M3a Tasks 6-8:
-// face detection, face recognition, CLIP embedding and OCR all
+// The shared value type of the inference wrappers (the four
+// inference jobs: face detection, face recognition, CLIP embedding and OCR all
 // consume decoded images).
 package ml
 

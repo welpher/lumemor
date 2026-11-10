@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
 
-// The stacking-ladder contract (web polish batch 2, G7 + G6 + G5):
+// The stacking-ladder contract:
 // theme.css is the single source of the app's z-index ladder, the
 // anti-flicker motion delays, the body tracking and the scrollbar
 // language, and no component may grow an ad-hoc z-[...] again --
@@ -38,8 +38,7 @@ test('the app ladder climbs in exactly the documented order', () => {
 	// surfaces already carried: page-fixed surfaces, the top bar's
 	// menu, the floating toolbars, the status panel, the info
 	// drawer, the scrims, the nav drawer, the modal, and the
-	// portaled picker layers above the modal they serve (web IA
-	// §7.5's floating pickers).
+	// portaled picker layers above the modal they serve.
 	const order = [
 		'z-tile-chip',
 		'z-tile-check',

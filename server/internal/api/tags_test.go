@@ -1,6 +1,6 @@
-// Tags surface tests (M3d Task 2): the caller's private vocabulary
+// Tags surface tests: the caller's private vocabulary
 // and its batch assignment. The domain's privacy shape is favorites'
-// (B4): every tag, every count and every assignment row is the
+// : every tag, every count and every assignment row is the
 // caller's own -- another account's tags never surface on any face,
 // and the asset detail's tags array answers the CALLER's tags only,
 // so the same shared asset answers different arrays for the owner
@@ -420,7 +420,7 @@ func TestTagAssignmentBatch(t *testing.T) {
 	})
 
 	t.Run("UnionCarriesTheSharee", func(t *testing.T) {
-		// The M3d widening over the album-items precedent: a sharee
+		// The caller-visible widening over the album-items precedent: a sharee
 		// tags what they see with THEIR OWN tag.
 		_, graceTag := env.createTag(t, graceCookie, "Grace Pick")
 		rec := env.writeTagRaw(t, graceCookie, http.MethodPost,
@@ -493,7 +493,7 @@ func TestTagAssignmentBatch(t *testing.T) {
 	})
 }
 
-// TestTagsCallerIsolation pins B4 across two accounts: the same
+// TestTagsCallerIsolation pins the per-user discipline across two accounts: the same
 // shared asset carries each viewer's own tags and only those, the
 // listings never leak, the foreign tag id folds into the 404, and a
 // revoked share retracts the sharee's count while her assignment row

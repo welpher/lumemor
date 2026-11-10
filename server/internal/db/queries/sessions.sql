@@ -52,7 +52,7 @@ DELETE FROM sessions WHERE id = $1 AND user_id = $2 RETURNING kind;
 
 -- name: RevokeAllUserSessions :execrows
 -- The password-change / TOTP-change hook: every session of the user
--- across all devices goes at once. No handler calls this yet in M2a;
+-- across all devices goes at once. No handler calls this yet;
 -- the query is the interface the v1.x account-security flow builds on.
 DELETE FROM sessions WHERE user_id = $1;
 

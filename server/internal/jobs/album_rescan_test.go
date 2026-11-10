@@ -1,4 +1,4 @@
-// The directory rescan tests (E4 Task 2): the three arms of the
+// The directory rescan tests: the three arms of the
 // diff through the real worker and queue -- the add arm's
 // reference-style ingest (external row, real path, the existing
 // pipeline's jobs), the orphan arm's pinned mark (deleted_at, the
@@ -195,7 +195,7 @@ func TestAlbumRescanThreeArms(t *testing.T) {
 	}
 	for _, row := range []rescanAssetRow{a, b} {
 		if row.storageKind != "external" {
-			t.Errorf("storage_kind of %s = %q, want external (the reference-style ingest)", row.filePath, row.storageKind)
+			t.Errorf("storage_kind of %s = %q, want external (the source-directory ingest)", row.filePath, row.storageKind)
 		}
 		if row.takenAtSource != "file" {
 			t.Errorf("taken_at_source of %s = %q, want file (the source the schema reserved for this importer)", row.filePath, row.takenAtSource)
@@ -228,7 +228,7 @@ func TestAlbumRescanThreeArms(t *testing.T) {
 		t.Errorf("album.items-changed events = %d, want the one membership growth", got)
 	}
 
-	// The pipeline ran over the referenced files: both rows became
+	// The pipeline ran over the source files: both rows became
 	// ready exactly like an upload's (the existing pipeline, not a
 	// parallel one -- the jobs read the external path through the
 	// kind-aware resolver).

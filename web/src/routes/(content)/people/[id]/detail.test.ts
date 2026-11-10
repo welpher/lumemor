@@ -409,7 +409,7 @@ test('an unknown or invisible cluster renders the person-not-found error', async
 	flushSync();
 });
 
-test('a foreign label event changes nothing the server does not change (B4: server truth only)', async () => {
+test('a foreign label event changes nothing the server does not change (server truth only)', async () => {
 	detailState = { clusterId: 'c1', label: null, faces: adaFaces };
 	const fetchMock = stubFetch(detailRoutes());
 	vi.stubGlobal('fetch', fetchMock);

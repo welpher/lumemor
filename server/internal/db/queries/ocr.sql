@@ -1,4 +1,4 @@
--- OCR text queries (M3a Task 8): the OCR job's write surface. The
+-- OCR text queries: the OCR job's write surface. The
 -- table keys on asset_id alone -- one text per asset, the active
 -- model's -- so the upsert overwrites the row on every re-run and
 -- rerun. The language column is deliberately not written: the default

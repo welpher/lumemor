@@ -192,7 +192,7 @@ func TestCreateAdmin(t *testing.T) {
 			t.Errorf("version = %q, want %q", info.Version, testVersion)
 		}
 		if info.Features == nil {
-			t.Error("features = null, want an object (empty in M1)")
+			t.Error("features = null, want an object (empty at this stage)")
 		}
 	})
 

@@ -8,7 +8,7 @@ import 'package:built_value/serializer.dart';
 
 part 'person_label_response.g.dart';
 
-/// The calling user's label state of one face cluster after a label or hidden write: the caller's own row only (B4 -- another account's label never shows here). 
+/// The calling user's label state of one face cluster after a label or hidden write: the caller's own row only (another account's label never shows here). 
 ///
 /// Properties:
 /// * [clusterId] - Identifier of the face cluster.

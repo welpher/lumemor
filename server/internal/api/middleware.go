@@ -40,7 +40,7 @@ const (
 	// maxJSONBodyBytes caps every JSON request body of the API: the
 	// endpoints are small structured payloads, and unbounded buffering
 	// on unauthenticated routes is an attack surface. The multipart
-	// upload route (POST /assets, M2b) is mounted in its own group
+	// upload route (POST /assets) is mounted in its own group
 	// outside this middleware -- the streaming receiver's per-file
 	// size limit governs its bodies.
 	maxJSONBodyBytes = 1 << 20
@@ -96,7 +96,7 @@ func limitJSONBody(next http.Handler) http.Handler {
 // of the server carries: API, pages, static assets and the SPA shell
 // alike (NewRouter mounts it at the router root, so every route --
 // hand-mounted or catch-all -- passes through it). HSTS and the
-// dynamic CSP arrive with the map milestone (the CSP must know the
+// dynamic CSP arrive with the map feature (the CSP must know the
 // tile origins first, and the app shell's pre-paint script needs a
 // hash); CORS stays closed by design -- the SPA is same-origin
 // inside the single binary and external tools authenticate as

@@ -22,8 +22,8 @@ type CountAssetFileReferencesParams struct {
 	ID       pgtype.UUID `json:"id"`
 }
 
-// The shared-blob reference count, the query the M2b handoff pinned
-// verbatim: how many OTHER asset rows reference the same physical
+// The shared-blob reference count, pinned verbatim: how many
+// OTHER asset rows reference the same physical
 // file. Content addressing makes another owner's row of the same
 // bytes -- or any other row at all, live or trashed -- point at the
 // same file_path, and a trashed row may still be restored, so every
@@ -47,7 +47,7 @@ WHERE ai.asset_id = $1
   AND al.locked
 `
 
-// The album lock's delete gate (E6, the content-protection freeze
+// The album lock's delete gate (the content-protection freeze
 // widened from the rescan to the deletion): how many LOCKED
 // directory albums the asset is a member of. The batch's external
 // trash arm asks this before moving a live row's file -- a nonzero
@@ -106,8 +106,8 @@ type ExpireAssetParams struct {
 // exactly as the candidate listing computed it, so the guard and the
 // listing can never disagree across clocks (and time only moves
 // forward, so a row the listing found past the deadline stays past
-// it here). This is the restore-vs-expiry race guard (Review Focus
-// 4): a row restored between the job's candidate listing and this
+// it here). This is the restore-vs-expiry race guard: a
+// row restored between the job's candidate listing and this
 // statement fails the deleted_at IS NOT NULL arm, the delete
 // matches nothing, and the job skips the row's files -- a restored
 // asset must never be purged. A concurrent expiry run that already
@@ -208,10 +208,10 @@ type ListExpiredAssetsRow struct {
 // needs it before the row goes away; media_kind rides along for the
 // asset.deleted event the run publishes per purged row (the same
 // id-plus-kind payload every asset event carries); is_component
-// rides along (M2d) so the run can keep the component rows' purges
+// rides along so the run can keep the component rows' purges
 // SILENT -- the trash view never lists components (the pair is
 // represented by its photo), so their expiry events would be noise.
-// storage_kind and trash_path ride along (E4): an external row's
+// storage_kind and trash_path ride along: an external row's
 // file to remove is the TRASH COPY the move semantics landed
 // (data/trash/<assetId>/, the server's own tree) -- never the
 // source file_path the row carried before the move, which is the
@@ -317,7 +317,7 @@ type ListTrashRow struct {
 // through expiry on their own), and the ordering is what the
 // client's trash page renders.
 //
-// The E4 arm (2026-11-08 pin): an EXTERNAL row with no trash_path
+// The external arm: an EXTERNAL row with no trash_path
 // never appears. Those are the rescan's orphan marks -- the file
 // vanished from the source, the row is deleted, and the trash has
 // no meaning for it (the file was never the server's, there is
@@ -405,7 +405,7 @@ type RestoreAssetParams struct {
 // anywhere: soft delete never removed the album_items rows, and the
 // timeline's deleted_at filter is what hid the asset, so clearing
 // the mark is the whole restore. BLOB rows only -- the external
-// rows' own restore is RestoreExternalAsset (the §A6/E4 move-back
+// rows' own restore is RestoreExternalAsset (the move-back
 // semantics; the storage kind is the discriminator).
 func (q *Queries) RestoreAsset(ctx context.Context, arg RestoreAssetParams) (int64, error) {
 	result, err := q.db.Exec(ctx, restoreAsset, arg.ID, arg.OwnerID)
@@ -433,7 +433,7 @@ type RestoreExternalAssetParams struct {
 	OwnerID pgtype.UUID `json:"owner_id"`
 }
 
-// The external row's restore (E4, the §A6/E4 table): the caller
+// The external row's restore (the move semantics): the caller
 // moved the file back to the row's recorded original location
 // BEFORE this statement ran (a location that can no longer receive
 // the file failed the request explicitly -- the row stays trashed,
@@ -471,11 +471,11 @@ type SoftDeleteAssetParams struct {
 	OwnerID pgtype.UUID `json:"owner_id"`
 }
 
-// Trash queries (M2c Task 3): the write side of the trash lifecycle
+// Trash queries: the write side of the trash lifecycle
 // -- soft delete, restore, the owner-scoped listing -- plus the
 // expiry machinery: the expired-row candidates, the blob reference
-// count, and the guarded delete. The reference-counted blob rule is
-// the M2b hard-gate handoff this closes: content addressing stores
+// count, and the guarded delete. The shared-blob rule closes the
+// upload handoff: content addressing stores
 // two owners' identical uploads as ONE physical file referenced by
 // two rows, so no delete path may remove the file while any other
 // row points at it.
@@ -488,7 +488,7 @@ type SoftDeleteAssetParams struct {
 // deleted_at, so membership rows simply stop mattering while the
 // asset is trashed) -- which is also what makes restore a single
 // UPDATE: no membership re-insertion exists to do.
-// The trash entry point (the batch handler of Task 4 calls this with
+// The trash entry point (the batch handler calls this with
 // the caller's owner guard): stamps deleted_at on the asset and,
 // when the asset is a Live Photo, on its linked component video row.
 // The predicate addresses the pair from either side: by the photo id
@@ -504,7 +504,7 @@ type SoftDeleteAssetParams struct {
 // trashed asset that finishes its pipeline is harmless; its
 // readiness just never surfaces anywhere). BLOB rows only -- the
 // external rows' own entry point is SoftDeleteExternalAsset (the
-// §A6/E4 move semantics; the storage kind is the discriminator).
+// move semantics; the storage kind is the discriminator).
 func (q *Queries) SoftDeleteAsset(ctx context.Context, arg SoftDeleteAssetParams) (int64, error) {
 	result, err := q.db.Exec(ctx, softDeleteAsset, arg.ID, arg.OwnerID)
 	if err != nil {
@@ -532,8 +532,8 @@ type SoftDeleteExternalAssetParams struct {
 	OwnerID   pgtype.UUID `json:"owner_id"`
 }
 
-// The external row's trash entry point (E4, the §A6/E4 table's
-// move semantics): the caller moved the file into the server's
+// The external row's trash entry point (the move
+// semantics): the caller moved the file into the server's
 // trash area BEFORE this statement ran (the move needs the
 // operating system's permission; a failure there failed the whole
 // batch and nothing was written), and the write records the truth

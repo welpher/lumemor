@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The offline model-source mirror of scripts/acceptance_m3a.sh.
 
-The M3a acceptance's offline download mode reconstructs the Hugging
+The acceptance script's offline download mode reconstructs the Hugging
 Face URL path structure under tools/models/cache/offline-root/ and
 serves it over HTTPS from a container on the compose network: the
 stack's LUMEMOR_MODELS_HF_MIRROR points the server's download service

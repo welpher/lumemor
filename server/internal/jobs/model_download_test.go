@@ -1,4 +1,4 @@
-// The model download job tests (M3a Task 3): the full path runs -- the
+// The model download job tests: the full path runs -- the
 // admin endpoint enqueues the run, River picks the job up, the worker
 // drives the ml download service against local httptest sources (no
 // real network), the job_runs row converges, and the job.* events land

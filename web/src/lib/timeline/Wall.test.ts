@@ -4,7 +4,7 @@ import { initI18n } from '$lib/i18n';
 import Wall from './Wall.svelte';
 import type { TimelineItem } from '$lib/api/timeline';
 
-// The unified wall (the 2026-11-07 owner pin): ONE rendering
+// The unified wall: ONE rendering
 // component every photo surface composes -- the timeline, the album
 // detail, the favorites/hidden wrappers, the search browse mode. It
 // takes bare ITEMS (the month/day fold is its own), the row engine,
@@ -12,11 +12,11 @@ import type { TimelineItem } from '$lib/api/timeline';
 // inside it (the 2026-11-08 axis pin: the photo rendering and the
 // right-edge rail are one thing -- the axis folds from the same
 // internal groups the rendering packs), and so does the SELECTION
-// FLOW (the 2026-11-08 selection pin, web IA §7.4): the selection
+// FLOW: the selection
 // state, the select mode, the Escape exit and the batch bar are the
 // wall's own, gated by `onbatch`'s PRESENCE -- a wall with no runner
 // renders NO check affordance and NO bar at all (the album detail's
-// pure-navigation wall, R5), while the walls that wire it keep the
+// pure-navigation wall), while the walls that wire it keep the
 // hover-reveal entry and the choreography: a landed run clears the
 // selection (an armed mode persists), a failure keeps it and maps
 // its error into the bar, a busy run disables the buttons. The pages
@@ -68,7 +68,7 @@ async function settle(): Promise<void> {
 	flushSync();
 }
 
-/** Click one tile's check affordance (the selection entry, R2-11). */
+/** Click one tile's check affordance (the selection entry). */
 function clickTileCheck(index: number): void {
 	const checks = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.tile__check'));
 	checks[index]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -109,7 +109,7 @@ test('the wall folds bare items into the month/day tree and packs rows', () => {
 });
 
 test('a wall without onbatch renders no check and no bar: the tiles are pure navigation', () => {
-	// R5 (the album detail's wall, restated on the onbatch gate): no
+	// The album detail's wall (restated on the onbatch gate): no
 	// runner wired, no selection possible -- NO hover checkbox
 	// renders at all, no bar ever rises, and the tile body stays the
 	// viewer anchor.
@@ -322,7 +322,7 @@ test('Escape drops a live selection and an armed select mode', () => {
 });
 
 test("the month axis is the wall's own organ: one stop per month, folded from the same groups", () => {
-	// The 2026-11-08 pin: the photo rendering and the right-edge
+	// The photo rendering and the right-edge
 	// rail are one component. The axis cannot disagree with the
 	// wall -- its months fold from the SAME internal groups the
 	// rendering packs, so the stops' labels are the month headers'

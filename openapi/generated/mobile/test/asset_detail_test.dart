@@ -127,13 +127,13 @@ void main() {
       // TODO
     });
 
-    // The asset's faces as the calling user sees them, strongest score first with the face id as the tiebreak. The array is caller-scoped (B4): the asset being visible to the caller is the gate -- the faces ride on the detail's own permission -- and each entry's `label` is the caller's own label of the face's cluster, never another account's. Always present, empty when the asset carries no faces (none detected, or detection has not run yet). The PATCH response serves the same array, exactly as the GET serves it. 
+    // The asset's faces as the calling user sees them, strongest score first with the face id as the tiebreak. The array is caller-scoped: the asset being visible to the caller is the gate -- the faces ride on the detail's own permission -- and each entry's `label` is the caller's own label of the face's cluster, never another account's. Always present, empty when the asset carries no faces (none detected, or detection has not run yet). The PATCH response serves the same array, exactly as the GET serves it. 
     // BuiltList<AssetFaceSummary> faces
     test('to test the property `faces`', () async {
       // TODO
     });
 
-    // The CALLER's tags on this asset (B4): the caller's own assignment rows joined to their own tag rows, sorted by name case-insensitively with the tag id as the tiebreak (the vocabulary listing's own ordering). Another account's tags on the same asset never surface, so the same shared asset answers different arrays for the owner and the sharee (each sees their own, or none). Always present, empty when the caller tagged the asset with nothing. The PATCH response serves the same array, exactly as the GET serves it. 
+    // The CALLER's tags on this asset: the caller's own assignment rows joined to their own tag rows, sorted by name case-insensitively with the tag id as the tiebreak (the vocabulary listing's own ordering). Another account's tags on the same asset never surface, so the same shared asset answers different arrays for the owner and the sharee (each sees their own, or none). Always present, empty when the caller tagged the asset with nothing. The PATCH response serves the same array, exactly as the GET serves it. 
     // BuiltList<AssetTagSummary> tags
     test('to test the property `tags`', () async {
       // TODO

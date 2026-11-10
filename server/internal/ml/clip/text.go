@@ -1,4 +1,4 @@
-// The CLIP text tower wrapper (M3d Task 3): it feeds one query
+// The CLIP text tower wrapper: it feeds one query
 // string to a Chinese-CLIP text tower and answers the L2-normalized
 // text feature the search's semantic arm matches against the image
 // embeddings the vision tower wrote -- both towers share the joint

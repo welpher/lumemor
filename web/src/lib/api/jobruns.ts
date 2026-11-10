@@ -1,4 +1,4 @@
-// The task panel's data client (M3a Task 5): the job runs listing
+// The task panel's data client: the job runs listing
 // behind GET /admin/jobs, polled by the panel's fallback cadence and
 // converged by the SSE job.* events.
 //

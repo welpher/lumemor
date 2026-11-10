@@ -51,7 +51,7 @@
 
 ## Icons
 
-The icon-first rule (design repo, web IA §7.2): every action affordance
+The icon-first rule: every action affordance
 carries a lucide glyph — toolbars/inline/overflow are icon-only with
 `aria-label`, primary flows are icon+text, form submits may stay text.
 Decorative icons carry `aria-hidden`.

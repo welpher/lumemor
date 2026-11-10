@@ -17,7 +17,7 @@
 	// ring draws at its edge -- the whitespace IS the selected state,
 	// no reflow, no checkbox geometry change.
 	//
-	// THE SERVING COPY (the 2026-11-07 blurry fix, owner pin 2): the
+	// THE SERVING COPY (the 2026-11-07 blurry fix): the
 	// tile ALWAYS serves the view derivative -- the tile/view DPR
 	// srcset pair is gone. The pair relied on the browser
 	// re-evaluating its responsive-image candidate after the row
@@ -34,9 +34,9 @@
 	// THE PINNED LIVE-PHOTO DECISION: TimelineItem carries
 	// livePhotoVideoId, so a Live Photo tile shows its small live
 	// badge here; the hover video preview arrives with the viewer and
-	// the component transcode (later tasks of this milestone).
+	// the component transcode, both later arrivals.
 	//
-	// THE HOVER AFFORDANCES (web polish batch 2, G3+G9): a restrained
+	// THE HOVER AFFORDANCES: a restrained
 	// bottom scrim of translucent Night rises on hover and keyboard
 	// focus — the photo never scales, it stays authoritative. The
 	// scrim reveals the tile's STATE (the favorite star, bottom-left)
@@ -197,7 +197,7 @@
 			/>
 		{/if}
 
-		<!-- G3's bottom scrim: the Night-based translucency that rises
+		<!-- The bottom scrim: the Night-based translucency that rises
 		     with the tile's state affordances on hover and keyboard
 		     focus. Pure opacity -- the photo never scales, and the
 		     pointer never interacts with the veil itself. -->
@@ -241,7 +241,7 @@
 		{/if}
 
 		{#if item.kind === 'video'}
-			<!-- G9's duration chip: the play mark and the m:ss
+			<!-- The duration chip: the play mark and the m:ss
 			     duration on one opaque night chip (the ink-chip
 			     vocabulary), with tabular numerals and the subtle
 			     text shadow; the container query scales the whole

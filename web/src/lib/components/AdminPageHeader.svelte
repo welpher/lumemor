@@ -15,11 +15,10 @@
 	let { title, actions }: Props = $props();
 </script>
 
-<!-- The admin content column's page-header row (the 2026-11-09
-     specimen, web IA §7.8's page-header pin): the title on the
+<!-- The admin content column's page-header row: the title on the
      left, the page's contextual actions on the right, and the
      hairline below -- `border-b` with the 12px bottom padding and
-     the 16px margin the specimen pins. The tool shell is the line
+     the 16px margin this row pins. The tool shell is the line
      domain: this row's hairline meets the rail's border-r in a T,
      pinning the header into a belt; the content shell's
      no-dividing-line rule holds the photo faces, not this one. -->

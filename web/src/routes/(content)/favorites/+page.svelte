@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The favorites page (M2d Task 8): the caller's favorites as a
+	// The favorites page: the caller's favorites as a
 	// curated wall -- the same shape, ordering and pagination as the
 	// timeline, every tile a favorite by construction, so the bar's
 	// single action is the unfavorite toggle that ends a row's

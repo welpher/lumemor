@@ -1,4 +1,4 @@
-// The DBSCAN clusterer tests (M3a Task 7): handcrafted unit-circle
+// The DBSCAN clusterer tests: handcrafted unit-circle
 // embeddings whose pairwise cosine distances are exact by
 // construction, pinning the textbook semantics -- two density groups
 // plus noise separate, the eps boundary is inclusive, a border point

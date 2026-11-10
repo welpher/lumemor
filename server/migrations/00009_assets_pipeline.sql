@@ -1,5 +1,5 @@
 -- +goose Up
--- Asset pipeline readiness (M2b Task 4): the upload handler records
+-- Asset pipeline readiness: the upload handler records
 -- the number of pipeline jobs it enqueued for an asset in
 -- pending_jobs, and every successful job completion decrements it;
 -- the completion that empties the counter stamps ready_at. That
@@ -7,12 +7,12 @@
 -- asset.ready event, so the event fires exactly once per asset and
 -- only when the whole pipeline is done.
 --
--- The counter is the pinned readiness mechanism (interfaces block of
--- the Task 4 report): the M2b pipeline is the metadata job alone, so
+-- The counter is the pinned readiness mechanism: the initial
+-- pipeline was the metadata job alone, so
 -- the upload inserts photo rows with pending_jobs 1 (and component
 -- video rows with 0 -- they are refined by the metadata job but are
 -- never the client-visible asset whose readiness the event announces).
--- Task 5's thumbnail job joins by bumping the uploader's count to 2
+-- The thumbnail job joins by bumping the uploader's count to 2
 -- and completing through the same guarded decrement; no semantic
 -- change is needed.
 --

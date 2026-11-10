@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The user settings page (the settings feature): the five
-	// sections of the owner-approved specimen -- the profile (name
+	// sections -- the profile (name
 	// and email), the password change (the revocation contract's
 	// door), the appearance pair (theme and locale, applied
 	// IMMEDIATELY: the store's locale and the html class react on
@@ -215,7 +215,7 @@
 	}
 
 	// The download preferences: applied on every change like the
-	// appearance pair (the specimen carries no save button for the
+	// appearance pair (no save button for the
 	// section; the preferences ARE the state).
 	const formatChoices: ReadonlyArray<{
 		value: UserSelf['downloadFormat'];
@@ -326,7 +326,7 @@
 
 	// The device label: a web session's stored label is the login's
 	// raw user agent, condensed to the browser · platform pair the
-	// specimen renders; a paired device's label is the name the
+	// page renders; a paired device's label is the name the
 	// pairing supplied. An unrecognized agent falls back to the raw
 	// string (honest over clever).
 	function deviceLabel(device: DeviceSession): string {

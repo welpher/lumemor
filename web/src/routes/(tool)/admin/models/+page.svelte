@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The model management page of the admin surface (M3a Task 5):
+	// The model management page of the admin surface:
 	// the slot-grouped listing of every registered model with its
 	// facts, the empty state whose CTA starts the default group's
 	// download (the v1 form of the wizard's model download step), the
@@ -326,7 +326,7 @@
 			>
 		</div>
 	{:else if status === 'ready'}
-		<!-- The page-header row (the 2026-11-09 specimen): the title
+		<!-- The page-header row: the title
 		     + the hairline; the workbench carries no page-level
 		     action, the row stands for the grammar's uniformity. The
 		     page's own note rides under it as the lede. -->

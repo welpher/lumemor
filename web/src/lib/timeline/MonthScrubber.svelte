@@ -8,7 +8,7 @@
 	// them -- with the bubble naming the month under the pointer; a
 	// pure tap (or the keyboard) jumps to a month group. v0 scrubs
 	// within the loaded data only; deep jumps with date filters
-	// arrive with the M3 timeline.
+	// arrive later.
 	import { _, locale } from 'svelte-i18n';
 
 	type MonthEntry = {
@@ -133,7 +133,7 @@
 	let scrollActive = $state(false);
 	let scrollQuietTimer: ReturnType<typeof setTimeout> | undefined;
 	// The pointer's height inside the rail -- the bubble rides it,
-	// not the stop's position (the reference behavior).
+	// not the stop's position.
 	let hoverY = $state(0);
 
 	// The wall's scrolling wakes the rail: element scrolls do not

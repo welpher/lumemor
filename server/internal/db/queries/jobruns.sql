@@ -1,11 +1,11 @@
--- Job run queries (M3a Task 3): the job_runs rows back the admin task
+-- Job run queries: the job_runs rows back the admin task
 -- panel -- long-running jobs surface their progress there and on the
 -- activity stream (job.started / job.progress / job.finished). The
--- model download job of Task 3 is the first producer; the rerun jobs
+-- model download job is the first producer; the rerun jobs
 -- of the later admin surface reuse the same statements with their own
 -- kinds.
 --
--- kind is plain text, pinned by the milestone plan's vocabulary
+-- kind is plain text, pinned by the shared vocabulary
 -- (model_download, face_detect_rerun and friends); state is the
 -- job_state enum. total/done carry the run's work units -- pinned
 -- bytes for the model download, asset counts for the reruns -- and
@@ -20,7 +20,7 @@ INSERT INTO job_runs (id, kind, total)
 VALUES ($1, $2, $3);
 
 -- name: InsertAlbumRescanRun :exec
--- The rescan run's row (E4): the places-rerun row's own shape plus
+-- The rescan run's row: the places-rerun row's own shape plus
 -- the run's SUBJECT -- the directory album the walk reconciles.
 -- The album_id column exists for exactly this kind (00015): the
 -- endpoint's in-flight guard is scoped to the album, so one
@@ -103,7 +103,7 @@ WHERE id = $1;
 
 -- name: IncrementJobRunDone :exec
 -- Counts one per-asset ML job's SUCCESS into its rerun run's row
--- (M3a Task 8's rerun closure): the per-asset workers report their own
+-- (the rerun closure): the per-asset workers report their own
 -- completions through this atomic increment while the rerun driver
 -- waits for the counts to converge. The increment is atomic because
 -- the jobs of one run complete concurrently on the ml queue.

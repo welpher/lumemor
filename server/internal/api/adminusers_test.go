@@ -1,4 +1,4 @@
-// The admin user management tests (M2d Task 8): the admin-role
+// The admin user management tests: the admin-role
 // guard of the surface (403 for a signed-in plain user, 401 without
 // a session), the listing's shape and ordering, the transactional
 // account creation (user row and sync album together, the wizard's

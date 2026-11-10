@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The information panel of the asset viewer: METADATA ONLY (the
-	// R2-3 rework) -- the description editor (the PATCH endpoint; the
+	// viewer rework) -- the description editor (the PATCH endpoint; the
 	// drawer keeps the draft on failure so a retry never retypes
 	// anything, and through the same-id detail replacements of the
 	// optimistic curation flips and the SSE convergence), the People
@@ -8,31 +8,31 @@
 	// the caller's label state per cluster, the click delegating to
 	// the page's assign dialog), the EXIF hot fields folded into
 	// collapsible groups, the file facts with the tags row (the
-	// caller's own tags as chips plus the assign affordance, M3d),
-	// and the places placeholder pinned to its M3 domain. The
+	// caller's own tags as chips plus the assign affordance),
+	// and the places placeholder pinned to its future domain. The
 	// curation actions and the permanent delete are GONE from this
 	// surface: the action bar over the media carries the favorite
 	// and the trash/restore pair, and the permanent delete lives on
 	// the trash page alone.
 	//
-	// THE FORM (R2-10): the same markup serves the two shapes the
+	// THE FORM: the same markup serves the two shapes the
 	// viewer composes it into -- the right DOCKED split region at lg+
 	// (the viewer's flex row) and the fixed overlay drawer below lg.
 	// Every class below is shared; the form lives in the aside's
 	// lg:* utilities alone.
 	//
-	// THE VIEWER'S READ-ONLY DRAWER (the M3c identity seam): a caller
+	// THE VIEWER'S READ-ONLY DRAWER (the identity seam): a caller
 	// who does not own the asset (the owner shared it to them) keeps
 	// every READ and loses every owner-only write affordance -- the
 	// description's Edit button (the stored text renders) never
 	// renders for them. Read-only is visual, never grayed out (the
-	// web IA §3's pinned rule) -- the button simply never renders.
+	// visual read-only rule) -- the button simply never renders.
 	//
-	// THE ROW LANGUAGE (R2-4): key-value rows -- the label column in
+	// THE ROW LANGUAGE: key-value rows -- the label column in
 	// the faint text tone, the value in the text tone, one hairline
 	// between the rows (divide-y), the grouped sections under the
 	// existing uppercase micro-heads, tightened vertical rhythm per
-	// brand spec §5 (no heavy borders, feather shadows): the EXIF
+	// the brand language (no heavy borders, feather shadows): the EXIF
 	// groups dropped their card borders for the same row rhythm.
 	//
 	// The drawer is presentation and edit-mode state only: the page
@@ -70,7 +70,7 @@
 		onassignface: (face: AssetFaceSummary) => void;
 		/**
 		 * Open the add-tag dialog over this asset (the page owns the
-		 * dialog and the writes). Tags are per-user state (B4): every
+		 * dialog and the writes). Tags are per-user state: every
 		 * caller tags with their own vocabulary, so the affordance is
 		 * every viewer's, never the owner's alone.
 		 */
@@ -246,7 +246,7 @@
 	}
 </script>
 
-<!-- The docked split region (R2-10): at lg+ the panel is STATIC in
+<!-- The docked split region: at lg+ the panel is STATIC in
      the viewer's flex row -- it occupies layout space beside the
      media column (the stage re-fits through the flow, the width is
      the same min(360px,92vw) family, no floating shadow: the
@@ -334,7 +334,7 @@
 			{/if}
 		</section>
 
-		<!-- The key-value row language (R2-4): one hairline between
+		<!-- The key-value row language: one hairline between
 		     the rows, the label column faint, the value column text,
 		     the tightened section rhythm -- no card borders, the
 		     section's own spacing is the grouping. -->
@@ -357,9 +357,9 @@
 						</dd>
 					</div>
 				{/each}
-				<!-- The tags row (M3d): the CALLER's tags on the asset as
+				<!-- The tags row: the CALLER's tags on the asset as
 				     chips, plus the assign affordance (the add-tag dialog
-				     the batch bar's flow reuses). Per-user state (B4): the
+				     the batch bar's flow reuses). Per-user state: the
 				     chips are the caller's own rows, the write is the
 				     caller's own, so the affordance is every viewer's. -->
 				<div class="info__tags flex items-center justify-between gap-3 py-[7px]">
@@ -408,8 +408,8 @@
 			</h3>
 			<!-- The EXIF groups: collapsible summaries over the same
 			     hairline row rhythm (the card borders of the old
-			     presentation are gone -- brand spec §5's no heavy
-			     borders). -->
+			     presentation are gone -- the brand's no-heavy
+			     borders discipline). -->
 			<details class="info__group" open>
 				<summary
 					class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer"

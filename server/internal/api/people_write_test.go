@@ -1,6 +1,6 @@
-// People surface write tests (M3b Task 2): the label, hidden, merge
+// People surface write tests: the label, hidden, merge
 // and face-move endpoints, with the pinned semantics under load --
-// labels are per-caller upserts (B4), duplicate names are allowed,
+// labels are per-caller upserts, duplicate names are allowed,
 // hiding rides on the label row, and every structural cluster change
 // re-points representatives and dissolves vacated clusters (source
 // labels die with them -- the honest documented cost). Fixtures
@@ -345,7 +345,7 @@ func TestPeopleLabelWrite(t *testing.T) {
 	})
 }
 
-// TestPeopleLabelB4Isolation is the mandated Review Focus 1 case:
+// TestPeopleLabelB4Isolation is the mandated isolation case:
 // labels are per-caller rows. A's naming never moves the cluster for
 // B; both accounts label the same cluster independently; B's hidden
 // switch never touches A's row.
@@ -384,7 +384,7 @@ func TestPeopleLabelB4Isolation(t *testing.T) {
 
 		// B's view is untouched: B has labeled nothing, so the shared
 		// cluster stays in B's unnamed region and out of B's named
-		// list -- another account's label never moves it (B4).
+		// list -- another account's label never moves it.
 		if people := env.getPeopleList(t, graceCookie); len(people) != 0 {
 			t.Errorf("B's /people = %+v, want empty (A's label is private)", people)
 		}
@@ -450,7 +450,7 @@ func TestPeopleLabelB4Isolation(t *testing.T) {
 	})
 }
 
-// TestPeopleMergeThreeStates is the mandated Review Focus 2 case:
+// TestPeopleMergeThreeStates is the mandated merge case:
 // the merge reunifies faces under the target, recomputes the target's
 // representative to the strongest member of the merged set, dissolves
 // the source clusters WITH their labels (the honest documented cost)
@@ -583,7 +583,7 @@ func TestPeopleMergeThreeStates(t *testing.T) {
 
 		// The three label writes published their pinned event —
 		// ids only: the label text is the caller's private state
-		// and never rides the shared stream (B4).
+		// and never rides the shared stream.
 		labeledEvents := busEventsOf(t, env.bus, "person.labeled")
 		if len(labeledEvents) != 3 {
 			t.Fatalf("person.labeled events = %d, want 3 (one per label write)", len(labeledEvents))
@@ -1009,7 +1009,7 @@ func TestPeopleHide(t *testing.T) {
 	})
 }
 
-// TestPeopleWriteDeleteAssetCascades is the Review Focus 3 linkage at
+// TestPeopleWriteDeleteAssetCascades is the delete-cascade linkage at
 // the API level: a permanent asset delete dissolves the clusters its
 // faces held, and the caller's labels cascade with the cluster -- the
 // people surface is left with zero empty clusters and zero dangling

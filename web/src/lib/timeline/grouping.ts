@@ -8,7 +8,7 @@
 // UTC date of the wire value itself, not the browser's local date.
 // The server stores takenAt in UTC and normalizes the EXIF offset
 // chain, so grouping by the wire date is deterministic across
-// devices; a timezone-aware regrouping is an M3 refinement.
+// devices; a timezone-aware regrouping is a later refinement.
 
 import type { TimelineItem } from '$lib/api/timeline';
 

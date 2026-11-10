@@ -1,8 +1,8 @@
 -- +goose Up
--- The unified search's full-text plane (M3d Task 3): the trigram
+-- The unified search's full-text plane: the trigram
 -- substring search over the asset's own text sources.
 --
--- The engine is the reference projects' architecture: pg_trgm's GIN
+-- The engine is the proven shape for this workload: pg_trgm's GIN
 -- trigram indexes accelerate unaccented ILIKE substring matching,
 -- which is language-agnostic by construction (containment needs no
 -- segmentation, no stemming, no dictionary -- the v1 boundary; a

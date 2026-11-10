@@ -1,15 +1,15 @@
 <script lang="ts">
-	// The content shell from the web IA design: a top bar with the
+	// The content shell: a top bar with the
 	// drawer toggle (hamburger), the wordmark, the search entry, the
 	// upload action and the account avatar. The avatar opens the
 	// dropdown that carries the two appearance toggles (theme and
 	// language, from the shared wiring task) and the logout action.
 	// The drawer carries the IA's content sections; the search box
-	// navigates to the search page (M3d: the commit is Enter, the
+	// navigates to the search page (the commit is Enter, the
 	// search page owns the query state from there) and the upload
 	// action drives the queue overlay.
 	//
-	// THE APP FRAME (R2-1): the shell is an h-dvh flex column with
+	// THE APP FRAME: the shell is an h-dvh flex column with
 	// overflow hidden -- the top bar is pinned by the frame itself
 	// (no sticky hack, the document never scrolls) and <main> is the
 	// one scroll container. Two frame duties follow from that:
@@ -43,7 +43,7 @@
 
 	let { children }: LayoutProps = $props();
 
-	// THE ALBUM DETAIL'S OWN CHROME (the 2026-11-07 owner pin): while
+	// THE ALBUM DETAIL'S OWN CHROME: while
 	// an album detail route is active the shell's topbar HIDES -- the
 	// page pins its own contextual bar (back + title + the album's
 	// icon actions) in the topbar's place, and the drawer nav stays
@@ -102,7 +102,7 @@
 		}
 	});
 
-	// The top bar's search entry (M3d): typing in the box is a
+	// The top bar's search entry: typing in the box is a
 	// NAVIGATION trigger, not live search -- the commit (Enter)
 	// lands on /search with the typed text as the query parameter,
 	// and the search page owns the query state from there (URL
@@ -144,7 +144,7 @@
 		if (accountMenuOpen && event.key === 'Escape') {
 			closeAccountMenu();
 		}
-		// The `/` focus-search binding (web IA §6): outside every
+		// The `/` focus-search binding: outside every
 		// editable context, with no dialog open above the page and
 		// the drawer closed, the stroke lands the focus on the top
 		// bar's search box -- the one box whose Enter commits to the
@@ -204,7 +204,7 @@
 <svelte:window onpointerdown={handleWindowPointerdown} onkeydown={handleWindowKeydown} />
 
 <div class="shell h-dvh flex flex-col overflow-hidden">
-	<!-- The offline strip (web IA §6): the frame's FIRST child, above
+	<!-- The offline strip: the frame's FIRST child, above
 	     the topbar content -- and above <main> on the album detail
 	     route, whose own chrome replaces the shell bar (the
 	     connection is shell-wide truth, not the topbar's). It renders
@@ -223,7 +223,7 @@
 				<Menu size={22} />
 			</button>
 			<!-- Wordmark: Nunito 700 in the text color (Navy 900 light,
-			     Cream dark), per the brand spec. -->
+			     Cream dark), per the brand tokens. -->
 			<span class="topbar-brand font-display font-bold text-[20px] text-text">{$_('app_name')}</span>
 			<!-- Push the search box away from the brand; the upload and
 			     account marks stay pinned to the right end. The leading
@@ -284,7 +284,7 @@
 						     the settings page (their permanent home — the dropdown
 						     keeps one purpose, not a control panel). -->
 						<!-- The settings link: the account dropdown is settings'
-						     ONLY home (web IA §7.8's 2026-11-09 pin -- the
+						     ONLY home (the 2026-11-09 single-home rule -- the
 						     drawer's duplicate item died with the
 						     interface-debt block), so this door carries the
 						     whole reach. -->
@@ -314,7 +314,7 @@
 		</header>
 	{/if}
 	<Drawer bind:open={drawerOpen} />
-	<!-- The `?` shortcut sheet (web IA §6): the shared Modal over the
+	<!-- The `?` shortcut sheet: the shared Modal over the
 	     shell, listing every binding the app actually carries. -->
 	<ShortcutsDialog bind:open={shortcutsOpen} />
 	<!-- The frame's one scroll container: the sticky month/day

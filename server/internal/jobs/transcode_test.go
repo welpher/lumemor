@@ -1,5 +1,5 @@
-// Transcode pipeline tests (M2c Task 6): the video asset's third job
-// end to end. Review Focus ⑥ lives here: a video upload counts THREE
+// Transcode pipeline tests: the video asset's third job
+// end to end. A video upload counts THREE
 // pipeline jobs (metadata, thumbnail, transcode), asset.ready fires
 // exactly once when all three completed, and a re-run of the
 // transcode job converges without re-firing it. The sweep's video arm
@@ -214,8 +214,8 @@ func (e *env) encodedModifiedAt(t *testing.T, id uuid.UUID) time.Time {
 	return info.ModTime()
 }
 
-// TestUploadVideoThreeJobsToReady is the mandated three-job flow
-// (Review Focus ⑥): a video upload through the HTTP endpoint counts
+// TestUploadVideoThreeJobsToReady is the mandated three-job flow:
+// a video upload through the HTTP endpoint counts
 // pending_jobs = 3 (metadata, thumbnail, transcode), all three jobs
 // run, asset.ready fires EXACTLY once -- only when the last of the
 // three completed -- and the playable copy the transcode produced is

@@ -137,7 +137,7 @@ function detailFrom(body: unknown): AssetDetail | null {
 			return null;
 		}
 	}
-	// The caller's tags array joined the fixed shape (M3d): absent,
+	// The caller's tags array joined the fixed shape: absent,
 	// null or a malformed entry is not a detail.
 	if (!Array.isArray(candidate.tags)) {
 		return null;

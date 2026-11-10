@@ -1,4 +1,4 @@
-// The filter-browse mode (M3d Task 3): the request whose query takes
+// The filter-browse mode: the request whose query takes
 // no text path (absent, whitespace or single-character). The result
 // is the caller's visible set narrowed by the filters, paged in the
 // timeline's own ordering and keyset shape (the search page opens as

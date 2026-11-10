@@ -13,7 +13,7 @@ void main() {
       // TODO
     });
 
-    // The display name in the request's locale: the `place_names` row of that locale when the reference data carries one, the GeoNames canonical (English or romanized) name otherwise. A locale switch changes this join only, never an asset row. 
+    // The display name in the request's locale: the `place_names` row of that locale when the place data carries one, the GeoNames canonical (English or romanized) name otherwise. A locale switch changes this join only, never an asset row. 
     // String name
     test('to test the property `name`', () async {
       // TODO

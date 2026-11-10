@@ -4,12 +4,11 @@
 </script>
 
 <script lang="ts">
-	// The audience field of the albums-as-sources dialogs (web IA
-	// §7.6, the specimen's add-style pin): "who can see" as ONE
+	// The audience field of the albums-as-sources dialogs: "who can see" as ONE
 	// property of the album -- the granted accounts as chips (the
 	// avatar + the name + the remove mark), the dashed "Add"
-	// affordance, and the candidate picker as a FLOATING LAYER (web
-	// IA §7.5's 2026-11-09 second revision: the 2026-11-08
+	// affordance, and the candidate picker as a FLOATING LAYER (the
+	// floating-layer revision: the 2026-11-08
 	// inline-expansion design is retired -- it traded an offset
 	// shift for height churn, the dialog growing and shrinking with
 	// every open; the layer portals to document.body, anchored under
@@ -25,8 +24,8 @@
 	// draft's members (they are chips already) and minus the CALLER
 	// (the owner sees the album by construction; the server's own
 	// skip report is the backstop when the session has no id). The
-	// listing is fetched ONCE AT MOUNT (the pool probe -- §7.6's
-	// 2026-11-09 pin needs the pool KNOWN before the first open, so
+	// listing is fetched ONCE AT MOUNT (the pool probe -- the
+	// known-pool rule needs the pool KNOWN before the first open, so
 	// a single-account instance answers its honestly disabled add
 	// button immediately) and FRESH on every open -- the per-open
 	// discipline of the old share dialog; its honest failure renders
@@ -34,8 +33,8 @@
 	// path (which is exactly why an UNKNOWN pool never disables the
 	// button: the open IS the retry).
 	//
-	// NO CANDIDATES = THE ADD AFFORDANCE DIES (§7.6's 2026-11-09
-	// pin): when the known pool is empty -- a single-account
+	// NO CANDIDATES = THE ADD AFFORDANCE DIES (the
+	// known-pool rule): when the known pool is empty -- a single-account
 	// instance, or the multi-add draining the last candidate -- the
 	// add button is disabled (the honest disabled face: reduced
 	// opacity, the not-allowed cursor) and an empty list earns no
@@ -44,20 +43,20 @@
 	// never shown). The reserved no-candidates slot under the chips
 	// row carries the words.
 	//
-	// THE VALIDATION SLOT (§7.5's 2026-11-09 companion pin): the
+	// THE VALIDATION SLOT (the reserved-slot rule): the
 	// line under the chips row is a reserved fixed-height slot --
 	// the no-candidates note appears and disappears inside it, so
 	// the dialog's height is invariant to the note's comings and
 	// goings, exactly as it is to the picker's open/close.
 	//
-	// THE KEYBOARD (the specimen's keys footer): the listbox takes
+	// THE KEYBOARD (the keys footer): the listbox takes
 	// the focus on open; ↑/↓ move the highlight, Enter adds the
-	// highlighted candidate (the list STAYS open -- the specimen's
-	// state two shows a chip landed while the picker offers the
-	// next -- unless the pool drains, which collapses it), Esc
+	// highlighted candidate (the list STAYS open -- a chip landed
+	// while the picker offers the next, unless the pool drains
+	// and collapses it), Esc
 	// closes the picker alone and stops there -- the modal behind
 	// it never reacts to a stroke the picker owned. The layer rides
-	// OUTSIDE the Modal's focus trap by the spec's own pin; closing
+	// OUTSIDE the Modal's focus trap (a popover's focus contract); closing
 	// returns the focus to the trigger.
 	import { _ } from 'svelte-i18n';
 	import { tick } from 'svelte';
@@ -105,7 +104,7 @@
 		users.filter((user) => user.id !== selfId && !members.some((member) => member.userId === user.id))
 	);
 
-	// The add affordance's honest disabled state (§7.6's pin): the
+	// The add affordance's honest disabled state (the known-pool rule): the
 	// pool is KNOWN empty -- a landed listing minus the caller minus
 	// the granted chips. The granted set cannot push the pool below
 	// empty on its own (granted accounts were never candidates); an
@@ -155,7 +154,7 @@
 			users = outcome.users;
 			probed = true;
 			activeIndex = 0;
-			// §7.6's pin: an empty picker state is never shown. The
+			// The known-pool rule: an empty picker state is never shown. The
 			// fresh answer may reveal the pool empty mid-open (the
 			// probe raced the open, or the listing changed) -- the
 			// honest collapse. The focus stays put: the add button is
@@ -188,7 +187,7 @@
 
 	/**
 	 * Add one candidate to the draft audience. The picker stays open
-	 * for the next -- UNLESS the pool drained (§7.6's pin): the last
+	 * for the next -- UNLESS the pool drained (the known-pool rule): the last
 	 * candidate's add collapses the picker (an empty picker state is
 	 * never shown; the add button disables and the no-candidates note
 	 * takes the reserved slot), and the focus lands on the newest
@@ -286,7 +285,7 @@
 			{/each}
 		{/if}
 		<!-- The dashed add affordance (icon + text), the picker's
-		     toggle. §7.6's 2026-11-09 pin: the KNOWN-empty candidate
+		     toggle. The known-pool rule: the KNOWN-empty candidate
 		     pool disables it (reduced opacity, the not-allowed cursor)
 		     -- an empty list earns no row, and the button is the one
 		     honest door that never opens onto nothing. An unknown
@@ -305,7 +304,7 @@
 			{$_('albums_audience_add')}
 		</button>
 	</div>
-	<!-- THE VALIDATION SLOT (§7.5's companion pin): a reserved
+	<!-- THE VALIDATION SLOT (the reserved-slot rule): a reserved
 	     fixed-height line under the chips row -- the no-candidates
 	     note appears and disappears INSIDE it, so the dialog's
 	     height never moves for the note. -->
@@ -317,15 +316,15 @@
 		{poolEmpty ? $_('albums_audience_no_candidates') : ''}
 	</p>
 	{#if open}
-		<!-- THE FLOATING LAYER (§7.5's 2026-11-09 second revision): the
+		<!-- THE FLOATING LAYER: the
 		     candidate block portals to document.body as a fixed layer
 		     anchored under the chips row (the shared `anchored`
 		     action) -- the modal's overflow never clips it and the
 		     dialog NEVER changes height for it. The surface mirrors
 		     the account dropdown (bg-card, overlay radius, overlay
 		     shadow): it is a popover now, not a form block. The
-		     focus rides in the layer (outside the Modal's trap, the
-		     spec's own pin) and returns to the trigger on close. -->
+		     focus rides in the layer (outside the Modal's trap, a
+		     popover's focus contract) and returns to the trigger on close. -->
 		<div
 			class="audience-field__picker fixed z-(--z-dropdown) box-border bg-card border border-border rounded-overlay shadow-overlay overflow-y-auto [scrollbar-gutter:stable]"
 			use:anchored={{ anchor: () => chipsRow }}

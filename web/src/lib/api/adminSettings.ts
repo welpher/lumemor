@@ -2,10 +2,9 @@
 // settings feature): the read and three-stage validated save behind
 // GET/PUT /admin/settings/storage, the trash retention pair behind
 // GET/PUT /admin/settings/trash, and the video transcoding profile
-// pair behind GET/PUT /admin/settings/transcoding. (E4's mount-root
-// allowlist pair retired with the allowlist itself -- E6, web IA
-// §7.5's third revision: the boundary is the compose mount, so no
-// list needs managing.)
+// pair behind GET/PUT /admin/settings/transcoding. (the mount-root
+// allowlist pair retired with the allowlist itself -- the boundary
+// is the compose mount, so no list needs managing.)
 //
 // ERROR MAPPING (the repo-wide convention): every failure outcome
 // carries the error code's i18n key -- the envelope code lowercased

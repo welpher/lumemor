@@ -426,7 +426,7 @@ test('merging into one of the selected names it inline first, then folds the oth
 	flushSync();
 });
 
-test('a foreign label event moves nothing the server does not move (B4: server truth only)', async () => {
+test('a foreign label event moves nothing the server does not move (server truth only)', async () => {
 	vi.stubGlobal('fetch', stubFetch(unnamedRoutes()));
 	const page = mountPage();
 	await settle();

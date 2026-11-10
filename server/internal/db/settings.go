@@ -2,14 +2,14 @@
 // jsonb values leave the sqlc layer as bytes, and the interpretation
 // -- which key exists, what type it carries, what the default is --
 // belongs to a typed getter next to its consumers, not to every
-// call site. The trash retention (M2c Task 3) is the first consumer:
+// call site. The trash retention is the first consumer:
 // the trash listing's countdown and the expiry job's cutoff both
 // read the same value through this function. The settings feature
 // adds the trash retention's writer (the admin surface's save), the
 // storage template's read/write seam, and the video transcoding
 // profile's read/write pair (the transcode and thumbnail jobs'
-// preset source). The albums-as-sources milestone (E4) once added
-// the mount-root allowlist's pair here too; the E6 boundary ruling
+// preset source). The albums-as-sources rework once added
+// the mount-root allowlist's pair here too; the boundary ruling
 // retired it whole -- the compose file's mounts ARE the boundary
 // now, and no allowlist row remains for this table to interpret.
 package db

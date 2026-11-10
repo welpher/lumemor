@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { anchored } from './anchored';
 
-// The anchored floating layer (web IA §7.5's 2026-11-09 second
-// revision): the pickers' shared machinery -- portal to body,
+// The anchored floating layer: the pickers' shared machinery -- portal to body,
 // placement under the anchor with the anchor's width, the near-bottom
 // flip, the bounded max-height (long lists scroll internally), the
 // scroll/resize repositioning, and the destroy cleanup. The geometry

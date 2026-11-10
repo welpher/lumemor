@@ -1,4 +1,4 @@
-// The favorites and hidden views (M2c Task 4): the two curated
+// The favorites and hidden views: the two curated
 // timelines behind GET /assets/favorites and GET /assets/hidden.
 // Both answer TimelineItem pages through the timeline's own
 // machinery -- the same page-parameter validation, the same keyset

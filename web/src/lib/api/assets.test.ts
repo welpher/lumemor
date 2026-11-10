@@ -38,7 +38,7 @@ const detailBody = {
 	durationMs: null,
 	blurhash: 'UHL6aAof00WBWB00ayWB00',
 	livePhotoVideoId: null,
-	// The caller's tags array (M3d): part of the detail's fixed shape.
+	// The caller's tags array: part of the detail's fixed shape.
 	tags: [],
 	faces: [
 		{
@@ -153,7 +153,7 @@ test('the detail validator rejects broken faces arrays', async () => {
 	if (empty.ok) {
 		expect(empty.detail.faces).toEqual([]);
 	}
-	// The tags array joined the fixed shape (M3d): absent, null or a
+	// The tags array joined the fixed shape: absent, null or a
 	// malformed entry is not a detail.
 	expect(
 		await fetchAssetDetail(

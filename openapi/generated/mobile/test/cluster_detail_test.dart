@@ -13,7 +13,7 @@ void main() {
       // TODO
     });
 
-    // The caller's label of the cluster, or null when the caller has not labeled it (the unnamed state). It is the calling user's label or no label at all: another account's label never shows here (B4). 
+    // The caller's label of the cluster, or null when the caller has not labeled it (the unnamed state). It is the calling user's label or no label at all: another account's label never shows here. 
     // PersonLabel label
     test('to test the property `label`', () async {
       // TODO
