@@ -142,10 +142,7 @@
 			case 'person.merged':
 				return event.survivingClusterId === id || event.mergedClusterIds.includes(id);
 			case 'person.face_moved':
-				return (
-					event.clusterId === id ||
-					(detail?.faces.some((face) => face.id === event.faceId) ?? false)
-				);
+				return event.clusterId === id || (detail?.faces.some((face) => face.id === event.faceId) ?? false);
 		}
 	}
 
@@ -293,10 +290,7 @@
 		moveErrorKey = '';
 		moveLoading = true;
 		void (async () => {
-			const [peopleOutcome, unnamedOutcome] = await Promise.all([
-				listPeople(),
-				listUnnamedPeople(null)
-			]);
+			const [peopleOutcome, unnamedOutcome] = await Promise.all([listPeople(), listUnnamedPeople(null)]);
 			if (moveFaceId === null) {
 				return;
 			}
@@ -312,9 +306,7 @@
 
 	/** Locale-aware capture date of one face's asset. */
 	function dateLabel(takenAt: string): string {
-		return new Intl.DateTimeFormat($locale ?? 'en', { dateStyle: 'medium' }).format(
-			new Date(takenAt)
-		);
+		return new Intl.DateTimeFormat($locale ?? 'en', { dateStyle: 'medium' }).format(new Date(takenAt));
 	}
 
 	// The shared unknown-code fallback (a code with no i18n entry
@@ -364,31 +356,61 @@
 			href="/people"
 		>
 			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-				<path d="M14.5 6.5L8 12l6.5 5.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+				<path
+					d="M14.5 6.5L8 12l6.5 5.5"
+					stroke="currentColor"
+					stroke-width="1.75"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
-			{$_('nav_people')}</a>
+			{$_('nav_people')}</a
+		>
 	</div>
 
 	{#if firstLoad}
-		<p class="person-detail__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('people_loading')}</p>
+		<p class="person-detail__status my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('people_loading')}
+		</p>
 	{:else if status === 'error'}
-		<div class="person-detail__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="person-detail__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void convergeDetail()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void convergeDetail()}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else if detail !== null}
 		<header class="person-detail__header flex flex-wrap items-center gap-3 mb-3">
-			<h1 class="person-detail__title m-0 font-display font-bold text-[24px] leading-[1.3] text-text">{titleText}</h1>
+			<h1 class="person-detail__title m-0 font-display font-bold text-[24px] leading-[1.3] text-text">
+				{titleText}
+			</h1>
 			{#if hidden}
-				<span class="person-detail__badge inline-flex items-center px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">{$_('people_hidden_badge')}</span>
+				<span
+					class="person-detail__badge inline-flex items-center px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+					>{$_('people_hidden_badge')}</span
+				>
 			{/if}
 			<!-- The actions: naming (or renaming), the hidden toggle and
 			     the merge-into fold. -->
 			<div class="person-detail__actions ml-auto flex flex-wrap items-center gap-2">
 				{#if detail.label === null}
-					<Button onclick={() => { nameErrorKey = ''; nameDialogOpen = true; }}><PenLine size={20} aria-hidden="true" />{$_('people_detail_name_cta')}</Button>
+					<Button
+						onclick={() => {
+							nameErrorKey = '';
+							nameDialogOpen = true;
+						}}><PenLine size={20} aria-hidden="true" />{$_('people_detail_name_cta')}</Button
+					>
 				{:else}
-					<Button variant="ghost" onclick={() => { nameErrorKey = ''; nameDialogOpen = true; }}><PenLine size={20} aria-hidden="true" />{$_('people_rename_action')}</Button>
+					<Button
+						variant="ghost"
+						onclick={() => {
+							nameErrorKey = '';
+							nameDialogOpen = true;
+						}}><PenLine size={20} aria-hidden="true" />{$_('people_rename_action')}</Button
+					>
 				{/if}
 				<Button variant="ghost" disabled={writeBusy} onclick={() => void toggleHidden()}>
 					{#if hidden}
@@ -398,30 +420,47 @@
 					{/if}
 					{hidden ? $_('action_unhide') : $_('action_hide')}
 				</Button>
-				<Button variant="ghost" onclick={() => { mergeIntoErrorKey = ''; mergeIntoOpen = true; }}><GitMerge size={20} aria-hidden="true" />{$_('people_merge_into_action')}</Button>
+				<Button
+					variant="ghost"
+					onclick={() => {
+						mergeIntoErrorKey = '';
+						mergeIntoOpen = true;
+					}}><GitMerge size={20} aria-hidden="true" />{$_('people_merge_into_action')}</Button
+				>
 			</div>
 		</header>
 		{#if hidden}
 			<!-- Badge semantics, not a filter: the hidden person stays in
 			     the caller's list, flagged. -->
-			<p class="person-detail__notice my-0 mb-4 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('people_hidden_notice')}</p>
+			<p class="person-detail__notice my-0 mb-4 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+				{$_('people_hidden_notice')}
+			</p>
 		{/if}
 		{#if hideErrorKey !== ''}
 			<!-- The hidden toggle's honest failure: hiding rides on the
 			     label row, so an unlabeled cluster answers the
 			     requires-label message -- and the naming CTA above is the
 			     way out. -->
-			<p class="person-detail__hide-error my-0 mb-4 font-body font-medium text-[14px] leading-[1.5] text-danger-text" role="alert">{errorText(hideErrorKey)}</p>
+			<p
+				class="person-detail__hide-error my-0 mb-4 font-body font-medium text-[14px] leading-[1.5] text-danger-text"
+				role="alert"
+			>
+				{errorText(hideErrorKey)}
+			</p>
 		{/if}
 
-		<h2 class="person-detail__faces mt-4 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">{$_('people_detail_faces_heading')}</h2>
+		<h2 class="person-detail__faces mt-4 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">
+			{$_('people_detail_faces_heading')}
+		</h2>
 		<div class="person-detail__grid grid grid-cols-[repeat(auto-fill,minmax(min(200px,100%),1fr))] gap-3">
 			{#each detail.faces as face (face.id)}
 				<!-- One face: the crop links into the asset viewer at the
 				     face's asset (the IA's route-level viewer), the context
 				     carries the file name and the capture date, and the
 				     move button opens the single-face move dialog. -->
-				<div class="face-card group relative flex flex-col overflow-hidden rounded-card bg-card border border-border">
+				<div
+					class="face-card group relative flex flex-col overflow-hidden rounded-card bg-card border border-border"
+				>
 					<a
 						class="face-card__link relative block aspect-square bg-accent-soft"
 						href="/a/{encodeURIComponent(face.assetId)}"
@@ -438,8 +477,16 @@
 					</a>
 					<div class="face-card__meta flex items-center justify-between gap-2 px-3 py-2">
 						<div class="face-card__context min-w-0">
-							<p class="face-card__file m-0 font-body font-semibold text-[14px] leading-[1.4] text-text truncate">{face.asset.originalFilename}</p>
-							<p class="face-card__date m-0 font-body font-normal text-[13px] leading-[1.4] text-text-soft">{dateLabel(face.asset.takenAt)}</p>
+							<p
+								class="face-card__file m-0 font-body font-semibold text-[14px] leading-[1.4] text-text truncate"
+							>
+								{face.asset.originalFilename}
+							</p>
+							<p
+								class="face-card__date m-0 font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+							>
+								{dateLabel(face.asset.takenAt)}
+							</p>
 						</div>
 						<button
 							class="face-card__move inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
@@ -452,7 +499,13 @@
 							}}
 						>
 							<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-								<path d="M4 12h13M12.5 6.5L18 12l-5.5 5.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+								<path
+									d="M4 12h13M12.5 6.5L18 12l-5.5 5.5"
+									stroke="currentColor"
+									stroke-width="1.75"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 								<path d="M20 4.5v15" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
 							</svg>
 						</button>

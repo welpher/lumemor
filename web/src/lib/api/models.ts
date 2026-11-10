@@ -27,13 +27,7 @@ export type ModelSlotId = components['schemas']['ModelSlot'];
 
 // The clip_text slot is the search's semantic arm (the CLIP text
 // tower); it rides the same contract enum as the pipeline's slots.
-const MODEL_SLOTS: readonly string[] = [
-	'face_detect',
-	'face_recognize',
-	'clip_embed',
-	'clip_text',
-	'ocr'
-];
+const MODEL_SLOTS: readonly string[] = ['face_detect', 'face_recognize', 'clip_embed', 'clip_text', 'ocr'];
 
 const MODEL_SOURCES: readonly string[] = ['downloaded', 'custom'];
 
@@ -41,13 +35,10 @@ const MODELS_ENDPOINT = '/api/v1/admin/models';
 
 /** The listing's outcome: every model plus the download summary, or the failure's i18n key. */
 export type ModelListResult =
-	| { ok: true; models: AdminModel[]; download: JobRun | null }
-	| { ok: false; errorKey: string };
+	{ ok: true; models: AdminModel[]; download: JobRun | null } | { ok: false; errorKey: string };
 
 /** The download trigger's outcome: the joined or started run's id, or the failure's i18n key. */
-export type ModelDownloadResult =
-	| { ok: true; jobRunId: string }
-	| { ok: false; errorKey: string };
+export type ModelDownloadResult = { ok: true; jobRunId: string } | { ok: false; errorKey: string };
 
 /** The activation switch's outcome, with the destructive arm's facts when it ran. */
 export type ModelActivateResult =
@@ -60,14 +51,10 @@ export type ModelActivateResult =
 	| { ok: false; errorKey: string };
 
 /** The rerun trigger's outcome: the joined or started run's id, or the failure's i18n key. */
-export type ModelRerunResult =
-	| { ok: true; jobRunId: string }
-	| { ok: false; errorKey: string };
+export type ModelRerunResult = { ok: true; jobRunId: string } | { ok: false; errorKey: string };
 
 /** The custom scan's outcome: the models the scan registered, or the failure's i18n key. */
-export type ModelScanResult =
-	| { ok: true; registered: AdminModel[] }
-	| { ok: false; errorKey: string };
+export type ModelScanResult = { ok: true; registered: AdminModel[] } | { ok: false; errorKey: string };
 
 /** Structurally validate one model body; null when it is not one. */
 function modelFrom(body: unknown): AdminModel | null {
@@ -120,7 +107,10 @@ async function modelErrorKey(response: Response): Promise<string> {
 }
 
 /** Read and validate a 2xx body, or the failure outcome for it. */
-async function readJsonBody<T>(response: Response, validate: (body: unknown) => T | null): Promise<{ ok: true; value: T } | { ok: false; errorKey: string }> {
+async function readJsonBody<T>(
+	response: Response,
+	validate: (body: unknown) => T | null
+): Promise<{ ok: true; value: T } | { ok: false; errorKey: string }> {
 	let body: unknown;
 	try {
 		body = await response.json();
@@ -140,9 +130,7 @@ async function readJsonBody<T>(response: Response, validate: (body: unknown) => 
  * A 403 is the signed-in non-admin caller (auth_forbidden), not a
  * session failure.
  */
-export async function listModels(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<ModelListResult> {
+export async function listModels(fetcher: typeof fetch = globalThis.fetch): Promise<ModelListResult> {
 	let response: Response;
 	try {
 		response = await apiFetch(MODELS_ENDPOINT, undefined, fetcher);
@@ -188,16 +176,10 @@ export async function listModels(
  * most recent run answers 200 with its identifier, a first call 202
  * -- so both statuses are the same outcome for the caller.
  */
-export async function startModelDownload(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<ModelDownloadResult> {
+export async function startModelDownload(fetcher: typeof fetch = globalThis.fetch): Promise<ModelDownloadResult> {
 	let response: Response;
 	try {
-		response = await apiFetch(
-			`${MODELS_ENDPOINT}/download`,
-			{ method: 'POST' },
-			fetcher
-		);
+		response = await apiFetch(`${MODELS_ENDPOINT}/download`, { method: 'POST' }, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}
@@ -246,52 +228,57 @@ export async function activateModel(
 	if (!response.ok) {
 		return { ok: false, errorKey: await modelErrorKey(response) };
 	}
-	const parsed = await readJsonBody(response, (body): {
-		activated: { id: string; slot: ModelSlotId };
-		dimensionChanged?: { from: number; to: number };
-		wipedEmbeddings?: number;
-	} | null => {
-		if (body === null || typeof body !== 'object') {
-			return null;
-		}
-		const activated = (body as { activated?: unknown }).activated;
-		if (
-			activated === null ||
-			typeof activated !== 'object' ||
-			typeof (activated as { id?: unknown }).id !== 'string' ||
-			typeof (activated as { slot?: unknown }).slot !== 'string' ||
-			!MODEL_SLOTS.includes((activated as { slot: string }).slot)
-		) {
-			return null;
-		}
-		const result: {
+	const parsed = await readJsonBody(
+		response,
+		(
+			body
+		): {
 			activated: { id: string; slot: ModelSlotId };
 			dimensionChanged?: { from: number; to: number };
 			wipedEmbeddings?: number;
-		} = {
-			activated: activated as { id: string; slot: ModelSlotId }
-		};
-		const dimensionChanged = (body as { dimensionChanged?: unknown }).dimensionChanged;
-		if (dimensionChanged !== undefined) {
+		} | null => {
+			if (body === null || typeof body !== 'object') {
+				return null;
+			}
+			const activated = (body as { activated?: unknown }).activated;
 			if (
-				dimensionChanged === null ||
-				typeof dimensionChanged !== 'object' ||
-				typeof (dimensionChanged as { from?: unknown }).from !== 'number' ||
-				typeof (dimensionChanged as { to?: unknown }).to !== 'number'
+				activated === null ||
+				typeof activated !== 'object' ||
+				typeof (activated as { id?: unknown }).id !== 'string' ||
+				typeof (activated as { slot?: unknown }).slot !== 'string' ||
+				!MODEL_SLOTS.includes((activated as { slot: string }).slot)
 			) {
 				return null;
 			}
-			result.dimensionChanged = dimensionChanged as { from: number; to: number };
-		}
-		const wipedEmbeddings = (body as { wipedEmbeddings?: unknown }).wipedEmbeddings;
-		if (wipedEmbeddings !== undefined) {
-			if (typeof wipedEmbeddings !== 'number') {
-				return null;
+			const result: {
+				activated: { id: string; slot: ModelSlotId };
+				dimensionChanged?: { from: number; to: number };
+				wipedEmbeddings?: number;
+			} = {
+				activated: activated as { id: string; slot: ModelSlotId }
+			};
+			const dimensionChanged = (body as { dimensionChanged?: unknown }).dimensionChanged;
+			if (dimensionChanged !== undefined) {
+				if (
+					dimensionChanged === null ||
+					typeof dimensionChanged !== 'object' ||
+					typeof (dimensionChanged as { from?: unknown }).from !== 'number' ||
+					typeof (dimensionChanged as { to?: unknown }).to !== 'number'
+				) {
+					return null;
+				}
+				result.dimensionChanged = dimensionChanged as { from: number; to: number };
 			}
-			result.wipedEmbeddings = wipedEmbeddings;
+			const wipedEmbeddings = (body as { wipedEmbeddings?: unknown }).wipedEmbeddings;
+			if (wipedEmbeddings !== undefined) {
+				if (typeof wipedEmbeddings !== 'number') {
+					return null;
+				}
+				result.wipedEmbeddings = wipedEmbeddings;
+			}
+			return result;
 		}
-		return result;
-	});
+	);
 	if (!parsed.ok) {
 		return { ok: false, errorKey: parsed.errorKey };
 	}
@@ -304,17 +291,10 @@ export async function activateModel(
  * of the slot's kind still queued or running answers 200 with its
  * identifier, a first call 202 -- the same outcome for the caller.
  */
-export async function rerunModel(
-	id: string,
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<ModelRerunResult> {
+export async function rerunModel(id: string, fetcher: typeof fetch = globalThis.fetch): Promise<ModelRerunResult> {
 	let response: Response;
 	try {
-		response = await apiFetch(
-			`${MODELS_ENDPOINT}/${encodeURIComponent(id)}/rerun`,
-			{ method: 'POST' },
-			fetcher
-		);
+		response = await apiFetch(`${MODELS_ENDPOINT}/${encodeURIComponent(id)}/rerun`, { method: 'POST' }, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}
@@ -339,9 +319,7 @@ export async function rerunModel(
  * the server's models dir (verified against their pinned digests,
  * never activated). The 200 body reports what the scan registered.
  */
-export async function scanModels(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<ModelScanResult> {
+export async function scanModels(fetcher: typeof fetch = globalThis.fetch): Promise<ModelScanResult> {
 	let response: Response;
 	try {
 		response = await apiFetch(`${MODELS_ENDPOINT}/scan`, { method: 'POST' }, fetcher);
@@ -352,7 +330,11 @@ export async function scanModels(
 		return { ok: false, errorKey: await modelErrorKey(response) };
 	}
 	const parsed = await readJsonBody(response, (body): AdminModel[] | null => {
-		if (body === null || typeof body !== 'object' || !Array.isArray((body as { registered?: unknown }).registered)) {
+		if (
+			body === null ||
+			typeof body !== 'object' ||
+			!Array.isArray((body as { registered?: unknown }).registered)
+		) {
 			return null;
 		}
 		const models: AdminModel[] = [];

@@ -88,10 +88,17 @@
 		     dialog body; both stay locale-tracked through the reactive
 		     store reads of $_. -->
 		{#if boundViolated}
-			<p class="person-name-dialog__bound m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text">{$_('people_name_invalid')}</p>
+			<p class="person-name-dialog__bound m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text">
+				{$_('people_name_invalid')}
+			</p>
 		{/if}
 		{#if errorKey !== ''}
-			<p class="person-name-dialog__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{resolveErrorText($_, errorKey)}</p>
+			<p
+				class="person-name-dialog__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{resolveErrorText($_, errorKey)}
+			</p>
 		{/if}
 	</div>
 	{#snippet footer()}

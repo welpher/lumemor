@@ -108,9 +108,7 @@
 	// render under the path field with the invalid border; anything
 	// else renders as the dialog's general line.
 	const pathFailure = $derived(
-		errorKey !== '' && errorKey.startsWith('album_path_') && !pathViolated
-			? resolveErrorText($_, errorKey)
-			: ''
+		errorKey !== '' && errorKey.startsWith('album_path_') && !pathViolated ? resolveErrorText($_, errorKey) : ''
 	);
 	const generalFailure = $derived(
 		errorKey !== '' && !errorKey.startsWith('album_path_') ? resolveErrorText($_, errorKey) : ''
@@ -119,9 +117,7 @@
 	// The honest report's face (E6, §7.9): the landed create's own
 	// answers -- the skipped audience ids and the read-only probe
 	// fact -- hold the dialog until acknowledged.
-	const reportFace = $derived(
-		skipped !== null && (skipped.length > 0 || sourceWritable === false)
-	);
+	const reportFace = $derived(skipped !== null && (skipped.length > 0 || sourceWritable === false));
 
 	function submit(): void {
 		checked = true;
@@ -139,10 +135,20 @@
 		     fact, the write's own answers. -->
 		<div class="create-album__report flex flex-col gap-2">
 			{#if skipped !== null && skipped.length > 0}
-				<p class="create-album__report-skipped m-0 font-body font-semibold text-[15px] leading-[1.5] text-text" role="status">{$_('albums_create_report', { values: { count: skipped.length } })}</p>
+				<p
+					class="create-album__report-skipped m-0 font-body font-semibold text-[15px] leading-[1.5] text-text"
+					role="status"
+				>
+					{$_('albums_create_report', { values: { count: skipped.length } })}
+				</p>
 			{/if}
 			{#if sourceWritable === false}
-				<p class="create-album__report-readonly m-0 font-body font-medium text-[14px] leading-[1.5] text-text-soft" role="status">{$_('albums_create_readonly')}</p>
+				<p
+					class="create-album__report-readonly m-0 font-body font-medium text-[14px] leading-[1.5] text-text-soft"
+					role="status"
+				>
+					{$_('albums_create_readonly')}
+				</p>
 			{/if}
 		</div>
 	{:else}
@@ -170,7 +176,12 @@
 			<!-- ...the audience after: the add-style picker. -->
 			<AudienceField bind:members={audience} selfId={sessionUserId() ?? ''} {busy} />
 			{#if generalFailure !== ''}
-				<p class="create-album__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{generalFailure}</p>
+				<p
+					class="create-album__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+					role="alert"
+				>
+					{generalFailure}
+				</p>
 			{/if}
 		</div>
 	{/if}

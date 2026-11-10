@@ -67,16 +67,7 @@
 		onclear: () => void;
 	};
 
-	let {
-		count,
-		allFavorite,
-		errorKey,
-		busy,
-		actions,
-		onaddtag,
-		onaction,
-		onclear
-	}: Props = $props();
+	let { count, allFavorite, errorKey, busy, actions, onaddtag, onaction, onclear }: Props = $props();
 
 	// The default is the full set of the bar's buttons; a caller's
 	// subset keeps its order (the toggle, hide, unhide, trash,
@@ -103,7 +94,11 @@
 		role="toolbar"
 		aria-label={$_('batch_selected_count', { values: { count } })}
 	>
-		<p class="batchbar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap tabular-nums">{$_('batch_selected_count', { values: { count } })}</p>
+		<p
+			class="batchbar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap tabular-nums"
+		>
+			{$_('batch_selected_count', { values: { count } })}
+		</p>
 
 		{#if onaddtag !== undefined}
 			<IconButton
@@ -190,7 +185,12 @@
 		</IconButton>
 
 		{#if errorKey !== ''}
-			<p class="batchbar__error basis-full font-body font-normal text-[13px] leading-[1.4] text-danger-text text-center" role="alert">{errorText(errorKey)}</p>
+			<p
+				class="batchbar__error basis-full font-body font-normal text-[13px] leading-[1.4] text-danger-text text-center"
+				role="alert"
+			>
+				{errorText(errorKey)}
+			</p>
 		{/if}
 	</div>
 {/if}

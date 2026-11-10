@@ -170,10 +170,7 @@ const SOURCE_DIR = '/mnt/e2e-source/coastal-week';
 // owner+checksum dedup never links the two stories' rows.
 const RW_MOUNT_ROOT = '/mnt/e2e-source-rw';
 const RW_SEED_A = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-other.jpg');
-const RW_SEED_B = path.join(
-	repoRoot,
-	'server/internal/ml/testdata/face-portrait-other-second.jpg'
-);
+const RW_SEED_B = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-other-second.jpg');
 const RW_SOURCE_HOST_DIR = path.join(specDir, 'fixtures/m3-source-rw');
 
 // The two fixture photos the read-only album gathers (the source
@@ -259,9 +256,7 @@ test.beforeAll(async ({ playwright }) => {
 	await api.dispose();
 });
 
-test('scene 1: the administrator signs in and lands on the pinned My photos card', async ({
-	page
-}) => {
+test('scene 1: the administrator signs in and lands on the pinned My photos card', async ({ page }) => {
 	await page.goto('/login?redirectTo=%2Falbums');
 	await page.getByLabel('Email').fill(ADMIN_EMAIL);
 	await page.getByLabel('Password').fill(ADMIN_PASSWORD);
@@ -324,7 +319,7 @@ test.describe('the administrator scenes', () => {
 			.toBe('succeeded');
 	});
 
-	test('scene 3: the completion drills the container\'s real filesystem and never lists the managed tree', async ({
+	test("scene 3: the completion drills the container's real filesystem and never lists the managed tree", async ({
 		page
 	}) => {
 		await page.goto('/albums');
@@ -358,12 +353,8 @@ test.describe('the administrator scenes', () => {
 		// directory answers its config sibling alone -- the data tree
 		// (originals, derivatives, trash) has no row, ever.
 		await pathField.fill('/var/lib/lumemor/');
-		await expect(
-			suggest.getByRole('option', { name: '/var/lib/lumemor/config', exact: true })
-		).toBeVisible();
-		await expect(
-			suggest.getByRole('option', { name: '/var/lib/lumemor/data', exact: true })
-		).toHaveCount(0);
+		await expect(suggest.getByRole('option', { name: '/var/lib/lumemor/config', exact: true })).toBeVisible();
+		await expect(suggest.getByRole('option', { name: '/var/lib/lumemor/data', exact: true })).toHaveCount(0);
 
 		// The closing discipline (the keys footer's promise, walked):
 		// the list's Esc closes the list ALONE -- the dialog behind it
@@ -376,9 +367,7 @@ test.describe('the administrator scenes', () => {
 		await expect(dialog).toHaveCount(0);
 	});
 
-	test('scene 4: the read-only album\'s creation carries the probe\'s honest report face', async ({
-		page
-	}) => {
+	test("scene 4: the read-only album's creation carries the probe's honest report face", async ({ page }) => {
 		await page.goto('/albums');
 		await page.getByRole('button', { name: 'New album', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: 'New album', exact: true });
@@ -449,7 +438,7 @@ test.describe('the administrator scenes', () => {
 		expect(albumId).not.toBe('');
 	});
 
-	test('scene 5: the rescan converges the album\'s membership with the source', async ({ page }) => {
+	test("scene 5: the rescan converges the album's membership with the source", async ({ page }) => {
 		await page.goto(`/albums/${albumId}`);
 		await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
 		await expect(page.getByText('This album has no photos yet.')).toBeVisible();
@@ -458,16 +447,13 @@ test.describe('the administrator scenes', () => {
 		// (202 -- the freshly created run).
 		const rescanPosted = page.waitForResponse(
 			(response) =>
-				response.request().method() === 'POST' &&
-				response.url().endsWith(`/api/v1/albums/${albumId}/rescan`)
+				response.request().method() === 'POST' && response.url().endsWith(`/api/v1/albums/${albumId}/rescan`)
 		);
 		await page.getByRole('button', { name: 'Rescan', exact: true }).click();
 		const answer = await rescanPosted;
 		expect(answer.status()).toBe(202);
 		const runBody = (await answer.json()) as { jobRunId?: string };
-		expect(runBody.jobRunId).toMatch(
-			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-		);
+		expect(runBody.jobRunId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 
 		// The aria-live progress line converges through the job events
 		// the run publishes: the queued/running states pass, the
@@ -504,7 +490,7 @@ test.describe('the administrator scenes', () => {
 			.toBe(2);
 	});
 
-	test('scene 6: the task panel lists the rescan\'s row with its own label', async ({ page }) => {
+	test("scene 6: the task panel lists the rescan's row with its own label", async ({ page }) => {
 		await page.goto('/admin/jobs');
 		await expect(page.getByRole('heading', { level: 1, name: 'Jobs', exact: true })).toBeVisible();
 
@@ -519,7 +505,7 @@ test.describe('the administrator scenes', () => {
 		await expect(row.getByText('2 of 2 assets')).toBeVisible();
 	});
 
-	test('scene 7: the edit dialog\'s autonomy block rides the audience grant', async ({ page }) => {
+	test("scene 7: the edit dialog's autonomy block rides the audience grant", async ({ page }) => {
 		await page.goto(`/albums/${albumId}`);
 
 		// The PATCH collector: the save must write the audience PUT
@@ -527,10 +513,7 @@ test.describe('the administrator scenes', () => {
 		// against the live detail).
 		const patchUrls: string[] = [];
 		page.on('request', (request) => {
-			if (
-				request.method() === 'PATCH' &&
-				request.url().includes(`/api/v1/albums/${albumId}`)
-			) {
+			if (request.method() === 'PATCH' && request.url().includes(`/api/v1/albums/${albumId}`)) {
 				patchUrls.push(request.url());
 			}
 		});
@@ -578,9 +561,7 @@ test.describe('the administrator scenes', () => {
 		// The audience write's request shape: the FULL set, pinned
 		// against the real PUT the page sends.
 		const audiencePut = page.waitForRequest(
-			(request) =>
-				request.method() === 'PUT' &&
-				request.url().endsWith(`/api/v1/albums/${albumId}/audience`)
+			(request) => request.method() === 'PUT' && request.url().endsWith(`/api/v1/albums/${albumId}/audience`)
 		);
 		await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
 		const put = await audiencePut;
@@ -602,7 +583,9 @@ test.describe('the administrator scenes', () => {
 			page.getByRole('dialog', { name: 'Album properties', exact: true }).locator('.audience-field__chip')
 		).toContainText(MEMBER_EMAIL);
 		await expect(
-			page.getByRole('dialog', { name: 'Album properties', exact: true }).getByRole('button', { name: 'Add', exact: true })
+			page
+				.getByRole('dialog', { name: 'Album properties', exact: true })
+				.getByRole('button', { name: 'Add', exact: true })
 		).toBeDisabled();
 		await page
 			.getByRole('dialog', { name: 'Album properties', exact: true })
@@ -712,14 +695,7 @@ test.describe('the member viewer scenes', () => {
 		await expect(page.getByRole('link', { name: 'Download the original' })).toBeVisible();
 		const favorite = page.getByRole('button', { name: 'Favorite', exact: true });
 		await expect(favorite).toBeVisible();
-		for (const label of [
-			'Edit',
-			'Hide',
-			'Unhide',
-			'Trash',
-			'Restore',
-			'Delete permanently'
-		]) {
+		for (const label of ['Edit', 'Hide', 'Unhide', 'Trash', 'Restore', 'Delete permanently']) {
 			// The owner-only writes never render in either surface: no
 			// trash/restore in the BAR (the drawer never carried a
 			// curation button since the rework), no description edit.
@@ -741,7 +717,7 @@ test.describe('the member viewer scenes', () => {
 test.describe('the writable source scenes', () => {
 	test.use({ storageState: adminStatePath });
 
-	test('scene 10: the writable source\'s creation answers the probe\'s true fact and closes directly', async ({
+	test("scene 10: the writable source's creation answers the probe's true fact and closes directly", async ({
 		page
 	}) => {
 		await page.goto('/albums');
@@ -795,9 +771,7 @@ test.describe('the writable source scenes', () => {
 		expect(rwAlbumId).not.toBe('');
 	});
 
-	test('scene 11: the writable album\'s rescan converges and the deletability row renders', async ({
-		page
-	}) => {
+	test("scene 11: the writable album's rescan converges and the deletability row renders", async ({ page }) => {
 		await page.goto(`/albums/${rwAlbumId}`);
 		await expect(page.locator('h1.album-bar__title')).toHaveText(RW_ALBUM_TITLE);
 		await expect(page.getByText('This album has no photos yet.')).toBeVisible();
@@ -807,8 +781,7 @@ test.describe('the writable source scenes', () => {
 		// (the same walk as the read-only story's scene 5).
 		const rescanPosted = page.waitForResponse(
 			(response) =>
-				response.request().method() === 'POST' &&
-				response.url().endsWith(`/api/v1/albums/${rwAlbumId}/rescan`)
+				response.request().method() === 'POST' && response.url().endsWith(`/api/v1/albums/${rwAlbumId}/rescan`)
 		);
 		await page.getByRole('button', { name: 'Rescan', exact: true }).click();
 		const answer = await rescanPosted;
@@ -856,7 +829,7 @@ test.describe('the writable source scenes', () => {
 		await expect(dialog).toHaveCount(0);
 	});
 
-	test('scene 12: the deletable wall trashes through the selection bar and the trash view\'s restore returns the file', async ({
+	test("scene 12: the deletable wall trashes through the selection bar and the trash view's restore returns the file", async ({
 		page
 	}) => {
 		await page.goto(`/albums/${rwAlbumId}`);
@@ -867,9 +840,7 @@ test.describe('the writable source scenes', () => {
 		// the server-derived `deletable` face -- owner AND writable
 		// AND the switch AND unlocked, all four): the hover-reveal
 		// check is the selection entry, one click selects the tile.
-		await page
-			.getByRole('checkbox', { name: `Select: ${PHOTO_RW_A_NAME}`, exact: true })
-			.click();
+		await page.getByRole('checkbox', { name: `Select: ${PHOTO_RW_A_NAME}`, exact: true }).click();
 
 		// The batch bar rises with the DELETE-ONLY subset: Trash is
 		// the one action it offers (the album's wall curates deletion
@@ -889,9 +860,7 @@ test.describe('the writable source scenes', () => {
 		// external lifecycle's own delete, the operating system's
 		// authority over a writable source.
 		const batchPosted = page.waitForResponse(
-			(response) =>
-				response.request().method() === 'POST' &&
-				response.url().endsWith('/api/v1/assets/batch')
+			(response) => response.request().method() === 'POST' && response.url().endsWith('/api/v1/assets/batch')
 		);
 		await bar.getByRole('button', { name: 'Trash', exact: true }).click();
 		const batch = await batchPosted;

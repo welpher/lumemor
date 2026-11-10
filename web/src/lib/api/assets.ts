@@ -38,17 +38,13 @@ export type AssetFaceSummary = components['schemas']['AssetFaceSummary'];
 export type AssetPatch = components['schemas']['AssetPatch'];
 
 /** A detail-bearing call's outcome: the detail, or the failure's i18n key. */
-export type AssetDetailResult =
-	| { ok: true; detail: AssetDetail }
-	| { ok: false; errorKey: string };
+export type AssetDetailResult = { ok: true; detail: AssetDetail } | { ok: false; errorKey: string };
 
 /** A stateless mutation's outcome (DELETE), or a batch run's. */
 export type AssetMutationResult = { ok: true } | { ok: false; errorKey: string };
 
 /** The batch endpoint's success report (affected ids, unresolvable ids). */
-export type AssetBatchResult =
-	| { ok: true; affected: number; missing: string[] }
-	| { ok: false; errorKey: string };
+export type AssetBatchResult = { ok: true; affected: number; missing: string[] } | { ok: false; errorKey: string };
 
 /** The serving sizes of the thumbnail endpoint, the contract's enum. */
 export type ThumbnailSize = 'tile' | 'view' | 'original';
@@ -245,17 +241,10 @@ export async function patchAsset(
  * is already gone -- the same already-cleaned reading the upload
  * queue's save-as path pins -- so the caller treats it as success.
  */
-export async function deleteAsset(
-	id: string,
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<AssetMutationResult> {
+export async function deleteAsset(id: string, fetcher: typeof fetch = globalThis.fetch): Promise<AssetMutationResult> {
 	let response: Response;
 	try {
-		response = await apiFetch(
-			`/api/v1/assets/${encodeURIComponent(id)}`,
-			{ method: 'DELETE' },
-			fetcher
-		);
+		response = await apiFetch(`/api/v1/assets/${encodeURIComponent(id)}`, { method: 'DELETE' }, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}

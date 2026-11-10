@@ -18,12 +18,7 @@ import Page from './+page.svelte';
 // to list). A non-admin caller sees the mapped auth_forbidden
 // message (the page's own read is the probe).
 
-const presets = [
-	'{{y}}/{{MM}}/{{filename}}',
-	'{{y}}/{{y}}-{{MM}}/{{filename}}',
-	'{{assetId}}',
-	'{{filename}}'
-];
+const presets = ['{{y}}/{{MM}}/{{filename}}', '{{y}}/{{y}}-{{MM}}/{{filename}}', '{{assetId}}', '{{filename}}'];
 
 function settingsBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
@@ -246,8 +241,7 @@ test('a successful save adopts the response and shows the saved note', async () 
 							200,
 							settingsBody({
 								template: '{{make}}/{{model}}/{{filename}}',
-								samplePath:
-									'originals/0192f8c1-0000-7000-8000-000000000001/Acme/Alpha 5/IMG_1234.jpg'
+								samplePath: 'originals/0192f8c1-0000-7000-8000-000000000001/Acme/Alpha 5/IMG_1234.jpg'
 							})
 						)
 					: jsonResponse(200, settingsBody())
@@ -298,8 +292,7 @@ test('the trash section renders the retention and saves the PUT body', async () 
 
 	const put = fetchMock.mock.calls.find(
 		(call) =>
-			String(call[0]).endsWith('/admin/settings/trash') &&
-			(call[1] as RequestInit | undefined)?.method === 'PUT'
+			String(call[0]).endsWith('/admin/settings/trash') && (call[1] as RequestInit | undefined)?.method === 'PUT'
 	);
 	expect(put).toBeDefined();
 	expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({ retentionDays: 0 });
@@ -322,9 +315,7 @@ test('the transcoding section renders the defaults and saves the PUT body', asyn
 	await settle();
 
 	const preset = document.body.querySelector<HTMLSelectElement>('[data-testid="transcode-preset"]');
-	const concurrency = document.body.querySelector<HTMLSelectElement>(
-		'[data-testid="transcode-concurrency"]'
-	);
+	const concurrency = document.body.querySelector<HTMLSelectElement>('[data-testid="transcode-concurrency"]');
 	const thumbnail = document.body.querySelector<HTMLInputElement>('[data-testid="transcode-thumbnail-frame"]');
 	const keep = document.body.querySelector<HTMLInputElement>('[data-testid="transcode-keep-original"]');
 	expect(preset?.value).toBe('auto');

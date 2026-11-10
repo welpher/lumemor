@@ -215,25 +215,43 @@
 	     sees the affordance). -->
 	{#if adminSession}
 		<div class="albums__toolbar flex justify-end items-center mb-3">
-			<Button onclick={() => { createErrorKey = ''; createSkipped = null; createWritable = null; createOpen = true; }}><Plus size={20} aria-hidden="true" />{$_('albums_new')}</Button>
+			<Button
+				onclick={() => {
+					createErrorKey = '';
+					createSkipped = null;
+					createWritable = null;
+					createOpen = true;
+				}}><Plus size={20} aria-hidden="true" />{$_('albums_new')}</Button
+			>
 		</div>
 	{/if}
 
 	{#if firstLoad}
-		<p class="albums__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('albums_loading')}</p>
+		<p class="albums__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('albums_loading')}
+		</p>
 	{:else if settledEmpty}
-		<div class="albums__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+		<div
+			class="albums__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+		>
 			<h1 class="text-[22px] mb-2">{$_('albums_title')}</h1>
 			<p class="text-text-soft">{$_('albums_empty')}</p>
 		</div>
 	{:else if status === 'error' && albums.length === 0}
-		<div class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else}
 		<section class="albums__own-section">
-			<h1 class="albums__section-title mt-2 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">{$_('albums_own_section')}</h1>
+			<h1 class="albums__section-title mt-2 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">
+				{$_('albums_own_section')}
+			</h1>
 			<div class="albums__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
 				{#each ownAlbums as album (album.id)}
 					{@render card(album)}
@@ -242,7 +260,9 @@
 		</section>
 		{#if sharedAlbums.length > 0}
 			<section class="albums__shared-section">
-				<h2 class="albums__section-title mt-6 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">{$_('albums_shared_section')}</h2>
+				<h2 class="albums__section-title mt-6 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">
+					{$_('albums_shared_section')}
+				</h2>
 				<div class="albums__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
 					{#each sharedAlbums as album (album.id)}
 						{@render card(album)}
@@ -255,9 +275,14 @@
 	{#if status === 'error' && albums.length > 0}
 		<!-- A failed convergence while cards exist: the page stays, the
 		     next event retries; the box keeps the retry affordance. -->
-		<div class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{/if}
 </section>
@@ -269,7 +294,12 @@
 		class="album-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
 		href="/albums/{encodeURIComponent(album.id)}"
 	>
-		<span class="album-card__cover {coverClass(album.coverAssetIds.length)} relative block aspect-[4/3] bg-accent-soft" aria-hidden="true">
+		<span
+			class="album-card__cover {coverClass(
+				album.coverAssetIds.length
+			)} relative block aspect-[4/3] bg-accent-soft"
+			aria-hidden="true"
+		>
 			{#if album.coverAssetIds.length === 1}
 				<img
 					class="absolute inset-0 w-full h-full object-cover"
@@ -284,7 +314,11 @@
 				     columns, the quad fills the 2x2 grid. -->
 				<span class="album-card__cells grid grid-cols-2 absolute inset-0">
 					{#each album.coverAssetIds.slice(0, 4) as coverId, index (coverId)}
-						<span class="album-card__cell {album.coverAssetIds.length === 3 && index === 2 ? 'album-card__cell--wide col-span-2' : ''} overflow-hidden">
+						<span
+							class="album-card__cell {album.coverAssetIds.length === 3 && index === 2
+								? 'album-card__cell--wide col-span-2'
+								: ''} overflow-hidden"
+						>
 							<img
 								class="w-full h-full object-cover"
 								src={`/api/v1/assets/${encodeURIComponent(coverId)}/thumbnail?size=tile`}
@@ -300,33 +334,72 @@
 				<!-- A bare album: the honest placeholder, no requests. -->
 				<span class="album-card__placeholder absolute inset-0 grid place-items-center text-text-faint">
 					<svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-						<path d="M4 7c0-1.1.9-2 2-2l1.7.0a2 2 0 0 1 1.7 1l.8 1.4a2 2 0 0 0 1.7 1H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+						<path
+							d="M4 7c0-1.1.9-2 2-2l1.7.0a2 2 0 0 1 1.7 1l.8 1.4a2 2 0 0 0 1.7 1H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linejoin="round"
+						/>
 					</svg>
 				</span>
 			{/if}
 		</span>
 		<span class="album-card__caption flex flex-col gap-0.5 px-3 py-2.5">
-			<span class="album-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate">{cardTitle(album)}</span>
+			<span class="album-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
+				>{cardTitle(album)}</span
+			>
 			{#if album.owner !== undefined}
-				<span class="album-card__owner font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate">{$_('albums_shared_by', { values: { email: album.owner.email } })}</span>
+				<span class="album-card__owner font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
+					>{$_('albums_shared_by', { values: { email: album.owner.email } })}</span
+				>
 			{/if}
 			<span class="album-card__meta flex items-center gap-1.5 mt-0.5">
-				<span class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums">{$_('albums_photo_count', { values: { count: album.itemCount } })}</span>
+				<span
+					class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
+					>{$_('albums_photo_count', { values: { count: album.itemCount } })}</span
+				>
 				{#if album.locked}
-					<span class="album-card__badge album-card__badge--locked inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">
+					<span
+						class="album-card__badge album-card__badge--locked inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+					>
 						<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
-							<rect x="5" y="10.5" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.75" />
-							<path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+							<rect
+								x="5"
+								y="10.5"
+								width="14"
+								height="9"
+								rx="2"
+								stroke="currentColor"
+								stroke-width="1.75"
+							/>
+							<path
+								d="M8 10.5V8a4 4 0 0 1 8 0v2.5"
+								stroke="currentColor"
+								stroke-width="1.75"
+								stroke-linecap="round"
+							/>
 						</svg>
 						{$_('albums_locked_badge')}
 					</span>
 				{/if}
 				{#if album.isShared}
-					<span class="album-card__badge album-card__badge--shared inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">
+					<span
+						class="album-card__badge album-card__badge--shared inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+					>
 						<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
 							<circle cx="9" cy="8.5" r="3.25" stroke="currentColor" stroke-width="1.75" />
-							<path d="M3.5 19c.9-2.8 3-4.2 5.5-4.2s4.6 1.4 5.5 4.2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
-							<path d="M16 5.6a3.25 3.25 0 0 1 0 5.8M17.5 14.9c2 .5 3.4 1.8 4 4.1" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+							<path
+								d="M3.5 19c.9-2.8 3-4.2 5.5-4.2s4.6 1.4 5.5 4.2"
+								stroke="currentColor"
+								stroke-width="1.75"
+								stroke-linecap="round"
+							/>
+							<path
+								d="M16 5.6a3.25 3.25 0 0 1 0 5.8M17.5 14.9c2 .5 3.4 1.8 4 4.1"
+								stroke="currentColor"
+								stroke-width="1.75"
+								stroke-linecap="round"
+							/>
 						</svg>
 						{$_('albums_shared_badge')}
 					</span>
@@ -334,10 +407,18 @@
 				{#if album.inTimeline === false}
 					<!-- The muted clock: the caller's own preference keeps this
 					     album's photos out of their aggregated timeline. -->
-					<span class="album-card__badge album-card__badge--excluded inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">
+					<span
+						class="album-card__badge album-card__badge--excluded inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+					>
 						<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
 							<circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.75" />
-							<path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+							<path
+								d="M12 7.5V12l3 2"
+								stroke="currentColor"
+								stroke-width="1.75"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
 						</svg>
 						{$_('albums_excluded_badge')}
 					</span>

@@ -94,8 +94,7 @@ function searchRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
 		'/api/v1/search?locale=en&limit=100': () =>
 			jsonResponse(200, { items: pageOne, nextCursor: 'C1', facets: facetsBody }),
-		'/api/v1/search?locale=en&limit=100&cursor=C1': () =>
-			jsonResponse(200, { items: pageTwo, facets: facetsBody }),
+		'/api/v1/search?locale=en&limit=100&cursor=C1': () => jsonResponse(200, { items: pageTwo, facets: facetsBody }),
 		...overrides
 	};
 }
@@ -147,7 +146,10 @@ beforeEach(async () => {
 	pageState.url = new URL('http://localhost/search');
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -197,9 +199,7 @@ test('no query opens the filter browse: the month-grouped wall, the chips, the c
 	// "so far") and the facet note.
 	const meta = document.body.querySelector('.search-meta');
 	expect(meta?.textContent).toContain('3 results so far');
-	expect(meta?.textContent).toContain(
-		"Each filter's count shows the photos the other filters leave visible."
-	);
+	expect(meta?.textContent).toContain("Each filter's count shows the photos the other filters leave visible.");
 
 	unmount(page);
 	flushSync();
@@ -217,10 +217,7 @@ test('a text query renders the flat justified wall: rank order, no month or day 
 	const page = mountPage();
 	await settle();
 
-	expect(fetchMock).toHaveBeenCalledWith(
-		'/api/v1/search?query=%E6%B5%B7%E8%BE%B9&locale=en&limit=100',
-		undefined
-	);
+	expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?query=%E6%B5%B7%E8%BE%B9&locale=en&limit=100', undefined);
 	// QUERY mode: the flat wall -- no month or day grouping (the
 	// grouping would lie about the rank order).
 	expect(document.body.querySelectorAll('.flat-wall')).toHaveLength(1);
@@ -426,8 +423,7 @@ test('an SSE event re-executes the current search (the refetch is the convergenc
 test('the locale rides the request (the places facet display names)', async () => {
 	const fetchMock = stubFetch(
 		searchRoutes({
-			'/api/v1/search?locale=zh-Hans&limit=100': () =>
-				jsonResponse(200, { items: pageOne, facets: facetsBody })
+			'/api/v1/search?locale=zh-Hans&limit=100': () => jsonResponse(200, { items: pageOne, facets: facetsBody })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);

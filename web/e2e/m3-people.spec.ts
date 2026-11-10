@@ -84,15 +84,9 @@ const ADMIN_PASSWORD = 'correct-horse-battery';
 // comment's seeding note).
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const PORTRAIT_A1 = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait.jpg');
-const PORTRAIT_A2 = path.join(
-	repoRoot,
-	'server/internal/ml/testdata/face-portrait-orientation6.jpg'
-);
+const PORTRAIT_A2 = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-orientation6.jpg');
 const PORTRAIT_B1 = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-other.jpg');
-const PORTRAIT_B2 = path.join(
-	repoRoot,
-	'server/internal/ml/testdata/face-portrait-other-second.jpg'
-);
+const PORTRAIT_B2 = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-other-second.jpg');
 
 // The uploaded file names (the detail's asset context renders them).
 const PHOTO_A1_NAME = 'IMG_M3B_0001.jpg';
@@ -162,9 +156,7 @@ test('scene 1: signing in through the form lands on the empty people page', asyn
 
 	// The empty state carries the honest copy and the unnamed
 	// region's entry (the naming main path lives there).
-	await expect(
-		page.getByRole('heading', { level: 1, name: 'People', exact: true })
-	).toBeVisible();
+	await expect(page.getByRole('heading', { level: 1, name: 'People', exact: true })).toBeVisible();
 	await expect(page.getByText('No people yet. Photos with faces will show up here.')).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Unnamed', exact: true })).toBeVisible();
 
@@ -269,16 +261,12 @@ test.describe('the signed-in scenes', () => {
 		}
 		const pairA = [PHOTO_A1_NAME, PHOTO_A2_NAME];
 		const pairB = [PHOTO_B1_NAME, PHOTO_B2_NAME];
-		expect(
-			faceSets.some(
-				(set) => set.every((name) => pairA.includes(name)) && set.length === pairA.length
-			)
-		).toBe(true);
-		expect(
-			faceSets.some(
-				(set) => set.every((name) => pairB.includes(name)) && set.length === pairB.length
-			)
-		).toBe(true);
+		expect(faceSets.some((set) => set.every((name) => pairA.includes(name)) && set.length === pairA.length)).toBe(
+			true
+		);
+		expect(faceSets.some((set) => set.every((name) => pairB.includes(name)) && set.length === pairB.length)).toBe(
+			true
+		);
 		const samePerson = clusters.find((cluster) => {
 			const set = faceSets[clusters.indexOf(cluster)];
 			return set.every((name) => pairA.includes(name));
@@ -337,9 +325,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.face-card')).toHaveCount(2);
 		await expect(page.getByText(PHOTO_A1_NAME)).toBeVisible();
 		await expect(page.getByText(PHOTO_A2_NAME)).toBeVisible();
-		await expect(
-			page.getByRole('link', { name: `Face in ${PHOTO_A1_NAME}`, exact: true })
-		).toBeVisible();
+		await expect(page.getByRole('link', { name: `Face in ${PHOTO_A1_NAME}`, exact: true })).toBeVisible();
 		await expect(page.getByRole('link', { name: 'People', exact: true })).toBeVisible();
 	});
 

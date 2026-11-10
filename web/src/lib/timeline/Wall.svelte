@@ -141,13 +141,7 @@
 		onaddtag?: (ids: readonly string[], done: () => void) => void;
 	};
 
-	let {
-		items,
-		selectMode = $bindable(false),
-		onbatch,
-		actions,
-		onaddtag
-	}: Props = $props();
+	let { items, selectMode = $bindable(false), onbatch, actions, onaddtag }: Props = $props();
 
 	// The selection is the wall's own reactive id set: the tiles'
 	// check affordances toggle it (the entry, R2-11: the check
@@ -427,44 +421,52 @@
 		     rides the pinned-offset var (0 unless a page's own bar
 		     pins over the wall). -->
 		<section class="wall__month scroll-mt-[calc(92px_+_var(--wall-sticky-offset,0px))]" data-month-key={month.key}>
-			<h2 class="wall__month-header sticky top-[var(--wall-sticky-offset,0px)] z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page">{month.label}</h2>
+			<h2
+				class="wall__month-header sticky top-[var(--wall-sticky-offset,0px)] z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page"
+			>
+				{month.label}
+			</h2>
 			<!-- The day blocks flow horizontally and wrap (the reference
 			     timeline's shape): a day is a header plus its justified
 			     stack at its own width, and sparse dates sit beside their
 			     neighbors instead of leaving a hole. -->
 			<div class="wall__day-flow flex flex-wrap gap-3">
-			{#each month.days as day (day.key)}
-				<div class="wall__day shrink-0" data-day-key={day.key} style="width:{day.width}px">
-					<h3 class="wall__day-header mt-1 mb-1.5 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft">{day.label}</h3>
-					{#each day.rows as row, rowIndex (rowIndex)}
-						<!-- The row's height is the engine's exact math; the
+				{#each month.days as day (day.key)}
+					<div class="wall__day shrink-0" data-day-key={day.key} style="width:{day.width}px">
+						<h3
+							class="wall__day-header mt-1 mb-1.5 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft"
+						>
+							{day.label}
+						</h3>
+						{#each day.rows as row, rowIndex (rowIndex)}
+							<!-- The row's height is the engine's exact math; the
 						     seam rides the row's gap so the widths plus the
 						     gaps fill the container. Offscreen rows skip their
 						     tiles' layout and paint (the height is style-pinned,
 						     so the scrollbar stays honest). -->
-						<div
-							class="wall__row flex [content-visibility:auto]"
-							style="height:{row.height}px; gap:{WALL_TILE_SEAM}px"
-						>
-							{#each row.tiles as tile (tile.item.id)}
-								<div class="wall__cell shrink-0" style="width:{tile.width}px">
-									<!-- The capability gate rides the onselect hand-off: a
+							<div
+								class="wall__row flex [content-visibility:auto]"
+								style="height:{row.height}px; gap:{WALL_TILE_SEAM}px"
+							>
+								{#each row.tiles as tile (tile.item.id)}
+									<div class="wall__cell shrink-0" style="width:{tile.width}px">
+										<!-- The capability gate rides the onselect hand-off: a
 									     wall with no onbatch runner passes no toggle, so
 									     PhotoTile renders no check at all (the pure
 									     navigation walls); a curatable wall always passes
 									     it and the reveal rides the selectable state. -->
-									<PhotoTile
-										item={tile.item}
-										selected={selection.has(tile.item.id)}
-										selectable={selectable}
-										onselect={onbatch !== undefined ? toggleSelected : undefined}
-									/>
-								</div>
-							{/each}
-						</div>
-					{/each}
-				</div>
-			{/each}
+										<PhotoTile
+											item={tile.item}
+											selected={selection.has(tile.item.id)}
+											{selectable}
+											onselect={onbatch !== undefined ? toggleSelected : undefined}
+										/>
+									</div>
+								{/each}
+							</div>
+						{/each}
+					</div>
+				{/each}
 			</div>
 		</section>
 	{/each}
@@ -474,7 +476,13 @@
      rendering and the rail are one thing). The scrubber is
      viewport-fixed, so it renders from any wall depth; its empty
      months guard hides it for an empty wall. -->
-<MonthScrubber {months} activeKey={activeMonthKey} progress={scrollProgress} onjump={jumpToMonth} onscrub={handleRailScrub} />
+<MonthScrubber
+	{months}
+	activeKey={activeMonthKey}
+	progress={scrollProgress}
+	onjump={jumpToMonth}
+	onscrub={handleRailScrub}
+/>
 
 <!-- THE BOTTOM BATCH BAR (the 2026-11-08 selection pin's last
      organ): the wall composes the presentation-only bar whenever
@@ -486,7 +494,7 @@
 {#if selection.size > 0}
 	<BatchBar
 		count={selection.size}
-		allFavorite={allFavorite}
+		{allFavorite}
 		errorKey={batchErrorKey}
 		busy={batchBusy}
 		{actions}

@@ -93,7 +93,9 @@
 		<div class="login__card w-[min(400px,100%)]">
 			<Card>
 				<h1 class="login__title mb-1 font-display font-bold text-[26px] text-text">{$_('login_title')}</h1>
-				<p class="login__description mb-5 font-body font-normal text-[15px] leading-[1.5] text-text-soft">{$_('login_description')}</p>
+				<p class="login__description mb-5 font-body font-normal text-[15px] leading-[1.5] text-text-soft">
+					{$_('login_description')}
+				</p>
 				<form class="login__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
 					<Input
 						id="login-email"
@@ -110,24 +112,43 @@
 						bind:value={password}
 					/>
 					{#if errorKey !== ''}
-						<p class="login__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(errorKey)}</p>
+						<p
+							class="login__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(errorKey)}
+						</p>
 					{/if}
 					{#if retryAfterSeconds !== null && countdownRemaining > 0}
 						<!-- The hint's lifetime is retryAfterSeconds (the response's
 						     authoritative rate-limit state): a resubmit nulls it, so a
 						     credential-failure outcome can never leave a frozen
 						     countdown next to its own message. -->
-						<p class="login__hint font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums">{$_('login_retry_in', { values: { seconds: countdownRemaining } })}</p>
+						<p
+							class="login__hint font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums"
+						>
+							{$_('login_retry_in', { values: { seconds: countdownRemaining } })}
+						</p>
 					{/if}
 					<div class="login__actions flex justify-end mt-1">
-						<Button type="submit" disabled={submitting}><LogIn size={20} aria-hidden="true" />{$_('login_submit')}</Button>
+						<Button type="submit" disabled={submitting}
+							><LogIn size={20} aria-hidden="true" />{$_('login_submit')}</Button
+						>
 					</div>
 				</form>
 			</Card>
 		</div>
 		<!-- Placeholder notes for the mobile pairing entry (the web IA's
 		     bottom note); the QR flow is a later milestone's scope. -->
-		<p class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center">{$_('login_pairing_qr_note')}</p>
-		<p class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center">{$_('login_pairing_url_note')}</p>
+		<p
+			class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center"
+		>
+			{$_('login_pairing_qr_note')}
+		</p>
+		<p
+			class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center"
+		>
+			{$_('login_pairing_url_note')}
+		</p>
 	</main>
 {/if}

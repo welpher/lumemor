@@ -102,10 +102,7 @@
 	// The candidates: every account minus the draft's members (they
 	// are chips) minus the caller (the owner never needs a row).
 	const candidates = $derived(
-		users.filter(
-			(user) =>
-				user.id !== selfId && !members.some((member) => member.userId === user.id)
-		)
+		users.filter((user) => user.id !== selfId && !members.some((member) => member.userId === user.id))
 	);
 
 	// The add affordance's honest disabled state (§7.6's pin): the
@@ -255,15 +252,24 @@
 </script>
 
 <section class="audience-field border-t border-border pt-3" aria-label={$_('albums_audience_label')}>
-	<p class="audience-field__label m-0 mb-2 font-body font-semibold text-[14px] leading-[1.4] text-text">{$_('albums_audience_label')}</p>
+	<p class="audience-field__label m-0 mb-2 font-body font-semibold text-[14px] leading-[1.4] text-text">
+		{$_('albums_audience_label')}
+	</p>
 	<div class="audience-field__chips flex flex-wrap items-center gap-2" bind:this={chipsRow}>
 		{#if members.length === 0}
 			<!-- The honest empty audience: only the caller themselves. -->
-			<p class="audience-field__only-me m-0 font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('albums_audience_only_me')}</p>
+			<p class="audience-field__only-me m-0 font-body font-normal text-[13px] leading-[1.4] text-text-faint">
+				{$_('albums_audience_only_me')}
+			</p>
 		{:else}
 			{#each members as member (member.userId)}
-				<span class="audience-field__chip inline-flex items-center gap-1.5 py-1 ps-1 pe-1.5 bg-accent-soft text-accent-soft-text rounded-full font-body font-bold text-[13px] leading-[1.4]">
-					<span class="audience-field__chip-avatar w-5 h-5 rounded-full bg-accent text-white flex items-center justify-center text-[10px] leading-none font-bold shrink-0" aria-hidden="true">{initialOf(member.email)}</span>
+				<span
+					class="audience-field__chip inline-flex items-center gap-1.5 py-1 ps-1 pe-1.5 bg-accent-soft text-accent-soft-text rounded-full font-body font-bold text-[13px] leading-[1.4]"
+				>
+					<span
+						class="audience-field__chip-avatar w-5 h-5 rounded-full bg-accent text-white flex items-center justify-center text-[10px] leading-none font-bold shrink-0"
+						aria-hidden="true">{initialOf(member.email)}</span
+					>
 					<span class="audience-field__chip-name truncate">{member.email}</span>
 					<!-- The chip's remove mark: the one action button among
 					     the state-selector shapes, icon-only and named. -->
@@ -304,8 +310,12 @@
 	     note appears and disappears INSIDE it, so the dialog's
 	     height never moves for the note. -->
 	<p
-		class="audience-field__slot m-0 mt-2 h-[19px] font-body font-normal text-[13px] leading-[1.4] text-text-faint {poolEmpty ? 'audience-field__no-candidates' : ''}"
-	>{poolEmpty ? $_('albums_audience_no_candidates') : ''}</p>
+		class="audience-field__slot m-0 mt-2 h-[19px] font-body font-normal text-[13px] leading-[1.4] text-text-faint {poolEmpty
+			? 'audience-field__no-candidates'
+			: ''}"
+	>
+		{poolEmpty ? $_('albums_audience_no_candidates') : ''}
+	</p>
 	{#if open}
 		<!-- THE FLOATING LAYER (§7.5's 2026-11-09 second revision): the
 		     candidate block portals to document.body as a fixed layer
@@ -327,9 +337,19 @@
 			onkeydown={handleKeydown}
 		>
 			{#if loading}
-				<p class="audience-field__loading m-0 px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('albums_audience_loading')}</p>
+				<p
+					class="audience-field__loading m-0 px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in"
+					role="status"
+				>
+					{$_('albums_audience_loading')}
+				</p>
 			{:else if failed}
-				<p class="audience-field__failed m-0 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-danger-text" role="alert">{$_('albums_audience_failed')}</p>
+				<p
+					class="audience-field__failed m-0 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-danger-text"
+					role="alert"
+				>
+					{$_('albums_audience_failed')}
+				</p>
 			{:else}
 				{#each candidates as candidate, index (candidate.id)}
 					<!-- The candidate row: a state selector, not an action
@@ -338,7 +358,10 @@
 					     its honest note and stays pickable (the server's
 					     skip report is the authority). -->
 					<div
-						class="audience-field__row flex items-center gap-2.5 px-3 py-2 font-body font-normal text-[14px] leading-[1.4] cursor-pointer {index === activeIndex ? 'bg-accent-soft text-accent-soft-text' : 'text-text'}"
+						class="audience-field__row flex items-center gap-2.5 px-3 py-2 font-body font-normal text-[14px] leading-[1.4] cursor-pointer {index ===
+						activeIndex
+							? 'bg-accent-soft text-accent-soft-text'
+							: 'text-text'}"
 						id="audience-field-option-{index}"
 						role="option"
 						tabindex="-1"
@@ -348,14 +371,24 @@
 							add(index);
 						}}
 					>
-						<span class="audience-field__row-avatar w-7 h-7 rounded-full bg-accent-soft text-accent-soft-text flex items-center justify-center text-[12px] leading-none font-bold shrink-0" aria-hidden="true">{initialOf(candidate.email)}</span>
+						<span
+							class="audience-field__row-avatar w-7 h-7 rounded-full bg-accent-soft text-accent-soft-text flex items-center justify-center text-[12px] leading-none font-bold shrink-0"
+							aria-hidden="true">{initialOf(candidate.email)}</span
+						>
 						<span class="audience-field__row-name truncate">{candidate.email}</span>
 						{#if candidate.isDisabled}
-							<span class="audience-field__row-note font-body font-normal text-[12px] leading-[1.4] {index === activeIndex ? 'text-accent-soft-text' : 'text-text-faint'}">{$_('albums_audience_disabled_note')}</span>
+							<span
+								class="audience-field__row-note font-body font-normal text-[12px] leading-[1.4] {index ===
+								activeIndex
+									? 'text-accent-soft-text'
+									: 'text-text-faint'}">{$_('albums_audience_disabled_note')}</span
+							>
 						{/if}
 					</div>
 				{/each}
-				<div class="audience-field__keys flex gap-3 px-3 py-1.5 border-t border-border font-body font-normal text-[11px] leading-[1.4] text-text-faint">
+				<div
+					class="audience-field__keys flex gap-3 px-3 py-1.5 border-t border-border font-body font-normal text-[11px] leading-[1.4] text-text-faint"
+				>
 					<span>{$_('albums_keys_select')}</span>
 					<span>{$_('albums_keys_add')}</span>
 					<span>{$_('albums_keys_close')}</span>

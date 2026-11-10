@@ -77,9 +77,7 @@ function clickTileCheck(index: number): void {
 
 /** The icon-only bar actions name themselves by aria-label. */
 function buttonByLabel(label: string): HTMLButtonElement {
-	const found = document.body.querySelector<HTMLButtonElement>(
-		`.batchbar button[aria-label="${label}"]`
-	);
+	const found = document.body.querySelector<HTMLButtonElement>(`.batchbar button[aria-label="${label}"]`);
 	if (found === null) {
 		throw new Error(`missing batch button ${label}`);
 	}
@@ -141,11 +139,7 @@ test('a wall with onbatch renders the check affordance and toggles its own selec
 	const checks = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.tile__check'));
 	expect(checks).toHaveLength(3);
 	// The wall's selection starts empty: every check rests unchecked.
-	expect(checks.map((check) => check.getAttribute('aria-checked'))).toEqual([
-		'false',
-		'false',
-		'false'
-	]);
+	expect(checks.map((check) => check.getAttribute('aria-checked'))).toEqual(['false', 'false', 'false']);
 
 	// The check's click toggles the wall's own set: the aria state
 	// follows, and the bar rises with the honest count.
@@ -327,7 +321,7 @@ test('Escape drops a live selection and an armed select mode', () => {
 	flushSync();
 });
 
-test('the month axis is the wall\'s own organ: one stop per month, folded from the same groups', () => {
+test("the month axis is the wall's own organ: one stop per month, folded from the same groups", () => {
 	// The 2026-11-08 pin: the photo rendering and the right-edge
 	// rail are one component. The axis cannot disagree with the
 	// wall -- its months fold from the SAME internal groups the
@@ -340,23 +334,17 @@ test('the month axis is the wall\'s own organ: one stop per month, folded from t
 	expect(rail).not.toBeNull();
 	const stops = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop'));
 	expect(stops).toHaveLength(2);
-	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual([
-		'November 2026',
-		'October 2026'
-	]);
+	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual(['November 2026', 'October 2026']);
 	// The wall's month headers carry the same strings (the
 	// same-fold guarantee, asserted from both sides).
 	const headers = Array.from(document.body.querySelectorAll('.wall__month-header'));
-	expect(headers.map((header) => header.textContent)).toEqual([
-		'November 2026',
-		'October 2026'
-	]);
+	expect(headers.map((header) => header.textContent)).toEqual(['November 2026', 'October 2026']);
 
 	unmount(wall);
 	flushSync();
 });
 
-test('an empty wall renders no rail (the scrubber\'s own guard)', () => {
+test("an empty wall renders no rail (the scrubber's own guard)", () => {
 	const wall = mount(Wall, { target: document.body, props: { items: [] } });
 	flushSync();
 

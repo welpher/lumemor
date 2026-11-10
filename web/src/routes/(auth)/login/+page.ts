@@ -31,9 +31,7 @@ export const load: PageLoad = async ({ url, fetch, parent }) => {
 		if (response.ok) {
 			const info: unknown = await response.json();
 			setupRequired =
-				info !== null &&
-				typeof info === 'object' &&
-				(info as { initialized?: unknown }).initialized === false;
+				info !== null && typeof info === 'object' && (info as { initialized?: unknown }).initialized === false;
 		}
 	} catch {
 		// Unreachable or broken body: the form stays; the sign-in
@@ -58,12 +56,8 @@ export const load: PageLoad = async ({ url, fetch, parent }) => {
  * names allowed; helper exports must be underscore-prefixed).
  */
 export function _safeRedirectTarget(value: string | null): string {
-	if (
-		value !== null &&
-		value.startsWith('/') &&
-		!value.startsWith('//') &&
-		!/[\u0000-\u001f\u007f\\]/.test(value)
-	) {
+	// eslint-disable-next-line no-control-regex -- the class lists the control characters this guard exists to REJECT; the regex handles them, never emits them.
+	if (value !== null && value.startsWith('/') && !value.startsWith('//') && !/[\u0000-\u001f\u007f\\]/.test(value)) {
 		return value;
 	}
 	return '/timeline';

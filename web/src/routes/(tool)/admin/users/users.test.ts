@@ -141,7 +141,10 @@ beforeEach(async () => {
 	vi.clearAllMocks();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -229,9 +232,7 @@ test('the create modal posts the payload, closes on success and appends the crea
 	const entry = buttonByText('New user');
 	expect(entry.querySelector('svg.lucide-user-plus')).not.toBeNull();
 	openCreateModal();
-	expect(document.body.querySelector('.modal__panel')?.getAttribute('aria-label')).toBe(
-		'Add a user'
-	);
+	expect(document.body.querySelector('.modal__panel')?.getAttribute('aria-label')).toBe('Add a user');
 
 	fillField('#admin-user-name', 'Kid Hopper');
 	fillField('#admin-user-email', 'kid@example.com');
@@ -285,9 +286,7 @@ test('a duplicate email maps to the user_email_taken message', async () => {
 	expect(document.body.querySelector('.modal__panel [role="alert"]')?.textContent).toContain(
 		'An account with this email address already exists.'
 	);
-	expect(document.body.querySelector<HTMLInputElement>('#admin-user-email')?.value).toBe(
-		'grace@example.com'
-	);
+	expect(document.body.querySelector<HTMLInputElement>('#admin-user-email')?.value).toBe('grace@example.com');
 	// The listing is untouched.
 	expect(rows()).toHaveLength(2);
 
@@ -354,9 +353,7 @@ test('the disable toggle confirms, patches, and adopts the fresh state', async (
 
 	modalButton('Disable').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
-	expect(patches).toEqual([
-		{ id: `/api/v1/admin/users/${grace.id}`, body: { isDisabled: true } }
-	]);
+	expect(patches).toEqual([{ id: `/api/v1/admin/users/${grace.id}`, body: { isDisabled: true } }]);
 	// The row adopted the response: the disabled badge and the
 	// enable action.
 	expect(document.body.textContent).toContain('Disabled');
@@ -458,9 +455,7 @@ test('a failed disable keeps the confirm dialog open with the mapped error', asy
 	// (the trash page's confirm pattern: a failed confirm-able write
 	// recovers in place, not under the table).
 	expect(document.body.querySelector('.modal__panel')).not.toBeNull();
-	expect(document.body.querySelector('.modal__panel [role="alert"]')?.textContent).toContain(
-		'Something went wrong'
-	);
+	expect(document.body.querySelector('.modal__panel [role="alert"]')?.textContent).toContain('Something went wrong');
 	// The row is untouched: still active, still offered the toggle.
 	expect(document.body.textContent).toContain('Active');
 	expect(buttonByText('Disable')).toBeTruthy();

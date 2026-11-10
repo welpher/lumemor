@@ -124,11 +124,7 @@
 	});
 
 	/** Adopt the three read documents as the sections' fresh state. */
-	function adoptSettings(
-		next: StorageSettings,
-		retentionDays: number,
-		transcoding: TranscodingSettings
-	): void {
+	function adoptSettings(next: StorageSettings, retentionDays: number, transcoding: TranscodingSettings): void {
 		settings = next;
 		formTemplate = next.template;
 		formPreset = presetOf(next.template);
@@ -256,11 +252,18 @@
 
 <div class="settings max-w-[760px] mx-auto flex flex-col gap-4">
 	{#if status === 'loading'}
-		<p class="settings__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('admin_settings_loading')}</p>
+		<p class="settings__status my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('admin_settings_loading')}
+		</p>
 	{:else if status === 'error'}
-		<div class="settings__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="settings__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else if status === 'ready' && settings !== null}
 		<!-- The page-header row (the 2026-11-09 specimen: the title
@@ -273,14 +276,23 @@
 
 		<section class="settings__card" data-testid="admin-settings-storage">
 			<Card>
-				<h2 class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text">
+				<h2
+					class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text"
+				>
 					<FolderTree size={18} class="settings__section-icon text-accent" aria-hidden="true" />
 					{$_('admin_settings_storage_title')}
 				</h2>
-				<p class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint">{$_('admin_settings_storage_note')}</p>
+				<p
+					class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_storage_note')}
+				</p>
 				<form class="settings__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
 					<div class="settings__field flex flex-col gap-1.5">
-						<label class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="admin-storage-preset">{$_('admin_settings_preset_label')}</label>
+						<label
+							class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+							for="admin-storage-preset">{$_('admin_settings_preset_label')}</label
+						>
 						<select
 							class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 							id="admin-storage-preset"
@@ -306,25 +318,51 @@
 					<!-- The sample preview of the SAVED template: the save adopts the
 					     fresh render, so the line always names the layout on disk. -->
 					<div class="settings__sample flex flex-col gap-1 pt-1" data-testid="storage-sample">
-						<p class="settings__sample-label font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('admin_settings_sample_label')}</p>
-						<p class="settings__sample-path font-mono font-normal text-[13px] leading-[1.5] text-text-soft break-all">{settings.samplePath}</p>
+						<p
+							class="settings__sample-label font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
+						>
+							{$_('admin_settings_sample_label')}
+						</p>
+						<p
+							class="settings__sample-path font-mono font-normal text-[13px] leading-[1.5] text-text-soft break-all"
+						>
+							{settings.samplePath}
+						</p>
 					</div>
 					{#if savedNote}
-						<p class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft" role="status">{$_('admin_settings_saved_note')}</p>
+						<p
+							class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+							role="status"
+						>
+							{$_('admin_settings_saved_note')}
+						</p>
 					{/if}
 					{#if saveErrorKey !== ''}
 						<div class="settings__error flex flex-col gap-0.5" role="alert">
-							<p class="font-body font-medium text-[14px] leading-[1.4] text-danger-text">{errorText(saveErrorKey)}</p>
+							<p class="font-body font-medium text-[14px] leading-[1.4] text-danger-text">
+								{errorText(saveErrorKey)}
+							</p>
 							{#if saveReason !== ''}
-								<p class="settings__error-reason font-mono font-normal text-[13px] leading-[1.4] text-danger-text break-all" data-testid="storage-error-reason">{saveReason}</p>
+								<p
+									class="settings__error-reason font-mono font-normal text-[13px] leading-[1.4] text-danger-text break-all"
+									data-testid="storage-error-reason"
+								>
+									{saveReason}
+								</p>
 							{/if}
 						</div>
 					{/if}
 					<div class="settings__form-actions flex justify-end mt-1">
-						<Button type="submit" disabled={saving}><Check size={20} aria-hidden="true" />{$_('admin_settings_submit')}</Button>
+						<Button type="submit" disabled={saving}
+							><Check size={20} aria-hidden="true" />{$_('admin_settings_submit')}</Button
+						>
 					</div>
 				</form>
-				<p class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint">{$_('admin_settings_contract_note')}</p>
+				<p
+					class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_contract_note')}
+				</p>
 			</Card>
 		</section>
 
@@ -332,14 +370,23 @@
 		     and the destructive warning line. -->
 		<section class="settings__card" data-testid="admin-settings-trash">
 			<Card>
-				<h2 class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text">
+				<h2
+					class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text"
+				>
 					<Trash2 size={18} class="settings__section-icon text-accent" aria-hidden="true" />
 					{$_('admin_settings_trash_title')}
 				</h2>
-				<p class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint">{$_('admin_settings_trash_note')}</p>
+				<p
+					class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_trash_note')}
+				</p>
 				<form class="settings__trash flex flex-col gap-3.5" onsubmit={handleTrashSubmit}>
 					<div class="settings__field flex flex-col gap-1.5">
-						<label class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="admin-trash-days">{$_('admin_settings_trash_days')}</label>
+						<label
+							class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+							for="admin-trash-days">{$_('admin_settings_trash_days')}</label
+						>
 						<input
 							class="settings__number w-[120px] px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 							id="admin-trash-days"
@@ -352,16 +399,30 @@
 						/>
 					</div>
 					{#if trashSaved}
-						<p class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft" role="status">{$_('admin_settings_trash_saved')}</p>
+						<p
+							class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+							role="status"
+						>
+							{$_('admin_settings_trash_saved')}
+						</p>
 					{/if}
 					{#if trashErrorKey !== ''}
-						<p class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(trashErrorKey)}</p>
+						<p
+							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(trashErrorKey)}
+						</p>
 					{/if}
 					<div class="settings__form-actions flex justify-end mt-1">
-						<Button type="submit" disabled={savingTrash}><Check size={20} aria-hidden="true" />{$_('admin_settings_trash_save')}</Button>
+						<Button type="submit" disabled={savingTrash}
+							><Check size={20} aria-hidden="true" />{$_('admin_settings_trash_save')}</Button
+						>
 					</div>
 				</form>
-				<p class="settings__warning mt-4 pt-4 border-t border-border flex items-start gap-2 font-body font-medium text-[12px] leading-[1.5] text-danger-text">
+				<p
+					class="settings__warning mt-4 pt-4 border-t border-border flex items-start gap-2 font-body font-medium text-[12px] leading-[1.5] text-danger-text"
+				>
 					<TriangleAlert size={14} class="settings__warning-icon shrink-0 mt-0.5" aria-hidden="true" />
 					{$_('admin_settings_trash_warning')}
 				</p>
@@ -373,14 +434,23 @@
 		     new-ingests-only scope note. -->
 		<section class="settings__card" data-testid="admin-settings-transcoding">
 			<Card>
-				<h2 class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text">
+				<h2
+					class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text"
+				>
 					<MonitorPlay size={18} class="settings__section-icon text-accent" aria-hidden="true" />
 					{$_('admin_settings_transcode_title')}
 				</h2>
-				<p class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint">{$_('admin_settings_transcode_note')}</p>
+				<p
+					class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_transcode_note')}
+				</p>
 				<form class="settings__transcoding flex flex-col gap-3.5" onsubmit={handleTranscodingSubmit}>
 					<div class="settings__field flex flex-col gap-1.5">
-						<label class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="admin-transcode-preset">{$_('admin_settings_transcode_preset')}</label>
+						<label
+							class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+							for="admin-transcode-preset">{$_('admin_settings_transcode_preset')}</label
+						>
 						<select
 							class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 							id="admin-transcode-preset"
@@ -393,7 +463,10 @@
 						</select>
 					</div>
 					<div class="settings__field flex flex-col gap-1.5">
-						<label class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="admin-transcode-concurrency">{$_('admin_settings_transcode_concurrency')}</label>
+						<label
+							class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+							for="admin-transcode-concurrency">{$_('admin_settings_transcode_concurrency')}</label
+						>
 						<select
 							class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 							id="admin-transcode-concurrency"
@@ -406,7 +479,9 @@
 						</select>
 					</div>
 					<div class="settings__toggles flex flex-col gap-2">
-						<label class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer">
+						<label
+							class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+						>
 							<input
 								class="settings__toggle-input w-[18px] h-[18px] accent-accent"
 								type="checkbox"
@@ -415,7 +490,9 @@
 							/>
 							{$_('admin_settings_transcode_thumbnail')}
 						</label>
-						<label class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer">
+						<label
+							class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+						>
 							<input
 								class="settings__toggle-input w-[18px] h-[18px] accent-accent"
 								type="checkbox"
@@ -426,16 +503,32 @@
 						</label>
 					</div>
 					{#if transcodingSaved}
-						<p class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft" role="status">{$_('admin_settings_transcode_saved')}</p>
+						<p
+							class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+							role="status"
+						>
+							{$_('admin_settings_transcode_saved')}
+						</p>
 					{/if}
 					{#if transcodingErrorKey !== ''}
-						<p class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(transcodingErrorKey)}</p>
+						<p
+							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(transcodingErrorKey)}
+						</p>
 					{/if}
 					<div class="settings__form-actions flex justify-end mt-1">
-						<Button type="submit" disabled={savingTranscoding}><Check size={20} aria-hidden="true" />{$_('admin_settings_transcode_save')}</Button>
+						<Button type="submit" disabled={savingTranscoding}
+							><Check size={20} aria-hidden="true" />{$_('admin_settings_transcode_save')}</Button
+						>
 					</div>
 				</form>
-				<p class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint">{$_('admin_settings_transcode_contract')}</p>
+				<p
+					class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_transcode_contract')}
+				</p>
 			</Card>
 		</section>
 	{/if}

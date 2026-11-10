@@ -17,12 +17,14 @@ function jsonResponse(status: number, body: unknown): Response {
 	});
 }
 
-const serverInfo = (initialized: boolean) =>
-	jsonResponse(200, { version: 'test', initialized, features: {} });
+const serverInfo = (initialized: boolean) => jsonResponse(200, { version: 'test', initialized, features: {} });
 
 beforeEach(async () => {
 	// Boot unauthenticated unless a case arranges otherwise.
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await probeSession();
 });
 
@@ -56,26 +58,25 @@ function callLoad(
 // --- guardSessionRoute (the (content) and (tool) group loads) ------
 
 test('unauthenticated on a guarded route redirects to login with the current path', async () => {
-	await expect(
-		guardSessionRoute(new URL('http://localhost/timeline'), async () => ({}))
-	).rejects.toMatchObject({ status: 307, location: '/login?redirectTo=%2Ftimeline' });
+	await expect(guardSessionRoute(new URL('http://localhost/timeline'), async () => ({}))).rejects.toMatchObject({
+		status: 307,
+		location: '/login?redirectTo=%2Ftimeline'
+	});
 });
 
 test('unauthenticated on a deep link preserves the path and the query', async () => {
-	await expect(
-		guardSessionRoute(new URL('http://localhost/a/123?tab=exif'), async () => ({}))
-	).rejects.toMatchObject({
-		status: 307,
-		location: '/login?redirectTo=%2Fa%2F123%3Ftab%3Dexif'
-	});
+	await expect(guardSessionRoute(new URL('http://localhost/a/123?tab=exif'), async () => ({}))).rejects.toMatchObject(
+		{
+			status: 307,
+			location: '/login?redirectTo=%2Fa%2F123%3Ftab%3Dexif'
+		}
+	);
 });
 
 test('authenticated on a guarded route passes through', async () => {
 	await arrangeAuthenticated();
 
-	await expect(
-		guardSessionRoute(new URL('http://localhost/timeline'), async () => ({}))
-	).resolves.toBeUndefined();
+	await expect(guardSessionRoute(new URL('http://localhost/timeline'), async () => ({}))).resolves.toBeUndefined();
 });
 
 test('the guard awaits the parent load (the root layout probe) before deciding', async () => {
@@ -83,13 +84,14 @@ test('the guard awaits the parent load (the root layout probe) before deciding',
 	// guard must sequence behind it, or it would decide from stale
 	// store state.
 	const parent = vi.fn(async () => {
-		vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, [])));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => jsonResponse(200, []))
+		);
 		await probeSession();
 		return {};
 	});
-	await expect(
-		guardSessionRoute(new URL('http://localhost/timeline'), parent)
-	).resolves.toBeUndefined();
+	await expect(guardSessionRoute(new URL('http://localhost/timeline'), parent)).resolves.toBeUndefined();
 	expect(parent).toHaveBeenCalled();
 });
 
@@ -98,13 +100,17 @@ test('the guard awaits the parent load (the root layout probe) before deciding',
 test('authenticated visiting /login is redirected to /timeline', async () => {
 	await arrangeAuthenticated();
 
-	await expect(
-		callLoad(loginLoad as never, new URL('http://localhost/login'))
-	).rejects.toMatchObject({ status: 303, location: '/timeline' });
+	await expect(callLoad(loginLoad as never, new URL('http://localhost/login'))).rejects.toMatchObject({
+		status: 303,
+		location: '/timeline'
+	});
 });
 
 test('unauthenticated visiting /login gets the form with a validated target', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => serverInfo(true)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => serverInfo(true))
+	);
 
 	const data = (await callLoad(loginLoad as never, new URL('http://localhost/login'))) as {
 		setupRequired: boolean;
@@ -116,7 +122,10 @@ test('unauthenticated visiting /login gets the form with a validated target', as
 });
 
 test('an uninitialized server marks the page for the wizard handover', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => serverInfo(false)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => serverInfo(false))
+	);
 
 	const data = (await callLoad(loginLoad as never, new URL('http://localhost/login'))) as {
 		setupRequired: boolean;
@@ -126,7 +135,10 @@ test('an uninitialized server marks the page for the wizard handover', async () 
 });
 
 test('an unreachable server-info probe keeps the form', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('network down'))));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Promise.reject(new TypeError('network down')))
+	);
 
 	const data = (await callLoad(loginLoad as never, new URL('http://localhost/login'))) as {
 		setupRequired: boolean;
@@ -136,7 +148,10 @@ test('an unreachable server-info probe keeps the form', async () => {
 });
 
 test('a redirectTo round-trip value passes through validated', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => serverInfo(true)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => serverInfo(true))
+	);
 
 	const data = (await callLoad(
 		loginLoad as never,
@@ -186,7 +201,10 @@ test('loginRedirectTarget encodes the path and query for the round-trip', () => 
 // --- the root layout load (the boot probe) -------------------------
 
 test('the root layout load probes the session before the first render', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 
 	// The load receives its fetch from the load event (SvelteKit
 	// etiquette); the stubbed global stands in for it here.

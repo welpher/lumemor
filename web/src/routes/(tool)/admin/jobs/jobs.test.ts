@@ -160,7 +160,10 @@ beforeEach(async () => {
 	vi.clearAllMocks();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -204,12 +207,8 @@ test('the listing renders each run with kind, state, per-kind units and times', 
 	expect(runCard(embedRun.id).textContent).toContain('Finished Nov 3, 2026');
 	expect(runCard(queuedRun.id).textContent).toContain('Not started');
 	// The state badge carries its color class.
-	expect(
-		runCard(downloadRun.id).querySelector('.jobs__badge--running')
-	).not.toBeNull();
-	expect(
-		runCard(ocrRun.id).querySelector('.jobs__badge--failed')
-	).not.toBeNull();
+	expect(runCard(downloadRun.id).querySelector('.jobs__badge--running')).not.toBeNull();
+	expect(runCard(ocrRun.id).querySelector('.jobs__badge--failed')).not.toBeNull();
 
 	unmount(page);
 	flushSync();
@@ -360,9 +359,7 @@ test('the unmount unsubscribes and stops the polling', async () => {
 test('a non-admin caller sees the mapped auth_forbidden message', async () => {
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async () =>
-			jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' })
-		)
+		vi.fn(async () => jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' }))
 	);
 	const page = mountPage();
 	await settle();

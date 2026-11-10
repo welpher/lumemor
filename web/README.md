@@ -24,7 +24,8 @@ embedded into the Go server binary.
 
 ```
 make web-install   # pnpm install (lockfile committed)
-make web-check     # svelte-check + vitest (the CI gate)
+make web-check     # prettier + eslint + svelte-check + vitest
+                   # (the CI gate)
 make web-build     # adapter-static → web/build, staged into
                    # server/internal/web/dist for the Go embed
 ```

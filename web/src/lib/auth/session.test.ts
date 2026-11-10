@@ -16,11 +16,7 @@ import {
 // file; each case arranges its starting state through the store's
 // own transitions (a 401 probe boots it unauthenticated).
 
-function jsonResponse(
-	status: number,
-	body: unknown,
-	headers: Record<string, string> = {}
-): Response {
+function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: { 'Content-Type': 'application/json', ...headers }
@@ -40,7 +36,10 @@ const sessionsBody = [
 ];
 
 beforeEach(async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	// Boot the store unauthenticated: a fresh app with no cookie.
 	await probeSession();
 });
@@ -50,7 +49,10 @@ afterEach(() => {
 });
 
 test('the boot probe populates the store on a 200 session list', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, sessionsBody)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, sessionsBody))
+	);
 
 	await probeSession();
 
@@ -68,7 +70,10 @@ test('a session list without identity fields resolves no identity', async () => 
 	// guessed -- the UI's role-aware surfaces fall back to their
 	// no-identity rendering.
 	const legacy = [{ id: '6f9c2d18-9a4c-4a1b-b1a1-000000000002', kind: 'WEB' }];
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, legacy)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, legacy))
+	);
 
 	await probeSession();
 
@@ -77,7 +82,10 @@ test('a session list without identity fields resolves no identity', async () => 
 });
 
 test('the boot probe answers unauthenticated on a 401', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 
 	await probeSession();
 
@@ -86,7 +94,10 @@ test('the boot probe answers unauthenticated on a 401', async () => {
 });
 
 test('the boot probe answers unauthenticated on a server error', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(500, { code: 'INTERNAL' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(500, { code: 'INTERNAL' }))
+	);
 
 	await probeSession();
 
@@ -96,21 +107,30 @@ test('the boot probe answers unauthenticated on a server error', async () => {
 });
 
 test('the boot probe answers unauthenticated when the server is unreachable', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('network down'))));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Promise.reject(new TypeError('network down')))
+	);
 
 	await expect(probeSession()).resolves.toBeUndefined();
 	expect(sessionStatus()).toBe('unauthenticated');
 });
 
 test('a mid-session 401 flips the store to unauthenticated (the interceptor)', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, sessionsBody)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, sessionsBody))
+	);
 	await probeSession();
 	expect(sessionStatus()).toBe('authenticated');
 
 	// Any API call answering 401 while authenticated = the session
 	// died; the wrapper returns the response (the caller owns its
 	// error mapping) and flips the store.
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	const response = await apiFetch('/api/v1/assets/timeline');
 
 	expect(response.status).toBe(401);
@@ -122,7 +142,10 @@ test('a mid-session 401 flips the store to unauthenticated (the interceptor)', a
 });
 
 test('a 401 while already unauthenticated never triggers the interceptor (no loop)', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 
 	const response = await apiFetch('/api/v1/auth/login', { method: 'POST' });
 
@@ -134,7 +157,10 @@ test('a 401 while already unauthenticated never triggers the interceptor (no loo
 });
 
 test('forceLogout is idempotent: the flip happens once', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, sessionsBody)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, sessionsBody))
+	);
 	await probeSession();
 
 	forceLogout();
@@ -144,7 +170,10 @@ test('forceLogout is idempotent: the flip happens once', async () => {
 });
 
 test('login success establishes the session', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, sessionsBody[0])));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, sessionsBody[0]))
+	);
 
 	const outcome = await login('ada@example.test', 'correct horse');
 
@@ -217,7 +246,10 @@ test('login 400 maps to the validation_failed i18n key', async () => {
 });
 
 test('login with a bodyless proxy answer maps to the internal key', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>gateway error</html>', { status: 502 })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => new Response('<html>gateway error</html>', { status: 502 }))
+	);
 
 	const outcome = await login('ada@example.test', 'x');
 
@@ -225,7 +257,10 @@ test('login with a bodyless proxy answer maps to the internal key', async () => 
 });
 
 test('login on a network failure maps to the internal key', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('network down'))));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Promise.reject(new TypeError('network down')))
+	);
 
 	const outcome = await login('ada@example.test', 'x');
 
@@ -233,7 +268,10 @@ test('login on a network failure maps to the internal key', async () => {
 });
 
 test('logout posts the revoke and clears the store', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, sessionsBody)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, sessionsBody))
+	);
 	await probeSession();
 
 	const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
@@ -246,10 +284,16 @@ test('logout posts the revoke and clears the store', async () => {
 });
 
 test('logout clears the store even when the revoke call fails', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, sessionsBody)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, sessionsBody))
+	);
 	await probeSession();
 
-	vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('network down'))));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Promise.reject(new TypeError('network down')))
+	);
 
 	await expect(logout()).resolves.toBeUndefined();
 	expect(sessionStatus()).toBe('unauthenticated');

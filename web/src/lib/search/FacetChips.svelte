@@ -16,14 +16,7 @@
 	import { _ } from 'svelte-i18n';
 
 	/** The seven facet dimensions (the URL's filter arms). */
-	export type FacetDimension =
-		| 'people'
-		| 'places'
-		| 'years'
-		| 'cameras'
-		| 'kinds'
-		| 'albums'
-		| 'tags';
+	export type FacetDimension = 'people' | 'places' | 'years' | 'cameras' | 'kinds' | 'albums' | 'tags';
 
 	/** One choosable chip: the dimension, the round-trip filter
 	 * value (its string form), the composed display text and the
@@ -47,7 +40,11 @@
 	let { chips, ontoggle }: Props = $props();
 </script>
 
-<div class="search-chips flex flex-wrap gap-2 max-w-[860px] mt-3.5" role="group" aria-label={$_('search_filters_label')}>
+<div
+	class="search-chips flex flex-wrap gap-2 max-w-[860px] mt-3.5"
+	role="group"
+	aria-label={$_('search_filters_label')}
+>
 	{#each chips as chip (chip.dimension + ':' + chip.value)}
 		<button
 			class="search-chip inline-flex items-center gap-1.5 px-3 py-[5px] font-body font-semibold text-[13px] leading-[1.4] bg-transparent border rounded-full cursor-pointer whitespace-nowrap transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard {chip.selected
@@ -58,7 +55,11 @@
 			onclick={() => ontoggle(chip)}
 		>
 			<span class="search-chip__label">{chip.text}</span>
-			<span class="search-chip__count text-[11px] tabular-nums {chip.selected ? 'text-accent-on/80' : 'text-text-faint'}">{chip.count}</span>
+			<span
+				class="search-chip__count text-[11px] tabular-nums {chip.selected
+					? 'text-accent-on/80'
+					: 'text-text-faint'}">{chip.count}</span
+			>
 		</button>
 	{/each}
 </div>

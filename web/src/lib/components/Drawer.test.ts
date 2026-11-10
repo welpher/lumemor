@@ -24,21 +24,27 @@ function jsonResponse(status: number, body: unknown): Response {
 /** Boot the session store signed in with the given role (or out on null). */
 async function bootSession(role: 'admin' | 'user' | null): Promise<void> {
 	if (role === null) {
-		vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+		);
 	} else {
-		vi.stubGlobal('fetch', vi.fn(async () =>
-			jsonResponse(200, [
-				{
-					id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
-					kind: 'WEB',
-					userId: '6f9c2d18-9a4c-4a1b-b1a1-00000000000a',
-					role,
-					deviceName: 'Mozilla/5.0 (test)',
-					createdAt: '2026-11-01T10:00:00Z',
-					lastSeenAt: '2026-11-02T10:00:00Z'
-				}
-			])
-		));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () =>
+				jsonResponse(200, [
+					{
+						id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
+						kind: 'WEB',
+						userId: '6f9c2d18-9a4c-4a1b-b1a1-00000000000a',
+						role,
+						deviceName: 'Mozilla/5.0 (test)',
+						createdAt: '2026-11-01T10:00:00Z',
+						lastSeenAt: '2026-11-02T10:00:00Z'
+					}
+				])
+			)
+		);
 	}
 	await probeSession();
 }
@@ -75,19 +81,8 @@ test('closed renders nothing; open renders the eight content items in IA order',
 	// entry is gone (the §7.8 pin): the account dropdown is its only
 	// home. The leading icons (R2-5) add a whitespace text node
 	// before each label, so the text assertions trim.
-	const labels = [...document.body.querySelectorAll('.drawer__item')].map(
-		(element) => element.textContent?.trim()
-	);
-	expect(labels).toEqual([
-		'Timeline',
-		'Albums',
-		'People',
-		'Places',
-		'Memories',
-		'Favorites',
-		'Hidden',
-		'Trash'
-	]);
+	const labels = [...document.body.querySelectorAll('.drawer__item')].map((element) => element.textContent?.trim());
+	expect(labels).toEqual(['Timeline', 'Albums', 'People', 'Places', 'Memories', 'Favorites', 'Hidden', 'Trash']);
 
 	// Every item LEADS with its icon (R2-5): the svg is the item's
 	// first element child, decorative (aria-hidden), and the text
@@ -101,26 +96,16 @@ test('closed renders nothing; open renders the eight content items in IA order',
 		expect(icon?.getAttribute('aria-hidden')).toBe('true');
 	}
 	// The icon set is one distinct glyph per section, not one repeated.
-	const iconClasses = new Set(
-		items.map((item) => item.querySelector('svg')?.getAttribute('class') ?? '')
-	);
+	const iconClasses = new Set(items.map((item) => item.querySelector('svg')?.getAttribute('class') ?? ''));
 	expect(iconClasses.size).toBe(8);
 
 	// The live links: the timeline, the M3c albums wall, the people,
 	// the M3d places grid, favorites, hidden and trash routes -- and
 	// NO /settings door (the account dropdown owns it alone).
-	const links = [...document.body.querySelectorAll<HTMLAnchorElement>('a.drawer__item')].map(
-		(link) => link.getAttribute('href')
+	const links = [...document.body.querySelectorAll<HTMLAnchorElement>('a.drawer__item')].map((link) =>
+		link.getAttribute('href')
 	);
-	expect(links).toEqual([
-		'/timeline',
-		'/albums',
-		'/people',
-		'/places',
-		'/favorites',
-		'/hidden',
-		'/trash'
-	]);
+	expect(links).toEqual(['/timeline', '/albums', '/people', '/places', '/favorites', '/hidden', '/trash']);
 	expect(document.body.querySelector('a.drawer__item[href="/settings"]')).toBeNull();
 
 	// The M3 placeholder: present, visible, disabled.
@@ -157,9 +142,7 @@ test('an admin session renders the admin panel entry below the content list', as
 	expect(admin?.querySelector('svg')).not.toBeNull();
 	expect(admin?.firstElementChild?.tagName.toLowerCase()).toBe('svg');
 
-	const labels = [...document.body.querySelectorAll('.drawer__item')].map(
-		(element) => element.textContent?.trim()
-	);
+	const labels = [...document.body.querySelectorAll('.drawer__item')].map((element) => element.textContent?.trim());
 	expect(labels).toEqual([
 		'Timeline',
 		'Albums',

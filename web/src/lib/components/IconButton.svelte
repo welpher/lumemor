@@ -22,15 +22,15 @@
 	let { variant = 'ghost', type = 'button', class: className = '', children, ...rest }: Props = $props();
 
 	const variantUtilities: Record<'ghost' | 'danger', string> = {
-		ghost:
-			'bg-transparent text-text border-transparent hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text',
-		danger:
-			'bg-transparent text-danger-text border-danger hover:not-disabled:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
+		ghost: 'bg-transparent text-text border-transparent hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text',
+		danger: 'bg-transparent text-danger-text border-danger hover:not-disabled:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
 	};
 </script>
 
 <button
-	class="icon-btn icon-btn--{variant} {className} inline-flex items-center justify-center w-9 h-9 p-0 rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard disabled:opacity-55 disabled:cursor-not-allowed {variantUtilities[variant]}"
+	class="icon-btn icon-btn--{variant} {className} inline-flex items-center justify-center w-9 h-9 p-0 rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard disabled:opacity-55 disabled:cursor-not-allowed {variantUtilities[
+		variant
+	]}"
 	{type}
 	{...rest}
 >

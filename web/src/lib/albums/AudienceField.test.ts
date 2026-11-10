@@ -116,9 +116,7 @@ test('opening the picker fetches the member list and offers the other accounts',
 	expect(fetchMock).toHaveBeenCalledTimes(2);
 	expect(rowNames()).toEqual(['grace@example.com', 'ivy@example.com', 'hopper@example.com']);
 	// The keys footer rides the rows (the specimen's language).
-	expect(document.body.querySelector('.audience-field__keys')?.textContent).toContain(
-		'Enter Add'
-	);
+	expect(document.body.querySelector('.audience-field__keys')?.textContent).toContain('Enter Add');
 });
 
 test('the keyboard: Enter adds the highlighted candidate, Esc closes the picker alone', async () => {
@@ -132,9 +130,7 @@ test('the keyboard: Enter adds the highlighted candidate, Esc closes the picker 
 	expect(listbox).not.toBeNull();
 
 	// The first row is highlighted on arrival; Enter adds it.
-	expect(
-		document.body.querySelectorAll('[role="option"]')[0]?.getAttribute('aria-selected')
-	).toBe('true');
+	expect(document.body.querySelectorAll('[role="option"]')[0]?.getAttribute('aria-selected')).toBe('true');
 	listbox?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 	flushSync();
 
@@ -268,7 +264,7 @@ test('the member-list failure renders inside the picker; the toggle retries', as
 	expect(rowNames()).toEqual(['grace@example.com', 'ivy@example.com', 'hopper@example.com']);
 });
 
-test('the multi-add drain collapses the picker and disables the add affordance (§7.6\'s pin)', async () => {
+test("the multi-add drain collapses the picker and disables the add affordance (§7.6's pin)", async () => {
 	const fetchMock = vi.fn(async () => jsonResponse(200, usersBody));
 	vi.stubGlobal('fetch', fetchMock);
 	mountField({ selfId: 'u1' });
@@ -288,9 +284,9 @@ test('the multi-add drain collapses the picker and disables the add affordance (
 	expect(rowNames()).toEqual([]);
 	expect(document.body.querySelector('#audience-field-picker')).toBeNull();
 	expect(addButton().disabled).toBe(true);
-	expect(
-		document.body.querySelector('.audience-field__no-candidates')?.textContent
-	).toContain('No other account is available.');
+	expect(document.body.querySelector('.audience-field__no-candidates')?.textContent).toContain(
+		'No other account is available.'
+	);
 
 	// The drain's focus discipline: the add button just disabled (an
 	// unfocusable target), so the focus lands on the newest chip's
@@ -324,9 +320,9 @@ test('a single-account instance permanently disables the add affordance (the pro
 	expect(addButton().disabled).toBe(true);
 	expect(addButton().className).toContain('disabled:opacity-55');
 	expect(addButton().className).toContain('disabled:cursor-not-allowed');
-	expect(
-		document.body.querySelector('.audience-field__no-candidates')?.textContent
-	).toContain('No other account is available.');
+	expect(document.body.querySelector('.audience-field__no-candidates')?.textContent).toContain(
+		'No other account is available.'
+	);
 
 	addButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();

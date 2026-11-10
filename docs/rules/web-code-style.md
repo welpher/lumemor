@@ -1,9 +1,13 @@
 # Web code style (SvelteKit + Svelte 5 + Tailwind v4)
 
-> The machine layer (prettier + eslint, symmetric with gofmt/golangci on the
-> Go side) is QUEUED — see the work queue in the design repo. Until it lands,
-> formatting is convention-by-consistency: match the neighboring files. When
-> the tools land, this file's formatting sections become pointers.
+> The machine layer is live (the 2026-11-10 web-tooling block):
+> **prettier owns formatting** -- run `npx prettier --write .` in
+> web/ (or `pnpm run format`); **eslint owns the lint layer** -- run
+> `npx eslint .` in web/. `make web-check` fails on both (the
+> format check and the lint run before svelte-check and vitest).
+> The configs (web/.prettierrc.js, web/eslint.config.js) pin the
+> tree's established format and record every rule trim's reason.
+> This file keeps only what the machines cannot enforce.
 
 ## Naming and files
 

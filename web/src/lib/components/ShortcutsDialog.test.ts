@@ -1,5 +1,5 @@
 import { flushSync, mount, unmount } from 'svelte';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, expect, test } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import ShortcutsDialog from './ShortcutsDialog.svelte';
 
@@ -42,9 +42,7 @@ function sheet(): HTMLElement | null {
 }
 
 function kbds(): string[] {
-	return Array.from(document.body.querySelectorAll<HTMLElement>('kbd')).map(
-		(key) => key.textContent ?? ''
-	);
+	return Array.from(document.body.querySelectorAll<HTMLElement>('kbd')).map((key) => key.textContent ?? '');
 }
 
 test('`?` toggles the sheet; the second `?` and Esc close it', () => {
@@ -90,22 +88,7 @@ test('the sheet collects the live bindings in the two-column shape, grouped by c
 	// inventory -- every binding the code actually carries (the
 	// viewer's arrows/i/zoom/Esc, the shell's `?`/Esc and the `/`
 	// focus-search, the wall's selection Esc, the pickers' keys).
-	expect(kbds()).toEqual([
-		'?',
-		'Esc',
-		'/',
-		'←',
-		'→',
-		'i',
-		'+',
-		'−',
-		'Esc',
-		'Esc',
-		'↑',
-		'↓',
-		'Enter',
-		'Esc'
-	]);
+	expect(kbds()).toEqual(['?', 'Esc', '/', '←', '→', 'i', '+', '−', 'Esc', 'Esc', '↑', '↓', 'Enter', 'Esc']);
 
 	// The actions in plain language, one per row: the two-column
 	// list (the key column beside the action column).
@@ -170,7 +153,7 @@ test('an open dialog owns the keyboard: `?` never stacks the sheet over another 
 	flushSync();
 });
 
-test('the open sheet traps the focus on its panel (the Modal\'s own discipline)', () => {
+test("the open sheet traps the focus on its panel (the Modal's own discipline)", () => {
 	const dialog = mount(ShortcutsDialog, { target: document.body, props: { open: false } });
 	const field = document.createElement('input');
 	document.body.appendChild(field);

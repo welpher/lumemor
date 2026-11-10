@@ -121,11 +121,11 @@ test('scene 1: signing in through the form lands on the empty models page', asyn
 	// the v1 form of the wizard's model download step.
 	await expect(page.getByRole('heading', { level: 2, name: 'No models yet', exact: true })).toBeVisible();
 	await expect(
-		page.getByText('The default model group has not been downloaded. Face detection, face recognition, semantic search and text recognition stay off until it lands.')
+		page.getByText(
+			'The default model group has not been downloaded. Face detection, face recognition, semantic search and text recognition stay off until it lands.'
+		)
 	).toBeVisible();
-	await expect(
-		page.getByRole('button', { name: 'Download the default models', exact: true })
-	).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Download the default models', exact: true })).toBeVisible();
 
 	// Every slot section reports its emptiness (the five slots:
 	// detection, recognition, the embedding and text towers of the
@@ -178,9 +178,10 @@ test.describe('the signed-in scenes', () => {
 				{ timeout: DOWNLOAD_TIMEOUT_MS, intervals: [200, 500, 1000, 2000] }
 			)
 			.toBe(true);
-		test
-			.info()
-			.annotations.push({ type: 'note', description: `download progress: peak=${peak}, advanced=${sawAdvance}` });
+		test.info().annotations.push({
+			type: 'note',
+			description: `download progress: peak=${peak}, advanced=${sawAdvance}`
+		});
 
 		// The empty state's CTA is gone (the listing owns the surface
 		// now) and each default model carries its Active badge.
@@ -247,12 +248,8 @@ test.describe('the signed-in scenes', () => {
 		// fixture model and leaves the default clip model.
 		await dialog.getByRole('button', { name: 'Activate', exact: true }).click();
 		await expect(dialog).toHaveCount(0);
-		await expect(page.locator(`article[data-model-id="${FIXTURE_512_ID}"] .models__badge`)).toHaveText(
-			'Active'
-		);
-		await expect(
-			page.locator('article[data-model-id="cnclip-vit-b16-vision"] .models__badge')
-		).toHaveText('');
+		await expect(page.locator(`article[data-model-id="${FIXTURE_512_ID}"] .models__badge`)).toHaveText('Active');
+		await expect(page.locator('article[data-model-id="cnclip-vit-b16-vision"] .models__badge')).toHaveText('');
 	});
 
 	test('scene 6: the cross-dimension switch warns and canceling keeps the badge', async ({ page }) => {
@@ -275,8 +272,6 @@ test.describe('the signed-in scenes', () => {
 		// destructive switch never ran.
 		await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 		await expect(dialog).toHaveCount(0);
-		await expect(page.locator(`article[data-model-id="${FIXTURE_512_ID}"] .models__badge`)).toHaveText(
-			'Active'
-		);
+		await expect(page.locator(`article[data-model-id="${FIXTURE_512_ID}"] .models__badge`)).toHaveText('Active');
 	});
 });

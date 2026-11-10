@@ -89,10 +89,7 @@ function unnamedRoutes(overrides: FetchRoute = {}): FetchRoute {
 		// holds items -- the honest page shape the convergence tests
 		// mutate alongside pageOne.
 		'/api/v1/people/unnamed?limit=60': () =>
-			jsonResponse(
-				200,
-				pageTwo.length > 0 ? { items: pageOne, nextCursor: 'C1' } : { items: pageOne }
-			),
+			jsonResponse(200, pageTwo.length > 0 ? { items: pageOne, nextCursor: 'C1' } : { items: pageOne }),
 		'/api/v1/people/unnamed?limit=60&cursor=C1': () => jsonResponse(200, { items: pageTwo }),
 		'/api/v1/people': () => jsonResponse(200, peopleState),
 		...overrides
@@ -204,7 +201,10 @@ beforeEach(async () => {
 	];
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -247,10 +247,7 @@ test('the manual pager loads the next page and the last page retires it', async 
 });
 
 test('an empty region renders the empty state, no cards, no pager', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({ '/api/v1/people/unnamed?limit=60': () => jsonResponse(200, { items: [] }) })
-	);
+	vi.stubGlobal('fetch', stubFetch({ '/api/v1/people/unnamed?limit=60': () => jsonResponse(200, { items: [] }) }));
 	const page = mountPage();
 	await settle();
 
@@ -279,9 +276,7 @@ test('naming a cluster PUTs the label and the card leaves the unnamed region', a
 	expect(dialog?.getAttribute('aria-label')).toBe('Name this person');
 
 	fillField(dialog as ParentNode, 'Ada');
-	buttonByText('Save name', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save name', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/label');
@@ -312,9 +307,7 @@ test('a failed naming keeps the card and surfaces the message in the dialog', as
 	clickCard(0);
 	const dialog = modal();
 	fillField(dialog as ParentNode, 'Ada');
-	buttonByText('Save name', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save name', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	expect(dialog?.textContent).toContain('Something went wrong. Please try again.');
@@ -334,9 +327,7 @@ test('an invalid name never leaves the page: the bound is checked locally', asyn
 	const dialog = modal();
 	// Whitespace only: the trimmed name is empty.
 	fillField(dialog as ParentNode, '   ');
-	buttonByText('Save name', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save name', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	expect(dialog?.textContent).toContain('Names span 1 to 64 characters.');
@@ -373,9 +364,7 @@ test('the batch merge folds two selected clusters into an existing person', asyn
 	// The default target is the first existing person (two selected
 	// clusters cannot host the merge -- that needs a third).
 	expect(dialog?.textContent).toContain('Merged clusters disappear and their names are lost.');
-	buttonByText('Merge', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Merge', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/merge');
@@ -417,9 +406,7 @@ test('merging into one of the selected names it inline first, then folds the oth
 	// Three selected: the selected clusters themselves become targets.
 	chooseOption(dialog as ParentNode, 'c2');
 	fillField(dialog as ParentNode, 'Ada');
-	buttonByText('Merge', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Merge', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	// The inline naming PUT ran before the merge.

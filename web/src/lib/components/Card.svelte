@@ -12,7 +12,9 @@
 <!-- Card: the base surface for grouped content (spec §5: card radii
      16-20, very light shadow, no heavy borders). -->
 <div
-	class="card {padded ? 'card--padded' : ''} {className} bg-card border border-border rounded-card shadow-card {padded ? 'p-5' : ''}"
+	class="card {padded ? 'card--padded' : ''} {className} bg-card border border-border rounded-card shadow-card {padded
+		? 'p-5'
+		: ''}"
 	{...rest}
 >
 	{@render children?.()}

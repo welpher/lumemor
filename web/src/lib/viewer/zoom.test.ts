@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import {
-	createZoomEngine,
-	VIEWER_ZOOM_BASE,
-	VIEWER_ZOOM_MAX,
-	type ZoomState
-} from './zoom';
+import { createZoomEngine, VIEWER_ZOOM_BASE, VIEWER_ZOOM_MAX, type ZoomState } from './zoom';
 
 // The gradual zoom engine's contract (R2-7/8): every input animates
 // the scale toward a lattice target through rAF interpolation

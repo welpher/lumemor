@@ -58,19 +58,23 @@
 
 	/** Locale-aware capture date of one member. */
 	function dateLabel(takenAt: string): string {
-		return new Intl.DateTimeFormat($locale ?? 'en', { dateStyle: 'medium' }).format(
-			new Date(takenAt)
-		);
+		return new Intl.DateTimeFormat($locale ?? 'en', { dateStyle: 'medium' }).format(new Date(takenAt));
 	}
 </script>
 
 <Modal bind:open title={$_('albums_cover_title')} {onclose}>
 	<div class="cover-picker flex flex-col gap-3">
-		<p class="cover-picker__body m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('albums_cover_body')}</p>
+		<p class="cover-picker__body m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+			{$_('albums_cover_body')}
+		</p>
 		{#if items.length === 0}
-			<p class="cover-picker__empty m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('albums_cover_empty')}</p>
+			<p class="cover-picker__empty m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+				{$_('albums_cover_empty')}
+			</p>
 		{:else}
-			<ul class="cover-picker__grid grid grid-cols-[repeat(auto-fill,minmax(min(140px,100%),1fr))] gap-2 m-0 p-0 list-none">
+			<ul
+				class="cover-picker__grid grid grid-cols-[repeat(auto-fill,minmax(min(140px,100%),1fr))] gap-2 m-0 p-0 list-none"
+			>
 				{#each items as entry (entry.id)}
 					<li>
 						<button
@@ -89,12 +93,21 @@
 									draggable="false"
 								/>
 								{#if currentCoverId === entry.id}
-									<span class="cover-option__pin absolute top-1.5 left-1.5 px-1.5 py-0.5 font-body font-semibold text-[11px] leading-[1.4] text-text bg-card border border-border rounded-control">{$_('albums_cover_current_badge')}</span>
+									<span
+										class="cover-option__pin absolute top-1.5 left-1.5 px-1.5 py-0.5 font-body font-semibold text-[11px] leading-[1.4] text-text bg-card border border-border rounded-control"
+										>{$_('albums_cover_current_badge')}</span
+									>
 								{/if}
 							</span>
 							<span class="cover-option__meta flex flex-col min-w-0 px-2 py-1.5 text-left">
-								<span class="cover-option__file font-body font-semibold text-[13px] leading-[1.4] text-text truncate">{entry.originalFilename}</span>
-								<span class="cover-option__date font-body font-normal text-[12px] leading-[1.4] text-text-soft">{dateLabel(entry.takenAt)}</span>
+								<span
+									class="cover-option__file font-body font-semibold text-[13px] leading-[1.4] text-text truncate"
+									>{entry.originalFilename}</span
+								>
+								<span
+									class="cover-option__date font-body font-normal text-[12px] leading-[1.4] text-text-soft"
+									>{dateLabel(entry.takenAt)}</span
+								>
 							</span>
 						</button>
 					</li>
@@ -102,11 +115,22 @@
 			</ul>
 		{/if}
 		{#if errorKey !== ''}
-			<p class="cover-picker__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{resolveErrorText($_, errorKey)}</p>
+			<p
+				class="cover-picker__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{resolveErrorText($_, errorKey)}
+			</p>
 		{/if}
 	</div>
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => { open = false; onclose?.(); }}>
+		<Button
+			variant="ghost"
+			onclick={() => {
+				open = false;
+				onclose?.();
+			}}
+		>
 			<X size={20} aria-hidden="true" />
 			{$_('common_cancel')}
 		</Button>

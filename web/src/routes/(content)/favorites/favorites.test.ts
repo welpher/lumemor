@@ -53,10 +53,7 @@ function item(id: string, takenAt: string, overrides: Record<string, unknown> = 
 	return { id, takenAt, ...itemDefaults, ...overrides };
 }
 
-const pageOne = [
-	item('a1', '2026-11-02T10:00:00Z'),
-	item('a2', '2026-11-01T09:00:00Z')
-];
+const pageOne = [item('a1', '2026-11-02T10:00:00Z'), item('a2', '2026-11-01T09:00:00Z')];
 const pageTwo = [item('b1', '2026-09-05T08:00:00Z')];
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -71,10 +68,8 @@ type FetchRoute = Record<string, () => Response>;
 
 function favoritesRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
-		'/api/v1/assets/favorites?limit=100': () =>
-			jsonResponse(200, { items: pageOne, nextCursor: 'C1' }),
-		'/api/v1/assets/favorites?limit=100&cursor=C1': () =>
-			jsonResponse(200, { items: pageTwo }),
+		'/api/v1/assets/favorites?limit=100': () => jsonResponse(200, { items: pageOne, nextCursor: 'C1' }),
+		'/api/v1/assets/favorites?limit=100&cursor=C1': () => jsonResponse(200, { items: pageTwo }),
 		'/api/v1/assets/batch': () => jsonResponse(200, { affected: 0, missing: [] }),
 		...overrides
 	};
@@ -150,7 +145,10 @@ beforeEach(async () => {
 	clearWallItems();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();

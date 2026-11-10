@@ -81,7 +81,10 @@ function jsonResponse(status: number, body: unknown): Response {
 beforeEach(async () => {
 	// Boot the session store unauthenticated: the 401 interceptor
 	// stays inert (no mid-session flips unless a case arranges one).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 });
@@ -93,9 +96,7 @@ test('the URL builders assemble the contract paths and escape ids', () => {
 	expect(assetOriginalUrl('a1')).toBe('/api/v1/assets/a1/original');
 	expect(assetPlayUrl('a1')).toBe('/api/v1/assets/a1/play');
 	// A hostile id never escapes the path segment.
-	expect(assetThumbnailUrl('a/b?c', 'tile')).toBe(
-		'/api/v1/assets/a%2Fb%3Fc/thumbnail?size=tile'
-	);
+	expect(assetThumbnailUrl('a/b?c', 'tile')).toBe('/api/v1/assets/a%2Fb%3Fc/thumbnail?size=tile');
 });
 
 test('the detail fetch returns the parsed detail on 200', async () => {
@@ -118,13 +119,22 @@ test('the detail validator rejects broken faces arrays', async () => {
 	// The array is part of the fixed shape: absent, null, non-array or
 	// a malformed entry is not a detail.
 	expect(
-		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, faces: undefined })))
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(200, { ...detailBody, faces: undefined }))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, faces: null })))
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(200, { ...detailBody, faces: null }))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, faces: 'no' })))
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(200, { ...detailBody, faces: 'no' }))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 	const brokenLabel = [
 		{ id: 'f1', score: 0.9, thumbnail: '/api/v1/faces/f1/thumbnail', clusterId: 'c1', label: { name: 7 } }
@@ -135,7 +145,10 @@ test('the detail validator rejects broken faces arrays', async () => {
 	);
 	expect(outcome).toEqual({ ok: false, errorKey: 'internal' });
 	// The empty array is valid (a faceless asset).
-	const empty = await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, faces: [] })));
+	const empty = await fetchAssetDetail(
+		'a1',
+		vi.fn(async () => jsonResponse(200, { ...detailBody, faces: [] }))
+	);
 	expect(empty.ok).toBe(true);
 	if (empty.ok) {
 		expect(empty.detail.faces).toEqual([]);
@@ -143,7 +156,10 @@ test('the detail validator rejects broken faces arrays', async () => {
 	// The tags array joined the fixed shape (M3d): absent, null or a
 	// malformed entry is not a detail.
 	expect(
-		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, tags: null })))
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(200, { ...detailBody, tags: null }))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
 		await fetchAssetDetail(
@@ -163,26 +179,46 @@ test('the detail validator rejects broken faces arrays', async () => {
 
 test('the detail fetch maps 404, 401, unknown codes and broken bodies', async () => {
 	expect(
-		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(404, { code: 'ASSET_NOT_FOUND' })))
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(404, { code: 'ASSET_NOT_FOUND' }))
+		)
 	).toEqual({ ok: false, errorKey: 'asset_not_found' });
 	expect(
-		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })))
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+		)
 	).toEqual({ ok: false, errorKey: 'session_expired' });
 	// An unknown code passes through lowercased; the shared renderer
 	// (resolveErrorText) owns the generic-message fallback.
 	expect(
-		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(502, { code: 'PROXY_TEAPOT' })))
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(502, { code: 'PROXY_TEAPOT' }))
+		)
 	).toEqual({ ok: false, errorKey: 'proxy_teapot' });
-	expect(await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, null)))).toEqual({
+	expect(
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(200, null))
+		)
+	).toEqual({
 		ok: false,
 		errorKey: 'internal'
 	});
 	// A detail whose id is not the requested one is not a detail.
 	expect(
-		await fetchAssetDetail('a1', vi.fn(async () => jsonResponse(200, { ...detailBody, id: 'zz' })))
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => jsonResponse(200, { ...detailBody, id: 'zz' }))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await fetchAssetDetail('a1', vi.fn(async () => Promise.reject(new Error('offline'))))
+		await fetchAssetDetail(
+			'a1',
+			vi.fn(async () => Promise.reject(new Error('offline')))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 });
 
@@ -202,16 +238,32 @@ test('the patch sends the exact body and adopts the response detail', async () =
 
 test('the patch maps validation, session and network failures', async () => {
 	expect(
-		await patchAsset('a1', { isHidden: true }, vi.fn(async () => jsonResponse(400, { code: 'VALIDATION_FAILED' })))
+		await patchAsset(
+			'a1',
+			{ isHidden: true },
+			vi.fn(async () => jsonResponse(400, { code: 'VALIDATION_FAILED' }))
+		)
 	).toEqual({ ok: false, errorKey: 'validation_failed' });
 	expect(
-		await patchAsset('a1', { isHidden: true }, vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })))
+		await patchAsset(
+			'a1',
+			{ isHidden: true },
+			vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+		)
 	).toEqual({ ok: false, errorKey: 'session_expired' });
 	expect(
-		await patchAsset('a1', { isHidden: true }, vi.fn(async () => Promise.reject(new Error('offline'))))
+		await patchAsset(
+			'a1',
+			{ isHidden: true },
+			vi.fn(async () => Promise.reject(new Error('offline')))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await patchAsset('a1', { isHidden: true }, vi.fn(async () => jsonResponse(200, 'not an object')))
+		await patchAsset(
+			'a1',
+			{ isHidden: true },
+			vi.fn(async () => jsonResponse(200, 'not an object'))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 });
 
@@ -223,13 +275,22 @@ test('the delete succeeds on 204 and treats a 404 as already gone', async () => 
 	// The already-deleted row answers 404; the row is gone either
 	// way (the upload queue's save-as pins the same reading).
 	expect(
-		await deleteAsset('a1', vi.fn(async () => jsonResponse(404, { code: 'ASSET_NOT_FOUND' })))
+		await deleteAsset(
+			'a1',
+			vi.fn(async () => jsonResponse(404, { code: 'ASSET_NOT_FOUND' }))
+		)
 	).toEqual({ ok: true });
 	expect(
-		await deleteAsset('a1', vi.fn(async () => jsonResponse(500, { code: 'INTERNAL' })))
+		await deleteAsset(
+			'a1',
+			vi.fn(async () => jsonResponse(500, { code: 'INTERNAL' }))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await deleteAsset('a1', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })))
+		await deleteAsset(
+			'a1',
+			vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+		)
 	).toEqual({ ok: false, errorKey: 'session_expired' });
 });
 
@@ -247,10 +308,18 @@ test('the batch mirror posts the exact body and maps the outcomes', async () => 
 	});
 
 	expect(
-		await runAssetBatch('trash', ['a1'], vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })))
+		await runAssetBatch(
+			'trash',
+			['a1'],
+			vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+		)
 	).toEqual({ ok: false, errorKey: 'session_expired' });
 	expect(
-		await runAssetBatch('trash', ['a1'], vi.fn(async () => jsonResponse(200, { affected: 'one' })))
+		await runAssetBatch(
+			'trash',
+			['a1'],
+			vi.fn(async () => jsonResponse(200, { affected: 'one' }))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 	// An empty id list never leaves the client.
 	const unused = vi.fn();
@@ -272,13 +341,22 @@ test('the play probe sends a one-byte range and maps readiness', async () => {
 	// A transcode still in flight: the client keeps the poster and
 	// waits for the SSE convergence.
 	expect(
-		await probeAssetPlay('a1', vi.fn(async () => jsonResponse(404, { code: 'ASSET_NOT_READY' })))
+		await probeAssetPlay(
+			'a1',
+			vi.fn(async () => jsonResponse(404, { code: 'ASSET_NOT_READY' }))
+		)
 	).toEqual({ ok: false, errorKey: 'asset_not_ready' });
 	// A plain 200 (the range ignored) still proves the stream.
 	expect(
-		await probeAssetPlay('a1', vi.fn(async () => new Response('video', { status: 200 })))
+		await probeAssetPlay(
+			'a1',
+			vi.fn(async () => new Response('video', { status: 200 }))
+		)
 	).toEqual({ ok: true });
 	expect(
-		await probeAssetPlay('a1', vi.fn(async () => Promise.reject(new Error('offline'))))
+		await probeAssetPlay(
+			'a1',
+			vi.fn(async () => Promise.reject(new Error('offline')))
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 });

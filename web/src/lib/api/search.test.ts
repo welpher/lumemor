@@ -99,7 +99,10 @@ beforeEach(async () => {
 	// Boot the session store unauthenticated: the 401 interceptor
 	// stays inert for these tests (no mid-session flips unless a
 	// case arranges one).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 });
@@ -187,9 +190,7 @@ test('searchRequestOf builds the contract request: the sub-two-rune query drops,
 
 	// A one-rune query takes NO text path: the request is the pure
 	// filter browse (the server's own rule, mirrored client-side).
-	expect(searchRequestOf({ ...emptyFilters, query: 'x' }, 'en', 100, null)).toBe(
-		'locale=en&limit=100'
-	);
+	expect(searchRequestOf({ ...emptyFilters, query: 'x' }, 'en', 100, null)).toBe('locale=en&limit=100');
 
 	// A discontiguous year set maps onto the bounding range (the
 	// contract's only time filter: min year start, max year end
@@ -221,10 +222,7 @@ test('searchPage passes the cursor and the locale through', async () => {
 	});
 	vi.stubGlobal('fetch', fetchMock);
 
-	const outcome = await searchPage(
-		{ ...emptyFilters, query: '海边' },
-		{ cursor: 'C1', locale: 'zh-Hans' }
-	);
+	const outcome = await searchPage({ ...emptyFilters, query: '海边' }, { cursor: 'C1', locale: 'zh-Hans' });
 
 	expect(outcome.ok).toBe(true);
 	if (outcome.ok) {
@@ -235,13 +233,18 @@ test('searchPage passes the cursor and the locale through', async () => {
 test('searchPage maps the failure arms: dead session, error codes, broken bodies', async () => {
 	vi.stubGlobal(
 		'fetch',
-		stubFetch({ '/api/v1/search?locale=en&limit=100': () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }) })
+		stubFetch({
+			'/api/v1/search?locale=en&limit=100': () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })
+		})
 	);
 	expect(await searchPage(emptyFilters)).toEqual({ ok: false, errorKey: 'session_expired' });
 
 	vi.stubGlobal(
 		'fetch',
-		stubFetch({ '/api/v1/search?locale=en&limit=100': () => jsonResponse(400, { code: 'VALIDATION_FAILED', message: 'invalid search cursor' }) })
+		stubFetch({
+			'/api/v1/search?locale=en&limit=100': () =>
+				jsonResponse(400, { code: 'VALIDATION_FAILED', message: 'invalid search cursor' })
+		})
 	);
 	expect(await searchPage(emptyFilters)).toEqual({ ok: false, errorKey: 'validation_failed' });
 
@@ -257,14 +260,20 @@ test('searchPage maps the failure arms: dead session, error codes, broken bodies
 		new Response('not json', { status: 200, headers: { 'Content-Type': 'application/json' } })
 	];
 	for (const mangle of mangles) {
-		vi.stubGlobal('fetch', vi.fn(async () => mangle));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => mangle)
+		);
 		expect(await searchPage(emptyFilters), String(mangle.body)).toEqual({
 			ok: false,
 			errorKey: 'internal'
 		});
 	}
 
-	vi.stubGlobal('fetch', vi.fn(async () => new Response('oops', { status: 500 })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => new Response('oops', { status: 500 }))
+	);
 	expect(await searchPage(emptyFilters)).toEqual({ ok: false, errorKey: 'internal' });
 });
 
@@ -417,8 +426,7 @@ test('a failed convergence keeps the last good state silently', async () => {
 
 test('reset drops the state and makes events inert again', async () => {
 	const fetchMock = stubFetch({
-		'/api/v1/search?locale=en&limit=100': () =>
-			jsonResponse(200, { items: pageOne, facets: facetsBody })
+		'/api/v1/search?locale=en&limit=100': () => jsonResponse(200, { items: pageOne, facets: facetsBody })
 	});
 	vi.stubGlobal('fetch', fetchMock);
 	const client = createSearchClient();

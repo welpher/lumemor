@@ -33,9 +33,7 @@ const JOB_RUN_KINDS: readonly string[] = [
 const JOB_RUN_STATES: readonly string[] = ['queued', 'running', 'succeeded', 'failed'];
 
 /** The listing's outcome: the runs newest first, or the failure's i18n key. */
-export type JobRunListResult =
-	| { ok: true; jobs: JobRun[] }
-	| { ok: false; errorKey: string };
+export type JobRunListResult = { ok: true; jobs: JobRun[] } | { ok: false; errorKey: string };
 
 /** Structurally validate one run body; null when it is not one. */
 export function jobRunFrom(body: unknown): JobRun | null {
@@ -74,14 +72,9 @@ export function jobRunFrom(body: unknown): JobRun | null {
  * A 403 is the signed-in non-admin caller (auth_forbidden), not a
  * session failure.
  */
-export async function listJobRuns(
-	limit?: number,
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<JobRunListResult> {
+export async function listJobRuns(limit?: number, fetcher: typeof fetch = globalThis.fetch): Promise<JobRunListResult> {
 	const path =
-		limit === undefined
-			? '/api/v1/admin/jobs'
-			: `/api/v1/admin/jobs?limit=${encodeURIComponent(String(limit))}`;
+		limit === undefined ? '/api/v1/admin/jobs' : `/api/v1/admin/jobs?limit=${encodeURIComponent(String(limit))}`;
 	let response: Response;
 	try {
 		response = await apiFetch(path, undefined, fetcher);

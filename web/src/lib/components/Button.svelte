@@ -24,18 +24,17 @@
 	// border-color utilities ever land on the same element.
 	const variantUtilities: Record<ButtonVariant, string> = {
 		primary: 'bg-accent text-accent-on border-transparent hover:not-disabled:bg-accent-strong',
-		ghost:
-			'bg-transparent text-text border-border-strong hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text',
-		danger:
-			'bg-transparent text-text border-danger hover:not-disabled:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
+		ghost: 'bg-transparent text-text border-border-strong hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text',
+		danger: 'bg-transparent text-text border-danger hover:not-disabled:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
 	};
 </script>
 
 <button
-	class="btn btn--{variant} {className} inline-flex items-center justify-center gap-2 px-4 py-2 font-body font-semibold text-[15px] leading-[1.2] rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard disabled:opacity-55 disabled:cursor-not-allowed {variantUtilities[variant]}"
+	class="btn btn--{variant} {className} inline-flex items-center justify-center gap-2 px-4 py-2 font-body font-semibold text-[15px] leading-[1.2] rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard disabled:opacity-55 disabled:cursor-not-allowed {variantUtilities[
+		variant
+	]}"
 	{type}
 	{...rest}
 >
 	{@render children?.()}
 </button>
-

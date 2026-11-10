@@ -138,9 +138,7 @@
 		for (const entry of facets.cameras) {
 			// The display halves: make and model joined, the raw id
 			// the honest fallback when EXIF carried neither.
-			const halves = [entry.make ?? null, entry.model ?? null].filter(
-				(half) => half !== null && half !== ''
-			);
+			const halves = [entry.make ?? null, entry.model ?? null].filter((half) => half !== null && half !== '');
 			const label = halves.length > 0 ? halves.join(' ') : entry.id;
 			list.push({
 				dimension: 'cameras',
@@ -151,8 +149,7 @@
 			});
 		}
 		for (const entry of facets.kinds) {
-			const kindLabel =
-				entry.kind === 'image' ? $_('search_kind_image') : $_('search_kind_video');
+			const kindLabel = entry.kind === 'image' ? $_('search_kind_image') : $_('search_kind_video');
 			list.push({
 				dimension: 'kinds',
 				value: entry.kind,
@@ -302,7 +299,9 @@
 		</form>
 		{#if $search.facets !== null}
 			<FacetChips {chips} ontoggle={toggleChip} />
-			<p class="search-meta flex flex-wrap items-baseline gap-x-2.5 m-0 mt-2.5 text-[12px] leading-[1.4] text-text-faint">
+			<p
+				class="search-meta flex flex-wrap items-baseline gap-x-2.5 m-0 mt-2.5 text-[12px] leading-[1.4] text-text-faint"
+			>
 				<b class="font-body font-bold text-text-soft tabular-nums">{countLabel}</b>
 				<span>{$_('search_result_note')}</span>
 			</p>
@@ -312,16 +311,25 @@
 	<!-- The results: the two-mode wall, the states, the pager. -->
 	<div class="search__results px-2 pt-3 pb-12">
 		{#if firstLoad}
-			<p class="search__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('search_loading')}</p>
+			<p class="search__status my-12 text-center text-text-soft animate-loading-in" role="status">
+				{$_('search_loading')}
+			</p>
 		{:else if settledEmpty}
-			<div class="search-empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+			<div
+				class="search-empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+			>
 				<h1 class="text-[22px] mb-2">{$_('search_empty_title')}</h1>
 				<p class="text-text-soft">{$_('search_empty_body')}</p>
 			</div>
 		{:else if $search.status === 'error' && $search.items.length === 0}
-			<div class="search__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+			<div
+				class="search__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
 				<p>{errorText($search.errorKey)}</p>
-				<Button variant="primary" onclick={() => void search.run(filters, $locale ?? 'en')}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+				<Button variant="primary" onclick={() => void search.run(filters, $locale ?? 'en')}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
 			</div>
 		{:else if queryMode}
 			<!-- QUERY mode: the FLAT justified wall -- rank order
@@ -336,15 +344,22 @@
 		{/if}
 
 		{#if $search.status === 'error' && $search.items.length > 0}
-			<div class="search__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+			<div
+				class="search__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
 				<p>{errorText($search.errorKey)}</p>
-				<Button variant="primary" onclick={() => void search.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+				<Button variant="primary" onclick={() => void search.loadMore()}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
 			</div>
 		{/if}
 
 		{#if !observerAvailable && $search.nextCursor !== null && $search.status === 'ready'}
 			<div class="search__pager flex justify-center my-5">
-				<Button variant="ghost" onclick={() => void search.loadMore()}><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button>
+				<Button variant="ghost" onclick={() => void search.loadMore()}
+					><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button
+				>
 			</div>
 		{/if}
 
