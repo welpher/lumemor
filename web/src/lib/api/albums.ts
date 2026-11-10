@@ -1,14 +1,16 @@
 // The albums surface's data client (reshaped by the
-// albums-as-sources and album-autonomy reworks): the wall list, the
-// detail read (the deletion faces included -- the write probe's
-// `sourceWritable` fact, the owner's `allowAppDeletion` switch, the
-// derived `deletable` affordance), the directory creation (title +
-// source path + audience, the honest skipped report and the probe's
-// read-only fact -- both admin-guarded writes now), the property
-// patch (title, cover, lock, deletability), the virtual/directory
-// delete, the path completion of the creation dialog's combobox
-// (the system-wide domain: the container's real visible filesystem,
-// the managed tree never listed), the audience's full-set PUT, the
+// albums-as-sources and album-autonomy reworks, and by the lock's
+// retirement): the wall list, the detail read (the deletion faces
+// included -- the write probe's `sourceWritable` fact, the owner's
+// `allowAppDeletion` switch, the derived `deletable` affordance),
+// the directory creation (title + source path + audience + the two
+// autonomy switches, the honest skipped report and the probe's
+// read-only fact -- both admin-guarded writes), the property patch
+// (title, cover, deletability), the virtual/directory delete, the
+// path completion of the creation dialog's combobox (the
+// system-wide domain: the container's real visible filesystem, the
+// managed tree never listed; every row carries the write fact the
+// listing's probe discovered), the audience's full-set PUT, the
 // rescan trigger, the instance's member list and the timeline
 // preference write -- each behind the repo-wide error-code
 // convention: every failure outcome carries the error code's i18n
@@ -45,6 +47,9 @@ export type AlbumSummary = components['schemas']['AlbumSummary'];
 
 /** One album's detail as the caller sees it. */
 export type AlbumDetail = components['schemas']['AlbumDetail'];
+
+/** One completion row of the path listing: the directory and its write fact. */
+export type AlbumPathCompletion = components['schemas']['AlbumPathCompletion'];
 
 /** One grantee row of the owner's detail `shares` list. */
 export type AlbumShareEntry = components['schemas']['AlbumShareEntry'];
@@ -91,10 +96,11 @@ export type AlbumPatchResult = { ok: true; album: AlbumSummary } | { ok: false; 
 export type AlbumMutationResult = { ok: true } | { ok: false; errorKey: string };
 
 /**
- * The path completion's outcome: the pickable directories, at most
- * 20, the server's own honest answer (an empty list never an error).
+ * The path completion's outcome: the pickable directories with each
+ * row's write fact, at most 20, the server's own honest answer (an
+ * empty list never an error).
  */
-export type PathCompletionsResult = { ok: true; paths: string[] } | { ok: false; errorKey: string };
+export type PathCompletionsResult = { ok: true; completions: AlbumPathCompletion[] } | { ok: false; errorKey: string };
 
 /** The audience write's outcome (the response IS the honest report). */
 export type AlbumAudienceResult = { ok: true; report: AlbumAudienceResponse } | { ok: false; errorKey: string };
@@ -186,9 +192,6 @@ function summaryFrom(body: unknown): AlbumSummary | null {
 		return null;
 	}
 	if (candidate.type !== 'virtual' && candidate.type !== 'directory' && candidate.type !== 'sync') {
-		return null;
-	}
-	if (candidate.locked !== true && candidate.locked !== false) {
 		return null;
 	}
 	if (candidate.isShared !== true && candidate.isShared !== false) {
@@ -289,9 +292,6 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 		return null;
 	}
 	if (candidate.type !== 'virtual' && candidate.type !== 'directory' && candidate.type !== 'sync') {
-		return null;
-	}
-	if (candidate.locked !== true && candidate.locked !== false) {
 		return null;
 	}
 	if (candidate.coverAssetId !== null && typeof candidate.coverAssetId !== 'string') {
@@ -436,15 +436,27 @@ export async function fetchAlbumDetail(
  * server runs the path validation matrix; every branch its own 400
  * error code; the managed tree is refused on the resolved path) and
  * the audience the album starts with; the files stay where they
- * are, zero copy, zero move. The response is the created album's
- * wall card (the creation-time zeros: no member, no cover), the
- * honest `skipped` report of the requested audience ids that did
- * not land (an unknown, disabled or own id) and the write probe's
+ * are, zero copy, zero move. The two autonomy switches ride the
+ * creation: `allowAppDeletion` carries the dialog's deletability
+ * toggle (present exactly when the picked completion row's
+ * `writable` fact rendered the row -- the server's default governs
+ * when the dialog omits it), `inTimeline` the creator's own
+ * exclusion toggle (false lands the per-user preference row in the
+ * creation itself). The response is the created album's wall card
+ * (the creation-time zeros: no member, no cover), the honest
+ * `skipped` report of the requested audience ids that did not land
+ * (an unknown, disabled or own id) and the write probe's
  * `sourceWritable` fact -- a read-only source is a legitimate
  * album, `false` is the honest feedback, never a failure.
  */
 export async function createAlbum(
-	input: { title: string; rootPath: string; audience: readonly string[] },
+	input: {
+		title: string;
+		rootPath: string;
+		audience: readonly string[];
+		allowAppDeletion?: boolean;
+		inTimeline?: boolean;
+	},
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<AlbumCreateResult> {
 	let response: Response;
@@ -457,7 +469,13 @@ export async function createAlbum(
 				body: JSON.stringify({
 					title: input.title,
 					rootPath: input.rootPath,
-					audience: [...input.audience]
+					audience: [...input.audience],
+					// The switches ride only when the dialog carries them:
+					// the deletability toggle exists exactly where the
+					// picked row's write fact rendered it, and the
+					// exclusion toggle always holds a draft.
+					...(input.allowAppDeletion !== undefined ? { allowAppDeletion: input.allowAppDeletion } : {}),
+					...(input.inTimeline !== undefined ? { inTimeline: input.inTimeline } : {})
 				})
 			},
 			fetcher
@@ -488,10 +506,12 @@ export async function createAlbum(
  * with it -- the boundary is the compose mount itself): the
  * container's real visible filesystem, drilled one segment at a
  * time, the managed tree never listed on any row. The empty prefix
- * lists the root itself (`["/"]`); a typed prefix narrows to the
+ * lists the root itself (`/`); a typed prefix narrows to the
  * parent's matching children; a trailing separator drills into the
- * prefix. The answer is at most 20 rows and the empty list is
- * honest, never an error.
+ * prefix. Every row carries the write fact the listing's probe
+ * discovered (`writable`) -- the dialog renders the deletability
+ * switch exactly for the picked writable row. The answer is at most
+ * 20 rows and the empty list is honest, never an error.
  */
 export async function completeAlbumPath(
 	prefix: string,
@@ -508,25 +528,31 @@ export async function completeAlbumPath(
 		return { ok: false, errorKey: await errorKeyFrom(response) };
 	}
 	const body = await bodyOf(response);
-	if (!isObject(body) || !Array.isArray(body.paths) || body.paths.some((path) => typeof path !== 'string')) {
+	if (!isObject(body) || !Array.isArray(body.completions)) {
 		return { ok: false, errorKey: 'internal' };
 	}
-	return { ok: true, paths: body.paths as string[] };
+	const completions: AlbumPathCompletion[] = [];
+	for (const entry of body.completions) {
+		// One row: the path and the probe's write fact, both required.
+		const candidate = entry as Partial<AlbumPathCompletion>;
+		if (!isObject(entry) || typeof candidate.path !== 'string' || typeof candidate.writable !== 'boolean') {
+			return { ok: false, errorKey: 'internal' };
+		}
+		completions.push(entry as AlbumPathCompletion);
+	}
+	return { ok: true, completions };
 }
 
 /**
  * PATCH /api/v1/albums/{albumId}: the owner's partial edit of the
- * properties (`title`, `coverAssetId`, `locked`,
- * `allowAppDeletion`, any subset). The response is the album's wall
- * card after the edit. The deletability switch is the DIRECTORY
- * album's own (a virtual album answers the message key
- * `album_deletable_not_directory`), and a locked album refuses the
- * property fields with 409 until the owner patches `locked: false`
- * -- the unlock, never gated itself.
+ * properties (`title`, `coverAssetId`, `allowAppDeletion`, any
+ * subset). The response is the album's wall card after the edit.
+ * The deletability switch is the DIRECTORY album's own (a virtual
+ * album answers the message key `album_deletable_not_directory`).
  */
 export async function patchAlbum(
 	albumId: string,
-	patch: { title?: string; coverAssetId?: string; locked?: boolean; allowAppDeletion?: boolean },
+	patch: { title?: string; coverAssetId?: string; allowAppDeletion?: boolean },
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<AlbumPatchResult> {
 	let response: Response;

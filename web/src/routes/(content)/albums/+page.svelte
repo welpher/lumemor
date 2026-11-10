@@ -6,7 +6,7 @@
 	// albums shared to them (with the honest owner attribution) --
 	// with the collage covers (the pinned cover full-bleed,
 	// otherwise the newest members: two split, three the 2+1 fall,
-	// four the quad), the locked / shared / excluded badges, and the
+	// four the quad), the shared / excluded badges, and the
 	// "New album" creation dialog. Card clicks open the album's
 	// detail. The sync card's title is the system's internal label
 	// and never renders: `type === 'sync'` keys the localized
@@ -34,7 +34,7 @@
 	import { sessionRole } from '$lib/auth/session.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
-	import CreateAlbumDialog from '$lib/albums/CreateAlbumDialog.svelte';
+	import CreateAlbumDialog, { type CreateAlbumSwitches } from '$lib/albums/CreateAlbumDialog.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Plus from '@lucide/svelte/icons/plus';
 
@@ -151,11 +151,16 @@
 	// same way (the single-flight collapses the pair). The write's
 	// honest `skipped` report (the requested audience ids that did
 	// not land) holds the dialog open until acknowledged; an
-	// all-landed creation closes it directly.
+	// all-landed writable creation closes it directly. The two
+	// autonomy switches ride the POST: the timeline exclusion (the
+	// creator's own preference, landed in the creation) and the
+	// deletability switch (present exactly when the picked
+	// completion row's write fact rendered the row).
 	async function submitCreate(
 		title: string,
 		rootPath: string,
-		audience: readonly { userId: string; email: string }[]
+		audience: readonly { userId: string; email: string }[],
+		switches: CreateAlbumSwitches
 	): Promise<void> {
 		if (createBusy) {
 			return;
@@ -165,7 +170,9 @@
 		const outcome = await createAlbum({
 			title,
 			rootPath,
-			audience: audience.map((member) => member.userId)
+			audience: audience.map((member) => member.userId),
+			allowAppDeletion: switches.allowAppDeletion,
+			inTimeline: switches.inTimeline
 		});
 		createBusy = false;
 		if (!outcome.ok) {
@@ -357,30 +364,6 @@
 					class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
 					>{$_('albums_photo_count', { values: { count: album.itemCount } })}</span
 				>
-				{#if album.locked}
-					<span
-						class="album-card__badge album-card__badge--locked inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
-					>
-						<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
-							<rect
-								x="5"
-								y="10.5"
-								width="14"
-								height="9"
-								rx="2"
-								stroke="currentColor"
-								stroke-width="1.75"
-							/>
-							<path
-								d="M8 10.5V8a4 4 0 0 1 8 0v2.5"
-								stroke="currentColor"
-								stroke-width="1.75"
-								stroke-linecap="round"
-							/>
-						</svg>
-						{$_('albums_locked_badge')}
-					</span>
-				{/if}
 				{#if album.isShared}
 					<span
 						class="album-card__badge album-card__badge--shared inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
@@ -433,6 +416,6 @@
 	errorKey={createErrorKey}
 	skipped={createSkipped}
 	sourceWritable={createWritable}
-	onsubmit={(title, rootPath, audience) => void submitCreate(title, rootPath, audience)}
+	onsubmit={(title, rootPath, audience, switches) => void submitCreate(title, rootPath, audience, switches)}
 	ondone={finishCreate}
 />
