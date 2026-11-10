@@ -1,4 +1,5 @@
 {
+  "meta_language_name": "简体中文",
   "app_name": "lumemor",
   "nav_open_menu": "打开导航",
   "nav_search": "搜索",
@@ -8,9 +9,6 @@
   "theme_light": "浅色",
   "theme_dark": "深色",
   "theme_system": "跟随系统",
-  "language_label": "语言",
-  "language_english": "English",
-  "language_chinese": "简体中文",
   "login_title": "登录",
   "login_description": "登录你的家庭照片库。",
   "login_email": "邮箱",

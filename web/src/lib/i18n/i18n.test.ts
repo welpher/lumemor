@@ -1,7 +1,7 @@
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { addMessages } from 'svelte-i18n';
 import { beforeEach, expect, test } from 'vitest';
-import { currentLocale, detectLocale, initI18n, setLocale, translate } from './index';
+import { APP_LOCALES, currentLocale, detectLocale, initI18n, localeLanguageName, setLocale, translate } from './index';
 import Login from '../../routes/(auth)/login/+page.svelte';
 
 // jsdom's navigator reports en-US; tests shadow the language
@@ -25,6 +25,16 @@ beforeEach(() => {
 test('any Chinese navigator language detects zh-Hans', () => {
 	stubNavigatorLanguages(['zh-CN', 'en']);
 	expect(detectLocale()).toBe('zh-Hans');
+});
+
+test('the registry derives from the shared directory and reads each locale raw name', () => {
+	// The directory IS the registry: APP_LOCALES folds from the
+	// shared i18n/ directory's file list (sorted), and the settings
+	// picker reads each entry's `meta_language_name` RAW -- the name
+	// is declared in its own language, never routed through $_().
+	expect(APP_LOCALES).toEqual(['en', 'zh-Hans']);
+	expect(localeLanguageName('en')).toBe('English');
+	expect(localeLanguageName('zh-Hans')).toBe('简体中文');
 });
 
 test('non-Chinese navigator languages detect en', () => {
