@@ -43,7 +43,7 @@
 	// cannot race.
 	import { locale, _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
-	import { assetOriginalUrl, type AssetDetail, type AssetFaceSummary } from '$lib/api/assets';
+	import { type AssetDetail, type AssetFaceSummary } from '$lib/api/assets';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import X from '@lucide/svelte/icons/x';
 	import Check from '@lucide/svelte/icons/check';

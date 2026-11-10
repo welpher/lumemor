@@ -523,27 +523,25 @@
 </div>
 
 <Modal open={pendingActivate !== null} title={$_('admin_models_activate_title')} onclose={cancelActivate}>
-	{#snippet children()}
-		<p class="models__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-			{#if pendingActivate !== null && needsDimWarning(pendingActivate)}
-				{$_('admin_models_activate_body_cross', {
-					values: { name: pendingActivate.id, slot: slotLabel(pendingActivate.slot) }
-				})}
-			{:else if pendingActivate !== null}
-				{$_('admin_models_activate_body_same', {
-					values: { name: pendingActivate.id, slot: slotLabel(pendingActivate.slot) }
-				})}
-			{/if}
-		</p>
-		{#if activateErrorKey !== ''}
-			<p
-				class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
-				role="alert"
-			>
-				{errorText(activateErrorKey)}
-			</p>
+	<p class="models__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
+		{#if pendingActivate !== null && needsDimWarning(pendingActivate)}
+			{$_('admin_models_activate_body_cross', {
+				values: { name: pendingActivate.id, slot: slotLabel(pendingActivate.slot) }
+			})}
+		{:else if pendingActivate !== null}
+			{$_('admin_models_activate_body_same', {
+				values: { name: pendingActivate.id, slot: slotLabel(pendingActivate.slot) }
+			})}
 		{/if}
-	{/snippet}
+	</p>
+	{#if activateErrorKey !== ''}
+		<p
+			class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+			role="alert"
+		>
+			{errorText(activateErrorKey)}
+		</p>
+	{/if}
 	{#snippet footer()}
 		<Button variant="ghost" disabled={busy} onclick={cancelActivate}>
 			<X size={20} aria-hidden="true" />
@@ -564,21 +562,19 @@
 </Modal>
 
 <Modal open={pendingRerun !== null} title={$_('admin_models_rerun_title')} onclose={cancelRerun}>
-	{#snippet children()}
-		<p class="models__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-			{#if pendingRerun !== null}
-				{$_('admin_models_rerun_body', { values: { slot: slotLabel(pendingRerun.slot) } })}
-			{/if}
-		</p>
-		{#if rerunErrorKey !== ''}
-			<p
-				class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
-				role="alert"
-			>
-				{errorText(rerunErrorKey)}
-			</p>
+	<p class="models__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
+		{#if pendingRerun !== null}
+			{$_('admin_models_rerun_body', { values: { slot: slotLabel(pendingRerun.slot) } })}
 		{/if}
-	{/snippet}
+	</p>
+	{#if rerunErrorKey !== ''}
+		<p
+			class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+			role="alert"
+		>
+			{errorText(rerunErrorKey)}
+		</p>
+	{/if}
 	{#snippet footer()}
 		<Button variant="ghost" disabled={busy} onclick={cancelRerun}>
 			<X size={20} aria-hidden="true" />

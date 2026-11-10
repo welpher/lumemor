@@ -381,56 +381,51 @@
      line), success closing it and the listing converging. The busy
      write keeps it open; the cancel is inert while one runs. -->
 <Modal bind:open={createOpen} title={$_('admin_users_create_heading')} onclose={cancelCreate}>
-	{#snippet children()}
-		<p class="users__create-note mb-4 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
-			{$_('admin_users_create_note')}
-		</p>
-		<form id="admin-user-create" class="users__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
-			<Input
-				id="admin-user-name"
-				label={$_('admin_users_field_name')}
-				type="text"
-				autocomplete="name"
-				bind:value={formName}
-			/>
-			<Input
-				id="admin-user-email"
-				label={$_('admin_users_field_email')}
-				type="email"
-				autocomplete="off"
-				bind:value={formEmail}
-			/>
-			<Input
-				id="admin-user-password"
-				label={$_('admin_users_field_password')}
-				type="password"
-				autocomplete="new-password"
-				bind:value={formPassword}
-			/>
-			<div class="users__field flex flex-col gap-1.5">
-				<label
-					class="users__label font-body font-semibold text-[14px] leading-[1.4] text-text"
-					for="admin-user-role">{$_('admin_users_field_role')}</label
-				>
-				<select
-					class="users__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
-					id="admin-user-role"
-					bind:value={formRole}
-				>
-					<option value="user">{$_('admin_role_user')}</option>
-					<option value="admin">{$_('admin_role_admin')}</option>
-				</select>
-			</div>
-			{#if createErrorKey !== ''}
-				<p
-					class="users__error m-0 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
-					role="alert"
-				>
-					{errorText(createErrorKey)}
-				</p>
-			{/if}
-		</form>
-	{/snippet}
+	<p class="users__create-note mb-4 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+		{$_('admin_users_create_note')}
+	</p>
+	<form id="admin-user-create" class="users__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
+		<Input
+			id="admin-user-name"
+			label={$_('admin_users_field_name')}
+			type="text"
+			autocomplete="name"
+			bind:value={formName}
+		/>
+		<Input
+			id="admin-user-email"
+			label={$_('admin_users_field_email')}
+			type="email"
+			autocomplete="off"
+			bind:value={formEmail}
+		/>
+		<Input
+			id="admin-user-password"
+			label={$_('admin_users_field_password')}
+			type="password"
+			autocomplete="new-password"
+			bind:value={formPassword}
+		/>
+		<div class="users__field flex flex-col gap-1.5">
+			<label
+				class="users__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+				for="admin-user-role">{$_('admin_users_field_role')}</label
+			>
+			<select
+				class="users__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+				id="admin-user-role"
+				bind:value={formRole}
+			>
+				<option value="user">{$_('admin_role_user')}</option>
+				<option value="admin">{$_('admin_role_admin')}</option>
+			</select>
+		</div>
+		{#if createErrorKey !== ''}
+			<p class="users__error m-0 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">
+				{errorText(createErrorKey)}
+			</p>
+		{/if}
+	</form>
 	{#snippet footer()}
 		<Button variant="ghost" disabled={creating} onclick={cancelCreate}>
 			<X size={20} aria-hidden="true" />
@@ -444,19 +439,17 @@
 </Modal>
 
 <Modal open={pendingDisable !== null} title={$_('admin_users_disable_title')} onclose={cancelDisable}>
-	{#snippet children()}
-		<p class="users__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-			{$_('admin_users_disable_body', { values: { name: pendingDisable?.name ?? '' } })}
+	<p class="users__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
+		{$_('admin_users_disable_body', { values: { name: pendingDisable?.name ?? '' } })}
+	</p>
+	{#if disableErrorKey !== ''}
+		<p
+			class="users__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+			role="alert"
+		>
+			{errorText(disableErrorKey)}
 		</p>
-		{#if disableErrorKey !== ''}
-			<p
-				class="users__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
-				role="alert"
-			>
-				{errorText(disableErrorKey)}
-			</p>
-		{/if}
-	{/snippet}
+	{/if}
 	{#snippet footer()}
 		<Button variant="ghost" disabled={busy} onclick={cancelDisable}>
 			<X size={20} aria-hidden="true" />

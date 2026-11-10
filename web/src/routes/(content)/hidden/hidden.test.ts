@@ -112,21 +112,6 @@ function tiles(): HTMLElement[] {
 	return Array.from(document.body.querySelectorAll<HTMLElement>('.tile'));
 }
 
-function buttonByText(text: string): HTMLButtonElement {
-	const buttons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'));
-	const found = buttons.find((button) => button.textContent?.trim() === text);
-	if (found === undefined) {
-		throw new Error(`missing button ${text}`);
-	}
-	return found;
-}
-
-function hasButton(text: string): boolean {
-	return Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).some(
-		(button) => button.textContent?.trim() === text
-	);
-}
-
 /** The icon-only actions (the bar, the toolbar toggle) name themselves by aria-label. */
 function buttonByLabel(label: string): HTMLButtonElement {
 	const found = document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);

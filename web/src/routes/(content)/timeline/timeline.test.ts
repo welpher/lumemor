@@ -117,10 +117,6 @@ function mountPage(): ReturnType<typeof mount> {
 	return page;
 }
 
-function textOf(selector: string): string {
-	return document.body.querySelector(selector)?.textContent ?? '';
-}
-
 function tiles(): HTMLElement[] {
 	return Array.from(document.body.querySelectorAll<HTMLElement>('.tile'));
 }
@@ -141,12 +137,6 @@ function buttonByLabel(label: string, scope: ParentNode = document.body): HTMLBu
 		throw new Error(`missing button labeled ${label}`);
 	}
 	return found;
-}
-
-function clickTile(index: number): void {
-	const link = tiles()[index]?.querySelector('a.tile__link');
-	link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-	flushSync();
 }
 
 /**
@@ -633,7 +623,7 @@ test('the scrubber tracking observes the scroll root through the capture phase',
 
 test('an album membership event restarts the walk: the fresh page one applies', async () => {
 	let shared = false;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		const url = String(input);
 		if (url === '/api/v1/assets/timeline?limit=100') {
 			return jsonResponse(200, {

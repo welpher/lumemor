@@ -287,19 +287,17 @@
 </section>
 
 <Modal open={pendingDelete !== null} title={$_('trash_delete_title')} onclose={cancelDelete}>
-	{#snippet children()}
-		<p class="trash__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-			{$_('trash_delete_body', { values: { name: pendingDelete?.originalFilename ?? '' } })}
+	<p class="trash__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
+		{$_('trash_delete_body', { values: { name: pendingDelete?.originalFilename ?? '' } })}
+	</p>
+	{#if deleteErrorKey !== ''}
+		<p
+			class="trash__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+			role="alert"
+		>
+			{errorText(deleteErrorKey)}
 		</p>
-		{#if deleteErrorKey !== ''}
-			<p
-				class="trash__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
-				role="alert"
-			>
-				{errorText(deleteErrorKey)}
-			</p>
-		{/if}
-	{/snippet}
+	{/if}
 	{#snippet footer()}
 		<Button variant="ghost" disabled={busy} onclick={cancelDelete}>
 			<X size={20} aria-hidden="true" />

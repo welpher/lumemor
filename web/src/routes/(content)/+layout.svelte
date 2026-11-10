@@ -23,11 +23,9 @@
 	//   top, popstate keeps whatever offset the wall left (the wall
 	//   remounts and refetches on the back-from-viewer return either
 	//   way -- nothing restores a stale offset).
-	import { locale, _ } from 'svelte-i18n';
+	import { _ } from 'svelte-i18n';
 	import { page } from '$app/state';
 	import { afterNavigate, goto } from '$app/navigation';
-	import { setLocale, type AppLocale } from '$lib/i18n';
-	import { setThemePreference, themePreference, type ThemePreference } from '$lib/theme/theme.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import UploadOverlay from '$lib/upload/UploadOverlay.svelte';

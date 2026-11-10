@@ -22,8 +22,6 @@ import PathCompletion from './PathCompletion.svelte';
 // the component through an injected fetch mock under fake timers
 // (the debounce is the unit under observation).
 
-type Held = { resolve: (paths: string[]) => void };
-
 function jsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -46,9 +44,6 @@ function mountField(props: { path?: string; failure?: string; hint?: string } = 
 			onsubmit: undefined
 		}
 	});
-	// Keep the draft in view: the component writes completions into
-	// the bindable.
-	let pathValue = state.path;
 	const component = field;
 	// Svelte 5 mount returns the component instance; the bindable is
 	// read back off the input.

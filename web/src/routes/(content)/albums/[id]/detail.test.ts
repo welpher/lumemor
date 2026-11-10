@@ -1180,7 +1180,7 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 
 test('an unknown or invisible album renders the not-found error with a retry', async () => {
 	let failing = true;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		if (String(input) === '/api/v1/albums/al1?limit=1') {
 			if (failing) {
 				return jsonResponse(404, { code: 'ALBUM_NOT_FOUND', message: 'no such album' });
@@ -1254,7 +1254,7 @@ test('SSE album.items-changed restarts the items walk', async () => {
 
 test('SSE album.deleted renders the not-found error state', async () => {
 	let deleted = false;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		if (String(input) === '/api/v1/albums/al1?limit=1') {
 			if (deleted) {
 				return jsonResponse(404, { code: 'ALBUM_NOT_FOUND', message: 'no such album' });

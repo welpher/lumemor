@@ -263,21 +263,19 @@
 <!-- The three-state conflict decision (the pinned semantics): the
      Modal now carries the focus trap, so keyboard users stay inside. -->
 <Modal open={conflictItem !== null} title={$_('upload_conflict_title')} onclose={() => closeUploadConflict()}>
-	{#snippet children()}
-		{#if conflictItem !== null && conflictItem.asset !== null}
-			<p class="conflict__body font-body font-normal text-[15px] leading-[1.5] text-text whitespace-pre-line">
-				{$_('upload_conflict_body', { values: { name: conflictItem.fileName } })}
+	{#if conflictItem !== null && conflictItem.asset !== null}
+		<p class="conflict__body font-body font-normal text-[15px] leading-[1.5] text-text whitespace-pre-line">
+			{$_('upload_conflict_body', { values: { name: conflictItem.fileName } })}
+		</p>
+		{#if conflictError !== ''}
+			<p
+				class="conflict__error mt-2.5 font-body font-normal text-[13px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{errorText(conflictError)}
 			</p>
-			{#if conflictError !== ''}
-				<p
-					class="conflict__error mt-2.5 font-body font-normal text-[13px] leading-[1.4] text-danger-text"
-					role="alert"
-				>
-					{errorText(conflictError)}
-				</p>
-			{/if}
 		{/if}
-	{/snippet}
+	{/if}
 	{#snippet footer()}
 		<Button variant="ghost" disabled={resolving} onclick={() => closeUploadConflict()}
 			><X size={20} aria-hidden="true" />{$_('common_cancel')}</Button

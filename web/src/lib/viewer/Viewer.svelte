@@ -673,7 +673,6 @@
 						<!-- The Live Photo's motion: the component row's play
 					     stream, muted and looping like a camera's live
 					     capture; the end returns to the still. -->
-						<!-- svelte-ignore a11y_media_has_caption -->
 						<video
 							class="viewer__live relative z-(--z-stage-live) max-w-full max-h-full object-contain"
 							autoplay
