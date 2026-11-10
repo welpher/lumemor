@@ -37,9 +37,10 @@ trap cleanup EXIT
 # pointed at with its repo-root argument.
 copy_tree() {
     local root="$1"
-    mkdir -p "$root/i18n" "$root/openapi"
+    mkdir -p "$root/i18n" "$root/openapi" "$root/web/src/lib/i18n"
     cp "$repo_root/i18n/en.json" "$repo_root/i18n/zh-Hans.json" "$root/i18n/"
     cp "$repo_root/openapi/lumemor.yaml" "$root/openapi/"
+    cp "$repo_root/web/src/lib/i18n/index.ts" "$root/web/src/lib/i18n/"
 }
 
 # Run the checker against a fixture root; fail when it exits 0. The
@@ -134,5 +135,45 @@ path.write_text(text.replace(block, ""), encoding="utf-8")
 PY
 expect_failure "enum block removed" "$work_dir/no_enum" \
     "components.schemas.Error.properties.code.enum not found"
+
+# The registry check (check 6): a locale file without the reserved,
+# non-empty meta_language_name key fails -- the picker's raw read has
+# nothing to render otherwise.
+copy_tree "$work_dir/no_meta_name"
+python3 - "$work_dir/no_meta_name" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+for name in ("en.json", "zh-Hans.json"):
+    path = root / "i18n" / name
+    data = json.loads(path.read_text(encoding="utf-8"))
+    del data["meta_language_name"]
+    path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+PY
+expect_failure "meta_language_name missing" "$work_dir/no_meta_name" \
+    "missing the reserved key 'meta_language_name'"
+
+# The registry check's second half: the AppLocale union must match the
+# directory listing. A dropped union member (or a stray one) is a
+# silent drift the machine check refuses, with the fix hint.
+copy_tree "$work_dir/union_drift"
+python3 - "$work_dir/union_drift" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1]) / "web" / "src" / "lib" / "i18n" / "index.ts"
+text = path.read_text(encoding="utf-8")
+assert "export type AppLocale = 'en' | 'zh-Hans';" in text
+path.write_text(
+    text.replace("export type AppLocale = 'en' | 'zh-Hans';", "export type AppLocale = 'en';"),
+    encoding="utf-8",
+)
+PY
+expect_failure "AppLocale union drifts from the directory" "$work_dir/union_drift" \
+    "does not match the i18n/ directory"
 
 echo "I18N FIXTURES PASS"

@@ -1,4 +1,5 @@
 {
+  "meta_language_name": "English",
   "app_name": "lumemor",
   "nav_open_menu": "Open navigation",
   "nav_search": "Search",
@@ -8,9 +9,6 @@
   "theme_light": "Light",
   "theme_dark": "Dark",
   "theme_system": "System",
-  "language_label": "Language",
-  "language_english": "English",
-  "language_chinese": "简体中文",
   "login_title": "Sign in",
   "login_description": "Sign in to your family photo library.",
   "login_email": "Email",

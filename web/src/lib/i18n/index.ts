@@ -19,13 +19,20 @@
 // so assistive tech announces the right language. Missing keys fall
 // back to en through svelte-i18n's fallbackLocale.
 
+// THE DIRECTORY IS THE REGISTRY (the 2026-11-10 rule: the locale
+// list derives from the shared i18n/ directory -- whatever json
+// sits there is a locale of this app, never a hand-written list):
+// `APP_LOCALES` folds from the glob keys below, the settings picker
+// iterates it reading each dictionary's own `meta_language_name`,
+// and scripts/check_i18n.py machine-checks the `AppLocale` union
+// above against the directory listing -- so adding a language is
+// dropping one json into the directory plus this union line. The
+// alias heuristic (any zh* navigator language -> zh-Hans) and the
+// unknown-falls-back-to-en rule stay as they were.
 import { get } from 'svelte/store';
 import { addMessages, init, locale, _ } from 'svelte-i18n';
 
 export type AppLocale = 'en' | 'zh-Hans';
-
-/** Locales the UI officially maintains (mirrors the i18n directory). */
-export const APP_LOCALES: readonly AppLocale[] = ['en', 'zh-Hans'];
 
 const LOCALE_STORAGE_KEY = 'lumemor:locale';
 
@@ -37,18 +44,33 @@ const messageModules = import.meta.glob('../../../../i18n/*.json', {
 	import: 'default'
 }) as Record<string, Record<string, string>>;
 
-function dictionaryFromGlob(
-	modules: Record<string, Record<string, string>>
-): Partial<Record<AppLocale, Record<string, string>>> {
-	const dictionary: Partial<Record<AppLocale, Record<string, string>>> = {};
-	for (const [path, messages] of Object.entries(modules)) {
-		const fileName = path.slice(path.lastIndexOf('/') + 1);
-		const localeId = fileName.slice(0, -'.json'.length) as AppLocale;
-		if (APP_LOCALES.includes(localeId)) {
-			dictionary[localeId] = messages;
-		}
-	}
-	return dictionary;
+/** The locale id of one glob key (`<dir>/<locale>.json`). */
+function localeIdOf(path: string): string {
+	const fileName = path.slice(path.lastIndexOf('/') + 1);
+	return fileName.slice(0, -'.json'.length);
+}
+
+/** The registry: every locale file the shared directory carries, sorted for a deterministic order. */
+export const APP_LOCALES: readonly AppLocale[] = Object.keys(messageModules)
+	.map(localeIdOf)
+	.sort() as readonly AppLocale[];
+
+/** The per-locale dictionaries, keyed by the registry. */
+const dictionaries = Object.fromEntries(
+	Object.entries(messageModules).map(([path, messages]) => [localeIdOf(path), messages])
+) as Record<AppLocale, Record<string, string>>;
+
+/**
+ * The locale's own-language name: the dictionary's reserved
+ * `meta_language_name` key, read RAW (never through `$_()` -- the
+ * name is declared in its own language, so it must not follow the
+ * active locale). check_i18n.py enforces the key's presence and
+ * non-emptiness in every locale file; the locale id is the honest
+ * fallback for a drifted table.
+ */
+export function localeLanguageName(id: AppLocale): string {
+	const name = dictionaries[id]?.['meta_language_name'];
+	return typeof name === 'string' && name.trim() !== '' ? name : id;
 }
 
 function isAppLocale(value: string | null): value is AppLocale {
@@ -87,12 +109,8 @@ export function initI18n(): Promise<void> {
 			// addMessages seeds the dictionary synchronously (the glob
 			// already inlined every file), so init resolves immediately
 			// and no route ever renders with messages still loading.
-			const dictionary = dictionaryFromGlob(messageModules);
 			for (const localeId of APP_LOCALES) {
-				const messages = dictionary[localeId];
-				if (messages) {
-					addMessages(localeId, messages);
-				}
+				addMessages(localeId, dictionaries[localeId]);
 			}
 			await init({
 				fallbackLocale: 'en',
