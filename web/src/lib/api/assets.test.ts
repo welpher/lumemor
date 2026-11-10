@@ -56,6 +56,8 @@ const detailBody = {
 			label: null
 		}
 	],
+	albums: [],
+	place: null,
 	exif: {
 		cameraMake: 'Lumemor',
 		cameraModel: 'Golden Camera',
@@ -101,7 +103,7 @@ test('the URL builders assemble the contract paths and escape ids', () => {
 
 test('the detail fetch returns the parsed detail on 200', async () => {
 	const fetcher = vi.fn(async () => jsonResponse(200, detailBody));
-	const outcome = await fetchAssetDetail('a1', fetcher);
+	const outcome = await fetchAssetDetail('a1', { fetcher });
 	expect(outcome.ok).toBe(true);
 	if (outcome.ok) {
 		expect(outcome.detail.description).toBe('Sunset over the lake.');
@@ -119,36 +121,27 @@ test('the detail validator rejects broken faces arrays', async () => {
 	// The array is part of the fixed shape: absent, null, non-array or
 	// a malformed entry is not a detail.
 	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(200, { ...detailBody, faces: undefined }))
-		)
+		await fetchAssetDetail('a1', {
+			fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, faces: undefined }))
+		})
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(200, { ...detailBody, faces: null }))
-		)
+		await fetchAssetDetail('a1', { fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, faces: null })) })
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(200, { ...detailBody, faces: 'no' }))
-		)
+		await fetchAssetDetail('a1', { fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, faces: 'no' })) })
 	).toEqual({ ok: false, errorKey: 'internal' });
 	const brokenLabel = [
 		{ id: 'f1', score: 0.9, thumbnail: '/api/v1/faces/f1/thumbnail', clusterId: 'c1', label: { name: 7 } }
 	];
-	const outcome = await fetchAssetDetail(
-		'a1',
-		vi.fn(async () => jsonResponse(200, { ...detailBody, faces: brokenLabel }))
-	);
+	const outcome = await fetchAssetDetail('a1', {
+		fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, faces: brokenLabel }))
+	});
 	expect(outcome).toEqual({ ok: false, errorKey: 'internal' });
 	// The empty array is valid (a faceless asset).
-	const empty = await fetchAssetDetail(
-		'a1',
-		vi.fn(async () => jsonResponse(200, { ...detailBody, faces: [] }))
-	);
+	const empty = await fetchAssetDetail('a1', {
+		fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, faces: [] }))
+	});
 	expect(empty.ok).toBe(true);
 	if (empty.ok) {
 		expect(empty.detail.faces).toEqual([]);
@@ -156,21 +149,16 @@ test('the detail validator rejects broken faces arrays', async () => {
 	// The tags array joined the fixed shape: absent, null or a
 	// malformed entry is not a detail.
 	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(200, { ...detailBody, tags: null }))
-		)
+		await fetchAssetDetail('a1', { fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, tags: null })) })
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(200, { ...detailBody, tags: [{ id: 't1', name: 7 }] }))
-		)
+		await fetchAssetDetail('a1', {
+			fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, tags: [{ id: 't1', name: 7 }] }))
+		})
 	).toEqual({ ok: false, errorKey: 'internal' });
-	const tagged = await fetchAssetDetail(
-		'a1',
-		vi.fn(async () => jsonResponse(200, { ...detailBody, tags: [{ id: 't1', name: 'Beach' }] }))
-	);
+	const tagged = await fetchAssetDetail('a1', {
+		fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, tags: [{ id: 't1', name: 'Beach' }] }))
+	});
 	expect(tagged.ok).toBe(true);
 	if (tagged.ok) {
 		expect(tagged.detail.tags).toEqual([{ id: 't1', name: 'Beach' }]);
@@ -179,52 +167,74 @@ test('the detail validator rejects broken faces arrays', async () => {
 
 test('the detail fetch maps 404, 401, unknown codes and broken bodies', async () => {
 	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(404, { code: 'ASSET_NOT_FOUND' }))
-		)
+		await fetchAssetDetail('a1', { fetcher: vi.fn(async () => jsonResponse(404, { code: 'ASSET_NOT_FOUND' })) })
 	).toEqual({ ok: false, errorKey: 'asset_not_found' });
 	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
-		)
+		await fetchAssetDetail('a1', {
+			fetcher: vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+		})
 	).toEqual({ ok: false, errorKey: 'session_expired' });
 	// An unknown code passes through lowercased; the shared renderer
 	// (resolveErrorText) owns the generic-message fallback.
 	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(502, { code: 'PROXY_TEAPOT' }))
-		)
+		await fetchAssetDetail('a1', { fetcher: vi.fn(async () => jsonResponse(502, { code: 'PROXY_TEAPOT' })) })
 	).toEqual({ ok: false, errorKey: 'proxy_teapot' });
-	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(200, null))
-		)
-	).toEqual({
+	expect(await fetchAssetDetail('a1', { fetcher: vi.fn(async () => jsonResponse(200, null)) })).toEqual({
 		ok: false,
 		errorKey: 'internal'
 	});
 	// A detail whose id is not the requested one is not a detail.
 	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => jsonResponse(200, { ...detailBody, id: 'zz' }))
-		)
+		await fetchAssetDetail('a1', { fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, id: 'zz' })) })
 	).toEqual({ ok: false, errorKey: 'internal' });
-	expect(
-		await fetchAssetDetail(
-			'a1',
-			vi.fn(async () => Promise.reject(new Error('offline')))
-		)
-	).toEqual({ ok: false, errorKey: 'internal' });
+	expect(await fetchAssetDetail('a1', { fetcher: vi.fn(async () => Promise.reject(new Error('offline'))) })).toEqual({
+		ok: false,
+		errorKey: 'internal'
+	});
+});
+
+test('the detail fetch carries the place face and the albums array at the requested locale', async () => {
+	const fetcher = vi.fn(async () =>
+		jsonResponse(200, {
+			...detailBody,
+			albums: [
+				{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner' },
+				{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'viewer' }
+			],
+			place: { placeId: 2988507, name: '巴黎' }
+		})
+	);
+	const outcome = await fetchAssetDetail('a1', { fetcher, locale: 'zh-Hans' });
+	// The place face's display locale rides the request (the web app
+	// owns the active locale).
+	expect(fetcher).toHaveBeenCalledWith('/api/v1/assets/a1?locale=zh-Hans', undefined);
+	expect(outcome.ok).toBe(true);
+	if (outcome.ok) {
+		expect(outcome.detail.albums).toHaveLength(2);
+		expect(outcome.detail.place?.placeId).toBe(2988507);
+		expect(outcome.detail.place?.name).toBe('巴黎');
+	}
+
+	// The new fixed-shape members validate: a malformed album ref or
+	// place drops to the generic failure, never a broken drawer.
+	for (const broken of [
+		{ albums: 'no' },
+		{ albums: [{ id: 'al-1', title: 'Trip', type: 'weird', callerRole: 'owner' }] },
+		{ albums: [{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'nobody' }] },
+		{ place: 'Paris' },
+		{ place: { placeId: 'x', name: 'Paris' } }
+	]) {
+		expect(
+			await fetchAssetDetail('a1', {
+				fetcher: vi.fn(async () => jsonResponse(200, { ...detailBody, ...broken }))
+			})
+		).toEqual({ ok: false, errorKey: 'internal' });
+	}
 });
 
 test('the patch sends the exact body and adopts the response detail', async () => {
 	const fetcher = vi.fn(async () => jsonResponse(200, { ...detailBody, description: 'New text.' }));
-	const outcome = await patchAsset('a1', { description: 'New text.' }, fetcher);
+	const outcome = await patchAsset('a1', { description: 'New text.' }, { fetcher });
 	expect(outcome.ok).toBe(true);
 	if (outcome.ok) {
 		expect(outcome.detail.description).toBe('New text.');
@@ -234,6 +244,16 @@ test('the patch sends the exact body and adopts the response detail', async () =
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ description: 'New text.' })
 	});
+
+	// The place face's locale rides the PATCH too (the response
+	// serves the detail exactly as the GET serves it).
+	const localized = vi.fn(async () => jsonResponse(200, detailBody));
+	await patchAsset('a1', { description: 'x' }, { fetcher: localized, locale: 'zh-Hans' });
+	expect(localized).toHaveBeenCalledWith('/api/v1/assets/a1?locale=zh-Hans', {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ description: 'x' })
+	});
 });
 
 test('the patch maps validation, session and network failures', async () => {
@@ -241,29 +261,21 @@ test('the patch maps validation, session and network failures', async () => {
 		await patchAsset(
 			'a1',
 			{ isHidden: true },
-			vi.fn(async () => jsonResponse(400, { code: 'VALIDATION_FAILED' }))
+			{ fetcher: vi.fn(async () => jsonResponse(400, { code: 'VALIDATION_FAILED' })) }
 		)
 	).toEqual({ ok: false, errorKey: 'validation_failed' });
 	expect(
 		await patchAsset(
 			'a1',
 			{ isHidden: true },
-			vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+			{ fetcher: vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })) }
 		)
 	).toEqual({ ok: false, errorKey: 'session_expired' });
 	expect(
-		await patchAsset(
-			'a1',
-			{ isHidden: true },
-			vi.fn(async () => Promise.reject(new Error('offline')))
-		)
+		await patchAsset('a1', { isHidden: true }, { fetcher: vi.fn(async () => Promise.reject(new Error('offline'))) })
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await patchAsset(
-			'a1',
-			{ isHidden: true },
-			vi.fn(async () => jsonResponse(200, 'not an object'))
-		)
+		await patchAsset('a1', { isHidden: true }, { fetcher: vi.fn(async () => jsonResponse(200, 'not an object')) })
 	).toEqual({ ok: false, errorKey: 'internal' });
 });
 
@@ -358,5 +370,8 @@ test('the play probe sends a one-byte range and maps readiness', async () => {
 			'a1',
 			vi.fn(async () => Promise.reject(new Error('offline')))
 		)
-	).toEqual({ ok: false, errorKey: 'internal' });
+	).toEqual({
+		ok: false,
+		errorKey: 'internal'
+	});
 });
