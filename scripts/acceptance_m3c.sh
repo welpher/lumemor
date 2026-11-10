@@ -67,28 +67,38 @@
 # web/e2e/fixtures/m3-source-rw into the container WITHOUT :ro (the
 # seed file is staged by this script before the album references it
 # -- genuinely distinct bytes, see the fixture's README), and the
-# same administrator walks the deletion chain's every arm: the
-# writable creation answers sourceWritable TRUE; the rescan ingests
-# the file by reference; the owner's detail carries the deletability
+# same administrator walks the autonomy chain's every arm: the
+# writable creation carries the two switches IN THE REQUEST
+# (allowAppDeletion true, inTimeline false -- the album is created
+# kept out of its creator's timeline, the creator's own preference
+# row landed in the creation itself) and answers sourceWritable
+# TRUE; the rescan ingests the file by reference; the owner's
+# aggregated timeline holds the read-only album's pair and NEVER the
+# excluded writable album's file (the create-time exclusion's
+# convergence); the owner's detail carries the deletability
 # faces (allowAppDeletion on, the derived deletable true); the
 # PATCH of the deletability switch flips the derived face (the
-# setting gates the affordance, pure data); the LOCK freezes the
-# delete -- the trash of the live external member answers 409
-# ALBUM_LOCKED BEFORE any file moves (the file stays in the source,
-# no trash home appears); the unlock frees it -- the trash then
-# MOVES the file into the managed trash area (the row carries the
-# trash path, the source directory loses the file), and the restore
-# moves it BACK (the row live again, the file returned -- the
-# fixture healed for the next run).
+# setting gates the affordance, pure data -- the operating system
+# stays the execution's authority); the trash then MOVES the file
+# into the managed trash area (the row carries the trash path, the
+# source directory loses the file), and the restore moves it BACK
+# (the row live again, the file returned -- the fixture healed for
+# the next run).
 #
 # Phase 2 (the e2e stack): a fresh stack whose models ride the SAME
 # storage bind mount; the Playwright spec web/e2e/m3-albums.spec.ts
 # walks the albums-as-sources story of the web app through a real
 # browser -- the sign-in, the create dialog's system-wide completion
-# (the managed tree never listed), the read-only creation's honest
-# report face and the writable creation's direct close, the rescans'
-# convergence, the edit dialog's audience grant and autonomy block,
-# the member's read-only perspective with the creation guard's
+# (the managed tree never listed) with its autonomy block (the
+# read-only pick holds no deletability row, the writable pick's row
+# renders checked on), the read-only creation's honest
+# report face and the writable creation's direct close (both
+# switches riding their POST bodies, the exclusion flipped at
+# create), the rescans' convergence, the edit dialog's audience
+# grant and autonomy block (the lock retired -- the exclusion
+# toggle and, for a writable source, the deletability row), the
+# create-time exclusion's aggregated-timeline convergence, the
+# member's read-only perspective with the creation guard's
 # refusal matrix, and the deletable wall's delete-only selection
 # with its trash/restore round trip (the e2e spec seeds and heals the
 # writable fixture itself). The e2e spec bootstraps itself (the first-run
@@ -801,18 +811,18 @@ status="$(curl -sS -o "$work_dir/completions_root_body" -b "$admin_jar" -w '%{ht
     || fail "GET /api/v1/albums/path-completions (empty prefix) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/albums/path-completions (empty prefix) returned status $status, want 200: $(cat "$work_dir/completions_root_body")"
-grep -q '"paths":\["/"\]' "$work_dir/completions_root_body" \
-    || fail "the empty prefix does not answer the filesystem root itself: $(cat "$work_dir/completions_root_body")"
-echo "    the empty prefix answers [\"/\"] -- the combobox's start-here row"
+grep -q '"completions":\[{"path":"/","writable":false}\]' "$work_dir/completions_root_body" \
+    || fail "the empty prefix does not answer the filesystem root itself with its write fact: $(cat "$work_dir/completions_root_body")"
+echo "    the empty prefix answers the root row with its write fact (\"/\" refuses the server's write probe) -- the combobox's start-here row"
 
 status="$(curl -sS -o "$work_dir/completions_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/albums/path-completions?prefix=$mount_root/")" \
     || fail "GET /api/v1/albums/path-completions request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/albums/path-completions returned status $status, want 200: $(cat "$work_dir/completions_body")"
-grep -q "\"paths\":\[\"$mount_root/coastal-week\",\"$mount_root/trip-2026\"\]" "$work_dir/completions_body" \
-    || fail "the completion does not list the fixture's directories: $(cat "$work_dir/completions_body")"
-echo "    the fixture mount lists its directories with no root opened (the bind is the boundary)"
+grep -q "\"completions\":\[{\"path\":\"$mount_root/coastal-week\",\"writable\":false},{\"path\":\"$mount_root/trip-2026\",\"writable\":false}\]" "$work_dir/completions_body" \
+    || fail "the completion does not list the fixture's directories with their write facts: $(cat "$work_dir/completions_body")"
+echo "    the fixture mount lists its directories with their write facts (both rows read-only) with no root opened (the bind is the boundary)"
 
 status="$(curl -sS -o "$work_dir/completions_managed_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/albums/path-completions?prefix=/var/lib/lumemor/")" \
@@ -826,9 +836,13 @@ grep -q '"/var/lib/lumemor/data"' "$work_dir/completions_managed_body" \
 echo "    the managed data tree never lists (the one exclusion that stayed: the config sibling answers alone)"
 
 echo "==> POST /api/v1/albums must create the admin's directory album (the audience at create, the owner id honestly skipped)"
+# The read-only creation carries the exclusion switch's AFFIRM arm
+# explicitly (inTimeline true -- the feed's default, no preference
+# row written); the writable section below carries the EXCLUDE arm,
+# so the two create bodies pin both arms of the switch.
 status="$(curl -sS -o "$work_dir/album_body" -b "$admin_jar" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
-    -d "{\"title\":\"M3c Acceptance Album\",\"rootPath\":\"$source_dir\",\"audience\":[\"$member_user_id\",\"$admin_user_id\"]}" \
+    -d "{\"title\":\"M3c Acceptance Album\",\"rootPath\":\"$source_dir\",\"audience\":[\"$member_user_id\",\"$admin_user_id\"],\"inTimeline\":true}" \
     "$base_url/api/v1/albums")" \
     || fail "POST /api/v1/albums request failed"
 [ "$status" = "201" ] \
@@ -847,6 +861,10 @@ grep -q '"isShared":true' "$work_dir/album_body" \
 # photos just cannot be deleted through the application).
 grep -q '"sourceWritable":false' "$work_dir/album_body" \
     || fail "the read-only creation does not carry sourceWritable false: $(cat "$work_dir/album_body")"
+# The response card carries the exclusion switch's landed state (the
+# affirm's default -- the album feeds its creator's timeline).
+grep -q '"inTimeline":true' "$work_dir/album_body" \
+    || fail "the affirm-armed creation's card does not carry inTimeline true: $(cat "$work_dir/album_body")"
 # The curation-era honest skip: the audience report
 # carries each unusable id with its reason, never an error -- the
 # owner sees the album by construction, so the own id is the skip.
@@ -1350,28 +1368,41 @@ echo "    the owner's people surface keeps the faces (the photos never left)"
 
 # ---------------------------------------------------------------------------
 # The album autonomy faces, over a WRITABLE source:
-# the probe's true arm, the deletability setting's derived face, the
-# lock's trash refusal, and the trash/restore round trip that moves
-# the source file itself.
+# the probe's true arm, the two create switches' request beats, the
+# create-time exclusion's convergence, the deletability setting's
+# derived face, and the trash/restore round trip that moves the
+# source file itself.
 # ---------------------------------------------------------------------------
 
 echo "==> seeding the writable source fixture (the deletion chain's true arm)"
 seed_rw_fixture
 
-echo "==> POST /api/v1/albums must answer the write probe's TRUE fact over the writable source"
+echo "==> POST /api/v1/albums must carry the two switches and answer the write probe's TRUE fact over the writable source"
+# The two switches ride the creation request, exactly as the create
+# dialog's drafts hold them: the deletability switch on (the writable
+# pick's completion row rendered it) and the timeline exclusion
+# CHECKED -- inTimeline false lands the creator's own preference row
+# in the creation itself, so the album is born out of its creator's
+# aggregated timeline (the audience's own feeds untouched).
 status="$(curl -sS -o "$work_dir/rw_album_body" -b "$admin_jar" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
-    -d "{\"title\":\"M3c Writable Album\",\"rootPath\":\"$rw_mount_root\",\"audience\":[]}" \
+    -d "{\"title\":\"M3c Writable Album\",\"rootPath\":\"$rw_mount_root\",\"audience\":[],\"allowAppDeletion\":true,\"inTimeline\":false}" \
     "$base_url/api/v1/albums")" \
     || fail "POST /api/v1/albums (writable) request failed"
 [ "$status" = "201" ] \
     || fail "POST /api/v1/albums (writable) returned status $status, want 201: $(cat "$work_dir/rw_album_body")"
 grep -q '"sourceWritable":true' "$work_dir/rw_album_body" \
     || fail "the writable creation does not carry sourceWritable true: $(cat "$work_dir/rw_album_body")"
+# The response card carries the landed exclusion.
+grep -q '"inTimeline":false' "$work_dir/rw_album_body" \
+    || fail "the exclude-armed creation's card does not carry the landed exclusion: $(cat "$work_dir/rw_album_body")"
 rw_album_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/rw_album_body")"
 [ -n "$rw_album_id" ] \
     || fail "the writable album carries no id: $(cat "$work_dir/rw_album_body")"
-echo "    the writable album exists ($rw_album_id) at $rw_mount_root, the probe answered true"
+rw_pref_rows="$(psql_query "SELECT count(*) FROM user_album_prefs WHERE album_id = '$rw_album_id' AND in_timeline = false")"
+[ "$rw_pref_rows" = "1" ] \
+    || fail "the exclude-armed creation landed $rw_pref_rows creator preference rows, want exactly 1 (in_timeline false)"
+echo "    the writable album exists ($rw_album_id) at $rw_mount_root: both switches rode the request, the creator's exclusion row landed, the probe answered true"
 
 echo "==> POST /api/v1/albums/{id}/rescan must return 202 and the run must reach succeeded"
 status="$(curl -sS -o "$work_dir/rw_rescan_body" -b "$admin_jar" -w '%{http_code}' \
@@ -1418,11 +1449,29 @@ grep -q '"sourceWritable":true' "$work_dir/rw_detail_body" \
 grep -q '"allowAppDeletion":true' "$work_dir/rw_detail_body" \
     || fail "the writable album's deletability switch is not on by default: $(cat "$work_dir/rw_detail_body")"
 grep -q '"deletable":true' "$work_dir/rw_detail_body" \
-    || fail "the writable album's derived deletable face is not true (owner AND writable AND switch AND unlocked): $(cat "$work_dir/rw_detail_body")"
+    || fail "the writable album's derived deletable face is not true (owner AND writable AND switch): $(cat "$work_dir/rw_detail_body")"
 rw_asset_id="$(sed -n 's/.*"assetId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/rw_detail_body")"
 [ -n "$rw_asset_id" ] \
     || fail "the writable album's detail lists no member asset id: $(cat "$work_dir/rw_detail_body")"
 echo "    the detail carries the probe fact, the switch on, and the derived deletable face true ($rw_asset_id)"
+
+echo "==> the owner's aggregated timeline must hold the read-only pair and NEVER the excluded writable album's file"
+# The create-time exclusion's convergence (the creator's own arm):
+# the writable album was born excluded, so its file never feeds the
+# owner's aggregated timeline -- while the read-only album (created
+# with the affirm's default) feeds both its photos. The exclusion
+# scopes the AGGREGATE only: the writable album's own detail above
+# still lists its file.
+status="$(curl -sS -o "$work_dir/admin_timeline_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline")" \
+    || fail "GET /api/v1/assets/timeline (owner, after the writable rescan) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline (owner, after the writable rescan) returned status $status, want 200: $(cat "$work_dir/admin_timeline_body")"
+admin_timeline_ids="$(item_ids "$work_dir/admin_timeline_body" | sort | tr '\n' ' ')"
+ro_pair_sorted="$(printf '%s\n' "$shared_a_id" "$shared_b_id" | sort | tr '\n' ' ')"
+[ "$admin_timeline_ids" = "$ro_pair_sorted" ] \
+    || fail "the owner's timeline holds [$admin_timeline_ids], want exactly the read-only pair [$ro_pair_sorted] -- the writable album's file must stay excluded: $(cat "$work_dir/admin_timeline_body")"
+echo "    the timeline holds exactly the read-only pair; the excluded writable album's file never entered it"
 
 echo "==> PATCH allowAppDeletion must gate the derived face (the setting drives the affordance)"
 status="$(curl -sS -o "$work_dir/rw_patch_body" -b "$admin_jar" -w '%{http_code}' \
@@ -1453,50 +1502,14 @@ grep -q '"deletable":true' "$work_dir/rw_detail_body" \
     || fail "the derived face did not return with the switch back on: $(cat "$work_dir/rw_detail_body")"
 echo "    the switch off killed the derived face; the switch on returned it (the idempotent round trip)"
 
-echo "==> PATCH locked must freeze the deletion (the lock's own derived face)"
-status="$(curl -sS -o "$work_dir/rw_lock_body" -b "$admin_jar" -w '%{http_code}' \
-    -X PATCH -H 'Content-Type: application/json' \
-    -d '{"locked":true}' \
-    "$base_url/api/v1/albums/$rw_album_id")" \
-    || fail "PATCH /api/v1/albums/$rw_album_id (lock) request failed"
-[ "$status" = "200" ] \
-    || fail "PATCH /api/v1/albums/$rw_album_id (lock) returned status $status, want 200: $(cat "$work_dir/rw_lock_body")"
-status="$(curl -sS -o "$work_dir/rw_detail_body" -b "$admin_jar" -w '%{http_code}' \
-    "$base_url/api/v1/albums/$rw_album_id")" \
-    || fail "GET /api/v1/albums/$rw_album_id (locked) request failed"
-grep -q '"locked":true' "$work_dir/rw_detail_body" \
-    || fail "the lock did not land: $(cat "$work_dir/rw_detail_body")"
-grep -q '"deletable":false' "$work_dir/rw_detail_body" \
-    || fail "the derived face stayed true under the lock (the lock folds into the derivation): $(cat "$work_dir/rw_detail_body")"
-echo "    the lock landed and the derived deletable face fell with it"
-
-echo "==> the trash of a live external member of the LOCKED album must refuse 409 BEFORE any file moves"
-status="$(curl -sS -o "$work_dir/rw_locked_trash_body" -b "$admin_jar" -w '%{http_code}' \
-    -H 'Content-Type: application/json' \
-    -d "{\"action\":\"trash\",\"ids\":[\"$rw_asset_id\"]}" \
-    "$base_url/api/v1/assets/batch")" \
-    || fail "POST /api/v1/assets/batch (locked trash) request failed"
-[ "$status" = "409" ] \
-    || fail "POST /api/v1/assets/batch (locked trash) returned status $status, want 409 (the lock freezes deletion): $(cat "$work_dir/rw_locked_trash_body")"
-grep -q 'ALBUM_LOCKED' "$work_dir/rw_locked_trash_body" \
-    || fail "the locked trash refusal does not answer ALBUM_LOCKED: $(cat "$work_dir/rw_locked_trash_body")"
-rw_live="$(psql_query "SELECT count(*) FROM assets WHERE id = '$rw_asset_id' AND deleted_at IS NULL")"
-[ "$rw_live" = "1" ] \
-    || fail "the locked trash refusal touched the row (live rows: $rw_live, want 1)"
-[ -f "$rw_source_host_dir/$rw_fixture_photo" ] \
-    || fail "the locked trash refusal moved the source file away (it must stay before any file work)"
-[ ! -e "lumemor/data/trash/$rw_asset_id" ] \
-    || fail "the locked trash refusal left a trash home behind (the refusal runs before any file moves)"
-echo "    the locked trash answers 409 ALBUM_LOCKED; the row stayed live, the file never moved, no trash home appeared"
-
-echo "==> PATCH locked false must free the deletion, and the trash must then MOVE the file"
-status="$(curl -sS -o "$work_dir/rw_unlock_body" -b "$admin_jar" -w '%{http_code}' \
-    -X PATCH -H 'Content-Type: application/json' \
-    -d '{"locked":false}' \
-    "$base_url/api/v1/albums/$rw_album_id")" \
-    || fail "PATCH /api/v1/albums/$rw_album_id (unlock) request failed"
-[ "$status" = "200" ] \
-    || fail "PATCH /api/v1/albums/$rw_album_id (unlock) returned status $status, want 200: $(cat "$work_dir/rw_unlock_body")"
+echo "==> POST /api/v1/assets/batch (trash) must MOVE the file (the OS's authority over a writable source)"
+# The two-layer deletion story's execution arm: the setting above
+# gates the AFFORDANCE only -- the trash itself answers to ownership
+# and to the operating system's authority over the writable source
+# (the switch stayed on through the PATCH round trip). No album
+# state can freeze this: the trash soft-deletes the row with its
+# trash path and physically relocates the file -- the source
+# directory loses it, the managed trash home holds it.
 status="$(curl -sS -o "$work_dir/rw_trash_body" -b "$admin_jar" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
     -d "{\"action\":\"trash\",\"ids\":[\"$rw_asset_id\"]}" \
@@ -1515,7 +1528,7 @@ rw_trashed="$(psql_query "SELECT count(*) FROM assets WHERE id = '$rw_asset_id' 
     || fail "the source file did not leave the writable fixture (the trash move relocates it)"
 [ -f "lumemor/data/trash/$rw_asset_id/$rw_fixture_photo" ] \
     || fail "the moved file did not land in the managed trash home"
-echo "    the unlocked trash moved the file: the row carries the trash path, the source lost the file, the trash home holds it"
+echo "    the trash moved the file: the row carries the trash path, the source lost the file, the trash home holds it"
 
 echo "==> POST /api/v1/trash/{id}/restore must move the file BACK and heal the fixture"
 status="$(curl -sS -o "$work_dir/rw_restore_body" -b "$admin_jar" -w '%{http_code}' \
