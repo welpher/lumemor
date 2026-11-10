@@ -70,7 +70,6 @@
   "model_invalid": "该模型无法用于此操作，请检查模型文件与激活状态。",
   "person_not_found": "该人物不存在或对您不可见。",
   "album_not_found": "该相册不存在或对您不可见。",
-  "album_locked": "该相册已锁定。请先解锁再编辑。",
   "album_path_not_found": "该文件夹不存在。请检查拼写，或从补全列表中选择。",
   "album_path_not_directory": "该路径指向的是文件，不是文件夹。",
   "album_path_not_readable": "服务器无法读取该文件夹。",

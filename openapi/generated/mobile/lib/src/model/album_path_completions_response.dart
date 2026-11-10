@@ -3,21 +3,22 @@
 //
 
 // ignore_for_file: unused_element
+import 'package:lumemor_api/src/model/album_path_completion.dart';
 import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
 part 'album_path_completions_response.g.dart';
 
-/// The path completion answer: the pickable source directories of the creation dialog's combobox. 
+/// The path completion answer: the pickable source directories of the creation dialog's combobox, each with the write fact the completion discovered by probing the directory once (the write-probe discipline of the creation, applied at listing time -- the dialog renders the deletability switch only for a `writable` row). 
 ///
 /// Properties:
-/// * [paths] - Full absolute directory paths of the container's visible filesystem -- outside the server's managed tree, real directories (symlinked entries are never listed). Deduplicated, sorted ascending, at most 20 rows. The empty array is an honest \"nothing matches\", never an error. 
+/// * [completions] - The pickable directories of the container's visible filesystem -- outside the server's managed tree, real directories (symlinked entries are never listed). Deduplicated, sorted ascending by path, at most 20 rows. The empty array is an honest \"nothing matches\", never an error. Every row carries its write fact: the probe file was written, read back and removed cleanly (`writable` true), or any step refused (false -- a read-only directory is a legitimate source, and a false fact is information, never an error). 
 @BuiltValue()
 abstract class AlbumPathCompletionsResponse implements Built<AlbumPathCompletionsResponse, AlbumPathCompletionsResponseBuilder> {
-  /// Full absolute directory paths of the container's visible filesystem -- outside the server's managed tree, real directories (symlinked entries are never listed). Deduplicated, sorted ascending, at most 20 rows. The empty array is an honest \"nothing matches\", never an error. 
-  @BuiltValueField(wireName: r'paths')
-  BuiltList<String> get paths;
+  /// The pickable directories of the container's visible filesystem -- outside the server's managed tree, real directories (symlinked entries are never listed). Deduplicated, sorted ascending by path, at most 20 rows. The empty array is an honest \"nothing matches\", never an error. Every row carries its write fact: the probe file was written, read back and removed cleanly (`writable` true), or any step refused (false -- a read-only directory is a legitimate source, and a false fact is information, never an error). 
+  @BuiltValueField(wireName: r'completions')
+  BuiltList<AlbumPathCompletion> get completions;
 
   AlbumPathCompletionsResponse._();
 
@@ -42,10 +43,10 @@ class _$AlbumPathCompletionsResponseSerializer implements PrimitiveSerializer<Al
     AlbumPathCompletionsResponse object, {
     FullType specifiedType = FullType.unspecified,
   }) sync* {
-    yield r'paths';
+    yield r'completions';
     yield serializers.serialize(
-      object.paths,
-      specifiedType: const FullType(BuiltList, [FullType(String)]),
+      object.completions,
+      specifiedType: const FullType(BuiltList, [FullType(AlbumPathCompletion)]),
     );
   }
 
@@ -70,12 +71,12 @@ class _$AlbumPathCompletionsResponseSerializer implements PrimitiveSerializer<Al
       final key = serializedList[i] as String;
       final value = serializedList[i + 1];
       switch (key) {
-        case r'paths':
+        case r'completions':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType(BuiltList, [FullType(String)]),
-          ) as BuiltList<String>;
-          result.paths.replace(valueDes);
+            specifiedType: const FullType(BuiltList, [FullType(AlbumPathCompletion)]),
+          ) as BuiltList<AlbumPathCompletion>;
+          result.completions.replace(valueDes);
           break;
         default:
           unhandled.add(key);

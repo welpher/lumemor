@@ -5,7 +5,7 @@
 // discipline, the member-visibility convergence (the wall and the
 // detail of the affected accounts), and the write face's two-tier
 // refusal matrix (invisible 404, sharee 403, every sync album 404
-// whoever owns it, locked never gating). The owner-only grantee list
+// whoever owns it). The owner-only grantee list
 // on the album detail and the instance's minimal member list ride
 // along -- the edit dialog's chips and its candidate picker.
 package api
@@ -412,10 +412,10 @@ func TestUpdateAlbumAudienceAuthorization(t *testing.T) {
 
 // TestUpdateAlbumAudienceAlbumTypes pins the type matrix: every sync
 // album answers the single-shape 404 through the audience face
-// (whoever owns it -- the timeline is the sync stream's face), the
-// directory and virtual albums converge freely, and a locked album
-// is never gated (the freeze is a curation gate; an audience member
-// only ever reads).
+// (whoever owns it -- the timeline is the sync stream's face), and
+// the directory and virtual albums converge freely -- the write's
+// own authorization is the whole gate (an audience member only ever
+// reads).
 func TestUpdateAlbumAudienceAlbumTypes(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -453,14 +453,14 @@ func TestUpdateAlbumAudienceAlbumTypes(t *testing.T) {
 		t.Errorf("sharee wall card type = %q, want directory", item.Type)
 	}
 
-	// A locked album: the audience write passes -- locked never
-	// gates this face.
-	locked := uuid.UUID(env.createAlbum(t, env.cookie, "Frozen picks", sourceDir(t, root, "frozen"), nil).Id)
-	env.patchAlbum(t, env.cookie, locked, `{"locked":true}`)
-	lockedReport := env.putAlbumAudience(t, env.cookie, locked, graceID)
-	requireAudienceIDs(t, lockedReport.Granted, graceID)
-	if revokedAgain := env.putAlbumAudience(t, env.cookie, locked); len(revokedAgain.Revoked) != 1 {
-		t.Errorf("the locked album's empty-set removal revoked = %d, want 1 (locked never gates)", len(revokedAgain.Revoked))
+	// A second directory album: the empty-set removal converges the
+	// same way the grant did (the write is a full-set semantics face,
+	// whatever the album's other state).
+	second := uuid.UUID(env.createAlbum(t, env.cookie, "Second archive", sourceDir(t, root, "second"), nil).Id)
+	secondReport := env.putAlbumAudience(t, env.cookie, second, graceID)
+	requireAudienceIDs(t, secondReport.Granted, graceID)
+	if revokedAgain := env.putAlbumAudience(t, env.cookie, second); len(revokedAgain.Revoked) != 1 {
+		t.Errorf("the empty-set removal revoked = %d, want 1", len(revokedAgain.Revoked))
 	}
 }
 
@@ -704,7 +704,7 @@ func TestAlbumAudienceEvents(t *testing.T) {
 		}
 		for _, banned := range []string{
 			"email", "grantedAt", "grantedBy", "title",
-			"locked", "type", "itemCount", "isDisabled", "role",
+			"type", "itemCount", "isDisabled", "role",
 		} {
 			if payload[banned] != "" {
 				t.Errorf("album.shared[%d] payload carries %q = %q -- private state must not ride the bus",
@@ -724,7 +724,7 @@ func TestAlbumAudienceEvents(t *testing.T) {
 		}
 		for _, banned := range []string{
 			"email", "grantedAt", "grantedBy", "title",
-			"locked", "type", "itemCount", "isDisabled", "role",
+			"type", "itemCount", "isDisabled", "role",
 		} {
 			if payload[banned] != "" {
 				t.Errorf("album.unshared[%d] payload carries %q = %q -- private state must not ride the bus",

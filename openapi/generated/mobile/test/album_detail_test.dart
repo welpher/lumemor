@@ -25,12 +25,6 @@ void main() {
       // TODO
     });
 
-    // The owner's lock (metadata to a viewer).
-    // bool locked
-    test('to test the property `locked`', () async {
-      // TODO
-    });
-
     // The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
     // String coverAssetId
     test('to test the property `coverAssetId`', () async {
@@ -55,7 +49,7 @@ void main() {
       // TODO
     });
 
-    // The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, the deletability switch is on, and the album is not locked. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
+    // The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, and the deletability switch is on. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
     // bool deletable
     test('to test the property `deletable`', () async {
       // TODO

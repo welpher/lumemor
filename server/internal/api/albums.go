@@ -100,7 +100,6 @@ func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role ap
 		Id:            uuid.UUID(album.ID.Bytes),
 		Title:         album.Title,
 		Type:          apigen.AlbumSummaryType(album.Type),
-		Locked:        album.Locked,
 		IsShared:      isShared,
 		CoverAssetIds: coverAssetIds(album.CoverAssetID, derived),
 		ItemCount:     int(itemCount),
@@ -279,7 +278,6 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		Id:           albumId,
 		Title:        album.Album.Title,
 		Type:         apigen.AlbumDetailType(album.Album.Type),
-		Locked:       album.Album.Locked,
 		CoverAssetId: nil,
 		CallerRole:   apigen.AlbumDetailCallerRole(album.CallerRole),
 		ItemCount:    int(album.ItemCount),
@@ -295,9 +293,9 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 	// owner's view alone, the write-affordance faces a viewer holds
 	// none of -- the deletability switch's stored state and the
 	// derived `deletable` conjunction (owner, writable source,
-	// switch on, unlocked), computed here as pure data: no runtime
-	// probing exists, by the same pin that discovered the fact
-	// exactly once at creation.
+	// switch on), computed here as pure data: no runtime probing
+	// exists, by the same pin that discovered the fact exactly once
+	// at creation.
 	if album.Album.Type == dbgen.AlbumTypeDirectory {
 		if album.Album.RootPath.Valid {
 			rootPath := album.Album.RootPath.String
@@ -308,7 +306,7 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		if album.CallerRole == "owner" {
 			allowAppDeletion := album.Album.AllowAppDeletion
 			detail.AllowAppDeletion = &allowAppDeletion
-			deletable := sourceWritable && allowAppDeletion && !album.Album.Locked
+			deletable := sourceWritable && allowAppDeletion
 			detail.Deletable = &deletable
 		}
 	}

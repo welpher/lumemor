@@ -167,6 +167,45 @@ func (e AlbumSummaryType) Valid() bool {
 	}
 }
 
+// Defines values for AssetAlbumRefCallerRole.
+const (
+	AssetAlbumRefCallerRoleOwner  AssetAlbumRefCallerRole = "owner"
+	AssetAlbumRefCallerRoleViewer AssetAlbumRefCallerRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the AssetAlbumRefCallerRole enum.
+func (e AssetAlbumRefCallerRole) Valid() bool {
+	switch e {
+	case AssetAlbumRefCallerRoleOwner:
+		return true
+	case AssetAlbumRefCallerRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AssetAlbumRefType.
+const (
+	AssetAlbumRefTypeDirectory AssetAlbumRefType = "directory"
+	AssetAlbumRefTypeSync      AssetAlbumRefType = "sync"
+	AssetAlbumRefTypeVirtual   AssetAlbumRefType = "virtual"
+)
+
+// Valid indicates whether the value is a known member of the AssetAlbumRefType enum.
+func (e AssetAlbumRefType) Valid() bool {
+	switch e {
+	case AssetAlbumRefTypeDirectory:
+		return true
+	case AssetAlbumRefTypeSync:
+		return true
+	case AssetAlbumRefTypeVirtual:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssetDetailKind.
 const (
 	AssetDetailKindImage AssetDetailKind = "image"
@@ -313,7 +352,6 @@ func (e DownloadFormat) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	ALBUMLOCKED            ErrorCode = "ALBUM_LOCKED"
 	ALBUMNOTFOUND          ErrorCode = "ALBUM_NOT_FOUND"
 	ALBUMPATHINMANAGEDTREE ErrorCode = "ALBUM_PATH_IN_MANAGED_TREE"
 	ALBUMPATHNOTDIRECTORY  ErrorCode = "ALBUM_PATH_NOT_DIRECTORY"
@@ -344,8 +382,6 @@ const (
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
-	case ALBUMLOCKED:
-		return true
 	case ALBUMNOTFOUND:
 		return true
 	case ALBUMPATHINMANAGEDTREE:
@@ -761,6 +797,42 @@ func (e UserTheme) Valid() bool {
 	}
 }
 
+// Defines values for GetAssetParamsLocale.
+const (
+	GetAssetParamsLocaleEn     GetAssetParamsLocale = "en"
+	GetAssetParamsLocaleZhHans GetAssetParamsLocale = "zh-Hans"
+)
+
+// Valid indicates whether the value is a known member of the GetAssetParamsLocale enum.
+func (e GetAssetParamsLocale) Valid() bool {
+	switch e {
+	case GetAssetParamsLocaleEn:
+		return true
+	case GetAssetParamsLocaleZhHans:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchAssetParamsLocale.
+const (
+	PatchAssetParamsLocaleEn     PatchAssetParamsLocale = "en"
+	PatchAssetParamsLocaleZhHans PatchAssetParamsLocale = "zh-Hans"
+)
+
+// Valid indicates whether the value is a known member of the PatchAssetParamsLocale enum.
+func (e PatchAssetParamsLocale) Valid() bool {
+	switch e {
+	case PatchAssetParamsLocaleEn:
+		return true
+	case PatchAssetParamsLocaleZhHans:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetAssetThumbnailParamsSize.
 const (
 	Original GetAssetThumbnailParamsSize = "original"
@@ -965,14 +1037,27 @@ type AlbumAudienceSkipReason string
 
 // AlbumCreateRequest The creation body of one directory album
 // (albums-as-sources): the title, the existing directory the
-// album references in place, and the audience the album starts
-// with. No type field exists -- this endpoint IS directory
-// creation, the only creatable album type. No description
-// field either: it died whole (the 2026-11-08 owner
+// album references in place, the audience the album starts
+// with, and the two dialog switches of the create-time
+// autonomy -- the deletability switch and the creator's
+// timeline exclusion. No type field exists -- this endpoint IS
+// directory creation, the only creatable album type. No
+// description field either: it died whole (the 2026-11-08 owner
 // evaluation -- real-world fill rate near zero, the context
 // already carried by title/date-range+count/place/cover), and
 // the property patch carries no field that could set one.
 type AlbumCreateRequest struct {
+	// AllowAppDeletion The owner's deletability switch, carried from the
+	// creation dialog: whether the album's photos may be
+	// deleted through the application (the trash move of the
+	// source file). On by default; the dialog renders the
+	// switch only where the source is writable (the
+	// completion row's `writable` fact), and on a read-only
+	// source the stored value governs nothing -- the derived
+	// `deletable` face stays false whatever it says. Editable
+	// later through the property patch.
+	AllowAppDeletion *bool `json:"allowAppDeletion,omitempty"`
+
 	// Audience The accounts the album starts being visible to: the
 	// initial `album_shares` set, empty (or absent) meaning
 	// "only me". Entries that cannot be granted -- an unknown
@@ -980,6 +1065,19 @@ type AlbumCreateRequest struct {
 	// skipped and reported in the response's `skipped` list,
 	// never errors.
 	Audience *[]openapi_types.UUID `json:"audience,omitempty"`
+
+	// InTimeline The creator's timeline preference, carried from the
+	// creation dialog: `false` keeps the album out of the
+	// CREATOR's aggregated timeline from birth -- the same
+	// per-user switch `PUT /albums/{albumId}/timeline-preference`
+	// writes, landed in the creation itself (a per-user
+	// preference, not an album fact: it needs no photos to
+	// exist, so the creation is exactly the right moment).
+	// Absent or true feeds the timeline (the default -- no
+	// preference row is written). The exclusion is the
+	// creator's own: the audience members' feeds are governed
+	// by their own preference rows, never by this field.
+	InTimeline *bool `json:"inTimeline,omitempty"`
 
 	// RootPath The source directory: an existing absolute path the
 	// server validates against the path matrix (existence,
@@ -1043,11 +1141,6 @@ type AlbumCreateResponse struct {
 	// Photo component rows never count (a hidden asset is
 	// invisible to the whole family).
 	ItemCount int `json:"itemCount"`
-
-	// Locked The owner's lock: a locked album refuses its owner's
-	// curation and property writes until unlocked. It is
-	// metadata to a viewer (viewers are read-only regardless).
-	Locked bool `json:"locked"`
 
 	// Owner The owner attribution of a shared item: the account that
 	// owns the album. Present exactly when `callerRole` is
@@ -1126,13 +1219,13 @@ type AlbumDetail struct {
 
 	// Deletable The wall's delete-affordance derivation, computed
 	// server-side and carried as one boolean: the caller is
-	// the owner, the source was writable at creation, the
-	// deletability switch is on, and the album is not locked.
-	// Present exactly on the OWNER's view of a `directory`
-	// album. The derivation is pure data -- no runtime probing
-	// -- and it drives the affordance only: the delete itself
-	// stays the operating system's authority, and a move it
-	// refuses answers the honest error.
+	// the owner, the source was writable at creation, and the
+	// deletability switch is on. Present exactly on the
+	// OWNER's view of a `directory` album. The derivation is
+	// pure data -- no runtime probing -- and it drives the
+	// affordance only: the delete itself stays the operating
+	// system's authority, and a move it refuses answers the
+	// honest error.
 	Deletable *bool `json:"deletable,omitempty"`
 
 	// Id Identifier of the album.
@@ -1159,9 +1252,6 @@ type AlbumDetail struct {
 	// Items One page of the album's live members, `takenAt` descending
 	// with the asset id as the tiebreak.
 	Items []AlbumItem `json:"items"`
-
-	// Locked The owner's lock (metadata to a viewer).
-	Locked bool `json:"locked"`
 
 	// NextCursor The opaque continuation cursor: pass it back as the
 	// `cursor` query parameter to fetch the next page. Absent
@@ -1309,8 +1399,7 @@ type AlbumPatch struct {
 	// message key `album_deletable_not_directory` -- the
 	// switch is the directory album's own, a virtual album's
 	// deletions never move files. Idempotent: repeating the
-	// stored value converges, and the switch joins the
-	// property fields the lock refuses (409 until unlocked).
+	// stored value converges.
 	AllowAppDeletion *bool `json:"allowAppDeletion,omitempty"`
 
 	// CoverAssetId The pinned cover asset. When present it must be a LIVE
@@ -1322,34 +1411,50 @@ type AlbumPatch struct {
 	// unchanged.
 	CoverAssetId *openapi_types.UUID `json:"coverAssetId,omitempty"`
 
-	// Locked The owner's lock, the content-protection switch: `true`
-	// freezes the album's curation and property fields against
-	// later writes (this same endpoint refuses them with 409
-	// until the owner patches `locked: false` -- the unlock,
-	// never gated itself) AND freezes the content itself --
-	// the directory rescan and the deletion of the album's
-	// photos answer the same 409 while the lock holds. The
-	// audience face stays open under a lock (its own pin: a
-	// lock protects content, not visibility), and the album's
-	// own delete answers the same 409 every write does.
-	Locked *bool `json:"locked,omitempty"`
-
 	// Title The album's display title, trimmed server-side; when
 	// present it must span 1-64 Unicode characters after the
 	// trim.
 	Title *string `json:"title,omitempty"`
 }
 
+// AlbumPathCompletion One row of the completion answer: the directory's path and
+// the write fact the listing's probe discovered. The probe is
+// the creation-time probe's own three steps (write, read back,
+// remove) run once per row, so the dialog knows -- before any
+// album is created -- whether the deletability switch applies
+// there.
+type AlbumPathCompletion struct {
+	// Path Full absolute directory path of the container's visible
+	// filesystem, never inside the server's managed tree.
+	Path string `json:"path"`
+
+	// Writable The directory's write fact as the listing discovered it:
+	// true when the probe file landed, read back and removed
+	// cleanly; false when any step refused. The fact is
+	// information, never an error -- a false row lists
+	// alongside the true ones, and picking it creates a
+	// legitimate read-only-source album.
+	Writable bool `json:"writable"`
+}
+
 // AlbumPathCompletionsResponse The path completion answer: the pickable source directories
-// of the creation dialog's combobox.
+// of the creation dialog's combobox, each with the write fact
+// the completion discovered by probing the directory once
+// (the write-probe discipline of the creation, applied at
+// listing time -- the dialog renders the deletability switch
+// only for a `writable` row).
 type AlbumPathCompletionsResponse struct {
-	// Paths Full absolute directory paths of the container's visible
+	// Completions The pickable directories of the container's visible
 	// filesystem -- outside the server's managed tree, real
 	// directories (symlinked entries are never listed).
-	// Deduplicated, sorted ascending, at most 20 rows. The
-	// empty array is an honest "nothing matches", never an
-	// error.
-	Paths []string `json:"paths"`
+	// Deduplicated, sorted ascending by path, at most 20 rows.
+	// The empty array is an honest "nothing matches", never an
+	// error. Every row carries its write fact: the probe file
+	// was written, read back and removed cleanly (`writable`
+	// true), or any step refused (false -- a read-only
+	// directory is a legitimate source, and a false fact is
+	// information, never an error).
+	Completions []AlbumPathCompletion `json:"completions"`
 }
 
 // AlbumRescanResponse The identifier of one directory album rescan run: the
@@ -1417,11 +1522,6 @@ type AlbumSummary struct {
 	// Photo component rows never count (a hidden asset is
 	// invisible to the whole family).
 	ItemCount int `json:"itemCount"`
-
-	// Locked The owner's lock: a locked album refuses its owner's
-	// curation and property writes until unlocked. It is
-	// metadata to a viewer (viewers are read-only regardless).
-	Locked bool `json:"locked"`
 
 	// Owner The owner attribution of a shared item: the account that
 	// owns the album. Present exactly when `callerRole` is
@@ -1497,12 +1597,46 @@ type AlbumWallResponse struct {
 	Albums []AlbumSummary `json:"albums"`
 }
 
+// AssetAlbumRef One entry of the asset detail's `albums` array: the album
+// holding the asset as the calling user sees it -- identity,
+// title, type and the viewer's own relation. The type rides
+// the same convention as the wall cards: the sync entry's
+// `title` is the internal system label ('Sync') and clients
+// render the localized display name keyed by the type.
+type AssetAlbumRef struct {
+	// CallerRole The caller's relation to this album: `owner` items are
+	// the caller's own (the sync stream's entry is always
+	// one), `viewer` items the albums shared to them.
+	CallerRole AssetAlbumRefCallerRole `json:"callerRole"`
+
+	// Id Identifier of the album (the detail face's deep link).
+	Id openapi_types.UUID `json:"id"`
+
+	// Title The album's display title (the sync card's internal label).
+	Title string `json:"title"`
+
+	// Type The album's type.
+	Type AssetAlbumRefType `json:"type"`
+}
+
+// AssetAlbumRefCallerRole The caller's relation to this album: `owner` items are
+// the caller's own (the sync stream's entry is always
+// one), `viewer` items the albums shared to them.
+type AssetAlbumRefCallerRole string
+
+// AssetAlbumRefType The album's type.
+type AssetAlbumRefType string
+
 // AssetDetail One asset as the detail endpoint returns it: the upload
 // response's identity and storage fields, the pipeline's
 // refinements, the two owner-level attributes the PATCH
 // endpoint edits (`description`, `isHidden`), the asset's
 // faces as the calling user sees them (`faces`), and the
-// CALLER's tags on the asset (`tags`). The shape is
+// CALLER's tags on the asset (`tags`). The caller-visible
+// album memberships surface as `albums` (the info panel's
+// where-does-this-live row) and the GPS resolution as `place`
+// (the info panel's city row, the locale-joined display
+// name). The shape is
 // fixed -- every property is always present -- and the
 // pipeline-dependent values (`width`, `height`, `durationMs`,
 // `blurhash` and the fields inside `exif`) are null until the
@@ -1510,6 +1644,24 @@ type AlbumWallResponse struct {
 // fired. A value that stays null on a ready asset means the
 // file carries no such metadata.
 type AssetDetail struct {
+	// Albums The albums holding this asset, as the calling user sees
+	// them: every album whose membership row references the
+	// asset and that the caller can see -- their own albums
+	// (the sync stream included: the pinned core card the
+	// uploads land in) plus every album shared to them. An
+	// album the caller cannot see -- another account's sync
+	// album, an unshared album -- never surfaces, so the same
+	// asset answers different arrays for the owner and a
+	// sharee. The caller's own sync album is included exactly
+	// when it is theirs (its membership is the upload stream's
+	// materialized rows), and every entry's `callerRole` is
+	// the viewer's relation to that album. Ordered with the
+	// sync card first, then by title case-insensitively with
+	// the album id as the tiebreak. Always present, empty when
+	// no visible album holds the asset. The PATCH response
+	// serves the same array, exactly as the GET serves it.
+	Albums []AssetAlbumRef `json:"albums"`
+
 	// Blurhash The blurhash of the tile (image assets) or poster frame
 	// (video assets) for placeholder rendering; null until the
 	// thumbnail job stored it.
@@ -1601,6 +1753,20 @@ type AssetDetail struct {
 
 	// OwnerId UUIDv7 identifier of the owning account.
 	OwnerId openapi_types.UUID `json:"ownerId"`
+
+	// Place The asset's resolved place (the metadata job's GPS
+	// resolution, the `assets.place_id` the pipeline wrote),
+	// as the info panel's city row: the place id -- the deep
+	// link's key into the place-filtered browse -- and the
+	// display name joined at the request's `locale` (the
+	// `place_names` row of that locale when the place data
+	// carries one, the GeoNames canonical name otherwise; the
+	// `GET /places` join's exact discipline). Null when the
+	// asset carries no resolved place -- no GPS, the pipeline
+	// has not run yet, or the deployment baked no place data.
+	// The PATCH response serves the same face at its own
+	// `locale`, exactly as the GET serves it.
+	Place *AssetPlaceRef `json:"place"`
 
 	// Tags The CALLER's tags on this asset: the caller's own
 	// assignment rows joined to their own tag rows, sorted by
@@ -1701,6 +1867,29 @@ type AssetPatch struct {
 	// until it is unhidden; `false` returns it. The same switch
 	// the batch `hide` / `unhide` actions flip.
 	IsHidden *bool `json:"isHidden,omitempty"`
+}
+
+// AssetPlaceRef The asset detail's `place` face: the resolved city as the
+// info panel renders it -- the deep link's key and the
+// display name, nothing more (the place listing's counts and
+// covers are the `GET /places` face's own).
+type AssetPlaceRef struct {
+	// Name The display name at the request's locale: the
+	// `place_names` row of that locale when the place data
+	// carries one, the GeoNames canonical (English or
+	// romanized) name otherwise.
+	//
+	//
+	// Examples: Paris, 巴黎
+	Name string `json:"name"`
+
+	// PlaceId The GeoNames geonameid of the place -- the `places` row's
+	// primary key and the `assets.place_id` foreign key, the
+	// same identifier the place-filtered browse filters on.
+	//
+	//
+	// Examples: 2988507
+	PlaceId int32 `json:"placeId"`
 }
 
 // AssetResponse One stored asset as the upload and idempotency endpoints return
@@ -3535,6 +3724,33 @@ type GetTimelineParams struct {
 	AlbumId *openapi_types.UUID `form:"albumId,omitempty" json:"albumId,omitempty"`
 }
 
+// GetAssetParams defines parameters for GetAsset.
+type GetAssetParams struct {
+	// Locale The display locale of the `place` face's name: `en` or
+	// `zh-Hans`, the instance's UI language set. Absent means
+	// `en`. A value outside the set answers 400
+	// `VALIDATION_FAILED` (the `GET /places` parameter's own
+	// shape -- the web app owns the active locale and passes
+	// it along; the server never guesses it from headers).
+	Locale *GetAssetParamsLocale `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// GetAssetParamsLocale defines parameters for GetAsset.
+type GetAssetParamsLocale string
+
+// PatchAssetParams defines parameters for PatchAsset.
+type PatchAssetParams struct {
+	// Locale The display locale of the response's `place` face: the
+	// `GET /assets/{id}` parameter's own shape, riding the
+	// same-shape discipline -- the PATCH response serves the
+	// detail exactly as the GET serves it, place join
+	// included.
+	Locale *PatchAssetParamsLocale `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// PatchAssetParamsLocale defines parameters for PatchAsset.
+type PatchAssetParamsLocale string
+
 // GetAssetThumbnailParams defines parameters for GetAssetThumbnail.
 type GetAssetThumbnailParams struct {
 	// Size The serving size: `tile` for the timeline, `view` for the
@@ -3837,10 +4053,10 @@ type ServerInterface interface {
 	DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// GetAsset Fetch the detail of one owned asset.
 	// (GET /assets/{id})
-	GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAssetParams)
 	// PatchAsset Edit the description or hidden switch of one asset.
 	// (PATCH /assets/{id})
-	PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PatchAssetParams)
 	// GetAssetOriginal Download the original file of one owned asset.
 	// (GET /assets/{id}/original)
 	GetAssetOriginal(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -4164,13 +4380,13 @@ func (_ Unimplemented) DeleteAsset(w http.ResponseWriter, r *http.Request, id op
 
 // GetAsset Fetch the detail of one owned asset.
 // (GET /assets/{id})
-func (_ Unimplemented) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (_ Unimplemented) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAssetParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // PatchAsset Edit the description or hidden switch of one asset.
 // (PATCH /assets/{id})
-func (_ Unimplemented) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (_ Unimplemented) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PatchAssetParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5228,8 +5444,24 @@ func (siw *ServerInterfaceWrapper) GetAsset(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAssetParams
+
+	// ------------- Optional query parameter "locale" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "locale", r.URL.Query(), &params.Locale, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "locale"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "locale", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetAsset(w, r, id)
+		siw.Handler.GetAsset(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5254,8 +5486,24 @@ func (siw *ServerInterfaceWrapper) PatchAsset(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PatchAssetParams
+
+	// ------------- Optional query parameter "locale" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "locale", r.URL.Query(), &params.Locale, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "locale"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "locale", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PatchAsset(w, r, id)
+		siw.Handler.PatchAsset(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

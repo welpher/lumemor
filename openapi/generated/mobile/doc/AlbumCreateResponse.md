@@ -11,7 +11,6 @@ Name | Type | Description | Notes
 **id** | **String** | Identifier of the album. | 
 **title** | **String** | The album's display title. | 
 **type** | **String** | The album's type. `virtual` albums are curated by their owner; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\").  | 
-**locked** | **bool** | The owner's lock: a locked album refuses its owner's curation and property writes until unlocked. It is metadata to a viewer (viewers are read-only regardless).  | 
 **isShared** | **bool** | True when the album carries at least one `album_shares` row -- someone besides the owner can see it. Always true on shared-group items by construction.  | 
 **coverAssetIds** | **BuiltList&lt;String&gt;** | The collage source of the wall card: the pinned cover asset as a single-element list when the owner set one, otherwise the album's most recent live member assets (up to four, `takenAt` descending, the asset id as the tiebreak). Empty for an album with no live members.  | 
 **itemCount** | **int** | The album's live member count: trashed, hidden and Live Photo component rows never count (a hidden asset is invisible to the whole family).  | 

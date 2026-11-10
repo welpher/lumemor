@@ -18,7 +18,6 @@ part 'album_create_response.g.dart';
 /// * [id] - Identifier of the album.
 /// * [title] - The album's display title.
 /// * [type] - The album's type. `virtual` albums are curated by their owner; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
-/// * [locked] - The owner's lock: a locked album refuses its owner's curation and property writes until unlocked. It is metadata to a viewer (viewers are read-only regardless). 
 /// * [isShared] - True when the album carries at least one `album_shares` row -- someone besides the owner can see it. Always true on shared-group items by construction. 
 /// * [coverAssetIds] - The collage source of the wall card: the pinned cover asset as a single-element list when the owner set one, otherwise the album's most recent live member assets (up to four, `takenAt` descending, the asset id as the tiebreak). Empty for an album with no live members. 
 /// * [itemCount] - The album's live member count: trashed, hidden and Live Photo component rows never count (a hidden asset is invisible to the whole family). 
@@ -68,26 +67,6 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
         specifiedType: const FullType(AlbumOwnerRef),
       );
     }
-    yield r'title';
-    yield serializers.serialize(
-      object.title,
-      specifiedType: const FullType(String),
-    );
-    yield r'type';
-    yield serializers.serialize(
-      object.type,
-      specifiedType: const FullType(AlbumSummaryTypeEnum),
-    );
-    yield r'skipped';
-    yield serializers.serialize(
-      object.skipped,
-      specifiedType: const FullType(BuiltList, [FullType(AlbumAudienceSkip)]),
-    );
-    yield r'itemCount';
-    yield serializers.serialize(
-      object.itemCount,
-      specifiedType: const FullType(int),
-    );
     yield r'sourceWritable';
     yield serializers.serialize(
       object.sourceWritable,
@@ -108,10 +87,15 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
       object.id,
       specifiedType: const FullType(String),
     );
-    yield r'locked';
+    yield r'title';
     yield serializers.serialize(
-      object.locked,
-      specifiedType: const FullType(bool),
+      object.title,
+      specifiedType: const FullType(String),
+    );
+    yield r'type';
+    yield serializers.serialize(
+      object.type,
+      specifiedType: const FullType(AlbumSummaryTypeEnum),
     );
     if (object.inTimeline != null) {
       yield r'inTimeline';
@@ -124,6 +108,16 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
     yield serializers.serialize(
       object.isShared,
       specifiedType: const FullType(bool),
+    );
+    yield r'skipped';
+    yield serializers.serialize(
+      object.skipped,
+      specifiedType: const FullType(BuiltList, [FullType(AlbumAudienceSkip)]),
+    );
+    yield r'itemCount';
+    yield serializers.serialize(
+      object.itemCount,
+      specifiedType: const FullType(int),
     );
     yield r'updatedAt';
     yield serializers.serialize(
@@ -161,34 +155,6 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
           if (valueDes == null) continue;
           result.owner.replace(valueDes);
           break;
-        case r'title':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(String),
-          ) as String;
-          result.title = valueDes;
-          break;
-        case r'type':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(AlbumSummaryTypeEnum),
-          ) as AlbumSummaryTypeEnum;
-          result.type = valueDes;
-          break;
-        case r'skipped':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(BuiltList, [FullType(AlbumAudienceSkip)]),
-          ) as BuiltList<AlbumAudienceSkip>;
-          result.skipped.replace(valueDes);
-          break;
-        case r'itemCount':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(int),
-          ) as int;
-          result.itemCount = valueDes;
-          break;
         case r'sourceWritable':
           final valueDes = serializers.deserialize(
             value,
@@ -217,12 +183,19 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
           ) as String;
           result.id = valueDes;
           break;
-        case r'locked':
+        case r'title':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType(bool),
-          ) as bool;
-          result.locked = valueDes;
+            specifiedType: const FullType(String),
+          ) as String;
+          result.title = valueDes;
+          break;
+        case r'type':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(AlbumSummaryTypeEnum),
+          ) as AlbumSummaryTypeEnum;
+          result.type = valueDes;
           break;
         case r'inTimeline':
           final valueDes = serializers.deserialize(
@@ -238,6 +211,20 @@ class _$AlbumCreateResponseSerializer implements PrimitiveSerializer<AlbumCreate
             specifiedType: const FullType(bool),
           ) as bool;
           result.isShared = valueDes;
+          break;
+        case r'skipped':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(AlbumAudienceSkip)]),
+          ) as BuiltList<AlbumAudienceSkip>;
+          result.skipped.replace(valueDes);
+          break;
+        case r'itemCount':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(int),
+          ) as int;
+          result.itemCount = valueDes;
           break;
         case r'updatedAt':
           final valueDes = serializers.deserialize(

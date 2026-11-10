@@ -217,7 +217,7 @@ export interface paths {
          *     (`album.items-changed`) and the audience writes
          *     (`album.shared`, `album.unshared`). Every payload carries
          *     ONLY the album's id and one user's `userId`: titles,
-         *     covers, the lock state, the source path and
+         *     covers, the deletability switch, the source path and
          *     the membership itself are album state the subscribers
          *     refetch, never bus payload. `album.updated` fires on every
          *     successful patch (the convergent refetch makes the
@@ -533,18 +533,6 @@ export interface paths {
          *     recorded original location by the same discipline (a
          *     location that can no longer receive it fails the batch the
          *     same way).
-         *
-         *     The external trash arm also carries the album lock, the
-         *     owner's content-protection freeze: a live external asset
-         *     that is a member of a LOCKED directory album answers 409
-         *     `ALBUM_LOCKED` before any file moves (the same refusal the
-         *     album's rescan and property writes answer -- the lock stops
-         *     the deletion of the album's photos, and it stops it
-         *     server-side, not just by hiding the affordance). The whole
-         *     batch rolls back on the refusal, exactly like a move
-         *     failure; an already-trashed row never trips the gate (the
-         *     idempotent no-op), and the restore arm never does either
-         *     -- recovery is not the deletion the freeze governs.
          *
          *     Events publish AFTER the commit, one per asset whose state
          *     actually changed -- the idempotent no-op stays silent, the
@@ -1201,11 +1189,22 @@ export interface paths {
          *     construction) -- is skipped, never an error, and the
          *     response's `skipped` list reports each with its reason.
          *
+         *     The two dialog switches ride the same request. The
+         *     deletability switch (`allowAppDeletion`) lands on the row --
+         *     on by default, rendered by the dialog only where the source
+         *     is writable (the completion row's `writable` fact; the
+         *     read-only sources' stored value governs nothing). The
+         *     creator's timeline exclusion (`inTimeline: false`) lands the
+         *     caller's own preference row in the same creation -- the
+         *     album is born out of its creator's aggregated timeline, the
+         *     audience's own feeds untouched.
+         *
          *     The response is the created album's wall card -- the summary
          *     exactly as `GET /albums` lists it: `callerRole` `owner`,
          *     `type` `directory`, an empty `coverAssetIds` array (never
          *     null) and `itemCount` 0, nothing being a member yet -- plus
          *     the honest audience report and the `sourceWritable` fact.
+         *     The card's `inTimeline` carries the exclusion's landed state.
          *     The write publishes one `album.created` event and one
          *     `album.shared` event per audience row that landed.
          */
@@ -1271,10 +1270,19 @@ export interface paths {
          *     capped at 20 -- past the cap the user narrows by typing;
          *     there is no pagination. A prefix that matches nothing
          *     answers the empty list, never an error -- a relative prefix
-         *     and an unreadable parent both answer `paths: []`.
+         *     and an unreadable parent both answer `completions: []`.
+         *
+         *     Every row carries its write fact: as the listing lands, the
+         *     server probes each row's directory once with the
+         *     creation-time probe's own three steps (write a uniquely
+         *     named probe file, read it back, remove it). A probe step's
+         *     refusal is a FACT (`writable: false`), never an error --
+         *     the row lists alongside the others and the dialog renders
+         *     the deletability switch only for the `writable` rows.
          *
          *     The completion runs a bounded read: at most one directory
-         *     listing, and the response carries at most 20 rows.
+         *     listing and at most 20 per-row probes, and the response
+         *     carries at most 20 rows.
          */
         get: operations["completeAlbumPath"];
         put?: never;
@@ -1354,7 +1362,7 @@ export interface paths {
          *     the owner's view of a `directory` album only: the
          *     deletability switch's stored state (the edit dialog's
          *     toggle) and the wall's delete-affordance derivation
-         *     (owner, writable source, switch on, unlocked -- computed
+         *     (owner, writable source, switch on -- computed
          *     server-side, pure data, no runtime probing). A viewer's
          *     response carries none of the three faces a write would
          *     need, and a read-only source never carries a true
@@ -1399,12 +1407,6 @@ export interface paths {
          *     later milestone), and a sync album is no album resource at
          *     all. The same 404 answers an unknown id.
          *
-         *     The locked gate applies to the delete like every other
-         *     write: the permission matrix pins deletion to the UNLOCKED
-         *     state, so a locked album answers 409 `ALBUM_LOCKED` (the
-         *     owner unlocks first -- one step, the freeze is a state to
-         *     clear, not a wall to climb).
-         *
          *     Authorization is the writes' two-tier answer: an album the
          *     caller cannot see answers the single-shape 404; an album
          *     shared to the caller answers 403 `AUTH_FORBIDDEN` (the share
@@ -1417,7 +1419,7 @@ export interface paths {
         /**
          * Patch one album's properties.
          * @description The owner's partial edit of the album's properties: `title`,
-         *     `coverAssetId`, `locked` and `allowAppDeletion`, any subset,
+         *     `coverAssetId` and `allowAppDeletion`, any subset,
          *     at least one field (a body that carries none -- JSON null counts
          *     as absent, the patch discipline of the asset surface -- is a
          *     client bug and answers 400). The response is the album's wall
@@ -1433,12 +1435,6 @@ export interface paths {
          *     share is view-only. The owner writes, and an administrator
          *     may override the owner check (the admin role bypasses it, the
          *     permanent delete's own discipline).
-         *
-         *     The locked gate: a locked album refuses the property and
-         *     curation fields (`title`, `coverAssetId`,
-         *     `allowAppDeletion`) with 409 `ALBUM_LOCKED` -- unlock first.
-         *     The `locked` field itself is never gated: a patch of only
-         *     `locked: false` IS the unlock.
          *
          *     Cover validation (the application-layer check): a
          *     present `coverAssetId` must be a LIVE member of THIS album --
@@ -1498,8 +1494,7 @@ export interface paths {
          *     the row tidies the set itself).
          *
          *     VIRTUAL albums only (directory and sync albums answer the
-         *     single-shape 404); the locked gate applies (409
-         *     `ALBUM_LOCKED`); authorization is the writes' two-tier
+         *     single-shape 404); authorization is the writes' two-tier
          *     answer (invisible 404, shared-to-caller 403, the owner or an
          *     admin override writes).
          *
@@ -1559,10 +1554,8 @@ export interface paths {
          *     album shared to the caller) answers the honest 403
          *     `AUTH_FORBIDDEN` -- the share is view-only, a sharee cannot
          *     edit the ACL. The owner writes, and an administrator may
-         *     override the owner check.
-         *
-         *     `locked` does NOT gate this face (the freeze is a curation
-         *     gate; an audience member only ever reads).
+         *     override the owner check. The write's own authorization is the
+         *     whole gate: no album state gates or filters this face.
          *
          *     The write publishes one `album.shared` event per row that
          *     landed and one `album.unshared` event per row that left --
@@ -1643,9 +1636,7 @@ export interface paths {
          *     everyone else folds into the album 404. A non-directory
          *     album -- the caller's own sync album, a virtual album --
          *     answers the same 404: the rescan is the directory album's
-         *     own flow, and ids stay unproammable. A locked album refuses
-         *     the rescan with 409: the scan rewrites the membership the
-         *     lock froze.
+         *     own flow, and ids stay unproammable.
          */
         post: operations["rescanAlbum"];
         delete?: never;
@@ -3786,18 +3777,50 @@ export interface components {
         };
         /**
          * @description The path completion answer: the pickable source directories
-         *     of the creation dialog's combobox.
+         *     of the creation dialog's combobox, each with the write fact
+         *     the completion discovered by probing the directory once
+         *     (the write-probe discipline of the creation, applied at
+         *     listing time -- the dialog renders the deletability switch
+         *     only for a `writable` row).
          */
         AlbumPathCompletionsResponse: {
             /**
-             * @description Full absolute directory paths of the container's visible
+             * @description The pickable directories of the container's visible
              *     filesystem -- outside the server's managed tree, real
              *     directories (symlinked entries are never listed).
-             *     Deduplicated, sorted ascending, at most 20 rows. The
-             *     empty array is an honest "nothing matches", never an
-             *     error.
+             *     Deduplicated, sorted ascending by path, at most 20 rows.
+             *     The empty array is an honest "nothing matches", never an
+             *     error. Every row carries its write fact: the probe file
+             *     was written, read back and removed cleanly (`writable`
+             *     true), or any step refused (false -- a read-only
+             *     directory is a legitimate source, and a false fact is
+             *     information, never an error).
              */
-            paths: string[];
+            completions: components["schemas"]["AlbumPathCompletion"][];
+        };
+        /**
+         * @description One row of the completion answer: the directory's path and
+         *     the write fact the listing's probe discovered. The probe is
+         *     the creation-time probe's own three steps (write, read back,
+         *     remove) run once per row, so the dialog knows -- before any
+         *     album is created -- whether the deletability switch applies
+         *     there.
+         */
+        AlbumPathCompletion: {
+            /**
+             * @description Full absolute directory path of the container's visible
+             *     filesystem, never inside the server's managed tree.
+             */
+            path: string;
+            /**
+             * @description The directory's write fact as the listing discovered it:
+             *     true when the probe file landed, read back and removed
+             *     cleanly; false when any step refused. The fact is
+             *     information, never an error -- a false row lists
+             *     alongside the true ones, and picking it creates a
+             *     legitimate read-only-source album.
+             */
+            writable: boolean;
         };
         /**
          * @description The identifier of one directory album rescan run: the
@@ -4153,7 +4176,11 @@ export interface components {
          *     refinements, the two owner-level attributes the PATCH
          *     endpoint edits (`description`, `isHidden`), the asset's
          *     faces as the calling user sees them (`faces`), and the
-         *     CALLER's tags on the asset (`tags`). The shape is
+         *     CALLER's tags on the asset (`tags`). The caller-visible
+         *     album memberships surface as `albums` (the info panel's
+         *     where-does-this-live row) and the GPS resolution as `place`
+         *     (the info panel's city row, the locale-joined display
+         *     name). The shape is
          *     fixed -- every property is always present -- and the
          *     pipeline-dependent values (`width`, `height`, `durationMs`,
          *     `blurhash` and the fields inside `exif`) are null until the
@@ -4311,6 +4338,40 @@ export interface components {
              *     exactly as the GET serves it.
              */
             tags: components["schemas"]["AssetTagSummary"][];
+            /**
+             * @description The albums holding this asset, as the calling user sees
+             *     them: every album whose membership row references the
+             *     asset and that the caller can see -- their own albums
+             *     (the sync stream included: the pinned core card the
+             *     uploads land in) plus every album shared to them. An
+             *     album the caller cannot see -- another account's sync
+             *     album, an unshared album -- never surfaces, so the same
+             *     asset answers different arrays for the owner and a
+             *     sharee. The caller's own sync album is included exactly
+             *     when it is theirs (its membership is the upload stream's
+             *     materialized rows), and every entry's `callerRole` is
+             *     the viewer's relation to that album. Ordered with the
+             *     sync card first, then by title case-insensitively with
+             *     the album id as the tiebreak. Always present, empty when
+             *     no visible album holds the asset. The PATCH response
+             *     serves the same array, exactly as the GET serves it.
+             */
+            albums: components["schemas"]["AssetAlbumRef"][];
+            /**
+             * @description The asset's resolved place (the metadata job's GPS
+             *     resolution, the `assets.place_id` the pipeline wrote),
+             *     as the info panel's city row: the place id -- the deep
+             *     link's key into the place-filtered browse -- and the
+             *     display name joined at the request's `locale` (the
+             *     `place_names` row of that locale when the place data
+             *     carries one, the GeoNames canonical name otherwise; the
+             *     `GET /places` join's exact discipline). Null when the
+             *     asset carries no resolved place -- no GPS, the pipeline
+             *     has not run yet, or the deployment baked no place data.
+             *     The PATCH response serves the same face at its own
+             *     `locale`, exactly as the GET serves it.
+             */
+            place: components["schemas"]["AssetPlaceRef"] | null;
         };
         /**
          * @description One face of the asset detail's `faces` array: the crop's
@@ -4369,6 +4430,60 @@ export interface components {
              */
             id: string;
             /** @description The tag's name, the caller's own vocabulary. */
+            name: string;
+        };
+        /**
+         * @description One entry of the asset detail's `albums` array: the album
+         *     holding the asset as the calling user sees it -- identity,
+         *     title, type and the viewer's own relation. The type rides
+         *     the same convention as the wall cards: the sync entry's
+         *     `title` is the internal system label ('Sync') and clients
+         *     render the localized display name keyed by the type.
+         */
+        AssetAlbumRef: {
+            /**
+             * Format: uuid
+             * @description Identifier of the album (the detail face's deep link).
+             */
+            id: string;
+            /** @description The album's display title (the sync card's internal label). */
+            title: string;
+            /**
+             * @description The album's type.
+             * @enum {string}
+             */
+            type: "virtual" | "directory" | "sync";
+            /**
+             * @description The caller's relation to this album: `owner` items are
+             *     the caller's own (the sync stream's entry is always
+             *     one), `viewer` items the albums shared to them.
+             * @enum {string}
+             */
+            callerRole: "owner" | "viewer";
+        };
+        /**
+         * @description The asset detail's `place` face: the resolved city as the
+         *     info panel renders it -- the deep link's key and the
+         *     display name, nothing more (the place listing's counts and
+         *     covers are the `GET /places` face's own).
+         */
+        AssetPlaceRef: {
+            /**
+             * Format: int32
+             * @description The GeoNames geonameid of the place -- the `places` row's
+             *     primary key and the `assets.place_id` foreign key, the
+             *     same identifier the place-filtered browse filters on.
+             * @example 2988507
+             */
+            placeId: number;
+            /**
+             * @description The display name at the request's locale: the
+             *     `place_names` row of that locale when the place data
+             *     carries one, the GeoNames canonical (English or
+             *     romanized) name otherwise.
+             * @example Paris
+             * @example 巴黎
+             */
             name: string;
         };
         /**
@@ -5466,12 +5581,6 @@ export interface components {
              */
             type: "virtual" | "directory" | "sync";
             /**
-             * @description The owner's lock: a locked album refuses its owner's
-             *     curation and property writes until unlocked. It is
-             *     metadata to a viewer (viewers are read-only regardless).
-             */
-            locked: boolean;
-            /**
              * @description True when the album carries at least one `album_shares`
              *     row -- someone besides the owner can see it. Always true
              *     on shared-group items by construction.
@@ -5561,8 +5670,6 @@ export interface components {
              * @enum {string}
              */
             type: "virtual" | "directory" | "sync";
-            /** @description The owner's lock (metadata to a viewer). */
-            locked: boolean;
             /**
              * @description The pinned cover asset, or null when unset -- the raw
              *     column; the wall derives its collage fallback, the detail
@@ -5603,13 +5710,13 @@ export interface components {
             /**
              * @description The wall's delete-affordance derivation, computed
              *     server-side and carried as one boolean: the caller is
-             *     the owner, the source was writable at creation, the
-             *     deletability switch is on, and the album is not locked.
-             *     Present exactly on the OWNER's view of a `directory`
-             *     album. The derivation is pure data -- no runtime probing
-             *     -- and it drives the affordance only: the delete itself
-             *     stays the operating system's authority, and a move it
-             *     refuses answers the honest error.
+             *     the owner, the source was writable at creation, and the
+             *     deletability switch is on. Present exactly on the
+             *     OWNER's view of a `directory` album. The derivation is
+             *     pure data -- no runtime probing -- and it drives the
+             *     affordance only: the delete itself stays the operating
+             *     system's authority, and a move it refuses answers the
+             *     honest error.
              */
             deletable?: boolean;
             /**
@@ -5706,10 +5813,12 @@ export interface components {
         /**
          * @description The creation body of one directory album
          *     (albums-as-sources): the title, the existing directory the
-         *     album references in place, and the audience the album starts
-         *     with. No type field exists -- this endpoint IS directory
-         *     creation, the only creatable album type. No description
-         *     field either: it died whole (the 2026-11-08 owner
+         *     album references in place, the audience the album starts
+         *     with, and the two dialog switches of the create-time
+         *     autonomy -- the deletability switch and the creator's
+         *     timeline exclusion. No type field exists -- this endpoint IS
+         *     directory creation, the only creatable album type. No
+         *     description field either: it died whole (the 2026-11-08 owner
          *     evaluation -- real-world fill rate near zero, the context
          *     already carried by title/date-range+count/place/cover), and
          *     the property patch carries no field that could set one.
@@ -5734,6 +5843,32 @@ export interface components {
              *     read-only directory is a valid source, never a refusal.
              */
             rootPath: string;
+            /**
+             * @description The owner's deletability switch, carried from the
+             *     creation dialog: whether the album's photos may be
+             *     deleted through the application (the trash move of the
+             *     source file). On by default; the dialog renders the
+             *     switch only where the source is writable (the
+             *     completion row's `writable` fact), and on a read-only
+             *     source the stored value governs nothing -- the derived
+             *     `deletable` face stays false whatever it says. Editable
+             *     later through the property patch.
+             */
+            allowAppDeletion?: boolean;
+            /**
+             * @description The creator's timeline preference, carried from the
+             *     creation dialog: `false` keeps the album out of the
+             *     CREATOR's aggregated timeline from birth -- the same
+             *     per-user switch `PUT /albums/{albumId}/timeline-preference`
+             *     writes, landed in the creation itself (a per-user
+             *     preference, not an album fact: it needs no photos to
+             *     exist, so the creation is exactly the right moment).
+             *     Absent or true feeds the timeline (the default -- no
+             *     preference row is written). The exclusion is the
+             *     creator's own: the audience members' feeds are governed
+             *     by their own preference rows, never by this field.
+             */
+            inTimeline?: boolean;
             /**
              * @description The accounts the album starts being visible to: the
              *     initial `album_shares` set, empty (or absent) meaning
@@ -5804,19 +5939,6 @@ export interface components {
              */
             coverAssetId?: string;
             /**
-             * @description The owner's lock, the content-protection switch: `true`
-             *     freezes the album's curation and property fields against
-             *     later writes (this same endpoint refuses them with 409
-             *     until the owner patches `locked: false` -- the unlock,
-             *     never gated itself) AND freezes the content itself --
-             *     the directory rescan and the deletion of the album's
-             *     photos answer the same 409 while the lock holds. The
-             *     audience face stays open under a lock (its own pin: a
-             *     lock protects content, not visibility), and the album's
-             *     own delete answers the same 409 every write does.
-             */
-            locked?: boolean;
-            /**
              * @description The owner's deletability switch of a DIRECTORY album:
              *     whether the album's photos may be deleted through the
              *     application (the trash move of the source file). On for
@@ -5828,8 +5950,7 @@ export interface components {
              *     message key `album_deletable_not_directory` -- the
              *     switch is the directory album's own, a virtual album's
              *     deletions never move files. Idempotent: repeating the
-             *     stored value converges, and the switch joins the
-             *     property fields the lock refuses (409 until unlocked).
+             *     stored value converges.
              */
             allowAppDeletion?: boolean;
         };
@@ -6039,7 +6160,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_LOCKED" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -6796,23 +6917,6 @@ export interface operations {
                 };
             };
             /**
-             * @description The album is locked: the `trash` action named a live
-             *     external asset that is a member of a locked directory
-             *     album, and the lock -- the owner's content-protection
-             *     freeze over the album's photos -- refuses the deletion
-             *     before any file moves. The whole batch rolled back:
-             *     nothing was written and every file already moved was
-             *     moved back.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
              * @description Unexpected server failure, or the external-move failure
              *     of the trash arm: a `trash` (or `restore`) action over a
              *     directory album's external asset whose file the server
@@ -6979,7 +7083,18 @@ export interface operations {
     };
     getAsset: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The display locale of the `place` face's name: `en` or
+                 *     `zh-Hans`, the instance's UI language set. Absent means
+                 *     `en`. A value outside the set answers 400
+                 *     `VALIDATION_FAILED` (the `GET /places` parameter's own
+                 *     shape -- the web app owns the active locale and passes
+                 *     it along; the server never guesses it from headers).
+                 * @example zh-Hans
+                 */
+                locale?: "en" | "zh-Hans";
+            };
             header?: never;
             path: {
                 /** @description Identifier of the asset. */
@@ -7002,7 +7117,10 @@ export interface operations {
              *     `tags` is always present, the caller's own tags on the
              *     asset sorted by name case-insensitively with the tag id
              *     as the tiebreak; the tags writes' own responses carry the
-             *     converged state, so no event needs to.
+             *     converged state, so no event needs to. `albums` is
+             *     always present, the caller-visible albums holding the
+             *     asset; `place` is the locale-joined city face (null
+             *     when nothing resolved).
              */
             200: {
                 headers: {
@@ -7110,7 +7228,17 @@ export interface operations {
     };
     patchAsset: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description The display locale of the response's `place` face: the
+                 *     `GET /assets/{id}` parameter's own shape, riding the
+                 *     same-shape discipline -- the PATCH response serves the
+                 *     detail exactly as the GET serves it, place join
+                 *     included.
+                 * @example zh-Hans
+                 */
+                locale?: "en" | "zh-Hans";
+            };
             header?: never;
             path: {
                 /** @description Identifier of the asset. */
@@ -7127,8 +7255,9 @@ export interface operations {
             /**
              * @description The asset detail after the edit -- the same shape `GET
              *     /assets/{id}` serves, with the applied values (the
-             *     `faces` and `tags` arrays included, unchanged by the
-             *     edit). The idempotent no-op answers it too, with the
+             *     `faces`, `tags` and `albums` arrays included, unchanged by
+             *     the edit; `place` resolved at the request's `locale`).
+             *     The idempotent no-op answers it too, with the
              *     row's current state unchanged.
              */
             200: {
@@ -7850,11 +7979,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /**
-             * @description The completion rows: full absolute directory paths of
-             *     the container's visible filesystem, never inside the
+             * @description The completion rows: the pickable directories of the
+             *     container's visible filesystem, never inside the
              *     server's managed tree, deduplicated, sorted ascending,
-             *     at most 20. The empty list is an honest answer (nothing
-             *     visible matches the prefix), never an error.
+             *     at most 20, each carrying its write fact. The empty list
+             *     is an honest answer (nothing visible matches the
+             *     prefix), never an error.
              */
             200: {
                 headers: {
@@ -8068,19 +8198,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /**
-             * @description The album is locked: the permission matrix pins deletion
-             *     to the UNLOCKED state. Unlock first -- one step, the
-             *     freeze is a state to clear, not a wall to climb.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Unexpected server failure. */
             500: {
                 headers: {
@@ -8177,20 +8294,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /**
-             * @description The album is locked and the patch touches a property or
-             *     curation field (`title`, `coverAssetId`,
-             *     `allowAppDeletion`). Unlock first -- a patch of only
-             *     `locked: false` is the unlock and is never gated.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
             /** @description Unexpected server failure. */
             500: {
                 headers: {
@@ -8276,18 +8379,6 @@ export interface operations {
              *     by design.
              */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description The album is locked: curation writes are refused until
-             *     the owner unlocks it.
-             */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8471,18 +8562,6 @@ export interface operations {
              *     album (a virtual album) -- indistinguishable by design.
              */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description The album is locked: the rescan rewrites the membership
-             *     the lock froze, so the owner unlocks the album first.
-             */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };

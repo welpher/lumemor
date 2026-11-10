@@ -6,11 +6,9 @@
 // everyone else folds into the reads' byte-identical 404), the type
 // gate folds every non-directory album into the same 404 (the
 // rescan is the directory album's own flow, exactly the membership
-// writes' own type discipline), the locked gate refuses the scan
-// with the curation writes' own 409 (the scan rewrites the
-// membership the lock froze), and the idempotence is the in-flight
-// run joined, never a second one started -- scoped to the album, so
-// one album's scan never blocks another's.
+// writes' own type discipline), and the idempotence is the
+// in-flight run joined, never a second one started -- scoped to the
+// album, so one album's scan never blocks another's.
 //
 // The heavy work lives on the queue (the album_rescan worker of the
 // jobs package), not here: the handler is one bounded row read plus
@@ -66,13 +64,6 @@ func (s *server) RescanAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 	// album ids unproammable.
 	if gate.Album.Type != dbgen.AlbumTypeDirectory {
 		s.writeAlbumNotFound(w)
-		return
-	}
-	// The locked gate: the scan's add and vanish arms rewrite the
-	// membership the lock froze, so the owner unlocks first -- the
-	// curation writes' own refusal.
-	if gate.Album.Locked {
-		s.writeAlbumLocked(w)
 		return
 	}
 

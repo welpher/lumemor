@@ -25,12 +25,6 @@ void main() {
       // TODO
     });
 
-    // The owner's lock: a locked album refuses its owner's curation and property writes until unlocked. It is metadata to a viewer (viewers are read-only regardless). 
-    // bool locked
-    test('to test the property `locked`', () async {
-      // TODO
-    });
-
     // True when the album carries at least one `album_shares` row -- someone besides the owner can see it. Always true on shared-group items by construction. 
     // bool isShared
     test('to test the property `isShared`', () async {
