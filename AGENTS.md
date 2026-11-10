@@ -24,8 +24,10 @@ implementation.
   established interpretation): the zh-Hans locale's values (`i18n/zh-Hans.json`
   is Chinese by definition); cited display names inside contract descriptions
   (e.g. the sync album's localized name); task briefs/reports quoting a pin's
-  text. The check: `git grep -iE 'banned-a|banned-b'` over the surface plus a
-  CJK scan of added lines, with the exemptions judged by a human.
+  text. The check: the reviews grep the added lines for the two banned
+  reference-project names (the literals live ONLY in the design repo's
+  convention pin — this file does not spell them) plus a CJK scan, with the
+  exemptions judged by a human.
 - **Global product**: every deployment serves one family, the product serves
   families worldwide. No default may assume a single market, language, or
   region. Chinese is a first-class citizen, not the constraint.

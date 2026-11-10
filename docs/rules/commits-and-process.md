@@ -48,6 +48,8 @@ last.
 The house-discipline greps a review runs on the diff's added lines:
 
 ```
-git diff <base>..<head> | grep -iE '^\+.*(banned-a|banned-b)'   # zero
-# CJK scan of added lines — only the exemption classes may carry it
+# the banned reference-project names: the two literals live only in the
+# design repo's convention pin -- this file spells no name; the review
+# reconstructs the grep there and expects zero added-line hits
+# CJK scan of added lines -- only the exemption classes may carry it
 ```
