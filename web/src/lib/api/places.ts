@@ -18,9 +18,7 @@ import type { components } from '../../../../openapi/generated/web/api';
 export type PlaceSummary = components['schemas']['PlaceSummary'];
 
 /** The city grouping read's outcome. */
-export type PlacesListResult =
-	| { ok: true; places: PlaceSummary[] }
-	| { ok: false; errorKey: string };
+export type PlacesListResult = { ok: true; places: PlaceSummary[] } | { ok: false; errorKey: string };
 
 /** The locale the request carries when the caller passes none. */
 const DEFAULT_LOCALE = 'en';
@@ -91,11 +89,7 @@ export async function listPlaces(
 ): Promise<PlacesListResult> {
 	let response: Response;
 	try {
-		response = await apiFetch(
-			`/api/v1/places?locale=${encodeURIComponent(locale)}`,
-			undefined,
-			fetcher
-		);
+		response = await apiFetch(`/api/v1/places?locale=${encodeURIComponent(locale)}`, undefined, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}

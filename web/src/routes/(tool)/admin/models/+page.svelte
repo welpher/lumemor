@@ -75,9 +75,7 @@
 
 	const settledEmpty = $derived(status === 'ready' && models.length === 0);
 	/** The download run, live: queued or running. */
-	const downloadActive = $derived(
-		download !== null && (download.state === 'queued' || download.state === 'running')
-	);
+	const downloadActive = $derived(download !== null && (download.state === 'queued' || download.state === 'running'));
 	const downloadFailed = $derived(download !== null && download.state === 'failed');
 	/** The slot sections with their models, declaration order. */
 	const slots = $derived(
@@ -202,9 +200,7 @@
 
 	/** The dimension of the slot's currently active clip model, or null. */
 	function activeClipDim(): number | null {
-		const active = models.find(
-			(model) => model.slot === 'clip_embed' && model.isActive
-		);
+		const active = models.find((model) => model.slot === 'clip_embed' && model.isActive);
 		return active?.dim ?? null;
 	}
 
@@ -316,11 +312,18 @@
 
 <div class="models max-w-[760px] mx-auto flex flex-col gap-6">
 	{#if status === 'loading'}
-		<p class="models__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('admin_models_loading')}</p>
+		<p class="models__status my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('admin_models_loading')}
+		</p>
 	{:else if status === 'error'}
-		<div class="models__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="models__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else if status === 'ready'}
 		<!-- The page-header row (the 2026-11-09 specimen): the title
@@ -328,7 +331,9 @@
 		     action, the row stands for the grammar's uniformity. The
 		     page's own note rides under it as the lede. -->
 		<AdminPageHeader title={$_('admin_models_title')} />
-		<p class="models__note m-0 mb-1 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_models_note')}</p>
+		<p class="models__note m-0 mb-1 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+			{$_('admin_models_note')}
+		</p>
 
 		{#if wipedNotice !== null}
 			<p
@@ -344,14 +349,16 @@
 		     run failed, or the trigger failed), the progress region
 		     below carries the action instead. -->
 		{#if settledEmpty && !downloadActive && !downloadFailed && downloadErrorKey === ''}
-			<section class="models__empty flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
-				<h2 class="models__empty-title font-display font-bold text-[22px] text-text">{$_('admin_models_empty_title')}</h2>
-				<p class="models__empty-body font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_models_empty_body')}</p>
-				<Button
-					variant="primary"
-					disabled={downloading}
-					onclick={() => void startDownload()}
-				>
+			<section
+				class="models__empty flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+			>
+				<h2 class="models__empty-title font-display font-bold text-[22px] text-text">
+					{$_('admin_models_empty_title')}
+				</h2>
+				<p class="models__empty-body font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+					{$_('admin_models_empty_body')}
+				</p>
+				<Button variant="primary" disabled={downloading} onclick={() => void startDownload()}>
 					<Download size={20} aria-hidden="true" />
 					{$_('admin_models_download_cta')}
 				</Button>
@@ -359,7 +366,10 @@
 		{/if}
 
 		{#if downloadErrorKey !== ''}
-			<div class="models__download-error flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+			<div
+				class="models__download-error flex flex-col items-center gap-3 max-w-[480px] box-content mx-auto mt-6 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
 				<p>{errorText(downloadErrorKey)}</p>
 				<Button variant="primary" disabled={downloading} onclick={() => void startDownload()}>
 					<RotateCcw size={20} aria-hidden="true" />
@@ -369,12 +379,15 @@
 		{/if}
 
 		{#if downloadActive || downloadFailed}
-			<section class="models__progress-region flex flex-col gap-2.5 p-5 bg-card border border-border rounded-card shadow-card" aria-live="polite">
+			<section
+				class="models__progress-region flex flex-col gap-2.5 p-5 bg-card border border-border rounded-card shadow-card"
+				aria-live="polite"
+			>
 				{#if downloadActive}
-					<p class="models__progress-state font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums">
-						{download?.state === 'queued'
-							? $_('admin_models_download_queued')
-							: downloadProgressText()}
+					<p
+						class="models__progress-state font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums"
+					>
+						{download?.state === 'queued' ? $_('admin_models_download_queued') : downloadProgressText()}
 					</p>
 					<div
 						class="models__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden animate-progress-in"
@@ -383,10 +396,16 @@
 						aria-valuemax="100"
 						aria-valuenow={downloadPercent()}
 					>
-						<div class="models__progress-fill h-full bg-accent transition-[width] duration-(--motion-base) ease-standard" style="width: {downloadPercent()}%"></div>
+						<div
+							class="models__progress-fill h-full bg-accent transition-[width] duration-(--motion-base) ease-standard"
+							style="width: {downloadPercent()}%"
+						></div>
 					</div>
 				{:else if downloadFailed}
-					<p class="models__download-failed font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">
+					<p
+						class="models__download-failed font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+						role="alert"
+					>
 						{$_('admin_models_download_failed_run', {
 							values: { count: download?.failed ?? 0 }
 						})}
@@ -400,7 +419,9 @@
 		{/if}
 
 		{#if rerunStartedFor !== ''}
-			<p class="models__rerun-started px-4 py-3 font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card">
+			<p
+				class="models__rerun-started px-4 py-3 font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card"
+			>
 				{$_('admin_models_rerun_started')}
 				<a class="text-accent-soft-text ml-1.5" href="/admin/jobs">{$_('admin_models_rerun_panel')}</a>
 			</p>
@@ -408,15 +429,30 @@
 
 		{#each slots as group (group.slot)}
 			<section class="models__slot flex flex-col gap-2.5" aria-label={$_(group.labelKey)}>
-				<h2 class="models__slot-title font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_(group.labelKey)}</h2>
+				<h2
+					class="models__slot-title font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
+				>
+					{$_(group.labelKey)}
+				</h2>
 				{#if group.entries.length === 0}
-					<p class="models__slot-empty px-4 py-3.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-dashed border-border rounded-card">{$_('admin_models_slot_empty')}</p>
+					<p
+						class="models__slot-empty px-4 py-3.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-dashed border-border rounded-card"
+					>
+						{$_('admin_models_slot_empty')}
+					</p>
 				{:else}
 					<div class="models__rows flex flex-col gap-2.5">
 						{#each group.entries as model (model.id)}
-							<article class="models__row flex flex-col gap-1.5 py-4 px-4.5 bg-card border border-border rounded-card shadow-card" data-model-id={model.id}>
+							<article
+								class="models__row flex flex-col gap-1.5 py-4 px-4.5 bg-card border border-border rounded-card shadow-card"
+								data-model-id={model.id}
+							>
 								<header class="models__row-head flex items-center gap-2.5">
-									<h3 class="models__row-id font-body font-semibold text-[16px] leading-[1.4] text-text">{model.id}</h3>
+									<h3
+										class="models__row-id font-body font-semibold text-[16px] leading-[1.4] text-text"
+									>
+										{model.id}
+									</h3>
 									<!-- An empty badge still reserves no space (empty:hidden);
 									     the active marker is the only state a row carries. -->
 									<span
@@ -428,7 +464,9 @@
 										{model.isActive ? $_('admin_models_active') : ''}
 									</span>
 									{#if !model.filesPresent}
-										<span class="models__badge models__badge--missing inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] text-danger-text bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)] rounded-control empty:hidden">
+										<span
+											class="models__badge models__badge--missing inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] text-danger-text bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)] rounded-control empty:hidden"
+										>
 											{$_('admin_models_files_missing')}
 										</span>
 									{/if}
@@ -456,26 +494,20 @@
 									{/if}
 								</p>
 								{#if model.notice !== null && model.notice !== ''}
-									<p class="models__notice font-body font-normal text-[13px] leading-[1.5] text-text-faint">
+									<p
+										class="models__notice font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+									>
 										{$_('admin_models_notice', { values: { notice: model.notice } })}
 									</p>
 								{/if}
 								<div class="models__row-actions flex justify-end">
 									{#if !model.isActive}
-										<Button
-											variant="ghost"
-											disabled={busy}
-											onclick={() => askActivate(model)}
-										>
+										<Button variant="ghost" disabled={busy} onclick={() => askActivate(model)}>
 											<Check size={20} aria-hidden="true" />
 											{$_('admin_models_activate')}
 										</Button>
 									{:else}
-										<Button
-											variant="ghost"
-											disabled={busy}
-											onclick={() => askRerun(model)}
-										>
+										<Button variant="ghost" disabled={busy} onclick={() => askRerun(model)}>
 											<RefreshCw size={20} aria-hidden="true" />
 											{$_('admin_models_rerun')}
 										</Button>
@@ -504,7 +536,12 @@
 			{/if}
 		</p>
 		{#if activateErrorKey !== ''}
-			<p class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(activateErrorKey)}</p>
+			<p
+				class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{errorText(activateErrorKey)}
+			</p>
 		{/if}
 	{/snippet}
 	{#snippet footer()}
@@ -534,7 +571,12 @@
 			{/if}
 		</p>
 		{#if rerunErrorKey !== ''}
-			<p class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(rerunErrorKey)}</p>
+			<p
+				class="models__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{errorText(rerunErrorKey)}
+			</p>
 		{/if}
 	{/snippet}
 	{#snippet footer()}

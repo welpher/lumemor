@@ -13,10 +13,7 @@ const paris: PlaceSummary = {
 	name: 'Paris',
 	country: 'FR',
 	assetCount: 17,
-	representativeCoverAssetIds: [
-		'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72',
-		'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73'
-	]
+	representativeCoverAssetIds: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72', '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73']
 };
 
 const beijing: PlaceSummary = {
@@ -38,7 +35,10 @@ beforeEach(async () => {
 	// Boot the session store unauthenticated: the 401 interceptor
 	// stays inert for these tests (no mid-session flips unless a
 	// case arranges one).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 });
@@ -63,7 +63,10 @@ test('listPlaces defaults the locale to en', async () => {
 });
 
 test('listPlaces accepts the empty grouping (nothing resolved yet)', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, [])));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, []))
+	);
 
 	const outcome = await listPlaces('en');
 
@@ -79,23 +82,37 @@ test('listPlaces maps the failure arms: dead session, error codes, broken bodies
 
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async () => jsonResponse(400, { code: 'VALIDATION_FAILED', message: 'locale must be one of: en, zh-Hans' }))
+		vi.fn(async () =>
+			jsonResponse(400, { code: 'VALIDATION_FAILED', message: 'locale must be one of: en, zh-Hans' })
+		)
 	);
 	expect(await listPlaces('en')).toEqual({ ok: false, errorKey: 'validation_failed' });
 
 	const mangles = [
 		jsonResponse(200, 'no'),
-		jsonResponse(200, [{ placeId: 'x', name: 'Paris', country: 'FR', assetCount: 1, representativeCoverAssetIds: [] }]),
+		jsonResponse(200, [
+			{ placeId: 'x', name: 'Paris', country: 'FR', assetCount: 1, representativeCoverAssetIds: [] }
+		]),
 		jsonResponse(200, [{ placeId: 1, name: 7, country: 'FR', assetCount: 1, representativeCoverAssetIds: [] }]),
-		jsonResponse(200, [{ placeId: 1, name: 'Paris', country: 'FR', assetCount: -2, representativeCoverAssetIds: [] }]),
-		jsonResponse(200, [{ placeId: 1, name: 'Paris', country: 'FR', assetCount: 1, representativeCoverAssetIds: 'no' }]),
+		jsonResponse(200, [
+			{ placeId: 1, name: 'Paris', country: 'FR', assetCount: -2, representativeCoverAssetIds: [] }
+		]),
+		jsonResponse(200, [
+			{ placeId: 1, name: 'Paris', country: 'FR', assetCount: 1, representativeCoverAssetIds: 'no' }
+		]),
 		new Response('not json', { status: 200, headers: { 'Content-Type': 'application/json' } })
 	];
 	for (const mangle of mangles) {
-		vi.stubGlobal('fetch', vi.fn(async () => mangle));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => mangle)
+		);
 		expect(await listPlaces('en'), String(mangle.body)).toEqual({ ok: false, errorKey: 'internal' });
 	}
 
-	vi.stubGlobal('fetch', vi.fn(async () => new Response('oops', { status: 500 })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => new Response('oops', { status: 500 }))
+	);
 	expect(await listPlaces('en')).toEqual({ ok: false, errorKey: 'internal' });
 });

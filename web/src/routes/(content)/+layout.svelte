@@ -27,11 +27,7 @@
 	import { page } from '$app/state';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { setLocale, type AppLocale } from '$lib/i18n';
-	import {
-		setThemePreference,
-		themePreference,
-		type ThemePreference
-	} from '$lib/theme/theme.svelte';
+	import { setThemePreference, themePreference, type ThemePreference } from '$lib/theme/theme.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import UploadOverlay from '$lib/upload/UploadOverlay.svelte';
@@ -42,7 +38,7 @@
 	import Menu from '@lucide/svelte/icons/menu';
 	import Search from '@lucide/svelte/icons/search';
 	import Upload from '@lucide/svelte/icons/upload';
- import LogOut from '@lucide/svelte/icons/log-out';
+	import LogOut from '@lucide/svelte/icons/log-out';
 	import Settings from '@lucide/svelte/icons/settings';
 	import CircleUser from '@lucide/svelte/icons/circle-user';
 	import type { LayoutProps } from './$types';
@@ -136,7 +132,6 @@
 		}
 	}
 
-
 	function closeAccountMenu(): void {
 		accountMenuOpen = false;
 	}
@@ -183,10 +178,7 @@
 		if (target === null || !(target instanceof HTMLElement)) {
 			return false;
 		}
-		return (
-			target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]') !==
-			null
-		);
+		return target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]') !== null;
 	}
 
 	// The shortcut sheet's open state: the ShortcutsDialog owns its
@@ -240,8 +232,15 @@
 			     magnifier is decorative (the field's own aria-label names
 			     it) and never takes the pointer. The box is a form so the
 			     keyboard's Enter commits the navigation to /search. -->
-			<form class="topbar-search-wrap relative flex-1 max-w-[420px] ml-auto" role="search" onsubmit={handleSearchSubmit}>
-				<Search size={16} class="absolute start-3 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
+			<form
+				class="topbar-search-wrap relative flex-1 max-w-[420px] ml-auto"
+				role="search"
+				onsubmit={handleSearchSubmit}
+			>
+				<Search
+					size={16}
+					class="absolute start-3 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none"
+				/>
 				<input
 					class="topbar-search w-full ps-9 pe-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 					type="search"
@@ -279,7 +278,9 @@
 					<CircleUser size={20} />
 				</button>
 				{#if accountMenuOpen}
-					<div class="account-menu absolute top-[calc(100%_+_8px)] right-0 z-(--z-menu) min-w-[180px] box-content p-2 bg-card border border-border rounded-overlay shadow-overlay">
+					<div
+						class="account-menu absolute top-[calc(100%_+_8px)] right-0 z-(--z-menu) min-w-[180px] box-content p-2 bg-card border border-border rounded-overlay shadow-overlay"
+					>
 						<!-- The dropdown is the account's door: the settings link and
 						     the sign-out. The theme/language quick toggles moved to
 						     the settings page (their permanent home — the dropdown
@@ -325,7 +326,11 @@
 	     order while staying focusable (the navigation focus rule
 	     above keeps the browser's keyboard scrolling on it); the
 	     outline suppression keeps that focus visually silent. -->
-	<main bind:this={main} tabindex="-1" class="shell-main flex-1 min-h-0 overflow-y-auto p-0 focus-visible:outline-none">
+	<main
+		bind:this={main}
+		tabindex="-1"
+		class="shell-main flex-1 min-h-0 overflow-y-auto p-0 focus-visible:outline-none"
+	>
 		{@render children()}
 	</main>
 </div>

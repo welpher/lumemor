@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { subscribeAlbumEvents, subscribeAssetEvents, subscribeFaceEvents, subscribeJobEvents, subscribePersonEvents } from './index';
+import {
+	subscribeAlbumEvents,
+	subscribeAssetEvents,
+	subscribeFaceEvents,
+	subscribeJobEvents,
+	subscribePersonEvents
+} from './index';
 import { streamDownSince, streamStatus } from './connection.svelte';
 
 // The shared SSE subscription module: one EventSource per app, opened
@@ -281,13 +287,7 @@ function jobPayload(overrides: Record<string, unknown> = {}): Record<string, str
 test('every person event name the people pages react to is subscribed', () => {
 	const unsubscribe = subscribePersonEvents(() => undefined);
 	const stream = MockEventSource.instances[0];
-	for (const name of [
-		'person.labeled',
-		'person.unlabeled',
-		'person.hidden',
-		'person.merged',
-		'person.face_moved'
-	]) {
+	for (const name of ['person.labeled', 'person.unlabeled', 'person.hidden', 'person.merged', 'person.face_moved']) {
 		expect(stream?.listeners, name).toBeTruthy();
 	}
 	unsubscribe();
@@ -441,7 +441,8 @@ test('album subscribers ride the shared stream; the last unsubscribe closes it',
 
 // --- face.clustered (the recognition run's cluster totals) --------------------
 
-test('face.clustered is subscribed and parses the all-strings counts into numbers', () => {	const seen: unknown[] = [];
+test('face.clustered is subscribed and parses the all-strings counts into numbers', () => {
+	const seen: unknown[] = [];
 	const unsubscribe = subscribeFaceEvents((event) => seen.push(event));
 
 	// The payload is map[string]string on the wire: both totals are

@@ -138,7 +138,10 @@ function batchBar(page: Page) {
 /** Open the navigation drawer and follow one of its links. */
 async function navigateViaDrawer(page: Page, linkName: string): Promise<void> {
 	await page.getByRole('button', { name: 'Open navigation' }).click();
-	await page.getByRole('navigation', { name: 'Navigation' }).getByRole('link', { name: linkName, exact: true }).click();
+	await page
+		.getByRole('navigation', { name: 'Navigation' })
+		.getByRole('link', { name: linkName, exact: true })
+		.click();
 }
 
 /** Upload files through the top-bar picker (the real Upload button). */
@@ -152,11 +155,7 @@ async function uploadThroughPicker(page: Page, ...files: string[]): Promise<void
 
 /** The upload overlay's row for one file name. */
 function uploadRow(page: Page, fileName: string) {
-	return page
-		.getByRole('region', { name: 'Uploads' })
-		.getByRole('listitem')
-		.filter({ hasText: fileName })
-		.last();
+	return page.getByRole('region', { name: 'Uploads' }).getByRole('listitem').filter({ hasText: fileName }).last();
 }
 
 test.beforeAll(async ({ playwright }) => {
@@ -206,9 +205,7 @@ test('scene 2: signing in through the form lands on the deep-linked timeline', a
 	// The post-login target round-trips: the deep link from scene 1
 	// is honored, and the fresh instance's timeline is empty.
 	await expect(page).toHaveURL(/\/timeline$/);
-	await expect(
-		page.getByRole('heading', { level: 1, name: 'Timeline', exact: true })
-	).toBeVisible();
+	await expect(page.getByRole('heading', { level: 1, name: 'Timeline', exact: true })).toBeVisible();
 	await expect(page.getByText('Your timeline is empty. Photos you upload appear here.')).toBeVisible();
 
 	// Hand the session to every later scene: the storage state rides
@@ -334,14 +331,12 @@ test.describe('the signed-in scenes', () => {
 		// time and the asset.ready event re-converges the tile. The
 		// month group's settled label is the visible signal of that
 		// state (the tile's own thumbnail rides the same event).
-		await expect(
-			page.getByRole('heading', { level: 2, name: 'July 2023', exact: true })
-		).toBeVisible({ timeout: 60_000 });
+		await expect(page.getByRole('heading', { level: 2, name: 'July 2023', exact: true })).toBeVisible({
+			timeout: 60_000
+		});
 		const names = await page
 			.getByRole('link', { name: new RegExp(`^(${LIVE_PHOTO_NAME}|${PHOTO_B_NAME}|${PHOTO_A_NAME})$`) })
-			.evaluateAll((nodes) =>
-				nodes.map((node) => (node as HTMLAnchorElement).getAttribute('aria-label'))
-			);
+			.evaluateAll((nodes) => nodes.map((node) => (node as HTMLAnchorElement).getAttribute('aria-label')));
 		expect(names).toEqual([LIVE_PHOTO_NAME, PHOTO_B_NAME, PHOTO_A_NAME]);
 
 		// The wall folds the same order into sticky month groups (the
@@ -354,9 +349,7 @@ test.describe('the signed-in scenes', () => {
 
 		// The Live Photo's tile carries the wall's live badge -- the
 		// timeline's only Live Photo affordance before the viewer.
-		await expect(
-			tile(page, LIVE_PHOTO_NAME).locator('[title="Live Photo"]')
-		).toBeVisible();
+		await expect(tile(page, LIVE_PHOTO_NAME).locator('[title="Live Photo"]')).toBeVisible();
 	});
 
 	test('scene 6: the viewer walks the wall and Escape returns', async ({ page }) => {
@@ -558,7 +551,9 @@ test.describe('the signed-in scenes', () => {
 		await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible();
 	});
 
-	test('scene 11: the interface-debt surfaces — the drawer has no settings door, `?` opens the sheet, the offline strip rises', async ({ page }) => {
+	test('scene 11: the interface-debt surfaces — the drawer has no settings door, `?` opens the sheet, the offline strip rises', async ({
+		page
+	}) => {
 		await page.goto('/timeline');
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
 
@@ -608,13 +603,9 @@ test.describe('the signed-in scenes', () => {
 		// abort is the deterministic drop.)
 		await page.route('**/api/v1/events', (route) => route.abort());
 		await page.reload();
-		await expect(
-			page.getByRole('status').filter({ hasText: 'Connection lost — reconnecting' })
-		).toBeVisible();
+		await expect(page.getByRole('status').filter({ hasText: 'Connection lost — reconnecting' })).toBeVisible();
 		await page.unroute('**/api/v1/events');
-		await expect(
-			page.getByRole('status').filter({ hasText: 'Connection lost — reconnecting' })
-		).toHaveCount(0);
+		await expect(page.getByRole('status').filter({ hasText: 'Connection lost — reconnecting' })).toHaveCount(0);
 	});
 
 	test('scene 12: signing out re-arms the route guard', async ({ page }) => {

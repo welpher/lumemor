@@ -10,8 +10,7 @@ import { initI18n } from '../i18n';
 // createRawSnippet is the supported way to hand a snippet to mount()
 // from plain TS test code. Its render output must be a single
 // element, so the plain-text helper wraps in a span.
-const text = (value: string) =>
-	createRawSnippet(() => ({ render: () => `<span>${value}</span>` }));
+const text = (value: string) => createRawSnippet(() => ({ render: () => `<span>${value}</span>` }));
 
 beforeEach(async () => {
 	document.body.textContent = '';
@@ -168,9 +167,7 @@ test('the focus trap keeps Tab inside the panel and pulls a strayed focus back',
 	const panel = document.body.querySelector<HTMLElement>('[role="dialog"]');
 	// Focus the last footer button: Tab wraps back into the panel's
 	// first focusable (the header's close mark precedes the footer).
-	const [, second] = [
-		...document.body.querySelectorAll<HTMLButtonElement>('[role="dialog"] footer button')
-	];
+	const [, second] = [...document.body.querySelectorAll<HTMLButtonElement>('[role="dialog"] footer button')];
 	second.focus();
 	flushSync();
 	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));

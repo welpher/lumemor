@@ -90,10 +90,7 @@
 		if (target === null || !(target instanceof HTMLElement)) {
 			return false;
 		}
-		return (
-			target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]') !==
-			null
-		);
+		return target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]') !== null;
 	}
 
 	function handleWindowKeydown(event: KeyboardEvent): void {
@@ -121,16 +118,25 @@
 	<div class="shortcuts flex flex-col gap-4">
 		{#each GROUPS as group (group.headingKey)}
 			<section class="shortcuts__group">
-				<h3 class="shortcuts__group-title m-0 mb-1.5 font-display font-bold text-[14px] leading-[1.3] text-text-soft">{$_(group.headingKey)}</h3>
+				<h3
+					class="shortcuts__group-title m-0 mb-1.5 font-display font-bold text-[14px] leading-[1.3] text-text-soft"
+				>
+					{$_(group.headingKey)}
+				</h3>
 				<ul class="shortcuts__list m-0 p-0 list-none flex flex-col gap-1">
 					{#each group.rows as row (row.actionKey)}
 						<li class="shortcuts__row grid grid-cols-[auto_1fr] gap-3 items-baseline">
 							<span class="shortcuts__keys flex gap-1">
 								{#each row.keys as key (key)}
-									<kbd class="shortcuts__key min-w-[22px] px-1.5 py-0.5 text-center font-mono font-normal text-[12px] leading-[1.4] text-text bg-page border border-border-strong rounded-[6px]">{key}</kbd>
+									<kbd
+										class="shortcuts__key min-w-[22px] px-1.5 py-0.5 text-center font-mono font-normal text-[12px] leading-[1.4] text-text bg-page border border-border-strong rounded-[6px]"
+										>{key}</kbd
+									>
 								{/each}
 							</span>
-							<span class="shortcuts__action font-body font-normal text-[14px] leading-[1.4] text-text">{$_(row.actionKey)}</span>
+							<span class="shortcuts__action font-body font-normal text-[14px] leading-[1.4] text-text"
+								>{$_(row.actionKey)}</span
+							>
 						</li>
 					{/each}
 				</ul>

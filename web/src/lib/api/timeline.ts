@@ -110,9 +110,7 @@ export type TimelineState = {
 };
 
 /** The outcome of one batch action run. */
-export type BatchOutcome =
-	| { ok: true; affected: number; missing: string[] }
-	| { ok: false; errorKey: string };
+export type BatchOutcome = { ok: true; affected: number; missing: string[] } | { ok: false; errorKey: string };
 
 export type TimelineClient = {
 	/** The store half; the page binds it with `$timeline`. */
@@ -398,11 +396,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		}
 		let response: Response;
 		try {
-			response = await apiFetch(
-				`/api/v1/assets/${encodeURIComponent(assetId)}`,
-				undefined,
-				fetcher
-			);
+			response = await apiFetch(`/api/v1/assets/${encodeURIComponent(assetId)}`, undefined, fetcher);
 		} catch {
 			// Network failure: keep the current state, later events
 			// or the next pagination run converge.
@@ -646,10 +640,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			// id supersedes any convergence claim the asset holds, so
 			// an in-flight live detail (whose upsert clears
 			// tombstones) can never resurrect the tile.
-			convergeClaim.set(
-				event.assetId,
-				Math.max(convergeClaim.get(event.assetId) ?? -1, event.id)
-			);
+			convergeClaim.set(event.assetId, Math.max(convergeClaim.get(event.assetId) ?? -1, event.id));
 			convergeQueued.delete(event.assetId);
 			removeIds([event.assetId]);
 			return;
@@ -692,9 +683,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 				store.update((state) => ({
 					...state,
 					items: state.items.map((timelineItem) =>
-						selected.has(timelineItem.id)
-							? { ...timelineItem, isFavorite: favorite }
-							: timelineItem
+						selected.has(timelineItem.id) ? { ...timelineItem, isFavorite: favorite } : timelineItem
 					)
 				}));
 				break;

@@ -161,38 +161,78 @@
 <Modal bind:open title={$_(titleKey)} {onclose}>
 	<div class="cluster-picker flex flex-col gap-3">
 		{#if bodyKey !== ''}
-			<p class="cluster-picker__body m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_(bodyKey)}</p>
+			<p class="cluster-picker__body m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+				{$_(bodyKey)}
+			</p>
 		{/if}
 		{#if loading}
-			<p class="cluster-picker__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('people_loading')}</p>
+			<p
+				class="cluster-picker__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in"
+				role="status"
+			>
+				{$_('people_loading')}
+			</p>
 		{:else}
 			{#if newPerson !== undefined}
 				<!-- The two paths of the assign flow: picking an existing
 				     cluster or typing a name for a new person. -->
 				<fieldset class="cluster-picker__modes flex gap-4 m-0 p-0 border-none">
 					<legend class="sr-only">{$_(titleKey)}</legend>
-					<label class="cluster-picker__mode flex items-center gap-1.5 font-body font-normal text-[14px] leading-[1.4] text-text cursor-pointer">
-						<input class="accent-accent" type="radio" name="cluster-picker-mode" value="existing" bind:group={mode} />
+					<label
+						class="cluster-picker__mode flex items-center gap-1.5 font-body font-normal text-[14px] leading-[1.4] text-text cursor-pointer"
+					>
+						<input
+							class="accent-accent"
+							type="radio"
+							name="cluster-picker-mode"
+							value="existing"
+							bind:group={mode}
+						/>
 						{$_(newPerson.existingLabelKey)}
 					</label>
-					<label class="cluster-picker__mode flex items-center gap-1.5 font-body font-normal text-[14px] leading-[1.4] text-text cursor-pointer">
-						<input class="accent-accent" type="radio" name="cluster-picker-mode" value="new" bind:group={mode} />
+					<label
+						class="cluster-picker__mode flex items-center gap-1.5 font-body font-normal text-[14px] leading-[1.4] text-text cursor-pointer"
+					>
+						<input
+							class="accent-accent"
+							type="radio"
+							name="cluster-picker-mode"
+							value="new"
+							bind:group={mode}
+						/>
 						{$_(newPerson.labelKey)}
 					</label>
 				</fieldset>
 			{/if}
 			{#if mode === 'new' && newPerson !== undefined}
-				<Input label={$_('people_name_field_label')} name="new-person-name" bind:value={draft} maxlength={128} autocomplete="off" />
+				<Input
+					label={$_('people_name_field_label')}
+					name="new-person-name"
+					bind:value={draft}
+					maxlength={128}
+					autocomplete="off"
+				/>
 				<!-- The family-semantics note: naming labels every face of
 				     the group, not just the picked one. -->
-				<p class="cluster-picker__note m-0 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_(newPerson.noteKey)}</p>
+				<p class="cluster-picker__note m-0 font-body font-normal text-[13px] leading-[1.5] text-text-soft">
+					{$_(newPerson.noteKey)}
+				</p>
 				{#if boundViolated}
-					<p class="cluster-picker__bound m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text">{$_('people_name_invalid')}</p>
+					<p
+						class="cluster-picker__bound m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+					>
+						{$_('people_name_invalid')}
+					</p>
 				{/if}
 			{:else if optionIds.length === 0}
-				<p class="cluster-picker__empty m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_(emptyKey)}</p>
+				<p class="cluster-picker__empty m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+					{$_(emptyKey)}
+				</p>
 			{:else}
-				<label class="cluster-picker__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="cluster-picker-target">{$_(targetLabelKey)}</label>
+				<label
+					class="cluster-picker__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+					for="cluster-picker-target">{$_(targetLabelKey)}</label
+				>
 				<select
 					class="cluster-picker__target w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 					id="cluster-picker-target"
@@ -211,7 +251,12 @@
 			{/if}
 		{/if}
 		{#if errorKey !== ''}
-			<p class="cluster-picker__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{resolveErrorText($_, errorKey)}</p>
+			<p
+				class="cluster-picker__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{resolveErrorText($_, errorKey)}
+			</p>
 		{/if}
 	</div>
 	{#snippet footer()}

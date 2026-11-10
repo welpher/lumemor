@@ -112,7 +112,10 @@ beforeEach(async () => {
 	// Boot the session store unauthenticated: the 401 interceptor
 	// stays inert for these tests (no mid-session flips unless a
 	// case arranges one).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 });
@@ -138,10 +141,7 @@ test('listAlbums maps a dead session to the session key', async () => {
 });
 
 test('listAlbums falls back to the generic key on error codes and broken bodies', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({ '/api/v1/albums': () => jsonResponse(500, { code: 'INTERNAL' }) })
-	);
+	vi.stubGlobal('fetch', stubFetch({ '/api/v1/albums': () => jsonResponse(500, { code: 'INTERNAL' }) }));
 	expect(await listAlbums()).toEqual({ ok: false, errorKey: 'internal' });
 
 	vi.stubGlobal('fetch', stubFetch({ '/api/v1/albums': () => jsonResponse(200, { albums: 'no' }) }));
@@ -354,8 +354,7 @@ test('completeAlbumPath accepts the honest empty answer and maps failures', asyn
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
-			'/api/v1/albums/path-completions?prefix=%2Fnone': () =>
-				jsonResponse(500, { code: 'INTERNAL' })
+			'/api/v1/albums/path-completions?prefix=%2Fnone': () => jsonResponse(500, { code: 'INTERNAL' })
 		})
 	);
 	expect(await completeAlbumPath('/none')).toEqual({ ok: false, errorKey: 'internal' });
@@ -397,7 +396,7 @@ test('patchAlbum PATCHes the deletability switch like every property field', asy
 	expect(outcome).toEqual({ ok: true, album: directoryCard });
 });
 
-test('patchAlbum surfaces the locked 409 and the write faces\' message keys', async () => {
+test("patchAlbum surfaces the locked 409 and the write faces' message keys", async () => {
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
@@ -434,7 +433,7 @@ test('patchAlbum surfaces the locked 409 and the write faces\' message keys', as
 			[`/api/v1/albums/${ownCard.id}`]: () =>
 				jsonResponse(400, {
 					code: 'VALIDATION_FAILED',
-					message: 'the deletability switch is a directory album\'s own setting',
+					message: "the deletability switch is a directory album's own setting",
 					details: { key: 'album_deletable_not_directory' }
 				})
 		})
@@ -467,10 +466,7 @@ test('updateAlbumAudience PUTs the full set and answers the honest report', asyn
 						grantedAt: '2026-11-05T09:30:00Z'
 					}
 				],
-				granted: [
-					'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70',
-					'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71'
-				],
+				granted: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70', '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71'],
 				revoked: [],
 				skipped: [{ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99', reason: 'owner' }]
 			});
@@ -486,9 +482,7 @@ test('updateAlbumAudience PUTs the full set and answers the honest report', asyn
 	expect(outcome.ok).toBe(true);
 	if (outcome.ok) {
 		expect(outcome.report.audience).toHaveLength(2);
-		expect(outcome.report.skipped).toEqual([
-			{ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99', reason: 'owner' }
-		]);
+		expect(outcome.report.skipped).toEqual([{ userId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99', reason: 'owner' }]);
 	}
 });
 

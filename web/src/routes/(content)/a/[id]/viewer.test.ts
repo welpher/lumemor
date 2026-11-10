@@ -97,10 +97,7 @@ const sequence = [
 ];
 
 /** The detail body of a sequence item (the detail's extra fields). */
-function detailBodyOf(
-	source: TimelineItem,
-	overrides: Record<string, unknown> = {}
-): Record<string, unknown> {
+function detailBodyOf(source: TimelineItem, overrides: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		description: 'Original caption.',
 		isHidden: false,
@@ -214,7 +211,10 @@ async function settle(): Promise<void> {
 }
 
 /** Mount the page for one route id; the fetch mock is returned for call assertions. */
-function mountViewer(id: string, rules: RouteRule[]): { app: ReturnType<typeof mount>; fetchMock: ReturnType<typeof vi.fn> } {
+function mountViewer(
+	id: string,
+	rules: RouteRule[]
+): { app: ReturnType<typeof mount>; fetchMock: ReturnType<typeof vi.fn> } {
 	pageState.params.id = id;
 	const fetchMock = stubFetch(rules);
 	vi.stubGlobal('fetch', fetchMock);
@@ -325,19 +325,22 @@ beforeEach(async () => {
 	// owner-only affordances resolve against this identity (the
 	// identity seam's store carries it; the interceptor stays inert
 	// because these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () =>
-		jsonResponse(200, [
-			{
-				id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
-				kind: 'WEB',
-				userId: ownerId,
-				role: 'admin',
-				deviceName: 'Mozilla/5.0 (test)',
-				createdAt: '2026-11-01T10:00:00Z',
-				lastSeenAt: '2026-11-02T10:00:00Z'
-			}
-		])
-	));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () =>
+			jsonResponse(200, [
+				{
+					id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
+					kind: 'WEB',
+					userId: ownerId,
+					role: 'admin',
+					deviceName: 'Mozilla/5.0 (test)',
+					createdAt: '2026-11-01T10:00:00Z',
+					lastSeenAt: '2026-11-02T10:00:00Z'
+				}
+			])
+		)
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('authenticated');
 	await initI18n();
@@ -370,9 +373,7 @@ test('an image deep link renders the serving layers and the filmstrip', async ()
 	const thumbs = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.viewer__thumb'));
 	expect(thumbs.map((thumb) => thumb.getAttribute('data-filmstrip-id'))).toEqual(['a1', 'a2', 'a3']);
 	expect(thumbs[1]?.getAttribute('aria-current')).toBe('true');
-	expect(thumbs[1]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a2/thumbnail?size=tile'
-	);
+	expect(thumbs[1]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a2/thumbnail?size=tile');
 
 	// The drawer's file facts render the detail's numbers.
 	openDrawer();
@@ -398,9 +399,7 @@ test('arrow keys walk the sequence and clamp at both ends', async () => {
 	flushSync();
 
 	// The head: ArrowLeft is inert (the clamp).
-	const head = mountViewer('a1', [
-		get('/api/v1/assets/a1', () => jsonResponse(200, detailBodyOf(sequence[0]!)))
-	]);
+	const head = mountViewer('a1', [get('/api/v1/assets/a1', () => jsonResponse(200, detailBodyOf(sequence[0]!)))]);
 	await settle();
 	pressKey('ArrowLeft');
 	expect(vi.mocked(goto)).toHaveBeenCalledTimes(2);
@@ -408,9 +407,7 @@ test('arrow keys walk the sequence and clamp at both ends', async () => {
 	flushSync();
 
 	// The tail: ArrowRight is inert.
-	const tail = mountViewer('a3', [
-		get('/api/v1/assets/a3', () => jsonResponse(200, detailBodyOf(sequence[2]!)))
-	]);
+	const tail = mountViewer('a3', [get('/api/v1/assets/a3', () => jsonResponse(200, detailBodyOf(sequence[2]!)))]);
 	await settle();
 	pressKey('ArrowRight');
 	expect(vi.mocked(goto)).toHaveBeenCalledTimes(2);
@@ -420,17 +417,13 @@ test('arrow keys walk the sequence and clamp at both ends', async () => {
 
 test('a deep link off the sequence still loads the asset; arrows and filmstrip current are inert', async () => {
 	const offPage = item('zz', '2026-10-10T08:00:00Z', { originalFilename: 'OFF.jpg' });
-	const { app } = mountViewer('zz', [
-		get('/api/v1/assets/zz', () => jsonResponse(200, detailBodyOf(offPage)))
-	]);
+	const { app } = mountViewer('zz', [get('/api/v1/assets/zz', () => jsonResponse(200, detailBodyOf(offPage)))]);
 	await settle();
 
 	// The off-sequence detail renders.
 	expect(element('.viewer__title').textContent).toBe('OFF.jpg');
 	expect(
-		Array.from(document.body.querySelectorAll('img.viewer__image')).map((image) =>
-			image.getAttribute('src')
-		)
+		Array.from(document.body.querySelectorAll('img.viewer__image')).map((image) => image.getAttribute('src'))
 	).toContain('/api/v1/assets/zz/thumbnail?size=view');
 	// No neighbor arrows, no current filmstrip thumb, inert arrows.
 	expect(document.body.querySelector('.viewer__arrow')).toBeNull();
@@ -524,8 +517,7 @@ test('a successful edit adopts the response description', async () => {
 });
 
 test('the Live Photo press probes the component stream and toggles; not-ready keeps the still', async () => {
-	const liveDetail = () =>
-		jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
+	const liveDetail = () => jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
 	const probeCalls: string[] = [];
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2', liveDetail),
@@ -683,10 +675,7 @@ test('a successful favorite batch flips the bar label (per-user state, no events
 
 test('a trashed asset offers Restore in the bar and runs the restore batch', async () => {
 	const { app, fetchMock } = mountViewer('a2', [
-		get(
-			'/api/v1/assets/a2',
-			() => jsonResponse(200, detailBodyOf(sequence[1]!, { isTrashed: true }))
-		),
+		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { isTrashed: true }))),
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
 	]);
 	await settle();
@@ -712,9 +701,8 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 	// its edit affordance. The face chips stay: their assign dialog
 	// carries the per-user label write a sharee holds.
 	const { app, fetchMock } = mountViewer('a2', [
-		get(
-			'/api/v1/assets/a2',
-			() => jsonResponse(200, detailBodyOf(sequence[1]!, { ownerId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70' }))
+		get('/api/v1/assets/a2', () =>
+			jsonResponse(200, detailBodyOf(sequence[1]!, { ownerId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70' }))
 		),
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
 	]);
@@ -896,9 +884,7 @@ test('the +/- keys and the double-click ride the gradual zoom; a neighbor resets
 
 	// A fresh neighbor starts unzoomed: the engine's hard reset ran on
 	// the asset change.
-	const neighbor = mountViewer('a1', [
-		get('/api/v1/assets/a1', () => jsonResponse(200, detailBodyOf(sequence[0]!)))
-	]);
+	const neighbor = mountViewer('a1', [get('/api/v1/assets/a1', () => jsonResponse(200, detailBodyOf(sequence[0]!)))]);
 	await settle();
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(false);
 	unmount(neighbor.app);
@@ -906,8 +892,7 @@ test('the +/- keys and the double-click ride the gradual zoom; a neighbor resets
 });
 
 test("a Live Photo's double press is the press pair, never a zoom toggle", async () => {
-	const liveDetail = () =>
-		jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
+	const liveDetail = () => jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2', liveDetail),
 		get('/api/v1/assets/c2/play', () => rangeResponse())
@@ -922,9 +907,7 @@ test("a Live Photo's double press is the press pair, never a zoom toggle", async
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(false);
 
 	// A double-click on the still itself toggles the zoom.
-	element('.viewer__image').dispatchEvent(
-		new MouseEvent('dblclick', { bubbles: true, cancelable: true })
-	);
+	element('.viewer__image').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
 	flushSync();
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(true);
 	unmount(app);
@@ -1065,9 +1048,9 @@ test('the stage keeps its loaded and zoomed state across same-id detail replacem
 	expect(survived[0]).toBe(images[0]);
 	expect(survived[0]?.classList.contains('viewer__image--loaded')).toBe(true);
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(true);
-	expect(
-		fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2')
-	).toHaveLength(detailCalls.length + 1);
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2')).toHaveLength(
+		detailCalls.length + 1
+	);
 	unmount(app);
 	flushSync();
 
@@ -1076,9 +1059,7 @@ test('the stage keeps its loaded and zoomed state across same-id detail replacem
 	// reset is approximated by the neighbor's mount -- the same
 	// approximation the drawer's reset test uses). The new asset
 	// starts unloaded and unzoomed: the crossfade begins over.
-	const neighbor = mountViewer('a3', [
-		get('/api/v1/assets/a3', () => jsonResponse(200, detailBodyOf(sequence[2]!)))
-	]);
+	const neighbor = mountViewer('a3', [get('/api/v1/assets/a3', () => jsonResponse(200, detailBodyOf(sequence[2]!)))]);
 	await settle();
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(false);
 	expect(
@@ -1177,11 +1158,7 @@ test('a not-ready video carries the stage on the placeholder when the poster req
 test('filmstrip thumbnails only fire for ready entries; the session ready event recovers one', async () => {
 	// The wall snapshot lands with a3 still processing (the snapshot
 	// is frozen while the viewer has the wall unmounted).
-	publishWallItems([
-		sequence[0]!,
-		sequence[1]!,
-		item('a3', '2026-10-13T12:30:00Z', { isReady: false })
-	]);
+	publishWallItems([sequence[0]!, sequence[1]!, item('a3', '2026-10-13T12:30:00Z', { isReady: false })]);
 	const { app } = mountViewer('a2', viewerRoutes('a2'));
 	await settle();
 
@@ -1420,16 +1397,12 @@ test('the assign flow moves a face onto an existing person and the chip converge
 	let moved = false;
 	const facesNow = () => [
 		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
-		moved
-			? faceSummary('f2', { clusterId: 'c1', label: { name: 'Ada', isHidden: false } })
-			: faceSummary('f2')
+		moved ? faceSummary('f2', { clusterId: 'c1', label: { name: 'Ada', isHidden: false } }) : faceSummary('f2')
 	];
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
 		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
-		get('/api/v1/people/unnamed?limit=60', () =>
-			jsonResponse(200, { items: [unnamedTarget('c9', 4)] })
-		),
+		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [unnamedTarget('c9', 4)] })),
 		post('/api/v1/faces/f2/move', () => {
 			moved = true;
 			return jsonResponse(200, { faceId: 'f2', clusterId: 'c1' });
@@ -1457,9 +1430,10 @@ test('the assign flow moves a face onto an existing person and the chip converge
 	expect(JSON.parse(String(init?.body))).toEqual({ targetClusterId: 'c1' });
 	// The dialog closed and the chip reflects the target cluster's label.
 	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-	expect(
-		Array.from(document.body.querySelectorAll('.info__face-name')).map((node) => node.textContent)
-	).toEqual(['Ada', 'Ada']);
+	expect(Array.from(document.body.querySelectorAll('.info__face-name')).map((node) => node.textContent)).toEqual([
+		'Ada',
+		'Ada'
+	]);
 	unmount(app);
 	flushSync();
 });
@@ -1502,9 +1476,7 @@ test('an unnamed-cluster chip names its cluster as a new person; labeled chips a
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
 		get('/api/v1/people', () => jsonResponse(200, [])),
-		get('/api/v1/people/unnamed?limit=60', () =>
-			jsonResponse(200, { items: [unnamedTarget('c9', 4)] })
-		),
+		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [unnamedTarget('c9', 4)] })),
 		put('/api/v1/people/c-f2/label', () => {
 			named = true;
 			return jsonResponse(200, { clusterId: 'c-f2', name: 'Grace', isHidden: false });
@@ -1525,9 +1497,7 @@ test('an unnamed-cluster chip names its cluster as a new person; labeled chips a
 	// The unnamed chip: the new-person path with the family note.
 	click(element('[data-face-id="f2"]'));
 	await settle();
-	const radios = Array.from(
-		document.body.querySelectorAll<HTMLInputElement>('input[name="cluster-picker-mode"]')
-	);
+	const radios = Array.from(document.body.querySelectorAll<HTMLInputElement>('input[name="cluster-picker-mode"]'));
 	expect(radios.map((radio) => radio.value)).toEqual(['existing', 'new']);
 	click(radios[1]!);
 	radios[1]!.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1545,9 +1515,10 @@ test('an unnamed-cluster chip names its cluster as a new person; labeled chips a
 	expect(JSON.parse(String(init?.body))).toEqual({ name: 'Grace' });
 	// The dialog closed and both chips carry their names.
 	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-	expect(
-		Array.from(document.body.querySelectorAll('.info__face-name')).map((node) => node.textContent)
-	).toEqual(['Ada', 'Grace']);
+	expect(Array.from(document.body.querySelectorAll('.info__face-name')).map((node) => node.textContent)).toEqual([
+		'Ada',
+		'Grace'
+	]);
 	unmount(app);
 	flushSync();
 });
@@ -1561,8 +1532,7 @@ test('person events converge the chips through the refetch; unrelated events add
 	await settle();
 	openDrawer();
 	expect(element('.info__face-name').textContent).toBe('Unnamed');
-	const detailCalls = () =>
-		fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2').length;
+	const detailCalls = () => fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2').length;
 	const before = detailCalls();
 
 	// A person event off every rendered cluster and face: no refetch.
@@ -1624,7 +1594,7 @@ function scopedButtonByText(scope: ParentNode, text: string): HTMLButtonElement 
 	return found;
 }
 
-test('the drawer\'s file section renders the tags row: the caller\'s chips, the empty note, the assign affordance', async () => {
+test("the drawer's file section renders the tags row: the caller's chips, the empty note, the assign affordance", async () => {
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2', () =>
 			jsonResponse(200, detailBodyOf(sequence[1]!, { tags: [tagEntry('t1', 'Beach')] }))
@@ -1668,9 +1638,7 @@ test('the tag assign flow: picking an existing tag writes the single id, the rep
 				detailBodyOf(sequence[1]!, { tags: detailCalls > 1 ? [tagEntry('t1', 'Beach')] : [] })
 			);
 		}),
-		get('/api/v1/tags', () =>
-			jsonResponse(200, [tagSummary('t1', 'Beach'), tagSummary('t2', 'Sunrise')])
-		),
+		get('/api/v1/tags', () => jsonResponse(200, [tagSummary('t1', 'Beach'), tagSummary('t2', 'Sunrise')])),
 		post('/api/v1/tags/t1/assets', () => jsonResponse(200, { added: 1, skipped: 0 }))
 	]);
 	await settle();
@@ -1724,12 +1692,10 @@ test('the tag assign flow: the create-new path creates the tag idempotently, the
 
 	const dialog = element('.modal__panel');
 	const radios = Array.from(dialog.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
-	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
-		new MouseEvent('click', { bubbles: true, cancelable: true })
-	);
-	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
-		new Event('change', { bubbles: true })
-	);
+	radios
+		.find((radio) => radio.value === 'new')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(new Event('change', { bubbles: true }));
 	flushSync();
 	const field = dialog.querySelector<HTMLInputElement>('input:not([type="radio"])');
 	if (field === null) {
@@ -1757,7 +1723,7 @@ test('the tag assign flow: the create-new path creates the tag idempotently, the
 	flushSync();
 });
 
-test('the tags row\'s assign affordance is every viewer\'s own write (per-user state, never the owner\'s alone)', async () => {
+test("the tags row's assign affordance is every viewer's own write (per-user state, never the owner's alone)", async () => {
 	// A sharee's drawer: the description edit never renders (the
 	// identity seam's read-only arm), but the tags affordance does
 	// -- the tag write is the CALLER's own per-user row, and the

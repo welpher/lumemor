@@ -24,19 +24,13 @@ export type AdminUser = components['schemas']['AdminUserResponse'];
 export type AdminUserRole = components['schemas']['UserRole'];
 
 /** The listing's outcome: every account, or the failure's i18n key. */
-export type AdminUserListResult =
-	| { ok: true; users: AdminUser[] }
-	| { ok: false; errorKey: string };
+export type AdminUserListResult = { ok: true; users: AdminUser[] } | { ok: false; errorKey: string };
 
 /** The create form's outcome: the created account, or the failure's i18n key. */
-export type AdminUserCreateResult =
-	| { ok: true; user: AdminUser }
-	| { ok: false; errorKey: string };
+export type AdminUserCreateResult = { ok: true; user: AdminUser } | { ok: false; errorKey: string };
 
 /** The toggle's outcome: the account after the write, or the failure's i18n key. */
-export type AdminUserUpdateResult =
-	| { ok: true; user: AdminUser }
-	| { ok: false; errorKey: string };
+export type AdminUserUpdateResult = { ok: true; user: AdminUser } | { ok: false; errorKey: string };
 
 const USERS_ENDPOINT = '/api/v1/admin/users';
 
@@ -72,9 +66,7 @@ async function adminErrorKey(response: Response): Promise<string> {
  * first. A 403 is the signed-in non-admin caller (auth_forbidden),
  * not a session failure.
  */
-export async function listAdminUsers(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<AdminUserListResult> {
+export async function listAdminUsers(fetcher: typeof fetch = globalThis.fetch): Promise<AdminUserListResult> {
 	let response: Response;
 	try {
 		response = await apiFetch(USERS_ENDPOINT, undefined, fetcher);

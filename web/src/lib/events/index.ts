@@ -41,23 +41,13 @@
 // else on the wire is ignored defensively rather than crashing
 // subscribers.
 
-import {
-	markStreamClosed,
-	markStreamConnecting,
-	markStreamDown,
-	markStreamOpen
-} from './connection.svelte';
+import { markStreamClosed, markStreamConnecting, markStreamDown, markStreamOpen } from './connection.svelte';
 
 export type AssetKind = 'image' | 'video';
 
 /** The asset lifecycle events the server publishes on the stream. */
 export type AssetEventName =
-	| 'asset.uploaded'
-	| 'asset.ready'
-	| 'asset.updated'
-	| 'asset.deleted'
-	| 'asset.trashed'
-	| 'asset.restored';
+	'asset.uploaded' | 'asset.ready' | 'asset.updated' | 'asset.deleted' | 'asset.trashed' | 'asset.restored';
 
 /** One parsed asset.* activity event, as the wall and upload queue consume it. */
 export type AssetEvent = {
@@ -115,11 +105,7 @@ export type JobRunState = 'queued' | 'running' | 'succeeded' | 'failed';
  * wire and split here.
  */
 export type PersonEventName =
-	| 'person.labeled'
-	| 'person.unlabeled'
-	| 'person.hidden'
-	| 'person.merged'
-	| 'person.face_moved';
+	'person.labeled' | 'person.unlabeled' | 'person.hidden' | 'person.merged' | 'person.face_moved';
 
 export type PersonEvent =
 	| {
@@ -193,12 +179,7 @@ export type FaceEventListener = (event: FaceEvent) => void;
  * server-side); on the other four it is the acting user.
  */
 export type AlbumEventName =
-	| 'album.created'
-	| 'album.updated'
-	| 'album.deleted'
-	| 'album.items-changed'
-	| 'album.shared'
-	| 'album.unshared';
+	'album.created' | 'album.updated' | 'album.deleted' | 'album.items-changed' | 'album.shared' | 'album.unshared';
 
 /** One parsed album.* activity event, as the wall and detail consume it. */
 export type AlbumEvent = {
@@ -224,11 +205,7 @@ const ASSET_EVENT_NAMES: readonly AssetEventName[] = [
 	'asset.restored'
 ];
 
-const JOB_EVENT_NAMES: readonly JobEventName[] = [
-	'job.started',
-	'job.progress',
-	'job.finished'
-];
+const JOB_EVENT_NAMES: readonly JobEventName[] = ['job.started', 'job.progress', 'job.finished'];
 
 const JOB_RUN_STATES: readonly JobRunState[] = ['queued', 'running', 'succeeded', 'failed'];
 
@@ -572,13 +549,7 @@ function disconnect(): void {
 
 /** The number of subscribers across all event kinds. */
 function subscriberCount(): number {
-	return (
-		assetListeners.size +
-		jobListeners.size +
-		personListeners.size +
-		faceListeners.size +
-		albumListeners.size
-	);
+	return assetListeners.size + jobListeners.size + personListeners.size + faceListeners.size + albumListeners.size;
 }
 
 /**

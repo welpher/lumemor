@@ -110,7 +110,12 @@ function naturalHeight(count: number, aspectSum: number, containerWidth: number)
  * never stretched, never grown (the reference's last-row behavior:
  * a day with two photos shows two ordinary-sized ones, and the day
  * BLOCK flows beside its neighbors). */
-function closeRow(items: readonly TimelineItem[], aspectSum: number, containerWidth: number, isLast: boolean): PackedRow {
+function closeRow(
+	items: readonly TimelineItem[],
+	aspectSum: number,
+	containerWidth: number,
+	isLast: boolean
+): PackedRow {
 	const natural = naturalHeight(items.length, aspectSum, containerWidth);
 	const height = isLast ? Math.min(natural, WALL_ROW_TARGET) : natural;
 	return {
@@ -125,10 +130,7 @@ function closeRow(items: readonly TimelineItem[], aspectSum: number, containerWi
  * before any measurement) answers one single-tile row per item at
  * the target height -- deterministic and safe to render.
  */
-export function packRows(
-	items: readonly TimelineItem[],
-	containerWidth: number
-): PackedRow[] {
+export function packRows(items: readonly TimelineItem[], containerWidth: number): PackedRow[] {
 	if (items.length === 0) {
 		return [];
 	}
@@ -195,10 +197,7 @@ export type PackedMonth = {
  * rule -- the month gap plus the headers carry the grouping, never a
  * mixed row).
  */
-export function packWall(
-	groups: readonly MonthGroup[],
-	containerWidth: number
-): PackedMonth[] {
+export function packWall(groups: readonly MonthGroup[], containerWidth: number): PackedMonth[] {
 	return groups.map((group) => ({
 		key: group.key,
 		label: group.label,

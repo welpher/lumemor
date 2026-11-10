@@ -207,15 +207,24 @@
 	</header>
 
 	{#if firstLoad}
-		<p class="trash__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('trash_loading')}</p>
+		<p class="trash__status my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('trash_loading')}
+		</p>
 	{:else if settledEmpty}
-		<div class="trash__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+		<div
+			class="trash__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+		>
 			<p class="text-text-soft">{$_('trash_empty')}</p>
 		</div>
 	{:else if status === 'error'}
-		<div class="trash__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="trash__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else}
 		<div class="trash__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3">
@@ -227,9 +236,15 @@
 					     and stacks the countdown over it and the row's
 					     actions under it: the trash styling carries the
 					     de-emphasized tone of a row on its way out. -->
-					<div class="trash__tile relative aspect-square overflow-hidden rounded-control [outline:1px_solid_var(--color-border)] outline-offset-[-1px] opacity-85">
+					<div
+						class="trash__tile relative aspect-square overflow-hidden rounded-control [outline:1px_solid_var(--color-border)] outline-offset-[-1px] opacity-85"
+					>
 						<PhotoTile item={tileItem(entry)} selected={false} selectable={false} />
-						<p class="trash__days absolute bottom-1.5 left-1.5 z-(--z-tile-chip) py-0.5 px-2 font-body font-semibold text-[12px] leading-[1.5] text-cream-text bg-night rounded-control tabular-nums">{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}</p>
+						<p
+							class="trash__days absolute bottom-1.5 left-1.5 z-(--z-tile-chip) py-0.5 px-2 font-body font-semibold text-[12px] leading-[1.5] text-cream-text bg-night rounded-control tabular-nums"
+						>
+							{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}
+						</p>
 					</div>
 					<div class="trash__actions flex gap-2">
 						<!-- The row's actions are icon-only (the icon-first rule):
@@ -262,7 +277,12 @@
 	{/if}
 
 	{#if actionErrorKey !== ''}
-		<p class="trash__error max-w-[420px] mx-auto mt-4 text-center font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(actionErrorKey)}</p>
+		<p
+			class="trash__error max-w-[420px] mx-auto mt-4 text-center font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+			role="alert"
+		>
+			{errorText(actionErrorKey)}
+		</p>
 	{/if}
 </section>
 
@@ -272,7 +292,12 @@
 			{$_('trash_delete_body', { values: { name: pendingDelete?.originalFilename ?? '' } })}
 		</p>
 		{#if deleteErrorKey !== ''}
-			<p class="trash__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(deleteErrorKey)}</p>
+			<p
+				class="trash__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{errorText(deleteErrorKey)}
+			</p>
 		{/if}
 	{/snippet}
 	{#snippet footer()}

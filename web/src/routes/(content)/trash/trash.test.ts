@@ -143,7 +143,10 @@ beforeEach(async () => {
 	vi.clearAllMocks();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -279,9 +282,7 @@ test('a failed restore surfaces the mapped message and keeps the row', async () 
 	clickRestore(0);
 	await settle();
 	expect(cells()).toHaveLength(1);
-	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
-		'Something went wrong'
-	);
+	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('Something went wrong');
 
 	unmount(page);
 	flushSync();
@@ -376,9 +377,7 @@ test('a failed permanent delete keeps the row and the modal message', async () =
 	await settle();
 	// The modal stays with the mapped failure; the row is untouched.
 	expect(cells()).toHaveLength(1);
-	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
-		'Something went wrong'
-	);
+	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('Something went wrong');
 
 	unmount(page);
 	flushSync();

@@ -153,7 +153,10 @@ beforeEach(async () => {
 	clearWallItems();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -233,8 +236,7 @@ test('the convergence removes an unhidden row and keeps a hidden one', async () 
 	const details = new Map<string, boolean>();
 	const fetchMock = stubFetch(
 		hiddenRoutes({
-			'/api/v1/assets/a1': () =>
-				detailOf(pageOne[0]!, { isHidden: details.get('a1') ?? true })
+			'/api/v1/assets/a1': () => detailOf(pageOne[0]!, { isHidden: details.get('a1') ?? true })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);

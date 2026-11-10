@@ -62,9 +62,7 @@ type Route = (url: string, init?: RequestInit) => Response | Promise<Response>;
 
 function clientWith(route: Route): TimelineClient {
 	return createTimelineClient({
-		fetcher: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
-			route(String(input), init)
-		)
+		fetcher: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => route(String(input), init))
 	});
 }
 
@@ -78,7 +76,10 @@ beforeEach(async () => {
 	// Boot the session store unauthenticated: the 401 interceptor
 	// stays inert for these tests (no mid-session flips unless a
 	// case arranges one).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 });
@@ -243,7 +244,10 @@ test('a network failure maps to the internal key', async () => {
 
 test('a mid-session 401 page load flips the session store (the interceptor path)', async () => {
 	// Arrange an authenticated session first.
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, [])));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, []))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('authenticated');
 
@@ -661,7 +665,11 @@ describe('batch runner', () => {
 		const outcome = await timeline.runBatch('favorite', ['a1', 'a2']);
 		expect(outcome).toEqual({ ok: true, affected: 2, missing: [] });
 		expect(posts).toEqual([{ action: 'favorite', ids: ['a1', 'a2'] }]);
-		expect(get(timeline).items.filter((i) => i.isFavorite).map((i) => i.id)).toEqual(['a1', 'a2']);
+		expect(
+			get(timeline)
+				.items.filter((i) => i.isFavorite)
+				.map((i) => i.id)
+		).toEqual(['a1', 'a2']);
 		expect(get(timeline).items.find((i) => i.id === 'a3')?.isFavorite).toBe(false);
 	});
 
@@ -788,9 +796,7 @@ describe('curated view membership (favorites and hidden walls)', () => {
 	// the view instead.
 	function viewClient(view: 'favorites' | 'hidden', route: Route): TimelineClient {
 		return createTimelineClient({
-			fetcher: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
-				route(String(input), init)
-			),
+			fetcher: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => route(String(input), init)),
 			path: `/api/v1/assets/${view}`,
 			view
 		});
@@ -832,7 +838,10 @@ describe('curated view membership (favorites and hidden walls)', () => {
 				// The second page's server snapshot predates the
 				// unfavorite (a racing response).
 				return pages === 1
-					? page(pageOneItems.map((i) => item(i.id, i.takenAt, { isFavorite: true })), 'CURSOR-1')
+					? page(
+							pageOneItems.map((i) => item(i.id, i.takenAt, { isFavorite: true })),
+							'CURSOR-1'
+						)
 					: page([item('a2', '2026-11-01T09:00:00Z', { isFavorite: true })]);
 			}
 			throw new Error(`unexpected fetch ${url}`);

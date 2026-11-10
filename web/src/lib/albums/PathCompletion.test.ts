@@ -102,9 +102,7 @@ function keysFooter(): HTMLElement | null {
 }
 
 test('a burst of keystrokes debounces into ONE request with the final prefix', async () => {
-	const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
-		jsonResponse(200, { paths: ['/Volumes/Photos'] })
-	);
+	const fetchMock = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: ['/Volumes/Photos'] }));
 	vi.stubGlobal('fetch', fetchMock);
 	const { component } = mountField();
 
@@ -168,9 +166,7 @@ test('single-flight: an in-flight request parks later triggers, one trailing fet
 });
 
 test('the keyboard: ↑/↓ highlight, Enter completes into the field, Esc closes the list alone', async () => {
-	const fetchMock = vi.fn(async () =>
-		jsonResponse(200, { paths: ['/Volumes/Photos', '/Volumes/PhoneBackup'] })
-	);
+	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: ['/Volumes/Photos', '/Volumes/PhoneBackup'] }));
 	vi.stubGlobal('fetch', fetchMock);
 	const { component, input, readPath } = mountField();
 
@@ -216,9 +212,7 @@ test('the keyboard: ↑/↓ highlight, Enter completes into the field, Esc close
 });
 
 test('a row completes on mousedown (the state-selector semantics)', async () => {
-	const fetchMock = vi.fn(async () =>
-		jsonResponse(200, { paths: ['/Volumes/Photos', '/Volumes/PhoneBackup'] })
-	);
+	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: ['/Volumes/Photos', '/Volumes/PhoneBackup'] }));
 	vi.stubGlobal('fetch', fetchMock);
 	const { component, readPath } = mountField();
 
@@ -238,9 +232,7 @@ test('a row completes on mousedown (the state-selector semantics)', async () => 
 test('the empty prefix lists the root itself; the honest empty answer is the plain no-match note (E6: the no-roots face retired)', async () => {
 	// The system-wide domain: the empty prefix carries no query
 	// string and the server answers the container's root.
-	const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
-		jsonResponse(200, { paths: ['/'] })
-	);
+	const fetchMock = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(200, { paths: ['/'] }));
 	vi.stubGlobal('fetch', fetchMock);
 	const { component } = mountField();
 
@@ -263,9 +255,7 @@ test('the empty prefix lists the root itself; the honest empty answer is the pla
 	const again = mountField();
 	focus();
 	await advance(300);
-	expect(document.body.querySelector('.path-completion__no-match')?.textContent).toContain(
-		'No matching folders'
-	);
+	expect(document.body.querySelector('.path-completion__no-match')?.textContent).toContain('No matching folders');
 	// The keys footer rides the row list only -- nothing to
 	// navigate here.
 	expect(keysFooter()).toBeNull();
@@ -276,7 +266,7 @@ test('the empty prefix lists the root itself; the honest empty answer is the pla
 	flushSync();
 });
 
-test('the validation slot swaps the hint and the failure at ONE height (§7.5\'s companion pin)', async () => {
+test("the validation slot swaps the hint and the failure at ONE height (§7.5's companion pin)", async () => {
 	const fetchMock = vi.fn(async () => jsonResponse(200, { paths: [] }));
 	vi.stubGlobal('fetch', fetchMock);
 	const hint = 'Choose an existing folder — the album references it in place.';
@@ -291,7 +281,9 @@ test('the validation slot swaps the hint and the failure at ONE height (§7.5\'s
 	expect(hintSlot?.className).not.toContain('path-completion__failure');
 	// The input's described-by partner is the slot itself: the hint
 	// is a description exactly as the failure is.
-	expect(document.body.querySelector<HTMLInputElement>('#test-path')?.getAttribute('aria-describedby')).toBe('test-path-note');
+	expect(document.body.querySelector<HTMLInputElement>('#test-path')?.getAttribute('aria-describedby')).toBe(
+		'test-path-note'
+	);
 	unmount(withHint.component);
 	flushSync();
 
@@ -330,9 +322,7 @@ test('a typed prefix with no match renders the honest empty note, never an error
 
 	type('/none');
 	await advance(300);
-	expect(document.body.querySelector('.path-completion__no-match')?.textContent).toContain(
-		'No matching folders'
-	);
+	expect(document.body.querySelector('.path-completion__no-match')?.textContent).toContain('No matching folders');
 
 	unmount(component);
 	flushSync();
@@ -361,9 +351,7 @@ test('the write failure renders under the field with the invalid border', async 
 
 	// The caller's routed write failure: the line under the field,
 	// the input invalid.
-	expect(document.body.querySelector('.path-completion__failure')?.textContent).toBe(
-		'That folder does not exist.'
-	);
+	expect(document.body.querySelector('.path-completion__failure')?.textContent).toBe('That folder does not exist.');
 	expect(input()?.getAttribute('aria-invalid')).toBe('true');
 
 	unmount(component);

@@ -57,9 +57,7 @@
 	const activeLocale = $derived($locale ?? 'en');
 	/** The fallback poll's cadence, in milliseconds. */
 	const POLL_INTERVAL_MS = 5000;
-	const hasActiveRuns = $derived(
-		jobs.some((job) => job.state === 'queued' || job.state === 'running')
-	);
+	const hasActiveRuns = $derived(jobs.some((job) => job.state === 'queued' || job.state === 'running'));
 
 	// The listing, keyed on the retry tick. A superseded run -- the
 	// retry fired again, or the route left -- never applies.
@@ -177,11 +175,18 @@
 
 <div class="jobs max-w-[680px] mx-auto flex flex-col gap-5">
 	{#if status === 'loading'}
-		<p class="jobs__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('admin_jobs_loading')}</p>
+		<p class="jobs__status my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('admin_jobs_loading')}
+		</p>
 	{:else if status === 'error'}
-		<div class="jobs__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="jobs__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else if status === 'ready'}
 		<!-- The page-header row (the 2026-11-09 specimen): the title
@@ -189,17 +194,31 @@
 		     action, the row stands for the grammar's uniformity. The
 		     panel's own note rides under it as the lede. -->
 		<AdminPageHeader title={$_('admin_jobs_title')} />
-		<p class="jobs__note m-0 mb-1 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_jobs_note')}</p>
+		<p class="jobs__note m-0 mb-1 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+			{$_('admin_jobs_note')}
+		</p>
 
 		{#if jobs.length === 0}
-			<p class="jobs__empty box-content py-8 px-6 text-center font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card shadow-card">{$_('admin_jobs_empty')}</p>
+			<p
+				class="jobs__empty box-content py-8 px-6 text-center font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card shadow-card"
+			>
+				{$_('admin_jobs_empty')}
+			</p>
 		{:else}
 			<div class="jobs__rows flex flex-col gap-2.5">
 				{#each jobs as job (job.id)}
-					<article class="jobs__row flex flex-col gap-2 py-4 px-4.5 bg-card border border-border rounded-card shadow-card" data-job-run-id={job.id}>
+					<article
+						class="jobs__row flex flex-col gap-2 py-4 px-4.5 bg-card border border-border rounded-card shadow-card"
+						data-job-run-id={job.id}
+					>
 						<header class="jobs__row-head flex items-center justify-between gap-2.5">
-							<h2 class="jobs__kind font-body font-semibold text-[16px] leading-[1.4] text-text">{kindLabel(job)}</h2>
-							<span class="jobs__badge jobs__badge--{job.state} inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] text-text-soft bg-accent-soft rounded-control">{stateLabel(job)}</span>
+							<h2 class="jobs__kind font-body font-semibold text-[16px] leading-[1.4] text-text">
+								{kindLabel(job)}
+							</h2>
+							<span
+								class="jobs__badge jobs__badge--{job.state} inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] text-text-soft bg-accent-soft rounded-control"
+								>{stateLabel(job)}</span
+							>
 						</header>
 						<div
 							class="jobs__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden animate-progress-in"
@@ -216,7 +235,9 @@
 						<p class="jobs__counts font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums">
 							{progressText(job)}
 							{#if job.failed > 0}
-								<span class="jobs__failed ml-2.5 text-danger-text">{$_('admin_jobs_failed_count', { values: { count: job.failed } })}</span>
+								<span class="jobs__failed ml-2.5 text-danger-text"
+									>{$_('admin_jobs_failed_count', { values: { count: job.failed } })}</span
+								>
 							{/if}
 						</p>
 						<p class="jobs__times font-body font-normal text-[13px] leading-[1.5] text-text-faint">

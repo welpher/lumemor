@@ -36,12 +36,15 @@ beforeEach(async () => {
 	// Boot the session store unauthenticated: the 401 interceptor
 	// stays inert for these tests (no mid-session flips unless a
 	// case arranges one).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 });
 
-test('listTags reads the caller\'s vocabulary', async () => {
+test("listTags reads the caller's vocabulary", async () => {
 	const fetchMock = vi.fn(async () => jsonResponse(200, [beach, sunrise]));
 	vi.stubGlobal('fetch', fetchMock);
 
@@ -52,7 +55,10 @@ test('listTags reads the caller\'s vocabulary', async () => {
 });
 
 test('listTags accepts the empty vocabulary', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, [])));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, []))
+	);
 
 	expect(await listTags()).toEqual({ ok: true, tags: [] });
 });
@@ -97,7 +103,10 @@ test('addTagAssets POSTs the batch and answers the honest report', async () => {
 });
 
 test('the tags surface maps the failure arms: dead session, codes, broken bodies', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	expect(await listTags()).toEqual({ ok: false, errorKey: 'session_expired' });
 
 	// The tag 404 (unknown id or another account's -- one shape).
@@ -112,26 +121,45 @@ test('the tags surface maps the failure arms: dead session, codes, broken bodies
 	// the convention's own.
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async () => jsonResponse(409, { code: 'TAG_NAME_TAKEN', message: 'another tag already carries this name' }))
+		vi.fn(async () =>
+			jsonResponse(409, { code: 'TAG_NAME_TAKEN', message: 'another tag already carries this name' })
+		)
 	);
 	expect(await createTag('Beach')).toEqual({ ok: false, errorKey: 'tag_name_taken' });
 
 	const mangles = [
 		jsonResponse(200, 'no'),
-		jsonResponse(200, [{ id: 't1', name: 'Beach', assetCount: '1', createdAt: '2026-11-06T09:00:00Z', updatedAt: '2026-11-06T09:00:00Z' }]),
+		jsonResponse(200, [
+			{
+				id: 't1',
+				name: 'Beach',
+				assetCount: '1',
+				createdAt: '2026-11-06T09:00:00Z',
+				updatedAt: '2026-11-06T09:00:00Z'
+			}
+		]),
 		jsonResponse(201, { id: 't1' }),
 		jsonResponse(200, { added: '2', skipped: 1 }),
 		jsonResponse(200, { added: 2 }),
 		new Response('not json', { status: 200, headers: { 'Content-Type': 'application/json' } })
 	];
 	for (const mangle of mangles) {
-		vi.stubGlobal('fetch', vi.fn(async () => mangle));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => mangle)
+		);
 		expect(await listTags(), `list ${String(mangle.body)}`).toEqual({ ok: false, errorKey: 'internal' });
 	}
 
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(500, { code: 'INTERNAL' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(500, { code: 'INTERNAL' }))
+	);
 	expect(await createTag('Beach')).toEqual({ ok: false, errorKey: 'internal' });
 
-	vi.stubGlobal('fetch', vi.fn(async () => new Response('oops', { status: 502 })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => new Response('oops', { status: 502 }))
+	);
 	expect(await addTagAssets(beach.id, ['a1'])).toEqual({ ok: false, errorKey: 'internal' });
 });

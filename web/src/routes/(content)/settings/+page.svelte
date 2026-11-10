@@ -28,10 +28,7 @@
 	} from '$lib/api/userSettings';
 	import { APP_LOCALES, setLocale, type AppLocale } from '$lib/i18n';
 	import { resolveErrorText } from '$lib/i18n/errors';
-	import {
-		setThemePreference,
-		type ThemePreference
-	} from '$lib/theme/theme.svelte';
+	import { setThemePreference, type ThemePreference } from '$lib/theme/theme.svelte';
 	import User from '@lucide/svelte/icons/user';
 	import Lock from '@lucide/svelte/icons/lock';
 	import Sun from '@lucide/svelte/icons/sun';
@@ -243,9 +240,7 @@
 		adoptSelf(outcome.self);
 	}
 
-	async function persistDownloadFlag(
-		flag: 'downloadIncludeVideos' | 'downloadIncludeSidecars'
-	): Promise<void> {
+	async function persistDownloadFlag(flag: 'downloadIncludeVideos' | 'downloadIncludeSidecars'): Promise<void> {
 		if (self === null) {
 			return;
 		}
@@ -340,7 +335,10 @@
 		}
 		// The fallback keys by kind: a web session with no stored
 		// label is a browser, not a paired device.
-		return device.deviceName ?? $_(device.kind === 'web' ? 'settings_devices_kind_web' : 'settings_devices_kind_mobile');
+		return (
+			device.deviceName ??
+			$_(device.kind === 'web' ? 'settings_devices_kind_web' : 'settings_devices_kind_mobile')
+		);
 	}
 
 	function condenseUserAgent(agent: string): string {
@@ -401,11 +399,18 @@
 
 <div class="settings max-w-[640px] mx-auto flex flex-col gap-4 p-6" aria-busy={status === 'loading'}>
 	{#if status === 'loading'}
-		<p class="settings__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('settings_loading')}</p>
+		<p class="settings__status my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('settings_loading')}
+		</p>
 	{:else if status === 'error'}
-		<div class="settings__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="settings__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else if status === 'ready' && self !== null}
 		<header class="settings__header">
@@ -415,21 +420,47 @@
 		<!-- The profile section: the identity fields and their save. -->
 		<section class="settings__section" data-testid="settings-profile">
 			<Card>
-				<h2 class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text">
+				<h2
+					class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text"
+				>
 					<User size={18} class="settings__section-icon text-accent" aria-hidden="true" />
 					{$_('settings_profile_title')}
 				</h2>
 				<form class="settings__profile flex flex-col gap-3.5" onsubmit={handleProfileSubmit}>
-					<Input id="settings-name" label={$_('settings_profile_name')} type="text" autocomplete="name" bind:value={formName} />
-					<Input id="settings-email" label={$_('settings_profile_email')} type="email" autocomplete="email" bind:value={formEmail} />
+					<Input
+						id="settings-name"
+						label={$_('settings_profile_name')}
+						type="text"
+						autocomplete="name"
+						bind:value={formName}
+					/>
+					<Input
+						id="settings-email"
+						label={$_('settings_profile_email')}
+						type="email"
+						autocomplete="email"
+						bind:value={formEmail}
+					/>
 					{#if profileSaved}
-						<p class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft" role="status">{$_('settings_profile_saved')}</p>
+						<p
+							class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+							role="status"
+						>
+							{$_('settings_profile_saved')}
+						</p>
 					{/if}
 					{#if profileErrorKey !== ''}
-						<p class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(profileErrorKey)}</p>
+						<p
+							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(profileErrorKey)}
+						</p>
 					{/if}
 					<div class="settings__actions flex justify-end">
-						<Button type="submit" disabled={savingProfile}><Check size={20} aria-hidden="true" />{$_('settings_profile_save')}</Button>
+						<Button type="submit" disabled={savingProfile}
+							><Check size={20} aria-hidden="true" />{$_('settings_profile_save')}</Button
+						>
 					</div>
 				</form>
 			</Card>
@@ -440,22 +471,56 @@
 		     others. -->
 		<section class="settings__section" data-testid="settings-password">
 			<Card>
-				<h2 class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text">
+				<h2
+					class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text"
+				>
 					<Lock size={18} class="settings__section-icon text-accent" aria-hidden="true" />
 					{$_('settings_password_title')}
 				</h2>
 				<form class="settings__password flex flex-col gap-3.5" onsubmit={handlePasswordSubmit}>
-					<Input id="settings-password-current" label={$_('settings_password_current')} type="password" autocomplete="current-password" bind:value={currentPassword} />
-					<Input id="settings-password-new" label={$_('settings_password_new')} type="password" autocomplete="new-password" placeholder={$_('settings_password_new_hint')} bind:value={newPassword} />
-					<Input id="settings-password-confirm" label={$_('settings_password_confirm')} type="password" autocomplete="new-password" bind:value={confirmPassword} error={passwordMismatch ? $_('settings_password_mismatch') : ''} />
+					<Input
+						id="settings-password-current"
+						label={$_('settings_password_current')}
+						type="password"
+						autocomplete="current-password"
+						bind:value={currentPassword}
+					/>
+					<Input
+						id="settings-password-new"
+						label={$_('settings_password_new')}
+						type="password"
+						autocomplete="new-password"
+						placeholder={$_('settings_password_new_hint')}
+						bind:value={newPassword}
+					/>
+					<Input
+						id="settings-password-confirm"
+						label={$_('settings_password_confirm')}
+						type="password"
+						autocomplete="new-password"
+						bind:value={confirmPassword}
+						error={passwordMismatch ? $_('settings_password_mismatch') : ''}
+					/>
 					{#if passwordChanged}
-						<p class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft" role="status">{$_('settings_password_changed')}</p>
+						<p
+							class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+							role="status"
+						>
+							{$_('settings_password_changed')}
+						</p>
 					{/if}
 					{#if passwordErrorKey !== ''}
-						<p class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(passwordErrorKey)}</p>
+						<p
+							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(passwordErrorKey)}
+						</p>
 					{/if}
 					<div class="settings__actions flex justify-end">
-						<Button type="submit" disabled={changingPassword}><Lock size={20} aria-hidden="true" />{$_('settings_password_submit')}</Button>
+						<Button type="submit" disabled={changingPassword}
+							><Lock size={20} aria-hidden="true" />{$_('settings_password_submit')}</Button
+						>
 					</div>
 				</form>
 			</Card>
@@ -466,17 +531,29 @@
 		     i18n store reloads -- and the row persists the choice. -->
 		<section class="settings__section" data-testid="settings-appearance">
 			<Card>
-				<h2 class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text">
+				<h2
+					class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text"
+				>
 					<Sun size={18} class="settings__section-icon text-accent" aria-hidden="true" />
 					{$_('settings_appearance_title')}
 				</h2>
 				<div class="settings__appearance flex flex-col gap-4">
 					<div class="settings__field flex flex-col gap-1.5">
-						<p class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text">{$_('settings_appearance_theme')}</p>
-						<div class="settings__theme-chips flex gap-2" role="radiogroup" aria-label={$_('settings_appearance_theme')} data-testid="settings-theme">
+						<p class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text">
+							{$_('settings_appearance_theme')}
+						</p>
+						<div
+							class="settings__theme-chips flex gap-2"
+							role="radiogroup"
+							aria-label={$_('settings_appearance_theme')}
+							data-testid="settings-theme"
+						>
 							{#each themeChoices as choice (choice.value)}
 								<button
-									class="settings__chip flex-1 flex items-center justify-center gap-2 px-3 py-2.5 font-body font-semibold text-[14px] leading-[1.4] rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard {self.theme === choice.value ? 'bg-accent-soft border-accent text-accent-soft-text' : 'bg-transparent border-border-strong text-text-soft hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text'}"
+									class="settings__chip flex-1 flex items-center justify-center gap-2 px-3 py-2.5 font-body font-semibold text-[14px] leading-[1.4] rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard {self.theme ===
+									choice.value
+										? 'bg-accent-soft border-accent text-accent-soft-text'
+										: 'bg-transparent border-border-strong text-text-soft hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text'}"
 									type="button"
 									role="radio"
 									aria-checked={self.theme === choice.value}
@@ -490,22 +567,33 @@
 						</div>
 					</div>
 					<div class="settings__field flex flex-col gap-1.5">
-						<label class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="settings-locale">{$_('settings_appearance_locale')}</label>
+						<label
+							class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+							for="settings-locale">{$_('settings_appearance_locale')}</label
+						>
 						<select
 							class="settings__select w-full px-3 py-[9px] pe-9 font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control cursor-pointer transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 							id="settings-locale"
 							data-testid="settings-locale"
 							value={self.locale}
-							onchange={(event) => void pickLocale((event.currentTarget as HTMLSelectElement).value as AppLocale)}
+							onchange={(event) =>
+								void pickLocale((event.currentTarget as HTMLSelectElement).value as AppLocale)}
 						>
 							{#each localeChoices as choice (choice.value)}
 								<option value={choice.value}>{$_(choice.labelKey)}</option>
 							{/each}
 						</select>
-						<p class="settings__note font-body font-normal text-[12px] leading-[1.5] text-text-faint">{$_('settings_appearance_note')}</p>
+						<p class="settings__note font-body font-normal text-[12px] leading-[1.5] text-text-faint">
+							{$_('settings_appearance_note')}
+						</p>
 					</div>
 					{#if appearanceErrorKey !== ''}
-						<p class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(appearanceErrorKey)}</p>
+						<p
+							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(appearanceErrorKey)}
+						</p>
 					{/if}
 				</div>
 			</Card>
@@ -516,17 +604,29 @@
 		     The note states the honest consumption state. -->
 		<section class="settings__section" data-testid="settings-download">
 			<Card>
-				<h2 class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text">
+				<h2
+					class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text"
+				>
 					<Download size={18} class="settings__section-icon text-accent" aria-hidden="true" />
 					{$_('settings_download_title')}
 				</h2>
 				<div class="settings__download flex flex-col gap-4">
 					<div class="settings__field flex flex-col gap-1.5">
-						<p class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text">{$_('settings_download_format')}</p>
-						<div class="settings__format-chips flex gap-2" role="radiogroup" aria-label={$_('settings_download_format')} data-testid="settings-format">
+						<p class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text">
+							{$_('settings_download_format')}
+						</p>
+						<div
+							class="settings__format-chips flex gap-2"
+							role="radiogroup"
+							aria-label={$_('settings_download_format')}
+							data-testid="settings-format"
+						>
 							{#each formatChoices as choice (choice.value)}
 								<button
-									class="settings__chip flex-1 flex items-center justify-center gap-2 px-3 py-2.5 font-body font-semibold text-[14px] leading-[1.4] rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard {self.downloadFormat === choice.value ? 'bg-accent-soft border-accent text-accent-soft-text' : 'bg-transparent border-border-strong text-text-soft hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text'}"
+									class="settings__chip flex-1 flex items-center justify-center gap-2 px-3 py-2.5 font-body font-semibold text-[14px] leading-[1.4] rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard {self.downloadFormat ===
+									choice.value
+										? 'bg-accent-soft border-accent text-accent-soft-text'
+										: 'bg-transparent border-border-strong text-text-soft hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text'}"
 									type="button"
 									role="radio"
 									aria-checked={self.downloadFormat === choice.value}
@@ -540,9 +640,13 @@
 						</div>
 					</div>
 					<div class="settings__field flex flex-col gap-1.5">
-						<p class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text">{$_('settings_download_contents')}</p>
+						<p class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text">
+							{$_('settings_download_contents')}
+						</p>
 						<div class="settings__toggles flex flex-col gap-2">
-							<label class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer">
+							<label
+								class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+							>
 								<input
 									class="settings__toggle-input w-[18px] h-[18px] accent-accent"
 									type="checkbox"
@@ -552,7 +656,9 @@
 								/>
 								{$_('settings_download_videos')}
 							</label>
-							<label class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer">
+							<label
+								class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+							>
 								<input
 									class="settings__toggle-input w-[18px] h-[18px] accent-accent"
 									type="checkbox"
@@ -563,10 +669,17 @@
 								{$_('settings_download_sidecars')}
 							</label>
 						</div>
-						<p class="settings__note font-body font-normal text-[12px] leading-[1.5] text-text-faint">{$_('settings_download_note')}</p>
+						<p class="settings__note font-body font-normal text-[12px] leading-[1.5] text-text-faint">
+							{$_('settings_download_note')}
+						</p>
 					</div>
 					{#if downloadErrorKey !== ''}
-						<p class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(downloadErrorKey)}</p>
+						<p
+							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(downloadErrorKey)}
+						</p>
 					{/if}
 				</div>
 			</Card>
@@ -576,22 +689,39 @@
 		     the revoke buttons; the current row carries none. -->
 		<section class="settings__section" data-testid="settings-devices">
 			<Card>
-				<h2 class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text">
+				<h2
+					class="settings__section-title mb-3.5 flex items-center gap-2 font-display font-bold text-[17px] text-text"
+				>
 					<Monitor size={18} class="settings__section-icon text-accent" aria-hidden="true" />
 					{$_('settings_devices_title')}
 				</h2>
 				{#if devicesStatus === 'loading' || devicesStatus === 'idle'}
-					<p class="settings__devices-status py-4 text-center text-text-soft animate-loading-in" role="status">{$_('settings_loading')}</p>
+					<p
+						class="settings__devices-status py-4 text-center text-text-soft animate-loading-in"
+						role="status"
+					>
+						{$_('settings_loading')}
+					</p>
 				{:else if devicesStatus === 'error'}
-					<div class="settings__devices-failure flex flex-col items-center gap-3 py-4 text-center" role="alert">
+					<div
+						class="settings__devices-failure flex flex-col items-center gap-3 py-4 text-center"
+						role="alert"
+					>
 						<p class="text-danger-text">{errorText(devicesErrorKey)}</p>
 						<Button variant="ghost" onclick={retryDevices}>{$_('action_retry')}</Button>
 					</div>
 				{:else}
 					<ul class="settings__devices flex flex-col list-none p-0 m-0" data-testid="settings-device-rows">
 						{#each devices as device (device.id)}
-							<li class="settings__device flex items-center gap-3 py-3 border-b border-border last:border-b-0" data-testid="settings-device-row" data-device-id={device.id}>
-								<span class="settings__device-icon inline-flex items-center justify-center w-9 h-9 rounded-control bg-accent-soft text-accent-soft-text" aria-hidden="true">
+							<li
+								class="settings__device flex items-center gap-3 py-3 border-b border-border last:border-b-0"
+								data-testid="settings-device-row"
+								data-device-id={device.id}
+							>
+								<span
+									class="settings__device-icon inline-flex items-center justify-center w-9 h-9 rounded-control bg-accent-soft text-accent-soft-text"
+									aria-hidden="true"
+								>
 									{#if device.kind === 'mobile'}
 										<Smartphone size={18} />
 									{:else}
@@ -599,13 +729,22 @@
 									{/if}
 								</span>
 								<span class="settings__device-info flex-1 min-w-0">
-									<span class="settings__device-name flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.5] text-text">
+									<span
+										class="settings__device-name flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.5] text-text"
+									>
 										{deviceLabel(device)}
 										{#if device.isCurrent}
-											<span class="settings__device-current py-0.5 px-1.5 font-body font-semibold text-[11px] leading-[1.4] text-success bg-[color-mix(in_srgb,var(--color-success)_14%,transparent)] rounded-control" data-testid="settings-device-current">{$_('settings_devices_current')}</span>
+											<span
+												class="settings__device-current py-0.5 px-1.5 font-body font-semibold text-[11px] leading-[1.4] text-success bg-[color-mix(in_srgb,var(--color-success)_14%,transparent)] rounded-control"
+												data-testid="settings-device-current"
+												>{$_('settings_devices_current')}</span
+											>
 										{/if}
 									</span>
-									<span class="settings__device-meta block font-body font-normal text-[12px] leading-[1.5] text-text-faint">{deviceMeta(device)}</span>
+									<span
+										class="settings__device-meta block font-body font-normal text-[12px] leading-[1.5] text-text-faint"
+										>{deviceMeta(device)}</span
+									>
 								</span>
 								{#if !device.isCurrent}
 									<Button
@@ -622,9 +761,16 @@
 						{/each}
 					</ul>
 					{#if revokeErrorKey !== ''}
-						<p class="settings__error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(revokeErrorKey)}</p>
+						<p
+							class="settings__error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(revokeErrorKey)}
+						</p>
 					{/if}
-					<p class="settings__note mt-3 font-body font-normal text-[12px] leading-[1.5] text-text-faint">{$_('settings_devices_note')}</p>
+					<p class="settings__note mt-3 font-body font-normal text-[12px] leading-[1.5] text-text-faint">
+						{$_('settings_devices_note')}
+					</p>
 				{/if}
 			</Card>
 		</section>

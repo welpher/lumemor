@@ -193,9 +193,7 @@ test('the top bar carries the lucide chrome icons (menu, search, account)', () =
 	// The hamburger: an icon-only button, its accessible name the
 	// aria-label, the svg decorative and lucide (the 24-grid/2px
 	// round-cap icon language of brand spec §5).
-	const hamburger = document.body.querySelector<HTMLButtonElement>(
-		'button[aria-label="Open navigation"]'
-	);
+	const hamburger = document.body.querySelector<HTMLButtonElement>('button[aria-label="Open navigation"]');
 	expect(hamburger?.querySelector('svg.lucide-menu')).not.toBeNull();
 
 	// The search field's leading magnifier: decorative, inside the

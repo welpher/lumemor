@@ -68,9 +68,7 @@ export type AlbumAudienceResponse = components['schemas']['AlbumAudienceResponse
 export type AlbumRescanResponse = components['schemas']['AlbumRescanResponse'];
 
 /** The wall list's outcome. */
-export type AlbumListResult =
-	| { ok: true; albums: AlbumSummary[] }
-	| { ok: false; errorKey: string };
+export type AlbumListResult = { ok: true; albums: AlbumSummary[] } | { ok: false; errorKey: string };
 
 /** The detail read's outcome. */
 export type AlbumDetailResult = { ok: true; detail: AlbumDetail } | { ok: false; errorKey: string };
@@ -96,14 +94,10 @@ export type AlbumMutationResult = { ok: true } | { ok: false; errorKey: string }
  * The path completion's outcome: the pickable directories, at most
  * 20, the server's own honest answer (an empty list never an error).
  */
-export type PathCompletionsResult =
-	| { ok: true; paths: string[] }
-	| { ok: false; errorKey: string };
+export type PathCompletionsResult = { ok: true; paths: string[] } | { ok: false; errorKey: string };
 
 /** The audience write's outcome (the response IS the honest report). */
-export type AlbumAudienceResult =
-	| { ok: true; report: AlbumAudienceResponse }
-	| { ok: false; errorKey: string };
+export type AlbumAudienceResult = { ok: true; report: AlbumAudienceResponse } | { ok: false; errorKey: string };
 
 /**
  * The rescan trigger's outcome: the joined-or-created run's
@@ -116,8 +110,7 @@ export type UserListResult = { ok: true; users: UserSummary[] } | { ok: false; e
 
 /** The timeline preference write's outcome. */
 export type AlbumPreferenceResult =
-	| { ok: true; preference: AlbumTimelinePreferenceResponse }
-	| { ok: false; errorKey: string };
+	{ ok: true; preference: AlbumTimelinePreferenceResponse } | { ok: false; errorKey: string };
 
 /**
  * The lean page size of the metadata read: the detail page's grid
@@ -375,9 +368,7 @@ function userSummaryFrom(body: unknown): UserSummary | null {
  * shared group in one array. The page sections them off each
  * item's `callerRole` (the server's ordering owns each group).
  */
-export async function listAlbums(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<AlbumListResult> {
+export async function listAlbums(fetcher: typeof fetch = globalThis.fetch): Promise<AlbumListResult> {
 	let response: Response;
 	try {
 		response = await apiFetch('/api/v1/albums', undefined, fetcher);
@@ -651,11 +642,7 @@ export async function rescanAlbum(
 ): Promise<AlbumRescanResult> {
 	let response: Response;
 	try {
-		response = await apiFetch(
-			`/api/v1/albums/${encodeURIComponent(albumId)}/rescan`,
-			{ method: 'POST' },
-			fetcher
-		);
+		response = await apiFetch(`/api/v1/albums/${encodeURIComponent(albumId)}/rescan`, { method: 'POST' }, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}
@@ -681,11 +668,7 @@ export async function deleteAlbum(
 ): Promise<AlbumMutationResult> {
 	let response: Response;
 	try {
-		response = await apiFetch(
-			`/api/v1/albums/${encodeURIComponent(albumId)}`,
-			{ method: 'DELETE' },
-			fetcher
-		);
+		response = await apiFetch(`/api/v1/albums/${encodeURIComponent(albumId)}`, { method: 'DELETE' }, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}
@@ -703,9 +686,7 @@ export async function deleteAlbum(
  * server's audience write skips them with `invalid_account`, the
  * honest report rather than a refusal).
  */
-export async function listUsers(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<UserListResult> {
+export async function listUsers(fetcher: typeof fetch = globalThis.fetch): Promise<UserListResult> {
 	let response: Response;
 	try {
 		response = await apiFetch('/api/v1/users', undefined, fetcher);

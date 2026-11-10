@@ -65,7 +65,8 @@ function defaultReads(overrides: Partial<FetchRoute> = {}): FetchRoute {
 			jsonResponse(200, [
 				deviceBody({
 					id: '0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60',
-					deviceName: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0 Safari/537.36',
+					deviceName:
+						'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0 Safari/537.36',
 					lastSeenAt: '2026-11-08T14:23:00Z',
 					ipAddress: '192.168.1.100',
 					isCurrent: true
@@ -148,10 +149,7 @@ function clickChip(testId: string): void {
 
 function callsOf(mock: ReturnType<typeof stubFetch>, method: string, suffix: string): RequestInit[] {
 	return mock.mock.calls
-		.filter(
-			(call) =>
-				String(call[0]).endsWith(suffix) && (call[1] as RequestInit | undefined)?.method === method
-		)
+		.filter((call) => String(call[0]).endsWith(suffix) && (call[1] as RequestInit | undefined)?.method === method)
 		.map((call) => call[1] as RequestInit);
 }
 
@@ -198,7 +196,11 @@ test('the read renders the five sections with the account values', async () => {
 	expect(email?.value).toBe('ada@example.com');
 
 	// The appearance pair reflects the account row.
-	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="settings-theme-auto"]')?.getAttribute('aria-checked')).toBe('true');
+	expect(
+		document.body
+			.querySelector<HTMLButtonElement>('[data-testid="settings-theme-auto"]')
+			?.getAttribute('aria-checked')
+	).toBe('true');
 	expect(document.body.querySelector<HTMLSelectElement>('[data-testid="settings-locale"]')?.value).toBe('en');
 
 	// The devices: two rows, the current one badged, the raw user
@@ -212,9 +214,7 @@ test('the read renders the five sections with the account values', async () => {
 	expect(document.body.textContent).toContain('192.168.1.100');
 
 	// The current row carries no revoke button; the other one does.
-	const currentRow = Array.from(rows).find((row) =>
-		row.querySelector('[data-testid="settings-device-current"]')
-	);
+	const currentRow = Array.from(rows).find((row) => row.querySelector('[data-testid="settings-device-current"]'));
 	expect(currentRow?.querySelector('[data-testid="settings-device-revoke"]')).toBeNull();
 	const otherRow = Array.from(rows).find((row) => row !== currentRow);
 	expect(otherRow?.querySelector('[data-testid="settings-device-revoke"]')).not.toBeNull();
@@ -306,10 +306,7 @@ test('a successful password change PUTs the pair, notes the revocation, and refr
 				return jsonResponse(
 					200,
 					devicesCalls === 1
-						? [
-								deviceBody({ id: 'current-row', isCurrent: true }),
-								deviceBody()
-							]
+						? [deviceBody({ id: 'current-row', isCurrent: true }), deviceBody()]
 						: [deviceBody({ id: 'current-row', isCurrent: true })]
 				);
 			}
@@ -394,7 +391,11 @@ test('the theme pick applies immediately and persists the row', async () => {
 	expect(patches.length).toBe(1);
 	expect(JSON.parse(String(patches[0].body))).toEqual({ theme: 'dark' });
 	// The chip state follows the adopted answer.
-	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="settings-theme-dark"]')?.getAttribute('aria-checked')).toBe('true');
+	expect(
+		document.body
+			.querySelector<HTMLButtonElement>('[data-testid="settings-theme-dark"]')
+			?.getAttribute('aria-checked')
+	).toBe('true');
 
 	// The light pick flips the class back the same way.
 	clickChip('settings-theme-light');
@@ -458,10 +459,14 @@ test('the download preferences patch on every change', async () => {
 	expect(JSON.parse(String(patches[0].body))).toEqual({ downloadFormat: 'tar' });
 	expect(JSON.parse(String(patches[1].body))).toEqual({ downloadIncludeSidecars: true });
 	// The controls adopted the saved state.
-	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="settings-format-tar"]')?.getAttribute('aria-checked')).toBe('true');
 	expect(
-		document.body.querySelector<HTMLInputElement>('[data-testid="settings-download-sidecars"]')?.checked
-	).toBe(true);
+		document.body
+			.querySelector<HTMLButtonElement>('[data-testid="settings-format-tar"]')
+			?.getAttribute('aria-checked')
+	).toBe('true');
+	expect(document.body.querySelector<HTMLInputElement>('[data-testid="settings-download-sidecars"]')?.checked).toBe(
+		true
+	);
 });
 
 test('revoking another device deletes its session and refetches the list', async () => {
@@ -494,8 +499,7 @@ test('revoking another device deletes its session and refetches the list', async
 							]
 				);
 			},
-			'/api/v1/users/me/sessions/0192f3b2-4c5d-7e8f-8a9b-0c1d2e3f4a5b': () =>
-				noContentResponse()
+			'/api/v1/users/me/sessions/0192f3b2-4c5d-7e8f-8a9b-0c1d2e3f4a5b': () => noContentResponse()
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -537,10 +541,7 @@ test('a failed device list read shows the mapped error with its retry', async ()
 });
 
 test('an unparseable account read maps to the generic failure', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch(defaultReads({ '/api/v1/users/me': () => jsonResponse(200, { nope: true }) }))
-	);
+	vi.stubGlobal('fetch', stubFetch(defaultReads({ '/api/v1/users/me': () => jsonResponse(200, { nope: true }) })));
 	mountPage();
 	await settle();
 

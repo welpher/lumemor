@@ -188,7 +188,10 @@ beforeEach(async () => {
 	vi.clearAllMocks();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -199,10 +202,7 @@ afterEach(() => {
 });
 
 test('the listing renders the Machine learning page-header row and slot-grouped cards with every model fact', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch(modelsRoutes([detector, clipA, clipB, textTower]))
-	);
+	vi.stubGlobal('fetch', stubFetch(modelsRoutes([detector, clipA, clipB, textTower])));
 	const page = mountPage();
 	await settle();
 
@@ -251,10 +251,7 @@ test('the listing renders the Machine learning page-header row and slot-grouped 
 });
 
 test('a model with missing files shows the files-missing indicator', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch(modelsRoutes([{ ...clipB, filesPresent: false }]))
-	);
+	vi.stubGlobal('fetch', stubFetch(modelsRoutes([{ ...clipB, filesPresent: false }])));
 	const page = mountPage();
 	await settle();
 
@@ -290,7 +287,10 @@ test('the empty state offers the download; SSE progress advances it and the fini
 			if (listed === 2) {
 				return jsonResponse(200, { models: [], download: downloadRun(runningState) });
 			}
-			return jsonResponse(200, { models: [clipA], download: downloadRun({ state: 'succeeded', done: 400371536, finishedAt: '2026-11-03T09:14:30Z' }) });
+			return jsonResponse(200, {
+				models: [clipA],
+				download: downloadRun({ state: 'succeeded', done: 400371536, finishedAt: '2026-11-03T09:14:30Z' })
+			});
 		}
 		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
 	});
@@ -354,9 +354,7 @@ test('a failed download start renders the mapped error; the retry re-posts (idem
 			return jsonResponse(200, { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10' });
 		}
 		if (url === '/api/v1/admin/models') {
-			const listed = fetchMock.mock.calls.filter(
-				(call) => String(call[0]) === '/api/v1/admin/models'
-			).length;
+			const listed = fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/v1/admin/models').length;
 			// The initial listing knows no run; the refetch after the
 			// idempotent join carries the running one.
 			if (listed === 1) {
@@ -397,9 +395,7 @@ test('a same-dimension switch confirms with the kept-products copy, patches and 
 			return jsonResponse(200, { activated: { id: 'clip-b', slot: 'clip_embed' } });
 		}
 		if (url === '/api/v1/admin/models') {
-			const listed = fetchMock.mock.calls.filter(
-				(call) => String(call[0]) === '/api/v1/admin/models'
-			).length;
+			const listed = fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/v1/admin/models').length;
 			// The refetch after the PATCH carries the flipped flags.
 			const models =
 				listed <= 1
@@ -447,13 +443,14 @@ test('a cross-dimension switch warns on the danger variant and reports the wipe'
 			});
 		}
 		if (url === '/api/v1/admin/models') {
-			const listed = fetchMock.mock.calls.filter(
-				(call) => String(call[0]) === '/api/v1/admin/models'
-			).length;
+			const listed = fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/v1/admin/models').length;
 			const models =
 				listed <= 1
 					? [clipA, clipWide]
-					: [{ ...clipA, isActive: false }, { ...clipWide, isActive: true }];
+					: [
+							{ ...clipA, isActive: false },
+							{ ...clipWide, isActive: true }
+						];
 			return jsonResponse(200, { models, download: null });
 		}
 		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);

@@ -62,10 +62,9 @@ test('the app ladder climbs in exactly the documented order', () => {
 			continue;
 		}
 		const previous = order[index - 1]!;
-		expect(
-			rung(name),
-			`--${name} (${rung(name)}) stacks above --${previous} (${rung(previous)})`
-		).toBeGreaterThan(rung(previous));
+		expect(rung(name), `--${name} (${rung(name)}) stacks above --${previous} (${rung(previous)})`).toBeGreaterThan(
+			rung(previous)
+		);
 	}
 });
 
