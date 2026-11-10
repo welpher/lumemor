@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// The exiftool subprocess discipline (security spec section 3): a
+// The exiftool subprocess discipline: a
 // FIXED argument template, no shell, no user-controlled arguments --
 // the one file path is the only variable, and it is a server-generated
 // content-addressed path guarded by the job's assetPath. Every
@@ -25,8 +25,8 @@ var (
 	// substitute a wrapper script through this variable.
 	exiftoolBinary = "exiftool"
 
-	// exiftoolTimeout bounds one extraction. The security spec pins
-	// 30s: generous for pathological files, small enough that a wedged
+	// exiftoolTimeout bounds one extraction. The budget is pinned
+	// at 30s: generous for pathological files, small enough that a wedged
 	// process cannot stall a worker slot for long.
 	exiftoolTimeout = 30 * time.Second
 )

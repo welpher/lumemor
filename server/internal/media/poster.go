@@ -16,7 +16,7 @@ import (
 )
 
 // The ffmpeg poster-frame discipline, mirroring the exiftool subprocess
-// discipline of the metadata job (security spec section 3): a FIXED
+// discipline of the metadata job: a FIXED
 // argument template, no shell, no user-controlled arguments -- the one
 // input path is server-generated and guarded by the job's asset path
 // resolution, the one output path is derived from the asset id. Every
@@ -35,7 +35,7 @@ var (
 
 	// ffmpegTimeout bounds one poster extraction. Video decode is
 	// heavier than exiftool's metadata read, so the budget sits at the
-	// security spec's 60s subprocess ceiling: generous for a first
+	// pinned 60s subprocess ceiling: generous for a first
 	// frame of any realistic family video, small enough that a wedged
 	// decoder cannot pin a worker slot for long.
 	ffmpegTimeout = 60 * time.Second

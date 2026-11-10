@@ -1,15 +1,14 @@
 <script lang="ts">
 	// The source-path completion combobox of the albums-as-sources
 	// dialogs: the typed prefix in, the pickable directories out, the
-	// list a FLOATING LAYER (the earlier
-	// inline-expansion design is retired --
-	// it traded an offset shift for height churn, the modal growing
+	// list a FLOATING LAYER (the earlier inline-expansion design is
+	// retired -- it traded an offset shift for height churn, the modal growing
 	// and shrinking with every list appearance, the wrong tool). The
 	// layer portals to document.body as a fixed, anchored surface
 	// (the shared `anchored` action): the modal body's overflow can
 	// never clip it, and the dialog NEVER changes height for it. The
-	// rows: the folder glyph + the full path, the
-	// active highlight, the keys footer (↑↓ / Enter / Esc).
+	// rows: the folder glyph + the full path, the active
+	// highlight, the keys footer (↑↓ / Enter / Esc).
 	//
 	// THE VALIDATION SLOT (the reserved-slot rule): the line under the
 	// field is a reserved fixed-height slot -- the hint and the
@@ -24,11 +23,11 @@
 	// overwrites a newer one (every run carries a generation; only
 	// the newest generation's answer applies). The empty prefix
 	// lists the container's root itself (the system-wide domain --
-	// the allowlist and its no-roots
-	// posture retired); an empty answer is the honest
-	// no-match note, never an error state. The completion's own
-	// failure renders as a line that points back at the completion
-	// (retry by typing or re-focusing), never as a write error.
+	// the allowlist and its no-roots posture retired); an empty
+	// answer is the honest no-match note, never an error state.
+	// The completion's own failure renders as a line that points
+	// back at the completion (retry by typing or re-focusing),
+	// never as a write error.
 	//
 	// THE KEYBOARD: ↑/↓ move the highlight over the rows (clamped,
 	// the list opens closed on ArrowDown), Enter completes the

@@ -25,7 +25,7 @@
 -- relational vocabularies (the caller's tags, the titles of albums
 -- the caller can see, the caller's person labels) are deliberately
 -- NOT indexed anywhere: they are per-user state, joined at query
--- time per the data model's search design -- no shared index can
+-- time per the schema's search design -- no shared index can
 -- scope rows by caller.
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;

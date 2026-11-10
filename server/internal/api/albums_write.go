@@ -480,7 +480,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 
-	// The cover validation, the spec's application-layer pin: a
+	// The cover validation, the application-layer check: a
 	// present cover must be a LIVE member of THIS album. The check
 	// runs before the write so an invalid patch lands nothing.
 	if request.CoverAssetId != nil {

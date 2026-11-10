@@ -1,12 +1,12 @@
 <script lang="ts">
 	// The navigation drawer of the content shell (the
 	// hamburger opens it; Escape and a click outside close it). It
-	// carries the IA's content sections in route-table order (the
+	// carries the content sections in route-table order (the
 	// albums wall's entry live since the albums surface; the places
 	// grid's entry live since the places surface), plus the hidden
 	// view's entry, which moved here from the timeline's toolbar --
 	// it sits with the other list views (favorites/trash).
-	// The list is the IA's eight content sections and NOTHING else:
+	// The list is the eight content sections and NOTHING else:
 	// the settings entry that once closed this list is gone (the
 	// 2026-11-09 single-home rule -- the account dropdown is
 	// settings' ONLY home, landed with the dropdown's own link; a

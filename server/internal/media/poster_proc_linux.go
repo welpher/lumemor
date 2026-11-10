@@ -27,7 +27,7 @@ const transcodeMemLimitBytes = 8 << 30
 
 // ffmpegCommand builds the fixed ffmpeg poster invocation for Linux.
 //
-// The security spec's address-space cap cannot ride on
+// The address-space cap cannot ride on
 // syscall.SysProcAttr: Go deliberately supports no user code between
 // fork and exec (anything allocating there is unsafe), and no Rlimit
 // field was ever added to the struct. The kernel-enforced equivalent
