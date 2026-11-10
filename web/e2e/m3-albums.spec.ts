@@ -750,6 +750,10 @@ test.describe('the writable source scenes', () => {
 			title: RW_ALBUM_TITLE,
 			rootPath: RW_MOUNT_ROOT,
 			audience: [],
+			// The picked completion row's writable fact rendered the
+			// deletability row (checked on, the server's default): the
+			// switch rides the creation request.
+			allowAppDeletion: true,
 			inTimeline: true
 		});
 
