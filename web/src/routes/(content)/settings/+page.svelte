@@ -26,7 +26,7 @@
 		type DeviceSession,
 		type UserSelf
 	} from '$lib/api/userSettings';
-	import { APP_LOCALES, setLocale, type AppLocale } from '$lib/i18n';
+	import { setLocale, type AppLocale } from '$lib/i18n';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { setThemePreference, type ThemePreference } from '$lib/theme/theme.svelte';
 	import User from '@lucide/svelte/icons/user';

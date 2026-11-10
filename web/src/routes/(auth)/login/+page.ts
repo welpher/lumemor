@@ -56,6 +56,7 @@ export const load: PageLoad = async ({ url, fetch, parent }) => {
  * names allowed; helper exports must be underscore-prefixed).
  */
 export function _safeRedirectTarget(value: string | null): string {
+	// eslint-disable-next-line no-control-regex -- the class lists the control characters this guard exists to REJECT; the regex handles them, never emits them.
 	if (value !== null && value.startsWith('/') && !value.startsWith('//') && !/[\u0000-\u001f\u007f\\]/.test(value)) {
 		return value;
 	}

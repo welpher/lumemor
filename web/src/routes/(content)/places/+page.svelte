@@ -114,7 +114,11 @@
 	// one fresh fetch. The subscription lives for the page's
 	// lifetime.
 	$effect(() => {
-		const activeLocale = $locale ?? 'en';
+		// The underscore read is deliberate: it registers $locale as
+		// this effect's dependency (runLoad's own reads are untracked
+		// below), so a locale switch re-runs the fetch whose display
+		// names ride the request.
+		const _activeLocale = $locale ?? 'en';
 		untrack(() => {
 			void runLoad(false);
 		});

@@ -930,19 +930,17 @@
 <!-- The delete confirm: the album goes, its photo list and shares
      with it -- the photos themselves stay. -->
 <Modal bind:open={deleteOpen} title={$_('albums_delete_title')}>
-	{#snippet children()}
-		<p class="album-detail__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-			{$_('albums_delete_body', { values: { title: detail?.title ?? '' } })}
+	<p class="album-detail__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
+		{$_('albums_delete_body', { values: { title: detail?.title ?? '' } })}
+	</p>
+	{#if deleteErrorKey !== ''}
+		<p
+			class="album-detail__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+			role="alert"
+		>
+			{errorText(deleteErrorKey)}
 		</p>
-		{#if deleteErrorKey !== ''}
-			<p
-				class="album-detail__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
-				role="alert"
-			>
-				{errorText(deleteErrorKey)}
-			</p>
-		{/if}
-	{/snippet}
+	{/if}
 	{#snippet footer()}
 		<Button variant="ghost" disabled={writeBusy} onclick={() => (deleteOpen = false)}>
 			<X size={20} aria-hidden="true" />

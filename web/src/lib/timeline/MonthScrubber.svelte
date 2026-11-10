@@ -208,13 +208,6 @@
 		return nearest?.key ?? null;
 	}
 
-	function jumpTo(key: string | null): void {
-		if (key !== null) {
-			revealedKey = key;
-			onjump(key);
-		}
-	}
-
 	/** The pointer's rail fraction (0-1, clamped); 0 when the host
 	 * answers no layout (the tests' stand-ins scrub to the top). */
 	function pointerFraction(event: PointerEvent): number {
@@ -318,7 +311,9 @@
 	>
 		<!-- The drag owns the pointer: no touch scrolling fights it.
 		     The rail is transparent: its gutter is its background. -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -- the rail is a pointer surface of the labeled nav above it; its buttons carry the semantics. -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- The rail is a pointer surface of the labeled nav above
+		     it; its buttons carry the semantics. -->
 		<div
 			class="scrubber__rail relative w-[72px] touch-none"
 			bind:this={rail}

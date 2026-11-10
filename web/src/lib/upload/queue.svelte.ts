@@ -392,7 +392,6 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 	function enqueueFiles(files: File[] | FileList): void {
 		for (const file of Array.from(files)) {
 			const fileName = typeof file.name === 'string' ? file.name : '';
-			const extension = uploadExtensionOf(fileName);
 			const unsupported = !uploadFormatSupported(fileName);
 			items = [
 				...items,

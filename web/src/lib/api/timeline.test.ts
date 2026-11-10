@@ -11,8 +11,6 @@ import { forceLogout, sessionStatus } from '$lib/auth/session.svelte';
 // through an injected fetch mock; the SSE half feeds applyEvent the
 // parsed events the real subscription module would deliver.
 
-const PAGE_ONE_END = '2026-10-01T00:00:00Z';
-
 const itemDefaults = {
 	ownerId: '0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60',
 	kind: 'image' as const,
@@ -215,7 +213,7 @@ test('a page repeating already-loaded ids appends nothing (dedup by construction
 
 test('a failed page load parks in error with the code key; retry re-runs and recovers', async () => {
 	let fail = true;
-	const timeline = clientWith((url, init) => {
+	const timeline = clientWith(() => {
 		if (fail) {
 			return jsonResponse(500, { code: 'INTERNAL' });
 		}

@@ -71,12 +71,15 @@ export default tseslint.config(
 	},
 	{
 		// NARROWED, not off: the tree's convention marks intentionally
-		// unused parameters with the underscore prefix (see the
-		// fetcher stubs in the api tests, the no-op listeners in
-		// OfflineStrip.test.ts, and login/+page.ts's helper-export
-		// rule). Genuinely dead locals stay errors.
+		// unused parameters and variables with the underscore prefix
+		// (see the fetcher stubs in the api tests, the no-op
+		// listeners in OfflineStrip.test.ts, login/+page.ts's
+		// helper-export rule, and places/+page.svelte's
+		// dependency-registration read -- a read whose VALUE is
+		// unused but whose occurrence Svelte tracks). Genuinely dead
+		// locals stay errors.
 		rules: {
-			'@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }]
+			'@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }]
 		}
 	}
 );

@@ -264,7 +264,7 @@ test('a model with missing files shows the files-missing indicator', async () =>
 test('the empty state offers the download; SSE progress advances it and the finish refreshes the listing', async () => {
 	let listed = 0;
 	const posted: number[] = [];
-	let runningState: Record<string, unknown> = {
+	const runningState: Record<string, unknown> = {
 		state: 'running',
 		total: 400371536,
 		done: 0,

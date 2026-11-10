@@ -1,5 +1,5 @@
 import { flushSync, mount, unmount } from 'svelte';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, expect, test } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import ShortcutsDialog from './ShortcutsDialog.svelte';
 
