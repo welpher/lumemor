@@ -1,0 +1,7 @@
+# Reformat commits: whole-file mechanical passes whose blame noise
+# should vanish (git blame reads this file; full hashes only).
+#
+# The whole-web prettier adoption pass (the machine layer's format
+# half landing): 117 files, parse-equivalent whitespace/quote/wrap
+# changes only.
+221376e5c8f61f4b2c335b82a37968a6dea57591
