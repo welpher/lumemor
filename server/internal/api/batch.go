@@ -19,11 +19,7 @@
 // system refuses fails the WHOLE batch with the move's own error
 // code, the transaction rolls back, and every file the batch
 // already moved is compensated back to where the rolled-back rows
-// still say it is. The album lock's delete arm joins the same
-// story: a live external member of a LOCKED directory album refuses
-// the trash with the curation writes' own 409 before any file
-// moves, the rescan endpoint's refusal applied to the deletion
-// itself.
+// still say it is.
 package api
 
 import (
