@@ -244,12 +244,7 @@ function yearRangeOf(years: readonly number[]): { from: string; to: string } | n
  * canonical string. A sub-two-rune query takes NO text path -- the
  * request is the pure filter browse, exactly the server's rule.
  */
-export function searchRequestOf(
-	filters: SearchFilters,
-	locale: string,
-	limit: number,
-	cursor: string | null
-): string {
+export function searchRequestOf(filters: SearchFilters, locale: string, limit: number, cursor: string | null): string {
 	const params = new URLSearchParams();
 	if (isQueryMode(filters.query)) {
 		params.set('query', filters.query.trim());
@@ -327,11 +322,7 @@ function countOf(value: unknown): number | null {
 }
 
 /** Validate one facet dimension's entries; null when any entry is malformed. */
-function facetOf<T>(
-	body: unknown,
-	key: keyof SearchFacets,
-	validate: (entry: unknown) => T | null
-): T[] | null {
+function facetOf<T>(body: unknown, key: keyof SearchFacets, validate: (entry: unknown) => T | null): T[] | null {
 	if (body === null || typeof body !== 'object') {
 		return null;
 	}
@@ -400,18 +391,10 @@ function facetsFrom(body: unknown): SearchFacets | null {
 		if (typeof candidate.id !== 'string') {
 			return null;
 		}
-		if (
-			candidate.make !== null &&
-			candidate.make !== undefined &&
-			typeof candidate.make !== 'string'
-		) {
+		if (candidate.make !== null && candidate.make !== undefined && typeof candidate.make !== 'string') {
 			return null;
 		}
-		if (
-			candidate.model !== null &&
-			candidate.model !== undefined &&
-			typeof candidate.model !== 'string'
-		) {
+		if (candidate.model !== null && candidate.model !== undefined && typeof candidate.model !== 'string') {
 			return null;
 		}
 		return countOf(candidate.assetCount) === null ? null : entry;
@@ -465,7 +448,11 @@ function pageFrom(body: unknown): SearchPage | null {
 	if (body === null || typeof body !== 'object') {
 		return null;
 	}
-	const { items, nextCursor: cursor, facets } = body as {
+	const {
+		items,
+		nextCursor: cursor,
+		facets
+	} = body as {
 		items?: unknown;
 		nextCursor?: unknown;
 		facets?: unknown;
@@ -497,10 +484,7 @@ function pageFrom(body: unknown): SearchPage | null {
  * browse) with the facet counts. The cursor is the previous page's
  * opaque `nextCursor`, never assembled here.
  */
-export async function searchPage(
-	filters: SearchFilters,
-	options: SearchPageOptions = {}
-): Promise<SearchPageResult> {
+export async function searchPage(filters: SearchFilters, options: SearchPageOptions = {}): Promise<SearchPageResult> {
 	const fetcher = options.fetcher ?? globalThis.fetch;
 	const locale = options.locale ?? DEFAULT_LOCALE;
 	const limit = options.limit ?? SEARCH_PAGE_LIMIT;

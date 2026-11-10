@@ -62,13 +62,7 @@ import type { components } from '../../../../openapi/generated/web/api';
 type UploadAsset = components['schemas']['AssetResponse'];
 
 /** The states of one queue item (see the state machine above). */
-export type UploadItemState =
-	| 'queued'
-	| 'uploading'
-	| 'conflict'
-	| 'processing'
-	| 'done'
-	| 'failed';
+export type UploadItemState = 'queued' | 'uploading' | 'conflict' | 'processing' | 'done' | 'failed';
 
 /** One queue row as the overlay renders it. */
 export type UploadItem = {
@@ -92,9 +86,7 @@ export type UploadItem = {
 /** The XHR surface the queue uses (injected as a test stub). */
 export type XHRLike = {
 	upload: {
-		onprogress:
-			| ((event: { loaded: number; total: number; lengthComputable: boolean }) => void)
-			| null;
+		onprogress: ((event: { loaded: number; total: number; lengthComputable: boolean }) => void) | null;
 	};
 	onload: (() => void) | null;
 	onerror: (() => void) | null;
@@ -243,10 +235,7 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 	}
 
 	/** The fetch-based conflict/deletion calls share the interceptor. */
-	async function call(
-		path: string,
-		init: RequestInit
-	): Promise<{ ok: boolean; errorKey: string; body: unknown }> {
+	async function call(path: string, init: RequestInit): Promise<{ ok: boolean; errorKey: string; body: unknown }> {
 		try {
 			const response = await apiFetch(path, init, deps.fetcher);
 			if (response.ok) {
@@ -403,7 +392,6 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 	function enqueueFiles(files: File[] | FileList): void {
 		for (const file of Array.from(files)) {
 			const fileName = typeof file.name === 'string' ? file.name : '';
-			const extension = uploadExtensionOf(fileName);
 			const unsupported = !uploadFormatSupported(fileName);
 			items = [
 				...items,
@@ -438,8 +426,7 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 
 	return {
 		items: () => items,
-		activeCount: () =>
-			items.filter((item) => item.state === 'uploading' || item.state === 'queued').length,
+		activeCount: () => items.filter((item) => item.state === 'uploading' || item.state === 'queued').length,
 		conflictItemId: () => conflictItem,
 		conflictErrorKey: () => conflictErrorKey,
 		enqueueFiles,

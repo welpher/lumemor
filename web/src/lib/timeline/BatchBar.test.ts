@@ -43,9 +43,7 @@ function mountBar(
 function buttonByLabel(label: string): HTMLButtonElement {
 	// The bar's actions are icon-only (the icon-first rule): the
 	// accessible name rides the aria-label.
-	const found = document.body.querySelector<HTMLButtonElement>(
-		`.batchbar button[aria-label="${label}"]`
-	);
+	const found = document.body.querySelector<HTMLButtonElement>(`.batchbar button[aria-label="${label}"]`);
 	if (found === null) {
 		throw new Error(`missing batch button ${label}`);
 	}
@@ -75,9 +73,7 @@ test('an action subset renders only the named actions (the curated walls)', () =
 	const favoriteButtons = Array.from(
 		document.body.querySelectorAll<HTMLButtonElement>('.batchbar button:not(.batchbar__clear)')
 	);
-	expect(favoriteButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
-		'Unfavorite'
-	]);
+	expect(favoriteButtons.map((button) => button.getAttribute('aria-label'))).toEqual(['Unfavorite']);
 	favoriteButtons[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	expect(favoriteAction).toHaveBeenCalledWith('unfavorite');
 	unmount(favoriteBar);

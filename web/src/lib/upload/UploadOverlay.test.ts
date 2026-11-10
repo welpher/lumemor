@@ -48,8 +48,21 @@ vi.mock('$lib/upload/queue.svelte', () => ({
 		if (dot <= 0 || dot === fileName.length - 1) {
 			return false;
 		}
-		return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tif', 'tiff', 'heic', 'avif', 'mp4', 'mov', 'webm', 'mkv']
-			.includes(fileName.slice(dot + 1).toLowerCase());
+		return [
+			'jpg',
+			'jpeg',
+			'png',
+			'gif',
+			'webp',
+			'tif',
+			'tiff',
+			'heic',
+			'avif',
+			'mp4',
+			'mov',
+			'webm',
+			'mkv'
+		].includes(fileName.slice(dot + 1).toLowerCase());
 	}
 }));
 
@@ -91,8 +104,9 @@ async function withOverlay(run: () => void | Promise<void>): Promise<void> {
 	}
 }
 
-const footerButtons = (): HTMLButtonElement[] =>
-	[...document.body.querySelectorAll<HTMLButtonElement>('footer button')];
+const footerButtons = (): HTMLButtonElement[] => [
+	...document.body.querySelectorAll<HTMLButtonElement>('footer button')
+];
 
 /** A click followed by a full drain: the resolution handlers flip
  * their resolving flag back on microtasks; flushSync forces the
@@ -193,9 +207,7 @@ test('a decided row reopens the dialog through its affordance', async () => {
 	box.conflictId = null; // The dialog was decided or dismissed earlier.
 	await withOverlay(() => {
 		flushSync();
-		const decide = document.body.querySelector<HTMLButtonElement>(
-			'ul.overlay__rows > li button.row__action'
-		);
+		const decide = document.body.querySelector<HTMLButtonElement>('ul.overlay__rows > li button.row__action');
 		decide?.click();
 		expect(box.actions.openConflict).toHaveBeenCalledWith('r-conflict');
 	});

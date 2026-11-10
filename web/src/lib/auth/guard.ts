@@ -21,10 +21,7 @@ import { sessionStatus } from './session.svelte';
  * treated like unauthenticated: the login page is the only place
  * that recovers from every cause.
  */
-export async function guardSessionRoute(
-	url: URL,
-	parent: () => Promise<unknown>
-): Promise<void> {
+export async function guardSessionRoute(url: URL, parent: () => Promise<unknown>): Promise<void> {
 	await parent();
 	if (sessionStatus() !== 'authenticated') {
 		redirect(307, loginRedirectTarget(url.pathname + url.search));

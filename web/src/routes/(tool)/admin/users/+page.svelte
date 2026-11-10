@@ -27,12 +27,7 @@
 	import Input from '$lib/components/Input.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
-	import {
-		createAdminUser,
-		listAdminUsers,
-		setAdminUserDisabled,
-		type AdminUser
-	} from '$lib/api/adminUsers';
+	import { createAdminUser, listAdminUsers, setAdminUserDisabled, type AdminUser } from '$lib/api/adminUsers';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import UserX from '@lucide/svelte/icons/user-x';
@@ -126,9 +121,7 @@
 
 	/** Locale-aware creation date of one account. */
 	function createdLabel(user: AdminUser): string {
-		return new Intl.DateTimeFormat(activeLocale, { dateStyle: 'medium' }).format(
-			new Date(user.createdAt)
-		);
+		return new Intl.DateTimeFormat(activeLocale, { dateStyle: 'medium' }).format(new Date(user.createdAt));
 	}
 
 	async function handleSubmit(event?: SubmitEvent): Promise<void> {
@@ -243,11 +236,18 @@
 
 <div class="users flex flex-col gap-6">
 	{#if status === 'loading'}
-		<p class="users__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('admin_users_loading')}</p>
+		<p class="users__status my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('admin_users_loading')}
+		</p>
 	{:else if status === 'error'}
-		<div class="users__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="users__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={retry}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={retry}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else if status === 'ready'}
 		<!-- The page-header row (the 2026-11-09 specimen): the title
@@ -264,18 +264,46 @@
 			{/snippet}
 		</AdminPageHeader>
 		<section class="users__list" aria-label={$_('admin_users_title')}>
-			<table class="users__table w-full border-collapse bg-card border border-border rounded-card shadow-card overflow-hidden">
+			<table
+				class="users__table w-full border-collapse bg-card border border-border rounded-card shadow-card overflow-hidden"
+			>
 				<thead>
 					<tr>
-						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_name')}</th>
-						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_email')}</th>
-						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_role')}</th>
-						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_status')}</th>
-						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">{$_('admin_users_created')}</th>
-						<th scope="col" class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border">
+						<th
+							scope="col"
+							class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
+							>{$_('admin_users_name')}</th
+						>
+						<th
+							scope="col"
+							class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
+							>{$_('admin_users_email')}</th
+						>
+						<th
+							scope="col"
+							class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
+							>{$_('admin_users_role')}</th
+						>
+						<th
+							scope="col"
+							class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
+							>{$_('admin_users_status')}</th
+						>
+						<th
+							scope="col"
+							class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
+							>{$_('admin_users_created')}</th
+						>
+						<th
+							scope="col"
+							class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
+						>
 							<!-- The actions column's heading is for screen readers; the
 							     buttons' own labels name the actions. -->
-							<span class="users__actions-heading absolute w-px h-px overflow-hidden [clip-path:inset(50%)] whitespace-nowrap">{$_('admin_users_actions')}</span>
+							<span
+								class="users__actions-heading absolute w-px h-px overflow-hidden [clip-path:inset(50%)] whitespace-nowrap"
+								>{$_('admin_users_actions')}</span
+							>
 						</th>
 					</tr>
 				</thead>
@@ -284,9 +312,17 @@
 						<!-- The group class feeds the last-row border removal
 						     (group-last) on the cells below. -->
 						<tr class="group" class:users__row--disabled={user.isDisabled}>
-							<td class="px-3.5 py-2.5 font-body font-semibold text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">{user.name}</td>
-							<td class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft border-b border-border group-last:border-b-0">{user.email}</td>
-							<td class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">
+							<td
+								class="px-3.5 py-2.5 font-body font-semibold text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0"
+								>{user.name}</td
+							>
+							<td
+								class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft border-b border-border group-last:border-b-0"
+								>{user.email}</td
+							>
+							<td
+								class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0"
+							>
 								<span
 									class="users__badge inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] bg-accent-soft rounded-control"
 									class:users__badge--admin={user.role === 'admin'}
@@ -296,16 +332,25 @@
 									{user.role === 'admin' ? $_('admin_role_admin') : $_('admin_role_user')}
 								</span>
 							</td>
-							<td class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">
+							<td
+								class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0"
+							>
 								<span
-									class="users__badge inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] rounded-control {user.isDisabled ? 'text-danger-text bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]' : 'text-text-soft bg-accent-soft'}"
+									class="users__badge inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] rounded-control {user.isDisabled
+										? 'text-danger-text bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
+										: 'text-text-soft bg-accent-soft'}"
 									class:users__badge--disabled={user.isDisabled}
 								>
 									{user.isDisabled ? $_('admin_user_disabled') : $_('admin_user_active')}
 								</span>
 							</td>
-							<td class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft border-b border-border group-last:border-b-0">{createdLabel(user)}</td>
-							<td class="users__actions px-3.5 py-2.5 text-right font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0">
+							<td
+								class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft border-b border-border group-last:border-b-0"
+								>{createdLabel(user)}</td
+							>
+							<td
+								class="users__actions px-3.5 py-2.5 text-right font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0"
+							>
 								{#if user.isDisabled}
 									<Button variant="ghost" disabled={busy} onclick={() => void enable(user)}>
 										<Check size={20} aria-hidden="true" />
@@ -323,10 +368,11 @@
 				</tbody>
 			</table>
 			{#if actionErrorKey !== ''}
-				<p class="users__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(actionErrorKey)}</p>
+				<p class="users__error font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">
+					{errorText(actionErrorKey)}
+				</p>
 			{/if}
 		</section>
-
 	{/if}
 </div>
 
@@ -335,46 +381,51 @@
      line), success closing it and the listing converging. The busy
      write keeps it open; the cancel is inert while one runs. -->
 <Modal bind:open={createOpen} title={$_('admin_users_create_heading')} onclose={cancelCreate}>
-	{#snippet children()}
-		<p class="users__create-note mb-4 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('admin_users_create_note')}</p>
-		<form id="admin-user-create" class="users__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
-			<Input
-				id="admin-user-name"
-				label={$_('admin_users_field_name')}
-				type="text"
-				autocomplete="name"
-				bind:value={formName}
-			/>
-			<Input
-				id="admin-user-email"
-				label={$_('admin_users_field_email')}
-				type="email"
-				autocomplete="off"
-				bind:value={formEmail}
-			/>
-			<Input
-				id="admin-user-password"
-				label={$_('admin_users_field_password')}
-				type="password"
-				autocomplete="new-password"
-				bind:value={formPassword}
-			/>
-			<div class="users__field flex flex-col gap-1.5">
-				<label class="users__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="admin-user-role">{$_('admin_users_field_role')}</label>
-				<select
-					class="users__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
-					id="admin-user-role"
-					bind:value={formRole}
-				>
-					<option value="user">{$_('admin_role_user')}</option>
-					<option value="admin">{$_('admin_role_admin')}</option>
-				</select>
-			</div>
-			{#if createErrorKey !== ''}
-				<p class="users__error m-0 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(createErrorKey)}</p>
-			{/if}
-		</form>
-	{/snippet}
+	<p class="users__create-note mb-4 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+		{$_('admin_users_create_note')}
+	</p>
+	<form id="admin-user-create" class="users__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
+		<Input
+			id="admin-user-name"
+			label={$_('admin_users_field_name')}
+			type="text"
+			autocomplete="name"
+			bind:value={formName}
+		/>
+		<Input
+			id="admin-user-email"
+			label={$_('admin_users_field_email')}
+			type="email"
+			autocomplete="off"
+			bind:value={formEmail}
+		/>
+		<Input
+			id="admin-user-password"
+			label={$_('admin_users_field_password')}
+			type="password"
+			autocomplete="new-password"
+			bind:value={formPassword}
+		/>
+		<div class="users__field flex flex-col gap-1.5">
+			<label
+				class="users__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+				for="admin-user-role">{$_('admin_users_field_role')}</label
+			>
+			<select
+				class="users__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+				id="admin-user-role"
+				bind:value={formRole}
+			>
+				<option value="user">{$_('admin_role_user')}</option>
+				<option value="admin">{$_('admin_role_admin')}</option>
+			</select>
+		</div>
+		{#if createErrorKey !== ''}
+			<p class="users__error m-0 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">
+				{errorText(createErrorKey)}
+			</p>
+		{/if}
+	</form>
 	{#snippet footer()}
 		<Button variant="ghost" disabled={creating} onclick={cancelCreate}>
 			<X size={20} aria-hidden="true" />
@@ -388,14 +439,17 @@
 </Modal>
 
 <Modal open={pendingDisable !== null} title={$_('admin_users_disable_title')} onclose={cancelDisable}>
-	{#snippet children()}
-		<p class="users__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-			{$_('admin_users_disable_body', { values: { name: pendingDisable?.name ?? '' } })}
+	<p class="users__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
+		{$_('admin_users_disable_body', { values: { name: pendingDisable?.name ?? '' } })}
+	</p>
+	{#if disableErrorKey !== ''}
+		<p
+			class="users__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+			role="alert"
+		>
+			{errorText(disableErrorKey)}
 		</p>
-		{#if disableErrorKey !== ''}
-			<p class="users__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(disableErrorKey)}</p>
-		{/if}
-	{/snippet}
+	{/if}
 	{#snippet footer()}
 		<Button variant="ghost" disabled={busy} onclick={cancelDisable}>
 			<X size={20} aria-hidden="true" />

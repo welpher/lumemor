@@ -181,7 +181,10 @@ beforeEach(async () => {
 	};
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -241,9 +244,7 @@ test('renaming PUTs the label and the header adopts the response', async () => {
 	flushSync();
 	const dialog = modal();
 	fillField(dialog as ParentNode, 'Ada Lovelace');
-	buttonByText('Save name', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save name', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/label');
@@ -258,8 +259,7 @@ test('renaming PUTs the label and the header adopts the response', async () => {
 test('hiding a named person PUTs the switch and the badge and notice follow', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/hidden': () =>
-				jsonResponse(200, { clusterId: 'c1', name: 'Ada', isHidden: true })
+			'/api/v1/people/c1/hidden': () => jsonResponse(200, { clusterId: 'c1', name: 'Ada', isHidden: true })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -316,8 +316,7 @@ test('hiding an unlabeled person surfaces the requires-label error and keeps the
 test('merge-into POSTs the merge and navigates back to the named region', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/merge': () =>
-				jsonResponse(200, { survivingClusterId: 'p1', mergedClusterIds: ['c1'] })
+			'/api/v1/people/merge': () => jsonResponse(200, { survivingClusterId: 'p1', mergedClusterIds: ['c1'] })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -331,9 +330,7 @@ test('merge-into POSTs the merge and navigates back to the named region', async 
 	expect(dialog?.getAttribute('aria-label')).toBe('Merge people');
 	expect(dialog?.textContent).toContain('This cluster disappears and its name is lost.');
 	chooseOption(dialog as ParentNode, 'p1');
-	buttonByText('Merge', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Merge', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/merge');
@@ -379,9 +376,7 @@ test('moving a face POSTs the move and the face list refetches', async () => {
 	expect(dialog?.getAttribute('aria-label')).toBe('Move face');
 	expect(dialog?.textContent).toContain('Pick the person this face joins.');
 	chooseOption(dialog as ParentNode, 'p1');
-	buttonByText('Move', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Move', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/faces/f1/move');
@@ -440,16 +435,13 @@ test('SSE person.face_moved refetches when the move touches this cluster', async
 	const page = mountPage();
 	await settle();
 	expect(faceCards()).toHaveLength(2);
-	const initial = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1')
-		.length;
+	const initial = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length;
 
 	// A face of another cluster moving between two other clusters
 	// does not concern this page.
 	firePersonEvent({ id: 1, name: 'person.face_moved', faceId: 'f9', clusterId: 'cX', userId: 'u1' });
 	await settle();
-	expect(
-		fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length
-	).toBe(initial);
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length).toBe(initial);
 
 	// Our face left for another cluster: the refetch decides.
 	detailState = {
@@ -460,9 +452,7 @@ test('SSE person.face_moved refetches when the move touches this cluster', async
 	firePersonEvent({ id: 2, name: 'person.face_moved', faceId: 'f1', clusterId: 'p1', userId: 'u1' });
 	await settle();
 
-	expect(
-		fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length
-	).toBe(initial + 1);
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length).toBe(initial + 1);
 	expect(faceCards()).toHaveLength(1);
 	unmount(page);
 	flushSync();

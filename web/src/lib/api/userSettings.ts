@@ -27,33 +27,21 @@ export type DeviceSession = components['schemas']['DeviceSession'];
 export type UserSelfPatch = Partial<
 	Pick<
 		UserSelf,
-		| 'name'
-		| 'email'
-		| 'theme'
-		| 'locale'
-		| 'downloadFormat'
-		| 'downloadIncludeVideos'
-		| 'downloadIncludeSidecars'
+		'name' | 'email' | 'theme' | 'locale' | 'downloadFormat' | 'downloadIncludeVideos' | 'downloadIncludeSidecars'
 	>
 >;
 
 /** The read's outcome: the account document, or the failure's i18n key. */
-export type UserSelfResult =
-	| { ok: true; self: UserSelf }
-	| { ok: false; errorKey: string };
+export type UserSelfResult = { ok: true; self: UserSelf } | { ok: false; errorKey: string };
 
 /** The patch's outcome: the saved account state, or the failure's i18n key. */
-export type UserSelfSaveResult =
-	| { ok: true; self: UserSelf }
-	| { ok: false; errorKey: string };
+export type UserSelfSaveResult = { ok: true; self: UserSelf } | { ok: false; errorKey: string };
 
 /** The password change's outcome; the i18n key of the failure. */
 export type PasswordChangeResult = { ok: true } | { ok: false; errorKey: string };
 
 /** The device list's outcome, or the failure's i18n key. */
-export type DeviceListResult =
-	| { ok: true; devices: DeviceSession[] }
-	| { ok: false; errorKey: string };
+export type DeviceListResult = { ok: true; devices: DeviceSession[] } | { ok: false; errorKey: string };
 
 /** The device revoke's outcome; the i18n key of the failure. */
 export type DeviceRevokeResult = { ok: true } | { ok: false; errorKey: string };
@@ -114,9 +102,7 @@ async function userErrorKey(response: Response): Promise<string> {
  * GET /api/v1/users/me: the caller's own account -- the profile
  * fields, the appearance pair and the download preferences.
  */
-export async function getUserSelf(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<UserSelfResult> {
+export async function getUserSelf(fetcher: typeof fetch = globalThis.fetch): Promise<UserSelfResult> {
 	let response: Response;
 	try {
 		response = await apiFetch(SELF_ENDPOINT, undefined, fetcher);
@@ -214,9 +200,7 @@ export async function changeUserPassword(
  * GET /api/v1/users/me/sessions: the caller's active sessions, most
  * recently used first, with the current one marked.
  */
-export async function listUserDevices(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<DeviceListResult> {
+export async function listUserDevices(fetcher: typeof fetch = globalThis.fetch): Promise<DeviceListResult> {
 	let response: Response;
 	try {
 		response = await apiFetch(DEVICES_ENDPOINT, undefined, fetcher);
@@ -257,11 +241,7 @@ export async function revokeUserDevice(
 ): Promise<DeviceRevokeResult> {
 	let response: Response;
 	try {
-		response = await apiFetch(
-			`${DEVICES_ENDPOINT}/${id}`,
-			{ method: 'DELETE' },
-			fetcher
-		);
+		response = await apiFetch(`${DEVICES_ENDPOINT}/${id}`, { method: 'DELETE' }, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}

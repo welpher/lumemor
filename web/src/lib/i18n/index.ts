@@ -37,9 +37,9 @@ const messageModules = import.meta.glob('../../../../i18n/*.json', {
 	import: 'default'
 }) as Record<string, Record<string, string>>;
 
-function dictionaryFromGlob(modules: Record<string, Record<string, string>>): Partial<
-	Record<AppLocale, Record<string, string>>
-> {
+function dictionaryFromGlob(
+	modules: Record<string, Record<string, string>>
+): Partial<Record<AppLocale, Record<string, string>>> {
 	const dictionary: Partial<Record<AppLocale, Record<string, string>>> = {};
 	for (const [path, messages] of Object.entries(modules)) {
 		const fileName = path.slice(path.lastIndexOf('/') + 1);
@@ -68,9 +68,7 @@ export function detectLocale(): AppLocale {
 	} catch {
 		// Storage unavailable: fall through to the browser language.
 	}
-	const languages = navigator.languages?.length
-		? navigator.languages
-		: [navigator.language ?? 'en'];
+	const languages = navigator.languages?.length ? navigator.languages : [navigator.language ?? 'en'];
 	for (const tag of languages) {
 		if (tag.toLowerCase().startsWith('zh')) {
 			return 'zh-Hans';

@@ -68,9 +68,7 @@
 	let tagReport = $state<{ added: number; skipped: number } | null>(null);
 
 	const firstLoad = $derived($timeline.items.length === 0 && $timeline.status === 'loading');
-	const settledEmpty = $derived(
-		$timeline.items.length === 0 && $timeline.status === 'ready' && !$timeline.hasMore
-	);
+	const settledEmpty = $derived($timeline.items.length === 0 && $timeline.status === 'ready' && !$timeline.hasMore);
 
 	// IntersectionObserver exists in every browser jsdom is not; the
 	// manual load-more button is the fallback surface (and the error
@@ -241,54 +239,66 @@
      LEFT of the rail's own strip, never under it. -->
 <div class="timeline__gutter pe-[72px]">
 	<section class="timeline px-2" aria-busy={$timeline.status === 'loading'}>
-	<!-- No toolbar (R2-11): the timeline's header carries nothing but
+		<!-- No toolbar (R2-11): the timeline's header carries nothing but
 	     what the top bar already owns (upload, search). The hidden
 	     view's entry moved to the navigation drawer; the selection
 	     entry is the tiles' check affordance (hover/keyboard-focus
 	     revealed on every tile, the first click enters the
 	     selection). -->
 
-	{#if firstLoad}
-		<p class="timeline__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('timeline_loading')}</p>
-	{:else if settledEmpty}
-		<div class="timeline__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
-			<h1 class="text-[22px] mb-2">{$_('nav_timeline')}</h1>
-			<p class="text-text-soft">{$_('timeline_empty')}</p>
-		</div>
-	{:else if $timeline.status === 'error' && $timeline.items.length === 0}
-		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
-			<p>{errorText($timeline.errorKey)}</p>
-			<Button variant="primary" onclick={() => void timeline.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
-		</div>
-	{:else}
-		<!-- The unified wall (its month axis AND its selection flow are
+		{#if firstLoad}
+			<p class="timeline__status my-12 text-center text-text-soft animate-loading-in" role="status">
+				{$_('timeline_loading')}
+			</p>
+		{:else if settledEmpty}
+			<div
+				class="timeline__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+			>
+				<h1 class="text-[22px] mb-2">{$_('nav_timeline')}</h1>
+				<p class="text-text-soft">{$_('timeline_empty')}</p>
+			</div>
+		{:else if $timeline.status === 'error' && $timeline.items.length === 0}
+			<div
+				class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
+				<p>{errorText($timeline.errorKey)}</p>
+				<Button variant="primary" onclick={() => void timeline.loadMore()}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{:else}
+			<!-- The unified wall (its month axis AND its selection flow are
 		     the wall's own organs -- the 2026-11-08 pins): the page
 		     keeps its data walk, its batch runs and its dialogs; the
 		     grouping, the packed rows, the tiles, the right-edge rail,
 		     the selection state and the batch bar are the one wall
 		     component every curatable view renders. The dialog opener
 		     carries the ids the wall captured. -->
-		<Wall
-			items={$timeline.items}
-			onbatch={runBatch}
-			onaddtag={openTagDialog}
-		/>
-	{/if}
+			<Wall items={$timeline.items} onbatch={runBatch} onaddtag={openTagDialog} />
+		{/if}
 
-	{#if $timeline.status === 'error' && $timeline.items.length > 0}
-		<div class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
-			<p>{errorText($timeline.errorKey)}</p>
-			<Button variant="primary" onclick={() => void timeline.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
-		</div>
-	{/if}
+		{#if $timeline.status === 'error' && $timeline.items.length > 0}
+			<div
+				class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
+				<p>{errorText($timeline.errorKey)}</p>
+				<Button variant="primary" onclick={() => void timeline.loadMore()}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{/if}
 
-	{#if !observerAvailable && $timeline.hasMore && $timeline.status === 'ready'}
-		<div class="timeline__pager flex justify-center my-5">
-			<Button variant="ghost" onclick={() => void timeline.loadMore()}><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button>
-		</div>
-	{/if}
+		{#if !observerAvailable && $timeline.hasMore && $timeline.status === 'ready'}
+			<div class="timeline__pager flex justify-center my-5">
+				<Button variant="ghost" onclick={() => void timeline.loadMore()}
+					><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button
+				>
+			</div>
+		{/if}
 
-	<div class="timeline__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
+		<div class="timeline__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
 	</section>
 </div>
 

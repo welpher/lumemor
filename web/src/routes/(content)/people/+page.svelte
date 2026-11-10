@@ -104,21 +104,30 @@
 	<div class="people__toolbar flex justify-end items-center mb-2">
 		<a
 			class="people__unnamed-link mr-auto px-2.5 py-1.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft no-underline rounded-control transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
-			href="/people/unnamed"
-		>{$_('people_unnamed_link')}</a>
+			href="/people/unnamed">{$_('people_unnamed_link')}</a
+		>
 	</div>
 
 	{#if firstLoad}
-		<p class="people__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('people_loading')}</p>
+		<p class="people__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('people_loading')}
+		</p>
 	{:else if settledEmpty}
-		<div class="people__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+		<div
+			class="people__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+		>
 			<h1 class="text-[22px] mb-2">{$_('nav_people')}</h1>
 			<p class="text-text-soft">{$_('people_empty')}</p>
 		</div>
 	{:else if status === 'error' && people.length === 0}
-		<div class="people__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="people__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else}
 		<div class="people__grid grid grid-cols-[repeat(auto-fill,minmax(min(180px,100%),1fr))] gap-3">
@@ -143,11 +152,20 @@
 						/>
 					</span>
 					<span class="person-card__caption flex items-center gap-2 px-3 py-2.5">
-						<span class="person-card__name font-body font-semibold text-[15px] leading-[1.4] text-text truncate">{person.name}</span>
+						<span
+							class="person-card__name font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
+							>{person.name}</span
+						>
 						{#if person.isHidden}
-							<span class="person-card__badge inline-flex items-center px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">{$_('people_hidden_badge')}</span>
+							<span
+								class="person-card__badge inline-flex items-center px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+								>{$_('people_hidden_badge')}</span
+							>
 						{/if}
-						<span class="person-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums">{$_('people_face_count', { values: { count: person.faceCount } })}</span>
+						<span
+							class="person-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
+							>{$_('people_face_count', { values: { count: person.faceCount } })}</span
+						>
 					</span>
 				</a>
 			{/each}
@@ -157,9 +175,14 @@
 	{#if status === 'error' && people.length > 0}
 		<!-- A failed convergence while cards exist: the page stays, the
 		     next event retries; the box keeps the retry affordance. -->
-		<div class="people__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="people__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{/if}
 </section>

@@ -86,8 +86,7 @@ type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 function timelineRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
 		'/api/v1/assets/timeline?limit=100': () => jsonResponse(200, { items: pageOne, nextCursor: 'C1' }),
-		'/api/v1/assets/timeline?limit=100&cursor=C1': () =>
-			jsonResponse(200, { items: pageTwo }),
+		'/api/v1/assets/timeline?limit=100&cursor=C1': () => jsonResponse(200, { items: pageTwo }),
 		'/api/v1/assets/batch': () => jsonResponse(200, { affected: 0, missing: [] }),
 		...overrides
 	};
@@ -118,10 +117,6 @@ function mountPage(): ReturnType<typeof mount> {
 	return page;
 }
 
-function textOf(selector: string): string {
-	return document.body.querySelector(selector)?.textContent ?? '';
-}
-
 function tiles(): HTMLElement[] {
 	return Array.from(document.body.querySelectorAll<HTMLElement>('.tile'));
 }
@@ -144,12 +139,6 @@ function buttonByLabel(label: string, scope: ParentNode = document.body): HTMLBu
 	return found;
 }
 
-function clickTile(index: number): void {
-	const link = tiles()[index]?.querySelector('a.tile__link');
-	link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-	flushSync();
-}
-
 /**
  * Click one tile's check affordance -- R2-11's selection entry: the
  * check reveals on hover/keyboard focus on every tile (the toolbar's
@@ -169,7 +158,10 @@ beforeEach(async () => {
 	clearWallItems();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -206,10 +198,7 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	const monthHeaders = Array.from(document.body.querySelectorAll('.wall__month-header'));
 	// The rich date labels: the day header carries the weekday; the
 	// month header stays the bare month label.
-	expect(monthHeaders.map((header) => header.textContent)).toEqual([
-		'November 2026',
-		'October 2026'
-	]);
+	expect(monthHeaders.map((header) => header.textContent)).toEqual(['November 2026', 'October 2026']);
 	const dayHeaders = Array.from(document.body.querySelectorAll('.wall__day-header'));
 	expect(dayHeaders.map((header) => header.textContent)).toEqual([
 		'Monday, November 2',
@@ -217,9 +206,7 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 		'Tuesday, October 13'
 	]);
 	expect(tiles()).toHaveLength(3);
-	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a1/thumbnail?size=view'
-	);
+	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=view');
 
 	// The scrubber at rest: faint years, dots with full accessible
 	// names, the position indicator -- no year-month bubble.
@@ -227,10 +214,7 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	const years = Array.from(document.body.querySelectorAll('.scrubber__year'));
 	expect(years.map((year) => year.textContent)).toEqual(['2026']);
 	expect(document.body.querySelector('.scrubber__readout')).toBeNull();
-	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual([
-		'November 2026',
-		'October 2026'
-	]);
+	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual(['November 2026', 'October 2026']);
 
 	unmount(page);
 	flushSync();
@@ -272,16 +256,11 @@ test('tiles pack into justified rows at the engine-computed sizes', async () => 
 });
 
 test('an empty timeline renders the empty state, no tiles, no scrubber', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({ '/api/v1/assets/timeline?limit=100': () => jsonResponse(200, { items: [] }) })
-	);
+	vi.stubGlobal('fetch', stubFetch({ '/api/v1/assets/timeline?limit=100': () => jsonResponse(200, { items: [] }) }));
 	const page = mountPage();
 	await settle();
 
-	expect(document.body.querySelector('.timeline__empty')?.textContent).toContain(
-		'Your timeline is empty.'
-	);
+	expect(document.body.querySelector('.timeline__empty')?.textContent).toContain('Your timeline is empty.');
 	expect(tiles()).toHaveLength(0);
 	expect(document.body.querySelector('.scrubber')).toBeNull();
 	unmount(page);
@@ -335,8 +314,7 @@ test('a dead session renders the session message, never credential text', async 
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
-			'/api/v1/assets/timeline?limit=100': () =>
-				jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })
+			'/api/v1/assets/timeline?limit=100': () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })
 		})
 	);
 	const page = mountPage();
@@ -377,9 +355,7 @@ test('a burst of sentinel intersections collapses into one fetch (the guard)', a
 	observer?.callback([entry], {} as IntersectionObserver);
 	await settle();
 
-	const timelineCalls = fetchMock.mock.calls.filter(([input]) =>
-		String(input).startsWith('/api/v1/assets/timeline')
-	);
+	const timelineCalls = fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/assets/timeline'));
 	// The initial page plus exactly ONE follow-up: the two
 	// intersections of the burst collapsed into a single fetch (a
 	// missing guard would show three).
@@ -557,9 +533,7 @@ test('SSE events patch the wall: a ready event refetches the detail', async () =
 	await settle();
 
 	const tile = tiles()[1];
-	expect(tile?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a2/thumbnail?size=view'
-	);
+	expect(tile?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a2/thumbnail?size=view');
 	unmount(page);
 	flushSync();
 });
@@ -631,10 +605,7 @@ test('the scrubber tracking observes the scroll root through the capture phase',
 	// A scrolled-forward geometry: both groups above the anchor, the
 	// older one last-past (the layout-less host's rects are zero, so
 	// the rects are stubbed the way the wall's own test does).
-	const rects = [
-		{ top: -300, height: 600 } as DOMRect,
-		{ top: -50, height: 600 } as DOMRect
-	];
+	const rects = [{ top: -300, height: 600 } as DOMRect, { top: -50, height: 600 } as DOMRect];
 	sections.forEach((section, index) => {
 		vi.spyOn(section, 'getBoundingClientRect').mockReturnValue(rects[index]!);
 	});
@@ -652,13 +623,11 @@ test('the scrubber tracking observes the scroll root through the capture phase',
 
 test('an album membership event restarts the walk: the fresh page one applies', async () => {
 	let shared = false;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		const url = String(input);
 		if (url === '/api/v1/assets/timeline?limit=100') {
 			return jsonResponse(200, {
-				items: shared
-					? [item('s1', '2026-11-04T10:00:00Z'), ...pageOne]
-					: pageOne,
+				items: shared ? [item('s1', '2026-11-04T10:00:00Z'), ...pageOne] : pageOne,
 				nextCursor: 'C1'
 			});
 		}
@@ -681,9 +650,7 @@ test('an album membership event restarts the walk: the fresh page one applies', 
 	await settle();
 
 	expect(tiles()).toHaveLength(4);
-	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/s1/thumbnail?size=view'
-	);
+	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/s1/thumbnail?size=view');
 	unmount(page);
 	flushSync();
 });
@@ -760,9 +727,7 @@ test('add tag: picking an existing tag POSTs the selection, the report lands', a
 	expect(dialog?.textContent).toContain('Beach');
 
 	chooseDialogOption(dialog as ParentNode, 't1');
-	buttonByText('Add tag', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Add tag', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/tags/t1/assets');
@@ -770,9 +735,7 @@ test('add tag: picking an existing tag POSTs the selection, the report lands', a
 	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ assetIds: ['a1', 'a2'] });
 	// The honest report renders inside the dialog.
 	expect(modal()?.textContent).toContain('Added 2, skipped 0.');
-	buttonByText('Done', modal() as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Done', modal() as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	// The successful add cleared the selection: the bar is gone. The
@@ -812,17 +775,13 @@ test('add tag: the create-new path creates the tag idempotently, then tags the s
 
 	const dialog = modal();
 	const radios = Array.from(dialog?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? []);
-	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
-		new MouseEvent('click', { bubbles: true, cancelable: true })
-	);
-	radios.find((radio) => radio.value === 'new')?.dispatchEvent(
-		new Event('change', { bubbles: true })
-	);
+	radios
+		.find((radio) => radio.value === 'new')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	radios.find((radio) => radio.value === 'new')?.dispatchEvent(new Event('change', { bubbles: true }));
 	flushSync();
 	fillDialogField(dialog as ParentNode, 'Roadtrip');
-	buttonByText('Create and add', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Create and add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(
@@ -855,9 +814,7 @@ test('add tag: a failed write keeps the selection and surfaces the message in th
 	await settle();
 	const dialog = modal();
 	chooseDialogOption(dialog as ParentNode, 't1');
-	buttonByText('Add tag', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Add tag', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	expect(modal()?.textContent).toContain('This tag does not exist or is not visible to you.');

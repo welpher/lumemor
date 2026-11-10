@@ -1,0 +1,11 @@
+# Generated or vendored trees: never formatted, never churned.
+pnpm-lock.yaml
+node_modules/
+.svelte-kit/
+build/
+test-results/
+e2e/.auth/
+# The e2e fixture trees' bytes are the test data themselves (their
+# READMEs document the byte-exact fixtures, prose included); the
+# SPECS under e2e/*.spec.ts are the web package's code and format.
+e2e/fixtures/

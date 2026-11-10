@@ -56,10 +56,7 @@
 	// one-source pairwise fold is the cluster detail's "merge into"
 	// path, not this batch bar).
 	const offerSelected = $derived(selected.length >= 3);
-	const optionIds = $derived([
-		...(offerSelected ? selectedIds : []),
-		...people.map((entry) => entry.clusterId)
-	]);
+	const optionIds = $derived([...(offerSelected ? selectedIds : []), ...people.map((entry) => entry.clusterId)]);
 	const targetAmongSelected = $derived(offerSelected && selectedIds.includes(targetId));
 
 	$effect(() => {
@@ -111,18 +108,35 @@
 
 <Modal bind:open title={$_('people_merge_dialog_title')}>
 	<div class="merge-dialog flex flex-col gap-3">
-		<p class="merge-dialog__body m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('people_merge_body')}</p>
+		<p class="merge-dialog__body m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+			{$_('people_merge_body')}
+		</p>
 		{#if loadingPeople}
-			<p class="merge-dialog__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('people_loading')}</p>
+			<p
+				class="merge-dialog__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in"
+				role="status"
+			>
+				{$_('people_loading')}
+			</p>
 		{:else if loadErrorKey !== ''}
-			<p class="merge-dialog__load-error m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{resolveErrorText($_, loadErrorKey)}</p>
+			<p
+				class="merge-dialog__load-error m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{resolveErrorText($_, loadErrorKey)}
+			</p>
 		{:else if optionIds.length === 0}
 			<!-- No target exists for this selection: two clusters with no
 			     named person can only merge once a third cluster (or an
 			     existing person) gives the request its target. -->
-			<p class="merge-dialog__empty m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('people_merge_no_target')}</p>
+			<p class="merge-dialog__empty m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+				{$_('people_merge_no_target')}
+			</p>
 		{:else}
-			<label class="merge-dialog__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="merge-dialog-target">{$_('people_merge_target_label')}</label>
+			<label
+				class="merge-dialog__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+				for="merge-dialog-target">{$_('people_merge_target_label')}</label
+			>
 			<select
 				class="merge-dialog__target w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 				id="merge-dialog-target"
@@ -131,7 +145,9 @@
 				{#if offerSelected}
 					<optgroup label={$_('people_merge_group_selected')}>
 						{#each selected as cluster (cluster.clusterId)}
-							<option value={cluster.clusterId}>{$_('people_merge_cluster_option', { values: { count: cluster.faceCount } })}</option>
+							<option value={cluster.clusterId}
+								>{$_('people_merge_cluster_option', { values: { count: cluster.faceCount } })}</option
+							>
 						{/each}
 					</optgroup>
 				{/if}
@@ -147,11 +163,22 @@
 				<!-- The inline naming of a selected target: the page PUTs
 				     this name before the merge, so the merged person keeps
 				     a name (a source's name dies; the target's persists). -->
-				<Input label={$_('people_merge_inline_name_label')} name="merged-name" bind:value={inlineName} maxlength={128} autocomplete="off" />
+				<Input
+					label={$_('people_merge_inline_name_label')}
+					name="merged-name"
+					bind:value={inlineName}
+					maxlength={128}
+					autocomplete="off"
+				/>
 			{/if}
 		{/if}
 		{#if errorKey !== ''}
-			<p class="merge-dialog__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{resolveErrorText($_, errorKey)}</p>
+			<p
+				class="merge-dialog__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{resolveErrorText($_, errorKey)}
+			</p>
 		{/if}
 	</div>
 	{#snippet footer()}

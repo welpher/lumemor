@@ -34,10 +34,7 @@ const paris = {
 	name: 'Paris',
 	country: 'FR',
 	assetCount: 17,
-	representativeCoverAssetIds: [
-		'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72',
-		'0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73'
-	]
+	representativeCoverAssetIds: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72', '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73']
 };
 
 const beijing = {
@@ -88,7 +85,10 @@ beforeEach(async () => {
 	vi.clearAllMocks();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -154,7 +154,10 @@ test('the locale join rides the request and the country labels', async () => {
 });
 
 test('an empty grouping renders the empty state', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, [])));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, []))
+	);
 	const page = mountPage();
 	await settle();
 
@@ -218,7 +221,10 @@ test('an asset event refetches the grouping (the same family)', async () => {
 });
 
 test('leaving the page unsubscribes from the event stream', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, [paris])));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, [paris]))
+	);
 	const page = mountPage();
 	await settle();
 	expect(handlers).toHaveLength(1);

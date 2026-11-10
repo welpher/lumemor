@@ -149,8 +149,7 @@ type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 function detailRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
 		'/api/v1/albums/al1?limit=1': () => jsonResponse(200, detailState),
-		'/api/v1/assets/timeline?albumId=al1&limit=100': () =>
-			jsonResponse(200, { items: albumItems }),
+		'/api/v1/assets/timeline?albumId=al1&limit=100': () => jsonResponse(200, { items: albumItems }),
 		'/api/v1/users': () => jsonResponse(200, usersBody),
 		...overrides
 	};
@@ -249,7 +248,10 @@ beforeEach(async () => {
 	};
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -309,9 +311,7 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	expect(document.body.querySelector('.tile__check')).toBeNull();
 	expect(document.body.querySelector('.batchbar')).toBeNull();
 	expect(document.body.textContent).not.toContain('Select');
-	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a1/thumbnail?size=view'
-	);
+	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=view');
 	const wallCalls = fetchMock.mock.calls.filter(([input]) =>
 		String(input).startsWith('/api/v1/assets/timeline?albumId=al1')
 	);
@@ -442,9 +442,7 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 	// The item grid works like any album's: the tiles come from the
 	// album-narrowed timeline page.
 	expect(tiles()).toHaveLength(2);
-	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a1/thumbnail?size=view'
-	);
+	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=view');
 	// No badges: never locked, never excluded (not excludable).
 	expect(document.body.querySelector('.album-detail__badge--locked')).toBeNull();
 	expect(document.body.querySelector('.album-detail__badge--excluded')).toBeNull();
@@ -499,18 +497,14 @@ test('the properties dialog edits the title and PATCHes it alone', async () => {
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('Album properties');
 	fillField(dialog as ParentNode, 'Road trip 2026 -- rerun', 'album-title');
-	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
 		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH'
 	);
 	expect(patches).toHaveLength(1);
-	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe(
-		'Road trip 2026 -- rerun'
-	);
+	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('Road trip 2026 -- rerun');
 	expect(modal()).toBeNull();
 	unmount(page);
 	flushSync();
@@ -576,27 +570,21 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
-	expect(
-		rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)
-	).toEqual(['ivy@example.com', 'hopper@example.com']);
+	expect(rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)).toEqual([
+		'ivy@example.com',
+		'hopper@example.com'
+	]);
 	expect(rows[1]?.textContent).toContain('cannot sign in');
 
 	// The keyboard the specimen pins: the listbox drives, the loaded
 	// set highlights its first row, Enter adds the highlighted
 	// candidate, the picker stays open.
 	const listbox = document.body.querySelector<HTMLElement>('#audience-field-picker');
-	expect(
-		listbox?.querySelectorAll('[role="option"]')[0]?.getAttribute('aria-selected')
-	).toBe('true');
+	expect(listbox?.querySelectorAll('[role="option"]')[0]?.getAttribute('aria-selected')).toBe('true');
 	listbox?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 	flushSync();
-	const chipNamesAfter = Array.from(
-		dialog?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []
-	);
-	expect(chipNamesAfter.map((chip) => chip.textContent)).toEqual([
-		'grace@example.com',
-		'ivy@example.com'
-	]);
+	const chipNamesAfter = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []);
+	expect(chipNamesAfter.map((chip) => chip.textContent)).toEqual(['grace@example.com', 'ivy@example.com']);
 
 	// Esc closes the picker alone -- the dialog stays. (The portaled
 	// layer leaves the document with the close; the dialog's own DOM
@@ -606,14 +594,11 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	expect(document.body.querySelector('#audience-field-picker')).toBeNull();
 	expect(modal()).not.toBeNull();
 
-	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const puts = fetchMock.mock.calls.filter(
-		([input, init]) =>
-			String(input) === '/api/v1/albums/al1/audience' && init?.method === 'PUT'
+		([input, init]) => String(input) === '/api/v1/albums/al1/audience' && init?.method === 'PUT'
 	);
 	expect(puts).toHaveLength(1);
 	expect(modal()).toBeNull();
@@ -622,13 +607,8 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	// chips reseed from the refetched shares.
 	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
-	const chipNamesConverged = Array.from(
-		modal()?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []
-	);
-	expect(chipNamesConverged.map((chip) => chip.textContent)).toEqual([
-		'grace@example.com',
-		'ivy@example.com'
-	]);
+	const chipNamesConverged = Array.from(modal()?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []);
+	expect(chipNamesConverged.map((chip) => chip.textContent)).toEqual(['grace@example.com', 'ivy@example.com']);
 	unmount(page);
 	flushSync();
 });
@@ -654,9 +634,7 @@ test('a failed audience write keeps the dialog with the mapped error', async () 
 	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
 	rows[0]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 	flushSync();
-	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	expect(modal()?.textContent).toContain("You don't have permission to do this.");
@@ -675,9 +653,7 @@ test('a no-change save writes nothing at all', async () => {
 
 	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
-	buttonByText('Save changes', modal() as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save changes', modal() as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const writes = fetchMock.mock.calls.filter(
@@ -706,9 +682,7 @@ test('the directory properties dialog shows the read-only source row', async () 
 	flushSync();
 	const dialog = modal();
 	const source = dialog?.querySelector<HTMLElement>('.album-form__source');
-	expect(source?.querySelector('.album-form__source-path')?.textContent).toBe(
-		'/Volumes/Photos/family'
-	);
+	expect(source?.querySelector('.album-form__source-path')?.textContent).toBe('/Volumes/Photos/family');
 	// The honest tag: the source is pinned at creation.
 	expect(source?.querySelector('.album-form__source-tag')?.textContent).toBe('Source · fixed');
 	unmount(page);
@@ -752,9 +726,7 @@ test('the deletability row renders for a writable source and PATCHes the switch 
 	toggle!.checked = false;
 	toggle!.dispatchEvent(new Event('change', { bubbles: true }));
 	await settle();
-	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
@@ -802,7 +774,7 @@ test('a read-only source renders NO deletability row and NO wall selection (the 
 	flushSync();
 });
 
-test('the dialog\'s exclusion row writes the caller\'s own preference on save', async () => {
+test("the dialog's exclusion row writes the caller's own preference on save", async () => {
 	let preferenceSaved = false;
 	detailState = {
 		...detailState,
@@ -838,19 +810,13 @@ test('the dialog\'s exclusion row writes the caller\'s own preference on save', 
 	toggle!.checked = false;
 	toggle!.dispatchEvent(new Event('change', { bubbles: true }));
 	await settle();
-	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const puts = fetchMock.mock.calls.filter(
-		([input]) => String(input) === '/api/v1/albums/al1/timeline-preference'
-	);
+	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/albums/al1/timeline-preference');
 	expect(puts).toHaveLength(1);
 	// The badge and notice follow the converged preference.
-	expect(document.body.querySelector('.album-detail__badge--excluded')?.textContent?.trim()).toBe(
-		'Not in timeline'
-	);
+	expect(document.body.querySelector('.album-detail__badge--excluded')?.textContent?.trim()).toBe('Not in timeline');
 	expect(modal()).toBeNull();
 	unmount(page);
 	flushSync();
@@ -909,9 +875,7 @@ test('a locked album unlocks FIRST and alone: a mixed unlock-and-edit save write
 	dialog = modal();
 	expect(dialog?.querySelector<HTMLInputElement>('#album-title')?.disabled).toBe(false);
 	fillField(dialog as ParentNode, 'Family archive 2026', 'album-title');
-	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	expect(patches).toEqual([{ locked: false }, { title: 'Family archive 2026' }]);
@@ -922,7 +886,7 @@ test('a locked album unlocks FIRST and alone: a mixed unlock-and-edit save write
 	flushSync();
 });
 
-test('the dialog\'s lock row PATCHes locked; the badge and notice follow and the bar freezes honestly', async () => {
+test("the dialog's lock row PATCHes locked; the badge and notice follow and the bar freezes honestly", async () => {
 	let lockedNow = false;
 	const fetchMock = stubFetch(
 		detailRoutes({
@@ -950,9 +914,7 @@ test('the dialog\'s lock row PATCHes locked; the badge and notice follow and the
 	lockToggle!.checked = true;
 	lockToggle!.dispatchEvent(new Event('change', { bubbles: true }));
 	await settle();
-	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
@@ -960,9 +922,7 @@ test('the dialog\'s lock row PATCHes locked; the badge and notice follow and the
 	);
 	expect(patches).toHaveLength(1);
 	expect(document.body.querySelector('.album-detail__badge--locked')?.textContent?.trim()).toBe('Locked');
-	expect(document.body.querySelector('.album-detail__locked-notice')?.textContent).toContain(
-		'until you unlock it'
-	);
+	expect(document.body.querySelector('.album-detail__locked-notice')?.textContent).toContain('until you unlock it');
 	// The frozen faces: the cover disables and the delete hides until
 	// the unlock (the permission matrix pins deletion to the unlocked
 	// state) -- but the dialog opener stays LIVE, because it is the
@@ -993,16 +953,12 @@ test('the cover dialog picks from the grid members and PATCHes the pin', async (
 	expect(dialog?.getAttribute('aria-label')).toBe('Set the cover');
 	const options = Array.from(dialog?.querySelectorAll<HTMLButtonElement>('.cover-option') ?? []);
 	expect(options).toHaveLength(2);
-	expect(options[0]?.querySelector('img')?.getAttribute('src')).toBe(
-		'/api/v1/assets/a1/thumbnail?size=tile'
-	);
+	expect(options[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=tile');
 	// The current pin (none yet) marks nothing; picking a2 selects it.
 	options[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	expect(options[1]?.getAttribute('aria-pressed')).toBe('true');
-	buttonByText('Set cover', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Set cover', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
@@ -1157,9 +1113,7 @@ test('a failed rescan trigger surfaces the mapped error on the shared line', asy
 	// No run line (nothing started); the bar's shared error line
 	// carries the server's own answer.
 	expect(document.body.querySelector('[data-testid="album-rescan-progress"]')).toBeNull();
-	expect(document.body.querySelector('.album-detail__action-error')?.textContent).toContain(
-		'This album is locked.'
-	);
+	expect(document.body.querySelector('.album-detail__action-error')?.textContent).toContain('This album is locked.');
 	unmount(page);
 	flushSync();
 });
@@ -1182,9 +1136,7 @@ test('deleting the album confirms and leaves for the wall', async () => {
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('Delete this album?');
 	expect(dialog?.textContent).toContain('The photos themselves stay in your library.');
-	buttonByText('Delete album', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Delete album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const deletes = fetchMock.mock.calls.filter(
@@ -1214,13 +1166,9 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 	buttonByLabel('Keep out of timeline').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const puts = fetchMock.mock.calls.filter(
-		([input]) => String(input) === '/api/v1/albums/al1/timeline-preference'
-	);
+	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/albums/al1/timeline-preference');
 	expect(puts).toHaveLength(1);
-	expect(document.body.querySelector('.album-detail__badge--excluded')?.textContent?.trim()).toBe(
-		'Not in timeline'
-	);
+	expect(document.body.querySelector('.album-detail__badge--excluded')?.textContent?.trim()).toBe('Not in timeline');
 	expect(document.body.querySelector('.album-detail__excluded-notice')?.textContent).toContain(
 		'stay out of your timeline'
 	);
@@ -1232,7 +1180,7 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 
 test('an unknown or invisible album renders the not-found error with a retry', async () => {
 	let failing = true;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		if (String(input) === '/api/v1/albums/al1?limit=1') {
 			if (failing) {
 				return jsonResponse(404, { code: 'ALBUM_NOT_FOUND', message: 'no such album' });
@@ -1278,12 +1226,9 @@ test('SSE album.updated converges the metadata through the refetch', async () =>
 	await settle();
 
 	expect(
-		fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/albums/al1?limit=1'))
-			.length
+		fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/albums/al1?limit=1')).length
 	).toBe(initial + 1);
-	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe(
-		'Road trip 2026 -- rerun'
-	);
+	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('Road trip 2026 -- rerun');
 	unmount(page);
 	flushSync();
 });
@@ -1301,9 +1246,7 @@ test('SSE album.items-changed restarts the items walk', async () => {
 	await settle();
 
 	expect(
-		fetchMock.mock.calls.filter(([input]) =>
-			String(input).startsWith('/api/v1/assets/timeline?albumId=al1')
-		).length
+		fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/assets/timeline?albumId=al1')).length
 	).toBe(initial + 1);
 	unmount(page);
 	flushSync();
@@ -1311,7 +1254,7 @@ test('SSE album.items-changed restarts the items walk', async () => {
 
 test('SSE album.deleted renders the not-found error state', async () => {
 	let deleted = false;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		if (String(input) === '/api/v1/albums/al1?limit=1') {
 			if (deleted) {
 				return jsonResponse(404, { code: 'ALBUM_NOT_FOUND', message: 'no such album' });
@@ -1374,18 +1317,21 @@ test('leaving the page unsubscribes from the event stream', async () => {
 
 /** Boot the session store signed in as one of the fixture accounts. */
 async function bootDetailSession(userId: string, role: 'admin' | 'user'): Promise<void> {
-	vi.stubGlobal('fetch', vi.fn(async () =>
-		jsonResponse(200, [
-			{
-				id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
-				kind: 'WEB',
-				userId,
-				role,
-				deviceName: 'Mozilla/5.0 (test)',
-				createdAt: '2026-11-01T10:00:00Z',
-				lastSeenAt: '2026-11-02T10:00:00Z'
-			}
-		])
-	));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () =>
+			jsonResponse(200, [
+				{
+					id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
+					kind: 'WEB',
+					userId,
+					role,
+					deviceName: 'Mozilla/5.0 (test)',
+					createdAt: '2026-11-01T10:00:00Z',
+					lastSeenAt: '2026-11-02T10:00:00Z'
+				}
+			])
+		)
+	);
 	await probeSession();
 }

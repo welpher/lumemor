@@ -109,9 +109,7 @@ test('the back-to-content mark carries its icon', () => {
 	const app = mountLayout();
 	flushSync();
 
-	const back = document.body.querySelector<HTMLButtonElement>(
-		'button[aria-label="Back to your photos"]'
-	);
+	const back = document.body.querySelector<HTMLButtonElement>('button[aria-label="Back to your photos"]');
 	expect(back?.querySelector('svg.lucide-chevron-left')).not.toBeNull();
 	unmount(app);
 	flushSync();

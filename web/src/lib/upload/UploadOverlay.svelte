@@ -142,7 +142,11 @@
 		class="drophint fixed inset-0 z-(--z-scrim) flex items-center justify-center bg-[color-mix(in_srgb,var(--color-accent-soft)_40%,transparent)] border-3 border-dashed border-accent pointer-events-none"
 		aria-hidden="true"
 	>
-		<p class="py-4 px-7 rounded-overlay bg-card font-body font-bold text-[18px] leading-[1.4] text-accent-on shadow-overlay">{$_('upload_drop_hint')}</p>
+		<p
+			class="py-4 px-7 rounded-overlay bg-card font-body font-bold text-[18px] leading-[1.4] text-accent-on shadow-overlay"
+		>
+			{$_('upload_drop_hint')}
+		</p>
 	</div>
 {/if}
 
@@ -152,17 +156,28 @@
 		aria-label={$_('upload_queue_title')}
 	>
 		<header class="overlay__head flex items-baseline gap-2 pb-2">
-			<h2 class="overlay__title font-body font-bold text-[14px] leading-[1.4] text-text">{$_('upload_queue_title')}</h2>
+			<h2 class="overlay__title font-body font-bold text-[14px] leading-[1.4] text-text">
+				{$_('upload_queue_title')}
+			</h2>
 			{#if activeCount > 0}
-				<span class="overlay__count font-body font-normal text-[12px] leading-[1.4] text-text-soft tabular-nums">{$_('upload_active_count', { values: { count: activeCount } })}</span>
+				<span class="overlay__count font-body font-normal text-[12px] leading-[1.4] text-text-soft tabular-nums"
+					>{$_('upload_active_count', { values: { count: activeCount } })}</span
+				>
 			{/if}
 		</header>
 		<ul class="overlay__rows flex flex-col gap-2 overflow-y-auto [scrollbar-gutter:stable] list-none">
 			{#each items as item (item.id)}
-				<li class="row row--{item.state} grid grid-cols-[1fr_auto] [grid-template-areas:'main_close''bar_close''error_close''actions_close'] items-center gap-x-2 p-2 border border-border rounded-control">
+				<li
+					class="row row--{item.state} grid grid-cols-[1fr_auto] [grid-template-areas:'main_close''bar_close''error_close''actions_close'] items-center gap-x-2 p-2 border border-border rounded-control"
+				>
 					<div class="row__main flex flex-col min-w-0 [grid-area:main]">
-						<span class="row__name font-body font-semibold text-[13px] leading-[1.4] text-text truncate" title={item.fileName}>{item.fileName}</span>
-						<span class="row__state font-body font-normal text-[11px] leading-[1.4] text-text-soft">{stateLabel(item)}</span>
+						<span
+							class="row__name font-body font-semibold text-[13px] leading-[1.4] text-text truncate"
+							title={item.fileName}>{item.fileName}</span
+						>
+						<span class="row__state font-body font-normal text-[11px] leading-[1.4] text-text-soft"
+							>{stateLabel(item)}</span
+						>
 					</div>
 					{#if item.state === 'uploading' || item.state === 'processing'}
 						<!-- The determinate bar of an uploading row carries its
@@ -188,11 +203,19 @@
 							aria-valuemax={indeterminate ? undefined : 100}
 							aria-valuenow={indeterminate ? undefined : Math.round(item.progress * 100)}
 						>
-							<div class="row__bar-fill h-full bg-accent transition-[width] duration-(--motion-fast) ease-standard" style={`width:${Math.round(item.progress * 100)}%`}></div>
+							<div
+								class="row__bar-fill h-full bg-accent transition-[width] duration-(--motion-fast) ease-standard"
+								style={`width:${Math.round(item.progress * 100)}%`}
+							></div>
 						</div>
 					{/if}
 					{#if item.state === 'failed' && item.errorKey !== ''}
-						<p class="row__error [grid-area:error] mt-1.5 font-body font-normal text-[12px] leading-[1.45] text-danger-text" role="alert">{errorText(item.errorKey)}</p>
+						<p
+							class="row__error [grid-area:error] mt-1.5 font-body font-normal text-[12px] leading-[1.45] text-danger-text"
+							role="alert"
+						>
+							{errorText(item.errorKey)}
+						</p>
 					{/if}
 					<div class="row__actions [grid-area:actions] flex items-center gap-1.5 mt-1.5">
 						{#if item.state === 'failed' && uploadFormatSupported(item.fileName)}
@@ -239,36 +262,29 @@
 
 <!-- The three-state conflict decision (the pinned semantics): the
      Modal now carries the focus trap, so keyboard users stay inside. -->
-<Modal
-	open={conflictItem !== null}
-	title={$_('upload_conflict_title')}
-	onclose={() => closeUploadConflict()}
->
-	{#snippet children()}
-		{#if conflictItem !== null && conflictItem.asset !== null}
-			<p class="conflict__body font-body font-normal text-[15px] leading-[1.5] text-text whitespace-pre-line">
-				{$_('upload_conflict_body', { values: { name: conflictItem.fileName } })}
+<Modal open={conflictItem !== null} title={$_('upload_conflict_title')} onclose={() => closeUploadConflict()}>
+	{#if conflictItem !== null && conflictItem.asset !== null}
+		<p class="conflict__body font-body font-normal text-[15px] leading-[1.5] text-text whitespace-pre-line">
+			{$_('upload_conflict_body', { values: { name: conflictItem.fileName } })}
+		</p>
+		{#if conflictError !== ''}
+			<p
+				class="conflict__error mt-2.5 font-body font-normal text-[13px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{errorText(conflictError)}
 			</p>
-			{#if conflictError !== ''}
-				<p class="conflict__error mt-2.5 font-body font-normal text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(conflictError)}</p>
-			{/if}
 		{/if}
-	{/snippet}
+	{/if}
 	{#snippet footer()}
-		<Button
-			variant="ghost"
-			disabled={resolving}
-			onclick={() => closeUploadConflict()}><X size={20} aria-hidden="true" />{$_('common_cancel')}</Button
+		<Button variant="ghost" disabled={resolving} onclick={() => closeUploadConflict()}
+			><X size={20} aria-hidden="true" />{$_('common_cancel')}</Button
 		>
-		<Button
-			variant="danger"
-			disabled={resolving}
-			onclick={() => void chooseSaveAs()}><FilePlus size={20} aria-hidden="true" />{$_('upload_conflict_save_as')}</Button
+		<Button variant="danger" disabled={resolving} onclick={() => void chooseSaveAs()}
+			><FilePlus size={20} aria-hidden="true" />{$_('upload_conflict_save_as')}</Button
 		>
-		<Button
-			variant="primary"
-			disabled={resolving}
-			onclick={() => void chooseRestore()}><RotateCcw size={20} aria-hidden="true" />{$_('upload_conflict_restore')}</Button
+		<Button variant="primary" disabled={resolving} onclick={() => void chooseRestore()}
+			><RotateCcw size={20} aria-hidden="true" />{$_('upload_conflict_restore')}</Button
 		>
 	{/snippet}
 </Modal>

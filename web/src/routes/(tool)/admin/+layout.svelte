@@ -40,7 +40,10 @@
 </script>
 
 <div class="admin flex min-h-full items-stretch">
-	<nav class="admin-nav sticky top-0 flex flex-col gap-2 w-[200px] shrink-0 py-3 px-2 bg-card border-r border-border" aria-label={$_('admin_nav_label')}>
+	<nav
+		class="admin-nav sticky top-0 flex flex-col gap-2 w-[200px] shrink-0 py-3 px-2 bg-card border-r border-border"
+		aria-label={$_('admin_nav_label')}
+	>
 		<ul class="admin-nav__list flex flex-col gap-0.5 list-none">
 			{#each items as item (item.labelKey)}
 				<li>
@@ -72,7 +75,11 @@
 				</li>
 			{/each}
 		</ul>
-		<p class="admin-nav__footnote mt-2 mx-2 pt-2.5 border-t border-border font-body font-normal text-[12px] leading-[1.4] text-text-faint">{$_('nav_coming_later')}</p>
+		<p
+			class="admin-nav__footnote mt-2 mx-2 pt-2.5 border-t border-border font-body font-normal text-[12px] leading-[1.4] text-text-faint"
+		>
+			{$_('nav_coming_later')}
+		</p>
 	</nav>
 	<div class="admin-body flex-1 min-w-0 px-6 pt-4 pb-12">
 		{@render children()}

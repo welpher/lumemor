@@ -129,9 +129,7 @@ export async function probeSession(fetcher: typeof fetch = globalThis.fetch): Pr
 }
 
 /** The client outcome of a login attempt: success or the failure's i18n key. */
-export type LoginOutcome =
-	| { ok: true }
-	| { ok: false; errorKey: string; retryAfterSeconds: number | null };
+export type LoginOutcome = { ok: true } | { ok: false; errorKey: string; retryAfterSeconds: number | null };
 
 /**
  * POST /api/v1/auth/login with the form's credentials. Success (the

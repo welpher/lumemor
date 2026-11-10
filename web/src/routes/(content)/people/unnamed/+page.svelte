@@ -29,12 +29,7 @@
 	import { _ } from 'svelte-i18n';
 	import { untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import {
-		labelPerson,
-		listUnnamedPeople,
-		mergePeople,
-		type UnnamedClusterSummary
-	} from '$lib/api/people';
+	import { labelPerson, listUnnamedPeople, mergePeople, type UnnamedClusterSummary } from '$lib/api/people';
 	import { subscribeFaceEvents, subscribePersonEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
@@ -245,9 +240,7 @@
 				0
 			);
 			updated = updated.map((cluster) =>
-				cluster.clusterId === target.clusterId
-					? { ...cluster, faceCount: cluster.faceCount + gained }
-					: cluster
+				cluster.clusterId === target.clusterId ? { ...cluster, faceCount: cluster.faceCount + gained } : cluster
 			);
 		}
 		items = updated;
@@ -336,8 +329,8 @@
 	<div class="unnamed__toolbar flex justify-end items-center gap-3 mb-2">
 		<a
 			class="unnamed__people-link mr-auto px-2.5 py-1.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft no-underline rounded-control transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
-			href="/people"
-		>{$_('nav_people')}</a>
+			href="/people">{$_('nav_people')}</a
+		>
 		{#if items.length > 0}
 			<!-- The select-mode toggle is icon-only (the icon-first rule),
 			     named by its aria-label. -->
@@ -357,16 +350,25 @@
 	</div>
 
 	{#if firstLoad}
-		<p class="unnamed__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('people_unnamed_loading')}</p>
+		<p class="unnamed__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('people_unnamed_loading')}
+		</p>
 	{:else if settledEmpty}
-		<div class="unnamed__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+		<div
+			class="unnamed__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+		>
 			<h1 class="text-[22px] mb-2">{$_('people_unnamed_title')}</h1>
 			<p class="text-text-soft">{$_('people_unnamed_empty')}</p>
 		</div>
 	{:else if status === 'error' && items.length === 0}
-		<div class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void loadMore()}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else}
 		<div class="unnamed__grid grid grid-cols-[repeat(auto-fill,minmax(min(180px,100%),1fr))] gap-3">
@@ -376,7 +378,11 @@
 				     into the selection toggle (the timeline tile's
 				     interaction model). -->
 				<button
-					class="cluster-card relative flex flex-col overflow-hidden rounded-card bg-card border text-left cursor-pointer transition-[border-color] duration-(--motion-fast) ease-standard focus-visible:border-accent {selection.has(cluster.clusterId) ? 'border-accent' : 'border-border'}"
+					class="cluster-card relative flex flex-col overflow-hidden rounded-card bg-card border text-left cursor-pointer transition-[border-color] duration-(--motion-fast) ease-standard focus-visible:border-accent {selection.has(
+						cluster.clusterId
+					)
+						? 'border-accent'
+						: 'border-border'}"
 					class:cluster-card--selected={selection.has(cluster.clusterId)}
 					type="button"
 					aria-pressed={selectable ? selection.has(cluster.clusterId) : undefined}
@@ -399,18 +405,29 @@
 							     same-property conflicts, so an additive
 							     conditional would lose to the resting classes. -->
 							<span
-								class="cluster-card__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex items-center justify-center w-[26px] h-[26px] p-0 border rounded-full {selection.has(cluster.clusterId)
+								class="cluster-card__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex items-center justify-center w-[26px] h-[26px] p-0 border rounded-full {selection.has(
+									cluster.clusterId
+								)
 									? 'border-accent bg-accent text-accent-on'
 									: 'border-cream-text/35 bg-night text-transparent'}"
 								aria-hidden="true"
 							>
 								<svg viewBox="0 0 24 24" width="14" height="14" fill="none">
-									<path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+									<path
+										d="M5 12.5l4.5 4.5L19 7.5"
+										stroke="currentColor"
+										stroke-width="2.5"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
 								</svg>
 							</span>
 						{/if}
 					</span>
-					<span class="cluster-card__count block px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums">{$_('people_face_count', { values: { count: cluster.faceCount } })}</span>
+					<span
+						class="cluster-card__count block px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums"
+						>{$_('people_face_count', { values: { count: cluster.faceCount } })}</span
+					>
 				</button>
 			{/each}
 		</div>
@@ -419,15 +436,22 @@
 	{#if status === 'error' && items.length > 0}
 		<!-- A failed follow-up page while cards exist: the page stays,
 		     the retry re-runs the same cursor (an idempotent position). -->
-		<div class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void loadMore()}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{/if}
 
 	{#if !observerAvailable && hasMore && status === 'ready'}
 		<div class="unnamed__pager flex justify-center my-5">
-			<Button variant="ghost" onclick={() => void loadMore()}><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button>
+			<Button variant="ghost" onclick={() => void loadMore()}
+				><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button
+			>
 		</div>
 	{/if}
 
@@ -445,7 +469,11 @@
 		role="toolbar"
 		aria-label={$_('batch_selected_count', { values: { count: selection.size } })}
 	>
-		<p class="mergebar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap tabular-nums">{$_('batch_selected_count', { values: { count: selection.size } })}</p>
+		<p
+			class="mergebar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap tabular-nums"
+		>
+			{$_('batch_selected_count', { values: { count: selection.size } })}
+		</p>
 		<!-- The bar is a toolbar: its actions are icon-only (the
 		     icon-first rule), named by their aria-labels. -->
 		<IconButton

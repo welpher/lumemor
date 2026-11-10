@@ -34,34 +34,24 @@ export type TrashSettings = components['schemas']['TrashSettingsResponse'];
 export type TranscodingSettings = components['schemas']['TranscodingSettingsResponse'];
 
 /** The read's outcome: the settings document, or the failure's i18n key. */
-export type StorageSettingsResult =
-	| { ok: true; settings: StorageSettings }
-	| { ok: false; errorKey: string };
+export type StorageSettingsResult = { ok: true; settings: StorageSettings } | { ok: false; errorKey: string };
 
 /** The save's outcome: the saved settings, or the failure's i18n key. */
 export type StorageSettingsSaveResult =
-	| { ok: true; settings: StorageSettings }
-	| { ok: false; errorKey: string; reason?: string };
+	{ ok: true; settings: StorageSettings } | { ok: false; errorKey: string; reason?: string };
 
 /** The trash read's outcome: the settings, or the failure's i18n key. */
-export type TrashSettingsResult =
-	| { ok: true; settings: TrashSettings }
-	| { ok: false; errorKey: string };
+export type TrashSettingsResult = { ok: true; settings: TrashSettings } | { ok: false; errorKey: string };
 
 /** The trash save's outcome: the saved settings, or the failure's i18n key. */
-export type TrashSettingsSaveResult =
-	| { ok: true; settings: TrashSettings }
-	| { ok: false; errorKey: string };
+export type TrashSettingsSaveResult = { ok: true; settings: TrashSettings } | { ok: false; errorKey: string };
 
 /** The transcoding read's outcome: the settings, or the failure's i18n key. */
-export type TranscodingSettingsResult =
-	| { ok: true; settings: TranscodingSettings }
-	| { ok: false; errorKey: string };
+export type TranscodingSettingsResult = { ok: true; settings: TranscodingSettings } | { ok: false; errorKey: string };
 
 /** The transcoding save's outcome: the saved settings, or the failure's i18n key. */
 export type TranscodingSettingsSaveResult =
-	| { ok: true; settings: TranscodingSettings }
-	| { ok: false; errorKey: string };
+	{ ok: true; settings: TranscodingSettings } | { ok: false; errorKey: string };
 
 const SETTINGS_ENDPOINT = '/api/v1/admin/settings/storage';
 
@@ -94,9 +84,7 @@ async function adminErrorKey(response: Response): Promise<string> {
  * its sample render and the built-in presets. A 403 is the signed-in
  * non-admin caller (auth_forbidden), not a session failure.
  */
-export async function getStorageSettings(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<StorageSettingsResult> {
+export async function getStorageSettings(fetcher: typeof fetch = globalThis.fetch): Promise<StorageSettingsResult> {
 	let response: Response;
 	try {
 		response = await apiFetch(SETTINGS_ENDPOINT, undefined, fetcher);
@@ -222,9 +210,7 @@ function transcodingSettingsFrom(body: unknown): TranscodingSettings | null {
  * in days. A 403 is the signed-in non-admin caller
  * (auth_forbidden), not a session failure.
  */
-export async function getTrashSettings(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<TrashSettingsResult> {
+export async function getTrashSettings(fetcher: typeof fetch = globalThis.fetch): Promise<TrashSettingsResult> {
 	let response: Response;
 	try {
 		response = await apiFetch(TRASH_ENDPOINT, undefined, fetcher);
