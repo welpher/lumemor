@@ -57,6 +57,16 @@
 //     the selection.
 //  7. The tag joins the search vocabulary: the browse chips row
 //     carries the new tag with its honest count.
+//  8. The browse wall curates the per-user subset (the search
+//     walls' curation ruling: BOTH walls carry [favorite, tag] for
+//     EVERY role): the bar offers the favorite toggle and the tag
+//     affordance and never the ownership actions; the favorite
+//     batch lands, the bar's success arm clears, and a reload
+//     answers the server-held flip.
+//  9. The query wall carries the same subset through its own
+//     organ: the flat wall's check entry, the same subset bar, and
+//     the tag flow riding the opener over the captured id (the
+//     existing-tag path, the scene-6 tag).
 //
 // THE STATE HANDOFF: the scenes are serial (one stack, one story --
 // see playwright.config.ts). Scene 1 signs in and saves the storage
@@ -352,5 +362,77 @@ test.describe('the signed-in scenes', () => {
 		const chip = page.getByRole('button', { name: `Tags · ${TAG_NAME}` });
 		await expect(chip).toBeVisible();
 		await expect(chip.locator('.search-chip__count')).toHaveText('1');
+	});
+
+	test('scene 8: the browse wall curates the per-user subset -- favorite and tag, the favorite batch lands', async ({
+		page
+	}) => {
+		await page.goto('/search');
+		await expect(page.locator('.search-meta b')).toHaveText('3 results');
+
+		// The selection joins through the tile's hover check; the bar
+		// rises with the honest count.
+		await page.getByRole('checkbox', { name: `Select: ${PHOTO_GPS_NAME}`, exact: true }).click();
+		const bar = page.getByRole('toolbar', { name: '1 selected' });
+		await expect(bar).toBeVisible();
+
+		// THE SUBSET (the curation ruling: [favorite, tag] for EVERY
+		// role): the favorite toggle and the tag affordance render;
+		// the ownership actions stay off the search walls' bars -- the
+		// B4 domain is everyone's, the endpoint's owner-per-caller
+		// resolution included.
+		await expect(bar.getByRole('button', { name: 'Favorite', exact: true })).toBeVisible();
+		await expect(bar.getByRole('button', { name: 'Add tag', exact: true })).toBeVisible();
+		for (const absent of ['Hide', 'Unhide', 'Trash', 'Restore']) {
+			await expect(bar.getByRole('button', { name: absent, exact: true })).toHaveCount(0);
+		}
+
+		// The favorite batch lands: the optimistic flag is the final
+		// state (favorites publish no events) and the bar's success
+		// arm clears the selection.
+		await bar.getByRole('button', { name: 'Favorite', exact: true }).click();
+		await expect(page.getByRole('toolbar')).toHaveCount(0);
+		await expect(
+			page.getByRole('link', { name: PHOTO_GPS_NAME, exact: true }).locator('.tile__badge--favorite')
+		).toBeAttached();
+
+		// The server holds the flip: a reload answers the favorited
+		// item (the wall's fresh page owns the truth).
+		await page.reload();
+		await expect(page.locator('.search-meta b')).toHaveText('3 results');
+		await expect(
+			page.getByRole('link', { name: PHOTO_GPS_NAME, exact: true }).locator('.tile__badge--favorite')
+		).toBeAttached();
+	});
+
+	test('scene 9: the query wall carries the same subset through its own organ', async ({ page }) => {
+		await page.goto('/timeline');
+		await page.locator('.topbar-search').fill(QUERY);
+		await page.locator('.topbar-search').press('Enter');
+		await expect(page.locator('.flat-wall')).toBeVisible();
+
+		// The selection joins through the FLAT wall's own check
+		// affordance (the query wall's selection organ); the same
+		// subset bar rises over the rank order.
+		await page.getByRole('checkbox', { name: `Select: ${PHOTO_FACE_NAME}`, exact: true }).click();
+		const bar = page.getByRole('toolbar', { name: '1 selected' });
+		await expect(bar).toBeVisible();
+		await expect(bar.getByRole('button', { name: 'Favorite', exact: true })).toBeVisible();
+		for (const absent of ['Hide', 'Unhide', 'Trash', 'Restore']) {
+			await expect(bar.getByRole('button', { name: absent, exact: true })).toHaveCount(0);
+		}
+
+		// The tag flow rides the opener over the captured id: the
+		// existing-tag path tags the selection with the scene-6 tag,
+		// the honest report lands, Done clears.
+		await bar.getByRole('button', { name: 'Add tag', exact: true }).click();
+		const dialog = page.getByRole('dialog', { name: 'Add tag', exact: true });
+		await expect(dialog).toBeVisible();
+		await dialog.getByLabel('Existing tag').check();
+		await dialog.getByLabel('Tag', { exact: true }).selectOption({ label: TAG_NAME });
+		await dialog.getByRole('button', { name: 'Add tag', exact: true }).click();
+		await expect(dialog.getByRole('status')).toHaveText('Added 1, skipped 0.');
+		await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+		await expect(page.getByRole('toolbar')).toHaveCount(0);
 	});
 });

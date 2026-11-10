@@ -27,11 +27,18 @@
 // answer lands; a failure keeps the last good state silently),
 // collapsed single-flight: a burst of events costs at most one
 // trailing re-execution.
+//
+// THE WALLS' BATCH RUNNER (the search walls' curation ruling: BOTH
+// walls carry the per-user subset -- favorite + tag, every role):
+// `runBatch` runs the POST /assets/batch write for the walls'
+// selected ids with the optimistic favorite flip and its rollback;
+// the tag flow rides the page's dialog, never the batch endpoint.
 
 import { get, writable } from 'svelte/store';
 import { apiFetch, errorEnvelope } from '$lib/auth/api';
+import { runAssetBatch } from './assets';
 import type { AssetEvent } from '$lib/events';
-import type { TimelineItem } from './timeline';
+import type { BatchAction, BatchOutcome, TimelineItem } from './timeline';
 import type { components } from '../../../../openapi/generated/web/api';
 
 /** One result tile, the timeline's exact item shape (the contract reuses it). */
@@ -120,6 +127,17 @@ export type SearchClient = {
 	applyEvent: (event: AssetEvent) => void;
 	/** Drop the state and park idle (tests and future route resets). */
 	reset: () => void;
+	/**
+	 * Run one curation action over selected ids: the search walls'
+	 * batch runner (the per-user subset). The optimistic favorite
+	 * flip first (favorites publish no events, so the optimistic
+	 * flag is the final state -- the timeline runner's reasoning),
+	 * the POST, and a rollback of the affected rows from the
+	 * pre-action snapshot when it fails; every other action's
+	 * convergence rides the SSE re-execution this client already
+	 * applies.
+	 */
+	runBatch: (action: BatchAction, ids: string[]) => Promise<BatchOutcome>;
 };
 
 /** The contract's default page size. */
@@ -681,11 +699,46 @@ export function createSearchClient(options: { fetcher?: typeof fetch; limit?: nu
 		});
 	}
 
+	async function runBatch(action: BatchAction, ids: string[]): Promise<BatchOutcome> {
+		if (ids.length === 0) {
+			return { ok: false, errorKey: 'internal' };
+		}
+		const snapshot = get(store).items;
+		if (action === 'favorite' || action === 'unfavorite') {
+			// The optimistic flip first: favorites are per-user state
+			// and publish no events, so the optimistic flag IS the
+			// final state (the timeline runner's reasoning); the SSE
+			// re-execution confirms nothing here.
+			const favorite = action === 'favorite';
+			const selected = new Set(ids);
+			store.update((state) => ({
+				...state,
+				items: state.items.map((item) => (selected.has(item.id) ? { ...item, isFavorite: favorite } : item))
+			}));
+		}
+		const outcome = await runAssetBatch(action, ids, fetcher);
+		if (!outcome.ok) {
+			// The affected rows restore their pre-action objects -- a
+			// per-id restore, so any convergence the failure interval
+			// brought stays (nothing was removed: the flip is the
+			// whole optimistic arm).
+			const doomed = new Set(ids);
+			const before = new Map(snapshot.filter((item) => doomed.has(item.id)).map((item) => [item.id, item]));
+			store.update((state) => ({
+				...state,
+				items: state.items.map((item) => before.get(item.id) ?? item)
+			}));
+			return outcome;
+		}
+		return outcome;
+	}
+
 	return {
 		subscribe: store.subscribe,
 		run,
 		loadMore,
 		applyEvent,
-		reset
+		reset,
+		runBatch
 	};
 }
