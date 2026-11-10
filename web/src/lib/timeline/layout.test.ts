@@ -46,10 +46,7 @@ function itemAt(id: string, aspect: number): TimelineItem {
 
 /** The sum of a row's tile widths plus its seams. */
 function rowExtent(row: { tiles: { width: number }[] }): number {
-	return (
-		row.tiles.reduce((total, tile) => total + tile.width, 0) +
-		WALL_TILE_SEAM * (row.tiles.length - 1)
-	);
+	return row.tiles.reduce((total, tile) => total + tile.width, 0) + WALL_TILE_SEAM * (row.tiles.length - 1);
 }
 
 const WIDTH = WALL_MAX_WIDTH;
@@ -71,7 +68,10 @@ describe('packRows: row math', () => {
 	test('a justified row fills the container exactly at true aspects', () => {
 		// Eight 3:2 landscape tiles: the floor closes the row after the
 		// fourth (the fifth would drop it below 216 * 0.75 = 162px).
-		const rows = packRows(Array.from({ length: 8 }, (_, i) => itemAt(`t${i}`, 1.5)), WIDTH);
+		const rows = packRows(
+			Array.from({ length: 8 }, (_, i) => itemAt(`t${i}`, 1.5)),
+			WIDTH
+		);
 		expect(rows).toHaveLength(2);
 		for (const row of rows) {
 			expect(row.tiles).toHaveLength(4);
@@ -94,7 +94,10 @@ describe('packRows: row math', () => {
 		// ((1200 - 4*2) / 5 = 238.4, still legal) ... the seventh is
 		// ((1200 - 6*3) / 7 = 168.86, legal) and the eighth is
 		// ((1200 - 7*3) / 8 = 147.4 -- below the floor).
-		const rows = packRows(Array.from({ length: 8 }, (_, i) => itemAt(`t${i}`, 1)), WIDTH);
+		const rows = packRows(
+			Array.from({ length: 8 }, (_, i) => itemAt(`t${i}`, 1)),
+			WIDTH
+		);
 		expect(rows.map((row) => row.tiles.length)).toEqual([7, 1]);
 		// The closed row's height is the exact fill of its seven tiles.
 		expect(rows[0]?.height).toBeCloseTo((1200 - 6 * WALL_TILE_SEAM) / 7, 9);
@@ -130,7 +133,10 @@ describe('packRows: row math', () => {
 	test('a dense tail row keeps its natural exact fill', () => {
 		// Four 3:2 tiles: the row closes only as the group's tail with
 		// natural height 198.5 -- inside the band, no clamp.
-		const rows = packRows(Array.from({ length: 4 }, (_, i) => itemAt(`t${i}`, 1.5)), WIDTH);
+		const rows = packRows(
+			Array.from({ length: 4 }, (_, i) => itemAt(`t${i}`, 1.5)),
+			WIDTH
+		);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.height).toBeCloseTo(1194 / 6, 9);
 		expect(rowExtent(rows[0] as never)).toBeCloseTo(WIDTH, 9);
@@ -160,9 +166,7 @@ describe('packRows: row math', () => {
 });
 
 describe('packRows: determinism and resize', () => {
-	const items = Array.from({ length: 19 }, (_, i) =>
-		itemAt(`t${i}`, [1.5, 0.75, 1, 2.4][i % 4] as number)
-	);
+	const items = Array.from({ length: 19 }, (_, i) => itemAt(`t${i}`, [1.5, 0.75, 1, 2.4][i % 4] as number));
 
 	test('the pack is a pure function: the same inputs answer the same rows', () => {
 		expect(packRows(items, WIDTH)).toEqual(packRows(items, WIDTH));
@@ -180,10 +184,7 @@ describe('packRows: determinism and resize', () => {
 				expect(row.height).toBe(WALL_ROW_TARGET);
 			}
 			for (const tile of row.tiles) {
-				expect(tile.width / row.height).toBeCloseTo(
-					tile.item.width / tile.item.height,
-					7
-				);
+				expect(tile.width / row.height).toBeCloseTo(tile.item.width / tile.item.height, 7);
 			}
 		}
 	});

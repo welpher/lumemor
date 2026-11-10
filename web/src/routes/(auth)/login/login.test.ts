@@ -14,11 +14,7 @@ import { goto } from '$app/navigation';
 
 type LoginData = { setupRequired: boolean; redirectTo: string };
 
-function jsonResponse(
-	status: number,
-	body: unknown,
-	headers: Record<string, string> = {}
-): Response {
+function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: { 'Content-Type': 'application/json', ...headers }
@@ -168,9 +164,7 @@ test('retrying during a countdown clears the hint on a different outcome', async
 	fillField('#login-password', 'again');
 	submitForm();
 	await settle();
-	expect(document.body.querySelector('.login__hint')?.textContent).toBe(
-		'You can try again in 30 seconds.'
-	);
+	expect(document.body.querySelector('.login__hint')?.textContent).toBe('You can try again in 30 seconds.');
 
 	// The user retries before the window ends and the server now
 	// answers a plain credential failure: the stale countdown must be
@@ -216,15 +210,16 @@ test('a network failure maps to the generic internal message', async () => {
 	const page = mountLogin();
 	flushSync();
 
-	vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('network down'))));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Promise.reject(new TypeError('network down')))
+	);
 	fillField('#login-email', 'ada@example.test');
 	fillField('#login-password', 'x');
 	submitForm();
 	await settle();
 
-	expect(document.body.querySelector('.login__error')?.textContent).toBe(
-		'Something went wrong. Please try again.'
-	);
+	expect(document.body.querySelector('.login__error')?.textContent).toBe('Something went wrong. Please try again.');
 	unmount(page);
 	flushSync();
 });
@@ -237,7 +232,10 @@ test('the submit button disables while the request is in flight', async () => {
 	const gate = new Promise<Response>((resolve) => {
 		release = resolve;
 	});
-	vi.stubGlobal('fetch', vi.fn(async () => gate));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => gate)
+	);
 	fillField('#login-email', 'ada@example.test');
 	fillField('#login-password', 'x');
 
@@ -301,7 +299,6 @@ test('the wizard handoff sign-in lands on the model download step', async () => 
 	unmount(page);
 	flushSync();
 });
-
 
 test('a deep-link default target is /timeline', async () => {
 	const page = mountLogin();

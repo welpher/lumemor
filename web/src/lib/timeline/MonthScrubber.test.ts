@@ -102,7 +102,17 @@ test('dragging the rail scrubs continuously by pointer height, and the trailing 
 
 	const element = rail();
 	element.getBoundingClientRect = () =>
-		({ top: 0, bottom: 100, height: 100, left: 0, right: 20, width: 20, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+		({
+			top: 0,
+			bottom: 100,
+			height: 100,
+			left: 0,
+			right: 20,
+			width: 20,
+			x: 0,
+			y: 0,
+			toJSON: () => ({})
+		}) as DOMRect;
 
 	const stops = document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop');
 
@@ -134,7 +144,17 @@ test('a pure tap (press and release without moving) jumps to the month', () => {
 
 	const element = rail();
 	element.getBoundingClientRect = () =>
-		({ top: 0, bottom: 100, height: 100, left: 0, right: 20, width: 20, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+		({
+			top: 0,
+			bottom: 100,
+			height: 100,
+			left: 0,
+			right: 20,
+			width: 20,
+			x: 0,
+			y: 0,
+			toJSON: () => ({})
+		}) as DOMRect;
 
 	const stops = document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop');
 

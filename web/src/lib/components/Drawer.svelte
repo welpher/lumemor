@@ -62,9 +62,7 @@
 	// The landing is the users page -- the first live management
 	// section; /admin itself has no index route.
 	const adminEntry = $derived(
-		sessionRole() === 'admin'
-			? { labelKey: 'nav_admin', href: '/admin/users', icon: Shield }
-			: null
+		sessionRole() === 'admin' ? { labelKey: 'nav_admin', href: '/admin/users', icon: Shield } : null
 	);
 
 	type Props = {
@@ -96,7 +94,10 @@
 		role="presentation"
 		onclick={close}
 	></div>
-	<nav class="drawer__panel fixed top-0 bottom-0 left-0 z-(--z-drawer) flex flex-col gap-2 w-[min(320px,85vw)] px-3 py-4 box-content bg-card border-r border-border shadow-overlay" aria-label={$_('nav_label')}>
+	<nav
+		class="drawer__panel fixed top-0 bottom-0 left-0 z-(--z-drawer) flex flex-col gap-2 w-[min(320px,85vw)] px-3 py-4 box-content bg-card border-r border-border shadow-overlay"
+		aria-label={$_('nav_label')}
+	>
 		<ul class="drawer__list flex flex-col gap-0.5 list-none">
 			{#each items as item (item.labelKey)}
 				<li>
@@ -153,7 +154,11 @@
 				</li>
 			</ul>
 		{/if}
-		<p class="drawer__footnote mt-auto mx-2 pt-3 border-t border-border font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('nav_coming_later')}</p>
+		<p
+			class="drawer__footnote mt-auto mx-2 pt-3 border-t border-border font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+		>
+			{$_('nav_coming_later')}
+		</p>
 	</nav>
 {/if}
 

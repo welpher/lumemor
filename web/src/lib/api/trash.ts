@@ -22,9 +22,7 @@ import type { components } from '../../../../openapi/generated/web/api';
 export type TrashItem = components['schemas']['TrashItem'];
 
 /** The listing's outcome: the bounded items, or the failure's i18n key. */
-export type TrashListResult =
-	| { ok: true; items: TrashItem[] }
-	| { ok: false; errorKey: string };
+export type TrashListResult = { ok: true; items: TrashItem[] } | { ok: false; errorKey: string };
 
 /** Structurally validate a listing body; null when it is not one. */
 function trashListFrom(body: unknown): TrashItem[] | null {
@@ -52,9 +50,7 @@ function trashListFrom(body: unknown): TrashItem[] | null {
  * first, bounded (the contract caps the list at 200 -- there is no
  * pagination).
  */
-export async function fetchTrash(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<TrashListResult> {
+export async function fetchTrash(fetcher: typeof fetch = globalThis.fetch): Promise<TrashListResult> {
 	let response: Response;
 	try {
 		response = await apiFetch('/api/v1/trash', undefined, fetcher);
@@ -94,11 +90,7 @@ export async function restoreTrashedAsset(
 ): Promise<{ ok: true } | { ok: false; errorKey: string }> {
 	let response: Response;
 	try {
-		response = await apiFetch(
-			`/api/v1/trash/${encodeURIComponent(id)}/restore`,
-			{ method: 'POST' },
-			fetcher
-		);
+		response = await apiFetch(`/api/v1/trash/${encodeURIComponent(id)}/restore`, { method: 'POST' }, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}

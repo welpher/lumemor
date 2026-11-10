@@ -222,7 +222,10 @@ beforeEach(async () => {
 	wallState = [myPhotos, roadTrip, familyArchive, quickPicks, graceHighlights];
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
@@ -240,21 +243,15 @@ test('the wall sections the albums off the callerRole: own first, shared after',
 	const ownSection = document.body.querySelector('.albums__own-section');
 	const sharedSection = document.body.querySelector('.albums__shared-section');
 	expect(ownSection?.querySelector('.albums__section-title')?.textContent).toBe('Your albums');
-	expect(sharedSection?.querySelector('.albums__section-title')?.textContent).toBe(
-		'Shared with you'
-	);
+	expect(sharedSection?.querySelector('.albums__section-title')?.textContent).toBe('Shared with you');
 
 	const ownCards = Array.from(ownSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
 	const sharedCards = Array.from(sharedSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
 	expect(ownCards).toHaveLength(4);
 	expect(sharedCards).toHaveLength(1);
-	expect(sharedCards[0]?.querySelector('.album-card__title')?.textContent).toBe(
-		"Grace's highlights"
-	);
+	expect(sharedCards[0]?.querySelector('.album-card__title')?.textContent).toBe("Grace's highlights");
 	// The honest attribution of another account's album.
-	expect(sharedCards[0]?.querySelector('.album-card__owner')?.textContent).toBe(
-		'Shared by grace@example.com'
-	);
+	expect(sharedCards[0]?.querySelector('.album-card__owner')?.textContent).toBe('Shared by grace@example.com');
 	// Cards link into the album's detail.
 	expect(ownCards[1]?.getAttribute('href')).toBe('/albums/al1');
 	expect(sharedCards[0]?.getAttribute('href')).toBe('/albums/al4');
@@ -282,13 +279,8 @@ test('the pinned sync card leads the own group with the localized display name',
 	const syncCoverImgs = Array.from(ownCards[0]?.querySelectorAll('img') ?? []).map(
 		(img) => img.getAttribute('src') ?? ''
 	);
-	expect(syncCoverImgs).toEqual([
-		'/api/v1/assets/s1/thumbnail?size=tile',
-		'/api/v1/assets/s2/thumbnail?size=tile'
-	]);
-	expect(
-		ownCards[0]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--split')
-	).toBe(true);
+	expect(syncCoverImgs).toEqual(['/api/v1/assets/s1/thumbnail?size=tile', '/api/v1/assets/s2/thumbnail?size=tile']);
+	expect(ownCards[0]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--split')).toBe(true);
 	// No badges: no lock, no share, no exclusion -- the default
 	// album is system-managed and never excludable.
 	expect(ownCards[0]?.querySelector('.album-card__badge--locked')).toBeNull();
@@ -327,10 +319,7 @@ test('the collage cover renders per the member count: 4 quad, 2 split, 1 full-bl
 	expect(cards()[3]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--single')).toBe(true);
 
 	// Two covers: the split pair.
-	expect(coverImgs(4)).toEqual([
-		'/api/v1/assets/g1/thumbnail?size=tile',
-		'/api/v1/assets/g2/thumbnail?size=tile'
-	]);
+	expect(coverImgs(4)).toEqual(['/api/v1/assets/g1/thumbnail?size=tile', '/api/v1/assets/g2/thumbnail?size=tile']);
 	expect(cards()[4]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--split')).toBe(true);
 
 	unmount(page);
@@ -366,9 +355,7 @@ test('the badges ride the cards: locked, shared, excluded', async () => {
 	expect(archiveCard?.querySelector('.album-card__badge--locked')?.textContent?.trim()).toBe('Locked');
 	// The exclusion badge rides the excludable cards only: the own
 	// directory item here, and every shared item.
-	expect(archiveCard?.querySelector('.album-card__badge--excluded')?.textContent?.trim()).toBe(
-		'Not in timeline'
-	);
+	expect(archiveCard?.querySelector('.album-card__badge--excluded')?.textContent?.trim()).toBe('Not in timeline');
 
 	const sharedCard = cards()[4];
 	expect(sharedCard?.querySelector('.album-card__badge--excluded')).toBeNull();
@@ -382,7 +369,7 @@ test('the badges ride the cards: locked, shared, excluded', async () => {
 	flushSync();
 });
 
-test('an empty wall renders the empty state; the create affordance is the admin\'s alone (E6)', async () => {
+test("an empty wall renders the empty state; the create affordance is the admin's alone (E6)", async () => {
 	// An admin's empty wall carries the creation entry.
 	await bootWallSession('u1', 'admin');
 	wallState = [];
@@ -406,9 +393,9 @@ test('an empty wall renders the empty state; the create affordance is the admin\
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
 	const memberPage = mountPage();
 	await settle();
-	const memberButton = Array.from(
-		document.body.querySelectorAll<HTMLButtonElement>('button')
-	).find((button) => button.textContent?.trim() === 'New album');
+	const memberButton = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find(
+		(button) => button.textContent?.trim() === 'New album'
+	);
 	expect(memberButton).toBeUndefined();
 	unmount(memberPage);
 	flushSync();
@@ -473,9 +460,7 @@ test('the create dialog POSTs the title, path and audience; the refetched wall g
 	expect(fields.map((field) => field.id)).toEqual(['create-album-title', 'create-album-path']);
 	fillField(dialog as ParentNode, 'Weekend in the hills', 'create-album-title');
 	fillField(dialog as ParentNode, '/Volumes/Photos/hills', 'create-album-path');
-	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(
@@ -489,9 +474,7 @@ test('the create dialog POSTs the title, path and audience; the refetched wall g
 	});
 	// The refetch placed the created card after the pinned sync card,
 	// at the head of the curated own group.
-	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe(
-		'Weekend in the hills'
-	);
+	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe('Weekend in the hills');
 	expect(cards()[0]?.querySelector('.album-card__title')?.textContent).toBe('My photos');
 	expect(modal()).toBeNull();
 	unmount(page);
@@ -530,9 +513,10 @@ test('the create dialog carries the picked audience into the POST', async () => 
 	// document.body, outside the dialog's DOM) -- document-level
 	// selectors find them.
 	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
-	expect(
-		rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)
-	).toEqual(['grace@example.com', 'ivy@example.com']);
+	expect(rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)).toEqual([
+		'grace@example.com',
+		'ivy@example.com'
+	]);
 	rows[1]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 	flushSync();
 
@@ -541,9 +525,7 @@ test('the create dialog carries the picked audience into the POST', async () => 
 	expect(dialog?.querySelector('.audience-field__chip')?.textContent).toContain('ivy@example.com');
 	expect(dialog?.textContent).not.toContain('Only you');
 
-	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(
@@ -565,7 +547,11 @@ test('the create dialog surfaces the honest skipped report before closing', asyn
 	// the report names what did not (the picked account turned
 	// unusable server-side between the listing and the write).
 	await bootWallSession('u0', 'admin');
-	const created = { ...summary('al-new', { title: 'Family archive', type: 'directory' }), skipped: [{ userId: 'u1', reason: 'invalid_account' }], sourceWritable: true };
+	const created = {
+		...summary('al-new', { title: 'Family archive', type: 'directory' }),
+		skipped: [{ userId: 'u1', reason: 'invalid_account' }],
+		sourceWritable: true
+	};
 	const fetchMock = stubFetch(
 		wallRoutes({
 			'/api/v1/albums': (init?: RequestInit) => {
@@ -593,9 +579,7 @@ test('the create dialog surfaces the honest skipped report before closing', asyn
 	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
 	rows[0]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 	flushSync();
-	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	// The write landed (the refetch converged the wall behind), and
@@ -617,7 +601,11 @@ test('a read-only source lands as a created album with the honest feedback, neve
 	// holds the honest note until acknowledged -- the same report
 	// face the skipped list rides.
 	await bootWallSession('u1', 'admin');
-	const created = { ...summary('al-new', { title: 'Vault archive', type: 'directory' }), skipped: [], sourceWritable: false };
+	const created = {
+		...summary('al-new', { title: 'Vault archive', type: 'directory' }),
+		skipped: [],
+		sourceWritable: false
+	};
 	const fetchMock = stubFetch(
 		wallRoutes({
 			'/api/v1/albums': (init?: RequestInit) => {
@@ -638,9 +626,7 @@ test('a read-only source lands as a created album with the honest feedback, neve
 	const dialog = modal();
 	fillField(dialog as ParentNode, 'Vault archive', 'create-album-title');
 	fillField(dialog as ParentNode, '/mnt/readonly/archive', 'create-album-path');
-	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	// The write landed and the wall converged; the dialog holds the
@@ -678,9 +664,7 @@ test('the create dialog routes a path-matrix failure under the path field', asyn
 	const dialog = modal();
 	fillField(dialog as ParentNode, 'Weekend in the hills', 'create-album-title');
 	fillField(dialog as ParentNode, '/Volume/Photos/hills', 'create-album-path');
-	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	// The specimen's state four: the failure line sits under the path
@@ -709,9 +693,7 @@ test('an invalid create draft never leaves the page', async () => {
 	// Whitespace title: the local 1-64 rune bound refuses it.
 	fillField(dialog as ParentNode, '   ', 'create-album-title');
 	fillField(dialog as ParentNode, '/Volumes/Photos/x', 'create-album-path');
-	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(
@@ -723,14 +705,10 @@ test('an invalid create draft never leaves the page', async () => {
 	// A relative path: the local absolute-path mirror refuses it.
 	fillField(dialog as ParentNode, 'A title', 'create-album-title');
 	fillField(dialog as ParentNode, 'photos/family', 'create-album-path');
-	buttonByText('Create album', dialog as ParentNode).dispatchEvent(
-		new MouseEvent('click', { bubbles: true })
-	);
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	expect(posts).toHaveLength(0);
-	expect(dialog?.querySelector('.path-completion__failure')?.textContent).toContain(
-		'Pick the source folder'
-	);
+	expect(dialog?.querySelector('.path-completion__failure')?.textContent).toContain('Pick the source folder');
 	unmount(page);
 	flushSync();
 });

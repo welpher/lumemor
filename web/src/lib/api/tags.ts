@@ -29,9 +29,7 @@ export type TagCreateResult = { ok: true; tag: TagSummary } | { ok: false; error
 export type TagAssignReport = { added: number; skipped: number };
 
 /** The assignment add's outcome. */
-export type TagAssignResult =
-	| { ok: true; report: TagAssignReport }
-	| { ok: false; errorKey: string };
+export type TagAssignResult = { ok: true; report: TagAssignReport } | { ok: false; errorKey: string };
 
 /** The error-code i18n key of one failed response (the repo convention). */
 async function errorKeyFrom(response: Response): Promise<string> {
@@ -114,10 +112,7 @@ export async function listTags(fetcher: typeof fetch = globalThis.fetch): Promis
  * name is trimmed server-side; the client passes it through as
  * typed (the dialog pre-trims).
  */
-export async function createTag(
-	name: string,
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<TagCreateResult> {
+export async function createTag(name: string, fetcher: typeof fetch = globalThis.fetch): Promise<TagCreateResult> {
 	let response: Response;
 	try {
 		response = await apiFetch(

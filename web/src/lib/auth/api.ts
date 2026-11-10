@@ -46,11 +46,7 @@ export async function apiFetch(
 export async function errorEnvelope(response: Response): Promise<ApiErrorEnvelope | null> {
 	try {
 		const body: unknown = await response.json();
-		if (
-			body !== null &&
-			typeof body === 'object' &&
-			typeof (body as ApiErrorEnvelope).code === 'string'
-		) {
+		if (body !== null && typeof body === 'object' && typeof (body as ApiErrorEnvelope).code === 'string') {
 			return body as ApiErrorEnvelope;
 		}
 	} catch {

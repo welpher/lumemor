@@ -60,7 +60,7 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-test('the layer portals to the body, anchored under the trigger with the trigger\'s width', () => {
+test("the layer portals to the body, anchored under the trigger with the trigger's width", () => {
 	viewport(768);
 	anchorRect({ left: 100, top: 400, bottom: 500, width: 300 });
 	layerHeight(200);
@@ -74,10 +74,9 @@ test('the layer portals to the body, anchored under the trigger with the trigger
 	expect(node.style.left).toBe('100px');
 	expect(node.style.width).toBe('300px');
 	expect(node.style.top).toBe('508px');
-
 });
 
-test('a layer that would overflow the viewport\'s bottom flips up when above is the roomier side', () => {
+test("a layer that would overflow the viewport's bottom flips up when above is the roomier side", () => {
 	viewport(768);
 	// The anchor sits near the bottom: below holds 52px, above 584px.
 	anchorRect({ left: 40, top: 600, bottom: 700, width: 300 });
@@ -88,7 +87,6 @@ test('a layer that would overflow the viewport\'s bottom flips up when above is 
 	// The flip: the layer's bottom edge rides the anchor's top,
 	// the same gap away.
 	expect(node.style.top).toBe(`${600 - 8 - 200}px`);
-
 });
 
 test('a short layer stays below even near the bottom (the flip needs the overflow AND the roomier side)', () => {
@@ -100,7 +98,6 @@ test('a short layer stays below even near the bottom (the flip needs the overflo
 
 	// 700 + 8 + 40 = 748 < 768 - 8: below holds, no flip.
 	expect(node.style.top).toBe('708px');
-
 });
 
 test('long lists are bounded: the max-height fits the roomier side, hard-capped', () => {
@@ -121,7 +118,6 @@ test('long lists are bounded: the max-height fits the roomier side, hard-capped'
 	anchorRect({ left: 40, top: 130, bottom: 140, width: 300 });
 	window.dispatchEvent(new Event('resize'));
 	expect(node.style.maxHeight).toBe('120px');
-
 });
 
 test('scrolls and resizes re-place the layer; the anchor is read live', () => {
@@ -146,7 +142,6 @@ test('scrolls and resizes re-place the layer; the anchor is read live', () => {
 	anchorRect({ left: 100, top: 300, bottom: 400, width: 300 });
 	window.dispatchEvent(new Event('resize'));
 	expect(node.style.top).toBe('408px');
-
 });
 
 test('destroy removes the listeners and the portaled node', () => {

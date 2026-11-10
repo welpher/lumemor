@@ -259,9 +259,10 @@ test('a trashed answer parks the row and its restore resolves through the batch 
 	);
 	await rig.queue.resolveByRestore(item.id);
 	expect((rig.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe('/api/v1/assets/batch');
-	expect(JSON.parse(String((rig.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]?.body))).toEqual(
-		{ action: 'restore', ids: ['asset-trash'] }
-	);
+	expect(JSON.parse(String((rig.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]?.body))).toEqual({
+		action: 'restore',
+		ids: ['asset-trash']
+	});
 	expect(rig.queue.items()[0]?.state).toBe('done');
 	// The dialog closed on success.
 	expect(rig.queue.conflictItemId()).toBeNull();
@@ -324,9 +325,7 @@ test('save-as permanently deletes the trashed copy and re-uploads the same File'
 	(first as StubXHR).answer(200, assetBody('asset-trash', 'trashed'));
 	const item = rig.queue.items()[0] as UploadItem;
 
-	rig.fetch.mockImplementation(
-		vi.fn(async () => new Response(null, { status: 204 }))
-	);
+	rig.fetch.mockImplementation(vi.fn(async () => new Response(null, { status: 204 })));
 	await rig.queue.resolveBySaveAs(item.id);
 	const calls = (rig.fetch as ReturnType<typeof vi.fn>).mock.calls;
 	expect(calls).toHaveLength(1);

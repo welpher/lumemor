@@ -32,7 +32,10 @@ const sessionsBody = [
 const loadEvent = { parent: async () => ({}) } as Parameters<typeof load>[0];
 
 beforeEach(async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+	);
 	await probeSession();
 });
 
@@ -53,7 +56,10 @@ test('the root placeholder page renders its welcome content', async () => {
 });
 
 test('an authenticated visitor on the root is redirected to the timeline', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, sessionsBody)));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, sessionsBody))
+	);
 	await probeSession();
 
 	let thrown: unknown;
@@ -76,7 +82,10 @@ test('an unauthenticated visitor on the root is not redirected by the load', asy
 test('an unverifiable session on the root is not redirected by the load', async () => {
 	// The probe boots unauthenticated on a 5xx (the pinned choice);
 	// the login page recovers from every cause.
-	vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(500, { code: 'INTERNAL' })));
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(500, { code: 'INTERNAL' }))
+	);
 	await probeSession();
 
 	await expect(load(loadEvent)).resolves.toBeUndefined();

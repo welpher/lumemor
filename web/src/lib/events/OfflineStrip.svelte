@@ -54,6 +54,8 @@
 		role="status"
 	>
 		<WifiOff size={16} class="shrink-0" aria-hidden="true" />
-		<span class="offline-strip__text font-body font-semibold text-[13px] leading-[1.4]">{$_('offline_strip', { values: { seconds } })}</span>
+		<span class="offline-strip__text font-body font-semibold text-[13px] leading-[1.4]"
+			>{$_('offline_strip', { values: { seconds } })}</span
+		>
 	</div>
 {/if}

@@ -151,7 +151,9 @@
 		return { label, value };
 	}
 
-	function rows(entries: Array<{ label: string; value: string | null | undefined }>): Array<{ label: string; value: string }> {
+	function rows(
+		entries: Array<{ label: string; value: string | null | undefined }>
+	): Array<{ label: string; value: string }> {
 		return entries
 			.map((entry) => row(entry.label, entry.value))
 			.filter((entry): entry is { label: string; value: string } => entry !== null);
@@ -223,10 +225,7 @@
 			{ label: $_('viewer_file_size'), value: sizeLabel },
 			{
 				label: $_('viewer_file_dimensions'),
-				value:
-					detail.width === null || detail.height === null
-						? null
-						: `${detail.width} × ${detail.height}`
+				value: detail.width === null || detail.height === null ? null : `${detail.width} × ${detail.height}`
 			},
 			{ label: $_('viewer_file_duration'), value: durationLabel }
 		])
@@ -259,7 +258,9 @@
 	aria-label={$_('viewer_info_title')}
 >
 	<header class="info__header flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border">
-		<h2 class="info__filename font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">{detail.originalFilename}</h2>
+		<h2 class="info__filename font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">
+			{detail.originalFilename}
+		</h2>
 		<button
 			class="info__close inline-flex items-center justify-center shrink-0 w-8 h-8 rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
 			type="button"
@@ -272,24 +273,42 @@
 
 	<div class="info__scroll flex-1 overflow-y-auto [scrollbar-gutter:stable] pt-1 px-4 pb-5">
 		{#if detail.isTrashed}
-			<p class="info__notice mt-3 py-2 px-3 font-body font-medium text-[13px] leading-[1.4] text-text-soft border border-notice rounded-control" role="status">{$_('viewer_trashed_notice')}</p>
+			<p
+				class="info__notice mt-3 py-2 px-3 font-body font-medium text-[13px] leading-[1.4] text-text-soft border border-notice rounded-control"
+				role="status"
+			>
+				{$_('viewer_trashed_notice')}
+			</p>
 		{/if}
 		{#if detail.isHidden}
-			<p class="info__notice mt-3 py-2 px-3 font-body font-medium text-[13px] leading-[1.4] text-text-soft border border-notice rounded-control" role="status">{$_('viewer_hidden_notice')}</p>
+			<p
+				class="info__notice mt-3 py-2 px-3 font-body font-medium text-[13px] leading-[1.4] text-text-soft border border-notice rounded-control"
+				role="status"
+			>
+				{$_('viewer_hidden_notice')}
+			</p>
 		{/if}
 
 		<section class="info__section mt-4">
-			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_description_label')}</h3>
+			<h3
+				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
+			>
+				{$_('viewer_description_label')}
+			</h3>
 			{#if editing}
 				<textarea
 					class="info__editor w-full mb-2 px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-page border border-border-strong rounded-control resize-y focus:border-accent"
 					bind:value={draft}
 					aria-label={$_('viewer_description_label')}
 					rows="4"
-					disabled={saving}
-				></textarea>
+					disabled={saving}></textarea>
 				{#if editErrorKey !== ''}
-					<p class="info__error mb-2 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{errorText(editErrorKey)}</p>
+					<p
+						class="info__error mb-2 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+						role="alert"
+					>
+						{errorText(editErrorKey)}
+					</p>
 				{/if}
 				<div class="info__row flex flex-wrap gap-2 mb-2">
 					<Button variant="primary" disabled={saving} onclick={() => void saveEdit()}>
@@ -302,11 +321,15 @@
 					</Button>
 				</div>
 			{:else}
-				<p class="info__description mb-2 font-body font-normal text-[14px] leading-[1.5] text-text whitespace-pre-wrap [overflow-wrap:anywhere]">
+				<p
+					class="info__description mb-2 font-body font-normal text-[14px] leading-[1.5] text-text whitespace-pre-wrap [overflow-wrap:anywhere]"
+				>
 					{detail.description !== '' ? detail.description : $_('viewer_description_empty')}
 				</p>
 				{#if isOwner}
-					<Button variant="ghost" onclick={startEdit}><PenLine size={20} aria-hidden="true" />{$_('viewer_description_edit')}</Button>
+					<Button variant="ghost" onclick={startEdit}
+						><PenLine size={20} aria-hidden="true" />{$_('viewer_description_edit')}</Button
+					>
 				{/if}
 			{/if}
 		</section>
@@ -316,12 +339,22 @@
 		     the tightened section rhythm -- no card borders, the
 		     section's own spacing is the grouping. -->
 		<section class="info__section mt-4">
-			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_file_section')}</h3>
+			<h3
+				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
+			>
+				{$_('viewer_file_section')}
+			</h3>
 			<dl class="info__facts divide-y divide-border">
 				{#each fileRows as entry (entry.label)}
 					<div class="info__fact flex justify-between gap-3 py-[7px]">
-						<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
-						<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
+						<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">
+							{entry.label}
+						</dt>
+						<dd
+							class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]"
+						>
+							{entry.value}
+						</dd>
 					</div>
 				{/each}
 				<!-- The tags row (M3d): the CALLER's tags on the asset as
@@ -330,13 +363,21 @@
 				     chips are the caller's own rows, the write is the
 				     caller's own, so the affordance is every viewer's. -->
 				<div class="info__tags flex items-center justify-between gap-3 py-[7px]">
-					<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{$_('viewer_tags_label')}</dt>
+					<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">
+						{$_('viewer_tags_label')}
+					</dt>
 					<dd class="info__tag-values flex flex-wrap justify-end items-center gap-1.5 m-0">
 						{#if detail.tags.length === 0}
-							<span class="info__tags-empty font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_tags_empty')}</span>
+							<span
+								class="info__tags-empty font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+								>{$_('viewer_tags_empty')}</span
+							>
 						{:else}
 							{#each detail.tags as tag (tag.id)}
-								<span class="info__tag-chip inline-flex items-center px-2 py-0.5 font-body font-medium text-[12px] leading-[1.4] text-text bg-transparent border border-border rounded-full whitespace-nowrap" data-tag-id={tag.id}>{tag.name}</span>
+								<span
+									class="info__tag-chip inline-flex items-center px-2 py-0.5 font-body font-medium text-[12px] leading-[1.4] text-text bg-transparent border border-border rounded-full whitespace-nowrap"
+									data-tag-id={tag.id}>{tag.name}</span
+								>
 							{/each}
 						{/if}
 						<button
@@ -345,7 +386,12 @@
 							onclick={onassigntag}
 						>
 							<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
-								<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+								<path
+									d="M12 5v14M5 12h14"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+								/>
 							</svg>
 							{$_('action_add_tag')}
 						</button>
@@ -355,66 +401,123 @@
 		</section>
 
 		<section class="info__section mt-4">
-			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('viewer_exif_heading')}</h3>
+			<h3
+				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
+			>
+				{$_('viewer_exif_heading')}
+			</h3>
 			<!-- The EXIF groups: collapsible summaries over the same
 			     hairline row rhythm (the card borders of the old
 			     presentation are gone -- brand spec §5's no heavy
 			     borders). -->
 			<details class="info__group" open>
-				<summary class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer">{$_('viewer_exif_camera')}</summary>
+				<summary
+					class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer"
+					>{$_('viewer_exif_camera')}</summary
+				>
 				{#if cameraRows.length > 0}
 					<dl class="info__facts divide-y divide-border">
 						{#each cameraRows as entry (entry.label)}
 							<div class="info__fact flex justify-between gap-3 py-[7px]">
-								<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
-								<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
+								<dt
+									class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap"
+								>
+									{entry.label}
+								</dt>
+								<dd
+									class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]"
+								>
+									{entry.value}
+								</dd>
 							</div>
 						{/each}
 					</dl>
 				{:else}
-					<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
+					<p
+						class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+					>
+						{$_('viewer_exif_none')}
+					</p>
 				{/if}
 			</details>
 			<details class="info__group">
-				<summary class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer">{$_('viewer_exif_exposure')}</summary>
+				<summary
+					class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer"
+					>{$_('viewer_exif_exposure')}</summary
+				>
 				{#if exposureRows.length > 0}
 					<dl class="info__facts divide-y divide-border">
 						{#each exposureRows as entry (entry.label)}
 							<div class="info__fact flex justify-between gap-3 py-[7px]">
-								<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
-								<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
+								<dt
+									class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap"
+								>
+									{entry.label}
+								</dt>
+								<dd
+									class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]"
+								>
+									{entry.value}
+								</dd>
 							</div>
 						{/each}
 					</dl>
 				{:else}
-					<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
+					<p
+						class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+					>
+						{$_('viewer_exif_none')}
+					</p>
 				{/if}
 			</details>
 			<details class="info__group">
-				<summary class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer">{$_('viewer_exif_location')}</summary>
+				<summary
+					class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer"
+					>{$_('viewer_exif_location')}</summary
+				>
 				{#if locationRows.length > 0}
 					<dl class="info__facts divide-y divide-border">
 						{#each locationRows as entry (entry.label)}
 							<div class="info__fact flex justify-between gap-3 py-[7px]">
-								<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">{entry.label}</dt>
-								<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">{entry.value}</dd>
+								<dt
+									class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap"
+								>
+									{entry.label}
+								</dt>
+								<dd
+									class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]"
+								>
+									{entry.value}
+								</dd>
 							</div>
 						{/each}
 					</dl>
 				{:else}
-					<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_exif_none')}</p>
+					<p
+						class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+					>
+						{$_('viewer_exif_none')}
+					</p>
 				{/if}
 			</details>
 		</section>
 
 		<section class="info__section mt-4">
-			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_people')}</h3>
+			<h3
+				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
+			>
+				{$_('nav_people')}
+			</h3>
 			{#if detail.isTrashed || detail.isHidden || detail.faces.length === 0}
 				<!-- A trashed or hidden asset keeps its faces in the
 				     detail but every crop endpoint answers 404 for it
 				     -- the placeholder stands in rather than broken
 				     chips. -->
-				<p class="info__faces-empty info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_faces_placeholder')}</p>
+				<p
+					class="info__faces-empty info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+				>
+					{$_('viewer_faces_placeholder')}
+				</p>
 			{:else}
 				<!-- One chip per face of the detail's faces array: the crop,
 				     the caller's label state of the face's cluster, and the
@@ -437,7 +540,10 @@
 									decoding="async"
 									draggable="false"
 								/>
-								<span class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate">{faceLabel(face)}</span>
+								<span
+									class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate"
+									>{faceLabel(face)}</span
+								>
 							</button>
 						</li>
 					{/each}
@@ -446,8 +552,14 @@
 		</section>
 
 		<section class="info__section mt-4">
-			<h3 class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint">{$_('nav_places')}</h3>
-			<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">{$_('viewer_places_placeholder')}</p>
+			<h3
+				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
+			>
+				{$_('nav_places')}
+			</h3>
+			<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">
+				{$_('viewer_places_placeholder')}
+			</p>
 		</section>
 	</div>
 </aside>

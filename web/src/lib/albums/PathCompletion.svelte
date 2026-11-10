@@ -74,7 +74,7 @@
 	/** The highlighted row's index (-1 = none). */
 	let activeIndex = $state(-1);
 	/** The current run's face: loading, the rows, the empty note, the failure. */
-	let phase = $state<CompletionState>("idle");
+	let phase = $state<CompletionState>('idle');
 	// The single-flight pair: the running flag parks later triggers,
 	// the queued flag runs ONE trailing fetch when the flight lands
 	// (the wall's runLoad collapse, applied to a combobox).
@@ -120,7 +120,7 @@
 		generation += 1;
 		const mine = generation;
 		const prefix = path;
-		phase = "loading";
+		phase = 'loading';
 		const outcome = await completeAlbumPath(prefix);
 		running = false;
 		// A stale answer never applies: a newer run owns the state.
@@ -129,10 +129,10 @@
 		}
 		if (outcome.ok) {
 			paths = outcome.paths;
-			phase = "ready";
+			phase = 'ready';
 			activeIndex = paths.length > 0 ? 0 : -1;
 		} else {
-			phase = "failed";
+			phase = 'failed';
 		}
 		if (queued) {
 			queued = false;
@@ -206,9 +206,14 @@
 </script>
 
 <div class="path-completion flex flex-col">
-	<label class="path-completion__label font-body font-semibold text-[14px] leading-[1.4] text-text" for={id}>{label}</label>
+	<label class="path-completion__label font-body font-semibold text-[14px] leading-[1.4] text-text" for={id}
+		>{label}</label
+	>
 	<input
-		class="path-completion__input w-full px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-card border rounded-control outline-none transition-[border-color] duration-(--motion-fast) ease-standard {failure === '' ? 'border-border-strong focus:border-accent' : 'border-danger'}"
+		class="path-completion__input w-full px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-card border rounded-control outline-none transition-[border-color] duration-(--motion-fast) ease-standard {failure ===
+		''
+			? 'border-border-strong focus:border-accent'
+			: 'border-danger'}"
 		{id}
 		bind:this={input}
 		bind:value={path}
@@ -241,10 +246,16 @@
 	     than clipping -- honest words beat clipped ones. The slot's
 	     id is the input's described-by partner in both faces. -->
 	<p
-		class="path-completion__slot m-0 mt-1 {hint === '' && failure === '' ? 'h-[19px]' : 'h-[37px]'} font-body font-normal text-[13px] leading-[1.4] {failure !== '' ? 'path-completion__failure font-semibold text-danger-text' : 'path-completion__hint text-text-faint'}"
+		class="path-completion__slot m-0 mt-1 {hint === '' && failure === ''
+			? 'h-[19px]'
+			: 'h-[37px]'} font-body font-normal text-[13px] leading-[1.4] {failure !== ''
+			? 'path-completion__failure font-semibold text-danger-text'
+			: 'path-completion__hint text-text-faint'}"
 		id="{id}-note"
 		role={failure !== '' ? 'alert' : undefined}
-	>{failure !== '' ? failure : hint}</p>
+	>
+		{failure !== '' ? failure : hint}
+	</p>
 	{#if open}
 		<!-- THE FLOATING LAYER (§7.5's 2026-11-09 second revision): the
 		     candidate block portals to document.body as a fixed layer
@@ -266,15 +277,29 @@
 			aria-label={$_('albums_path_suggestions_label')}
 		>
 			{#if phase === 'loading'}
-				<p class="path-completion__loading m-0 px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('albums_path_loading')}</p>
+				<p
+					class="path-completion__loading m-0 px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in"
+					role="status"
+				>
+					{$_('albums_path_loading')}
+				</p>
 			{:else if phase === 'failed'}
-				<p class="path-completion__failed m-0 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-danger-text" role="alert">{$_('albums_path_completion_failed')}</p>
+				<p
+					class="path-completion__failed m-0 px-3 py-2 font-body font-semibold text-[13px] leading-[1.4] text-danger-text"
+					role="alert"
+				>
+					{$_('albums_path_completion_failed')}
+				</p>
 			{:else if paths.length === 0}
 				<!-- The honest empty answer: nothing under the typed prefix
 			         matches (the system-wide domain has no closed posture to
 			         report -- the allowlist and its no-roots face retired with
 			         E6). -->
-				<p class="path-completion__no-match m-0 px-3 py-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft">{$_('albums_path_no_match')}</p>
+				<p
+					class="path-completion__no-match m-0 px-3 py-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+				>
+					{$_('albums_path_no_match')}
+				</p>
 			{:else}
 				{#each paths as candidate, index (candidate)}
 					<!-- The row: the state-selector (not an action button)
@@ -282,7 +307,10 @@
 					     full path, the active highlight, mousedown
 					     completes before any blur can close the list. -->
 					<div
-						class="path-completion__row flex items-center gap-2 px-3 py-2 font-body font-normal text-[14px] leading-[1.4] cursor-pointer {index === activeIndex ? 'bg-accent-soft text-accent-soft-text' : 'text-text'}"
+						class="path-completion__row flex items-center gap-2 px-3 py-2 font-body font-normal text-[14px] leading-[1.4] cursor-pointer {index ===
+						activeIndex
+							? 'bg-accent-soft text-accent-soft-text'
+							: 'text-text'}"
 						id={rowId(index)}
 						role="option"
 						tabindex="-1"
@@ -292,11 +320,19 @@
 							complete(index);
 						}}
 					>
-						<Folder size={16} class="shrink-0 {index === activeIndex ? 'text-accent-soft-text' : 'text-accent'}" aria-hidden="true" />
-						<span class="path-completion__row-path overflow-hidden text-ellipsis whitespace-nowrap">{candidate}</span>
+						<Folder
+							size={16}
+							class="shrink-0 {index === activeIndex ? 'text-accent-soft-text' : 'text-accent'}"
+							aria-hidden="true"
+						/>
+						<span class="path-completion__row-path overflow-hidden text-ellipsis whitespace-nowrap"
+							>{candidate}</span
+						>
 					</div>
 				{/each}
-				<div class="path-completion__keys flex gap-3 px-3 py-1.5 border-t border-border font-body font-normal text-[11px] leading-[1.4] text-text-faint">
+				<div
+					class="path-completion__keys flex gap-3 px-3 py-1.5 border-t border-border font-body font-normal text-[11px] leading-[1.4] text-text-faint"
+				>
 					<span>{$_('albums_keys_select')}</span>
 					<span>{$_('albums_keys_complete')}</span>
 					<span>{$_('albums_keys_close')}</span>

@@ -25,11 +25,7 @@
 // below, components react to it directly.
 
 /** The shared stream's connection state, from the events module's reports. */
-export type StreamStatus =
-	| 'closed'
-	| 'connecting'
-	| 'open'
-	| 'down';
+export type StreamStatus = 'closed' | 'connecting' | 'open' | 'down';
 
 let status = $state<StreamStatus>('closed');
 let downSince = $state<number | null>(null);

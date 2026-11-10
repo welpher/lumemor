@@ -44,14 +44,7 @@
 		actions: readonly BatchAction[];
 	};
 
-	let {
-		path,
-		view,
-		titleKey = '',
-		loadingKey,
-		emptyKey,
-		actions
-	}: Props = $props();
+	let { path, view, titleKey = '', loadingKey, emptyKey, actions }: Props = $props();
 
 	// The client is constructed ONCE per wall: a route's endpoint and
 	// view never change while its wall is mounted (a route change
@@ -66,9 +59,7 @@
 	let selectMode = $state(false);
 
 	const firstLoad = $derived($wall.items.length === 0 && $wall.status === 'loading');
-	const settledEmpty = $derived(
-		$wall.items.length === 0 && $wall.status === 'ready' && !$wall.hasMore
-	);
+	const settledEmpty = $derived($wall.items.length === 0 && $wall.status === 'ready' && !$wall.hasMore);
 
 	// IntersectionObserver exists in every browser jsdom is not; the
 	// manual load-more button is the fallback surface (and the error
@@ -164,14 +155,21 @@
 	{#if firstLoad}
 		<p class="wall__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_(loadingKey)}</p>
 	{:else if settledEmpty}
-		<div class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+		<div
+			class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+		>
 			<h1 class="text-[22px] mb-2">{titleKey !== '' ? $_(titleKey) : ''}</h1>
 			<p class="text-text-soft">{$_(emptyKey)}</p>
 		</div>
 	{:else if $wall.status === 'error' && $wall.items.length === 0}
-		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText($wall.errorKey)}</p>
-			<Button variant="primary" onclick={() => void wall.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void wall.loadMore()}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else}
 		<!-- The unified wall (rendering AND selection): this wrapper
@@ -180,24 +178,26 @@
 		     the batch bar are the one wall component every curatable
 		     view renders. The action subset and the batch runner are
 		     this view's own. -->
-		<Wall
-			items={$wall.items}
-			bind:selectMode
-			{actions}
-			onbatch={runBatch}
-		/>
+		<Wall items={$wall.items} bind:selectMode {actions} onbatch={runBatch} />
 	{/if}
 
 	{#if $wall.status === 'error' && $wall.items.length > 0}
-		<div class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText($wall.errorKey)}</p>
-			<Button variant="primary" onclick={() => void wall.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void wall.loadMore()}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{/if}
 
 	{#if !observerAvailable && $wall.hasMore && $wall.status === 'ready'}
 		<div class="wall__pager flex justify-center my-5">
-			<Button variant="ghost" onclick={() => void wall.loadMore()}><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button>
+			<Button variant="ghost" onclick={() => void wall.loadMore()}
+				><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button
+			>
 		</div>
 	{/if}
 

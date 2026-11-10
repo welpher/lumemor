@@ -170,9 +170,7 @@
 	// wallItems publication. The wall's SELECTION exists exactly
 	// when this page wires the batch runner below (the `deletable`
 	// gate, E6): every other face is pure navigation (R5).
-	const wall = untrack(() =>
-		createTimelineClient({ path: '/api/v1/assets/timeline', view: 'timeline', albumId })
-	);
+	const wall = untrack(() => createTimelineClient({ path: '/api/v1/assets/timeline', view: 'timeline', albumId }));
 	let wallResetKey = $state(0);
 
 	const owner = $derived(detail?.callerRole === 'owner');
@@ -188,9 +186,7 @@
 	// The wall's own states (the walk's honest faces, inlined from
 	// the curated wrapper this page used to compose).
 	const wallFirstLoad = $derived($wall.items.length === 0 && $wall.status === 'loading');
-	const wallSettledEmpty = $derived(
-		$wall.items.length === 0 && $wall.status === 'ready' && !$wall.hasMore
-	);
+	const wallSettledEmpty = $derived($wall.items.length === 0 && $wall.status === 'ready' && !$wall.hasMore);
 
 	// IntersectionObserver exists in every browser jsdom is not; the
 	// manual load-more button is the fallback surface (and the error
@@ -272,11 +268,7 @@
 	const members = $derived(wallItems());
 
 	/** Adopt a write response's wall card into the detail's fields. */
-	function applyWriteFields(next: {
-		title: string;
-		locked: boolean;
-		itemCount: number;
-	}): void {
+	function applyWriteFields(next: { title: string; locked: boolean; itemCount: number }): void {
 		if (detail !== null) {
 			detail = {
 				...detail,
@@ -319,12 +311,9 @@
 		const currentIds = new Set((detail.shares ?? []).map((share) => share.userId));
 		const nextIds = new Set(draft.audience.map((member) => member.userId));
 		const wantsAudience =
-			nextIds.size !== currentIds.size ||
-			[...nextIds].some((userId) => !currentIds.has(userId));
+			nextIds.size !== currentIds.size || [...nextIds].some((userId) => !currentIds.has(userId));
 		const wantsExclusion =
-			detail.inTimeline !== undefined &&
-			draft.inTimeline !== undefined &&
-			draft.inTimeline !== detail.inTimeline;
+			detail.inTimeline !== undefined && draft.inTimeline !== undefined && draft.inTimeline !== detail.inTimeline;
 		if (!wantsUnlock && !wantsLock && !wantsTitle && !wantsDeletable && !wantsAudience && !wantsExclusion) {
 			propertiesOpen = false;
 			return;
@@ -591,7 +580,9 @@
 	     icon actions, pinned over the wall on the card palette. The
 	     shell's own topbar hides while this route is active (the
 	     content shell's route rule). -->
-	<header class="album-bar sticky top-0 z-(--z-sticky-bar) flex items-center gap-2 px-4 py-2 bg-card border-b border-border">
+	<header
+		class="album-bar sticky top-0 z-(--z-sticky-bar) flex items-center gap-2 px-4 py-2 bg-card border-b border-border"
+	>
 		<a
 			class="album-bar__back inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-control bg-transparent text-text-soft no-underline cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
 			href="/albums"
@@ -601,12 +592,23 @@
 		</a>
 
 		{#if detail !== null}
-			<h1 class="album-bar__title m-0 min-w-0 truncate font-display font-bold text-[20px] leading-[1.3] text-text">{titleText}</h1>
+			<h1
+				class="album-bar__title m-0 min-w-0 truncate font-display font-bold text-[20px] leading-[1.3] text-text"
+			>
+				{titleText}
+			</h1>
 			{#if locked}
-				<span class="album-detail__badge album-detail__badge--locked hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">
+				<span
+					class="album-detail__badge album-detail__badge--locked hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+				>
 					<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
 						<rect x="5" y="10.5" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.75" />
-						<path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+						<path
+							d="M8 10.5V8a4 4 0 0 1 8 0v2.5"
+							stroke="currentColor"
+							stroke-width="1.75"
+							stroke-linecap="round"
+						/>
 					</svg>
 					{$_('albums_locked_badge')}
 				</span>
@@ -617,15 +619,26 @@
 				     the badge yields -- the body's notice carries the state,
 				     and the one-row bar keeps its height for the sticky
 				     offset's math.) -->
-				<span class="album-detail__badge album-detail__badge--excluded hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap">
+				<span
+					class="album-detail__badge album-detail__badge--excluded hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+				>
 					<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
 						<circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.75" />
-						<path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+						<path
+							d="M12 7.5V12l3 2"
+							stroke="currentColor"
+							stroke-width="1.75"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 					{$_('albums_excluded_badge')}
 				</span>
 			{/if}
-			<span class="album-detail__count hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums">{$_('albums_photo_count', { values: { count: detail.itemCount } })}</span>
+			<span
+				class="album-detail__count hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
+				>{$_('albums_photo_count', { values: { count: detail.itemCount } })}</span
+			>
 		{/if}
 
 		<!-- The action set, per callerRole x type, as icon-only
@@ -647,22 +660,51 @@
 		     directory arm. -->
 		<div class="album-detail__actions ml-auto flex items-center gap-1">
 			{#if detail !== null && owner && virtual}
-				<IconButton disabled={writeBusy} aria-label={$_('albums_action_rename')} onclick={() => { propertiesErrorKey = ''; propertiesOpen = true; }}>
+				<IconButton
+					disabled={writeBusy}
+					aria-label={$_('albums_action_rename')}
+					onclick={() => {
+						propertiesErrorKey = '';
+						propertiesOpen = true;
+					}}
+				>
 					<PenLine size={20} aria-hidden="true" />
 				</IconButton>
-				<IconButton disabled={writeBusy || locked} aria-label={$_('albums_action_cover')} onclick={() => { coverErrorKey = ''; coverOpen = true; }}>
+				<IconButton
+					disabled={writeBusy || locked}
+					aria-label={$_('albums_action_cover')}
+					onclick={() => {
+						coverErrorKey = '';
+						coverOpen = true;
+					}}
+				>
 					<Images size={20} aria-hidden="true" />
 				</IconButton>
 				{#if !locked}
 					<!-- The permission matrix pins deletion to the UNLOCKED
 					     state: the owner unlocks first (the dialog's lock
 					     row), one step. -->
-					<IconButton variant="danger" disabled={writeBusy} aria-label={$_('albums_action_delete')} onclick={() => { deleteErrorKey = ''; deleteOpen = true; }}>
+					<IconButton
+						variant="danger"
+						disabled={writeBusy}
+						aria-label={$_('albums_action_delete')}
+						onclick={() => {
+							deleteErrorKey = '';
+							deleteOpen = true;
+						}}
+					>
 						<Trash2 size={20} aria-hidden="true" />
 					</IconButton>
 				{/if}
 			{:else if detail !== null && owner && detail.type === 'directory'}
-				<IconButton disabled={writeBusy} aria-label={$_('albums_action_properties')} onclick={() => { propertiesErrorKey = ''; propertiesOpen = true; }}>
+				<IconButton
+					disabled={writeBusy}
+					aria-label={$_('albums_action_properties')}
+					onclick={() => {
+						propertiesErrorKey = '';
+						propertiesOpen = true;
+					}}
+				>
 					<PenLine size={20} aria-hidden="true" />
 				</IconButton>
 				<!-- The rescan trigger (E4): the directory album's own
@@ -671,7 +713,9 @@
 				     button is not a spam surface), and a locked album
 				     refuses the scan (the 409 the server answers). -->
 				<IconButton
-					disabled={writeBusy || locked || (rescanRun !== null && (rescanRun.state === 'queued' || rescanRun.state === 'running'))}
+					disabled={writeBusy ||
+						locked ||
+						(rescanRun !== null && (rescanRun.state === 'queued' || rescanRun.state === 'running'))}
 					aria-label={$_('albums_rescan_action')}
 					onclick={() => void startRescan()}
 				>
@@ -688,7 +732,11 @@
 				<!-- The read-only share's own write: the timeline
 				     exclusion (the caller's preference) alone. -->
 				{#if excludable}
-					<IconButton disabled={writeBusy} aria-label={excluded ? $_('albums_action_include') : $_('albums_action_exclude')} onclick={() => void toggleExclusion()}>
+					<IconButton
+						disabled={writeBusy}
+						aria-label={excluded ? $_('albums_action_include') : $_('albums_action_exclude')}
+						onclick={() => void toggleExclusion()}
+					>
 						{#if excluded}
 							<Calendar size={20} aria-hidden="true" />
 						{:else}
@@ -701,11 +749,18 @@
 	</header>
 
 	{#if status === 'loading'}
-		<p class="album-detail__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('albums_detail_loading')}</p>
+		<p class="album-detail__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('albums_detail_loading')}
+		</p>
 	{:else if status === 'error'}
-		<div class="album-detail__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="album-detail__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void convergeDetail()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void convergeDetail()}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else if detail !== null}
 		<!-- The context block (the page's card-framed text: the
@@ -718,8 +773,14 @@
 				     update in place off the job events, the finish lands
 				     the final state, and the membership the scan moved
 				     converges through the album events below. -->
-				<div class="album-detail__rescan my-0 mb-3 flex flex-col gap-1.5" aria-live="polite" data-testid="album-rescan-progress">
-					<p class="album-detail__rescan-state m-0 font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums">
+				<div
+					class="album-detail__rescan my-0 mb-3 flex flex-col gap-1.5"
+					aria-live="polite"
+					data-testid="album-rescan-progress"
+				>
+					<p
+						class="album-detail__rescan-state m-0 font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums"
+					>
 						{#if rescanRun.state === 'queued'}
 							{$_('albums_rescan_queued')}
 						{:else if rescanRun.state === 'running'}
@@ -739,7 +800,10 @@
 							aria-valuenow={rescanRun.done}
 							aria-label={$_('albums_rescan_action')}
 						>
-							<div class="album-detail__rescan-fill h-full bg-accent transition-[width] duration-(--motion-base) ease-standard" style="width: {Math.min(100, Math.round((rescanRun.done / rescanRun.total) * 100))}%"></div>
+							<div
+								class="album-detail__rescan-fill h-full bg-accent transition-[width] duration-(--motion-base) ease-standard"
+								style="width: {Math.min(100, Math.round((rescanRun.done / rescanRun.total) * 100))}%"
+							></div>
 						</div>
 					{/if}
 				</div>
@@ -748,15 +812,30 @@
 				<!-- The locked gate, honest: the frozen faces stay off until
 				     the unlock (the edit dialog's lock row -- the bar's
 				     dialog opener is the door). -->
-				<p class="album-detail__locked-notice my-0 mb-3 font-body font-medium text-[13px] leading-[1.5] text-text-soft" role="status">{$_('albums_locked_notice')}</p>
+				<p
+					class="album-detail__locked-notice my-0 mb-3 font-body font-medium text-[13px] leading-[1.5] text-text-soft"
+					role="status"
+				>
+					{$_('albums_locked_notice')}
+				</p>
 			{/if}
 			{#if excluded}
-				<p class="album-detail__excluded-notice my-0 mb-3 font-body font-medium text-[13px] leading-[1.5] text-text-soft" role="status">{$_('albums_excluded_notice')}</p>
+				<p
+					class="album-detail__excluded-notice my-0 mb-3 font-body font-medium text-[13px] leading-[1.5] text-text-soft"
+					role="status"
+				>
+					{$_('albums_excluded_notice')}
+				</p>
 			{/if}
 			{#if actionErrorKey !== ''}
 				<!-- The bar actions' honest failure (the lock, the
 				     exclusion, the rescan trigger): the server's own answer. -->
-				<p class="album-detail__action-error my-0 mb-3 font-body font-medium text-[14px] leading-[1.5] text-danger-text" role="alert">{errorText(actionErrorKey)}</p>
+				<p
+					class="album-detail__action-error my-0 mb-3 font-body font-medium text-[14px] leading-[1.5] text-danger-text"
+					role="alert"
+				>
+					{errorText(actionErrorKey)}
+				</p>
 			{/if}
 		</div>
 
@@ -771,25 +850,39 @@
 		     batch bar ever rises. -->
 		<section class="album-detail__wall px-2" aria-busy={$wall.status === 'loading'}>
 			{#if wallFirstLoad}
-				<p class="album-detail__wall-status my-12 text-center text-text-soft animate-loading-in" role="status">{$_('albums_detail_loading')}</p>
+				<p class="album-detail__wall-status my-12 text-center text-text-soft animate-loading-in" role="status">
+					{$_('albums_detail_loading')}
+				</p>
 			{:else if wallSettledEmpty}
-				<div class="album-detail__wall-empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+				<div
+					class="album-detail__wall-empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+				>
 					<h2 class="text-[22px] mb-2">{titleText}</h2>
 					<p class="text-text-soft">{$_('albums_detail_empty')}</p>
 				</div>
 			{:else if $wall.status === 'error' && $wall.items.length === 0}
-				<div class="album-detail__wall-failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+				<div
+					class="album-detail__wall-failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+					role="alert"
+				>
 					<p>{errorText($wall.errorKey)}</p>
-					<Button variant="primary" onclick={() => void wall.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+					<Button variant="primary" onclick={() => void wall.loadMore()}
+						><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+					>
 				</div>
 			{:else}
 				<Wall items={$wall.items} actions={['trash']} onbatch={deletable ? runWallBatch : undefined} />
 			{/if}
 
 			{#if $wall.status === 'error' && $wall.items.length > 0}
-				<div class="album-detail__wall-failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+				<div
+					class="album-detail__wall-failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+					role="alert"
+				>
 					<p>{errorText($wall.errorKey)}</p>
-					<Button variant="primary" onclick={() => void wall.loadMore()}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+					<Button variant="primary" onclick={() => void wall.loadMore()}
+						><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+					>
 				</div>
 			{/if}
 
@@ -842,7 +935,12 @@
 			{$_('albums_delete_body', { values: { title: detail?.title ?? '' } })}
 		</p>
 		{#if deleteErrorKey !== ''}
-			<p class="album-detail__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text" role="alert">{errorText(deleteErrorKey)}</p>
+			<p
+				class="album-detail__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{errorText(deleteErrorKey)}
+			</p>
 		{/if}
 	{/snippet}
 	{#snippet footer()}

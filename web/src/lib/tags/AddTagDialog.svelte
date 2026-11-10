@@ -125,31 +125,55 @@
 		{#if report !== null}
 			<!-- The honest report of the landed add: the write's own
 			     {added, skipped} answer, with the done affordance. -->
-			<p class="add-tag__report m-0 font-body font-semibold text-[15px] leading-[1.5] text-text" role="status">{$_('tags_add_report', { values: { added: report.added, skipped: report.skipped } })}</p>
+			<p class="add-tag__report m-0 font-body font-semibold text-[15px] leading-[1.5] text-text" role="status">
+				{$_('tags_add_report', { values: { added: report.added, skipped: report.skipped } })}
+			</p>
 		{:else if loading}
-			<p class="add-tag__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in" role="status">{$_('tags_add_pick_label')}…</p>
+			<p
+				class="add-tag__loading m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft animate-loading-in"
+				role="status"
+			>
+				{$_('tags_add_pick_label')}…
+			</p>
 		{:else}
 			<!-- The two paths: picking an existing tag or naming a new one. -->
 			<fieldset class="add-tag__modes flex gap-4 m-0 p-0 border-none">
 				<legend class="sr-only">{$_('tags_add_title')}</legend>
-				<label class="add-tag__mode flex items-center gap-1.5 font-body font-normal text-[14px] leading-[1.4] text-text cursor-pointer">
+				<label
+					class="add-tag__mode flex items-center gap-1.5 font-body font-normal text-[14px] leading-[1.4] text-text cursor-pointer"
+				>
 					<input class="accent-accent" type="radio" name="add-tag-mode" value="existing" bind:group={mode} />
 					{$_('tags_add_mode_existing')}
 				</label>
-				<label class="add-tag__mode flex items-center gap-1.5 font-body font-normal text-[14px] leading-[1.4] text-text cursor-pointer">
+				<label
+					class="add-tag__mode flex items-center gap-1.5 font-body font-normal text-[14px] leading-[1.4] text-text cursor-pointer"
+				>
 					<input class="accent-accent" type="radio" name="add-tag-mode" value="new" bind:group={mode} />
 					{$_('tags_add_mode_new')}
 				</label>
 			</fieldset>
 			{#if mode === 'new'}
-				<Input label={$_('tags_name_field')} name="add-tag-name" bind:value={draft} maxlength={128} autocomplete="off" />
+				<Input
+					label={$_('tags_name_field')}
+					name="add-tag-name"
+					bind:value={draft}
+					maxlength={128}
+					autocomplete="off"
+				/>
 				{#if boundViolated}
-					<p class="add-tag__bound m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text">{$_('tags_name_invalid')}</p>
+					<p class="add-tag__bound m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text">
+						{$_('tags_name_invalid')}
+					</p>
 				{/if}
 			{:else if optionIds.length === 0}
-				<p class="add-tag__empty m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">{$_('tags_add_empty')}</p>
+				<p class="add-tag__empty m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+					{$_('tags_add_empty')}
+				</p>
 			{:else}
-				<label class="add-tag__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="add-tag-target">{$_('tags_add_pick_label')}</label>
+				<label
+					class="add-tag__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+					for="add-tag-target">{$_('tags_add_pick_label')}</label
+				>
 				<select
 					class="add-tag__target w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
 					id="add-tag-target"
@@ -162,7 +186,12 @@
 			{/if}
 		{/if}
 		{#if errorKey !== ''}
-			<p class="add-tag__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{resolveErrorText($_, errorKey)}</p>
+			<p
+				class="add-tag__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{resolveErrorText($_, errorKey)}
+			</p>
 		{/if}
 	</div>
 	{#snippet footer()}

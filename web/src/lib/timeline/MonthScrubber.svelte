@@ -44,9 +44,7 @@
 	/** The rail's pixel height: dense enough that N stops never
 	 * overlap, capped for tall loaded histories, floored so a single
 	 * month still reads as a rail. */
-	const railHeight = $derived(
-		Math.min(560, Math.max(140, months.length * 20))
-	);
+	const railHeight = $derived(Math.min(560, Math.max(140, months.length * 20)));
 
 	type Stop = {
 		key: string;
@@ -181,7 +179,8 @@
 		if (stop === null) {
 			return null;
 		}
-		const top = hovering || dragging ? Math.min(Math.max(hoverY, 0), Math.max(0, railHeight - STOP_HEIGHT)) : indicatorTop;
+		const top =
+			hovering || dragging ? Math.min(Math.max(hoverY, 0), Math.max(0, railHeight - STOP_HEIGHT)) : indicatorTop;
 		return { stop, top };
 	});
 
@@ -313,7 +312,10 @@
 </script>
 
 {#if months.length > 0}
-	<nav class="scrubber fixed top-1/2 right-3 -translate-y-1/2 z-(--z-page)" aria-label={$_('timeline_scrubber_label')}>
+	<nav
+		class="scrubber fixed top-1/2 right-3 -translate-y-1/2 z-(--z-page)"
+		aria-label={$_('timeline_scrubber_label')}
+	>
 		<!-- The drag owns the pointer: no touch scrolling fights it.
 		     The rail is transparent: its gutter is its background. -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -- the rail is a pointer surface of the labeled nav above it; its buttons carry the semantics. -->
@@ -328,7 +330,8 @@
 			onpointercancel={handlePointerCancel}
 		>
 			<!-- The axis spine the years and dots ride on. -->
-			<span class="scrubber__spine absolute top-1 bottom-1 right-[5.5px] w-px bg-border" aria-hidden="true"></span>
+			<span class="scrubber__spine absolute top-1 bottom-1 right-[5.5px] w-px bg-border" aria-hidden="true"
+			></span>
 			<!-- The years rest on the rail permanently (faint, one per
 			     year run); the year-MONTH readout is the presence-driven
 			     bubble below. -->
@@ -337,8 +340,8 @@
 					<span
 						class="scrubber__year absolute right-[18px] font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
 						style="top: {stop.top}px"
-						aria-hidden="true"
-					>{stop.year}</span>
+						aria-hidden="true">{stop.year}</span
+					>
 				{/if}
 			{/each}
 			{#each stops as stop (stop.key)}
@@ -353,7 +356,9 @@
 					onclick={() => handleClick(stop.key)}
 				>
 					<span
-						class="scrubber__dot w-[5px] h-[5px] rounded-full {activeKey === stop.key ? 'bg-accent' : 'bg-border-strong'}"
+						class="scrubber__dot w-[5px] h-[5px] rounded-full {activeKey === stop.key
+							? 'bg-accent'
+							: 'bg-border-strong'}"
 						aria-hidden="true"
 					></span>
 				</button>
@@ -379,8 +384,8 @@
 				<span
 					class="scrubber__readout absolute right-[18px] inline-flex items-center h-[20px] max-w-[88px] truncate px-1.5 font-body font-semibold text-[11px] leading-none whitespace-nowrap text-text bg-card border border-border rounded-control shadow-card"
 					style="top: {readout.top - 10}px"
-					aria-hidden="true"
-				>{readout.stop.label}</span>
+					aria-hidden="true">{readout.stop.label}</span
+				>
 			{/if}
 		</div>
 	</nav>

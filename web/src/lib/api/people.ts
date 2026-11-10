@@ -46,9 +46,7 @@ export type MergePeopleResponse = components['schemas']['MergePeopleResponse'];
 export type MoveFaceResponse = components['schemas']['MoveFaceResponse'];
 
 /** The named list's outcome. */
-export type PeopleListResult =
-	| { ok: true; people: PersonSummary[] }
-	| { ok: false; errorKey: string };
+export type PeopleListResult = { ok: true; people: PersonSummary[] } | { ok: false; errorKey: string };
 
 /** One keyset page of the unnamed region. */
 export type UnnamedPage = { items: UnnamedClusterSummary[]; nextCursor: string | null };
@@ -186,18 +184,18 @@ function faceFrom(body: unknown): FaceDetail | null {
 		return null;
 	}
 	const candidate = body as Partial<FaceDetail>;
-	if (typeof candidate.id !== 'string' || typeof candidate.assetId !== 'string' || typeof candidate.thumbnail !== 'string') {
+	if (
+		typeof candidate.id !== 'string' ||
+		typeof candidate.assetId !== 'string' ||
+		typeof candidate.thumbnail !== 'string'
+	) {
 		return null;
 	}
 	if (typeof candidate.score !== 'number' || !Number.isFinite(candidate.score)) {
 		return null;
 	}
 	const asset = candidate.asset as Partial<FaceDetail['asset']> | undefined;
-	if (
-		asset === undefined ||
-		typeof asset.takenAt !== 'string' ||
-		typeof asset.originalFilename !== 'string'
-	) {
+	if (asset === undefined || typeof asset.takenAt !== 'string' || typeof asset.originalFilename !== 'string') {
 		return null;
 	}
 	return body as FaceDetail;
@@ -249,9 +247,7 @@ function labelResponseFrom(body: unknown): PersonLabelResponse | null {
  * GET /api/v1/people: the caller's named people, name-sorted by the
  * server. Hidden people stay listed carrying `isHidden` true.
  */
-export async function listPeople(
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<PeopleListResult> {
+export async function listPeople(fetcher: typeof fetch = globalThis.fetch): Promise<PeopleListResult> {
 	let response: Response;
 	try {
 		response = await apiFetch('/api/v1/people', undefined, fetcher);
@@ -314,11 +310,7 @@ export async function fetchPersonCluster(
 ): Promise<ClusterResult> {
 	let response: Response;
 	try {
-		response = await apiFetch(
-			`/api/v1/people/${encodeURIComponent(clusterId)}`,
-			undefined,
-			fetcher
-		);
+		response = await apiFetch(`/api/v1/people/${encodeURIComponent(clusterId)}`, undefined, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}

@@ -188,10 +188,18 @@
 			<!-- The source row: read-only with the honest tag -- the
 			     album's source is pinned at creation, the edit carries
 			     no field for it (the specimen's 「来源 · 不可改」). -->
-			<div class="album-form__source flex items-center gap-2 px-3 py-2.5 bg-page border border-border rounded-control">
+			<div
+				class="album-form__source flex items-center gap-2 px-3 py-2.5 bg-page border border-border rounded-control"
+			>
 				<Folder size={18} class="text-accent shrink-0" aria-hidden="true" />
-				<span class="album-form__source-path font-body font-normal text-[13px] leading-[1.4] text-text-soft overflow-hidden text-ellipsis whitespace-nowrap">{rootPath}</span>
-				<span class="album-form__source-tag shrink-0 font-body font-bold text-[11px] leading-[1.4] text-accent-soft-text bg-accent-soft px-2 py-0.5 rounded-full">{$_('albums_source_tag')}</span>
+				<span
+					class="album-form__source-path font-body font-normal text-[13px] leading-[1.4] text-text-soft overflow-hidden text-ellipsis whitespace-nowrap"
+					>{rootPath}</span
+				>
+				<span
+					class="album-form__source-tag shrink-0 font-body font-bold text-[11px] leading-[1.4] text-accent-soft-text bg-accent-soft px-2 py-0.5 rounded-full"
+					>{$_('albums_source_tag')}</span
+				>
 			</div>
 		{/if}
 		<!-- The audience: the folded-in share management (the current
@@ -204,7 +212,9 @@
 		     together, the deletability row joins them as the source's
 		     own setting). -->
 		<div class="album-form__autonomy flex flex-col gap-2" data-testid="album-autonomy">
-			<label class="album-form__toggle flex items-start gap-2.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer">
+			<label
+				class="album-form__toggle flex items-start gap-2.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+			>
 				<input
 					class="album-form__toggle-input mt-0.5 w-[18px] h-[18px] accent-accent shrink-0"
 					type="checkbox"
@@ -216,11 +226,16 @@
 						<Lock size={14} class="text-text-faint shrink-0" aria-hidden="true" />
 						{$_('albums_lock_label')}
 					</span>
-					<span class="album-form__toggle-note font-body font-normal text-[12px] leading-[1.4] text-text-faint">{$_('albums_lock_note')}</span>
+					<span
+						class="album-form__toggle-note font-body font-normal text-[12px] leading-[1.4] text-text-faint"
+						>{$_('albums_lock_note')}</span
+					>
 				</span>
 			</label>
 			{#if inTimelineDraft !== undefined}
-				<label class="album-form__toggle flex items-start gap-2.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer">
+				<label
+					class="album-form__toggle flex items-start gap-2.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+				>
 					<input
 						class="album-form__toggle-input mt-0.5 w-[18px] h-[18px] accent-accent shrink-0"
 						type="checkbox"
@@ -232,7 +247,10 @@
 							<CalendarOff size={14} class="text-text-faint shrink-0" aria-hidden="true" />
 							{$_('albums_timeline_label')}
 						</span>
-						<span class="album-form__toggle-note font-body font-normal text-[12px] leading-[1.4] text-text-faint">{$_('albums_timeline_note')}</span>
+						<span
+							class="album-form__toggle-note font-body font-normal text-[12px] leading-[1.4] text-text-faint"
+							>{$_('albums_timeline_note')}</span
+						>
 					</span>
 				</label>
 			{/if}
@@ -241,7 +259,9 @@
 				     source (§7.9: a read-only album's row does not
 				     exist -- no dead affordance), and frozen under the
 				     lock like every property field. -->
-				<label class="album-form__toggle flex items-start gap-2.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer">
+				<label
+					class="album-form__toggle flex items-start gap-2.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+				>
 					<input
 						class="album-form__toggle-input mt-0.5 w-[18px] h-[18px] accent-accent shrink-0"
 						type="checkbox"
@@ -254,13 +274,21 @@
 							<Trash2 size={14} class="text-text-faint shrink-0" aria-hidden="true" />
 							{$_('albums_deletable_label')}
 						</span>
-						<span class="album-form__toggle-note font-body font-normal text-[12px] leading-[1.4] text-text-faint">{$_('albums_deletable_note')}</span>
+						<span
+							class="album-form__toggle-note font-body font-normal text-[12px] leading-[1.4] text-text-faint"
+							>{$_('albums_deletable_note')}</span
+						>
 					</span>
 				</label>
 			{/if}
 		</div>
 		{#if errorKey !== ''}
-			<p class="album-form__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">{resolveErrorText($_, errorKey)}</p>
+			<p
+				class="album-form__failure m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{resolveErrorText($_, errorKey)}
+			</p>
 		{/if}
 	</div>
 	{#snippet footer()}

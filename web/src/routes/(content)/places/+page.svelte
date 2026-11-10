@@ -133,20 +133,31 @@
 	<!-- The page head: the section's title and the honest summary. -->
 	<div class="places__head flex items-baseline gap-3 mb-4">
 		<h1 class="places__title m-0 font-display font-bold text-[24px] leading-[1.3] text-text">{$_('nav_places')}</h1>
-		<span class="places__sub text-[13px] leading-[1.4] text-text-faint tabular-nums">{$_('places_head_sub', { values: { cities: places.length, photos: totalPhotos } })}</span>
+		<span class="places__sub text-[13px] leading-[1.4] text-text-faint tabular-nums"
+			>{$_('places_head_sub', { values: { cities: places.length, photos: totalPhotos } })}</span
+		>
 	</div>
 
 	{#if firstLoad}
-		<p class="places__loading my-12 text-center text-text-soft animate-loading-in" role="status">{$_('places_loading')}</p>
+		<p class="places__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('places_loading')}
+		</p>
 	{:else if settledEmpty}
-		<div class="places__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card">
+		<div
+			class="places__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+		>
 			<h2 class="text-[22px] mb-2">{$_('places_empty_title')}</h2>
 			<p class="text-text-soft">{$_('places_empty_body')}</p>
 		</div>
 	{:else if status === 'error' && places.length === 0}
-		<div class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{:else}
 		<div class="places__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3.5">
@@ -159,16 +170,25 @@
 	{#if status === 'error' && places.length > 0}
 		<!-- A failed convergence while cards exist: the page stays,
 		     the next event retries; the box keeps the retry affordance. -->
-		<div class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text" role="alert">
+		<div
+			class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
 			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button>
+			<Button variant="primary" onclick={() => void runLoad(false)}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
 		</div>
 	{/if}
 
 	<!-- The map placeholder's honest copy: the tile source is a
 	     self-hosting decision of a later update; the city grouping
 	     comes first. -->
-	<p class="places__map m-0 mt-5 py-5 px-6 text-center font-body font-normal text-[13px] leading-[1.5] text-text-faint border border-dashed border-border-strong rounded-card">{$_('places_map_placeholder')}</p>
+	<p
+		class="places__map m-0 mt-5 py-5 px-6 text-center font-body font-normal text-[13px] leading-[1.5] text-text-faint border border-dashed border-border-strong rounded-card"
+	>
+		{$_('places_map_placeholder')}
+	</p>
 </section>
 
 {#snippet card(place: PlaceSummary)}
@@ -196,7 +216,11 @@
 				     own cover discipline). -->
 				<span class="place-card__cells grid grid-cols-2 absolute inset-0">
 					{#each place.representativeCoverAssetIds.slice(0, 4) as coverId, index (coverId)}
-						<span class="place-card__cell {place.representativeCoverAssetIds.length === 3 && index === 2 ? 'col-span-2' : ''} overflow-hidden">
+						<span
+							class="place-card__cell {place.representativeCoverAssetIds.length === 3 && index === 2
+								? 'col-span-2'
+								: ''} overflow-hidden"
+						>
 							<img
 								class="w-full h-full object-cover"
 								src={`/api/v1/assets/${encodeURIComponent(coverId)}/thumbnail?size=tile`}
@@ -217,11 +241,19 @@
 			{/if}
 			<!-- The gradient shade and the city name over the covers. -->
 			<span class="place-card__shade absolute inset-0 bg-linear-to-t from-night/55 to-transparent"></span>
-			<span class="place-card__name absolute left-3.5 right-3.5 bottom-2.5 font-body font-bold text-[17px] leading-[1.4] text-cream-text [text-shadow:0_1px_3px_rgb(0_0_0/0.4)]">{place.name}</span>
+			<span
+				class="place-card__name absolute left-3.5 right-3.5 bottom-2.5 font-body font-bold text-[17px] leading-[1.4] text-cream-text [text-shadow:0_1px_3px_rgb(0_0_0/0.4)]"
+				>{place.name}</span
+			>
 		</span>
 		<span class="place-card__body flex items-center justify-between px-3.5 pt-2.5 pb-3">
-			<span class="place-card__region font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate">{countryName(place.country, $locale ?? 'en')}</span>
-			<span class="place-card__count font-body font-normal text-[12px] leading-[1.4] text-text-faint whitespace-nowrap tabular-nums">{$_('places_photo_count', { values: { count: place.assetCount } })}</span>
+			<span class="place-card__region font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
+				>{countryName(place.country, $locale ?? 'en')}</span
+			>
+			<span
+				class="place-card__count font-body font-normal text-[12px] leading-[1.4] text-text-faint whitespace-nowrap tabular-nums"
+				>{$_('places_photo_count', { values: { count: place.assetCount } })}</span
+			>
 		</span>
 	</a>
 {/snippet}

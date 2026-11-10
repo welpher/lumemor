@@ -246,17 +246,15 @@ test.describe('the signed-in scenes', () => {
 		const tiles = page.locator('.flat-wall .tile');
 		await expect(tiles).toHaveCount(3);
 		await expect(tiles.first().getByRole('link')).toHaveAccessibleName(PHOTO_OCR_NAME);
-		const names = await tiles.getByRole('link').evaluateAll((links) =>
-			links.map((link) => link.getAttribute('aria-label'))
-		);
+		const names = await tiles
+			.getByRole('link')
+			.evaluateAll((links) => links.map((link) => link.getAttribute('aria-label')));
 		expect(new Set(names).size).toBe(3);
 		expect(names).toContain(PHOTO_GPS_NAME);
 		expect(names).toContain(PHOTO_FACE_NAME);
 	});
 
-	test('scene 4: the filter browse renders the month-grouped wall and a facet chip re-executes', async ({
-		page
-	}) => {
+	test('scene 4: the filter browse renders the month-grouped wall and a facet chip re-executes', async ({ page }) => {
 		// The bare /search (no query): BROWSE mode, the timeline's
 		// exact month-grouped day-block wall over the time-ordered
 		// items.
@@ -279,9 +277,7 @@ test.describe('the signed-in scenes', () => {
 
 		await expect(page).toHaveURL(/\/search\?placeIds=\d+$/);
 		await expect(page.locator('.tile')).toHaveCount(1);
-		await expect(page.locator('.tile').first().getByRole('link')).toHaveAccessibleName(
-			PHOTO_GPS_NAME
-		);
+		await expect(page.locator('.tile').first().getByRole('link')).toHaveAccessibleName(PHOTO_GPS_NAME);
 		await expect(page.locator('.search-meta b')).toHaveText('1 result');
 		await expect(chip).toHaveAttribute('aria-pressed', 'true');
 
@@ -290,9 +286,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.wall__month-header', { hasText: 'June 2026' })).toBeVisible();
 	});
 
-	test('scene 5: the places page renders the city grid and deep-links into the filtered browse', async ({
-		page
-	}) => {
+	test('scene 5: the places page renders the city grid and deep-links into the filtered browse', async ({ page }) => {
 		await page.goto('/places');
 		await expect(page).toHaveTitle('Places · lumemor');
 		await expect(page.getByRole('heading', { level: 1, name: 'Places', exact: true })).toBeVisible();
@@ -317,9 +311,7 @@ test.describe('the signed-in scenes', () => {
 		await card.click();
 		await expect(page).toHaveURL(/\/search\?placeIds=\d+$/);
 		await expect(page.locator('.tile')).toHaveCount(1);
-		await expect(page.locator('.tile').first().getByRole('link')).toHaveAccessibleName(
-			PHOTO_GPS_NAME
-		);
+		await expect(page.locator('.tile').first().getByRole('link')).toHaveAccessibleName(PHOTO_GPS_NAME);
 		await expect(page.locator('.wall__month-header', { hasText: 'June 2026' })).toBeVisible();
 	});
 

@@ -178,8 +178,7 @@
 			// Seed the favorite flag from the wall's item for this id:
 			// the wall is unmounted while the viewer is open, so the
 			// snapshot's flag is the last known truth.
-			favorite =
-				wallItems().find((entry) => entry.id === id)?.isFavorite ?? false;
+			favorite = wallItems().find((entry) => entry.id === id)?.isFavorite ?? false;
 			if (outcome.detail.kind === 'video') {
 				const probe = await probeAssetPlay(id);
 				if (current) {
@@ -272,13 +271,10 @@
 				return faces.some(
 					(face) =>
 						face.clusterId !== null &&
-						(event.survivingClusterId === face.clusterId ||
-							event.mergedClusterIds.includes(face.clusterId))
+						(event.survivingClusterId === face.clusterId || event.mergedClusterIds.includes(face.clusterId))
 				);
 			case 'person.face_moved':
-				return faces.some(
-					(face) => face.id === event.faceId || face.clusterId === event.clusterId
-				);
+				return faces.some((face) => face.id === event.faceId || face.clusterId === event.clusterId);
 		}
 	}
 
@@ -355,10 +351,7 @@
 		assignErrorKey = '';
 		assignLoading = true;
 		void (async () => {
-			const [peopleOutcome, unnamedOutcome] = await Promise.all([
-				listPeople(),
-				listUnnamedPeople(null)
-			]);
+			const [peopleOutcome, unnamedOutcome] = await Promise.all([listPeople(), listUnnamedPeople(null)]);
 			if (assignFaceId === null) {
 				// Closed mid-flight: the next open refetches.
 				return;
@@ -446,8 +439,7 @@
 			// a face the endpoint cannot resolve is one the clustering
 			// has not grouped yet (the one message-key exception --
 			// same discipline as the people client's requires-label).
-			assignErrorKey =
-				outcome.errorKey === 'person_not_found' ? 'viewer_face_not_grouped' : outcome.errorKey;
+			assignErrorKey = outcome.errorKey === 'person_not_found' ? 'viewer_face_not_grouped' : outcome.errorKey;
 			return;
 		}
 		assignFaceId = null;
@@ -658,7 +650,6 @@
 		actionErrorKey = outcome.errorKey;
 		return false;
 	}
-
 </script>
 
 <svelte:head>
@@ -669,12 +660,12 @@
 	{detail}
 	{favorite}
 	{isOwner}
-	sequence={sequence}
+	{sequence}
 	{status}
 	{errorKey}
 	{videoPlayable}
 	{busy}
-	actionErrorKey={actionErrorKey}
+	{actionErrorKey}
 	modalOpen={assignFaceId !== null || tagOpen}
 	onnavigate={navigateTo}
 	onexit={exitViewer}

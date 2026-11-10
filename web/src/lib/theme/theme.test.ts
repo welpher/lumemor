@@ -1,11 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest';
-import {
-	initTheme,
-	isDarkTheme,
-	setThemePreference,
-	themePreference,
-	toggleTheme
-} from './theme.svelte';
+import { initTheme, isDarkTheme, setThemePreference, themePreference, toggleTheme } from './theme.svelte';
 
 // jsdom does not implement matchMedia; this controllable stub stands
 // in for the OS color-scheme preference. `dispatch` flips the matches
