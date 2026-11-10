@@ -401,7 +401,8 @@ test.describe('the administrator scenes', () => {
 		expect(post.postDataJSON()).toEqual({
 			title: ALBUM_TITLE,
 			rootPath: SOURCE_DIR,
-			audience: []
+			audience: [],
+			inTimeline: true
 		});
 
 		// The write probe's honest face: the read-only bind
@@ -748,7 +749,8 @@ test.describe('the writable source scenes', () => {
 		expect(post.postDataJSON()).toEqual({
 			title: RW_ALBUM_TITLE,
 			rootPath: RW_MOUNT_ROOT,
-			audience: []
+			audience: [],
+			inTimeline: true
 		});
 
 		// The probe's TRUE arm: the writable bind answers
