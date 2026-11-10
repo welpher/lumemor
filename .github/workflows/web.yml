@@ -47,7 +47,7 @@ jobs:
       - name: Install dependencies
         run: make web-install
 
-      - name: Check (svelte-check and vitest)
+      - name: Check (prettier, eslint, svelte-check and vitest)
         run: make web-check
 
       - name: Build (adapter-static)
