@@ -261,6 +261,7 @@ NON_ERROR_KEYS = {
     "viewer_exif_longitude",
     "viewer_exif_altitude",
     "viewer_exif_none",
+    "viewer_albums_section",
     "viewer_faces_placeholder",
     "viewer_places_placeholder",
     # Viewer face chips and the assign dialog: the

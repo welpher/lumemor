@@ -155,6 +155,7 @@
   "viewer_exif_longitude": "经度",
   "viewer_exif_altitude": "海拔",
   "viewer_exif_none": "暂无详细信息。",
+  "viewer_albums_section": "所在相册",
   "viewer_faces_placeholder": "这张照片中未识别到人物。",
   "viewer_places_placeholder": "地点功能将随后续更新到来。",
   "trash_note": "删除的照片会在这里保留至保留期结束，之后将被永久清除。",

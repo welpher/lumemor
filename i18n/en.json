@@ -155,6 +155,7 @@
   "viewer_exif_longitude": "Longitude",
   "viewer_exif_altitude": "Altitude",
   "viewer_exif_none": "No details yet.",
+  "viewer_albums_section": "Albums",
   "viewer_faces_placeholder": "No people recognized in this photo.",
   "viewer_places_placeholder": "Places arrive in a later update.",
   "trash_note": "Deleted photos stay here until their retention runs out, then they are removed for good.",
