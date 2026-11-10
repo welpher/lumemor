@@ -1,6 +1,6 @@
-// People surface tests (M3b Task 1): the named region, the unnamed
-// region's keyset pagination and the cluster detail, all with the B4
-// discipline under load -- clusters are global, labels are private
+// People surface tests: the named region, the unnamed
+// region's keyset pagination and the cluster detail, all with the
+// per-user-state discipline under load -- clusters are global, labels are private
 // per user, and every face count is honest for the calling user's
 // visible assets. Fixtures insert models, faces, clusters, labels
 // and assets directly in the database (the labeling and hiding write
@@ -333,8 +333,8 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 		if item.FaceCount != 3 {
 			t.Errorf("admin faceCount = %d, want 3 (the live faces on own assets only)", item.FaceCount)
 		}
-		// The card face is the best caller-visible live face (the
-		// M3c handoff): the strongest of the admin's three is fB
+		// The card face is the best caller-visible live face
+		// (the card-face rule): the strongest of the admin's three is fB
 		// (0.95), not the cluster's stored representative.
 		if uuid.UUID(item.RepresentativeFaceId) != fB {
 			t.Errorf("representativeFaceId = %s, want the best visible %s", item.RepresentativeFaceId, fB)
@@ -431,7 +431,7 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 	})
 }
 
-// TestPeopleB4LabelIsolation loads the B4 discipline: the caller's
+// TestPeopleB4LabelIsolation loads the per-user-state discipline: the caller's
 // label moves a cluster into their named region and out of their
 // unnamed region -- and does nothing to the other account's view.
 // Hidden people stay in the named list carrying the badge.

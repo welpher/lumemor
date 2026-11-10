@@ -48,7 +48,7 @@ type MetadataWorker struct {
 	dataDir    string
 	logger     *slog.Logger
 	mlDispatch mlDispatchFunc
-	// places is the in-memory place grid (M3d): the GPS step resolves
+	// places is the in-memory place grid: the GPS step resolves
 	// the extraction's coordinates against it -- the nearest city
 	// within geodata.ResolutionRadiusKm writes assets.place_id,
 	// anything farther or no GPS at all writes NULL. Nil is the
@@ -97,11 +97,11 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	// upload's value stands (see resolveExifTime).
 	exifTime, ok := resolveExifTime(tags, deviceTimeZone(row.Exif))
 
-	// The GPS resolution (M3d): the extraction's coordinates resolve
+	// The GPS resolution: the extraction's coordinates resolve
 	// against the in-memory grid -- the nearest city within the
 	// threshold writes place_id, anything farther or no GPS at all
 	// writes NULL (the honest absence; no country-polygon fallback).
-	// Without the grid (a deployment without the reference data) the
+	// Without the grid (a deployment without the baked place data) the
 	// column keeps whatever it held: place_resolved stays false and
 	// the refinement leaves it alone.
 	gpsLat, gpsLon := exifParamsLatLon(tags)
@@ -121,7 +121,7 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 		return fmt.Errorf("refine asset row: %w", err)
 	}
 	// A Live Photo component row's counter counts its transcode alone
-	// (M2d): the metadata refinement still runs -- both rows of the
+	// : the metadata refinement still runs -- both rows of the
 	// pair carry sidecars -- but its completion must not consume the
 	// count. An un-guarded decrement here would empty the component's
 	// counter before the playable copy exists, stamp ready_at so the
@@ -325,7 +325,7 @@ func exifParams(assetID pgtype.UUID, tags map[string]any, raw []byte, exifTime r
 // moves the value and flips taken_at_source to 'exif', and a NULL
 // leaves the upload's chain untouched.
 //
-// place_id carries the GPS resolution's answer (M3d): when
+// place_id carries the GPS resolution's answer: when
 // placeResolved is true, the value -- the resolved city or NULL for
 // no GPS / beyond threshold -- is the file's truth and the SQL lands
 // it unconditionally; when the grid was not wired, placeResolved is

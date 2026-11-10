@@ -1,5 +1,5 @@
-// The trash-area moves of the external asset lifecycle (E4, the
-// §A6/E4 table's move semantics): a directory album's referenced
+// The trash-area moves of the external asset lifecycle (the
+// move semantics): a directory album's referenced
 // file is not copied at ingest (zero copy, zero move -- it stays
 // wherever the family put it), so the trash lifecycle MOVES it --
 // into data/trash/<assetID>/ when the owner trashes the asset, back

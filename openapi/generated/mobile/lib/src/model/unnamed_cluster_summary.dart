@@ -8,7 +8,7 @@ import 'package:built_value/serializer.dart';
 
 part 'unnamed_cluster_summary.g.dart';
 
-/// One unnamed face cluster of the caller's unnamed region: a global cluster the caller sees through at least one visible asset and has not labeled themselves. Unlabeled for THIS caller says nothing about another account's labels (B4 -- labels are private per user). 
+/// One unnamed face cluster of the caller's unnamed region: a global cluster the caller sees through at least one visible asset and has not labeled themselves. Unlabeled for THIS caller says nothing about another account's labels (labels are private per user). 
 ///
 /// Properties:
 /// * [clusterId] - Identifier of the face cluster.

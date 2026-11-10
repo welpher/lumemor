@@ -104,7 +104,7 @@ func newEnvManifest(t *testing.T, manifest *ml.Manifest) *env {
 
 // newEnvRerun is newEnv with the ML rerun dispatch seam injected: the
 // rerun tests drive the framework through a fake dispatcher standing
-// in for the per-asset ML workers of the milestone's later tasks.
+// in for the per-asset ML workers.
 func newEnvRerun(t *testing.T, dispatch MlRerunDispatchFunc) *env {
 	t.Helper()
 	return newEnvLogger(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), dispatch, nil)
@@ -1055,7 +1055,7 @@ func TestUploadToReadyFullFlow(t *testing.T) {
 // upload enqueues a metadata job for BOTH rows (each carries an exif
 // sidecar to refine), a thumbnail job for the photo row ONLY (the
 // component video is never the client-visible asset, so it gets no
-// poster), and -- M2d -- exactly one transcode job for the COMPONENT
+// poster), and exactly one transcode job for the COMPONENT
 // row (its playable stream; the photo row itself is an image and gets
 // none). The component's counter counts that transcode alone (1),
 // while the photo row's keeps its two; the metadata completion on the

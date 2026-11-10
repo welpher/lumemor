@@ -4,7 +4,7 @@ import { initI18n } from '$lib/i18n';
 import { goto } from '$app/navigation';
 import Layout from './+layout.svelte';
 
-// The content shell's app frame (R2-1): the h-dvh root pins the top
+// The content shell's app frame: the h-dvh root pins the top
 // bar by layout (no sticky hack), <main> is the frame's one scroll
 // container, and the browser's keyboard scrolling follows FOCUS -- a
 // body-focused page no longer scrolls once the document itself stops
@@ -19,7 +19,7 @@ import Layout from './+layout.svelte';
 const { navigationCallbacks, pageState, connectionState } = vi.hoisted(() => ({
 	navigationCallbacks: [] as Array<(navigation: { type: string }) => void>,
 	// The route state the layout's topbar-hiding rule reads: the
-	// album detail's route id hides the shell topbar (R3, the page
+	// album detail's route id hides the shell topbar (the page
 	// owns its chrome there); every other route keeps it.
 	pageState: {
 		route: { id: '/(content)/timeline' as string | null }
@@ -164,7 +164,7 @@ test('a push navigation resets the scroll root; a popstate keeps it', () => {
 });
 
 test('the top bar hides while the album detail is active (the page owns its chrome)', () => {
-	// R3 (the 2026-11-07 owner pin): the album detail replaces the
+	// The album detail replaces the
 	// shell's global topbar with its own contextual bar -- while the
 	// route is active the shell renders NO topbar (the main region
 	// fills the frame), and every other route keeps it.
@@ -192,7 +192,7 @@ test('the top bar carries the lucide chrome icons (menu, search, account)', () =
 
 	// The hamburger: an icon-only button, its accessible name the
 	// aria-label, the svg decorative and lucide (the 24-grid/2px
-	// round-cap icon language of brand spec §5).
+	// round-cap icon language of the brand).
 	const hamburger = document.body.querySelector<HTMLButtonElement>('button[aria-label="Open navigation"]');
 	expect(hamburger?.querySelector('svg.lucide-menu')).not.toBeNull();
 
@@ -247,7 +247,7 @@ test('the top bar search box navigates to the search page on commit (Enter)', ()
 	flushSync();
 });
 
-// --- the offline strip (web IA §6, the frame's first child) ------------------
+// --- the offline strip ------------------
 
 test('the offline strip pins above the topbar content and rises only on a dropped connection', () => {
 	// The mocked store answers at mount (the live transitions are
@@ -262,7 +262,7 @@ test('the offline strip pins above the topbar content and rises only on a droppe
 
 	// The dropped connection rises the yellow band -- and it is the
 	// FRAME'S FIRST CHILD, standing above the topbar content (the
-	// pin's placement: 顶栏黄条 above everything the bar carries).
+	// placement rule: the strip stands above everything the bar carries).
 	connectionState.status = 'down';
 	connectionState.downSince = Date.now();
 	const dropped = mountLayout();
@@ -301,7 +301,7 @@ test('the strip stays pinned above <main> while the album detail hides the topba
 	flushSync();
 });
 
-// --- the `/` focus search and the `?` sheet (web IA §6) ----------------------
+// --- the `/` focus search and the `?` sheet ----------------------
 
 test('`/` lands the focus on the topbar search box outside editable contexts', () => {
 	const app = mountLayout();

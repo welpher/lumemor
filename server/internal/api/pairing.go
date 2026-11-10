@@ -104,7 +104,7 @@ func (s *server) CreatePairingToken(w http.ResponseWriter, r *http.Request) {
 }
 
 // publishPairingTokenCreated reports a pairing token mint onto the
-// activity stream: the security spec's audit minimum includes pairing
+// activity stream: the audit minimum includes pairing
 // generation. The payload names the minting user only -- the secret
 // and its hash never travel on the stream, and the event deliberately
 // fires only for tokens that exist in the store, so a failed mint

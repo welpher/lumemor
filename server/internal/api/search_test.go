@@ -1,4 +1,4 @@
-// Search endpoint tests (M3d Task 3): the unified search's two paths,
+// Search endpoint tests: the unified search's two paths,
 // their merge and the facets, exercised through the HTTP surface the
 // contract pins. The text arm runs over seeded filename/description/
 // OCR/tag/album-title/person-name fixtures through the unaccented
@@ -853,7 +853,7 @@ func TestSearchVisibility(t *testing.T) {
 		// the owner's carries his tag over his filtered set.
 		gracePage := env.getSearch(t, env.graceCookie, "query="+url.QueryEscape("海边"))
 		if len(gracePage.Facets.Tags) != 0 {
-			t.Errorf("grace's tag facet = %v, want empty (B4: another account's tags never surface)", gracePage.Facets.Tags)
+			t.Errorf("grace's tag facet = %v, want empty (another account's tags never surface)", gracePage.Facets.Tags)
 		}
 		ownerPage := env.getSearch(t, env.cookie, "query="+url.QueryEscape("海边"))
 		if len(ownerPage.Facets.Tags) != 1 ||

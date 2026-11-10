@@ -1,9 +1,9 @@
-// The asset attribute PATCH (M2c Task 5): PATCH /assets/{id}, the
+// The asset attribute PATCH: PATCH /assets/{id}, the
 // owner's partial edit of the two owner-level attributes -- the
 // free-text description the detail panel renders, and the hidden
 // switch that keeps the asset out of every live view. The permission
-// model is owner-only, the attribute-editing row of the spec's
-// matrix: no administrator override here (unlike the permanent
+// model is owner-only, the attribute-editing row of the
+// permission matrix: no administrator override here (unlike the permanent
 // delete), so the owner-scoped read decides the anti-enumeration 404
 // and the writes carry the owner guard themselves. Set semantics
 // throughout: the guards inside both writes make a repeat of the

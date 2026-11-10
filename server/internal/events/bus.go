@@ -1,5 +1,5 @@
 // Package events provides the in-process event bus of the lumemor
-// server: producers publish domain events (M2a: session.started,
+// server: producers publish domain events (session.started,
 // session.revoked, auth.login_failed, pairing.token_created),
 // consumers replay and follow them through the SSE activity stream
 // (GET /api/v1/events).

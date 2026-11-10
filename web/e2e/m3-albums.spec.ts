@@ -1,13 +1,13 @@
-// The albums-as-sources story of the web app (E4, reshaped by E6's
-// album autonomy), walked end to end against the real compose stack:
+// The albums-as-sources story of the web app (reshaped by the
+// album-autonomy rework), walked end to end against the real compose stack:
 // an album IS a source. The create dialog picks an EXISTING directory
 // on the server's filesystem (referenced in place -- zero copy, zero
 // move), the rescan reconciles the album's membership with what that
 // directory holds, the audience is an album property (the edit
 // dialog's audience face, the full-set PUT), and the member's side of
 // the share is the read-only view. Both pickers (the path completion
-// and the audience candidates) are PORTALED floating layers (web IA
-// §7.5's 2026-11-09 revision) -- anchored under their triggers,
+// and the audience candidates) are PORTALED floating layers (the
+// floating-layer revision) -- anchored under their triggers,
 // living in the document outside the dialogs' DOM, so the dialogs
 // never change height for them. The stack's lifecycle is owned by the
 // caller (the acceptance scripts' chaining pattern, or one fresh
@@ -16,8 +16,8 @@
 //
 // THE STACK ARRANGEMENT (the honest source fixtures, documented):
 // the repository's compose file binds TWO fixture trees into the
-// lumemor container, and the binds themselves are the E6 boundary
-// (web IA §7.5's third revision: the mount-root allowlist retired
+// lumemor container, and the binds themselves are the boundary
+// (the mount-boundary revision: the mount-root allowlist retired
 // whole -- the operator controls the container's view, the
 // completion's domain is the container's REAL filesystem, and the
 // managed data tree never lists).
@@ -26,7 +26,7 @@
 //     two face-portrait JPEGs the upload stories seed, arriving
 //     through the source path this time. The read-only bind pins the
 //     zero-copy ingest by construction AND answers the creation-time
-//     write probe with the honest false fact (§7.9: a read-only
+//     write probe with the honest false fact (a read-only
 //     directory is a legitimate album whose photos cannot be deleted
 //     through the application -- feedback, never a failure).
 //   - web/e2e/fixtures/m3-source-rw, bound WITHOUT :ro at
@@ -41,10 +41,10 @@
 // acceptances downloaded into -- ./lumemor persists across stack
 // lifetimes, so the download run the bootstrap triggers is warm (a
 // digest re-verification); cold (CI's first run), it is the real
-// transfer, bounded like every M3 story's cold bound.
+// transfer, bounded like every e2e story's cold bound.
 //
 // THE TWO-ACCOUNT DANCE (the sharing story's shape): the first-run
-// administrator owns the library and the albums (E6: mounting an
+// administrator owns the library and the albums (mounting an
 // existing photo directory is a configuration act, so the creation
 // entry and the completion are the ADMINISTRATOR'S alone); a member
 // account, created through the admin API in the suite's bootstrap,
@@ -54,12 +54,12 @@
 // sessions never share a context) -- and the member's scenes assert
 // everything the audience grant gives: the wall's shared section,
 // the read-only detail, the timeline's inclusion of the shared items,
-// the viewer drawer's identity-aware read-only state, and the E6
+// the viewer drawer's identity-aware read-only state, and the
 // creation guard's refusal matrix (the member's wall carries no
 // create affordance; their create-album attempt and their completion
 // call both answer AUTH_FORBIDDEN).
 //
-// THE SCENES (the E4/E6 surface, in order):
+// THE SCENES (the albums and autonomy surface, in order):
 //
 //  1. The administrator signs in through the form and lands on the
 //     albums wall holding exactly the pinned "My photos" card (the
@@ -92,7 +92,7 @@
 //  6. The task panel: the rescan's job_runs row lists with its own
 //     label (the contract's JobRunKind carries album_rescan -- the
 //     row must never fall to the panel's generic failure).
-//  7. The edit dialog: the autonomy block (E6, §7.9) -- the lock
+//  7. The edit dialog: the autonomy block -- the lock
 //     toggle and the caller's own timeline-exclusion toggle ride the
 //     dialog, while the deletability row DOES NOT render (the
 //     read-only source carries no row at all -- no dead affordance);
@@ -270,7 +270,7 @@ test('scene 1: the administrator signs in and lands on the pinned My photos card
 	// album leads the "Your albums" section with the localized
 	// display name (the stored internal title never renders) and the
 	// honest zero count, and the create action stays beside it -- the
-	// ADMINISTRATOR'S entry (E6: an admin session alone renders it).
+	// ADMINISTRATOR'S entry (an admin session alone renders it).
 	const myPhotos = page.locator('a.album-card').filter({ hasText: 'My photos' });
 	await expect(myPhotos).toBeVisible();
 	await expect(myPhotos).toContainText('0 photos');
@@ -297,7 +297,7 @@ test.describe('the administrator scenes', () => {
 		// -- both albums' members arrive through their source scans --
 		// but the scans' pipelines run the same metadata/thumbnail/ML
 		// fan-out an upload's does, so the models must be ready for
-		// the tiles to converge the same way; the admin API is the M2
+		// the tiles to converge the same way; the admin API is the upload
 		// story's seeding pattern -- the request rides the page's own
 		// context and its login cookie). Warm mount or cold, the run
 		// must reach succeeded.
@@ -327,12 +327,12 @@ test.describe('the administrator scenes', () => {
 		const dialog = page.getByRole('dialog', { name: 'New album', exact: true });
 		await expect(dialog).toBeVisible();
 
-		// The system-wide domain (E6, §7.5's third revision): the
+		// The system-wide domain (the mount-boundary revision): the
 		// empty prefix on focus lists the filesystem ROOT ITSELF --
 		// the combobox's one "start here" row, the honest reflection
 		// of what the container sees (the allowlist's closed posture
 		// died with the allowlist). The candidate block is a PORTALED
-		// floating layer (web IA §7.5's 2026-11-09 revision), so its
+		// floating layer (the floating-layer revision), so its
 		// rows live in the document at page level, outside the
 		// dialog's DOM.
 		const pathField = dialog.getByLabel('Path');
@@ -404,7 +404,7 @@ test.describe('the administrator scenes', () => {
 			audience: []
 		});
 
-		// The write probe's honest face (§7.9): the read-only bind
+		// The write probe's honest face: the read-only bind
 		// answers sourceWritable FALSE -- a fact about the album's
 		// source, never a creation failure. The 201 landed the album;
 		// the response carries the fact.
@@ -471,7 +471,7 @@ test.describe('the administrator scenes', () => {
 		await expect(page.getByRole('link', { name: PHOTO_A_NAME, exact: true })).toBeVisible();
 		await expect(page.getByRole('link', { name: PHOTO_B_NAME, exact: true })).toBeVisible();
 
-		// And the scan's pipeline ran to its end: the reference ingest
+		// And the scan's pipeline ran to its end: the source ingest
 		// enqueued the same fan-out an upload's does, and both files
 		// reach the ready state (the tiles' thumbnails are real, the
 		// tiles are ready -- not merely present).
@@ -527,7 +527,7 @@ test.describe('the administrator scenes', () => {
 		await expect(dialog.locator('.album-form__source')).toContainText(SOURCE_DIR);
 		await expect(dialog.getByText('Source · fixed')).toBeVisible();
 
-		// The autonomy block (E6, §7.9): the LOCK toggle and the
+		// The autonomy block: the LOCK toggle and the
 		// caller's own TIMELINE-EXCLUSION toggle ride the dialog --
 		// but the DELETABILITY row does not render at all. The
 		// read-only source carries no row: no affordance exists for a
@@ -545,7 +545,7 @@ test.describe('the administrator scenes', () => {
 		// identity seam's self filter), Enter adds the chip, and the
 		// DRAIN collapses the picker: this instance holds exactly two
 		// accounts, so the member's add empties the candidate pool,
-		// and §7.6's 2026-11-09 pin never shows an empty picker -- the
+		// and the known-pool rule never shows an empty picker -- the
 		// layer falls, the add button disables, and the reserved
 		// no-candidates slot carries the words.
 		await expect(dialog.getByText('Only you')).toBeVisible();
@@ -574,7 +574,7 @@ test.describe('the administrator scenes', () => {
 
 		// The honest convergence: the refetched detail's grants reseed
 		// the chips -- the member's row is the audience now. The
-		// reseeded face also carries §7.6's pin the other way round:
+		// reseeded face also carries the known-pool rule the other way round:
 		// with the only other account already granted, the probed
 		// pool is KNOWN empty and the add affordance opens nothing.
 		await page.getByRole('button', { name: 'Properties', exact: true }).click();
@@ -621,7 +621,7 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	await expect(card).toContainText(`Shared by ${ADMIN_EMAIL}`);
 	await expect(card).toContainText('2 photos');
 
-	// The creation guard's visual half (E6): mounting an existing
+	// The creation guard's visual half: mounting an existing
 	// photo directory is a configuration act, so the member's wall
 	// renders NO creation affordance at all.
 	await expect(page.getByRole('button', { name: 'New album', exact: true })).toHaveCount(0);
@@ -682,7 +682,7 @@ test.describe('the member viewer scenes', () => {
 		await expect(page).toHaveURL(new RegExp(`/a/[0-9a-f-]{36}$`));
 		await expect(page.getByText(PHOTO_A_NAME)).toBeVisible();
 
-		// The info drawer plus the action bar (the R2-3 rework: the
+		// The info drawer plus the action bar (the viewer rework: the
 		// drawer is metadata-only, the per-user favorite and the
 		// original download ride the bar's icon affordances): the reads
 		// render (the file facts, the download affordance) and the
@@ -709,7 +709,7 @@ test.describe('the member viewer scenes', () => {
 	});
 });
 
-// The writable arm of the story (the E6 deletability chain, §7.9):
+// The writable arm of the story (the deletability chain):
 // the admin's session replays; the scenes walk the probe's TRUE
 // fact, the deletability row it renders, the delete-only selection
 // it arms, and the trash/restore round trip that moves the source

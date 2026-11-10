@@ -5,7 +5,7 @@
 // only talks to http://localhost:8244.
 //
 // THE STACK ARRANGEMENT (the honest reuse path, the m3-albums
-// specimen): the stack is fresh (its database volume was removed
+// arrangement): the stack is fresh (its database volume was removed
 // before it started) but the models ride the SAME storage bind mount
 // the chained acceptances downloaded into -- ./lumemor persists
 // across the script's stack lifetimes, and the download service's
@@ -97,7 +97,7 @@ const PHOTO_GPS_NAME = 'IMG_M3D_GPS.jpg';
 const PHOTO_OCR_NAME = 'IMG_M3D_OCR.png';
 const PHOTO_FACE_NAME = 'IMG_M3D_FACE.jpg';
 
-// The story's Chinese query: the M3 milestone's acceptance line -- a
+// The story's Chinese query: the acceptance chain's own line -- a
 // search for 海边 must answer photos. The OCR photo's extracted text
 // carries it, so the text path hits it; the semantic path ranks the
 // whole library; the fused page answers all three photos with the
@@ -346,7 +346,7 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/search');
 		await expect(page.locator('.search-meta b')).toHaveText('3 results');
 
-		// The tags facet is the caller's own vocabulary (B4): the
+		// The tags facet is the caller's own vocabulary: the
 		// scene-6 tag lists with the honest count over the browse
 		// scope.
 		const chip = page.getByRole('button', { name: `Tags · ${TAG_NAME}` });

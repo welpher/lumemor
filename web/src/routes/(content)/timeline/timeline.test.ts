@@ -7,11 +7,11 @@ import { clearWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 
 // The timeline wall page: first page renders grouped tiles, the
 // empty and error states carry their affordances, the infinite
-// scroll burst collapses into one fetch (the M2d review focus), the
+// scroll burst collapses into one fetch), the
 // manual pager covers hosts without an observer, selection raises
 // the batch bar with optimistic convergence, the batch bar's
 // add-tag dialog tags the selection with an existing tag or creates
-// one first (the add-to-album flow died with E4's albums-as-sources
+// one first (the add-to-album flow died with albums-as-sources
 // -- an album is a source, not a container), and SSE events patch
 // the loaded wall (the album.* events restart the walk: the union's
 // membership arms). The events module is mocked with a captured
@@ -140,7 +140,7 @@ function buttonByLabel(label: string, scope: ParentNode = document.body): HTMLBu
 }
 
 /**
- * Click one tile's check affordance -- R2-11's selection entry: the
+ * Click one tile's check affordance -- the selection entry: the
  * check reveals on hover/keyboard focus on every tile (the toolbar's
  * select-mode button is gone), and the first click enters the
  * selection.
@@ -180,7 +180,7 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	// The wall's month and day headers: the unified wall renderer
 	// (Wall.svelte) owns the header classes now -- the selectors
 	// follow the wall__ prefix the curated views always
-	// used. R2-12: no dividing hairline, the tightened vertical
+	// used. No dividing hairline, the tightened vertical
 	// rhythm (the month band's ~py-1.5/mb-2), the sticky positions
 	// and the opaque bg-page stays.
 	const monthHeader = document.body.querySelector('.wall__month-header');
@@ -403,7 +403,7 @@ test('selection: the check entry raises the bar, a batch trash removes the tiles
 	const page = mountPage();
 	await settle();
 
-	// R2-11: the toolbar is gone -- no hidden-view link, no
+	// The toolbar is gone -- no hidden-view link, no
 	// select-mode button -- and the check affordance is the entry.
 	expect(document.body.querySelector('.timeline__toolbar')).toBeNull();
 	expect(() => buttonByText('Select')).toThrow();
@@ -444,7 +444,7 @@ test('a failed batch keeps the tiles, the selection and shows the message', asyn
 	const page = mountPage();
 	await settle();
 
-	// R2-11: the check entry (the select-mode button is gone from the
+	// The check entry (the select-mode button is gone from the
 	// toolbar).
 	clickTileCheck(0);
 
@@ -476,7 +476,7 @@ test('favorite toggles the selected tiles optimistically', async () => {
 	const page = mountPage();
 	await settle();
 
-	// R2-11: the check entry (the select-mode button is gone from the
+	// The check entry (the select-mode button is gone from the
 	// toolbar).
 	clickTileCheck(0);
 
@@ -588,7 +588,7 @@ test('the scrubber jumps to a month group', async () => {
 });
 
 test('the scrubber tracking observes the scroll root through the capture phase', async () => {
-	// R2-1's risky edge: the frame moved scrolling from the document
+	// The frame's risky edge: the frame moved scrolling from the document
 	// into the shell's <main>, and element scroll events DO NOT
 	// BUBBLE -- a window-level onscroll would silently die. The
 	// tracking must observe the scroll root some other way, and the
@@ -672,7 +672,7 @@ const tagsBody = [
 	}
 ];
 
-// --- the batch bar's add-tag flow (M3d Task 4) --------------------------------
+// --- the batch bar's add-tag flow --------------------------------
 
 function modal(): HTMLElement | null {
 	return document.body.querySelector<HTMLElement>('.modal__panel');
@@ -697,7 +697,7 @@ function fillDialogField(scope: ParentNode, value: string): void {
 }
 
 function selectTwoTiles(): void {
-	// R2-11: the check entry (the select-mode button is gone from the
+	// The check entry (the select-mode button is gone from the
 	// toolbar -- the tiles' checks are the only way in).
 	clickTileCheck(0);
 	clickTileCheck(1);

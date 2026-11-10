@@ -1,4 +1,4 @@
-// The facet collection (M3d Task 3): the filter bar's honest counts.
+// The facet collection: the filter bar's honest counts.
 // Every facet counts the CURRENT filtered set MINUS its own
 // dimension -- "how many results would I have if I added this value"
 // -- over the same caller-scoped domain the result page walks (the
@@ -209,7 +209,7 @@ func facetAlbums(ctx context.Context, tx pgx.Tx, caller uuid.UUID, filters Filte
 }
 
 // facetTags counts the CALLER's tags with members in the scoped
-// domain (B4: another account's tags never surface).
+// domain (another account's tags never surface).
 func facetTags(ctx context.Context, tx pgx.Tx, caller uuid.UUID, filters Filters, textMode bool) ([]TagFacet, error) {
 	scope := newScope(caller)
 	scope.addFilters(filters, dimensionTags)

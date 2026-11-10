@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The offline strip (web IA §6's pinned state, paid after E4): a
+	// The offline strip: a
 	// thin yellow band pinned ABOVE the topbar content of both shells
 	// (content and tool -- they share the events lib, so they share
 	// its connection truth), telling the user the SSE stream is down
@@ -10,7 +10,7 @@
 	// once a second: the browser's EventSource owns the retry
 	// schedule and never exposes it to JavaScript, so a countdown to
 	// the next attempt would be fabricated precision -- the elapsed
-	// count is the honest surface for the design's 重连倒计时.
+	// count is the honest surface for the reconnect countdown.
 	//
 	// THE SURFACE: the Sun notice fill with Navy ink (the brand's
 	// yellow pair, AA by construction: dark-on-light 8:1), the

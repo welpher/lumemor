@@ -15,7 +15,7 @@
 //   page-fetching entry point, guarded in flight: while a page load
 //   runs, further triggers return immediately -- one fetch per
 //   trigger even when the IntersectionObserver sentinel and a manual
-//   button fire in the same frame (the M2d review focus: no
+//   button fire in the same frame (no
 //   duplicate fetches, no duplicate tiles).
 // - Items are deduplicated by id: pages append only ids not already
 //   loaded (belt and braces around the keyset's own disjointness),
@@ -64,7 +64,7 @@
 // removal set the convergence must respect, and only a rollback (the
 // unfavorite failed) or a reset clears it.
 //
-// THE ALBUM WALL (M3c): the album detail's grid drives this same
+// THE ALBUM WALL: the album detail's grid drives this same
 // client through the `albumId` option -- the endpoint's album narrow
 // answers the album's own live items in the timeline's exact shape
 // (keyset order, per-user favorite flags), so the grid reuses the
@@ -147,7 +147,7 @@ export type TimelineClientOptions = {
 	albumId?: string;
 };
 
-/** The contract's default page size, pinned by the milestone plan. */
+/** The contract's default page size. */
 export const TIMELINE_PAGE_LIMIT = 100;
 
 const BATCH_ENDPOINT = '/api/v1/assets/batch';

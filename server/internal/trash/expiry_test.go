@@ -1,4 +1,4 @@
-// Expiry tests (M2c Task 3): the retention window (the default, a
+// Expiry tests: the retention window (the default, a
 // custom setting, corrupt and zero values), the shared-blob
 // reference rule on the physical file, the batch bound of one run,
 // the restore race guard, and the no-op over a clean database. The
@@ -297,7 +297,7 @@ func TestExpiryRetentionWindow(t *testing.T) {
 	}
 }
 
-// TestExpirySharedBlobReference pins the reference rule at the expiry
+// TestExpirySharedBlobReference pins the shared-blob rule at the expiry
 // level: two rows of two owners sharing one physical file, both
 // expired -- the rows go, the file goes exactly once (the second
 // row's count observes the first row's delete), and each purge
@@ -442,7 +442,7 @@ func TestExpiryBatchLimit(t *testing.T) {
 	}
 }
 
-// TestExpiryLivePhotoPairSilentComponent pins the M2d expiry fix for
+// TestExpiryLivePhotoPairSilentComponent pins the expiry fix for
 // Live Photo pairs: the component row is purged like any trashed row
 // (its file handled under the same shared-blob rule), but its
 // asset.deleted event is suppressed -- the trash view never listed

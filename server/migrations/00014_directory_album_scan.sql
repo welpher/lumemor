@@ -1,6 +1,6 @@
 -- +goose Up
--- Albums-as-sources readiness (E4): the scan snapshot column of the
--- rescan diff. The albums side of the milestone needed no new
+-- Albums-as-sources readiness: the scan snapshot column of the
+-- rescan diff. The albums side needed no new
 -- columns -- root_path and last_scanned_at landed with the album
 -- schema (00005), the album_type enum already carries 'directory'
 -- (00002), and assets.storage_kind already carries 'external'

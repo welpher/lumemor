@@ -1,8 +1,8 @@
-// Sweep tests (M2c Task 1): the requeue sweep is the recovery path of
+// Sweep tests: the requeue sweep is the recovery path of
 // assets whose upload committed but whose pipeline jobs never entered
 // the queue -- the enqueue insert failure and the crash in the
-// commit-to-enqueue window that M2b's final review left as the
-// hard-gate handoff. The contracts pinned here are the mandated ones:
+// commit-to-enqueue window, the hard-gate handoff. The contracts
+// pinned here are the mandated ones:
 // a stuck row is recovered end to end (jobs re-enqueued, queue
 // drained, asset.ready exactly once), a clean database is a no-op,
 // soft-deleted stuck rows are skipped, a double sweep is idempotent
@@ -65,7 +65,7 @@ func (e *env) riverJobTotal(t *testing.T, id uuid.UUID) int {
 }
 
 // softDeleteAsset marks the asset trashed directly on the row: the
-// trash endpoint arrives with this milestone's later tasks, and the
+// trash endpoint arrives later, and the
 // sweep's skip contract is a property of the column, not the endpoint.
 func (e *env) softDeleteAsset(t *testing.T, id uuid.UUID) {
 	t.Helper()
@@ -382,7 +382,7 @@ func TestRequeueSweepVideoUniqueKeyBoundary(t *testing.T) {
 }
 
 // TestRequeueSweepRecoversStuckComponent pins the sweep's component
-// arm (the M2d third site of the pipeline sync): a Live Photo
+// arm (the third site of the pipeline sync): a Live Photo
 // component video row the uploader left stuck at pending_jobs = 1 is
 // recovered with EXACTLY ONE transcode job re-enqueued -- never
 // metadata or thumbnail (the component counts a transcode alone; its

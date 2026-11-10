@@ -5,7 +5,7 @@
 # compose stack and tearing it down fully, including the database
 # volume) runs first and must be green before the M3b phases start.
 # Then two stack lifetimes of this repository's own compose
-# deployment walk the people milestone's story:
+# deployment walk the people story:
 #
 # Phase 1 (the people story over the API): the stack starts fresh,
 # the first-run admin is created and signed in, the default model
@@ -23,7 +23,7 @@
 # their cluster, the cross-person faces sit in the other one -- with
 # every pairwise embedding cosine distance printed as the first real
 # cross-person separation evidence (the SFace-128d family-scale
-# observation M3a promised for M3b).
+# observation the chained M3a script printed).
 #
 # The story then walks the surface itself through the API: the
 # unnamed region lists both clusters; PUT label names the
@@ -35,8 +35,8 @@
 # person carries all four faces); PUT hidden flags Alpha (hidden
 # people STAY listed with isHidden true); and DELETE of the assets
 # empties the cluster until it dissolves -- Alpha's label dies with
-# it (the M3a Rehome/Dissolve discipline's label cascade, the M3b
-# Review Focus #3 linkage): a partial delete keeps the person with
+# it (the Rehome/Dissolve discipline's label cascade, the
+# partial-delete linkage): a partial delete keeps the person with
 # the honest count, the last delete removes the person from every
 # region and every table.
 #
@@ -61,8 +61,8 @@
 #       HF domain mirror instead.
 #   M3B_SOURCE=offline -- no network at all: the Hugging Face URL
 #       path structure is reconstructed under
-#       tools/models/cache/offline-root/ (symlinks to the Task 1
-#       local weights cache) and served over TLS by a mirror service
+#       tools/models/cache/offline-root/ (symlinks to the local
+#       weights cache) and served over TLS by a mirror service
 #       of the stack (the dev image's python running
 #       scripts/offline_mirror_server.py): the mirror rewrite keeps
 #       the https scheme, so the local source must speak TLS, and
@@ -79,7 +79,7 @@
 # Requirements: docker with the compose plugin, curl, and (for the
 # chained web e2e, which the m2d chain installs) pnpm 9.15; the
 # offline mode additionally needs openssl and the lumemor-dev image
-# (built by any make docker-test / docker-lint run) plus the Task 1
+# (built by any make docker-test / docker-lint run) plus the local
 # weights cache under tools/models/cache/.
 
 set -euo pipefail
@@ -206,7 +206,7 @@ prepare_offline_source() {
         ch_PP-OCRv4_det_infer.onnx \
         ch_PP-OCRv4_rec_infer.onnx; do
         [ -f "$models_cache/$weight" ] \
-            || fail "the Task 1 weights cache is missing $models_cache/$weight -- the offline mode needs it"
+            || fail "the local weights cache is missing $models_cache/$weight -- the offline mode needs it"
     done
     docker image inspect "$dev_image" >/dev/null 2>&1 \
         || fail "the offline mirror rides the dev image $dev_image, which is absent -- run any make docker-test first to build it"
@@ -214,7 +214,7 @@ prepare_offline_source() {
         || fail "the offline mode needs openssl to mint the mirror certificate"
 
     # The seven pinned upstream artifacts at their Hugging Face URL
-    # paths (the M3d text tower and its tokenizer vocabulary among
+    # paths (the CLIP text tower and its tokenizer vocabulary among
     # them): what the mirror rewrite makes the download resolve.
     link_offline_file \
         "opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" \
@@ -538,7 +538,7 @@ pairwise_distance() {
 # M1 to M3a serial line, each script owning its own stacks).
 # ---------------------------------------------------------------------------
 
-echo "==> running the prior milestone acceptance (the M3a chain owns its stacks)"
+echo "==> running the prior acceptance (the M3a chain owns its stacks)"
 bash scripts/acceptance_m3a.sh \
     || fail "scripts/acceptance_m3a.sh failed (see its output above)"
 echo "    acceptance_m3a (and its chained M1/M2/M2d line) passed after $(elapsed)s"
@@ -836,10 +836,10 @@ teardown_stack
 echo "    phase 1 passed after $(elapsed)s"
 
 # ---------------------------------------------------------------------------
-# Phase 2: the e2e stack (the M3b people story of the web app).
+# Phase 2: the e2e stack (the people story of the web app).
 # ---------------------------------------------------------------------------
 
-echo "==> phase 2/2: the e2e stack (the M3b people story of the web app)"
+echo "==> phase 2/2: the e2e stack (the people story of the web app)"
 reset_stack_state
 prepare_bind_mount
 start_stack
@@ -849,7 +849,7 @@ echo "==> running the Playwright spec (web/e2e/m3-people.spec.ts)"
 if ! (cd web && pnpm e2e e2e/m3-people.spec.ts); then
     echo "==> server logs at the time of the failure:"
     compose logs --no-color --tail 200 lumemor || true
-    fail "the M3b e2e spec failed (see the report above; artifacts under web/test-results/)"
+    fail "the people e2e spec failed (see the report above; artifacts under web/test-results/)"
 fi
 teardown_stack
 echo "    phase 2 passed after $(elapsed)s"

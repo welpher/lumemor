@@ -1,7 +1,7 @@
 <script lang="ts">
-	// The unified search page (M3d Task 4): one text box, the facet
+	// The unified search page: one text box, the facet
 	// chips of the seven dimensions, the honest count line, and the
-	// results wall -- the web IA's /search row over the unified
+	// results wall -- the search row over the unified
 	// search endpoint (the merged text and semantic paths, the
 	// filter browse).
 	//
@@ -70,8 +70,8 @@
 
 	// The browse mode's month/day fold lives inside the shared Wall
 	// (the one renderer every photo surface composes); QUERY mode
-	// keeps the flat order. BOTH modes stay pure navigation (web IA
-	// §7.4's refusal): neither wall gets an onbatch runner, so no
+	// keeps the flat order. BOTH modes stay pure navigation
+	// (the no-curation refusal): neither wall gets an onbatch runner, so no
 	// check renders and no bar ever rises -- search gaining
 	// curation is a page-level opt-in the owner may make later.
 
@@ -283,7 +283,7 @@
 </svelte:head>
 
 <section class="search px-2" aria-busy={$search.status === 'loading'}>
-	<!-- The search head: the specimen's large query box, the facet
+	<!-- The search head: the large query box, the facet
 	     chips, the honest count line. The box is a form so the
 	     keyboard's Enter commits the search. -->
 	<div class="search__head px-2 pt-6">

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# M3d acceptance: the search and places milestone's end-to-end
+# M3d acceptance: the search-and-places end-to-end
 # acceptance -- the chained M3c acceptance (which itself chains the
 # M3b and M3a chains and through them the whole M1/M2 line, every
 # script owning its own compose stack and tearing it down fully,
 # including the database volume) runs first and must be green before
 # the M3d phases start. Then two stack lifetimes of this repository's
-# own compose deployment walk the search milestone's story -- the
-# M3 milestone's own finale line, "a search for 海边 answers photos":
+# own compose deployment walk the search story -- the
+# chain's own finale line, "a search for 海边 answers photos":
 #
 # Phase 1 (the search and places story over the API, two accounts):
 # the stack starts fresh, the first-run admin is created and signed
@@ -24,10 +24,10 @@
 # semantically-clustered subject set), the wildcard decoy (a filename
 # the live-wildcard bug would glob but the literal query does not
 # match), and the private photo (a filename-only text hit with a
-# place of its own). (The E6 reshape: the library's owner is the
+# place of its own). (The reshape: the library's owner is the
 # administrator because the story's album -- the visibility arm's
-# vehicle -- is a directory album, and E6 pins directory album
-# creation to the administrator alone; every assertion below keeps
+# vehicle -- is a directory album, whose creation is the
+# administrator's alone; every assertion below keeps
 # its shape, the member is the bare sharee.)
 #
 # The search semantics are then asserted arm by arm:
@@ -52,8 +52,8 @@
 #     already-tagged pair), the tag-as-vocabulary FTS arm (a query
 #     hitting the tag NAME), the detail's caller-scoped tags row, and
 #     the tag filter.
-#   - The visibility (B4 and the union predicate): the E6 creation
-#     guard is pinned first (the member's create-album POST and their
+#   - The visibility (per-user state and the union predicate): the
+#     creation guard is pinned first (the member's create-album POST and their
 #     path-completion call both answer 403 AUTH_FORBIDDEN -- mounting
 #     an existing photo directory is the administrator's configuration
 #     act), then the ADMINISTRATOR opens the directory album over the
@@ -98,8 +98,8 @@
 #       HF domain mirror instead.
 #   M3D_SOURCE=offline -- no network at all: the Hugging Face URL
 #       path structure is reconstructed under
-#       tools/models/cache/offline-root/ (symlinks to the Task 1
-#       local weights cache, the M3d text tower and its vocabulary
+#       tools/models/cache/offline-root/ (symlinks to the local
+#       weights cache, the CLIP text tower and its vocabulary
 #       included) and served over TLS by a mirror service of the
 #       stack (the dev image's python running
 #       scripts/offline_mirror_server.py): the mirror rewrite keeps
@@ -118,7 +118,7 @@
 # GPS fixture's checksum probe below only prints), and (for the
 # chained web e2e, which the m2d chain installs) pnpm 9.15; the
 # offline mode additionally needs openssl and the lumemor-dev image
-# (built by any make docker-test / docker-lint run) plus the Task 1
+# (built by any make docker-test / docker-lint run) plus the local
 # weights cache under tools/models/cache/.
 
 set -euo pipefail
@@ -142,7 +142,7 @@ member_password="correct-horse-battery"
 #       deterministic taken-at distinct from every other photo's).
 #   ocr-zh-text.png -- the rendered Chinese text image (the lines
 #       "杭州西湖景区" and "海边门票") whose extracted OCR text carries
-#       the milestone's finale keyword.
+#       the finale keyword.
 #   face-portrait.jpg / face-portrait-orientation6.jpg -- the
 #       same-person face pair: the people facet's cluster and the
 #       semantic arm's subject set.
@@ -158,11 +158,11 @@ face_portrait_orientation="$repo_root/server/internal/ml/testdata/face-portrait-
 face_portrait_other="$repo_root/server/internal/ml/testdata/face-portrait-other.jpg"
 private_photo="$repo_root/server/internal/jobs/testdata/golden.jpg"
 
-# The E4 source fixture: the repository's compose file binds the e2e
+# The source fixture: the repository's compose file binds the e2e
 # fixture tree (web/e2e/fixtures/m3-source, see its README) into the
 # container read-only at /mnt/e2e-source, and the story's
-# ADMINISTRATOR opens trip-2026 under it as the album's source (E6:
-# the creation is the administrator's alone) -- the four
+# ADMINISTRATOR opens trip-2026 under it as the album's source
+# (the creation is the administrator's alone) -- the four
 # byte-identical copies of the admin's own uploads above, so the
 # scan's owner+checksum dedup is the story's own arm (the honest
 # skip: the existing rows gain the membership, never a second
@@ -336,7 +336,7 @@ prepare_offline_source() {
         ch_PP-OCRv4_det_infer.onnx \
         ch_PP-OCRv4_rec_infer.onnx; do
         [ -f "$models_cache/$weight" ] \
-            || fail "the Task 1 weights cache is missing $models_cache/$weight -- the offline mode needs it"
+            || fail "the local weights cache is missing $models_cache/$weight -- the offline mode needs it"
     done
     docker image inspect "$dev_image" >/dev/null 2>&1 \
         || fail "the offline mirror rides the dev image $dev_image, which is absent -- run any make docker-test first to build it"
@@ -344,7 +344,7 @@ prepare_offline_source() {
         || fail "the offline mode needs openssl to mint the mirror certificate"
 
     # The seven pinned upstream artifacts at their Hugging Face URL
-    # paths (the M3d text tower and its tokenizer vocabulary among
+    # paths (the CLIP text tower and its tokenizer vocabulary among
     # them): what the mirror rewrite makes the download resolve.
     link_offline_file \
         "opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" \
@@ -719,7 +719,7 @@ search_get_raw() {
 # serial line, each script owning its own stacks).
 # ---------------------------------------------------------------------------
 
-echo "==> running the prior milestone acceptance (the M3c chain owns its stacks)"
+echo "==> running the prior acceptance (the M3c chain owns its stacks)"
 bash scripts/acceptance_m3c.sh \
     || fail "scripts/acceptance_m3c.sh failed (see its output above)"
 echo "    acceptance_m3c (and its chained M1/M2/M3a/M3b line) passed after $(elapsed)s"
@@ -1097,14 +1097,14 @@ echo "    the 合集 query's years facet: $tagtext_years"
 echo "    the tag name feeds the text path (its two members match)"
 
 # ---------------------------------------------------------------------------
-# The share (the E6 shape): the creation guard is pinned first (the
+# The share: the creation guard is pinned first (the
 # member's configuration acts are refused), then the ADMINISTRATOR
 # opens the fixture directory as the album's source and grants the
 # MEMBER the view at create (the sharee of the visibility story).
 # ---------------------------------------------------------------------------
 
 echo "==> the member's GET /api/v1/albums/path-completions must answer 403 (the completion is the admin's domain)"
-# E6, web IA §7.5's third revision: the completion browses the
+# The completion is the admin's domain: it browses the
 # container's filesystem on the creation dialog's behalf, so it rides
 # the same configuration act the creation does -- a plain member never
 # sees the filesystem.
@@ -1118,7 +1118,7 @@ grep -q 'AUTH_FORBIDDEN' "$work_dir/member_completion_refusal_body" \
 echo "    the member's completion answers 403 AUTH_FORBIDDEN"
 
 echo "==> the administrator's completion must list the fixture's trip directory (the system-wide domain)"
-# The E6 boundary: the compose binds ARE the boundary, so the trip
+# The boundary: the compose binds ARE the boundary, so the trip
 # directory lists with no root opened -- the honest reflection of what
 # the container sees (the same domain the m3c chain drills fully).
 status="$(curl -sS -o "$work_dir/completions_body" -b "$admin_jar" -w '%{http_code}' \
@@ -1130,7 +1130,7 @@ grep -q "\"paths\":\[\"$source_dir\"\]" "$work_dir/completions_body" \
     || fail "the completion does not list the trip directory: $(cat "$work_dir/completions_body")"
 echo "    the completion lists the trip directory (the bind is the boundary)"
 
-echo "==> the member's POST /api/v1/albums must answer 403 (the E6 creation guard)"
+echo "==> the member's POST /api/v1/albums must answer 403 (the creation guard)"
 status="$(curl -sS -o "$work_dir/member_create_refusal_body" -b "$member_jar" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
     -d "{\"title\":\"Member attempt\",\"rootPath\":\"$source_dir\",\"audience\":[]}" \
@@ -1218,7 +1218,7 @@ share_rows="$(psql_query "SELECT count(*) FROM album_shares WHERE album_id = '$a
 echo "    the existing four rows gained the membership; the asset count stayed six (the private photo and the decoy stay out: the album IS the shared surface)"
 
 # ---------------------------------------------------------------------------
-# The visibility (B4 and the union predicate): the sharee's search
+# The visibility (per-user state and the union predicate): the sharee's search
 # never answers the owner's private photo from either arm.
 # ---------------------------------------------------------------------------
 
@@ -1252,7 +1252,7 @@ echo "    the owner's own search answers the private photo first"
 echo "==> the sharee's tag facet stays empty and the places surface drops the private city"
 search_get "$member_jar" "" sharee-browse
 grep -q '"tags":\[\]' "$work_dir/search_body" \
-    || fail "the sharee's tag facet is not empty (another account's tags surfaced, B4): $(cat "$work_dir/search_body")"
+    || fail "the sharee's tag facet is not empty (another account's tags surfaced): $(cat "$work_dir/search_body")"
 grep -q '"people":\[\]' "$work_dir/search_body" \
     || fail "the sharee's people facet is not empty (labels are per-user, the sharee named nobody): $(cat "$work_dir/search_body")"
 sharee_places="$(grep -o '"places":\[[^]]*\]' "$work_dir/search_body" || true)"
@@ -1270,7 +1270,7 @@ status="$(curl -sS -o "$work_dir/sharee_detail_body" -b "$member_jar" -w '%{http
 [ "$status" = "200" ] \
     || fail "GET /api/v1/assets/$gps_id (sharee) returned status $status, want 200: $(cat "$work_dir/sharee_detail_body")"
 grep -q '"tags":\[\]' "$work_dir/sharee_detail_body" \
-    || fail "the sharee's asset detail carries the owner's tags (B4 leak): $(cat "$work_dir/sharee_detail_body")"
+    || fail "the sharee's asset detail carries the owner's tags (a per-user leak): $(cat "$work_dir/sharee_detail_body")"
 echo "    the sharee's detail of the same asset carries an empty tags row (per-user state)"
 
 # ---------------------------------------------------------------------------
@@ -1384,10 +1384,10 @@ teardown_stack
 echo "    phase 1 passed after $(elapsed)s"
 
 # ---------------------------------------------------------------------------
-# Phase 2: the e2e stack (the M3d search story of the web app).
+# Phase 2: the e2e stack (the search story of the web app).
 # ---------------------------------------------------------------------------
 
-echo "==> phase 2/2: the e2e stack (the M3d search story of the web app)"
+echo "==> phase 2/2: the e2e stack (the search story of the web app)"
 reset_stack_state
 prepare_bind_mount
 start_stack
@@ -1397,7 +1397,7 @@ echo "==> running the Playwright spec (web/e2e/m3-search.spec.ts)"
 if ! (cd web && pnpm e2e e2e/m3-search.spec.ts); then
     echo "==> server logs at the time of the failure:"
     compose logs --no-color --tail 200 lumemor || true
-    fail "the M3d e2e spec failed (see the report above; artifacts under web/test-results/)"
+    fail "the search e2e spec failed (see the report above; artifacts under web/test-results/)"
 fi
 teardown_stack
 echo "    phase 2 passed after $(elapsed)s"

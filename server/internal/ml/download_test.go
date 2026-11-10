@@ -1,4 +1,4 @@
-// The model download service tests (M3a Task 3): every behavior runs
+// The model download service tests: every behavior runs
 // against local httptest file servers standing in for the upstream
 // sources -- no real network is ever touched -- with a migrated
 // throwaway database behind the real registry. The pins are:

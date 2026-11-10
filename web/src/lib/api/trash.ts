@@ -1,4 +1,4 @@
-// The trash view's data client (M2d Task 8): the bounded listing
+// The trash view's data client: the bounded listing
 // behind GET /api/v1/trash and the single restore behind POST
 // /trash/{id}/restore. The permanent delete reuses the viewer
 // client's deleteAsset (DELETE /assets/{id}, 404 = already gone =

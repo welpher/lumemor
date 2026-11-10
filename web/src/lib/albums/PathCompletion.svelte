@@ -1,17 +1,16 @@
 <script lang="ts">
 	// The source-path completion combobox of the albums-as-sources
 	// dialogs: the typed prefix in, the pickable directories out, the
-	// list a FLOATING LAYER (web IA §7.5's 2026-11-09 second
-	// revision: the 2026-11-08 inline-expansion design is retired --
-	// it traded an offset shift for height churn, the modal growing
+	// list a FLOATING LAYER (the earlier inline-expansion design is
+	// retired -- it traded an offset shift for height churn, the modal growing
 	// and shrinking with every list appearance, the wrong tool). The
 	// layer portals to document.body as a fixed, anchored surface
 	// (the shared `anchored` action): the modal body's overflow can
 	// never clip it, and the dialog NEVER changes height for it. The
-	// rows are the specimen's: the folder glyph + the full path, the
-	// active highlight, the keys footer (↑↓ / Enter / Esc).
+	// rows: the folder glyph + the full path, the active
+	// highlight, the keys footer (↑↓ / Enter / Esc).
 	//
-	// THE VALIDATION SLOT (§7.5's companion pin): the line under the
+	// THE VALIDATION SLOT (the reserved-slot rule): the line under the
 	// field is a reserved fixed-height slot -- the hint and the
 	// failure SWAP inside it (slot-replace, never slot-add), so the
 	// dialog's height is invariant to the validation's comings and
@@ -23,12 +22,12 @@
 	// trailing fetch runs when it lands), and a stale answer NEVER
 	// overwrites a newer one (every run carries a generation; only
 	// the newest generation's answer applies). The empty prefix
-	// lists the container's root itself (the system-wide domain of
-	// §7.5's third revision -- the allowlist and its no-roots
-	// posture retired with it); an empty answer is the honest
-	// no-match note, never an error state. The completion's own
-	// failure renders as a line that points back at the completion
-	// (retry by typing or re-focusing), never as a write error.
+	// lists the container's root itself (the system-wide domain --
+	// the allowlist and its no-roots posture retired); an empty
+	// answer is the honest no-match note, never an error state.
+	// The completion's own failure renders as a line that points
+	// back at the completion (retry by typing or re-focusing),
+	// never as a write error.
 	//
 	// THE KEYBOARD: ↑/↓ move the highlight over the rows (clamped,
 	// the list opens closed on ArrowDown), Enter completes the
@@ -37,7 +36,7 @@
 	// modal (its own Escape and any Enter-submit) never reacts to a
 	// stroke the list already owned. The input KEEPS the focus while
 	// the list is open (the combobox pattern); the layer floats
-	// outside the Modal's focus trap by the spec's own pin.
+	// outside the Modal's focus trap (a popover's focus contract).
 	import { _ } from 'svelte-i18n';
 	import { completeAlbumPath } from '$lib/api/albums';
 	import { anchored } from '$lib/components/anchored';
@@ -52,7 +51,7 @@
 		id: string;
 		/** The input's placeholder (the caller resolves the i18n). */
 		placeholder?: string;
-		/** The hint line under the input (the specimen's field hint). */
+		/** The hint line under the input (the field hint). */
 		hint?: string;
 		/** The write's failure text under the field; the input renders invalid while set. */
 		failure?: string;
@@ -234,13 +233,13 @@
 		onkeydown={handleKeydown}
 		onblur={handleBlur}
 	/>
-	<!-- THE VALIDATION SLOT (§7.5's 2026-11-09 companion pin): the
+	<!-- THE VALIDATION SLOT (the reserved-slot rule): the
 	     line under the field is a reserved fixed-height slot -- the
 	     hint and the failure SWAP inside it (slot-replace, never
 	     slot-add), so the dialog's height is invariant to the
 	     validation's comings and goings, exactly as it is to the
 	     picker's open/close. The slot reserves two lines while a
-	     hint or a failure stands (the specimen's hint wraps two),
+	     hint or a failure stands (the hint wraps two lines),
 	     one line for a bare field (the settings' add-root row); a
 	     text longer than the standing face overflows visibly rather
 	     than clipping -- honest words beat clipped ones. The slot's
@@ -257,7 +256,7 @@
 		{failure !== '' ? failure : hint}
 	</p>
 	{#if open}
-		<!-- THE FLOATING LAYER (§7.5's 2026-11-09 second revision): the
+		<!-- THE FLOATING LAYER: the
 		     candidate block portals to document.body as a fixed layer
 		     anchored under the input (the shared `anchored` action) --
 		     the modal's overflow never clips it and the dialog NEVER
@@ -265,7 +264,7 @@
 		     dropdown (bg-card, overlay radius, overlay shadow): it is
 		     a popover now, not a form block. The focus stays on the
 		     input (the combobox pattern) -- the layer rides outside
-		     the Modal's focus trap by the spec's own pin, and its
+		     the Modal's focus trap (a popover's focus contract), and its
 		     rows are plain descendants the input's aria-* wiring
 		     still points at. -->
 		<div
@@ -293,8 +292,7 @@
 			{:else if paths.length === 0}
 				<!-- The honest empty answer: nothing under the typed prefix
 			         matches (the system-wide domain has no closed posture to
-			         report -- the allowlist and its no-roots face retired with
-			         E6). -->
+			         report -- the allowlist and its no-roots face retired). -->
 				<p
 					class="path-completion__no-match m-0 px-3 py-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft"
 				>
@@ -303,7 +301,7 @@
 			{:else}
 				{#each paths as candidate, index (candidate)}
 					<!-- The row: the state-selector (not an action button)
-					     shape of the specimen -- the folder glyph + the
+					     shape -- the folder glyph + the
 					     full path, the active highlight, mousedown
 					     completes before any blur can close the list. -->
 					<div

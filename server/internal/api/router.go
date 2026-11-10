@@ -174,8 +174,8 @@ type AlbumRescanEnqueuer interface {
 // The security headers (nosniff, Referrer-Policy) run as ROOT-level
 // middleware: every response of the server carries them -- pages,
 // static assets, the SPA shell, the API, the operational endpoints
-// (the M2a handoff's HTML-surface item; the CSP arrives with the
-// map milestone). The /api/v1 pipeline order is pinned and
+// (the HTML-surface item; the CSP arrives with the
+// map feature). The /api/v1 pipeline order is pinned and
 // security-relevant: after the root middleware, the origin check
 // guards every state-changing API request, then the route groups.
 // The JSON body limit and the per-request handler timeout apply only
@@ -249,7 +249,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 	r := chi.NewRouter()
 	// Root-level middleware: the security headers cover every response
 	// the server emits -- pages, the SPA shell and its assets, the API,
-	// and the operational endpoints (M2a handoff's HTML-surface item).
+	// and the operational endpoints (the HTML-surface item).
 	r.Use(setSecurityHeaders)
 	r.Get("/healthz", handleHealthz)
 	r.Handle("/metrics", promhttp.Handler())
@@ -323,7 +323,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Post("/auth/pairing/token", wrapper.CreatePairingToken)
 				r.Get("/assets/by-device-id/{deviceAssetId}", wrapper.GetAssetByDeviceId)
 				r.Get("/assets/timeline", wrapper.GetTimeline)
-				// The batch and curation views (M2c Task 4): the
+				// The batch and curation views: the
 				// set-semantics batch write, and the favorites and
 				// hidden listings. The static segments win over the
 				// /assets/{id} parameter below, so mounting them in
@@ -335,7 +335,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/assets/{id}", wrapper.GetAsset)
 				r.Patch("/assets/{id}", wrapper.PatchAsset)
 				r.Get("/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)
-				// The trash lifecycle endpoints (M2c Task 3): the
+				// The trash lifecycle endpoints: the
 				// owner-scoped listing and restore, and the explicit
 				// permanent delete. All three are bounded operations
 				// (row reads and writes plus metadata-only file
@@ -344,7 +344,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/trash", wrapper.GetTrash)
 				r.Post("/trash/{id}/restore", wrapper.RestoreAsset)
 				r.Delete("/assets/{id}", wrapper.DeleteAsset)
-				// The album surface reads (M3c Task 1): the wall
+				// The album surface reads: the wall
 				// (the caller's own and shared albums) and one
 				// album's detail with its keyset-paged items. Both
 				// are bounded row reads (the detail's page size is
@@ -353,7 +353,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// candidates per album.
 				r.Get("/albums", wrapper.ListAlbums)
 				// The source-path completion of the creation dialog
-				// (E4's albums-as-sources): one settings row read
+				// (the albums-as-sources rework): one settings row read
 				// plus at most one directory listing, at most 20
 				// answer rows -- the bounded-JSON cost class. The
 				// static path-completions segment never contends
@@ -361,8 +361,8 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// prefers static patterns).
 				r.Get("/albums/path-completions", wrapper.CompleteAlbumPath)
 				r.Get("/albums/{albumId}", wrapper.GetAlbum)
-				// The album surface writes (M3c Task 2, reshaped by
-				// E4): the directory album creation (the path
+				// The album surface writes (reshaped by
+				// albums-as-sources): the directory album creation (the path
 				// validation matrix plus one bounded row insert and
 				// the audience grants), the property patch, the
 				// delete and the membership removal. All are
@@ -377,8 +377,8 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Patch("/albums/{albumId}", wrapper.UpdateAlbum)
 				r.Delete("/albums/{albumId}", wrapper.DeleteAlbum)
 				r.Delete("/albums/{albumId}/items", wrapper.RemoveAlbumItems)
-				// The album audience face (E4, the
-				// albums-as-sources milestone): the full-set
+				// The album audience face (the
+				// albums-as-sources rework): the full-set
 				// view-ACL write behind PUT
 				// /albums/{albumId}/audience, the one write surface
 				// of "who can see this album" (the one-row
@@ -388,8 +388,8 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// never contends with the /albums/{albumId} routes
 				// (a longer path shape).
 				r.Put("/albums/{albumId}/audience", wrapper.UpdateAlbumAudience)
-				// The rescan trigger (E4, the
-				// albums-as-sources milestone): one bounded row read
+				// The rescan trigger (the
+				// albums-as-sources rework): one bounded row read
 				// plus one enqueue; the walk over the source root and
 				// the three-arm diff live on the queue. The static
 				// rescan segment never contends with the
@@ -412,7 +412,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/users/me/password", wrapper.ChangeUserPassword)
 				r.Get("/users/me/sessions", wrapper.ListUserDevices)
 				r.Delete("/users/me/sessions/{id}", wrapper.RevokeUserDevice)
-				// The timeline-preference face (M3c Task 4): the
+				// The timeline-preference face: the
 				// caller's per-user "keep this album out of my
 				// timeline" switch -- one bounded row upsert and
 				// one bounded row delete over an album the caller
@@ -422,7 +422,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// routes (a longer path shape).
 				r.Put("/albums/{albumId}/timeline-preference", wrapper.SetAlbumTimelinePreference)
 				r.Delete("/albums/{albumId}/timeline-preference", wrapper.ResetAlbumTimelinePreference)
-				// The people surface reads (M3b Task 1): the named
+				// The people surface reads: the named
 				// region, the unnamed region's keyset pages and one
 				// cluster's detail. All are bounded row reads (the
 				// unnamed page size is capped by the contract); the
@@ -431,13 +431,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/people", wrapper.ListPeople)
 				r.Get("/people/unnamed", wrapper.ListUnnamedPeople)
 				r.Get("/people/{clusterId}", wrapper.GetPersonCluster)
-				// The places surface read (M3d Task 1): the caller's city
+				// The places surface read: the caller's city
 				// grouping -- two bounded row reads (the grouping with its
 				// honest per-caller counts, then at most four cover
 				// candidates per listed place), the same cost class as the
 				// people listing.
 				r.Get("/places", wrapper.ListPlaces)
-				// The tags surface (M3d Task 2): the caller's private
+				// The tags surface: the caller's private
 				// vocabulary and its batch assignment. The listing is
 				// one bounded read (a family instance's vocabulary);
 				// every write is a bounded row write (the
@@ -452,14 +452,14 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Delete("/tags/{tagId}", wrapper.DeleteTag)
 				r.Post("/tags/{tagId}/assets", wrapper.AddTagAssets)
 				r.Delete("/tags/{tagId}/assets", wrapper.RemoveTagAssets)
-				// The unified search surface (M3d Task 3): the two
+				// The unified search surface: the two
 				// merged paths over caller-visible assets plus the
 				// filter facets. Bounded reads (the arms' depth cut,
 				// the page cap, the family-scale facet lists) plus
 				// at most one model inference per request -- the same
 				// bounded-JSON cost class as the timeline.
 				r.Get("/search", wrapper.SearchAssets)
-				// The people surface writes (M3b Task 2): the caller's
+				// The people surface writes: the caller's
 				// label and hidden switches, the cluster merge and the
 				// single face move. All are bounded row reads and
 				// writes (the merge touches at most 50 source
@@ -471,7 +471,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/people/{clusterId}/hidden", wrapper.SetPersonHidden)
 				r.Post("/people/merge", wrapper.MergePeople)
 				r.Post("/faces/{faceId}/move", wrapper.MoveFace)
-				// The face crop pixels (M3b Task 3): the 256x256 AVIF
+				// The face crop pixels: the 256x256 AVIF
 				// crop of one face, derived at query time from its
 				// asset's view derivative -- one bounded decode of a
 				// serving copy plus one AVIF encode, the same cost
@@ -481,7 +481,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/faces/{faceId}/thumbnail", wrapper.GetFaceThumbnail)
 			})
 
-			// Authed admin group (M2d Task 8): the user management
+			// Authed admin group: the user management
 			// surface sits behind requireSession AND the admin-role
 			// guard, inside the handler timeout like every other
 			// bounded JSON handler (small row reads and writes).
@@ -505,13 +505,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/admin/settings/trash", wrapper.UpdateTrashSettings)
 				r.Get("/admin/settings/transcoding", wrapper.GetTranscodingSettings)
 				r.Put("/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
-				// The model download trigger (M3a Task 3): the
+				// The model download trigger: the
 				// default group's first-boot download. The handler is
 				// one bounded row read plus one enqueue; the heavy
 				// work lives on the queue.
 				r.Post("/admin/models/download", wrapper.DownloadModels)
-				// The model management and job panel surface (M3a
-				// Task 4): the listing, the activation switch, the
+				// The model management and job panel surface:
+				// the listing, the activation switch, the
 				// rerun trigger and the custom model scan, plus the
 				// job runs listing. All are bounded row reads and
 				// writes (the rerun's heavy work lives on the queue
@@ -522,7 +522,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Patch("/admin/models/{id}", wrapper.ActivateModel)
 				r.Post("/admin/models/{id}/rerun", wrapper.RerunModel)
 				r.Post("/admin/models/scan", wrapper.ScanModels)
-				// The places re-resolution trigger (M3d Task 1): the
+				// The places re-resolution trigger: the
 				// places-data-update path's run start. The handler is
 				// one bounded row read plus one enqueue; the walk over
 				// every GPS-bearing asset lives on the queue.
@@ -588,7 +588,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 // server implements apigen.ServerInterface on top of the injected Deps.
 // It embeds apigen.Unimplemented so that every endpoint not yet
 // overridden answers 501; implemented endpoints override the promoted
-// methods. Later milestones keep adding overrides one operation at a
+// methods. Later surfaces keep adding overrides one operation at a
 // time -- do not restructure this embed.
 type server struct {
 	apigen.Unimplemented

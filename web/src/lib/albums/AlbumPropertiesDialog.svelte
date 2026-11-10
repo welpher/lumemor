@@ -15,14 +15,14 @@
 </script>
 
 <script lang="ts">
-	// The edit-properties dialog of the albums surface, reshaped by
-	// E4 (web IA §7.6, the specimen's edit state) and completed by
-	// E6 (web IA §7.9): the TITLE, the SOURCE row (the directory
+	// The edit-properties dialog of the albums surface, reshaped by the
+	// albums-as-sources rework and completed by
+	// album autonomy: the TITLE, the SOURCE row (the directory
 	// album's root path, read-only with the "source" tag -- the path
 	// is pinned at creation, the property patch carries no field for
 	// it), the AUDIENCE (the current grants as chips, the add-style
 	// picker for the candidates), and the three-toggle autonomy
-	// block -- the LOCK (§7.9's content-protection switch: freezes
+	// block -- the LOCK (the content-protection switch: freezes
 	// rescans and deletion, the audience face never gated), the
 	// TIMELINE EXCLUSION (the caller's own per-user preference) and
 	// the DELETABILITY row (「允许通过应用删除」, rendered EXACTLY when
@@ -49,7 +49,7 @@
 	// frees them for the same save (the unlock writes first). The
 	// lock row itself is never disabled (the unlock is the one write
 	// a lock never refuses), and the audience and exclusion rows
-	// stay live under a lock by §7.9's own pin.
+	// stay live under a lock by the lock's own rule.
 	import { _ } from 'svelte-i18n';
 	import Modal from '$lib/components/Modal.svelte';
 	import Input from '$lib/components/Input.svelte';
@@ -187,7 +187,7 @@
 		{#if rootPath !== ''}
 			<!-- The source row: read-only with the honest tag -- the
 			     album's source is pinned at creation, the edit carries
-			     no field for it (the specimen's 「来源 · 不可改」). -->
+			     no field for it (the source row is read-only). -->
 			<div
 				class="album-form__source flex items-center gap-2 px-3 py-2.5 bg-page border border-border rounded-control"
 			>
@@ -204,10 +204,10 @@
 		{/if}
 		<!-- The audience: the folded-in share management (the current
 		     grants as the chips, the picker for the candidates). The
-		     lock never gates it (§7.9's own pin: a lock protects
+		     lock never gates it (a lock protects
 		     content, not visibility). -->
 		<AudienceField bind:members={audience} selfId={sessionUserId() ?? ''} {busy} />
-		<!-- The autonomy block (E6, §7.9: the three toggles ride one
+		<!-- The autonomy block (the three toggles ride one
 		     block -- the lock and the timeline exclusion were pinned
 		     together, the deletability row joins them as the source's
 		     own setting). -->
@@ -256,7 +256,7 @@
 			{/if}
 			{#if sourceWritable && allowDeletionDraft !== undefined}
 				<!-- The deletability row: rendered ONLY for a writable
-				     source (§7.9: a read-only album's row does not
+				     source (a read-only album's row does not
 				     exist -- no dead affordance), and frozen under the
 				     lock like every property field. -->
 				<label

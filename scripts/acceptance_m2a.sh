@@ -116,7 +116,7 @@ status="$(curl -sS -o "$work_dir/login_body" -c "$work_dir/cookies" -w '%{http_c
 [ "$status" = "200" ] \
     || fail "POST /api/v1/auth/login returned status $status, want 200: $(cat "$work_dir/login_body")"
 # The credential rides the Set-Cookie header only; asserting the jar
-# received it guards the whole web-session half of the milestone.
+# received it guards the whole web-session half of the script's scope.
 grep -q 'lumemor_session' "$work_dir/cookies" \
     || fail "POST /api/v1/auth/login did not set the lumemor_session cookie: $(cat "$work_dir/login_body")"
 echo "    login accepted, session cookie captured: $(cat "$work_dir/login_body")"
@@ -179,7 +179,7 @@ printf '%s\n' "$info" | grep -Eq '"initialized"[[:space:]]*:[[:space:]]*true' \
 echo "==> GET /api/v1/events must stream the session, pairing and login-failure events"
 # The bearer-authenticated stream runs in the background. Everything
 # published so far is still inside the five-minute retention ring, so
-# the subscription replays the M2a lifecycle immediately; the wrong
+# the subscription replays the auth lifecycle immediately; the wrong
 # password attempt below then publishes auth.login_failed onto the
 # live feed. curl's --max-time bounds the wait -- the stream never
 # ends on its own, so exit status 28 (timeout) is the expected

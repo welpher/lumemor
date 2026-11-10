@@ -16,14 +16,14 @@ weights are involved:
   re-dimension the embeddings column). The raw output is deliberately
   NOT unit-length (L2 norm sqrt(dim)), so the embedding wrappers'
   normalization is observable.
-- ocr_det.onnx: the OCR detection fixture (M3a Task 8): a FIXED
+- ocr_det.onnx: the OCR detection fixture: a FIXED
   1x3x48x64 float input (the declared geometry the wrapper must honor)
   answered by a constant probability map -- four rectangular regions:
   three at 0.9 (two words of one row, one word of a second row) and one
   at 0.4 (a component the postprocess's score filter must drop). The
   binarize/score thresholds and the reading-order sort all have known
   expectations over this map.
-- ocr_rec.onnx: the OCR recognition fixture (M3a Task 8): any NCHW
+- ocr_rec.onnx: the OCR recognition fixture: any NCHW
   float image tensor (1x3xHxW, dynamic H and W -- the recognition
   family's input convention) answered by a FIXED one-hot CTC sequence
   of shape [1, T, 6625]: the class indices per timestep are [blank,
@@ -182,7 +182,7 @@ def ocr_rec_graph() -> onnx.ModelProto:
 
 
 def text_embed_graph() -> onnx.GraphProto:
-    """Build text_embed.onnx, the CLIP text-tower fixture (M3d Task 3).
+    """Build text_embed.onnx, the CLIP text-tower fixture.
 
     A stand-in for the Chinese-CLIP text tower with the real graph's
     input/output contract: three named int64 inputs

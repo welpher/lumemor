@@ -1,4 +1,4 @@
-// The face crop thumbnail endpoint (M3b Task 3): the people surface's
+// The face crop thumbnail endpoint: the people surface's
 // pixels. GET /faces/{faceId}/thumbnail crops one face out of its
 // asset's view derivative at query time -- the bounding box the face
 // row carries is in per-mille units that address the derivative's own

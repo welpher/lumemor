@@ -1,8 +1,8 @@
-// The timeline handler (M2c Task 2): the aggregated timeline of the
+// The timeline handler: the aggregated timeline of the
 // caller (and its per-album narrowing), one keyset page at a time.
 // The page-parameter validation and the item mapping here are the
 // shared machinery of every timeline-shaped view: the favorites and
-// hidden views of Task 4 answer the same page shape through the same
+// hidden views answer the same page shape through the same
 // helpers.
 package api
 

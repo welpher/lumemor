@@ -1,5 +1,5 @@
 -- +goose Up
--- The caller-visible-asset predicate, centralized (M3c Task 4).
+-- The caller-visible-asset predicate, centralized.
 --
 -- Every read gate of the server answers the same question: can this
 -- account see this asset? Before album sharing the answer was the
@@ -11,7 +11,7 @@
 --   * the caller's own sync album (the core backup stream: every
 --     upload lands there atomically, which is what makes the sync
 --     arm the single-user equivalent of ownership), or
---   * the caller's own directory albums (E4's referenced files), or
+--   * the caller's own directory albums (their referenced files), or
 --   * any album shared to the caller through album_shares (view ACL,
 --     every shareable type -- virtual and directory).
 --
@@ -25,7 +25,7 @@
 -- inlining into the calling query (and the per-row evaluation is the
 -- same cost class as the EXISTS semi-join each consumer query ran
 -- before); the timeline's aggregation query keeps its own inline
--- EXISTS because the spec's formula folds the per-user timeline
+-- EXISTS because the aggregation formula folds the per-user timeline
 -- preference INSIDE the existential (an asset kept in through ANY
 -- feeding album stays in even when another of its albums is switched
 -- out), a conjunct that cannot compose outside it -- the arms there

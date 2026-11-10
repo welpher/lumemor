@@ -1,7 +1,7 @@
-// The inference decode tests (M3a Task 6): the ML jobs consume the
+// The inference decode tests: the ML jobs consume the
 // stored originals as upright RGB rasters, and this decode is the one
 // shared path -- the face detection job today, the CLIP and OCR jobs
-// of Task 8 through the same helper. The pins: the EXIF orientation is
+// through the same helper. The pins: the EXIF orientation is
 // applied (an orientation-6 sensor frame decodes upright), the long
 // edge is capped without ever upscaling, and the raster honors the
 // ml.Image contract.

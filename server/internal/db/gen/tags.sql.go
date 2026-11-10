@@ -28,7 +28,7 @@ type AddTagAssetsParams struct {
 
 // The assignment add: resolution and insert in one statement, the
 // batch-add pattern with the resolution domain swapped for the
-// caller-visible union (the M3d widening -- the union deliberately
+// caller-visible union (the widening -- the union deliberately
 // carries tags, so a sharee tags what they see with their OWN tag).
 // The WHERE arm IS the resolution: an unknown id, another account's
 // unshared asset, and any id the caller cannot see never produce
@@ -172,7 +172,7 @@ type ListAssetTagsForCallerRow struct {
 // sorted by name case-insensitively with the tag id as the
 // deterministic tiebreak (the vocabulary listing's own ordering) --
 // the join runs through the caller's own tag rows, so another
-// account's tags on the same asset never surface (B4). No visibility
+// account's tags on the same asset never surface. No visibility
 // gate here: the read rides the asset detail's own permission,
 // exactly like the faces read (the owner reads a trashed asset's
 // tags like the trash view reads its faces).
@@ -219,8 +219,8 @@ type ListCallerTagsRow struct {
 	AssetCount int64 `json:"asset_count"`
 }
 
-// Tag queries (M3d Task 2): the tags domain's read and write plane.
-// Tags are per-user state (B4, the favorites' privacy shape): every
+// Tag queries: the tags domain's read and write plane.
+// Tags are per-user state (the favorites' privacy shape): every
 // query here scopes owner_id to the calling user, and the count
 // subqueries join the assignment rows to CALLER-VISIBLE live assets
 // -- the album union (caller_asset_visible) plus the timeline's live

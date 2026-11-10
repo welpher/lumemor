@@ -9,7 +9,7 @@ import 'package:built_value/serializer.dart';
 
 part 'asset_face_summary.g.dart';
 
-/// One face of the asset detail's `faces` array: the crop's identity, the detection score, the face's cluster and the CALLER's label of that cluster. The label is per-user state (B4): another account's label of the same global cluster never shows here. `clusterId` is null while the face waits for its first clustering assignment; such a face has no person yet and every assignment write on it answers the people surface's 404. 
+/// One face of the asset detail's `faces` array: the crop's identity, the detection score, the face's cluster and the CALLER's label of that cluster. The label is per-user state: another account's label of the same global cluster never shows here. `clusterId` is null while the face waits for its first clustering assignment; such a face has no person yet and every assignment write on it answers the people surface's 404. 
 ///
 /// Properties:
 /// * [id] - Identifier of the face row.

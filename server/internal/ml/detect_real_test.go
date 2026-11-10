@@ -1,10 +1,10 @@
-// The real-model smoke test (M3a Task 2): the committed YuNet weights
+// The real-model smoke test: the committed YuNet weights
 // and the real shared library, driven through the same session surface
 // the detection job will use. Only the tensor plumbing is pinned here
 // -- the graph's fixed input geometry, the anchor-free output set and
 // its shapes. Decoding boxes and any face semantics belong to the
-// detection wrapper of Task 6 (the committed face-portrait.jpg fixture
-// is that task's input, not this test's).
+// detection wrapper (the committed face-portrait.jpg fixture
+// is that wrapper's input, not this test's).
 package ml
 
 import (
@@ -43,7 +43,7 @@ var wantYunetOutput = map[string][2]int64{
 // 1x3x640x640 input, and the full anchor-free output set coming back
 // non-empty with the expected shapes. The 2023mar graph pins its input
 // at 640x640 -- larger than the manifest's declared inputSize -- which
-// Task 6's wrapper has to own when it resizes; this test only proves
+// the detection wrapper has to own when it resizes; this test only proves
 // the runtime, the binding and the weights agree.
 func TestYunetBareInference(t *testing.T) {
 	if !RuntimeAvailable() {

@@ -1,4 +1,4 @@
--- Face queries (M3a Task 6): the face detection job's write surface.
+-- Face queries: the face detection job's write surface.
 -- A detection run replaces the asset's faces OF THE MODEL IT RAN (the
 -- delete-then-insert below runs in the worker's transaction) while the
 -- faces of every other model survive untouched -- the model-switch
@@ -6,7 +6,7 @@
 -- by the active model, and switching back revives the old rows
 -- without recomputing anything.
 --
--- Task 7 (face recognition) landed here as the architecture's brief
+-- Face recognition landed here as the architecture's brief
 -- pinned it: the recognition worker re-detects the asset's landmarks
 -- with the active detect model and matches them against the asset's
 -- FULL row set of that model (ListFacesByAsset), so every matched

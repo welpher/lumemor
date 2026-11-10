@@ -1,9 +1,9 @@
-// Package trash runs the expiry side of the trash lifecycle (M2c
-// Task 3): the physical deletion of soft-deleted assets whose
-// retention window closed. It closes the M2b hard-gate handoff #2,
+// Package trash runs the expiry side of the trash lifecycle: the
+// physical deletion of soft-deleted assets whose
+// retention window closed. It closes the pipeline's hard-gate handoff,
 // the shared-file rule, spanning both storage eras: legacy
 // content-addressed rows store identical bytes of any owner under one
-// physical file (the reference count over the assets table decides --
+// physical file (the count of referencing rows over the assets table decides --
 // another row on the same file_path keeps the file, only the row
 // goes), while template-era rows are per-owner and unique. The
 // derived copies (thumbs, encoded) are keyed by the asset id alone
@@ -77,7 +77,7 @@ type ExpiryCounts struct {
 // The bus, when wired, receives one asset.deleted event per purged
 // row -- the trash view of a connected client follows the expiry the
 // same way it follows every other lifecycle transition. A Live
-// Photo's component row (M2d) is the one exception: its purge stays
+// Photo's component row is the one exception: its purge stays
 // silent, because the trash view never listed components (the pair
 // is represented by its photo), so an announcement for one would be
 // noise no client can act on -- the row still goes, only the event
@@ -106,7 +106,7 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 	for _, row := range rows {
 		assetID := uuid.UUID(row.ID.Bytes)
 
-		// The external arm (E4, the §A6/E4 table's expiry row): the
+		// The external arm: the
 		// only file of ours is the TRASH COPY the move semantics
 		// landed -- keyed by the asset id alone, so no reference
 		// count exists to take and the removal is unconditional. The

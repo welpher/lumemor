@@ -1,4 +1,4 @@
-// The face recognition job tests (M3a Task 7): the worker wiring
+// The face recognition job tests: the worker wiring
 // through the landmark-redetection architecture -- the active detect
 // model's landmarks re-run over the stored original, matched against
 // the asset's stored face rows by box overlap, every match aligned
@@ -371,8 +371,8 @@ func TestFaceRecognizeJobIoUMatching(t *testing.T) {
 	}
 }
 
-// TestFaceRecognizeJobClusterIdentityPreserved pins Review Focus #1's
-// cluster side: two portraits of the same face (the upright original
+// TestFaceRecognizeJobClusterIdentityPreserved pins the cluster-identity
+// rule: two portraits of the same face (the upright original
 // and its orientation-6 twin) embed identically, form ONE cluster,
 // and a converging re-cluster keeps the cluster's IDENTITY -- the row
 // is reused, the user's label stays put, the members stay members.
@@ -465,7 +465,7 @@ func TestFaceRecognizeJobClusterIdentityPreserved(t *testing.T) {
 // semantics: a cluster whose members the new clustering no longer
 // populates (here: its only member became noise) loses its row, and
 // the user's labels go with it -- a person without faces is a person
-// without a name, the honest semantics the milestone pinned.
+// without a name, the honest semantics.
 func TestFaceRecognizeJobDissolvesVacatedClusters(t *testing.T) {
 	requireThumbnails(t)
 	requireMlRuntime(t)
@@ -647,7 +647,7 @@ func TestFaceRecognizeJobMissingAssetCompletes(t *testing.T) {
 }
 
 // TestFaceDetectChainFiresRecognize pins THE CHAINING RESTORE (the
-// Task 6 handover landing): through the real queue, a detection
+// pinned handover landing): through the real queue, a detection
 // completion with the recognize slot active and faces on the asset
 // enqueues exactly one recognition job, which runs for real -- the
 // face gains its embedding, and the asset's river jobs are the

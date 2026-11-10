@@ -5,18 +5,18 @@
 # its own compose stack and tearing it down fully, including the
 # database volume) runs first and must be green before the M3c phases
 # start. Then two stack lifetimes of this repository's own compose
-# deployment walk the sharing milestone's story, E6's album autonomy
+# deployment walk the sharing story, album autonomy
 # included:
 #
-# Phase 1 (the sharing story over the API, two accounts, plus the E6
+# Phase 1 (the sharing story over the API, two accounts, plus the
 # autonomy faces): the stack starts fresh, the first-run admin is
 # created and signed in (the session's identity face asserted: the
 # login body and the session list both carry the account's userId and
-# role -- the M3c identity seam), and a MEMBER account is provisioned
+# role -- the identity seam), and a MEMBER account is provisioned
 # through the admin API and signs in with its own session. The member
 # uploads one photo of their own (their sync stream) -- the story's
-# ONLY upload: an E4 album is a source, so the admin gathers no
-# photos by upload. THE E6 BOUNDARY: the mount-root allowlist is
+# ONLY upload: an album is a source, so the admin gathers no
+# photos by upload. THE BOUNDARY: the mount-root allowlist is
 # retired -- the compose binds ARE the boundary -- so no root is
 # opened; instead the refusal matrix's new arms are pinned first (the
 # member's create-album POST and their path-completion call both
@@ -25,10 +25,10 @@
 # answers ["/"], the fixture mount's directories list without any
 # opening, and the managed data tree NEVER lists -- the storage root's
 # own directory answers its config sibling alone). The album is then
-# created the E4 way: POST /albums carries the pinned triple (title,
+# created by naming a source directory: POST /albums carries the pinned triple (title,
 # rootPath, audience) with the MEMBER in the audience at create and
 # the admin's own id beside it: the owner id answers the honest skip
-# in the create's audience report (the E4 face of the curation-era
+# in the create's audience report (the curation-era
 # honest skip -- the report is per-entry, never an error), and the
 # CREATION-TIME WRITE PROBE answers its fact honestly: the fixture
 # bind is read-only, so the response carries sourceWritable false --
@@ -39,14 +39,14 @@
 # real source paths, taken_at_source file -- zero copy, zero move;
 # the read-only bind is the pin held by construction) through the
 # same pipeline fan-out an upload's, converging the two faces into
-# the one cluster (the B4 people arm's structure, now over external
+# the one cluster (the per-user-state people arm's structure, now over external
 # rows). The member's whole shared surface is asserted: the wall's
 # shared group (the honest zero before the scan, the live count
 # after), the timeline's inclusion (the union's shared arm beside the
 # member's own sync stream), the read-only detail (callerRole
 # viewer), the per-user favorite, the timeline-exclusion toggle with
 # its retraction and re-include (the member's own arm, then the
-# OWNER's own arm over the same album), and the people surface's B4
+# OWNER's own arm over the same album), and the people surface's
 # sharing arm (the sharee sees the shared assets' faces as a cluster;
 # labels stay per-user -- the sharee names it, the owner's unnamed
 # region never hears about it). The sharee's write attempts answer
@@ -62,7 +62,7 @@
 # its membership and its now-empty share rows stay, and the
 # referenced photos never leave the source.
 #
-# The E6 autonomy faces (the closing section, over a WRITABLE source
+# The autonomy faces (the closing section, over a WRITABLE source
 # fixture): the repo's compose file also binds
 # web/e2e/fixtures/m3-source-rw into the container WITHOUT :ro (the
 # seed file is staged by this script before the album references it
@@ -90,8 +90,8 @@
 # convergence, the edit dialog's audience grant and autonomy block,
 # the member's read-only perspective with the creation guard's
 # refusal matrix, and the deletable wall's delete-only selection
-# with its trash/restore round trip (the spec seeds and heals the
-# writable fixture itself). The spec bootstraps itself (the first-run
+# with its trash/restore round trip (the e2e spec seeds and heals the
+# writable fixture itself). The e2e spec bootstraps itself (the first-run
 # admin and the member account through the APIs, the model group's
 # download through the admin API), exactly the way every prior e2e
 # spec owns its stack's bootstrap.
@@ -107,8 +107,8 @@
 #       HF domain mirror instead.
 #   M3C_SOURCE=offline -- no network at all: the Hugging Face URL
 #       path structure is reconstructed under
-#       tools/models/cache/offline-root/ (symlinks to the Task 1
-#       local weights cache) and served over TLS by a mirror service
+#       tools/models/cache/offline-root/ (symlinks to the local
+#       weights cache) and served over TLS by a mirror service
 #       of the stack (the dev image's python running
 #       scripts/offline_mirror_server.py): the mirror rewrite keeps
 #       the https scheme, so the local source must speak TLS, and
@@ -125,7 +125,7 @@
 # Requirements: docker with the compose plugin, curl, and (for the
 # chained web e2e, which the m2d chain installs) pnpm 9.15; the
 # offline mode additionally needs openssl and the lumemor-dev image
-# (built by any make docker-test / docker-lint run) plus the Task 1
+# (built by any make docker-test / docker-lint run) plus the local
 # weights cache under tools/models/cache/.
 
 set -euo pipefail
@@ -143,7 +143,7 @@ admin_password="correct-horse-battery"
 member_password="correct-horse-battery"
 member_photo="$repo_root/server/internal/ml/testdata/ocr-text.png"
 
-# The E4 source fixtures (E6's boundary, both documented in their
+# The source fixtures (read-only binds, both documented in their
 # READMEs): the repository's compose file binds the read-only fixture
 # tree (web/e2e/fixtures/m3-source) into the container at
 # /mnt/e2e-source (:ro -- the zero-copy pin held by construction, and
@@ -292,7 +292,7 @@ prepare_offline_source() {
         ch_PP-OCRv4_det_infer.onnx \
         ch_PP-OCRv4_rec_infer.onnx; do
         [ -f "$models_cache/$weight" ] \
-            || fail "the Task 1 weights cache is missing $models_cache/$weight -- the offline mode needs it"
+            || fail "the local weights cache is missing $models_cache/$weight -- the offline mode needs it"
     done
     docker image inspect "$dev_image" >/dev/null 2>&1 \
         || fail "the offline mirror rides the dev image $dev_image, which is absent -- run any make docker-test first to build it"
@@ -300,7 +300,7 @@ prepare_offline_source() {
         || fail "the offline mode needs openssl to mint the mirror certificate"
 
     # The seven pinned upstream artifacts at their Hugging Face URL
-    # paths (the M3d text tower and its tokenizer vocabulary among
+    # paths (the CLIP text tower and its tokenizer vocabulary among
     # them): what the mirror rewrite makes the download resolve.
     link_offline_file \
         "opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" \
@@ -434,7 +434,7 @@ prepare_bind_mount() {
     # load-bearing:
     # - /var/lib/lumemor (the data tree) is CHOWNED to 10001 -- the
     #   container is its only writer; the host never touches it again.
-    # - /mnt/e2e-source-rw (the E6 writable source fixture) is
+    # - /mnt/e2e-source-rw (the writable source fixture) is
     #   CHMOD-only (a+rwX, ownership untouched). On a real Linux bind
     #   a chown would propagate to the host directory and lock the
     #   HOST user out of the sweep/seed steps that follow
@@ -722,7 +722,7 @@ wait_model_download() {
 # owning its own stacks).
 # ---------------------------------------------------------------------------
 
-echo "==> running the prior milestone acceptance (the M3b chain owns its stacks)"
+echo "==> running the prior acceptance (the M3b chain owns its stacks)"
 bash scripts/acceptance_m3b.sh \
     || fail "scripts/acceptance_m3b.sh failed (see its output above)"
 echo "    acceptance_m3b (and its chained M1/M2/M3a line) passed after $(elapsed)s"
@@ -761,8 +761,8 @@ grep -q '"items":\[\]' "$work_dir/member_unnamed_body" \
     || fail "the member's unnamed region is not empty before the share: $(cat "$work_dir/member_unnamed_body")"
 echo "    the member sees no cluster yet"
 
-echo "==> the member's POST /api/v1/albums must answer 403 (the E6 creation guard)"
-# The refusal matrix's new arm (E6, web IA §7.5's third revision):
+echo "==> the member's POST /api/v1/albums must answer 403 (the creation guard)"
+# The refusal matrix's new arm:
 # mounting an existing photo directory is a configuration act, so the
 # creation is the administrator's alone -- the member's attempt is
 # refused with the admin surfaces' own envelope, before any request
@@ -791,8 +791,8 @@ grep -q 'AUTH_FORBIDDEN' "$work_dir/member_completion_refusal_body" \
     || fail "the member's completion refusal does not answer AUTH_FORBIDDEN: $(cat "$work_dir/member_completion_refusal_body")"
 echo "    the member's completion answers 403 AUTH_FORBIDDEN (the members' contribution path is the upload stream)"
 
-echo "==> GET /api/v1/albums/path-completions must drill the container's real filesystem (the E6 boundary)"
-# The system-wide domain (the allowlist retired with E6): the
+echo "==> GET /api/v1/albums/path-completions must drill the container's real filesystem (the boundary)"
+# The system-wide domain (the allowlist retired): the
 # completion's rows are the honest reflection of what the operating
 # system lets the server read, and the compose mounts ARE the
 # boundary -- no root was opened for anything below to list.
@@ -841,13 +841,13 @@ grep -q '"itemCount":0' "$work_dir/album_body" \
     || fail "the created album's count is not zero: $(cat "$work_dir/album_body")"
 grep -q '"isShared":true' "$work_dir/album_body" \
     || fail "the created album's card does not carry the landed audience: $(cat "$work_dir/album_body")"
-# The write probe's honest fact (E6, §7.9): the fixture bind is
+# The write probe's honest fact: the fixture bind is
 # read-only, so the creation answers sourceWritable FALSE -- a fact
 # about the source, never a failure (the album is legitimate; its
 # photos just cannot be deleted through the application).
 grep -q '"sourceWritable":false' "$work_dir/album_body" \
     || fail "the read-only creation does not carry sourceWritable false: $(cat "$work_dir/album_body")"
-# The E4 face of the curation-era honest skip: the audience report
+# The curation-era honest skip: the audience report
 # carries each unusable id with its reason, never an error -- the
 # owner sees the album by construction, so the own id is the skip.
 grep -q "\"userId\":\"$admin_user_id\"" "$work_dir/album_body" \
@@ -965,7 +965,7 @@ shared_a_id="$(printf '%s\n' "$shared_ids" | sed -n 1p)"
 shared_b_id="$(printf '%s\n' "$shared_ids" | sed -n 2p)"
 [ -n "$shared_a_id" ] && [ -n "$shared_b_id" ] \
     || fail "the album's timeline listing does not carry the two source photos: $(cat "$work_dir/album_timeline_body")"
-echo "    both source photos are ready ($shared_a_id, $shared_b_id) -- the reference ingest runs the upload's own fan-out"
+echo "    both source photos are ready ($shared_a_id, $shared_b_id) -- the source ingest runs the upload's own fan-out"
 
 echo "==> the recognition must land two embedded faces in one cluster (up to ${ml_timeout_seconds}s)"
 ml_facts() {
@@ -1014,7 +1014,7 @@ for wanted_id in "$member_photo_id" "$shared_a_id" "$shared_b_id"; do
     grep -q "\"$wanted_id\"" "$work_dir/member_timeline_body" \
         || fail "the member's timeline does not list $wanted_id: $(cat "$work_dir/member_timeline_body")"
 done
-# The pair's own order is the files': the reference ingest's taken-at
+# The pair's own order is the files': the source ingest's taken-at
 # is the source file's mtime (taken_at_source file) -- the working
 # tree's creation time, newer than the member's mid-2026 upload in
 # any honest run, so the pair leads and the member's own photo
@@ -1106,7 +1106,7 @@ for wanted_id in "$member_photo_id" "$shared_a_id" "$shared_b_id"; do
 done
 echo "    the shared items returned with the re-include"
 
-echo "==> the owner's own timeline-exclusion toggle must retract and re-include the album's photos (the E6 arm)"
+echo "==> the owner's own timeline-exclusion toggle must retract and re-include the album's photos (the owner's arm)"
 # The same per-user preference, the OWNER's own row this time (the
 # edit dialog's second toggle): the admin's aggregated timeline drops
 # the album's photos while the preference holds, and the album's own
@@ -1150,7 +1150,7 @@ for wanted_id in "$shared_a_id" "$shared_b_id"; do
 done
 echo "    the owner's own exclusion retracted the album's photos and the re-include returned them"
 
-echo "==> the people surface's B4 sharing arm: the sharee sees the shared faces, labels stay per-user"
+echo "==> the people surface's sharing arm: the sharee sees the shared faces, labels stay per-user"
 status="$(curl -sS -o "$work_dir/member_unnamed_body" -b "$member_jar" -w '%{http_code}' \
     "$base_url/api/v1/people/unnamed")" \
     || fail "GET /api/v1/people/unnamed (member) request failed"
@@ -1349,7 +1349,7 @@ grep -q "\"$member_cluster_id\"" "$work_dir/admin_unnamed_body" \
 echo "    the owner's people surface keeps the faces (the photos never left)"
 
 # ---------------------------------------------------------------------------
-# The E6 album autonomy faces (web IA §7.9), over a WRITABLE source:
+# The album autonomy faces, over a WRITABLE source:
 # the probe's true arm, the deletability setting's derived face, the
 # lock's trash refusal, and the trash/restore round trip that moves
 # the source file itself.
@@ -1536,10 +1536,10 @@ teardown_stack
 echo "    phase 1 passed after $(elapsed)s"
 
 # ---------------------------------------------------------------------------
-# Phase 2: the e2e stack (the M3c sharing story of the web app).
+# Phase 2: the e2e stack (the sharing story of the web app).
 # ---------------------------------------------------------------------------
 
-echo "==> phase 2/2: the e2e stack (the M3c sharing story of the web app)"
+echo "==> phase 2/2: the e2e stack (the sharing story of the web app)"
 reset_stack_state
 prepare_bind_mount
 start_stack
@@ -1549,7 +1549,7 @@ echo "==> running the Playwright spec (web/e2e/m3-albums.spec.ts)"
 if ! (cd web && pnpm e2e e2e/m3-albums.spec.ts); then
     echo "==> server logs at the time of the failure:"
     compose logs --no-color --tail 200 lumemor || true
-    fail "the M3c e2e spec failed (see the report above; artifacts under web/test-results/)"
+    fail "the sharing e2e spec failed (see the report above; artifacts under web/test-results/)"
 fi
 teardown_stack
 echo "    phase 2 passed after $(elapsed)s"

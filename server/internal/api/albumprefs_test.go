@@ -1,4 +1,4 @@
-// Album timeline-preference tests (M3c Task 4): the per-user
+// Album timeline-preference tests: the per-user
 // "keep this album out of my timeline" switch behind
 // PUT/DELETE /albums/{albumId}/timeline-preference -- the scope
 // (own directory + shared albums only), the upsert and reset

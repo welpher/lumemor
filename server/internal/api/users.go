@@ -1,4 +1,4 @@
-// The instance's minimal member list (M3c Task 3): GET /users, the
+// The instance's minimal member list: GET /users, the
 // share dialog's pick list. Any authenticated account may enumerate
 // the family's accounts -- the family-instance posture the contract
 // documents (the accounts of a shared photo home are not secret from

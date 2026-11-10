@@ -140,7 +140,7 @@ func TestIndexResolvesKnownPoints(t *testing.T) {
 	}
 }
 
-// TestIndexBeyondThresholdIsNull pins the spec's hard edge: the
+// TestIndexBeyondThresholdIsNull pins the hard edge: the
 // nearest city more than 25 km away answers nothing (no
 // country-polygon fallback, no widening).
 func TestIndexBeyondThresholdIsNull(t *testing.T) {

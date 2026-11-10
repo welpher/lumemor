@@ -1,4 +1,4 @@
-// The album surface reads (M3c Task 1, the M3d default-album pin):
+// The album surface reads:
 // the wall behind GET /albums (the caller's pinned sync card first,
 // then the own group, then the shared group -- one concatenated
 // array the web client sections off the callerRole discriminator)
@@ -290,7 +290,7 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 	// stored root, present exactly on the directory type (fixtures
 	// may carry a NULL root; the row is the honest source of the
 	// field). The deletion chain's faces ride the same directory
-	// arm (E6, §7.9): the probe's source-writable fact on both
+	// arm: the probe's source-writable fact on both
 	// roles (a fact is the album's own, not a role's), and -- the
 	// owner's view alone, the write-affordance faces a viewer holds
 	// none of -- the deletability switch's stored state and the

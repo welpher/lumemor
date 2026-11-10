@@ -1,4 +1,4 @@
-// The admin user management handlers (M2d Task 8): the listing, the
+// The admin user management handlers: the listing, the
 // account creation and the disabled toggle of GET/POST
 // /admin/users and PATCH /admin/users/{id}. The permission model is
 // the admin role itself: every route of this surface sits behind
@@ -8,8 +8,8 @@
 //
 // The account creation is the management counterpart of the
 // first-run wizard (setup.go): the same validation rules, the same
-// Argon2id password hashing and UUIDv7 ids, and -- the M2c wiring
-// reuse -- the account's sync album created inside the SAME
+// Argon2id password hashing and UUIDv7 ids, and -- the same
+// wiring -- the account's sync album created inside the SAME
 // transaction, so a freshly provisioned account can take uploads
 // immediately. Unlike the wizard there is no one-time guarantee to
 // defend: this endpoint exists exactly because an administrator

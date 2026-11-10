@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The task panel of the admin surface (M3a Task 5): the job runs
+	// The task panel of the admin surface: the job runs
 	// listing with each run's kind, state, progress and timestamps.
 	// Active rows (queued or running) converge live: the SSE job.*
 	// events update the matching row in place (progress) or trigger a
@@ -189,7 +189,7 @@
 			>
 		</div>
 	{:else if status === 'ready'}
-		<!-- The page-header row (the 2026-11-09 specimen): the title
+		<!-- The page-header row: the title
 		     + the hairline; the task panel carries no page-level
 		     action, the row stands for the grammar's uniformity. The
 		     panel's own note rides under it as the lede. -->

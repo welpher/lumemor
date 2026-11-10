@@ -1,4 +1,4 @@
-// The model registry tests (M3a Task 2): every behavior runs against a
+// The model registry tests: every behavior runs against a
 // migrated throwaway database (the dbtest container pattern of the api
 // tests) with fixture models laid out on disk exactly the way the
 // download service and the directory scan lay out real ones: one

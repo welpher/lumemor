@@ -1,4 +1,4 @@
--- Timeline queries (M2c Task 2): the read side of the aggregated
+-- Timeline queries: the read side of the aggregated
 -- timeline and the per-album timeline, both keyset-paginated.
 --
 -- The aggregate is the union of the albums that feed the caller's
@@ -17,7 +17,7 @@
 --
 -- The three arms below are the arms of caller_asset_visible (the
 -- one physical home of the union, migration 00010): this query keeps
--- its own inline EXISTS because the spec's aggregation formula folds
+-- its own inline EXISTS because the aggregation formula folds
 -- the per-user preference INSIDE the existential -- an asset kept in
 -- through ANY feeding album stays in even when another of its albums
 -- is switched out -- and that conjunct cannot compose outside the

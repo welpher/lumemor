@@ -1,4 +1,4 @@
-// The OCR pipeline wrapper (M3a Task 8): one detection session and one
+// The OCR pipeline wrapper: one detection session and one
 // recognition session from the SAME model directory (the default
 // group's OCR model pins both graphs as its two files), plus the
 // character dictionary of the recognition family, embedded from the

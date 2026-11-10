@@ -1,12 +1,12 @@
-// The face detection job tests (M3a Task 6): the worker wiring (the
+// The face detection job tests: the worker wiring (the
 // committed YuNet weights as the registry's active detect model, the
 // real decode, the faces rows landing with every field), the failure
-// discipline (a broken model never touches the asset's readiness --
-// Review Focus #2), the readiness seam's slot-activation matrix
-// (Review Focus #3's degraded mode: no active model, zero dispatch,
+// discipline (a broken model never touches the asset's
+// readiness), the readiness seam's slot-activation matrix
+// (the degraded mode: no active model, zero dispatch,
 // zero errors), and the NO-AUTO-CHAIN decision (the detection
 // completion enqueues nothing: recognition's trigger surface is the
-// rerun plus Task 7's own incremental decision).
+// rerun plus the chaining restore's incremental decision).
 //
 // The inference-bearing tests skip on hosts without the onnxruntime
 // shared library (and the decode-bearing ones without libvips): the
@@ -96,7 +96,7 @@ var manifestSlotNames = map[ml.Slot]string{
 	ml.SlotOcr:           "ocr",
 }
 
-// registerFixtureModel lays the spec's model directory out under the
+// registerFixtureModel lays the fixture's model directory out under the
 // environment's models dir (manifest.json plus the weights, pinned by
 // digest -- the layout of a landed download), scans it into the
 // registry and returns the model id. It does NOT activate.
@@ -142,7 +142,7 @@ func (e *env) registerFixtureModel(t *testing.T, spec fixtureModelSpec) string {
 	return spec.id
 }
 
-// activateFixtureModel registers and activates the spec's model in its
+// activateFixtureModel registers and activates the fixture's model in its
 // slot, failing the test unless it became the active one.
 func (e *env) activateFixtureModel(t *testing.T, spec fixtureModelSpec) string {
 	t.Helper()
@@ -155,7 +155,7 @@ func (e *env) activateFixtureModel(t *testing.T, spec fixtureModelSpec) string {
 
 // faceRow is the faces row as the assertions read it. The embedding's
 // presence is read as a flag: the detection job must leave it NULL
-// (Task 7's recognition job owns it).
+// (the recognition job owns it).
 type faceRow struct {
 	clusterID    pgtype.UUID
 	bbox         [4]int32
@@ -262,7 +262,7 @@ func requireFaceBounds(t *testing.T, row faceRow, what string) {
 // the real weights: the portrait asset's detection lands as one faces
 // row with every field asserted -- the per-mille box inside the image,
 // the score above the threshold, the active model's id, the embedding
-// and cluster left NULL (Task 7 owns them), the creation timestamp in
+// and cluster left NULL (the recognition job owns them), the creation timestamp in
 // the run's window.
 func TestFaceDetectJobPersistsFaces(t *testing.T) {
 	requireThumbnails(t)
@@ -287,7 +287,7 @@ func TestFaceDetectJobPersistsFaces(t *testing.T) {
 		t.Errorf("face model_id = %q, want the active detect model %q", face.modelID, modelID)
 	}
 	if face.clusterID.Valid {
-		t.Errorf("face cluster_id = %v, want NULL (clustering is Task 7's)", face.clusterID)
+		t.Errorf("face cluster_id = %v, want NULL (clustering is the recognition job's)", face.clusterID)
 	}
 	if face.embeddingSet {
 		t.Error("face embedding is set, want NULL (the recognition job owns it)")
@@ -442,8 +442,8 @@ func facelessJPEG(t *testing.T) []byte {
 // TestFaceDetectJobRerunReplacesOwnModelFaces pins the replace
 // semantics and the model-switch coexistence: a second run of the
 // same model replaces that model's faces (no pile-up), and the faces
-// of a different model survive untouched (Review Focus #1's face
-// side: switching models keeps the old products in the table, filtered
+// of a different model survive untouched (switching
+// models keeps the old products in the table, filtered
 // out of the active model's queries).
 func TestFaceDetectJobRerunReplacesOwnModelFaces(t *testing.T) {
 	requireThumbnails(t)
@@ -504,8 +504,8 @@ func TestFaceDetectJobRerunReplacesOwnModelFaces(t *testing.T) {
 	}
 }
 
-// TestFaceDetectJobFailureKeepsAssetReady pins the failure discipline
-// (Review Focus #2): the pipeline completes and announces asset.ready,
+// TestFaceDetectJobFailureKeepsAssetReady pins the failure discipline:
+// the pipeline completes and announces asset.ready,
 // the seam dispatches the detection job, and the job's failure -- a
 // tampered weight file refused at the session's digest gate -- leaves
 // the asset's readiness untouched: pending_jobs stays zero, ready_at
@@ -633,9 +633,9 @@ func TestEnqueueMlJobsMatrix(t *testing.T) {
 }
 
 // TestEnqueueMlJobsWiredSlots pins the seam's closed matrix: the
-// clip-embed and ocr arms are WIRED (Task 8 -- this test is the Task 6
+// clip-embed and ocr arms are WIRED (this test is the unwired-era
 // tripwire flipped green: its former self asserted zero dispatches
-// while the arms waited for this task's workers). With their slots
+// while the arms waited for their workers). With their slots
 // active, an image asset gains exactly one clip_embed and one ocr job;
 // the face-detect arm stays silent with its own slot unfilled.
 func TestEnqueueMlJobsWiredSlots(t *testing.T) {
@@ -679,8 +679,8 @@ func TestEnqueueMlJobsWiredSlots(t *testing.T) {
 // real, and the faces land. It also pins the NO-AUTO-CHAIN decision:
 // the asset's river jobs stay exactly the pipeline's metadata job and
 // the detection job -- the detection's completion enqueues NOTHING
-// (the recognition trigger surface is the model rerun plus Task 7's
-// own incremental decision, recorded in the task's report and the
+// (the recognition trigger surface is the model rerun plus the
+// chaining restore's incremental decision, recorded in the
 // worker's comment).
 func TestSeamFiresFaceDetectAtAssetReady(t *testing.T) {
 	requireExiftool(t)
@@ -718,7 +718,7 @@ func TestSeamFiresFaceDetectAtAssetReady(t *testing.T) {
 }
 
 // TestSeamWithoutModelsLeavesPipelineClean pins the degraded mode end
-// to end (Review Focus #3): the full pipeline of an image asset with
+// to end: the full pipeline of an image asset with
 // no active ML model runs and announces exactly as before -- the seam
 // dispatched nothing and errored nowhere.
 func TestSeamWithoutModelsLeavesPipelineClean(t *testing.T) {

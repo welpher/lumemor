@@ -1,12 +1,11 @@
 <script lang="ts">
-	// The new-album dialog of the albums-as-sources design (web IA
-	// §7.5, the specimen's pinned order): the TITLE above, the PATH
+	// The new-album dialog of the albums-as-sources design: the TITLE above, the PATH
 	// below, the AUDIENCE after -- creation IS the choice of an
 	// existing directory (the album references it in place, zero
 	// copy, zero move) plus who may see it. The path field is the
 	// completion combobox (PathCompletion), the audience the
 	// add-style picker (AudienceField); both pickers are PORTALED
-	// floating layers (§7.5's 2026-11-09 second revision), so the
+	// floating layers (the floating-layer revision), so the
 	// dialog stays a fixed-height surface.
 	//
 	// THE DIALOG OWNS THE DRAFTS (seeded on open): the title (the
@@ -17,14 +16,14 @@
 	// triple and runs the POST (an administrator's write -- the entry
 	// itself is role-gated on the wall).
 	//
-	// THE HONEST REPORT (E6): the creation's `skipped` list (the
+	// THE HONEST REPORT: the creation's `skipped` list (the
 	// requested ids that did not become audience -- the owner's own
 	// id, an unknown or disabled account) AND the write probe's
-	// `sourceWritable` fact (§7.9: false is creation feedback, never
+	// `sourceWritable` fact (false is creation feedback, never
 	// a failure -- a read-only directory is a legitimate album whose
 	// photos cannot be deleted through the application) render in
 	// the dialog before it closes, the write's own answer; the Done
-	// affordance closes. The failure routing follows the specimen: a
+	// affordance closes. The failure routing: a
 	// path-matrix error renders under the path field with the
 	// invalid border (the matrix's own codes all live under the
 	// `album_path_` prefix), every other failure renders as the
@@ -103,7 +102,7 @@
 	const titleViolated = $derived(checked && !validTitle());
 	const pathViolated = $derived(checked && !validPath());
 
-	// The write's failure routing (the specimen's state four): the
+	// The write's failure routing (the failure state): the
 	// path matrix's codes all live under the album_path_ prefix and
 	// render under the path field with the invalid border; anything
 	// else renders as the dialog's general line.
@@ -114,7 +113,7 @@
 		errorKey !== '' && !errorKey.startsWith('album_path_') ? resolveErrorText($_, errorKey) : ''
 	);
 
-	// The honest report's face (E6, §7.9): the landed create's own
+	// The honest report's face: the landed create's own
 	// answers -- the skipped audience ids and the read-only probe
 	// fact -- hold the dialog until acknowledged.
 	const reportFace = $derived(skipped !== null && (skipped.length > 0 || sourceWritable === false));

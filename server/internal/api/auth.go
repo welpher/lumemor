@@ -31,8 +31,8 @@ import (
 // device list, so it gets a sane ceiling.
 const maxDeviceNameRunes = 200
 
-// Login implements POST /auth/login. The order of the checks is the
-// security spec, do not reshuffle:
+// Login implements POST /auth/login. The order of the checks is
+// pinned -- do not reshuffle:
 //
 //	email lower-cased and trimmed -> rate-limit gate -> user lookup ->
 //	verification -> failure counter -> session -> cookie -> event.
@@ -254,7 +254,7 @@ func (s *server) rejectLogin(w http.ResponseWriter, email string) {
 }
 
 // publishLoginFailed reports a failed login attempt onto the activity
-// stream: the security spec's audit minimum names login success and
+// stream: the audit minimum names login success and
 // failure, and this is the failure half. The payload carries the
 // attempted address only -- no password, no token, nothing about which
 // check failed -- because the stream is the same admin-audience SSE
@@ -281,7 +281,7 @@ func expireSessionCookie(w http.ResponseWriter, r *http.Request) {
 }
 
 // sessionInfoFrom maps a session row onto the API shape, carrying the
-// account identity the session belongs to (the M3c seam: the login,
+// account identity the session belongs to (the identity seam: the login,
 // the session list and the pairing response all answer who is
 // calling, so a client restoring a session never needs a second
 // endpoint). Only the whitelisted fields travel: the token hash never

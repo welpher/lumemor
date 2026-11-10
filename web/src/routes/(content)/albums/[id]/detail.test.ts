@@ -7,8 +7,8 @@ import type { AlbumDetail, AlbumSummary } from '$lib/api/albums';
 import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
 
-// The album detail (web IA §2-§3, E4's albums-as-sources reshape,
-// completed by E6's autonomy face): the metadata header with its
+// The album detail (the albums-as-sources reshape,
+// completed by the autonomy face): the metadata header with its
 // callerRole x type action set -- the owner of a virtual album holds
 // rename / set cover / delete, the owner of a directory album the
 // properties edit (title + the read-only source row + the audience
@@ -268,7 +268,7 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	const page = mountPage();
 	await settle();
 
-	// THE CONTEXTUAL BAR (R3): the page's own chrome replaces the
+	// THE CONTEXTUAL BAR: the page's own chrome replaces the
 	// shell's topbar while the album detail is active -- back, the
 	// title, the badges and count, the type x role icon actions.
 	// Paper palette (bg-card + border), pinned by stickiness over
@@ -289,12 +289,12 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	expect(document.body.querySelector('.album-detail__description')).toBeNull();
 	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
 
-	// The owner of a virtual album holds the E4 write set MINUS the
-	// lock -- E6 moved the lock toggle into the edit dialog (§7.9's
+	// The owner of a virtual album holds the write set MINUS the
+	// lock -- the lock toggle moved into the edit dialog (the
 	// autonomy block), so the bar holds rename (the dialog opener),
 	// the cover and the delete. The share action and the
-	// add-photos handoff are GONE with the curation removal (§7.5)
-	// and the share dialog's fold-in (§7.6): the audience is an
+	// add-photos handoff are GONE with the curation removal
+	// and the share dialog's fold-in: the audience is an
 	// album property.
 	for (const label of ['Rename', 'Set cover…', 'Delete album']) {
 		expect(() => buttonByLabel(label), label).not.toThrow();
@@ -303,7 +303,7 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
 
-	// THE NO-SELECTION WALL (R5): a virtual album's tiles are pure
+	// THE NO-SELECTION WALL: a virtual album's tiles are pure
 	// navigation -- no hover checkbox, no select-mode entry, no
 	// batch bar ever rises (the deletable face is the directory
 	// album's own).
@@ -384,12 +384,12 @@ test('the directory detail: the edit dialog, the autonomy faces and the live res
 
 	expect(() => buttonByLabel('Properties')).not.toThrow();
 
-	// The owner's exclusion toggle moved into the edit dialog (E6):
+	// The owner's exclusion toggle moved into the edit dialog:
 	// the bar arm carries no calendar icon for the owner -- the
 	// viewer's arm (their only action) keeps it.
 	expect(() => buttonByLabel('Keep out of timeline')).toThrow();
 
-	// The rescan trigger is LIVE (E4): the directory album's own
+	// The rescan trigger is LIVE: the directory album's own
 	// refresh, not the placeholder.
 	const rescan = buttonByLabel('Rescan');
 	expect(rescan.disabled).toBe(false);
@@ -400,7 +400,7 @@ test('the directory detail: the edit dialog, the autonomy faces and the live res
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
 
-	// THE DELETABLE WALL (E6): the derived face holds, so the wall's
+	// THE DELETABLE WALL: the derived face holds, so the wall's
 	// selection machinery is wired -- the tiles carry the hover
 	// check affordance and a selection raises the batch bar with the
 	// DELETE-ONLY action subset (no favorite, no hide, no restore).
@@ -564,7 +564,7 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 
 	// The picker: the other accounts (the caller and the grant
 	// excluded -- hopper renders with the honest disabled note).
-	// The rows live in the PORTALED floating layer (§7.5's revision:
+	// The rows live in the PORTALED floating layer (the floating-layer revision:
 	// document.body, outside the dialog's DOM) -- document-level
 	// selectors find them.
 	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -576,7 +576,7 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	]);
 	expect(rows[1]?.textContent).toContain('cannot sign in');
 
-	// The keyboard the specimen pins: the listbox drives, the loaded
+	// The keyboard contract: the listbox drives, the loaded
 	// set highlights its first row, Enter adds the highlighted
 	// candidate, the picker stays open.
 	const listbox = document.body.querySelector<HTMLElement>('#audience-field-picker');
@@ -689,7 +689,7 @@ test('the directory properties dialog shows the read-only source row', async () 
 	flushSync();
 });
 
-test('the deletability row renders for a writable source and PATCHes the switch (E6)', async () => {
+test('the deletability row renders for a writable source and PATCHes the switch', async () => {
 	let deletabilitySaved = false;
 	detailState = {
 		...detailState,
@@ -765,7 +765,7 @@ test('a read-only source renders NO deletability row and NO wall selection (the 
 	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
-	// The row does not EXIST for a read-only source (§7.9: no dead
+	// The row does not EXIST for a read-only source (no dead
 	// affordance) -- the lock and exclusion rows still stand.
 	expect(dialog?.querySelector('[data-testid="album-deletable-toggle"]')).toBeNull();
 	expect(dialog?.querySelector('[data-testid="album-lock-toggle"]')).not.toBeNull();
@@ -903,7 +903,7 @@ test("the dialog's lock row PATCHes locked; the badge and notice follow and the 
 	const page = mountPage();
 	await settle();
 
-	// The lock toggle lives in the edit dialog (E6, §7.9): the bar's
+	// The lock toggle lives in the edit dialog : the bar's
 	// Rename (the dialog opener) is the door to it.
 	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();

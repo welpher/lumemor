@@ -1,7 +1,7 @@
-// The face recognition job (M3a Task 7): the second arm of the
+// The face recognition job: the second arm of the
 // asset-ready ML chain, dispatched by the detection job's chaining
 // restore (face_detect.go's completion site -- the one incremental
-// detection-to-recognition link of the milestone) and by the model
+// detection-to-recognition link) and by the model
 // rerun surface when it wires this slot.
 //
 // THE LANDMARK-REDETECTION ARCHITECTURE: the faces table stores only
@@ -53,9 +53,9 @@
 // the job's own inference cost at family scale, and a cached session
 // would keep serving a model after a switch flipped the active flag;
 // fresh loads follow the registry's truth). The clustering itself is
-// O(n^2) over the library in application memory -- the cost the
-// milestone accepted for a family-scale library, with incremental
-// clustering a later optimization recorded in the task's report.
+// O(n^2) over the library in application memory -- the cost
+// accepted for a family-scale library, with incremental
+// clustering a later optimization.
 package jobs
 
 import (
@@ -372,8 +372,8 @@ type existingCluster struct {
 // transaction (after the embedding writes and under the advisory
 // lock), and answers the library's cluster totals for the event.
 //
-// The identity rule, the load-bearing half of Review Focus #1's
-// cluster side: a new cluster reuses an existing cluster's row when
+// The identity rule, the load-bearing half of the cluster-identity
+// contract: a new cluster reuses an existing cluster's row when
 // it contains that cluster's representative face, or the strict
 // majority of that cluster's members -- so a converging re-cluster
 // keeps the row (and with it every user label), a split keeps the

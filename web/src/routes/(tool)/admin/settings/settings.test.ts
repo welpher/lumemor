@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 
-// The admin settings page (the 2026-11-09 specimen's geometry: the
+// The admin settings page (the geometry: the
 // page-header row with its hairline, the centered 760 column): the
 // storage section's read renders the saved template, the preset
 // dropdown (the built-in presets plus the custom marker) and the
@@ -13,8 +13,8 @@ import Page from './+page.svelte';
 // save adopts the response (the fresh sample render and the saved
 // note). The trash and transcoding sections (the settings feature)
 // render their read documents, save their PUT bodies, and adopt the
-// saved answers. E4's mount-roots section is GONE (the allowlist
-// retired with E6 -- the boundary is the compose mount, nothing left
+// saved answers. The mount-roots section is GONE (the allowlist
+// retired -- the boundary is the compose mount, nothing left
 // to list). A non-admin caller sees the mapped auth_forbidden
 // message (the page's own read is the probe).
 
@@ -163,7 +163,7 @@ test('the read renders the page-header row, the template, the presets and the sa
 	mountPage();
 	await settle();
 
-	// THE PAGE-HEADER ROW (the 2026-11-09 specimen): the title
+	// THE PAGE-HEADER ROW: the title
 	// echoing the rail's active section above the hairline; the
 	// centered 760 column owns the page below it.
 	const header = document.body.querySelector<HTMLElement>('.page-header');
@@ -171,7 +171,7 @@ test('the read renders the page-header row, the template, the presets and the sa
 	expect(header?.className).toContain('border-b');
 	const column = document.body.querySelector<HTMLElement>('.settings');
 	expect(column?.className).toContain('max-w-[760px]');
-	// The mount-roots section is GONE (E6): the page carries exactly
+	// The mount-roots section is GONE: the page carries exactly
 	// the three sections.
 	expect(document.body.querySelectorAll('.settings__card')).toHaveLength(3);
 	expect(document.body.querySelector('[data-testid="admin-settings-mounts"]')).toBeNull();

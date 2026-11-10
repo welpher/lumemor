@@ -1,7 +1,7 @@
-// The people surface reads (M3b Task 1): the named region behind
+// The people surface reads: the named region behind
 // GET /people, the unnamed region's keyset pages behind
 // GET /people/unnamed and one cluster's detail behind
-// GET /people/{clusterId}. The B4 discipline runs through all three:
+// GET /people/{clusterId}. The per-user-state discipline runs through all three:
 // clusters are global rows, labels are the caller's private state,
 // and every face count is honest for the caller's visible assets --
 // the queries compute each caller's view, nothing stores it.
@@ -144,7 +144,7 @@ func (s *server) ListPeople(w http.ResponseWriter, r *http.Request) {
 	people := make([]apigen.PersonSummary, 0, len(rows))
 	for _, row := range rows {
 		// The card face is the query's best caller-visible live face
-		// (the M3b handoff): never the cluster's global
+		// : never the cluster's global
 		// representative, which can sit on an asset this caller
 		// cannot see -- the listing's join already proved a visible
 		// face exists, so the pick is always present here.

@@ -127,11 +127,11 @@ func run(logger *slog.Logger) error {
 	queries := dbgen.New(pool)
 
 	// The event bus is the SSE activity stream's backbone and the
-	// plugin seam: handlers publish domain events (session lifecycle
-	// in M2a) and every connected stream follows them.
+	// plugin seam: handlers publish domain events (the session
+	// lifecycle) and every connected stream follows them.
 	bus := events.NewBus(eventRetention, time.Now)
 
-	// The place reference plane (M3d): the baked GeoNames data loads
+	// The place reference plane: the baked GeoNames data loads
 	// and imports here, idempotently -- the data-version marker skips
 	// the import on an unchanged dataset, so the normal reboot only
 	// reads the rows back. The in-memory grid the metadata job's GPS
@@ -175,7 +175,7 @@ func run(logger *slog.Logger) error {
 		ModelsHfMirror: os.Getenv(envModelsHfMirror),
 		Registry:       registry,
 		// The place grid the metadata job's GPS step and the places
-		// rerun resolve against (nil without the reference data).
+		// rerun resolve against (nil without the baked place data).
 		Places: placeIndex,
 	})
 	if err != nil {

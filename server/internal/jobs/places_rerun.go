@@ -1,4 +1,4 @@
-// The places re-resolution run (M3d Task 1): the places-data-update
+// The places re-resolution run: the places-data-update
 // path. The startup import of a changed GeoNames bake replaces the
 // reference tables and -- through the schema's ON DELETE SET NULL --
 // releases every stale resolution; this run is the deliberate step
@@ -41,7 +41,7 @@ import (
 )
 
 // PlacesRerunKind is the job_runs kind of the place re-resolution
-// runs, pinned by the milestone plan's vocabulary (the rerun family's
+// runs, pinned by the shared vocabulary (the rerun family's
 // naming, applied to the places domain). The River job kind carries
 // the same string: one driver, no per-asset dispatch.
 const PlacesRerunKind = "places_rerun"

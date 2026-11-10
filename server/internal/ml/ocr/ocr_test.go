@@ -1,4 +1,4 @@
-// The OCR pipeline wrapper tests (M3a Task 8): the CTC greedy decode's
+// The OCR pipeline wrapper tests: the CTC greedy decode's
 // rules (blank dropping, repeat collapsing, the space class), the
 // embedded dictionary's integrity (the class-count contract the
 // recognition graphs must agree with), the detection postprocess over

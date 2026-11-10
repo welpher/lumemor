@@ -1,5 +1,5 @@
-// The idempotent database import of the baked reference data (M3d
-// Task 1), plus Prepare, the boot orchestration that ties the bake,
+// The idempotent database import of the baked reference data,
+// plus Prepare, the boot orchestration that ties the bake,
 // the import and the in-memory grid together.
 //
 // The import's skip key is the data-version marker: a sha256 digest
@@ -103,7 +103,7 @@ func Import(ctx context.Context, pool *pgxpool.Pool, ds *Dataset) (bool, error) 
 // Prepare is the boot orchestration over one geo dir: it loads the
 // bake (a missing file or malformed row is a deployment error, and
 // an EMPTY dir string is the feature-off configuration that answers
-// no index and no error -- a deployment without the reference data
+// no index and no error -- a deployment without the baked place data
 // keeps the place resolution honestly absent instead of failing),
 // imports it when the data-version marker differs, and builds the
 // in-memory grid from the database's places rows. The second return

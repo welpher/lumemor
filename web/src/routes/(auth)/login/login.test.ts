@@ -75,7 +75,7 @@ test('the form renders labeled fields and the pairing placeholder notes', () => 
 	}
 	const text = document.body.textContent ?? '';
 	expect(text).toContain('Sign in to your family photo library.');
-	// M4 placeholder notes (pairing QR + manual URL hint).
+	// Placeholder notes for the mobile pairing entry (QR + manual URL hint).
 	expect(text).toContain('Pairing a phone by scanning a QR code arrives with the mobile app.');
 	expect(text).toContain("You can also sign in on the mobile app by entering this server's address.");
 	unmount(page);

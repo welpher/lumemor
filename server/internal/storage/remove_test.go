@@ -1,4 +1,4 @@
-// RemoveAssetFiles tests (M2c Task 3): the on-disk half of the
+// RemoveAssetFiles tests: the on-disk half of the
 // permanent delete -- the derived directories always go, the
 // content-addressed original only at reference count zero, and a
 // missing file is tolerated, never an error.

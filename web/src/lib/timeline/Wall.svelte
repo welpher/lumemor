@@ -1,5 +1,5 @@
 <script lang="ts">
-	// THE UNIFIED WALL (the 2026-11-07 owner pin 1): ONE rendering
+	// THE UNIFIED WALL: ONE rendering
 	// component every photo surface composes -- the timeline, the
 	// album detail (a pure-navigation wall, no selection), the
 	// favorites and hidden wrappers, the search browse mode. The
@@ -10,8 +10,8 @@
 	// data walk, the toolbar, the timeline prefs) never enter: a
 	// page composes `<Wall items />` plus whatever it overlays.
 	//
-	// THE AXIS IS THE WALL'S OWN ORGAN (the 2026-11-08 owner pin,
-	// superseding the 2026-11-05 split that kept the scrubber a
+	// THE AXIS IS THE WALL'S OWN ORGAN (since 2026-11-08,
+	// superseding the earlier split that kept the scrubber a
 	// page-level overlay): the photo rendering and the right-edge
 	// month axis are one thing, not a rendering plus a page's
 	// overlay. Every month-grouped wall carries the rail -- its
@@ -22,8 +22,8 @@
 	// scroll root's native bar hides while a wall lives. An empty
 	// wall renders no rail (the scrubber's own guard).
 	//
-	// THE SELECTION FLOW IS THE WALL'S OWN ORGAN (the 2026-11-08
-	// owner pin, web IA §7.4, superseding the 2026-11-07 split that
+	// THE SELECTION FLOW IS THE WALL'S OWN ORGAN (since 2026-11-08,
+	// superseding the earlier split that
 	// kept the selection and the batch bar page-level overlays):
 	// the hover-reveal check, the selection state (an internal
 	// SvelteSet), the select mode, the Escape exit and the bottom
@@ -41,7 +41,7 @@
 	// pin). No page ever wires a dead affordance. `selectMode` is
 	// the one bindable: a page-level arming writes it; the wall owns
 	// the drops (Escape, the bar's clear). The add-to-album opener
-	// is GONE with its flow (E4, web IA §7.5).
+	// is GONE with its flow.
 	//
 	// THE SUCCESS ARM: a landed curation pass -- an `onbatch` run
 	// that resolves ok, or a dialog flow whose `done` continuation
@@ -60,7 +60,7 @@
 	// renders deterministically).
 	//
 	// THE HEADERS: opaque page-colored bands with NO dividing edge
-	// (R2-12: the density contrast IS the separation -- a hairline
+	// (the density contrast IS the separation -- a hairline
 	// under every band was the pre-rework drift away from the
 	// photo-first language), the vertical rhythm tightened (the month
 	// band's ~py-1.5/mb-2, the day header closer still). The tiles
@@ -144,7 +144,7 @@
 	let { items, selectMode = $bindable(false), onbatch, actions, onaddtag }: Props = $props();
 
 	// The selection is the wall's own reactive id set: the tiles'
-	// check affordances toggle it (the entry, R2-11: the check
+	// check affordances toggle it (the entry: the check
 	// reveals on hover/keyboard focus on every tile, and its first
 	// click enters the selection), Esc and the bar's clear drop it,
 	// and a landed pass clears it (the success arm). It never leaves
@@ -321,7 +321,7 @@
 		});
 	}
 
-	// THE FRAME MIGRATION'S RISKY EDGE (R2-1): scrolling lives in
+	// THE FRAME MIGRATION'S RISKY EDGE: scrolling lives in
 	// the shell's <main>, and element scroll events do not bubble --
 	// a window-level onscroll handler would silently never fire
 	// again. The tracking therefore listens in the CAPTURE phase on
@@ -426,8 +426,8 @@
 			>
 				{month.label}
 			</h2>
-			<!-- The day blocks flow horizontally and wrap (the reference
-			     timeline's shape): a day is a header plus its justified
+			<!-- The day blocks flow horizontally and wrap (the day-flow
+			     shape): a day is a header plus its justified
 			     stack at its own width, and sparse dates sit beside their
 			     neighbors instead of leaving a hole. -->
 			<div class="wall__day-flow flex flex-wrap gap-3">
@@ -472,7 +472,7 @@
 	{/each}
 </div>
 
-<!-- The wall's own month axis (the 2026-11-08 pin: the photo
+<!-- The wall's own month axis: the photo
      rendering and the rail are one thing). The scrubber is
      viewport-fixed, so it renders from any wall depth; its empty
      months guard hides it for an empty wall. -->

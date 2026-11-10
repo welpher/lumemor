@@ -1,8 +1,8 @@
-// The shared raster helpers of the inference wrappers (M3a Task 8):
-// the CLIP and OCR wrappers (this task) resize decoded rasters through
-// one bilinear implementation. The face wrappers of Tasks 6-7 keep
+// The shared raster helpers of the inference wrappers:
+// the CLIP and OCR wrappers resize decoded rasters through
+// one bilinear implementation. The face wrappers keep
 // their own private copy -- consolidating them onto this one is a
-// later refactor, recorded in the task's report.
+// later refactor.
 package ml
 
 import "math"

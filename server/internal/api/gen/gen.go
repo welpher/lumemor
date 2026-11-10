@@ -963,8 +963,8 @@ type AlbumAudienceSkip struct {
 // same reason for both, so user ids cannot be probed).
 type AlbumAudienceSkipReason string
 
-// AlbumCreateRequest The creation body of one directory album (E4's
-// albums-as-sources): the title, the existing directory the
+// AlbumCreateRequest The creation body of one directory album
+// (albums-as-sources): the title, the existing directory the
 // album references in place, and the audience the album starts
 // with. No type field exists -- this endpoint IS directory
 // creation, the only creatable album type. No description
@@ -1040,7 +1040,7 @@ type AlbumCreateResponse struct {
 	IsShared bool `json:"isShared"`
 
 	// ItemCount The album's live member count: trashed, hidden and Live
-	// Photo component rows never count (A5 -- a hidden asset is
+	// Photo component rows never count (a hidden asset is
 	// invisible to the whole family).
 	ItemCount int `json:"itemCount"`
 
@@ -1414,7 +1414,7 @@ type AlbumSummary struct {
 	IsShared bool `json:"isShared"`
 
 	// ItemCount The album's live member count: trashed, hidden and Live
-	// Photo component rows never count (A5 -- a hidden asset is
+	// Photo component rows never count (a hidden asset is
 	// invisible to the whole family).
 	ItemCount int `json:"itemCount"`
 
@@ -1539,7 +1539,7 @@ type AssetDetail struct {
 
 	// Faces The asset's faces as the calling user sees them, strongest
 	// score first with the face id as the tiebreak. The array is
-	// caller-scoped (B4): the asset being visible to the caller
+	// caller-scoped: the asset being visible to the caller
 	// is the gate -- the faces ride on the detail's own
 	// permission -- and each entry's `label` is the caller's own
 	// label of the face's cluster, never another account's.
@@ -1602,7 +1602,7 @@ type AssetDetail struct {
 	// OwnerId UUIDv7 identifier of the owning account.
 	OwnerId openapi_types.UUID `json:"ownerId"`
 
-	// Tags The CALLER's tags on this asset (B4): the caller's own
+	// Tags The CALLER's tags on this asset: the caller's own
 	// assignment rows joined to their own tag rows, sorted by
 	// name case-insensitively with the tag id as the tiebreak
 	// (the vocabulary listing's own ordering). Another
@@ -1646,8 +1646,8 @@ type AssetDetailTakenAtSource string
 
 // AssetFaceSummary One face of the asset detail's `faces` array: the crop's
 // identity, the detection score, the face's cluster and the
-// CALLER's label of that cluster. The label is per-user state
-// (B4): another account's label of the same global cluster never
+// CALLER's label of that cluster. The label is per-user state:
+// another account's label of the same global cluster never
 // shows here. `clusterId` is null while the face waits for its
 // first clustering assignment; such a face has no person yet and
 // every assignment write on it answers the people surface's 404.
@@ -1771,8 +1771,8 @@ type AssetResponseState string
 
 // AssetTagSummary One entry of the asset detail's `tags` array: the caller's
 // own tag as it rides the asset -- identity and name only, the
-// vocabulary's listing face carries the counts. Per-user state
-// (B4): the entry exists exactly because the CALLER's
+// vocabulary's listing face carries the counts. Per-user state:
+// the entry exists exactly because the CALLER's
 // assignment row does.
 type AssetTagSummary struct {
 	// Id Identifier of the tag (the caller's own row).
@@ -1895,7 +1895,7 @@ type ClusterDetail struct {
 	// Label The caller's label of the cluster, or null when the
 	// caller has not labeled it (the unnamed state). It is the
 	// calling user's label or no label at all: another
-	// account's label never shows here (B4).
+	// account's label never shows here.
 	Label *PersonLabel `json:"label"`
 }
 
@@ -2245,8 +2245,7 @@ type ModelRef struct {
 	// semantic arm -- the CLIP text tower that embeds queries into
 	// the vision tower's joint embedding space (it produces no
 	// per-asset rows, so its rerun endpoint answers 400
-	// `MODEL_INVALID`); a speech slot arrives with a later
-	// milestone.
+	// `MODEL_INVALID`); a speech slot arrives later.
 	Slot ModelSlot `json:"slot"`
 }
 
@@ -2317,8 +2316,7 @@ type ModelResponse struct {
 	// semantic arm -- the CLIP text tower that embeds queries into
 	// the vision tower's joint embedding space (it produces no
 	// per-asset rows, so its rerun endpoint answers 400
-	// `MODEL_INVALID`); a speech slot arrives with a later
-	// milestone.
+	// `MODEL_INVALID`); a speech slot arrives later.
 	Slot ModelSlot `json:"slot"`
 
 	// Source Where a model's registration came from: `downloaded` models
@@ -2346,8 +2344,7 @@ type ModelScanResponse struct {
 // semantic arm -- the CLIP text tower that embeds queries into
 // the vision tower's joint embedding space (it produces no
 // per-asset rows, so its rerun endpoint answers 400
-// `MODEL_INVALID`); a speech slot arrives with a later
-// milestone.
+// `MODEL_INVALID`); a speech slot arrives later.
 type ModelSlot string
 
 // ModelSource Where a model's registration came from: `downloaded` models
@@ -2434,8 +2431,8 @@ type PersonLabel struct {
 }
 
 // PersonLabelResponse The calling user's label state of one face cluster after a
-// label or hidden write: the caller's own row only (B4 --
-// another account's label never shows here).
+// label or hidden write: the caller's own row only
+// (another account's label never shows here).
 type PersonLabelResponse struct {
 	// ClusterId Identifier of the face cluster.
 	ClusterId openapi_types.UUID `json:"clusterId"`
@@ -2449,7 +2446,7 @@ type PersonLabelResponse struct {
 
 // PersonSummary One named person of the caller's people list: a global face
 // cluster carrying the caller's own label. The name and the
-// hidden switch are the caller's private label state (B4) --
+// hidden switch are the caller's private label state --
 // another account labeling or hiding the same cluster never
 // changes this view.
 type PersonSummary struct {
@@ -2520,7 +2517,7 @@ type PlaceSummary struct {
 	Country string `json:"country"`
 
 	// Name The display name in the request's locale: the
-	// `place_names` row of that locale when the reference data
+	// `place_names` row of that locale when the place data
 	// carries one, the GeoNames canonical (English or
 	// romanized) name otherwise. A locale switch changes this
 	// join only, never an asset row.
@@ -2587,7 +2584,7 @@ type RemoveTagAssetsResponse struct {
 // the current query and filters" (the dimension's own filter
 // parameters excluded). Every facet is caller-scoped exactly
 // like the surface it summarizes: places count visible assets,
-// tags and people are the caller's own (B4), albums are the
+// tags and people are the caller's own, albums are the
 // ones the caller can see. The lists are ordered by
 // `assetCount` descending with a deterministic per-dimension
 // tiebreak; they are not paginated (bounded by the family
@@ -2609,7 +2606,7 @@ type SearchFacets struct {
 
 	// People The caller's named, non-hidden people: one entry per
 	// labeled face cluster with a face on the current set.
-	// Hidden labels never list (the B4 hidden switch removes
+	// Hidden labels never list (the hidden switch removes
 	// the person from every face position).
 	People []PersonFacetCount `json:"people"`
 
@@ -2617,8 +2614,8 @@ type SearchFacets struct {
 	// display name (`locale` parameter, the `GET /places` join).
 	Places []PlaceFacetCount `json:"places"`
 
-	// Tags The CALLER's tags with members in the current set (B4:
-	// another account's tags never surface).
+	// Tags The CALLER's tags with members in the current set
+	// (another account's tags never surface).
 	Tags []TagFacetCount `json:"tags"`
 
 	// Years The taken-at years of the current set, newest first: the
@@ -2641,7 +2638,7 @@ type SearchResponse struct {
 	// the current query and filters" (the dimension's own filter
 	// parameters excluded). Every facet is caller-scoped exactly
 	// like the surface it summarizes: places count visible assets,
-	// tags and people are the caller's own (B4), albums are the
+	// tags and people are the caller's own, albums are the
 	// ones the caller can see. The lists are ordered by
 	// `assetCount` descending with a deterministic per-dimension
 	// tiebreak; they are not paginated (bounded by the family
@@ -3206,8 +3203,8 @@ type TrashSettingsUpdateRequest struct {
 // UnnamedClusterSummary One unnamed face cluster of the caller's unnamed region: a
 // global cluster the caller sees through at least one visible
 // asset and has not labeled themselves. Unlabeled for THIS
-// caller says nothing about another account's labels (B4 --
-// labels are private per user).
+// caller says nothing about another account's labels
+// (labels are private per user).
 type UnnamedClusterSummary struct {
 	// ClusterId Identifier of the face cluster.
 	ClusterId openapi_types.UUID `json:"clusterId"`
@@ -3628,7 +3625,7 @@ type SearchAssetsParams struct {
 
 	// TagIds Restrict the results to assets carrying one of the
 	// CALLER's tags. Another account's tag ids drop out of the
-	// filter (B4: tags are per-user state).
+	// filter (tags are per-user state).
 	TagIds *[]openapi_types.UUID `form:"tagIds,omitempty" json:"tagIds,omitempty"`
 
 	// Locale The display locale of the places facet's names, exactly

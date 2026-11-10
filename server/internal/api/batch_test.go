@@ -1,4 +1,4 @@
-// Batch action tests (M2c Task 4): the set semantics of the batch
+// Batch action tests: the set semantics of the batch
 // endpoint -- the mixed-resolution report (own, foreign, unknown and
 // already-trashed ids in one request), the idempotent convergence of
 // repeated actions, the validation door, the timeline effect of hide
@@ -272,8 +272,8 @@ func TestBatchValidation(t *testing.T) {
 
 // TestBatchHideAffectsTimeline pins the timeline half of the hide
 // switch: the batch hide removes the asset from the caller's timeline
-// (the live filter of the timeline query, Task 2's filter verified
-// through the endpoint), and the unhide returns it.
+// (the live filter of the timeline query, verified through the
+// endpoint), and the unhide returns it.
 func TestBatchHideAffectsTimeline(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -318,7 +318,7 @@ func TestBatchLivePhotoPair(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 
 	// A Live Photo upload: the photo row plus its linked component
-	// video row (the upload endpoint's pairing, M2b).
+	// video row (the upload endpoint's pairing).
 	pairBody, pairContentType := buildUploadBody(t, map[string]string{
 		"deviceAssetId":   "batch-pair",
 		"fileName":        "pair.jpg",

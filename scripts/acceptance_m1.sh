@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M1 acceptance: verify the skeleton milestone end to end against the
+# M1 acceptance: verify the first-run skeleton end to end against the
 # compose deployment.
 #
 # The script builds the stack from the current source tree, waits for

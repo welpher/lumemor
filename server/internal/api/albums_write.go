@@ -1,5 +1,5 @@
-// The album surface writes (M3c Task 2, reshaped by E4's
-// albums-as-sources and E6's album autonomy): the directory album
+// The album surface writes (reshaped by the albums-as-sources
+// and album-autonomy reworks): the directory album
 // creator behind POST /albums (the write face's only creatable type
 // -- the request names an existing path the server validates and
 // references in place; the face is the administrator's, and the
@@ -85,7 +85,7 @@ func (s *server) publishAlbumEvent(name string, albumID, userID uuid.UUID) {
 
 // publishAlbumMembershipEvents reports the album walls' convergence
 // signal for every album whose LIVE membership the trash lifecycle
-// just changed (E6, §7.9's deletability chain): the changed ids'
+// just changed (the deletability chain): the changed ids'
 // membership rows name the albums, and each album carries ONE
 // album.items-changed event, deduplicated across the ids -- the
 // rescan's own restart signal, published for the curation arms that
@@ -263,7 +263,7 @@ func (s *server) albumItemsIDs(w http.ResponseWriter, assetIds []openapi_types.U
 // runs the full validation matrix before anything is written: each
 // failing branch answers its own 400 error code, and the album row
 // stores the RESOLVED path. The face is the ADMINISTRATOR's (the
-// E6 boundary ruling: mounting an existing photo directory is a
+// boundary ruling: mounting an existing photo directory is a
 // configuration act -- a plain member answers the admin surfaces'
 // own 403 before any part of the request is considered, and the
 // members' contribution path stays the upload stream). After the
@@ -480,7 +480,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 
-	// The cover validation, the spec's application-layer pin: a
+	// The cover validation, the application-layer check: a
 	// present cover must be a LIVE member of THIS album. The check
 	// runs before the write so an invalid patch lands nothing.
 	if request.CoverAssetId != nil {

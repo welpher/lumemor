@@ -1,6 +1,6 @@
 # Web code style (SvelteKit + Svelte 5 + Tailwind v4)
 
-> The machine layer is live (the 2026-11-10 web-tooling block):
+> The machine layer is live (since 2026-11-10):
 > **prettier owns formatting** -- run `npx prettier --write .` in
 > web/ (or `pnpm run format`); **eslint owns the lint layer** -- run
 > `npx eslint .` in web/. `make web-check` fails on both (the
@@ -51,7 +51,7 @@
 
 ## Icons
 
-The icon-first rule (design repo, web IA §7.2): every action affordance
+The icon-first rule: every action affordance
 carries a lucide glyph — toolbars/inline/overflow are icon-only with
 `aria-label`, primary flows are icon+text, form submits may stay text.
 Decorative icons carry `aria-hidden`.

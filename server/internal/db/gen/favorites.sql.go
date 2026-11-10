@@ -44,7 +44,7 @@ type ListFavoriteAssetsRow struct {
 	IsFavorite bool  `json:"is_favorite"`
 }
 
-// Favorites and hidden view queries (M2c Task 4): the read side of
+// Favorites and hidden view queries: the read side of
 // the two curated views. Both answer TimelineItem lists in the
 // timeline's ordering and keyset pagination, so both compute the
 // per-user is_favorite flag the timeline items carry (the EXISTS
@@ -60,7 +60,7 @@ type ListFavoriteAssetsRow struct {
 // a favorited asset that was hidden or trashed leaves the view (it
 // returns with the unhide or the restore, the favorite row
 // untouched) -- and the caller-visible union is the second filter
-// (M3c Task 4): a sharee's favorites of shared-album assets appear
+// : a sharee's favorites of shared-album assets appear
 // here, and a revoked share removes the assets while the favorite
 // row survives. is_favorite is true by construction here (the join
 // selected the row); it is computed anyway so the column carries

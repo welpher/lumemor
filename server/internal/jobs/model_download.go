@@ -1,4 +1,4 @@
-// The model download job (M3a Task 3): the admin surface's download
+// The model download job: the admin surface's download
 // endpoint enqueues one run per click (idempotent at the API: an
 // in-flight or most recent run answers 200 without a new enqueue), and
 // this worker drives the ml download service behind it. The job_runs

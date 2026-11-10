@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The add-tag dialog (M3d Task 4): pick one of the caller's
+	// The add-tag dialog: pick one of the caller's
 	// existing tags, or name a new one (created first, then fed the
 	// ids) -- the two paths the add-to-album dialog's pattern
 	// shares. The page owns the writes and the tag list; the dialog
