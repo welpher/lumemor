@@ -108,7 +108,7 @@ Class | Method | HTTP request | Description
 [*AlbumsApi*](doc/AlbumsApi.md) | [**deleteAlbum**](doc/AlbumsApi.md#deletealbum) | **DELETE** /albums/{albumId} | Remove one album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**getAlbum**](doc/AlbumsApi.md#getalbum) | **GET** /albums/{albumId} | One album&#39;s detail and one page of its items.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**listAlbums**](doc/AlbumsApi.md#listalbums) | **GET** /albums | The caller&#39;s album wall.
-[*AlbumsApi*](doc/AlbumsApi.md) | [**removeAlbumItems**](doc/AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one virtual album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**removeAlbumItems**](doc/AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one memory album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**rescanAlbum**](doc/AlbumsApi.md#rescanalbum) | **POST** /albums/{albumId}/rescan | Start one rescan of a directory album&#39;s source.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**resetAlbumTimelinePreference**](doc/AlbumsApi.md#resetalbumtimelinepreference) | **DELETE** /albums/{albumId}/timeline-preference | Reset the caller&#39;s timeline preference of one album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**setAlbumTimelinePreference**](doc/AlbumsApi.md#setalbumtimelinepreference) | **PUT** /albums/{albumId}/timeline-preference | Set the caller&#39;s timeline preference of one album.

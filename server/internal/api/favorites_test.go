@@ -366,7 +366,7 @@ func TestTimelineIsFavorite(t *testing.T) {
 	graceSync := fixtureAlbumID("c1")
 	env.insertTimelineAlbum(t, graceSync, graceID, "sync")
 	toAdmin := fixtureAlbumID("c2")
-	env.insertTimelineAlbum(t, toAdmin, graceID, "virtual")
+	env.insertTimelineAlbum(t, toAdmin, graceID, "memory")
 	env.shareTimelineAlbum(t, toAdmin, adminID, graceID)
 
 	taken := time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC)

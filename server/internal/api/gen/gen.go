@@ -53,8 +53,8 @@ func (e AlbumCreateResponseCallerRole) Valid() bool {
 // Defines values for AlbumCreateResponseType.
 const (
 	AlbumCreateResponseTypeDirectory AlbumCreateResponseType = "directory"
+	AlbumCreateResponseTypeMemory    AlbumCreateResponseType = "memory"
 	AlbumCreateResponseTypeSync      AlbumCreateResponseType = "sync"
-	AlbumCreateResponseTypeVirtual   AlbumCreateResponseType = "virtual"
 )
 
 // Valid indicates whether the value is a known member of the AlbumCreateResponseType enum.
@@ -62,9 +62,9 @@ func (e AlbumCreateResponseType) Valid() bool {
 	switch e {
 	case AlbumCreateResponseTypeDirectory:
 		return true
-	case AlbumCreateResponseTypeSync:
+	case AlbumCreateResponseTypeMemory:
 		return true
-	case AlbumCreateResponseTypeVirtual:
+	case AlbumCreateResponseTypeSync:
 		return true
 	default:
 		return false
@@ -92,8 +92,8 @@ func (e AlbumDetailCallerRole) Valid() bool {
 // Defines values for AlbumDetailType.
 const (
 	AlbumDetailTypeDirectory AlbumDetailType = "directory"
+	AlbumDetailTypeMemory    AlbumDetailType = "memory"
 	AlbumDetailTypeSync      AlbumDetailType = "sync"
-	AlbumDetailTypeVirtual   AlbumDetailType = "virtual"
 )
 
 // Valid indicates whether the value is a known member of the AlbumDetailType enum.
@@ -101,9 +101,9 @@ func (e AlbumDetailType) Valid() bool {
 	switch e {
 	case AlbumDetailTypeDirectory:
 		return true
-	case AlbumDetailTypeSync:
+	case AlbumDetailTypeMemory:
 		return true
-	case AlbumDetailTypeVirtual:
+	case AlbumDetailTypeSync:
 		return true
 	default:
 		return false
@@ -149,8 +149,8 @@ func (e AlbumSummaryCallerRole) Valid() bool {
 // Defines values for AlbumSummaryType.
 const (
 	AlbumSummaryTypeDirectory AlbumSummaryType = "directory"
+	AlbumSummaryTypeMemory    AlbumSummaryType = "memory"
 	AlbumSummaryTypeSync      AlbumSummaryType = "sync"
-	AlbumSummaryTypeVirtual   AlbumSummaryType = "virtual"
 )
 
 // Valid indicates whether the value is a known member of the AlbumSummaryType enum.
@@ -158,9 +158,9 @@ func (e AlbumSummaryType) Valid() bool {
 	switch e {
 	case AlbumSummaryTypeDirectory:
 		return true
-	case AlbumSummaryTypeSync:
+	case AlbumSummaryTypeMemory:
 		return true
-	case AlbumSummaryTypeVirtual:
+	case AlbumSummaryTypeSync:
 		return true
 	default:
 		return false
@@ -188,8 +188,8 @@ func (e AssetAlbumRefCallerRole) Valid() bool {
 // Defines values for AssetAlbumRefType.
 const (
 	AssetAlbumRefTypeDirectory AssetAlbumRefType = "directory"
+	AssetAlbumRefTypeMemory    AssetAlbumRefType = "memory"
 	AssetAlbumRefTypeSync      AssetAlbumRefType = "sync"
-	AssetAlbumRefTypeVirtual   AssetAlbumRefType = "virtual"
 )
 
 // Valid indicates whether the value is a known member of the AssetAlbumRefType enum.
@@ -197,9 +197,9 @@ func (e AssetAlbumRefType) Valid() bool {
 	switch e {
 	case AssetAlbumRefTypeDirectory:
 		return true
-	case AssetAlbumRefTypeSync:
+	case AssetAlbumRefTypeMemory:
 		return true
-	case AssetAlbumRefTypeVirtual:
+	case AssetAlbumRefTypeSync:
 		return true
 	default:
 		return false
@@ -1124,7 +1124,7 @@ type AlbumCreateResponse struct {
 	// InTimeline The caller's timeline preference of this album: whether
 	// it feeds their aggregated timeline. Present exactly on
 	// the excludable cards -- the own `directory` items and
-	// every shared item; the own `virtual` items omit it
+	// every shared item; the own `memory` items omit it
 	// (they never feed the caller's own timeline, so there is
 	// nothing to exclude), and the pinned `sync` card omits it
 	// too (the core stream is never excludable). The value is
@@ -1167,8 +1167,10 @@ type AlbumCreateResponse struct {
 	// Title The album's display title.
 	Title string `json:"title"`
 
-	// Type The album's type. `virtual` albums are curated by their
-	// owner; `directory` albums mirror a filesystem path. The
+	// Type The album's type. `memory` albums are reference sets
+	// curated by their owner -- photos live in the albums they
+	// were ingested through, a memory holds references to
+	// them; `directory` albums mirror a filesystem path. The
 	// one `sync` card, when present, is the caller's own
 	// default album pinned first (never another account's):
 	// its `title` is the internal system label ('Sync') and
@@ -1185,8 +1187,10 @@ type AlbumCreateResponse struct {
 // web client sections the wall off this discriminator.
 type AlbumCreateResponseCallerRole string
 
-// AlbumCreateResponseType The album's type. `virtual` albums are curated by their
-// owner; `directory` albums mirror a filesystem path. The
+// AlbumCreateResponseType The album's type. `memory` albums are reference sets
+// curated by their owner -- photos live in the albums they
+// were ingested through, a memory holds references to
+// them; `directory` albums mirror a filesystem path. The
 // one `sync` card, when present, is the caller's own
 // default album pinned first (never another account's):
 // its `title` is the internal system label ('Sync') and
@@ -1235,7 +1239,7 @@ type AlbumDetail struct {
 	// it feeds their aggregated timeline. Present exactly when
 	// the album is excludable for the caller -- an own
 	// `directory` album or an album shared to them; an own
-	// `virtual` album omits the field (it never feeds the
+	// `memory` album omits the field (it never feeds the
 	// caller's own timeline), and the caller's own `sync`
 	// album omits it too (the core stream is never
 	// excludable). The value is the preference row's
@@ -1262,7 +1266,8 @@ type AlbumDetail struct {
 	// the album row stores, present exactly on `directory`
 	// albums (the edit dialog's read-only source line; the
 	// property patch carries no field for it -- the source is
-	// pinned at creation). Virtual and sync albums omit it.
+	// pinned at creation). Memory and sync albums omit it: a
+	// memory has no source.
 	RootPath *string `json:"rootPath,omitempty"`
 
 	// Shares The album's grantee list, riding ONLY the owner's view:
@@ -1287,7 +1292,9 @@ type AlbumDetail struct {
 	// Title The album's display title.
 	Title string `json:"title"`
 
-	// Type The album's type; `sync` is the caller's own default
+	// Type The album's type. `memory` is a reference set the caller
+	// owns or that is shared to them; `sync` is the caller's
+	// own default
 	// album -- a read-only, system-managed detail (no write
 	// affordance applies, the display name is the client's
 	// localized one keyed by the type). Another account's sync
@@ -1300,7 +1307,9 @@ type AlbumDetail struct {
 // write affordances, a viewer is read-only.
 type AlbumDetailCallerRole string
 
-// AlbumDetailType The album's type; `sync` is the caller's own default
+// AlbumDetailType The album's type. `memory` is a reference set the caller
+// owns or that is shared to them; `sync` is the caller's
+// own default
 // album -- a read-only, system-managed detail (no write
 // affordance applies, the display name is the client's
 // localized one keyed by the type). Another account's sync
@@ -1359,11 +1368,11 @@ type AlbumItemAsset struct {
 // AlbumItemAssetKind The asset's media kind.
 type AlbumItemAssetKind string
 
-// AlbumItemsRequest The membership removal body: the list of asset ids to remove
-// from one virtual album. Repeated ids collapse to one
+// AlbumItemsRequest The membership write body: the list of asset ids the write
+// addresses in one memory album. Repeated ids collapse to one
 // application; the report's counts cover the distinct ids.
 type AlbumItemsRequest struct {
-	// AssetIds The asset ids of the membership removal, between 1 and
+	// AssetIds The asset ids of the membership write, between 1 and
 	// 200 entries; the remove skips the ids that are no
 	// members.
 	AssetIds []openapi_types.UUID `json:"assetIds"`
@@ -1395,9 +1404,9 @@ type AlbumPatch struct {
 	// file-system deletions themselves turns it off, and the
 	// wall's delete affordances disappear with it (the derived
 	// `deletable` face of the detail read). A patch carrying
-	// the field on a virtual album answers 400 with the
+	// the field on a memory album answers 400 with the
 	// message key `album_deletable_not_directory` -- the
-	// switch is the directory album's own, a virtual album's
+	// switch is the directory album's own, a memory album's
 	// deletions never move files. Idempotent: repeating the
 	// stored value converges.
 	AllowAppDeletion *bool `json:"allowAppDeletion,omitempty"`
@@ -1505,7 +1514,7 @@ type AlbumSummary struct {
 	// InTimeline The caller's timeline preference of this album: whether
 	// it feeds their aggregated timeline. Present exactly on
 	// the excludable cards -- the own `directory` items and
-	// every shared item; the own `virtual` items omit it
+	// every shared item; the own `memory` items omit it
 	// (they never feed the caller's own timeline, so there is
 	// nothing to exclude), and the pinned `sync` card omits it
 	// too (the core stream is never excludable). The value is
@@ -1531,8 +1540,10 @@ type AlbumSummary struct {
 	// Title The album's display title.
 	Title string `json:"title"`
 
-	// Type The album's type. `virtual` albums are curated by their
-	// owner; `directory` albums mirror a filesystem path. The
+	// Type The album's type. `memory` albums are reference sets
+	// curated by their owner -- photos live in the albums they
+	// were ingested through, a memory holds references to
+	// them; `directory` albums mirror a filesystem path. The
 	// one `sync` card, when present, is the caller's own
 	// default album pinned first (never another account's):
 	// its `title` is the internal system label ('Sync') and
@@ -1549,8 +1560,10 @@ type AlbumSummary struct {
 // web client sections the wall off this discriminator.
 type AlbumSummaryCallerRole string
 
-// AlbumSummaryType The album's type. `virtual` albums are curated by their
-// owner; `directory` albums mirror a filesystem path. The
+// AlbumSummaryType The album's type. `memory` albums are reference sets
+// curated by their owner -- photos live in the albums they
+// were ingested through, a memory holds references to
+// them; `directory` albums mirror a filesystem path. The
 // one `sync` card, when present, is the caller's own
 // default album pinned first (never another account's):
 // its `title` is the internal system label ('Sync') and
@@ -1588,7 +1601,7 @@ type AlbumTimelinePreferenceResponse struct {
 type AlbumWallResponse struct {
 	// Albums Every wall album: the pinned sync card first (the
 	// caller's own core upload stream, the default "My
-	// photos" album), then the own group (the caller's virtual
+	// photos" album), then the own group (the caller's memory
 	// and directory albums, `updatedAt` descending), then the
 	// shared group (the albums shared to the caller, the
 	// caller's grant time descending). Each group breaks ties
@@ -1615,7 +1628,10 @@ type AssetAlbumRef struct {
 	// Title The album's display title (the sync card's internal label).
 	Title string `json:"title"`
 
-	// Type The album's type.
+	// Type The album's type. A `memory` entry is one of the viewer's
+	// own or shared reference sets; `directory` entries are
+	// sources. The one `sync` entry, when present, is the
+	// viewer's own default album (never another account's).
 	Type AssetAlbumRefType `json:"type"`
 }
 
@@ -1624,7 +1640,10 @@ type AssetAlbumRef struct {
 // one), `viewer` items the albums shared to them.
 type AssetAlbumRefCallerRole string
 
-// AssetAlbumRefType The album's type.
+// AssetAlbumRefType The album's type. A `memory` entry is one of the viewer's
+// own or shared reference sets; `directory` entries are
+// sources. The one `sync` entry, when present, is the
+// viewer's own default album (never another account's).
 type AssetAlbumRefType string
 
 // AssetDetail One asset as the detail endpoint returns it: the upload
@@ -4018,7 +4037,7 @@ type ServerInterface interface {
 	// UpdateAlbumAudience Set one album's audience (the full grantee set).
 	// (PUT /albums/{albumId}/audience)
 	UpdateAlbumAudience(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
-	// RemoveAlbumItems Remove assets from one virtual album.
+	// RemoveAlbumItems Remove assets from one memory album.
 	// (DELETE /albums/{albumId}/items)
 	RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
 	// RescanAlbum Start one rescan of a directory album's source.
@@ -4312,7 +4331,7 @@ func (_ Unimplemented) UpdateAlbumAudience(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// RemoveAlbumItems Remove assets from one virtual album.
+// RemoveAlbumItems Remove assets from one memory album.
 // (DELETE /albums/{albumId}/items)
 func (_ Unimplemented) RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)

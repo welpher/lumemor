@@ -450,7 +450,7 @@ func TestSearchTextPath(t *testing.T) {
 	// album's title, the caller's person label.
 	env.seedTag(t, searchTagID("01"), owner, "海边合集", multi)
 	album := searchAlbumID("01")
-	env.insertSearchAlbum(t, album, owner, "virtual", "海边之旅")
+	env.insertSearchAlbum(t, album, owner, "memory", "海边之旅")
 	env.addTimelineItem(t, album, multi, owner)
 	env.insertPeopleModel(t)
 	face := searchFaceID("01")
@@ -813,7 +813,7 @@ func TestSearchVisibility(t *testing.T) {
 	env.insertSearchAsset(t, graceOwn, env.graceID, taken, "我的海边.jpg", "", searchAssetOpts{})
 
 	sharedAlbum := searchAlbumID("21")
-	env.insertSearchAlbum(t, sharedAlbum, owner, "virtual", "Family")
+	env.insertSearchAlbum(t, sharedAlbum, owner, "memory", "Family")
 	env.addTimelineItem(t, sharedAlbum, shared, owner)
 	env.shareTimelineAlbum(t, sharedAlbum, env.graceID, owner)
 
@@ -911,7 +911,7 @@ func TestSearchFiltersAndFacets(t *testing.T) {
 	env.seedTag(t, searchTagID("32"), owner, "mountain", paris2023)
 
 	tripAlbum := searchAlbumID("31")
-	env.insertSearchAlbum(t, tripAlbum, owner, "virtual", "Trip")
+	env.insertSearchAlbum(t, tripAlbum, owner, "memory", "Trip")
 	env.addTimelineItem(t, tripAlbum, paris2024, owner)
 	env.addTimelineItem(t, tripAlbum, paris2023, owner)
 
@@ -1028,7 +1028,7 @@ func TestSearchFiltersAndFacets(t *testing.T) {
 		graceAsset := searchAssetID("35")
 		env.insertSearchAsset(t, graceAsset, env.graceID, time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC),
 			"DSC_2000.jpg", "", searchAssetOpts{})
-		env.insertSearchAlbum(t, privateAlbum, env.graceID, "virtual", "Grace Private")
+		env.insertSearchAlbum(t, privateAlbum, env.graceID, "memory", "Grace Private")
 		env.addTimelineItem(t, privateAlbum, graceAsset, env.graceID)
 
 		page := env.getSearch(t, env.cookie, "albumIds="+privateAlbum.String())

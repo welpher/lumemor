@@ -15,14 +15,14 @@ part 'album_summary.g.dart';
 /// Properties:
 /// * [id] - Identifier of the album.
 /// * [title] - The album's display title.
-/// * [type] - The album's type. `virtual` albums are curated by their owner; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
+/// * [type] - The album's type. `memory` albums are reference sets curated by their owner -- photos live in the albums they were ingested through, a memory holds references to them; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
 /// * [isShared] - True when the album carries at least one `album_shares` row -- someone besides the owner can see it. Always true on shared-group items by construction. 
 /// * [coverAssetIds] - The collage source of the wall card: the pinned cover asset as a single-element list when the owner set one, otherwise the album's most recent live member assets (up to four, `takenAt` descending, the asset id as the tiebreak). Empty for an album with no live members. 
 /// * [itemCount] - The album's live member count: trashed, hidden and Live Photo component rows never count (a hidden asset is invisible to the whole family). 
 /// * [updatedAt] - When the album row last changed (RFC 3339 UTC).
 /// * [callerRole] - The caller's relation to this album: `owner` items belong to the own group, `viewer` items to the shared group. The web client sections the wall off this discriminator. 
 /// * [owner] - The owner attribution of a shared item: the account that owns the album. Present exactly when `callerRole` is `viewer`; own items omit it (the owner is the caller). 
-/// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `virtual` items omit it (they never feed the caller's own timeline, so there is nothing to exclude), and the pinned `sync` card omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). 
+/// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `memory` items omit it (they never feed the caller's own timeline, so there is nothing to exclude), and the pinned `sync` card omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). 
 @BuiltValue(instantiable: false)
 abstract class AlbumSummary  {
   /// Identifier of the album.
@@ -33,10 +33,10 @@ abstract class AlbumSummary  {
   @BuiltValueField(wireName: r'title')
   String get title;
 
-  /// The album's type. `virtual` albums are curated by their owner; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
+  /// The album's type. `memory` albums are reference sets curated by their owner -- photos live in the albums they were ingested through, a memory holds references to them; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
   @BuiltValueField(wireName: r'type')
   AlbumSummaryTypeEnum get type;
-  // enum typeEnum {  virtual,  directory,  sync,  };
+  // enum typeEnum {  memory,  directory,  sync,  };
 
   /// True when the album carries at least one `album_shares` row -- someone besides the owner can see it. Always true on shared-group items by construction. 
   @BuiltValueField(wireName: r'isShared')
@@ -63,7 +63,7 @@ abstract class AlbumSummary  {
   @BuiltValueField(wireName: r'owner')
   AlbumOwnerRef? get owner;
 
-  /// The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `virtual` items omit it (they never feed the caller's own timeline, so there is nothing to exclude), and the pinned `sync` card omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). 
+  /// The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `memory` items omit it (they never feed the caller's own timeline, so there is nothing to exclude), and the pinned `sync` card omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). 
   @BuiltValueField(wireName: r'inTimeline')
   bool? get inTimeline;
 
@@ -302,11 +302,11 @@ class _$$AlbumSummarySerializer implements PrimitiveSerializer<$AlbumSummary> {
   }
 }
 
-/// The album's type. `virtual` albums are curated by their owner; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
+/// The album's type. `memory` albums are reference sets curated by their owner -- photos live in the albums they were ingested through, a memory holds references to them; `directory` albums mirror a filesystem path. The one `sync` card, when present, is the caller's own default album pinned first (never another account's): its `title` is the internal system label ('Sync') and clients render the localized display name instead (en \"My photos\", zh-Hans \"我的照片\"). 
 class AlbumSummaryTypeEnum extends EnumClass {
 
-  @BuiltValueEnumConst(wireName: r'virtual')
-  static const AlbumSummaryTypeEnum virtual = _$albumSummaryTypeEnum_virtual;
+  @BuiltValueEnumConst(wireName: r'memory')
+  static const AlbumSummaryTypeEnum memory = _$albumSummaryTypeEnum_memory;
   @BuiltValueEnumConst(wireName: r'directory')
   static const AlbumSummaryTypeEnum directory = _$albumSummaryTypeEnum_directory;
   @BuiltValueEnumConst(wireName: r'sync')

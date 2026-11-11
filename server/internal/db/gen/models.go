@@ -18,7 +18,7 @@ type AlbumType string
 const (
 	AlbumTypeSync      AlbumType = "sync"
 	AlbumTypeDirectory AlbumType = "directory"
-	AlbumTypeVirtual   AlbumType = "virtual"
+	AlbumTypeMemory    AlbumType = "memory"
 )
 
 func (e *AlbumType) Scan(src interface{}) error {
