@@ -683,10 +683,12 @@ export async function rescanAlbum(
 }
 
 /**
- * DELETE /api/v1/albums/{albumId}: delete the caller's virtual or
- * directory album. The row goes with its membership and share rows
- * (the schema's cascades); 204, no body. (External assets the scan
- * ingested keep their rows -- the trash owns them now.)
+ * DELETE /api/v1/albums/{albumId}: remove the caller's virtual or
+ * directory album. The row goes with its membership, share and
+ * preference rows (the schema's cascades); the directory arm is the
+ * un-ingest -- every member no other album references is purged from
+ * the library (its source file untouched), the guarded survivors
+ * keep their rows. 204, no body.
  */
 export async function deleteAlbum(
 	albumId: string,

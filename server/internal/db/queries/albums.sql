@@ -378,6 +378,48 @@ DELETE FROM albums
 WHERE id = sqlc.arg('album_id')
   AND type = 'virtual';
 
+-- name: DeleteDirectoryAlbum :execrows
+-- The directory album's removal (the un-ingest): the row goes with
+-- every membership, share and per-user preference row through the
+-- schema's ON DELETE CASCADEs. The type guard keeps the statement
+-- honest against the handler's directory-only verdict (the virtual
+-- delete is its own statement above), and zero rows -- a concurrent
+-- removal won the race -- is the 404 of a gone album. The members'
+-- asset rows are deliberately NOT here: the handler's reference
+-- guard runs AFTER this cascade has taken the album's own
+-- membership rows, so the surviving album_items rows name exactly
+-- the members another album still holds.
+DELETE FROM albums
+WHERE id = sqlc.arg('album_id')
+  AND type = 'directory';
+
+-- name: ListAlbumMemberAssets :many
+-- The removal's member read, taken BEFORE the album row goes (the
+-- cascade below would take the membership rows with it): every
+-- member asset with the columns the purge and its file half need --
+-- the shared-blob count and original for a blob row, the trash copy
+-- for an external row (the trash interplay: a member already in the
+-- trash loses the row and the trash copy together), the kind and
+-- the component flag for the events. No live predicate: a trashed
+-- member's row is as much a member for the removal as a live one.
+SELECT a.id, a.owner_id, a.file_path, a.trash_path,
+       a.storage_kind, a.media_kind, a.is_component
+FROM album_items ai
+JOIN assets a ON a.id = ai.asset_id
+WHERE ai.album_id = sqlc.arg('album_id');
+
+-- name: CountAlbumReferencesOfAsset :one
+-- The removal's reference guard: how many album_items rows still
+-- name the asset. The album being removed has already cascaded its
+-- own membership rows away inside the same transaction, so a count
+-- above zero names another album's live hold -- the sync album's
+-- permanent membership covers every uploaded (blob) row, a member
+-- shared with a second album survives on that reference -- and zero
+-- means the un-ingest cascade takes the row. No album-type filter
+-- and no live predicate on the asset: the membership rows are the
+-- whole truth of who still references it.
+SELECT count(*) FROM album_items
+WHERE asset_id = sqlc.arg('asset_id');
 
 -- name: RemoveAlbumItems :execrows
 -- The membership remove: the rows that exist leave, and the ids that
