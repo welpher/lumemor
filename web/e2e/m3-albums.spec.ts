@@ -43,7 +43,8 @@
 //     cross-person portraits, never the read-only fixture's pair, so
 //     the rescan's owner+checksum dedup never links the two stories'
 //     rows) -- and the trash scene's restore returns them, so the
-//     tree self-heals.
+//     tree self-heals; the removal scene later asserts the same
+//     files byte for byte on the host after the un-ingest.
 // The models ride the SAME storage bind mount the chained
 // acceptances downloaded into -- ./lumemor persists across stack
 // lifetimes, so the download run the bootstrap triggers is warm (a
@@ -65,6 +66,22 @@
 // creation guard's refusal matrix (the member's wall carries no
 // create affordance; their create-album attempt and their completion
 // call both answer AUTH_FORBIDDEN).
+//
+// THE REMOVAL (the E8 block) rides the same writable album: a
+// directory album's removal is the UN-INGEST -- the album row, its
+// membership and its audience die, and every member no other album
+// references purges from the library whole (the asset row, the
+// faces with their cluster sweep, the embedding, the OCR text, the
+// per-user states, the generated thumbnail/encoded files) while the
+// SOURCE FILES ARE NEVER TOUCHED -- the fixture dir is checked on
+// the host after, byte for byte. The write's confirm dialog states
+// the pinned semantics before the irreversible call, the sync album
+// folds into the single-shape 404 (no album resource), the sharee's
+// attempt answers the honest 403, and the published event family
+// (album.deleted + asset.deleted) converges the held-open surfaces
+// live: the member's timeline drops the shared tiles, the search
+// wall empties, the named person whose faces died with the purge
+// falls off the people page.
 //
 // THE SCENES (the albums and autonomy surface, in order):
 //
@@ -152,16 +169,47 @@
 //     view carries the row, and the restore returns the file -- the
 //     album's fresh answer carries both photos again (the fixture
 //     healed).
+// 14. The removal's stage: the audience grant arms the member (the
+//     full-set PUT the edit dialog drives), the two portrait pairs'
+//     clusters converge (the cross-person separation is the
+//     identification), the writable pair's cluster is NAMED through
+//     the unnamed region's dialog -- the people card whose faces sit
+//     wholly on the purged assets, the removal's people-convergence
+//     witness -- and the member's shared side is asserted before the
+//     write: the wall's shared card, the four-tile timeline, and the
+//     member's own removal attempt answering the honest 403 with
+//     nothing landed.
+// 15. The removal itself: the detail bar's remove action opens the
+//     confirm whose body states the pinned semantics, the confirm
+//     drives the DELETE, the wall loses the card -- and every
+//     held-open surface converges on the events without a reload:
+//     the member's timeline drops the shared tiles (the read-only
+//     pair stays), the member's wall loses the shared card (the
+//     audience died with the album), the admin's search wall
+//     empties, the people page drops the named person. The scene
+//     closes on the zero-contact pin's host-side proof: the source
+//     files are byte for byte the seeds.
+// 16. The aftermath: the album answers 404 to the read and to the
+//     repeat delete (the single-shape refusal), the sync album's own
+//     removal attempt folds into the same 404 with the default card
+//     staying on the wall, the aggregated timeline is the read-only
+//     pair's alone, the search answers the purged name with nothing
+//     and the survivor's name with the survivor, the named people
+//     listing is empty, the unnamed region carries exactly the
+//     read-only pair's cluster, and the purged cluster's detail is a
+//     404 like an unknown id.
 //
 // THE STATE HANDOFF: the scenes are serial (one stack, one story --
-// see playwright.config.ts). Scenes 1-7 and 10-13 share the admin's
-// browser session (scene 1 signs in and saves the storage state);
-// scene 8 signs the member in through a fresh context and saves their
-// own; scene 9 replays the member's. Each scene navigates explicitly
-// to its starting route, so a failure report names the exact scene
-// that broke.
+// see playwright.config.ts). Scenes 1-7, 10-13 and 14-16 share the
+// admin's browser session (scene 1 signs in and saves the storage
+// state); scene 8 signs the member in through a fresh context and
+// saves their own; scene 9 replays the member's, and the removal
+// scenes replay it again for the member's side of the grant (the
+// contexts are created inside those scenes). Each scene navigates
+// explicitly to its starting route, so a failure report names the
+// exact scene that broke.
 
-import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
@@ -236,6 +284,17 @@ let rwAlbumId = '';
 // The member's user id, captured by the bootstrap so the audience
 // write's request shape can be pinned against the real id.
 let memberUserId = '';
+
+// The two face clusters' identities, captured by scene 14 through
+// the unnamed listing and the cluster details (the faces' file
+// names tell the cross-person pairs apart): the writable pair's
+// cluster is the removal's casualty (named, then dissolved with
+// its label row), the read-only pair's the survivor. The
+// representative face's id addresses the writable cluster's
+// unnamed card (the card renders the representative's crop).
+let rwClusterId = '';
+let rwRepFaceId = '';
+let roClusterId = '';
 
 test.beforeAll(async ({ playwright }) => {
 	// The writable fixture's seeding (the arrangement its README
@@ -686,13 +745,13 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	expect(memberCompletionBody.code).toBe('AUTH_FORBIDDEN');
 
 	// The shared detail reads as viewer: no owner affordance ever
-	// renders (the properties dialog and the rescan are the owner's),
-	// while the timeline-exclusion toggle -- the member's own
-	// preference -- does.
+	// renders (the properties dialog, the rescan and the remove are
+	// the owner's), while the timeline-exclusion toggle -- the
+	// member's own preference -- does.
 	await card.click();
 	await expect(page).toHaveURL(new RegExp(`/albums/${albumId}$`));
 	await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
-	for (const label of ['Properties', 'Rescan', 'Delete album']) {
+	for (const label of ['Properties', 'Rescan', 'Delete album', 'Remove album']) {
 		await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 	}
 	await expect(page.getByRole('button', { name: 'Keep out of timeline', exact: true })).toBeVisible();
@@ -1024,5 +1083,314 @@ test.describe('the writable source scenes', () => {
 		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 60_000 });
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
 		await expect(page.locator('.album-bar .album-detail__count')).toContainText('2 photos');
+	});
+});
+
+// The removal arm of the story (the E8 block): the admin's session
+// replays; the scenes stage the removal's pre-state (the share, the
+// named person, the two clusters' identities), walk the confirm's
+// pinned semantics through the detail bar's remove action, and pin
+// the un-ingest's whole aftermath -- the sources byte-intact on the
+// host, every held-open surface's live convergence, the library's
+// fresh answers, and the refusal matrix's two standing arms (the
+// member's 403 and the sync album's single-shape 404).
+test.describe('the removal scenes', () => {
+	test.use({ storageState: adminStatePath });
+
+	test("scene 14: the share arms the member, the second person is named, and the member's removal attempt refuses", async ({
+		page,
+		browser
+	}) => {
+		test.setTimeout(600_000);
+
+		// The audience grant rides the same full-set PUT the edit
+		// dialog's audience face drives (scene 7 walked that dialog;
+		// this scene needs the grant, not the dialog): the report
+		// names the granted member, the set is theirs.
+		const share = await page.request.put(`/api/v1/albums/${rwAlbumId}/audience`, {
+			data: { audience: [memberUserId] }
+		});
+		expect(share.status()).toBe(200);
+		const shareBody = (await share.json()) as { granted?: string[] };
+		expect(shareBody.granted).toEqual([memberUserId]);
+
+		// The face clusters: the story's two portrait pairs are two
+		// people (the writable seeds are the cross-person pair, never
+		// the read-only fixture's), so the unnamed listing converges
+		// to two clusters of two faces each. Each cluster's detail
+		// names its faces' files, so the story can tell the pairs
+		// apart: the writable pair's cluster is the removal's
+		// casualty, the read-only pair's the survivor.
+		type UnnamedItem = { clusterId: string; faceCount: number; representativeFaceId: string };
+		await expect
+			.poll(
+				async () => {
+					const listing = await page.request.get('/api/v1/people/unnamed');
+					expect(listing.status()).toBe(200);
+					const body = (await listing.json()) as { items?: UnnamedItem[] };
+					return (body.items ?? []).map((item) => item.faceCount).sort((a, b) => b - a);
+				},
+				{ timeout: 420_000, intervals: [1000, 2000, 5000] }
+			)
+			.toEqual([2, 2]);
+
+		const listing = await page.request.get('/api/v1/people/unnamed');
+		expect(listing.status()).toBe(200);
+		const clusters = ((await listing.json()) as { items: UnnamedItem[] }).items;
+		expect(clusters).toHaveLength(2);
+		const rwNames = [PHOTO_RW_A_NAME, PHOTO_RW_B_NAME];
+		const roNames = [PHOTO_A_NAME, PHOTO_B_NAME];
+		for (const cluster of clusters) {
+			const detail = await page.request.get(`/api/v1/people/${cluster.clusterId}`);
+			expect(detail.status()).toBe(200);
+			const body = (await detail.json()) as {
+				faces: Array<{ asset: { originalFilename: string } }>;
+			};
+			expect(body.faces).toHaveLength(2);
+			const names = body.faces.map((face) => face.asset.originalFilename);
+			// The separation itself: each cluster's faces come wholly
+			// from one pair -- the cross-person evidence riding the
+			// identification.
+			if (names.every((name) => rwNames.includes(name))) {
+				rwClusterId = cluster.clusterId;
+				rwRepFaceId = cluster.representativeFaceId;
+			} else if (names.every((name) => roNames.includes(name))) {
+				roClusterId = cluster.clusterId;
+			}
+		}
+		expect(rwClusterId).not.toBe('');
+		expect(rwRepFaceId).not.toBe('');
+		expect(roClusterId).not.toBe('');
+
+		// The naming main path: the writable pair's cluster is named
+		// (its card addressed by the representative's crop), so the
+		// people page (the named surface) carries a card whose faces
+		// sit wholly on the purged assets -- the removal's
+		// people-convergence witness. The unnamed region keeps the
+		// read-only pair's cluster alone.
+		await page.goto('/people/unnamed');
+		const unnamedCards = page.locator('button.cluster-card');
+		await expect(unnamedCards).toHaveCount(2);
+		const rwUnnamedCard = unnamedCards.filter({
+			has: page.locator(`img[src="/api/v1/faces/${rwRepFaceId}/thumbnail"]`)
+		});
+		await expect(rwUnnamedCard).toHaveCount(1);
+		await rwUnnamedCard.click();
+		const naming = page.getByRole('dialog', { name: 'Name this person', exact: true });
+		await expect(naming).toBeVisible();
+		await naming.getByLabel('Name').fill('Field person');
+		await naming.getByRole('button', { name: 'Save name', exact: true }).click();
+		await expect(naming).toHaveCount(0);
+		await expect(unnamedCards).toHaveCount(1, { timeout: 30_000 });
+
+		// The member's side of the grant: the wall's shared group
+		// carries the writable album, and the member's timeline (the
+		// union's shared arms) now holds all four photos -- the two
+		// albums' pairs. The member's own removal attempt answers the
+		// honest 403 (the two-tier gate's sharee arm) and lands
+		// nothing: the album stands. The context replays the member's
+		// saved storage state (scene 8's sign-in owns it).
+		const context = await browser.newContext({
+			locale: 'en-US',
+			timezoneId: 'UTC',
+			storageState: memberStatePath
+		});
+		const memberPage = await context.newPage();
+		await memberPage.goto('/albums');
+		const memberCard = memberPage.locator('a.album-card').filter({ hasText: RW_ALBUM_TITLE });
+		await expect(memberCard).toBeVisible();
+		await expect(memberCard).toContainText('2 photos');
+		await memberPage.goto('/timeline');
+		await expect(memberPage.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
+		await expect(memberPage.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toBeVisible();
+		await expect(memberPage.locator('.tile')).toHaveCount(4);
+
+		const attempt = await memberPage.request.delete(`/api/v1/albums/${rwAlbumId}`);
+		expect(attempt.status()).toBe(403);
+		const attemptBody = (await attempt.json()) as { code?: string };
+		expect(attemptBody.code).toBe('AUTH_FORBIDDEN');
+		const standing = await memberPage.request.get(`/api/v1/albums/${rwAlbumId}`);
+		expect(standing.status()).toBe(200);
+		await context.close();
+	});
+
+	test('scene 15: the removal un-ingests — the sources stay and every held surface converges', async ({
+		page,
+		browser
+	}) => {
+		// The held surfaces, opened BEFORE the write so their
+		// convergence is the live kind (the SSE subscriptions ride
+		// the events the removal publishes; no reload happens): the
+		// member's timeline (the union's shared arm), the admin's
+		// search wall over the writable pair's names, and the admin's
+		// people page over the named person. The member's context
+		// replays their saved storage state.
+		const memberContext = await browser.newContext({
+			locale: 'en-US',
+			timezoneId: 'UTC',
+			storageState: memberStatePath
+		});
+		const memberPage = await memberContext.newPage();
+		await memberPage.goto('/timeline');
+		await expect(memberPage.locator('.tile')).toHaveCount(4);
+
+		const searchPage = await page.context().newPage();
+		await searchPage.goto('/search?q=IMG_E6');
+		await expect(searchPage.locator('.tile')).toHaveCount(2);
+
+		const peoplePage = await page.context().newPage();
+		await peoplePage.goto('/people');
+		await expect(peoplePage.locator('a.person-card').filter({ hasText: 'Field person' })).toBeVisible();
+
+		// The removal walk: the detail bar's remove action (the
+		// directory arm's danger affordance) opens its own confirm --
+		// THE PINNED SEMANTICS in the body -- and the confirm drives
+		// the DELETE. Success leaves for the wall.
+		await page.goto(`/albums/${rwAlbumId}`);
+		await expect(page.getByRole('button', { name: 'Remove album', exact: true })).toBeVisible();
+		await page.getByRole('button', { name: 'Remove album', exact: true }).click();
+		const dialog = page.getByRole('dialog', { name: 'Remove this album?', exact: true });
+		await expect(dialog).toBeVisible();
+		await expect(dialog).toContainText('library data will be removed');
+		await expect(dialog).toContainText('the source folder on disk stays untouched');
+
+		const removalAnswered = page.waitForResponse(
+			(response) =>
+				response.request().method() === 'DELETE' && response.url().endsWith(`/api/v1/albums/${rwAlbumId}`)
+		);
+		await dialog.getByRole('button', { name: 'Remove album', exact: true }).click();
+		const answer = await removalAnswered;
+		expect(answer.status()).toBe(204);
+
+		// The wall's fresh answer: the removed album's card is gone,
+		// exactly the sync default and the read-only album remain.
+		await expect(page).toHaveURL(/\/albums$/);
+		await expect(page.locator('a.album-card').filter({ hasText: RW_ALBUM_TITLE })).toHaveCount(0);
+		await expect(page.locator('a.album-card').filter({ hasText: ALBUM_TITLE })).toBeVisible();
+		await expect(page.locator('a.album-card')).toHaveCount(2);
+
+		// The member's held timeline: the shared tiles drop live (the
+		// removal's events ride the member's own stream), the
+		// read-only pair stays -- the audience died with the album,
+		// and so did the member's timeline arm.
+		await expect(memberPage.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toHaveCount(0, {
+			timeout: 30_000
+		});
+		await expect(memberPage.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toHaveCount(0);
+		await expect(memberPage.locator('.tile')).toHaveCount(2, { timeout: 30_000 });
+		await expect(memberPage.getByRole('link', { name: PHOTO_A_NAME, exact: true })).toBeVisible();
+		await expect(memberPage.getByRole('link', { name: PHOTO_B_NAME, exact: true })).toBeVisible();
+
+		// The member's wall: the shared card is gone with the album
+		// (the read-only grant is untouched).
+		await memberPage.goto('/albums');
+		await expect(memberPage.locator('a.album-card').filter({ hasText: RW_ALBUM_TITLE })).toHaveCount(0);
+		await expect(memberPage.locator('a.album-card').filter({ hasText: ALBUM_TITLE })).toBeVisible();
+		await memberContext.close();
+
+		// The admin's held search wall: the purged tiles fall (the
+		// refetch IS the search's convergence) and the wall empties.
+		await expect(searchPage.locator('.tile')).toHaveCount(0, { timeout: 30_000 });
+		await searchPage.close();
+
+		// The admin's held people page: the named person's card drops
+		// live (the asset.deleted refetch) -- the faces died with the
+		// purge, the label row cascaded with the dissolved cluster,
+		// and the surface settles at its honest empty state.
+		await expect(peoplePage.locator('a.person-card').filter({ hasText: 'Field person' })).toHaveCount(0, {
+			timeout: 30_000
+		});
+		await expect(peoplePage.getByText('No people yet. Photos with faces will show up here.')).toBeVisible();
+		await peoplePage.close();
+
+		// THE ZERO-CONTACT PIN, the host's own judgment: the source
+		// files the removed album referenced are byte for byte the
+		// seeds the bootstrap laid down -- the library data went, the
+		// family's files did not.
+		const [seedA, seedB, sourceA, sourceB] = await Promise.all([
+			readFile(RW_SEED_A),
+			readFile(RW_SEED_B),
+			readFile(path.join(RW_SOURCE_HOST_DIR, PHOTO_RW_A_NAME)),
+			readFile(path.join(RW_SOURCE_HOST_DIR, PHOTO_RW_B_NAME))
+		]);
+		expect(sourceA.equals(seedA)).toBe(true);
+		expect(sourceB.equals(seedB)).toBe(true);
+	});
+
+	test('scene 16: the aftermath — the library answers empty, the refusals stand, the survivor cluster remains', async ({
+		page
+	}) => {
+		// The removal is not repeatable: the album answers the
+		// single-shape 404 both to the read and to the repeat delete,
+		// exactly like an unknown id.
+		const detail = await page.request.get(`/api/v1/albums/${rwAlbumId}`);
+		expect(detail.status()).toBe(404);
+		const repeat = await page.request.delete(`/api/v1/albums/${rwAlbumId}`);
+		expect(repeat.status()).toBe(404);
+		const repeatBody = (await repeat.json()) as { code?: string };
+		expect(repeatBody.code).toBe('ALBUM_NOT_FOUND');
+
+		// The refusal matrix's system arm: the sync album is no album
+		// resource -- the owner's own removal attempt folds into the
+		// same single-shape 404, and the default card stays on the
+		// wall (the fresh answer carries exactly the sync card and
+		// the read-only album; scene 15's removal is the only
+		// absence).
+		const wall = await page.request.get('/api/v1/albums');
+		expect(wall.status()).toBe(200);
+		const wallBody = (await wall.json()) as { albums?: Array<{ id?: string; type?: string }> };
+		const syncAlbum = (wallBody.albums ?? []).find((card) => card.type === 'sync');
+		expect(syncAlbum?.id).toBeTruthy();
+		const syncDelete = await page.request.delete(`/api/v1/albums/${syncAlbum?.id}`);
+		expect(syncDelete.status()).toBe(404);
+		const syncBody = (await syncDelete.json()) as { code?: string };
+		expect(syncBody.code).toBe('ALBUM_NOT_FOUND');
+		await page.goto('/albums');
+		await expect(page.locator('a.album-card').filter({ hasText: 'My photos' })).toBeVisible();
+		await expect(page.locator('a.album-card')).toHaveCount(2);
+
+		// The library's fresh answers: the aggregated timeline is the
+		// read-only pair's alone, and the search answers the writable
+		// pair's name with nothing -- both members purged with the
+		// album (no other album referenced them), the whole library
+		// domain of those tiles is gone.
+		await expect
+			.poll(async () => {
+				const timeline = await page.request.get('/api/v1/assets/timeline');
+				expect(timeline.status()).toBe(200);
+				const body = (await timeline.json()) as { items?: Array<{ originalFilename?: string }> };
+				return (body.items ?? [])
+					.map((item) => item.originalFilename ?? '')
+					.sort()
+					.join(',');
+			})
+			.toBe([PHOTO_A_NAME, PHOTO_B_NAME].sort().join(','));
+
+		const purgedSearch = await page.request.get('/api/v1/search?q=IMG_E6');
+		expect(purgedSearch.status()).toBe(200);
+		const purgedBody = (await purgedSearch.json()) as { items?: unknown[] };
+		expect(purgedBody.items).toEqual([]);
+
+		// The people surface: the named person is gone (the label row
+		// cascaded with the dissolved cluster), the unnamed region
+		// carries exactly the read-only pair's cluster, and the
+		// purged cluster's detail is a 404 like an unknown id -- the
+		// purged photos' faces dropped off the surface whole.
+		const named = await page.request.get('/api/v1/people');
+		expect(named.status()).toBe(200);
+		expect((await named.json()) as unknown[]).toEqual([]);
+
+		const unnamed = await page.request.get('/api/v1/people/unnamed');
+		expect(unnamed.status()).toBe(200);
+		const unnamedBody = (await unnamed.json()) as { items?: Array<{ clusterId: string }> };
+		expect((unnamedBody.items ?? []).map((item) => item.clusterId)).toEqual([roClusterId]);
+
+		const purgedCluster = await page.request.get(`/api/v1/people/${rwClusterId}`);
+		expect(purgedCluster.status()).toBe(404);
+
+		// The unnamed region's own page: one cluster card, the
+		// read-only pair's.
+		await page.goto('/people/unnamed');
+		await expect(page.locator('button.cluster-card')).toHaveCount(1);
 	});
 });
