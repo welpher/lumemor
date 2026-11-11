@@ -393,14 +393,17 @@ func TestTimeline(t *testing.T) {
 
 	// Grace's assets: b2 and v1 reach the admin through the shared
 	// memory album, b1 sits in the pref-switched-off album, p1 stays
-	// private in Grace's sync album.
+	// private in Grace's sync album. The three the memories curate
+	// ride her sync stream as well -- the production invariant of the
+	// upload path (an owner sees their own rows through the sync
+	// arm), which the memory's re-share ground reads.
 	b1 := fixtureAssetID("11")
 	b2 := fixtureAssetID("12")
 	v1 := fixtureAssetID("13")
 	p1 := fixtureAssetID("14")
-	env.insertTimelineAsset(t, b1, graceID, time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.insertTimelineAsset(t, b2, graceID, time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.insertTimelineAsset(t, v1, graceID, time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, b1, graceID, time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, b2, graceID, time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, v1, graceID, time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertTimelineAsset(t, p1, graceID, time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.addTimelineItem(t, toAdmin, a1, graceID)
 	env.addTimelineItem(t, toAdmin, b2, graceID)
@@ -442,11 +445,13 @@ func TestTimeline(t *testing.T) {
 	})
 
 	t.Run("SecondUserTimeline", func(t *testing.T) {
-		// Grace sees her own sync stream (p1) and the album the admin
-		// shared to her (s1); the admin's private content and Grace's
-		// own memory albums stay out.
+		// Grace sees her own sync stream (p1 and the three her
+		// memories curate -- once each, through their own arms: the
+		// memory albums themselves are no arm of the union and inject
+		// nothing) and the album the admin shared to her (s1); the
+		// admin's private content stays out.
 		page := env.getTimeline(t, graceCookie, "")
-		requireTimelineIDs(t, page.Items, s1, p1)
+		requireTimelineIDs(t, page.Items, v1, s1, b2, b1, p1)
 	})
 
 	t.Run("AlbumScopeOwn", func(t *testing.T) {
@@ -455,8 +460,13 @@ func TestTimeline(t *testing.T) {
 	})
 
 	t.Run("AlbumScopeSharedToCaller", func(t *testing.T) {
+		// The sharee's walk carries the memory's re-share ground: the
+		// members the memory's owner currently sees (her own v1 and
+		// b2, through her sync arm) stay, while a1 -- a member whose
+		// owner-sight died (the revocation shape) -- leaves the walk
+		// live, no snapshot residue.
 		page := env.getTimeline(t, env.cookie, "albumId="+toAdmin.String())
-		requireTimelineIDs(t, page.Items, v1, b2, a1)
+		requireTimelineIDs(t, page.Items, v1, b2)
 	})
 
 	t.Run("AlbumScopeIgnoresTimelinePreference", func(t *testing.T) {

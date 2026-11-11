@@ -426,7 +426,7 @@ import 'package:lumemor_api/api.dart';
 final api = LumemorApi().getAssetsApi();
 final String cursor = GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w; // String | The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
 final int limit = 100; // int | Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
-final String albumId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Restrict the response to the timeline of this one album (an album the caller owns or that is shared to the caller) instead of the aggregate. An unknown or invisible album answers the empty list. 
+final String albumId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Restrict the response to the timeline of this one album (an album the caller owns or that is shared to the caller) instead of the aggregate. An unknown or invisible album answers the empty list. For a memory shared to the caller the walk honors the re-share ground: the items are the live members the memory's owner currently sees, revalidated at read time (a photo whose source visibility died leaves the walk), while the memory's owner keeps the plain live membership. 
 
 try {
     final response = api.getTimeline(cursor, limit, albumId);
@@ -442,7 +442,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
  **cursor** | **String**| The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients).  | [optional] 
  **limit** | **int**| Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400.  | [optional] [default to 100]
- **albumId** | **String**| Restrict the response to the timeline of this one album (an album the caller owns or that is shared to the caller) instead of the aggregate. An unknown or invisible album answers the empty list.  | [optional] 
+ **albumId** | **String**| Restrict the response to the timeline of this one album (an album the caller owns or that is shared to the caller) instead of the aggregate. An unknown or invisible album answers the empty list. For a memory shared to the caller the walk honors the re-share ground: the items are the live members the memory's owner currently sees, revalidated at read time (a photo whose source visibility died leaves the walk), while the memory's owner keeps the plain live membership.  | [optional] 
 
 ### Return type
 
