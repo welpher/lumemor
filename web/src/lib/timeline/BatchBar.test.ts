@@ -9,7 +9,10 @@ import BatchBar from './BatchBar.svelte';
 // into a state-labeled toggle) as ICON-ONLY buttons named by their
 // aria-labels (the icon-first rule -- the bar is a toolbar), disables
 // everything while an action runs, shows the mapped failure message
-// inline, and clears through the clear action.
+// inline, and clears through the clear action. The two dialog-style
+// affordances (the add-tag and add-to-memory openers) and the
+// memory's membership removal ride OPTIONAL callbacks, not the
+// action set: absent callbacks render no button at all.
 
 function mountBar(
 	props: {
@@ -19,6 +22,8 @@ function mountBar(
 		busy?: boolean;
 		actions?: readonly BatchAction[];
 		onaddtag?: () => void;
+		onaddmemory?: () => void;
+		onremovememory?: () => void;
 	} = {}
 ) {
 	const onaction = vi.fn();
@@ -32,6 +37,8 @@ function mountBar(
 			busy: props.busy ?? false,
 			actions: props.actions,
 			onaddtag: props.onaddtag,
+			onaddmemory: props.onaddmemory,
+			onremovememory: props.onremovememory,
 			onaction,
 			onclear
 		}
@@ -184,6 +191,68 @@ test('an add-tag affordance renders only when the page offers it', () => {
 
 	const busy = mountBar({ count: 2, busy: true, onaddtag });
 	expect(buttonByLabel('Add tag').disabled).toBe(true);
+	unmount(busy.bar);
+	flushSync();
+});
+
+test('an add-to-memory affordance renders only when the page offers it', () => {
+	// Without the callback the bar carries no memory action: the
+	// memory flow is not a batch action, it rides the page's opener
+	// exactly like the tag flow.
+	const plain = mountBar({ count: 2, actions: ['favorite'] });
+	expect(() => buttonByLabel('Add to memory')).toThrow();
+	unmount(plain.bar);
+	flushSync();
+
+	// With it, the sparkles button rides after the tag affordance and
+	// fires the callback; a busy run disables it like every other.
+	const onaddtag = vi.fn();
+	const onaddmemory = vi.fn();
+	const offering = mountBar({ count: 2, actions: ['favorite'], onaddtag, onaddmemory });
+	const buttons = Array.from(
+		document.body.querySelectorAll<HTMLButtonElement>('.batchbar button:not(.batchbar__clear)')
+	);
+	expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+		'Add tag',
+		'Add to memory',
+		'Favorite'
+	]);
+	const add = buttonByLabel('Add to memory');
+	expect(add.disabled).toBe(false);
+	add.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	expect(onaddmemory).toHaveBeenCalledTimes(1);
+	unmount(offering.bar);
+	flushSync();
+
+	const busy = mountBar({ count: 2, busy: true, onaddmemory });
+	expect(buttonByLabel('Add to memory').disabled).toBe(true);
+	unmount(busy.bar);
+	flushSync();
+});
+
+test('a remove-from-memory affordance renders only when the page offers it', () => {
+	// Without the callback the bar carries no removal action: the
+	// membership write is the memory's own, never a batch API action.
+	const plain = mountBar({ count: 2, actions: [] });
+	expect(() => buttonByLabel('Remove from memory')).toThrow();
+	unmount(plain.bar);
+	flushSync();
+
+	// With it, the minus button rides the danger styling before the
+	// clear mark (the memory wall's whole action set: the removal
+	// alone) and fires the callback.
+	const onremovememory = vi.fn();
+	const offering = mountBar({ count: 2, actions: [], onremovememory });
+	const remove = buttonByLabel('Remove from memory');
+	expect(remove.disabled).toBe(false);
+	expect(remove.classList.contains('icon-btn--danger')).toBe(true);
+	remove.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	expect(onremovememory).toHaveBeenCalledTimes(1);
+	unmount(offering.bar);
+	flushSync();
+
+	const busy = mountBar({ count: 2, busy: true, onremovememory });
+	expect(buttonByLabel('Remove from memory').disabled).toBe(true);
 	unmount(busy.bar);
 	flushSync();
 });

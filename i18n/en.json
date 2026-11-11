@@ -425,6 +425,8 @@
   "places_empty_title": "No places yet",
   "places_empty_body": "Photos whose GPS resolves to a city appear here, grouped by city.",
   "action_add_tag": "Add tag",
+  "action_add_memory": "Add to memory",
+  "action_remove_from_memory": "Remove from memory",
   "tags_add_title": "Add tag",
   "tags_add_mode_existing": "Existing tag",
   "tags_add_mode_new": "New tag",

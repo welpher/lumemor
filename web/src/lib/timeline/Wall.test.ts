@@ -288,6 +288,94 @@ test('the bar carries no dialog affordance the page did not wire', () => {
 	flushSync();
 });
 
+test('the memory opener captures the ids at open; done clears the selection', () => {
+	const onbatch = vi.fn(async () => ({ ok: true }) as Outcome);
+	const onaddmemory = vi.fn();
+	const wall = mount(Wall, {
+		target: document.body,
+		props: { items, onbatch, onaddmemory }
+	});
+	flushSync();
+
+	clickTileCheck(1);
+	buttonByLabel('Add to memory').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	flushSync();
+
+	// The ids are the ones captured AT OPEN together with the done
+	// continuation -- the modal-pinned selection discipline, the same
+	// hand-over as the tag opener.
+	expect(onaddmemory).toHaveBeenCalledTimes(1);
+	const [ids, done] = onaddmemory.mock.calls[0] as [string[], () => void];
+	expect(ids).toEqual(['a2']);
+	expect(typeof done).toBe('function');
+
+	done();
+	flushSync();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+
+	unmount(wall);
+	flushSync();
+});
+
+test('a removal-only wall curates: the checks render, the minus action runs the write', async () => {
+	// The memory wall's shape: NO timeline batch action at all (the
+	// empty subset), the membership removal alone. The capability
+	// gate widens to the removal runner's presence -- the checks
+	// render exactly then, and the bar's action set is the minus
+	// button and the clear mark.
+	const onremovememory = vi.fn(async () => ({ ok: true }) as Outcome);
+	const wall = mount(Wall, {
+		target: document.body,
+		props: { items, actions: [], onremovememory }
+	});
+	flushSync();
+
+	// The checks render (the widened gate): the wall curates through
+	// the removal alone.
+	expect(document.body.querySelector('.tile__check')).not.toBeNull();
+
+	clickTileCheck(0);
+	const bar = document.body.querySelector('.batchbar');
+	expect(bar?.textContent).toContain('1 selected');
+	// No timeline action buttons ride the bar -- the removal alone.
+	expect(() => buttonByLabel('Favorite')).toThrow();
+	expect(() => buttonByLabel('Trash')).toThrow();
+
+	buttonByLabel('Remove from memory').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+
+	// The write ran over the captured selection and the success arm
+	// cleared it (the bar drops).
+	expect(onremovememory).toHaveBeenCalledWith(['a1']);
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+
+	unmount(wall);
+	flushSync();
+});
+
+test('a failed removal keeps the selection and maps the error in the bar', async () => {
+	const onremovememory = vi.fn(async () => ({ ok: false, errorKey: 'internal' }) as Outcome);
+	const wall = mount(Wall, {
+		target: document.body,
+		props: { items, actions: [], onremovememory }
+	});
+	flushSync();
+
+	clickTileCheck(0);
+	buttonByLabel('Remove from memory').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+
+	// The failure arm: the selection stays (the retry affordance) and
+	// the mapped error renders in the bar.
+	expect(document.body.querySelector('.batchbar')).not.toBeNull();
+	expect(document.body.querySelector('.batchbar__error')?.textContent).toBe(
+		'Something went wrong. Please try again.'
+	);
+
+	unmount(wall);
+	flushSync();
+});
+
 test('Escape drops a live selection and an armed select mode', () => {
 	const onbatch = vi.fn(async () => ({ ok: true }) as Outcome);
 

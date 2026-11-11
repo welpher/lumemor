@@ -225,6 +225,8 @@ NON_ERROR_KEYS = {
     "action_trash",
     "action_restore",
     "action_clear_selection",
+    "action_add_memory",
+    "action_remove_from_memory",
     "asset_favorite_label",
     "asset_live_photo_label",
     "asset_video_label",
