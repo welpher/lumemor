@@ -14,9 +14,9 @@
 	// Below the content list, behind a divider, the admin panel's
 	// entry renders only for an admin's session (the identity seam's
 	// role arm, the deferred item: a member account never sees
-	// the management surface's door). Memories stays a
-	// visible-but-disabled placeholder until its polish-block domain
-	// arrives.
+	// the management surface's door). The memories entry went live
+	// with the memory wall's own route (the manual memories'
+	// landing); the section no longer sits disabled.
 	//
 	// THE LEADING ICONS: every item LEADS with its lucide icon
 	// (24-grid, 2px round caps, currentColor -- the brand's icon
@@ -51,7 +51,7 @@
 		{ labelKey: 'nav_albums', href: '/albums', disabled: false, icon: BookImage },
 		{ labelKey: 'nav_people', href: '/people', disabled: false, icon: Users },
 		{ labelKey: 'nav_places', href: '/places', disabled: false, icon: MapPin },
-		{ labelKey: 'nav_memories', href: '/memories', disabled: true, icon: Sparkles },
+		{ labelKey: 'nav_memories', href: '/memories', disabled: false, icon: Sparkles },
 		{ labelKey: 'nav_favorites', href: '/favorites', disabled: false, icon: Star },
 		{ labelKey: 'hidden_title', href: '/hidden', disabled: false, icon: EyeOff },
 		{ labelKey: 'nav_trash', href: '/trash', disabled: false, icon: Trash2 }

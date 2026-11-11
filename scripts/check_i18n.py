@@ -166,8 +166,21 @@ NON_ERROR_KEYS = {
     # directory-only refusal key carried in a VALIDATION_FAILED
     # details.
     "album_deletable_not_directory",
-    # People surface UI strings: the three pages of the
-    # people domain.
+    # Memories surface UI strings: the reference-set wall, its
+    # creation dialog and its detail faces.
+    "memories_title",
+    "memories_own_section",
+    "memories_shared_section",
+    "memories_photo_count",
+    "memories_manual_badge",
+    "memories_shared_badge",
+    "memories_new",
+    "memories_loading",
+    "memories_empty",
+    "memories_create_title",
+    "memories_title_placeholder",
+    "memories_create_submit",
+    "memories_create_report",
     "people_loading",
     "people_empty",
     "people_face_count",
