@@ -132,6 +132,20 @@ func TestMemorySharedViewsLiveFilter(t *testing.T) {
 		}
 	})
 
+	t.Run("AlbumNarrowWalkCarriesTheGround", func(t *testing.T) {
+		// The wall walk (the timeline endpoint's albumId narrow) is
+		// the memory detail page's own tiles, and it carries the same
+		// re-share ground as the pages, the counts and the collages:
+		// the sharee's walk drops the revoked photo -- the page never
+		// renders a grounded count beside a tile the count already
+		// dropped -- while the owner's walk keeps the plain live
+		// membership.
+		shareeWalk := env.getTimeline(t, viewerCookie, "albumId="+memory.String())
+		requireTimelineIDs(t, shareeWalk.Items, own)
+		ownerWalk := env.getTimeline(t, ownerCookie, "albumId="+memory.String())
+		requireTimelineIDs(t, ownerWalk.Items, viaShare, own)
+	})
+
 	t.Run("HiddenMemberLeavesSharedViewsLive", func(t *testing.T) {
 		// The family-wide live predicate rides the same rule: a
 		// hidden member leaves every view the moment the row hides.

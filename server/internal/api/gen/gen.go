@@ -3908,7 +3908,12 @@ type GetTimelineParams struct {
 	// AlbumId Restrict the response to the timeline of this one album
 	// (an album the caller owns or that is shared to the caller)
 	// instead of the aggregate. An unknown or invisible album
-	// answers the empty list.
+	// answers the empty list. For a memory shared to the caller
+	// the walk honors the re-share ground: the items are the
+	// live members the memory's owner currently sees,
+	// revalidated at read time (a photo whose source visibility
+	// died leaves the walk), while the memory's owner keeps the
+	// plain live membership.
 	AlbumId *openapi_types.UUID `form:"albumId,omitempty" json:"albumId,omitempty"`
 }
 

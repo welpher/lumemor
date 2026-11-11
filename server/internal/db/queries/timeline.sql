@@ -110,6 +110,18 @@ WHERE al.id = sqlc.arg('album_id')
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  -- The memory's shared-view rule rides the same arm as the detail's
+  -- pages, the counts and the collages: a sharee's walk carries the
+  -- live members the memory's owner CURRENTLY sees (the re-share
+  -- ground, revalidated at read time -- a photo whose source
+  -- visibility died leaves the walk, no snapshot residue), while the
+  -- owner's own walk is the plain live membership. Directory and sync
+  -- albums take the first arm and never reach the ground.
+  AND (
+      al.type <> 'memory'
+      OR al.owner_id = sqlc.arg('user_id')
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
   AND (
       sqlc.narg('cursor_taken_at')::timestamptz IS NULL
       OR (a.taken_at, a.id) < (sqlc.narg('cursor_taken_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
