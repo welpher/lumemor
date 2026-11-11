@@ -1749,7 +1749,7 @@ pre_removal_count="$(item_ids "$work_dir/admin_timeline_body" | wc -l | tr -d ' 
 item_ids "$work_dir/admin_timeline_body" | grep -q "^$removal_asset_id$" \
     || fail "the owner's pre-removal timeline does not carry the fresh member's tile"
 status="$(curl -sS -o "$work_dir/pre_removal_search_body" -b "$admin_jar" -w '%{http_code}' \
-    "$base_url/api/v1/search?q=$removal_fixture_photo")" \
+    "$base_url/api/v1/search?query=$removal_fixture_photo")" \
     || fail "GET /api/v1/search (pre-removal) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/search (pre-removal) returned status $status, want 200: $(cat "$work_dir/pre_removal_search_body")"
@@ -1899,13 +1899,17 @@ ro_pair_sorted="$(printf '%s\n' "$shared_a_id" "$shared_b_id" | sort | tr '\n' '
 [ "$post_removal_ids" = "$ro_pair_sorted" ] \
     || fail "the owner's post-removal timeline holds [$post_removal_ids], want exactly the read-only pair [$ro_pair_sorted] (the purged member's tile must fall, the survivor's must stay out through the exclusion)"
 status="$(curl -sS -o "$work_dir/post_removal_search_body" -b "$admin_jar" -w '%{http_code}' \
-    "$base_url/api/v1/search?q=$removal_fixture_photo")" \
+    "$base_url/api/v1/search?query=$removal_fixture_photo")" \
     || fail "GET /api/v1/search (post-removal) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/search (post-removal) returned status $status, want 200: $(cat "$work_dir/post_removal_search_body")"
-post_search_count="$(item_ids "$work_dir/post_removal_search_body" | wc -l | tr -d ' ')"
-[ "$post_search_count" = "0" ] \
-    || fail "the post-removal search still answers the purged member's name ($post_search_count hits, want 0)"
+# The unified search's semantic path ranks the whole visible library
+# beside the text hits, so the answer never empties -- the honest pin
+# is the purged row's absence and the survivor's presence.
+item_ids "$work_dir/post_removal_search_body" | grep -q "^$removal_asset_id$" \
+    && fail "the post-removal search still answers the purged member's row: $(cat "$work_dir/post_removal_search_body")"
+item_ids "$work_dir/post_removal_search_body" | grep -q "^$rw_asset_id$" \
+    || fail "the post-removal search lost the guarded survivor (the row lives on, searchable through the first album)"
 status="$(curl -sS -o "$work_dir/post_removal_unnamed_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/people/unnamed")" \
     || fail "GET /api/v1/people/unnamed (post-removal) request failed"
