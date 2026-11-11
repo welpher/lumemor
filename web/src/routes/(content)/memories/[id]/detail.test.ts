@@ -425,6 +425,68 @@ test('the edit dialog edits the title and PATCHes it alone', async () => {
 	flushSync();
 });
 
+test('the cover dialog picks from the grid members and PATCHes the pin', async () => {
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/albums/mem1': (init?: RequestInit) => {
+				expect(JSON.parse(String(init?.body))).toEqual({ coverAssetId: 'a2' });
+				return jsonResponse(200, {
+					id: 'mem1',
+					title: 'Paris trip',
+					type: 'memory',
+					isShared: true,
+					coverAssetIds: ['a2'],
+					itemCount: 2,
+					updatedAt: '2026-11-09T09:00:00Z',
+					callerRole: 'owner'
+				});
+			}
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Change cover').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	expect(dialog?.getAttribute('aria-label')).toBe('Set the cover');
+	const options = Array.from(dialog?.querySelectorAll<HTMLButtonElement>('.cover-option') ?? []);
+	expect(options).toHaveLength(2);
+	expect(options[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=tile');
+	// The current pin (none yet) marks nothing; picking a2 selects it.
+	options[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(options[1]?.getAttribute('aria-pressed')).toBe('true');
+	buttonByText('Set cover', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const patches = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/albums/mem1' && init?.method === 'PATCH'
+	);
+	expect(patches).toHaveLength(1);
+	expect(modal()).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the cover dialog renders the current pin and the empty state', async () => {
+	detailState = { ...detailState, coverAssetId: 'a1', itemCount: 0 };
+	const routes = detailRoutes({
+		'/api/v1/assets/timeline?albumId=mem1&limit=100': () => jsonResponse(200, { items: [] })
+	});
+	vi.stubGlobal('fetch', stubFetch(routes));
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Change cover').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	expect(dialog?.textContent).toContain('This album has no photos yet.');
+	unmount(page);
+	flushSync();
+});
+
 test('the delete confirm states the light cascade and leaves for the wall', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({

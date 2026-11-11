@@ -1,13 +1,16 @@
 <script lang="ts">
 	// The album wall: the cover-card grid in its two
 	// sections -- the caller's own albums (the pinned sync card of
-	// the default "My photos" album first, then the memory and
+	// the default "My photos" album first, then the
 	// directory albums in the server's own-group order) then the
 	// albums shared to them (with the honest owner attribution) --
 	// with the collage covers (the pinned cover full-bleed,
 	// otherwise the newest members: two split, three the 2+1 fall,
 	// four the quad), the shared / excluded badges, and the
-	// "New album" creation dialog. Card clicks open the album's
+	// "New album" creation dialog. THE MEMORY ROWS ARE NOT THIS
+	// WALL'S: the reference sets moved to their own route (the
+	// memories wall), so both sections filter the memory type out.
+	// Card clicks open the album's
 	// detail. The sync card's title is the system's internal label
 	// and never renders: `type === 'sync'` keys the localized
 	// display name (album_all_photos), the contract's client-side
@@ -105,12 +108,16 @@
 
 	// The sections ride the items' own `callerRole` discriminator:
 	// the server's concatenation is own-first, shared-after, and each
-	// group's order is the server's.
-	const ownAlbums = $derived(albums.filter((album) => album.callerRole === 'owner'));
-	const sharedAlbums = $derived(albums.filter((album) => album.callerRole === 'viewer'));
+	// group's order is the server's. The memory rows leave both
+	// groups -- the reference sets' home is the memories wall.
+	const ownAlbums = $derived(albums.filter((album) => album.callerRole === 'owner' && album.type !== 'memory'));
+	const sharedAlbums = $derived(albums.filter((album) => album.callerRole === 'viewer' && album.type !== 'memory'));
 
 	const firstLoad = $derived(albums.length === 0 && status === 'loading');
-	const settledEmpty = $derived(albums.length === 0 && status === 'ready');
+	// The honest empty: no ALBUM row at all (a caller whose wall holds
+	// only memories still sees the empty state here -- their
+	// reference sets live on the memories wall).
+	const settledEmpty = $derived(ownAlbums.length === 0 && sharedAlbums.length === 0 && status === 'ready');
 
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon); the
@@ -243,7 +250,7 @@
 			<h1 class="text-[22px] mb-2">{$_('albums_title')}</h1>
 			<p class="text-text-soft">{$_('albums_empty')}</p>
 		</div>
-	{:else if status === 'error' && albums.length === 0}
+	{:else if status === 'error' && ownAlbums.length === 0 && sharedAlbums.length === 0}
 		<div
 			class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
 			role="alert"
@@ -278,7 +285,7 @@
 		{/if}
 	{/if}
 
-	{#if status === 'error' && albums.length > 0}
+	{#if status === 'error' && (ownAlbums.length > 0 || sharedAlbums.length > 0)}
 		<!-- A failed convergence while cards exist: the page stays, the
 		     next event retries; the box keeps the retry affordance. -->
 		<div

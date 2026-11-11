@@ -1412,6 +1412,7 @@ test("the drawer's browsable rows deep-link: albums, tags, camera, named faces, 
 		tags: [{ id: 't1', name: 'Beach' }],
 		albums: [
 			{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner' },
+			{ id: 'mem-1', title: 'Paris trip', type: 'memory', callerRole: 'owner' },
 			{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'owner' }
 		],
 		place: { placeId: 2988507, name: 'Paris' },
@@ -1422,10 +1423,17 @@ test("the drawer's browsable rows deep-link: albums, tags, camera, named faces, 
 	openDrawer();
 
 	// The albums rows: one link per visible album, the sync card's
-	// localized display name keyed by the type.
+	// localized display name keyed by the type -- and a memory row
+	// deep-links into the memory's own route (the reference set's
+	// face), never the album detail's.
 	const albumLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__album'));
-	expect(albumLinks.map((link) => link.getAttribute('href'))).toEqual(['/albums/al-1', '/albums/al-2']);
-	expect(albumLinks[1]?.textContent?.trim()).toBe('My photos');
+	expect(albumLinks.map((link) => link.getAttribute('href'))).toEqual([
+		'/albums/al-1',
+		'/memories/mem-1',
+		'/albums/al-2'
+	]);
+	expect(albumLinks[1]?.textContent?.trim()).toBe('Paris trip');
+	expect(albumLinks[2]?.textContent?.trim()).toBe('My photos');
 
 	// The tag chips: deep links into the tag-filtered browse.
 	const tagLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__tag-chip'));

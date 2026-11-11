@@ -9,27 +9,29 @@ import Page from './+page.svelte';
 
 // The album detail (the albums-as-sources reshape,
 // completed by the autonomy face, simplified by the lock's
-// retirement): the metadata header with its
-// callerRole x type action set -- the owner of a memory album holds
-// rename / set cover / delete, the owner of a directory album the
-// properties edit (title + the read-only source row + the audience
-// + the autonomy block of timeline exclusion / deletability)
-// / rescan trigger with its job-event progress line / the remove
-// (the un-ingest, behind its semantics-stating confirm), the owner
-// of the sync album (the default album) NOTHING -- system-managed,
-// read-only, the localized display name for the title -- a viewer
-// the exclusion toggle alone (the departure went with the revoke
-// endpoint it rode) -- over the wall that pages the album's own
-// timeline, curating a DELETE-ONLY selection exactly when the
-// server-derived `deletable` face holds (owner AND writable AND
-// the switch). Every write adopts its own response or
-// converges through the detail refetch; the album.* SSE events for
-// THIS album refetch the metadata and restart the items walk on
-// membership changes; the rescan's progress rides the job.* events
-// keyed by the run the trigger answered. $app/state and
-// $app/navigation are mocked because the real router needs a
-// running SvelteKit app; the events module is mocked with a
-// captured handler registry, the timeline page's pattern.
+// retirement, narrowed by the memory hand-over): the metadata
+// header with its callerRole x type action set -- the owner of a
+// directory album the properties edit (title + the read-only
+// source row + the audience + the autonomy block of timeline
+// exclusion / deletability) / rescan trigger with its job-event
+// progress line / the remove (the un-ingest, behind its
+// semantics-stating confirm), the owner of the sync album (the
+// default album) NOTHING -- system-managed, read-only, the
+// localized display name for the title -- a viewer the exclusion
+// toggle alone (the departure went with the revoke endpoint it
+// rode) -- over the wall that pages the album's own timeline,
+// curating a DELETE-ONLY selection exactly when the server-derived
+// `deletable` face holds (owner AND writable AND the switch). A
+// MEMORY id never renders here: the detail read that answers one
+// redirects to the memory's own route (its suite pins that face).
+// Every write adopts its own response or converges through the
+// detail refetch; the album.* SSE events for THIS album refetch
+// the metadata and restart the items walk on membership changes;
+// the rescan's progress rides the job.* events keyed by the run
+// the trigger answered. $app/state and $app/navigation are mocked
+// because the real router needs a running SvelteKit app; the
+// events module is mocked with a captured handler registry, the
+// timeline page's pattern.
 
 const { pageState, albumHandlers, assetHandlers, jobHandlers } = vi.hoisted(() => ({
 	pageState: {
@@ -81,7 +83,7 @@ function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 	return {
 		id: 'al1',
 		title: 'Road trip 2026',
-		type: 'memory',
+		type: 'directory',
 		isShared: false,
 		coverAssetIds: ['a1', 'a2'],
 		itemCount: 2,
@@ -94,8 +96,10 @@ function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 let detailState: AlbumDetail = {
 	id: 'al1',
 	title: 'Road trip 2026',
-	type: 'memory',
+	type: 'directory',
 	coverAssetId: null,
+	rootPath: '/Volumes/Photos/family',
+	sourceWritable: false,
 	callerRole: 'owner',
 	itemCount: 2,
 	items: [],
@@ -238,8 +242,10 @@ beforeEach(async () => {
 	detailState = {
 		id: 'al1',
 		title: 'Road trip 2026',
-		type: 'memory',
+		type: 'directory',
 		coverAssetId: null,
+		rootPath: '/Volumes/Photos/family',
+		sourceWritable: false,
 		callerRole: 'owner',
 		itemCount: 2,
 		items: [],
@@ -288,22 +294,22 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	expect(document.body.querySelector('.album-detail__description')).toBeNull();
 	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
 
-	// The owner of a memory album holds the write set: rename
-	// (the dialog opener), the cover and the delete. The share
-	// action and the
-	// add-photos handoff are GONE with the curation removal
-	// and the share dialog's fold-in: the audience is an
-	// album property. The remove affordance is the directory
-	// album's own.
-	for (const label of ['Rename', 'Set cover…', 'Delete album']) {
+	// The owner of a directory album holds the write set: the
+	// properties (the dialog opener) and the remove (the un-ingest
+	// -- the read-only source here renders no deletability row, so
+	// the rescan arm stays live while the wall stays pure
+	// navigation). The share action and the add-photos handoff are
+	// GONE with the curation removal and the share dialog's
+	// fold-in: the audience is an album property.
+	for (const label of ['Properties', 'Rescan', 'Remove album']) {
 		expect(() => buttonByLabel(label), label).not.toThrow();
 	}
 	for (const label of [
 		'Share…',
 		'Add photos',
-		'Properties',
-		'Rescan',
-		'Remove album',
+		'Rename',
+		'Set cover…',
+		'Delete album',
 		'Leave album',
 		'Lock',
 		'Unlock'
@@ -311,10 +317,10 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
 
-	// THE NO-SELECTION WALL: a memory album's tiles are pure
+	// THE NO-SELECTION WALL: a read-only source's tiles are pure
 	// navigation -- no hover checkbox, no select-mode entry, no
-	// batch bar ever rises (the deletable face is the directory
-	// album's own).
+	// batch bar ever rises (the deletable face is the writable
+	// directory album's own).
 	expect(tiles()).toHaveLength(2);
 	expect(document.body.querySelector('.tile__check')).toBeNull();
 	expect(document.body.querySelector('.batchbar')).toBeNull();
@@ -324,6 +330,25 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 		String(input).startsWith('/api/v1/assets/timeline?albumId=al1')
 	);
 	expect(wallCalls).toHaveLength(1);
+
+	unmount(page);
+	flushSync();
+});
+
+test('a memory id redirects to its own route: this page serves the containers alone', async () => {
+	detailState = { ...detailState, type: 'memory', rootPath: undefined, sourceWritable: undefined };
+	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
+	const page = mountPage();
+	await settle();
+
+	// THE MEMORY HAND-OVER: the memory's face is its own route (the
+	// curation bar, the removal selection, the member's read-only
+	// view); the detail read that answers a memory bounces there and
+	// this page renders nothing for it -- no title, no wall (the
+	// bar's own skeleton alone stays while the route swaps).
+	expect(vi.mocked(goto)).toHaveBeenCalledWith('/memories/al1');
+	expect(document.body.querySelector('.album-bar__title')).toBeNull();
+	expect(document.body.querySelector('.tile')).toBeNull();
 
 	unmount(page);
 	flushSync();
@@ -362,17 +387,6 @@ test('a viewer sees read-only: the exclusion toggle alone, no write affordances'
 	// unchanged).
 	expect(() => buttonByLabel('Keep out of timeline')).not.toThrow();
 	expect(tiles()).toHaveLength(2);
-	unmount(page);
-	flushSync();
-});
-
-test('the own memory album offers no exclusion toggle: it never feeds the own timeline', async () => {
-	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
-	const page = mountPage();
-	await settle();
-
-	expect(() => buttonByLabel('Keep out of timeline')).toThrow();
-	expect(() => buttonByLabel('Keep in timeline')).toThrow();
 	unmount(page);
 	flushSync();
 });
@@ -506,7 +520,7 @@ test('the properties dialog edits the title and PATCHes it alone', async () => {
 	const page = mountPage();
 	await settle();
 
-	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('Album properties');
@@ -568,7 +582,7 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	const page = mountPage();
 	await settle();
 
-	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
 
@@ -619,7 +633,7 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 
 	// The converged detail's grantee list rides the next open: the
 	// chips reseed from the refetched shares.
-	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	const chipNamesConverged = Array.from(modal()?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []);
 	expect(chipNamesConverged.map((chip) => chip.textContent)).toEqual(['grace@example.com', 'ivy@example.com']);
@@ -639,7 +653,7 @@ test('a failed audience write keeps the dialog with the mapped error', async () 
 	const page = mountPage();
 	await settle();
 
-	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
 	buttonByText('Add', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -665,7 +679,7 @@ test('a no-change save writes nothing at all', async () => {
 	const page = mountPage();
 	await settle();
 
-	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	buttonByText('Save changes', modal() as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
@@ -895,59 +909,6 @@ test('the retired lock leaves no trace: no lock row, no frozen fields, one plain
 	flushSync();
 });
 
-test('the cover dialog picks from the grid members and PATCHes the pin', async () => {
-	const fetchMock = stubFetch(
-		detailRoutes({
-			'/api/v1/albums/al1': (init?: RequestInit) => {
-				expect(JSON.parse(String(init?.body))).toEqual({ coverAssetId: 'a2' });
-				return jsonResponse(200, summary({ coverAssetIds: ['a2'] }));
-			}
-		})
-	);
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-
-	buttonByLabel('Set cover…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	const dialog = modal();
-	expect(dialog?.getAttribute('aria-label')).toBe('Set the cover');
-	const options = Array.from(dialog?.querySelectorAll<HTMLButtonElement>('.cover-option') ?? []);
-	expect(options).toHaveLength(2);
-	expect(options[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=tile');
-	// The current pin (none yet) marks nothing; picking a2 selects it.
-	options[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	expect(options[1]?.getAttribute('aria-pressed')).toBe('true');
-	buttonByText('Set cover', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-
-	const patches = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH'
-	);
-	expect(patches).toHaveLength(1);
-	expect(modal()).toBeNull();
-	unmount(page);
-	flushSync();
-});
-
-test('the cover dialog renders the current pin and the empty state', async () => {
-	detailState = { ...detailState, coverAssetId: 'a1', itemCount: 0 };
-	const routes = detailRoutes({
-		'/api/v1/assets/timeline?albumId=al1&limit=100': () => jsonResponse(200, { items: [] })
-	});
-	vi.stubGlobal('fetch', stubFetch(routes));
-	const page = mountPage();
-	await settle();
-
-	buttonByLabel('Set cover…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	const dialog = modal();
-	expect(dialog?.textContent).toContain('This album has no photos yet.');
-	unmount(page);
-	flushSync();
-});
-
 test('the rescan trigger POSTs and the job events drive the progress line', async () => {
 	detailState = {
 		...detailState,
@@ -1074,36 +1035,6 @@ test('a failed rescan trigger surfaces the mapped error on the shared line', asy
 	// carries the server's own answer.
 	expect(document.body.querySelector('[data-testid="album-rescan-progress"]')).toBeNull();
 	expect(document.body.querySelector('.album-detail__action-error')?.textContent).toContain('Something went wrong.');
-	unmount(page);
-	flushSync();
-});
-
-test('deleting the album confirms and leaves for the wall', async () => {
-	const fetchMock = stubFetch(
-		detailRoutes({
-			'/api/v1/albums/al1': (init?: RequestInit) => {
-				expect(init?.method).toBe('DELETE');
-				return new Response(null, { status: 204 });
-			}
-		})
-	);
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-
-	buttonByLabel('Delete album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	const dialog = modal();
-	expect(dialog?.getAttribute('aria-label')).toBe('Delete this album?');
-	expect(dialog?.textContent).toContain('The photos themselves stay in your library.');
-	buttonByText('Delete album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-
-	const deletes = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'DELETE'
-	);
-	expect(deletes).toHaveLength(1);
-	expect(vi.mocked(goto)).toHaveBeenCalledWith('/albums');
 	unmount(page);
 	flushSync();
 });
