@@ -56,11 +56,35 @@
 # EVERYTHING the share gave the member (the wall card, the timeline
 # items, the detail read, the favorites view, the people surface --
 # while the member's own photo and the label row survive). The
-# closing refusal: the album's delete answers the single-shape 404
-# (a directory album's removal is its own later flow, never the
-# curation-era cascade) and the refusal moved nothing -- the album,
-# its membership and its now-empty share rows stay, and the
-# referenced photos never leave the source.
+# closing refusal: the sync album's removal attempt answers the
+# single-shape 404 (the default stream is no album resource -- the
+# removal's system-level arm) and the refusal moved nothing -- the
+# directory album, its membership and its now-empty share rows stay,
+# and the referenced photos never leave the source.
+#
+# The album removal (the un-ingest, the E8 semantics, the closing
+# beat of phase 1 over the SAME writable source): a second directory
+# album is created over the rw root (inTimeline true, the affirm
+# arm), and its rescan does the dedup's own trick -- it links the
+# first album's member by the owner+checksum dedup AND ingests the
+# removal's own seed (genuinely distinct bytes) fresh -- so the
+# removal exercises BOTH guard arms at once: the fresh member
+# (referenced by this album alone) purges whole through the
+# permanent delete's own cascade (the asset row, the faces with the
+# cluster sweep -- the cluster survives on the survivor's face with
+# the representative re-homed, the embedding, the OCR text, the
+# per-user favorite, the thumbnail/encoded trees), while the
+# borrowed member survives on the first album's hold (its row, its
+# derived trees, its timeline entry through the exclusionless second
+# album -- all untouched). The host filesystem is the judge: BOTH
+# source files stay byte for byte (the writable source is the honest
+# form of the zero-contact pin -- the server could have written
+# there and did not), the purged member's derivative trees are gone,
+# the survivor's stay. The events announce the removal over the SSE
+# stream (album.deleted plus asset.deleted for the purged member
+# alone -- the guarded survivor announces nothing), the aggregated
+# timeline drops the purged member, and the search drops it with
+# the row.
 #
 # The autonomy faces (the closing section, over a WRITABLE source
 # fixture): the repo's compose file also binds
@@ -101,7 +125,16 @@
 # member's read-only perspective with the creation guard's
 # refusal matrix, and the deletable wall's delete-only selection
 # with its trash/restore round trip (the e2e spec seeds and heals the
-# writable fixture itself). The e2e spec bootstraps itself (the first-run
+# writable fixture itself). The removal story rides the same spec's
+# closing scenes: the share and the naming stage the removal's
+# people-convergence witness, the member's 403 refuses the sharee's
+# attempt, the confirm's pinned semantics drive the DELETE, every
+# held-open surface (the member's timeline, the search wall, the
+# people page) converges on the events without a reload, the source
+# files are byte for byte the seeds on the host, and the aftermath's
+# fresh answers pin the 404s (the repeat delete, the sync album's
+# attempt), the empty search and the surviving read-only cluster.
+# The e2e spec bootstraps itself (the first-run
 # admin and the member account through the APIs, the model group's
 # download through the admin API), exactly the way every prior e2e
 # spec owns its stack's bootstrap.
@@ -148,6 +181,7 @@ health_timeout_seconds=120
 download_timeout_seconds=900
 ml_timeout_seconds=420
 rescan_timeout_seconds=180
+sse_timeout_seconds=60
 
 admin_password="correct-horse-battery"
 member_password="correct-horse-battery"
@@ -182,6 +216,17 @@ rw_mount_root="/mnt/e2e-source-rw"
 rw_source_host_dir="$repo_root/web/e2e/fixtures/m3-source-rw"
 rw_seed_template="$repo_root/server/internal/ml/testdata/face-portrait-other.jpg"
 rw_fixture_photo="IMG_E6_0001.jpg"
+
+# The removal beat's own seed (the E8 semantics): genuinely distinct
+# bytes (the second person's SECOND portrait -- the first is the rw
+# fixture's own seeded photo), so the removal album's rescan ingests
+# it fresh while the dedup links the first album's member into the
+# same album -- the two guard arms ride one removal. The next run's
+# sweeps (this chain's seeder, the e2e spec's bootstrap) remove the
+# file again; the removal itself must never touch it, which is the
+# pin.
+removal_seed_template="$repo_root/server/internal/ml/testdata/face-portrait-other-second.jpg"
+removal_fixture_photo="IMG_E6_9001.jpg"
 
 # The download source mode (see the header comment): the M3C_*
 # aliases win over the M3B_* variables so this script stays a
@@ -1331,31 +1376,43 @@ status="$(curl -sS -o /dev/null -b "$member_jar" -w '%{http_code}' \
     || fail "the member's own asset detail returned status $status, want 200 (the sync stream never retracts)"
 echo "    the member's own photo stays readable"
 
-echo "==> the album's delete must answer the single-shape 404 (a directory album outlives the curation-era delete)"
+echo "==> the sync album's removal attempt must answer the single-shape 404 (the system-level refusal)"
+# The removal's refusal matrix, the system arm: the sync album is no
+# album resource -- the owner's own default stream folds into the
+# single-shape 404 at the gate, exactly like an unknown id. The
+# sharee arm already answered above (the member's 403); the
+# directory album's removal is the closing beat's own story.
+sync_album_id="$(psql_query "SELECT id FROM albums WHERE type = 'sync' LIMIT 1")"
+[ -n "$sync_album_id" ] \
+    || fail "the instance holds no sync album row to attempt the removal against"
 status="$(curl -sS -o "$work_dir/admin_delete_body" -b "$admin_jar" -w '%{http_code}' \
-    -X DELETE "$base_url/api/v1/albums/$album_id")" \
-    || fail "DELETE /api/v1/albums/$album_id (admin) request failed"
+    -X DELETE "$base_url/api/v1/albums/$sync_album_id")" \
+    || fail "DELETE /api/v1/albums/$sync_album_id (admin) request failed"
 [ "$status" = "404" ] \
-    || fail "DELETE /api/v1/albums/$album_id (admin) returned status $status, want 404 (the directory album's removal is its own later flow): $(cat "$work_dir/admin_delete_body")"
+    || fail "DELETE /api/v1/albums/$sync_album_id (admin) returned status $status, want 404 (the sync album is system-managed, the single-shape refusal): $(cat "$work_dir/admin_delete_body")"
 grep -q 'ALBUM_NOT_FOUND' "$work_dir/admin_delete_body" \
-    || fail "the directory album's delete refusal does not answer ALBUM_NOT_FOUND: $(cat "$work_dir/admin_delete_body")"
-# The refusal moved nothing: the album row, its membership rows and
-# its now-empty share rows all stay -- the audience write above is
-# the only face that ever touched the share rows -- and the
-# referenced photos never leave the source.
+    || fail "the sync album's removal refusal does not answer ALBUM_NOT_FOUND: $(cat "$work_dir/admin_delete_body")"
+# The refusal moved nothing: the sync row stays, and the phase's
+# directory album -- its membership rows, its now-empty share rows
+# and its two live photos -- stands untouched beside it (the
+# audience write above is the only face that ever touched the share
+# rows, and the referenced photos never leave the source).
 album_rows="$(psql_query "SELECT count(*) FROM albums WHERE id = '$album_id'")"
 [ "$album_rows" = "1" ] \
-    || fail "the delete refusal touched the album row ($album_rows rows, want 1)"
+    || fail "the refusal touched the directory album's row ($album_rows rows, want 1)"
+sync_rows="$(psql_query "SELECT count(*) FROM albums WHERE id = '$sync_album_id' AND type = 'sync'")"
+[ "$sync_rows" = "1" ] \
+    || fail "the sync refusal touched the sync row ($sync_rows rows, want 1)"
 item_rows="$(psql_query "SELECT count(*) FROM album_items WHERE album_id = '$album_id'")"
 [ "$item_rows" = "2" ] \
-    || fail "the delete refusal touched the membership rows ($item_rows rows, want 2)"
+    || fail "the refusal touched the membership rows ($item_rows rows, want 2)"
 share_rows="$(psql_query "SELECT count(*) FROM album_shares WHERE album_id = '$album_id'")"
 [ "$share_rows" = "0" ] \
     || fail "the audience write left share rows behind ($share_rows rows, want 0)"
 external_live="$(psql_query "SELECT count(*) FROM assets WHERE storage_kind = 'external' AND deleted_at IS NULL")"
 [ "$external_live" = "2" ] \
-    || fail "the delete refusal touched the photos ($external_live of 2 live)"
-echo "    the refusal moved nothing: the album, its membership and its empty share rows stay; the photos stay"
+    || fail "the refusal touched the photos ($external_live of 2 live)"
+echo "    the sync refusal answers the single-shape 404 and moved nothing: both album rows, the membership and the photos stay"
 
 status="$(curl -sS -o "$work_dir/admin_unnamed_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/people/unnamed")" \
@@ -1542,6 +1599,322 @@ rw_restored="$(psql_query "SELECT count(*) FROM assets WHERE id = '$rw_asset_id'
 [ -f "$rw_source_host_dir/$rw_fixture_photo" ] \
     || fail "the restore did not move the file back to the source (the fixture must heal)"
 echo "    the restore returned the row to live and the file to the source (the fixture healed)"
+
+# ---------------------------------------------------------------------------
+# The album removal (the un-ingest): the E8 semantics over the SAME
+# writable source. A second directory album over the rw root makes
+# its rescan link the first album's member (the owner+checksum dedup)
+# AND ingest the removal's own seed fresh, so one removal exercises
+# BOTH guard arms -- the fresh member purges whole, the borrowed
+# member survives on the first album's hold. The source files stay
+# byte for byte; the purged member's library data and derivative
+# trees go; the events announce the removal.
+# ---------------------------------------------------------------------------
+
+echo "==> seeding the removal's own source photo (genuinely distinct bytes)"
+[ -f "$removal_seed_template" ] \
+    || fail "fixture missing: $removal_seed_template -- the removal beat's seed template"
+cp "$removal_seed_template" "$rw_source_host_dir/$removal_fixture_photo"
+echo "    the writable source fixture holds $rw_mount_root/$removal_fixture_photo beside the rw album's own"
+
+echo "==> POST /api/v1/albums must create the removal's directory album over the same writable root"
+# The affirm arm again (inTimeline true): the album feeds its
+# creator's aggregated timeline, so the removal's library-empty pin
+# has a timeline tile to lose.
+status="$(curl -sS -o "$work_dir/removal_album_body" -b "$admin_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"title\":\"M3c Removal Album\",\"rootPath\":\"$rw_mount_root\",\"audience\":[],\"inTimeline\":true}" \
+    "$base_url/api/v1/albums")" \
+    || fail "POST /api/v1/albums (removal) request failed"
+[ "$status" = "201" ] \
+    || fail "POST /api/v1/albums (removal) returned status $status, want 201: $(cat "$work_dir/removal_album_body")"
+grep -q '"sourceWritable":true' "$work_dir/removal_album_body" \
+    || fail "the removal album's creation does not carry sourceWritable true: $(cat "$work_dir/removal_album_body")"
+removal_album_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/removal_album_body")"
+[ -n "$removal_album_id" ] \
+    || fail "the removal album carries no id: $(cat "$work_dir/removal_album_body")"
+echo "    the removal album exists ($removal_album_id) over $rw_mount_root"
+
+echo "==> POST /api/v1/albums/{id}/rescan must converge the removal album's membership (both files)"
+status="$(curl -sS -o "$work_dir/removal_rescan_body" -b "$admin_jar" -w '%{http_code}' \
+    -X POST "$base_url/api/v1/albums/$removal_album_id/rescan")" \
+    || fail "POST /api/v1/albums/$removal_album_id/rescan request failed"
+[ "$status" = "202" ] \
+    || fail "POST /api/v1/albums/$removal_album_id/rescan returned status $status, want 202: $(cat "$work_dir/removal_rescan_body")"
+deadline="$(( $(date +%s) + rescan_timeout_seconds ))"
+while :; do
+    status="$(curl -sS -o "$work_dir/jobs_body" -b "$admin_jar" -w '%{http_code}' \
+        "$base_url/api/v1/admin/jobs")" \
+        || fail "GET /api/v1/admin/jobs request failed"
+    [ "$status" = "200" ] \
+        || fail "GET /api/v1/admin/jobs returned status $status, want 200: $(cat "$work_dir/jobs_body")"
+    row="$(rescan_row)"
+    state="$(printf '%s\n' "$row" | sed -n 's/.*"state":"\([a-z]*\)".*/\1/p')"
+    if [ "$state" = "succeeded" ]; then
+        break
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the removal album's rescan run did not succeed within ${rescan_timeout_seconds}s (last row: $row)"
+    fi
+    if [ "$state" = "failed" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the removal album's rescan run failed: $row (see the server logs above)"
+    fi
+    sleep 3
+done
+echo "    the removal album's rescan run succeeded: $row"
+
+echo "==> the removal album's membership must carry both files: the dedup link and the fresh ingest"
+status="$(curl -sS -o "$work_dir/removal_timeline_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline?albumId=$removal_album_id")" \
+    || fail "GET /api/v1/assets/timeline (removal album) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline (removal album) returned status $status, want 200: $(cat "$work_dir/removal_timeline_body")"
+removal_album_ids="$(item_ids "$work_dir/removal_timeline_body" | sort | tr '\n' ' ')"
+rw_in_removal="$(item_ids "$work_dir/removal_timeline_body" | grep -c "^$rw_asset_id$" || true)"
+[ "$rw_in_removal" = "1" ] \
+    || fail "the removal album's membership does not carry the rw album's member (the owner+checksum dedup must link the existing row): [$removal_album_ids]"
+removal_asset_id="$(item_ids "$work_dir/removal_timeline_body" | grep -v "^$rw_asset_id$" | head -1)"
+[ -n "$removal_asset_id" ] \
+    || fail "the removal album's membership carries no fresh member: [$removal_album_ids]"
+echo "    both members present: the borrowed $rw_asset_id (the dedup link) and the fresh $removal_asset_id"
+
+echo "==> the fresh member's pipeline must run to ready (up to ${ml_timeout_seconds}s)"
+deadline="$(( $(date +%s) + ml_timeout_seconds ))"
+while :; do
+    status="$(curl -sS -o "$work_dir/removal_timeline_body" -b "$admin_jar" -w '%{http_code}' \
+        "$base_url/api/v1/assets/timeline?albumId=$removal_album_id")" \
+        || fail "GET /api/v1/assets/timeline (removal album, ready) request failed"
+    ready_count="$(grep -o '"isReady":true' "$work_dir/removal_timeline_body" | wc -l | tr -d ' ' || true)"
+    if [ "$ready_count" = "2" ]; then
+        break
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the removal album's members did not become ready within ${ml_timeout_seconds}s (ready: $ready_count)"
+    fi
+    sleep 3
+done
+
+echo "==> the fresh member's face must cluster with the survivor's (up to ${ml_timeout_seconds}s)"
+deadline="$(( $(date +%s) + ml_timeout_seconds ))"
+while :; do
+    shared_cluster="$(psql_query "SELECT count(*) FROM faces a JOIN faces b ON a.cluster_id = b.cluster_id WHERE a.asset_id = '$removal_asset_id' AND b.asset_id = '$rw_asset_id'")"
+    if [ "$shared_cluster" -ge 1 ]; then
+        break
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the fresh member's face never clustered with the survivor's within ${ml_timeout_seconds}s"
+    fi
+    sleep 3
+done
+removal_cluster_id="$(psql_query "SELECT cluster_id FROM faces WHERE asset_id = '$removal_asset_id' AND cluster_id IS NOT NULL" | head -1)"
+[ -n "$removal_cluster_id" ] \
+    || fail "the fresh member's face carries no cluster id"
+removal_faces_before="$(psql_query "SELECT count(*) FROM faces WHERE asset_id = '$removal_asset_id'")"
+removal_embeds_before="$(psql_query "SELECT count(*) FROM clip_embeddings WHERE asset_id = '$removal_asset_id'")"
+[ "$removal_faces_before" -ge 1 ] && [ "$removal_embeds_before" -ge 1 ] \
+    || fail "the fresh member's recognition did not land ($removal_faces_before faces, $removal_embeds_before embeddings)"
+echo "    both members ready; the fresh member's face shares cluster $removal_cluster_id with the survivor's ($removal_faces_before face rows, $removal_embeds_before embeddings)"
+
+echo "==> the pre-removal faces must be pinned: the timeline tile, the search hit, the favorite, the derivative tree"
+status="$(curl -sS -o "$work_dir/favorite_body" -b "$admin_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"action\":\"favorite\",\"ids\":[\"$removal_asset_id\"]}" \
+    "$base_url/api/v1/assets/batch")" \
+    || fail "POST /api/v1/assets/batch (favorite) request failed"
+[ "$status" = "200" ] \
+    || fail "POST /api/v1/assets/batch (favorite) returned status $status, want 200: $(cat "$work_dir/favorite_body")"
+grep -q '"affected":1' "$work_dir/favorite_body" \
+    || fail "the favorite did not affect the one member: $(cat "$work_dir/favorite_body")"
+favorite_rows="$(psql_query "SELECT count(*) FROM user_favorites WHERE asset_id = '$removal_asset_id'")"
+[ "$favorite_rows" = "1" ] \
+    || fail "the favorite did not land a per-user row ($favorite_rows rows, want 1)"
+[ -d "lumemor/data/storage/thumbs/$removal_asset_id" ] \
+    || fail "the fresh member's thumbnail tree is absent before the removal (the pipeline must have made it)"
+removal_encoded_before=0
+[ -d "lumemor/data/storage/encoded/$removal_asset_id" ] && removal_encoded_before=1
+[ -d "lumemor/data/storage/thumbs/$rw_asset_id" ] \
+    || fail "the survivor's thumbnail tree is absent before the removal"
+status="$(curl -sS -o "$work_dir/admin_timeline_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline")" \
+    || fail "GET /api/v1/assets/timeline (owner, pre-removal) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline (owner, pre-removal) returned status $status, want 200: $(cat "$work_dir/admin_timeline_body")"
+pre_removal_count="$(item_ids "$work_dir/admin_timeline_body" | wc -l | tr -d ' ')"
+[ "$pre_removal_count" = "4" ] \
+    || fail "the owner's pre-removal timeline holds $pre_removal_count items, want 4 (the read-only pair, the borrowed member, the fresh member)"
+item_ids "$work_dir/admin_timeline_body" | grep -q "^$removal_asset_id$" \
+    || fail "the owner's pre-removal timeline does not carry the fresh member's tile"
+status="$(curl -sS -o "$work_dir/pre_removal_search_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/search?q=$removal_fixture_photo")" \
+    || fail "GET /api/v1/search (pre-removal) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/search (pre-removal) returned status $status, want 200: $(cat "$work_dir/pre_removal_search_body")"
+item_ids "$work_dir/pre_removal_search_body" | grep -q "^$removal_asset_id$" \
+    || fail "the pre-removal search does not answer the fresh member's row: $(cat "$work_dir/pre_removal_search_body")"
+status="$(curl -sS -o "$work_dir/pre_removal_unnamed_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/people/unnamed")" \
+    || fail "GET /api/v1/people/unnamed (pre-removal) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/people/unnamed (pre-removal) returned status $status, want 200: $(cat "$work_dir/pre_removal_unnamed_body")"
+grep -q "\"clusterId\":\"$removal_cluster_id\"" "$work_dir/pre_removal_unnamed_body" \
+    || fail "the admin's unnamed listing does not carry the fresh member's cluster"
+echo "    the tile feeds the timeline, the search answers, the favorite row stands, the derivative tree exists (cluster $removal_cluster_id listed)"
+
+echo "==> GET /api/v1/events must announce the removal (album.deleted + asset.deleted, the survivor silent)"
+# The cookie-authenticated stream runs in the background; the
+# retention ring's replay lands bytes immediately (the connectivity
+# proof), then the removal fires and the poll waits for the event
+# pair. The survivor's silence is the events pin's other half: the
+# guard kept its row, so nothing announces it.
+curl -sS -N --max-time 120 -b "$admin_jar" \
+    "$base_url/api/v1/events" >"$work_dir/removal_sse_stream" 2>"$work_dir/removal_sse_err" &
+removal_sse_pid=$!
+sse_deadline="$(( $(date +%s) + 30 ))"
+until [ -s "$work_dir/removal_sse_stream" ]; do
+    if [ "$(date +%s)" -ge "$sse_deadline" ]; then
+        kill "$removal_sse_pid" 2>/dev/null || true
+        wait "$removal_sse_pid" 2>/dev/null || true
+        removal_sse_pid=""
+        fail "the event stream stayed empty for 30s (the retention ring's replay never landed)"
+    fi
+    sleep 1
+done
+status="$(curl -sS -o "$work_dir/removal_delete_body" -b "$admin_jar" -w '%{http_code}' \
+    -X DELETE "$base_url/api/v1/albums/$removal_album_id")" \
+    || fail "DELETE /api/v1/albums/$removal_album_id (admin) request failed"
+[ "$status" = "204" ] \
+    || fail "DELETE /api/v1/albums/$removal_album_id (admin) returned status $status, want 204 (the un-ingest): $(cat "$work_dir/removal_delete_body")"
+deadline="$(( $(date +%s) + sse_timeout_seconds ))"
+until awk -v album="$removal_album_id" -v asset="$removal_asset_id" '
+    $0 == "event: album.deleted" {
+        getline data
+        if (data ~ "\"albumId\":\"" album "\"") found_album = 1
+    }
+    $0 == "event: asset.deleted" {
+        getline data
+        if (data ~ "\"assetId\":\"" asset "\"") found_asset = 1
+    }
+    END { exit(found_album && found_asset ? 0 : 1) }
+' "$work_dir/removal_sse_stream"; do
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        kill "$removal_sse_pid" 2>/dev/null || true
+        wait "$removal_sse_pid" 2>/dev/null || true
+        removal_sse_pid=""
+        fail "the removal's event pair was not delivered within ${sse_timeout_seconds}s; stream so far: $(cat "$work_dir/removal_sse_stream")"
+    fi
+    if ! kill -0 "$removal_sse_pid" 2>/dev/null; then
+        kill "$removal_sse_pid" 2>/dev/null || true
+        wait "$removal_sse_pid" 2>/dev/null || true
+        removal_sse_pid=""
+        fail "GET /api/v1/events curl exited before the removal's events arrived: $(cat "$work_dir/removal_sse_err") stream: $(cat "$work_dir/removal_sse_stream")"
+    fi
+    sleep 1
+done
+if awk -v survivor="$rw_asset_id" '
+    $0 == "event: asset.deleted" {
+        getline data
+        if (data ~ "\"assetId\":\"" survivor "\"") found = 1
+    }
+    END { exit(found ? 0 : 1) }
+' "$work_dir/removal_sse_stream"; then
+    kill "$removal_sse_pid" 2>/dev/null || true
+    wait "$removal_sse_pid" 2>/dev/null || true
+    removal_sse_pid=""
+    fail "the guarded survivor announced asset.deleted (the guard kept its row; nothing may announce it)"
+fi
+kill "$removal_sse_pid" 2>/dev/null || true
+wait "$removal_sse_pid" 2>/dev/null || true
+removal_sse_pid=""
+echo "    album.deleted + asset.deleted delivered; the guarded survivor announced nothing"
+
+echo "==> the removal must answer the single-shape 404 to the repeat delete"
+status="$(curl -sS -o "$work_dir/removal_repeat_body" -b "$admin_jar" -w '%{http_code}' \
+    -X DELETE "$base_url/api/v1/albums/$removal_album_id")" \
+    || fail "DELETE /api/v1/albums/$removal_album_id (repeat) request failed"
+[ "$status" = "404" ] \
+    || fail "the repeat delete returned status $status, want 404 (the album is gone exactly like an unknown id): $(cat "$work_dir/removal_repeat_body")"
+grep -q 'ALBUM_NOT_FOUND' "$work_dir/removal_repeat_body" \
+    || fail "the repeat delete's refusal does not answer ALBUM_NOT_FOUND: $(cat "$work_dir/removal_repeat_body")"
+status="$(curl -sS -o /dev/null -b "$admin_jar" -w '%{http_code}' "$base_url/api/v1/albums/$removal_album_id")" \
+    || fail "GET /api/v1/albums/$removal_album_id (removed) request failed"
+[ "$status" = "404" ] \
+    || fail "the removed album's detail returned status $status, want 404"
+echo "    the repeat delete and the detail both answer the single-shape 404"
+
+echo "==> the database must hold zero rows of the purge (the cascade) and every row of the survivors"
+removal_album_rows="$(psql_query "SELECT count(*) FROM albums WHERE id = '$removal_album_id'")"
+[ "$removal_album_rows" = "0" ] || fail "the removal album's row survived ($removal_album_rows rows, want 0)"
+removal_item_rows="$(psql_query "SELECT count(*) FROM album_items WHERE album_id = '$removal_album_id'")"
+[ "$removal_item_rows" = "0" ] || fail "the removal album's membership rows survived ($removal_item_rows rows, want 0)"
+removal_asset_rows="$(psql_query "SELECT count(*) FROM assets WHERE id = '$removal_asset_id'")"
+[ "$removal_asset_rows" = "0" ] || fail "the purged member's asset row survived ($removal_asset_rows rows, want 0)"
+removal_faces="$(psql_query "SELECT count(*) FROM faces WHERE asset_id = '$removal_asset_id'")"
+[ "$removal_faces" = "0" ] || fail "the purged member's faces survived ($removal_faces rows, want 0)"
+removal_embeds="$(psql_query "SELECT count(*) FROM clip_embeddings WHERE asset_id = '$removal_asset_id'")"
+[ "$removal_embeds" = "0" ] || fail "the purged member's embedding survived ($removal_embeds rows, want 0)"
+removal_ocr="$(psql_query "SELECT count(*) FROM ocr_texts WHERE asset_id = '$removal_asset_id'")"
+[ "$removal_ocr" = "0" ] || fail "the purged member's OCR text survived ($removal_ocr rows, want 0)"
+removal_favorites="$(psql_query "SELECT count(*) FROM user_favorites WHERE asset_id = '$removal_asset_id'")"
+[ "$removal_favorites" = "0" ] || fail "the purged member's favorite row survived ($removal_favorites rows, want 0)"
+cluster_faces="$(psql_query "SELECT count(*) FROM faces WHERE cluster_id = '$removal_cluster_id'")"
+[ "$cluster_faces" = "1" ] \
+    || fail "the shared cluster did not survive on the survivor's face ($cluster_faces faces, want exactly 1)"
+purged_in_cluster="$(psql_query "SELECT count(*) FROM faces WHERE cluster_id = '$removal_cluster_id' AND asset_id = '$removal_asset_id'")"
+[ "$purged_in_cluster" = "0" ] \
+    || fail "the purged member's face still names the surviving cluster ($purged_in_cluster rows, want 0)"
+rw_row="$(psql_query "SELECT count(*) FROM assets WHERE id = '$rw_asset_id' AND deleted_at IS NULL")"
+[ "$rw_row" = "1" ] || fail "the guarded survivor's asset row did not survive ($rw_row rows, want 1)"
+rw_hold="$(psql_query "SELECT count(*) FROM album_items WHERE album_id = '$rw_album_id' AND asset_id = '$rw_asset_id'")"
+[ "$rw_hold" = "1" ] || fail "the first album's hold on its member did not survive ($rw_hold rows, want 1)"
+echo "    the purge took the album, its membership, the asset row, the faces, the embedding, the OCR text and the favorite"
+echo "    the cluster survives on the survivor's face (the re-home arm), the survivor's row and the first album's hold stand"
+
+echo "==> the host filesystem must be the judge: the sources stay byte for byte, the purged derivative trees are gone"
+cmp -s "$removal_seed_template" "$rw_source_host_dir/$removal_fixture_photo" \
+    || fail "the removal touched the purged member's source file (the zero-contact pin: the bytes must be identical)"
+cmp -s "$rw_seed_template" "$rw_source_host_dir/$rw_fixture_photo" \
+    || fail "the removal touched the survivor's source file (the zero-contact pin: the bytes must be identical)"
+[ ! -d "lumemor/data/storage/thumbs/$removal_asset_id" ] \
+    || fail "the purged member's thumbnail tree survived on the host"
+if [ "$removal_encoded_before" = "1" ]; then
+    [ ! -d "lumemor/data/storage/encoded/$removal_asset_id" ] \
+        || fail "the purged member's encoded tree survived on the host"
+fi
+[ -d "lumemor/data/storage/thumbs/$rw_asset_id" ] \
+    || fail "the survivor's thumbnail tree did not survive (the guard keeps the files the row still names)"
+echo "    both source files byte-identical; the purged derivative trees gone, the survivor's trees stand"
+
+echo "==> the library's fresh answers must drop the purged member and keep the survivor"
+status="$(curl -sS -o "$work_dir/admin_timeline_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline")" \
+    || fail "GET /api/v1/assets/timeline (owner, post-removal) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline (owner, post-removal) returned status $status, want 200: $(cat "$work_dir/admin_timeline_body")"
+post_removal_ids="$(item_ids "$work_dir/admin_timeline_body" | sort | tr '\n' ' ')"
+ro_pair_sorted="$(printf '%s\n' "$shared_a_id" "$shared_b_id" | sort | tr '\n' ' ')"
+[ "$post_removal_ids" = "$ro_pair_sorted" ] \
+    || fail "the owner's post-removal timeline holds [$post_removal_ids], want exactly the read-only pair [$ro_pair_sorted] (the purged member's tile must fall, the survivor's must stay out through the exclusion)"
+status="$(curl -sS -o "$work_dir/post_removal_search_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/search?q=$removal_fixture_photo")" \
+    || fail "GET /api/v1/search (post-removal) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/search (post-removal) returned status $status, want 200: $(cat "$work_dir/post_removal_search_body")"
+post_search_count="$(item_ids "$work_dir/post_removal_search_body" | wc -l | tr -d ' ')"
+[ "$post_search_count" = "0" ] \
+    || fail "the post-removal search still answers the purged member's name ($post_search_count hits, want 0)"
+status="$(curl -sS -o "$work_dir/post_removal_unnamed_body" -b "$admin_jar" -w '%{http_code}' \
+    "$base_url/api/v1/people/unnamed")" \
+    || fail "GET /api/v1/people/unnamed (post-removal) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/people/unnamed (post-removal) returned status $status, want 200: $(cat "$work_dir/post_removal_unnamed_body")"
+grep -q "\"clusterId\":\"$removal_cluster_id\"" "$work_dir/post_removal_unnamed_body" \
+    || fail "the surviving cluster fell out of the unnamed region (the purge took the faces with it -- the survivor's face must keep the cluster listed)"
+echo "    the timeline holds exactly the read-only pair, the search dropped the purged row, the surviving cluster still lists"
+
 if compose logs --no-color lumemor 2>/dev/null | grep -q 'panic'; then
     fail "the server panicked during the sharing phase (see compose logs)"
 fi
