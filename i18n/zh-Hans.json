@@ -425,6 +425,8 @@
   "places_empty_title": "还没有地点",
   "places_empty_body": "GPS 解析到城市的照片会按城市分组出现在这里。",
   "action_add_tag": "加标签",
+  "action_add_memory": "加入回忆",
+  "action_remove_from_memory": "移出回忆",
   "tags_add_title": "加标签",
   "tags_add_mode_existing": "已有标签",
   "tags_add_mode_new": "新标签",
