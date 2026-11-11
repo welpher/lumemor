@@ -188,6 +188,35 @@ func (q *Queries) CreateDirectoryAlbum(ctx context.Context, arg CreateDirectoryA
 	return id, err
 }
 
+const createMemoryAlbum = `-- name: CreateMemoryAlbum :one
+INSERT INTO albums (id, owner_id, title, type)
+VALUES ($1, $2, $3, 'memory')
+RETURNING id
+`
+
+type CreateMemoryAlbumParams struct {
+	ID      pgtype.UUID `json:"id"`
+	OwnerID pgtype.UUID `json:"owner_id"`
+	Title   string      `json:"title"`
+}
+
+// The memory creator: a bare reference-set row -- owner, title,
+// type, nothing else. The row owns no path (a memory has no source:
+// its photos live in the albums they were ingested through), so
+// root_path stays NULL and the directory albums' own columns keep
+// their defaults. The id is generated caller-side; the creation
+// face carries title and audience only. The wall card's companions
+// are the creation-time constants -- no members, no cover, the
+// caller's own audience grants land right after -- so the handler
+// reads the fresh row's full card through GetAlbumSummary like
+// every other write response.
+func (q *Queries) CreateMemoryAlbum(ctx context.Context, arg CreateMemoryAlbumParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, createMemoryAlbum, arg.ID, arg.OwnerID, arg.Title)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteAlbumTimelinePreference = `-- name: DeleteAlbumTimelinePreference :execrows
 DELETE FROM user_album_prefs
 WHERE user_id = $1

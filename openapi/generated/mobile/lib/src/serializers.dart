@@ -66,6 +66,8 @@ import 'package:lumemor_api/src/model/kind_facet_count.dart';
 import 'package:lumemor_api/src/model/label_person_request.dart';
 import 'package:lumemor_api/src/model/login_request.dart';
 import 'package:lumemor_api/src/model/media_kind.dart';
+import 'package:lumemor_api/src/model/memory_create_request.dart';
+import 'package:lumemor_api/src/model/memory_create_response.dart';
 import 'package:lumemor_api/src/model/merge_people_request.dart';
 import 'package:lumemor_api/src/model/merge_people_response.dart';
 import 'package:lumemor_api/src/model/model_activate_response.dart';
@@ -180,6 +182,8 @@ part 'serializers.g.dart';
   LabelPersonRequest,
   LoginRequest,
   MediaKind,
+  MemoryCreateRequest,
+  MemoryCreateResponse,
   MergePeopleRequest,
   MergePeopleResponse,
   ModelActivateResponse,

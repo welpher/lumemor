@@ -23,6 +23,8 @@ import 'package:lumemor_api/src/model/album_timeline_preference_request.dart';
 import 'package:lumemor_api/src/model/album_timeline_preference_response.dart';
 import 'package:lumemor_api/src/model/album_wall_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
+import 'package:lumemor_api/src/model/memory_create_request.dart';
+import 'package:lumemor_api/src/model/memory_create_response.dart';
 import 'package:lumemor_api/src/model/remove_album_items_response.dart';
 
 class AlbumsApi {
@@ -125,7 +127,7 @@ class AlbumsApi {
   }
 
   /// Create one directory album from an existing path.
-  /// Creates one directory album owned by the calling ADMINISTRATOR: the album IS a source -- the request names an existing directory the server validates and references in place, the files stay where they are (zero copy, zero move; the rescan that fills the album&#39;s membership is a later flow). No type field exists: this endpoint IS directory creation -- the curation-into-a-container story is gone (memory albums already owned keep their edit and delete faces, but nothing creates one through this face), and every account&#39;s sync album is born with the account.  Mounting an existing photo directory is a CONFIGURATION act: it points the application at a filesystem location, and a plain member never sees the container&#39;s filesystem at all. Creation is therefore the administrator&#39;s alone (the boundary ruling): a signed-in member whose role is not &#x60;admin&#x60; answers 403 &#x60;AUTH_FORBIDDEN&#x60; before any part of the request is considered -- the refusal-matrix semantics of the admin surfaces. Members contribute photos through the upload stream and are untouched by this guard. The trust boundary is the compose file&#39;s own mounts: the operator controls what the container can see, and the application layer neither can nor needs to restrict the operator further -- the mount-root allowlist of the previous design retired whole with this ruling, and no software-layer allowlist stands behind it.  The title is trimmed and must span 1-64 Unicode characters (the count is over runes, so multi-byte titles stay within the bound at the same length).  &#x60;rootPath&#x60; is the source directory, and it runs the path validation matrix before anything is written, each branch its own 400 error code:  - the path must be absolute (after a server-side clean; a   relative, empty or over-long value is a plain   &#x60;VALIDATION_FAILED&#x60;), - it must exist (&#x60;ALBUM_PATH_NOT_FOUND&#x60;), - it must be a directory (&#x60;ALBUM_PATH_NOT_DIRECTORY&#x60;), - the server must be able to list it   (&#x60;ALBUM_PATH_NOT_READABLE&#x60;), - the RESOLVED path (symlinks evaluated) must never sit   inside the server&#39;s own managed data tree   (&#x60;ALBUM_PATH_IN_MANAGED_TREE&#x60;) -- the one confine that   survived the allowlist retirement: the application&#39;s own   originals, derivatives and trash never become an album   source, whatever the container can see. The   allowlist-domain and root-overlap branches of the previous   matrix died with the allowlist: with creation in the   administrator&#39;s hands, a second album over the same tree   is an operator&#39;s visible choice, not an attack to refuse.  The album row stores the RESOLVED absolute path, so a later symlink swap can never repoint an existing album.  After the matrix passes, the server probes the directory&#39;s writability exactly ONCE: it writes a uniquely named probe file, reads it back, and removes it. A directory that refuses any step is a perfectly legitimate album source -- the probe&#39;s failure is NOT a creation failure -- and the fact lands on the row as &#x60;sourceWritable: false&#x60;, honestly reported in the response: photos of a read-only directory cannot be deleted through the application, and the creation answer says so instead of every later deletion discovering it. The truth is discovered at creation and never re-probed at runtime.  &#x60;audience&#x60; is the album&#39;s audience, the full grantee set of view ACL rows the creation lands in the same request: the add-style picker&#39;s chips of the dialog, empty (or absent) meaning \&quot;only me\&quot;. Its semantics are the audience write&#39;s: every id that cannot be granted -- an unknown or disabled account, or the caller&#39;s own id (the owner sees the album by construction) -- is skipped, never an error, and the response&#39;s &#x60;skipped&#x60; list reports each with its reason.  The two dialog switches ride the same request. The deletability switch (&#x60;allowAppDeletion&#x60;) lands on the row -- on by default, rendered by the dialog only where the source is writable (the completion row&#39;s &#x60;writable&#x60; fact; the read-only sources&#39; stored value governs nothing). The creator&#39;s timeline exclusion (&#x60;inTimeline: false&#x60;) lands the caller&#39;s own preference row in the same creation -- the album is born out of its creator&#39;s aggregated timeline, the audience&#39;s own feeds untouched.  The response is the created album&#39;s wall card -- the summary exactly as &#x60;GET /albums&#x60; lists it: &#x60;callerRole&#x60; &#x60;owner&#x60;, &#x60;type&#x60; &#x60;directory&#x60;, an empty &#x60;coverAssetIds&#x60; array (never null) and &#x60;itemCount&#x60; 0, nothing being a member yet -- plus the honest audience report and the &#x60;sourceWritable&#x60; fact. The card&#39;s &#x60;inTimeline&#x60; carries the exclusion&#39;s landed state. The write publishes one &#x60;album.created&#x60; event and one &#x60;album.shared&#x60; event per audience row that landed. 
+  /// Creates one directory album owned by the calling ADMINISTRATOR: the album IS a source -- the request names an existing directory the server validates and references in place, the files stay where they are (zero copy, zero move; the rescan that fills the album&#39;s membership is a later flow). No type field exists: this endpoint IS directory creation -- the curation-into-a-container story is gone (a memory is born through its own every-member face, POST /memories), and every account&#39;s sync album is born with the account.  Mounting an existing photo directory is a CONFIGURATION act: it points the application at a filesystem location, and a plain member never sees the container&#39;s filesystem at all. Creation is therefore the administrator&#39;s alone (the boundary ruling): a signed-in member whose role is not &#x60;admin&#x60; answers 403 &#x60;AUTH_FORBIDDEN&#x60; before any part of the request is considered -- the refusal-matrix semantics of the admin surfaces. Members contribute photos through the upload stream and are untouched by this guard. The trust boundary is the compose file&#39;s own mounts: the operator controls what the container can see, and the application layer neither can nor needs to restrict the operator further -- the mount-root allowlist of the previous design retired whole with this ruling, and no software-layer allowlist stands behind it.  The title is trimmed and must span 1-64 Unicode characters (the count is over runes, so multi-byte titles stay within the bound at the same length).  &#x60;rootPath&#x60; is the source directory, and it runs the path validation matrix before anything is written, each branch its own 400 error code:  - the path must be absolute (after a server-side clean; a   relative, empty or over-long value is a plain   &#x60;VALIDATION_FAILED&#x60;), - it must exist (&#x60;ALBUM_PATH_NOT_FOUND&#x60;), - it must be a directory (&#x60;ALBUM_PATH_NOT_DIRECTORY&#x60;), - the server must be able to list it   (&#x60;ALBUM_PATH_NOT_READABLE&#x60;), - the RESOLVED path (symlinks evaluated) must never sit   inside the server&#39;s own managed data tree   (&#x60;ALBUM_PATH_IN_MANAGED_TREE&#x60;) -- the one confine that   survived the allowlist retirement: the application&#39;s own   originals, derivatives and trash never become an album   source, whatever the container can see. The   allowlist-domain and root-overlap branches of the previous   matrix died with the allowlist: with creation in the   administrator&#39;s hands, a second album over the same tree   is an operator&#39;s visible choice, not an attack to refuse.  The album row stores the RESOLVED absolute path, so a later symlink swap can never repoint an existing album.  After the matrix passes, the server probes the directory&#39;s writability exactly ONCE: it writes a uniquely named probe file, reads it back, and removes it. A directory that refuses any step is a perfectly legitimate album source -- the probe&#39;s failure is NOT a creation failure -- and the fact lands on the row as &#x60;sourceWritable: false&#x60;, honestly reported in the response: photos of a read-only directory cannot be deleted through the application, and the creation answer says so instead of every later deletion discovering it. The truth is discovered at creation and never re-probed at runtime.  &#x60;audience&#x60; is the album&#39;s audience, the full grantee set of view ACL rows the creation lands in the same request: the add-style picker&#39;s chips of the dialog, empty (or absent) meaning \&quot;only me\&quot;. Its semantics are the audience write&#39;s: every id that cannot be granted -- an unknown or disabled account, or the caller&#39;s own id (the owner sees the album by construction) -- is skipped, never an error, and the response&#39;s &#x60;skipped&#x60; list reports each with its reason.  The two dialog switches ride the same request. The deletability switch (&#x60;allowAppDeletion&#x60;) lands on the row -- on by default, rendered by the dialog only where the source is writable (the completion row&#39;s &#x60;writable&#x60; fact; the read-only sources&#39; stored value governs nothing). The creator&#39;s timeline exclusion (&#x60;inTimeline: false&#x60;) lands the caller&#39;s own preference row in the same creation -- the album is born out of its creator&#39;s aggregated timeline, the audience&#39;s own feeds untouched.  The response is the created album&#39;s wall card -- the summary exactly as &#x60;GET /albums&#x60; lists it: &#x60;callerRole&#x60; &#x60;owner&#x60;, &#x60;type&#x60; &#x60;directory&#x60;, an empty &#x60;coverAssetIds&#x60; array (never null) and &#x60;itemCount&#x60; 0, nothing being a member yet -- plus the honest audience report and the &#x60;sourceWritable&#x60; fact. The card&#39;s &#x60;inTimeline&#x60; carries the exclusion&#39;s landed state. The write publishes one &#x60;album.created&#x60; event and one &#x60;album.shared&#x60; event per audience row that landed. 
   ///
   /// Parameters:
   /// * [albumCreateRequest] 
@@ -219,6 +221,112 @@ class AlbumsApi {
     }
 
     return Response<AlbumCreateResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Create one memory.
+  /// Creates one memory owned by the calling user: a reference set the owner curates photos into -- the photos themselves live in the albums they were ingested through, the memory holds references to them. The request carries a title and an audience, nothing else: a memory owns no &#x60;rootPath&#x60; (no source to name -- the directory album&#39;s own field is absent from this request and from the memory&#39;s every response shape), no deletability switch (a memory&#39;s delete never moves files), and no timeline switch (a memory never feeds its creator&#39;s own timeline, so there is nothing to switch).  EVERY member may create. Curation is personal expression, not configuration: a memory names no filesystem location, touches no source, and borrows nothing but photos the creator already sees -- the exact opposite gate of the directory album&#39;s administrator-only creation. Any signed-in account&#39;s POST succeeds; there is no role check to refuse.  The title is trimmed and must span 1-64 Unicode characters (the count is over runes, so multi-byte titles stay within the bound at the same length).  &#x60;audience&#x60; is the memory&#39;s audience, the full grantee set of view ACL rows the creation lands in the same request: absent (or empty) means \&quot;only me\&quot;. Its semantics are the audience write&#39;s: every id that cannot be granted -- an unknown or disabled account, or the caller&#39;s own id (the owner sees the memory by construction) -- is skipped, never an error, and the response&#39;s &#x60;skipped&#x60; list reports each with its reason.  The memory is born out of its creator&#39;s aggregated timeline: the creation writes the creator&#39;s own timeline preference row (&#x60;inTimeline: false&#x60;) in the same write, so the aggregate never feeds the memory&#39;s photos whatever future arms admit. The exclusion is the creator&#39;s own -- the audience members&#39; feeds are governed by their own preference rows, never by this write.  The response is the created memory&#39;s wall card -- the summary exactly as &#x60;GET /albums&#x60; lists it: &#x60;callerRole&#x60; &#x60;owner&#x60;, &#x60;type&#x60; &#x60;memory&#x60;, an empty &#x60;coverAssetIds&#x60; array (never null), &#x60;itemCount&#x60; 0 (nothing is a member yet), no &#x60;inTimeline&#x60; field (an own memory card omits it) -- widened with the honest audience report. The write publishes one &#x60;album.created&#x60; event and one &#x60;album.shared&#x60; event per audience row that landed. 
+  ///
+  /// Parameters:
+  /// * [memoryCreateRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [MemoryCreateResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<MemoryCreateResponse>> createMemory({ 
+    required MemoryCreateRequest memoryCreateRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/memories';
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(MemoryCreateRequest);
+      _bodyData = _serializers.serialize(memoryCreateRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    MemoryCreateResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(MemoryCreateResponse),
+      ) as MemoryCreateResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<MemoryCreateResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,
