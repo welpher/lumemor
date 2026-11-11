@@ -110,8 +110,9 @@
 # repeat landing nothing), the sharee's display predicate (the live
 # filter: the sharee's card and detail count the live members the
 # memory's owner currently sees -- the source grant's revocation
-# drops the re-shared photo from the sharee's views while the
-# owner's own view keeps the plain live membership), the removal
+# drops the re-shared photo from the sharee's views, the detail
+# wall's walk included, while the owner's own view keeps the plain
+# live membership), the removal
 # (DELETE /albums/{id}/items -- the set's tidy-up with its own
 # honest report), and the delete cascade (DELETE /albums/{id}: the
 # psql counts prove the references, the audience and the preference
@@ -1683,6 +1684,31 @@ status="$(curl -sS -o "$work_dir/mem_creator_detail_body" -b "$creator_jar" -w '
 grep -q '"itemCount":3' "$work_dir/mem_creator_detail_body" \
     || fail "the creator's own memory count after the revocation is not 3 (the owner's view keeps the live membership): $(cat "$work_dir/mem_creator_detail_body")"
 echo "    the sharee's views dropped the re-shared photo; the owner's own view keeps the row"
+
+echo "==> the sharee's wall walk must carry the same ground as the counts"
+# The timeline endpoint's album narrow is the memory detail page's own
+# tiles: the walk answers the same re-share ground the counts ride, so
+# the sharee's page never renders a grounded count beside the revoked
+# photo's tile.
+status="$(curl -sS -o "$work_dir/mem_sharee_walk_body" -b "$sharee_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline?albumId=$memory_id")" \
+    || fail "GET /api/v1/assets/timeline?albumId=$memory_id (sharee walk) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline?albumId=$memory_id (sharee walk) returned status $status, want 200: $(cat "$work_dir/mem_sharee_walk_body")"
+sharee_walk_ids="$(item_ids "$work_dir/mem_sharee_walk_body" | sort | tr '\n' ' ')"
+[ "$sharee_walk_ids" = "$(printf '%s\n' "$own_a_id" "$own_b_id" | sort | tr '\n' ' ')" ] \
+    || fail "the sharee's wall walk answers [$sharee_walk_ids], want the creator's own pair: $(cat "$work_dir/mem_sharee_walk_body")"
+# The owner's walk keeps the plain live membership: the row stays --
+# the set is the owner's to tidy.
+status="$(curl -sS -o "$work_dir/mem_creator_walk_body" -b "$creator_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline?albumId=$memory_id")" \
+    || fail "GET /api/v1/assets/timeline?albumId=$memory_id (creator walk) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline?albumId=$memory_id (creator walk) returned status $status, want 200: $(cat "$work_dir/mem_creator_walk_body")"
+creator_walk_ids="$(item_ids "$work_dir/mem_creator_walk_body" | sort | tr '\n' ' ')"
+[ "$creator_walk_ids" = "$(printf '%s\n' "$own_a_id" "$own_b_id" "$via_share_id" | sort | tr '\n' ' ')" ] \
+    || fail "the creator's wall walk answers [$creator_walk_ids], want the plain live three: $(cat "$work_dir/mem_creator_walk_body")"
+echo "    the sharee's walk dropped the revoked photo; the creator's walk keeps the plain live three"
 
 echo "==> DELETE /api/v1/albums/{id}/items must tidy the set with its own honest report"
 status="$(curl -sS -o "$work_dir/mem_remove_body" -b "$creator_jar" -w '%{http_code}' \

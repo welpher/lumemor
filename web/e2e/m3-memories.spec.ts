@@ -100,10 +100,13 @@
 //     administrator emptying the source album's audience -- the
 //     grant's death drops the re-shared photo from the sharee's
 //     card LIVE (the album event converges the open wall, no
-//     reload), the creator's own card keeps the plain live
-//     membership (the row stays; the set is the owner's to tidy),
-//     and the creator's timeline loses the shared pair (the
-//     memory's row does not hold a photo there -- it is not a feed).
+//     reload), the sharee's fresh detail visit answers the grounded
+//     count beside a wall that agrees (the walk drops the revoked
+//     photo too -- the page never contradicts itself), the
+//     creator's own card keeps the plain live membership (the row
+//     stays; the set is the owner's to tidy), and the creator's
+//     timeline loses the shared pair (the memory's row does not
+//     hold a photo there -- it is not a feed).
 // 11. The timeline exclusion, the fresh view: the creator's
 //     aggregated timeline holds exactly their own pair, each photo
 //     exactly once -- the memory's three rows inject nothing, and
@@ -794,6 +797,23 @@ test.describe('the closing scenes', () => {
 		// sight, with no snapshot residue.
 		await expect(shareeCard).toContainText('2 photos');
 		await expect(shareeCard.locator('img')).toHaveCount(2);
+
+		// The sharee's detail wall, the FRESH visit: the count and
+		// the tiles agree -- the walk (the timeline endpoint's album
+		// narrow) drops the revoked photo too, so the memory's own
+		// face never renders a grounded count beside the revoked
+		// photo's tile. (A held detail page would not converge here:
+		// its event filter keys on the memory's own id while the
+		// revocation's event names the source album, so the fresh
+		// visit -- the recompute-on-read kind -- is the honest
+		// witness.)
+		const shareeDetail = await shareeContext.newPage();
+		await shareeDetail.goto(`/memories/${memoryId}`);
+		await expect(shareeDetail.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
+		await expect(shareeDetail.locator('.memory-bar__count')).toContainText('2 photos');
+		await expect(shareeDetail.locator('.tile')).toHaveCount(2);
+		await expect(shareeDetail.getByRole('link', { name: VIA_SHARE_A_NAME, exact: true })).toHaveCount(0);
+		await shareeDetail.close();
 
 		// The creator's own card keeps the plain live membership:
 		// the row stays (the set is the owner's to tidy).
