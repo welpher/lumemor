@@ -4006,7 +4006,7 @@ type ServerInterface interface {
 	// CompleteAlbumPath Complete a directory album's source path.
 	// (GET /albums/path-completions)
 	CompleteAlbumPath(w http.ResponseWriter, r *http.Request, params CompleteAlbumPathParams)
-	// DeleteAlbum Delete one virtual album.
+	// DeleteAlbum Remove one album.
 	// (DELETE /albums/{albumId})
 	DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
 	// GetAlbum One album's detail and one page of its items.
@@ -4288,7 +4288,7 @@ func (_ Unimplemented) CompleteAlbumPath(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// DeleteAlbum Delete one virtual album.
+// DeleteAlbum Remove one album.
 // (DELETE /albums/{albumId})
 func (_ Unimplemented) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
