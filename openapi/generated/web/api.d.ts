@@ -1092,7 +1092,12 @@ export interface paths {
          *     empty for an album with none. `itemCount` counts live
          *     members under the same predicate: trashed, hidden and Live
          *     Photo component rows never count (a hidden asset is
-         *     invisible to the whole family).
+         *     invisible to the whole family). For a shared-group `memory`
+         *     card the predicate widens the same way the detail's does:
+         *     the count and the collage tiles are the live members the
+         *     memory's owner currently sees -- the re-share ground,
+         *     revalidated at read time, so a revoked photo leaves the
+         *     sharee's card and collage with no snapshot residue.
          *
          *     `isShared` reports whether the album carries at least one
          *     `album_shares` row -- the owner's "someone else sees this"
@@ -1345,6 +1350,18 @@ export interface paths {
          *     component rows never appear (a hidden asset is
          *     invisible to the whole family).
          *
+         *     For a `memory` seen by a VIEWER (a memory shared to the
+         *     caller), the set is narrower: the count and the pages carry
+         *     the live members the memory's owner CURRENTLY sees -- the
+         *     re-share ground, revalidated at read time. When the owner's
+         *     sight of a photo dies (the album that carried it to the
+         *     owner was unshared, the row was trashed or hidden), the
+         *     photo leaves every shared view of the memory live: the next
+         *     read drops it, with no snapshot residue. The owner's own
+         *     detail keeps the plain live membership -- the curation is
+         *     the owner's own view of the set, and the owner's rows can
+         *     still be tidied through the membership remove.
+         *
          *     `coverAssetId` is the raw pinned column: the single asset
          *     the owner chose, or null when unset -- the wall derives its
          *     collage fallback from the members, the detail carries the
@@ -1407,16 +1424,16 @@ export interface paths {
          *     follows through the schema's cascades.
          *
          *     What happens to the album's MEMBERS splits by the album's
-         *     type. A `memory` album is a reference set over existing
-         *     photos: removing it is the reference set's own plain
-         *     cascade -- the album row, its membership rows, its audience
+         *     type. A `memory` album holds references, not photos:
+         *     removing it takes only its own rows -- the album row, its
+         *     membership rows, its audience
          *     and its per-user preference rows go, and NOTHING else does.
          *     The photos are not the memory's: they live in the albums
          *     they were ingested through, and every one of their states
          *     (the asset rows, the per-user favorites and tags, the faces,
          *     the generated files) is untouched, whatever their storage
-         *     kind -- no reference guard runs, nothing is purged, no file
-         *     is contacted. A `directory` album is a source, and removing it is the
+         *     kind -- no guard on other albums' references runs, nothing
+         *     is purged, no file is contacted. A `directory` album is a source, and removing it is the
          *     UN-INGEST of what its scans brought in: every member asset
          *     that NO OTHER album references (the album union -- the sync
          *     album's permanent membership covers every uploaded row, and a

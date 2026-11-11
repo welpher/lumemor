@@ -3840,16 +3840,16 @@ paths:
         follows through the schema's cascades.
 
         What happens to the album's MEMBERS splits by the album's
-        type. A `memory` album is a reference set over existing
-        photos: removing it is the reference set's own plain
-        cascade -- the album row, its membership rows, its audience
+        type. A `memory` album holds references, not photos:
+        removing it takes only its own rows -- the album row, its
+        membership rows, its audience
         and its per-user preference rows go, and NOTHING else does.
         The photos are not the memory's: they live in the albums
         they were ingested through, and every one of their states
         (the asset rows, the per-user favorites and tags, the faces,
         the generated files) is untouched, whatever their storage
-        kind -- no reference guard runs, nothing is purged, no file
-        is contacted. A `directory` album is a source, and removing it is the
+        kind -- no guard on other albums' references runs, nothing
+        is purged, no file is contacted. A `directory` album is a source, and removing it is the
         UN-INGEST of what its scans brought in: every member asset
         that NO OTHER album references (the album union -- the sync
         album's permanent membership covers every uploaded row, and a
