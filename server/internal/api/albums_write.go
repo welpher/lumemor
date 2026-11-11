@@ -202,10 +202,17 @@ func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, c
 	}
 
 	// The derived cover: the wall's own candidates query over the one
-	// album, bounded at four rows by construction.
+	// album, bounded at four rows by construction. The caller rides
+	// along: the write's caller is the owner or an administrator
+	// overriding the owner check, and the candidates query's own
+	// owner check passes both for an own memory -- so the write's
+	// card carries the owner's live tiles either way.
 	var derived []uuid.UUID
 	if !row.Album.CoverAssetID.Valid {
-		candidates, err := s.queries.ListAlbumCoverCandidates(r.Context(), []pgtype.UUID{row.Album.ID})
+		candidates, err := s.queries.ListAlbumCoverCandidates(r.Context(), dbgen.ListAlbumCoverCandidatesParams{
+			AlbumIds: []pgtype.UUID{row.Album.ID},
+			UserID:   pgUUID(callerID),
+		})
 		if err != nil {
 			s.internalError(w, r, "load album cover candidates", err)
 			return apigen.AlbumSummary{}, false

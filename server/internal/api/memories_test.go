@@ -36,6 +36,144 @@ func fixtureMemoryAssetID(suffix string) uuid.UUID {
 	return uuid.MustParse("90000000-0000-0000-0000-0000000000" + suffix)
 }
 
+// TestMemorySharedViewsLiveFilter pins the re-share ground at
+// display time: a sharee's every view of a shared memory -- the
+// detail's pages, its count, the wall card's count and collage --
+// carries the live members the memory's owner CURRENTLY sees. The
+// source-revocation cascade falls out live: when the album that
+// carried a photo to the owner is unshared, the photo leaves the
+// sharee's memory views on the next read, no snapshot residue; the
+// owner's own view keeps the plain live membership (the curation is
+// the owner's to tidy, not the cascade's to rewrite).
+func TestMemorySharedViewsLiveFilter(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	ownerID, ownerCookie := env.createSecondUser(t, "memory-owner-grace@example.com")
+	viewerID, viewerCookie := env.createSecondUser(t, "memory-viewer-hopper@example.com")
+
+	// Grace (the owner) holds two photos through a directory album
+	// Hopper shares with her: the photos live in Hopper's album,
+	// Grace sees them through the share -- the re-share's own
+	// ground. The own upload rides her sync arm.
+	source := fixtureMemoryAlbumID("b1")
+	env.insertTimelineAlbum(t, source, viewerID, "directory")
+	env.shareTimelineAlbum(t, source, ownerID, viewerID)
+	base := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	own := fixtureMemoryAssetID("21")      // the owner's upload
+	viaShare := fixtureMemoryAssetID("22") // lives in Hopper's album, seen by the owner through the share
+	env.insertOwnedAsset(t, own, ownerID, base, timelineAssetOpts{})
+	env.insertTimelineAsset(t, viaShare, viewerID, base.Add(time.Hour), timelineAssetOpts{})
+	env.addTimelineItem(t, source, viaShare, viewerID)
+
+	created := env.createMemory(t, ownerCookie, "The re-shared set", []uuid.UUID{viewerID})
+	memory := uuid.UUID(created.Id)
+	env.addMemoryItems(t, ownerCookie, memory, albumItemsBody(own, viaShare))
+	// The pages order taken_at descending: viaShare (the newer) leads.
+	requireMemoryMemberIDs(t, env.getAlbumDetail(t, viewerCookie, memory, ""), viaShare, own)
+
+	t.Run("ShareeViewsCarryTheGround", func(t *testing.T) {
+		detail := env.getAlbumDetail(t, viewerCookie, memory, "")
+		if detail.ItemCount != 2 {
+			t.Errorf("sharee itemCount = %d, want 2 (both members pass the owner's current sight)", detail.ItemCount)
+		}
+		requireMemoryMemberIDs(t, detail, viaShare, own)
+
+		// The wall card agrees: the count and the collage tiles are
+		// the owner-visible live members, not the raw membership.
+		card := memoryCardOf(t, env, viewerCookie, memory)
+		if card.ItemCount != 2 {
+			t.Errorf("sharee card itemCount = %d, want 2", card.ItemCount)
+		}
+		if len(card.CoverAssetIds) != 2 || uuid.UUID(card.CoverAssetIds[0]) != viaShare {
+			t.Errorf("sharee card coverAssetIds = %v, want [viaShare own] (the newest live owner-visible members)", card.CoverAssetIds)
+		}
+	})
+
+	t.Run("SourceRevocationCascadesLive", func(t *testing.T) {
+		// Hopper revokes the source album's share: the owner's sight
+		// of viaShare dies, and with it every shared view of the
+		// memory drops the photo -- the re-share never outlives the
+		// right it was grounded in. The row itself stays (the set is
+		// the owner's to tidy), the owner's own view keeps it, and
+		// the owner's other surfaces (the timeline, the asset faces)
+		// agree the photo is gone.
+		env.exec(t, "DELETE FROM album_shares WHERE album_id = $1 AND user_id = $2",
+			pgUUID(source), pgUUID(ownerID))
+
+		detail := env.getAlbumDetail(t, viewerCookie, memory, "")
+		if detail.ItemCount != 1 {
+			t.Errorf("sharee itemCount after the revocation = %d, want 1 (the re-shared photo left live)", detail.ItemCount)
+		}
+		requireMemoryMemberIDs(t, detail, own)
+
+		card := memoryCardOf(t, env, viewerCookie, memory)
+		if card.ItemCount != 1 {
+			t.Errorf("sharee card itemCount after the revocation = %d, want 1", card.ItemCount)
+		}
+		if len(card.CoverAssetIds) != 1 || uuid.UUID(card.CoverAssetIds[0]) != own {
+			t.Errorf("sharee card coverAssetIds after the revocation = %v, want [own]", card.CoverAssetIds)
+		}
+
+		// The owner's own view keeps the plain live membership: the
+		// curation is the owner's, and the row stays until the owner
+		// tidies it.
+		ownerDetail := env.getAlbumDetail(t, ownerCookie, memory, "")
+		if ownerDetail.ItemCount != 2 {
+			t.Errorf("owner itemCount after the revocation = %d, want 2 (the owner's view keeps the live membership)", ownerDetail.ItemCount)
+		}
+
+		// The convergence signals the clients refetch on already
+		// fire: the audience write's album.unshared for the revoked
+		// source grant, and the membership itself publishes nothing
+		// new -- the views recompute on every read, which is what
+		// makes the drop live rather than announced.
+		if events := eventsOfAlbum(t, env.bus, "album.items-changed", memory); len(events) != 1 {
+			t.Errorf("album.items-changed events of the memory = %d, want still 1 (the revocation publishes no membership event)",
+				len(events))
+		}
+	})
+
+	t.Run("HiddenMemberLeavesSharedViewsLive", func(t *testing.T) {
+		// The family-wide live predicate rides the same rule: a
+		// hidden member leaves every view the moment the row hides.
+		env.exec(t, "UPDATE assets SET is_hidden = true WHERE id = $1", pgUUID(own))
+		detail := env.getAlbumDetail(t, viewerCookie, memory, "")
+		if detail.ItemCount != 0 {
+			t.Errorf("sharee itemCount after the hide = %d, want 0 (the hidden photo is invisible to the whole family)", detail.ItemCount)
+		}
+	})
+}
+
+// memoryCardOf resolves one memory's wall card for the given caller.
+func memoryCardOf(t *testing.T, env *assetEnv, cookie *http.Cookie, memory uuid.UUID) apigen.AlbumSummary {
+	t.Helper()
+	wall := env.getAlbumWall(t, cookie)
+	for _, card := range wall.Albums {
+		if uuid.UUID(card.Id) == memory {
+			return card
+		}
+	}
+	t.Fatalf("the memory %s is missing from the wall (%v)", memory, wall.Albums)
+	return apigen.AlbumSummary{}
+}
+
+// requireMemoryMemberIDs asserts the detail page carries exactly the
+// given member ids, in the page's order.
+func requireMemoryMemberIDs(t *testing.T, detail apigen.AlbumDetail, want ...uuid.UUID) {
+	t.Helper()
+	got := make([]uuid.UUID, 0, len(detail.Items))
+	for _, item := range detail.Items {
+		got = append(got, uuid.UUID(item.AssetId))
+	}
+	if len(got) != len(want) {
+		t.Fatalf("detail members = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("detail member %d = %s, want %s (page %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 // createMemoryRaw fires POST /memories with the raw body (a nil
 // cookie sends it unauthenticated).
 func (e *assetEnv) createMemoryRaw(t *testing.T, cookie *http.Cookie, body string) *httptest.ResponseRecorder {

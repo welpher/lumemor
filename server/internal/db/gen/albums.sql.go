@@ -388,6 +388,11 @@ SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, a
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
+             AND (
+                 al.type <> 'memory'
+                 OR al.owner_id = $1
+                 OR caller_asset_visible(al.owner_id, a.id)
+             )
        ) AS item_count,
        p.in_timeline
 FROM albums al
@@ -433,6 +438,11 @@ type GetAlbumForCallerRow struct {
 // the own directory albums and the shared albums, absent for the
 // caller's own memory albums and for the caller's own sync album
 // (the core stream is never excludable), true when no row exists.
+// item_count carries the memory's shared-view rule: a sharee's
+// count is the live members the memory's owner currently sees (the
+// re-share ground, revalidated at read time), while the owner's own
+// count is the plain live membership -- the owner's curation is
+// their own view of the set.
 func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerParams) (GetAlbumForCallerRow, error) {
 	row := q.db.QueryRow(ctx, getAlbumForCaller, arg.UserID, arg.AlbumID)
 	var i GetAlbumForCallerRow
@@ -647,15 +657,26 @@ FROM (
                ORDER BY a.taken_at DESC, a.id DESC
            ) AS recency_rank
     FROM album_items ai
+    JOIN albums al ON al.id = ai.album_id
     JOIN assets a ON a.id = ai.asset_id
     WHERE ai.album_id = ANY($1::uuid[])
       AND a.deleted_at IS NULL
       AND a.is_hidden = false
       AND a.is_component = false
+      AND (
+          al.type <> 'memory'
+          OR al.owner_id = $2
+          OR caller_asset_visible(al.owner_id, a.id)
+      )
 ) ranked
 WHERE ranked.recency_rank <= 4
 ORDER BY ranked.album_id, ranked.recency_rank
 `
+
+type ListAlbumCoverCandidatesParams struct {
+	AlbumIds []pgtype.UUID `json:"album_ids"`
+	UserID   pgtype.UUID   `json:"user_id"`
+}
 
 type ListAlbumCoverCandidatesRow struct {
 	AlbumID pgtype.UUID `json:"album_id"`
@@ -666,9 +687,14 @@ type ListAlbumCoverCandidatesRow struct {
 // recent live members, taken_at descending with the asset id as the
 // tiebreak -- the exact rows the wall renders for an album without a
 // pinned cover asset. The window keeps the result bounded at four
-// rows per album however many members an album holds.
-func (q *Queries) ListAlbumCoverCandidates(ctx context.Context, albumIds []pgtype.UUID) ([]ListAlbumCoverCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, listAlbumCoverCandidates, albumIds)
+// rows per album however many members an album holds. The memory's
+// shared-view rule rides the same predicate as the pages and the
+// counts: a sharee's collage tiles are the owner-visible live
+// members, the owner's own (the caller is the album's owner) are
+// the plain live ones, so the card's tiles never name a photo the
+// card's count already dropped.
+func (q *Queries) ListAlbumCoverCandidates(ctx context.Context, arg ListAlbumCoverCandidatesParams) ([]ListAlbumCoverCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumCoverCandidates, arg.AlbumIds, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -694,21 +720,28 @@ SELECT ai.asset_id,
        a.original_filename,
        a.media_kind
 FROM album_items ai
+JOIN albums al ON al.id = ai.album_id
 JOIN assets a ON a.id = ai.asset_id
 WHERE ai.album_id = $1
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
   AND (
-      $2::timestamptz IS NULL
-      OR (a.taken_at, a.id) < ($2::timestamptz, $3::uuid)
+      al.type <> 'memory'
+      OR al.owner_id = $2
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
+  AND (
+      $3::timestamptz IS NULL
+      OR (a.taken_at, a.id) < ($3::timestamptz, $4::uuid)
   )
 ORDER BY a.taken_at DESC, a.id DESC
-LIMIT $4
+LIMIT $5
 `
 
 type ListAlbumItemsForCallerParams struct {
 	AlbumID       pgtype.UUID        `json:"album_id"`
+	UserID        pgtype.UUID        `json:"user_id"`
 	CursorTakenAt pgtype.Timestamptz `json:"cursor_taken_at"`
 	CursorID      pgtype.UUID        `json:"cursor_id"`
 	LimitCount    int32              `json:"limit_count"`
@@ -727,10 +760,17 @@ type ListAlbumItemsForCallerRow struct {
 // same row-value predicate and the same NULL-init first page. The
 // caller's visibility gate is NOT here: the handler runs this only
 // after GetAlbumForCaller returned the album, so the rows it lists
-// are rows of an album the caller already proved they may see.
+// are rows of an album the caller already proved they may see. The
+// memory's shared-view rule rides along: a sharee's page carries
+// the live members the memory's owner CURRENTLY sees (the re-share
+// ground, revalidated at read time -- a photo whose source
+// visibility died leaves every shared view live, no snapshot
+// residue), while the owner's own page is the plain live
+// membership.
 func (q *Queries) ListAlbumItemsForCaller(ctx context.Context, arg ListAlbumItemsForCallerParams) ([]ListAlbumItemsForCallerRow, error) {
 	rows, err := q.db.Query(ctx, listAlbumItemsForCaller,
 		arg.AlbumID,
+		arg.UserID,
 		arg.CursorTakenAt,
 		arg.CursorID,
 		arg.LimitCount,
@@ -1019,6 +1059,12 @@ SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, a
        -- The shared arm's is_shared holds true by construction: the
        -- caller's own share row is the reason this row exists.
        true AS is_shared,
+       -- The shared arm's count carries the memory's shared-view
+       -- rule: the sharee's card counts the live members the
+       -- memory's owner currently sees -- the re-share ground,
+       -- revalidated at read time, so a revoked photo leaves the
+       -- sharee's card with no snapshot residue. (The caller here
+       -- is never the album's owner: no share row can name them.)
        (
            SELECT count(*)
            FROM album_items ai
@@ -1027,6 +1073,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, a
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
+             AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
        ) AS item_count,
        p.in_timeline,
        2::int AS arm_rank,

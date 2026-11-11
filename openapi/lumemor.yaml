@@ -2882,7 +2882,12 @@ paths:
         empty for an album with none. `itemCount` counts live
         members under the same predicate: trashed, hidden and Live
         Photo component rows never count (a hidden asset is
-        invisible to the whole family).
+        invisible to the whole family). For a shared-group `memory`
+        card the predicate widens the same way the detail's does:
+        the count and the collage tiles are the live members the
+        memory's owner currently sees -- the re-share ground,
+        revalidated at read time, so a revoked photo leaves the
+        sharee's card and collage with no snapshot residue.
 
         `isShared` reports whether the album carries at least one
         `album_shares` row -- the owner's "someone else sees this"
@@ -3443,6 +3448,18 @@ paths:
         URL. Live members only: trashed, hidden and Live Photo
         component rows never appear (a hidden asset is
         invisible to the whole family).
+
+        For a `memory` seen by a VIEWER (a memory shared to the
+        caller), the set is narrower: the count and the pages carry
+        the live members the memory's owner CURRENTLY sees -- the
+        re-share ground, revalidated at read time. When the owner's
+        sight of a photo dies (the album that carried it to the
+        owner was unshared, the row was trashed or hidden), the
+        photo leaves every shared view of the memory live: the next
+        read drops it, with no snapshot residue. The owner's own
+        detail keeps the plain live membership -- the curation is
+        the owner's own view of the set, and the owner's rows can
+        still be tidied through the membership remove.
 
         `coverAssetId` is the raw pinned column: the single asset
         the owner chose, or null when unset -- the wall derives its

@@ -244,12 +244,16 @@ func TestAlbumWall(t *testing.T) {
 	env.shareWallAlbum(t, ownMemory, graceID, adminID, time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC))
 
 	// Grace's shared memory album with one live member of her own.
+	// The member lands in her sync album too (the production
+	// invariant every owned asset carries), so Grace CURRENTLY sees
+	// it -- the sharee's card counts it under the memory's
+	// shared-view rule.
 	shared := fixtureWallAlbumID("03")
 	env.insertWallAlbum(t, shared, graceID, "memory", "Grace picks", wallAlbumOpts{
 		updatedAt: time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC),
 	})
 	sharedAsset := fixtureWallAssetID("03")
-	env.insertTimelineAsset(t, sharedAsset, graceID, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, sharedAsset, graceID, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.addTimelineItem(t, shared, sharedAsset, graceID)
 	env.shareWallAlbum(t, shared, adminID, graceID, time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC))
 
@@ -267,9 +271,10 @@ func TestAlbumWall(t *testing.T) {
 	env.addTimelineItem(t, ownMemory, ownOlder, adminID)
 
 	// A sync album carrying a share row to the caller: still never a
-	// wall card, in either group.
-	graceSync := fixtureWallAlbumID("05")
-	env.insertWallAlbum(t, graceSync, graceID, "sync", "Sync", wallAlbumOpts{})
+	// wall card, in either group. (Grace's sync album exists by now
+	// -- insertOwnedAsset ensured it -- so the share names the real
+	// row instead of a second fixture one.)
+	graceSync := env.syncAlbumIDOf(t, graceID)
 	env.shareWallAlbum(t, graceSync, adminID, graceID, time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC))
 
 	wall := env.getAlbumWall(t, env.cookie)
@@ -934,8 +939,11 @@ func TestAlbumDetailViewer(t *testing.T) {
 	env.insertWallAlbum(t, shared, graceID, "memory", "For the family", wallAlbumOpts{})
 	newer := fixtureWallAssetID("51")
 	older := fixtureWallAssetID("52")
-	env.insertTimelineAsset(t, newer, graceID, time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.insertTimelineAsset(t, older, graceID, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	// Both members land in Grace's sync album too (the production
+	// invariant): she CURRENTLY sees them, so the sharee's pages and
+	// count carry them under the memory's shared-view rule.
+	env.insertOwnedAsset(t, newer, graceID, time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, older, graceID, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.addTimelineItem(t, shared, newer, graceID)
 	env.addTimelineItem(t, shared, older, graceID)
 	env.shareWallAlbum(t, shared, adminID, graceID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))

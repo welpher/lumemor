@@ -181,6 +181,9 @@ func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 
 	// The derived covers: only the albums without a pinned cover need
 	// candidates, and the query bounds itself at four rows per album.
+	// The candidates query carries the wall's caller: a shared
+	// memory's collage tiles are the owner-visible live members (the
+	// shared-view rule), an own album's are the plain live ones.
 	derived := make([]pgtype.UUID, 0, len(rows))
 	for _, row := range rows {
 		if !row.Album.CoverAssetID.Valid {
@@ -189,7 +192,10 @@ func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 	}
 	covers := make(map[uuid.UUID][]uuid.UUID)
 	if len(derived) > 0 {
-		candidates, err := s.queries.ListAlbumCoverCandidates(r.Context(), derived)
+		candidates, err := s.queries.ListAlbumCoverCandidates(r.Context(), dbgen.ListAlbumCoverCandidatesParams{
+			AlbumIds: derived,
+			UserID:   pgUUID(requester.userID),
+		})
 		if err != nil {
 			s.internalError(w, r, "load album covers", err)
 			return
@@ -262,9 +268,13 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 	// carries nextCursor precisely when it observed the follow-up, so
 	// no run ever walks into an empty trailing page. The query needs
 	// no visibility re-check: it runs only for an album the gate
-	// above already resolved for this caller.
+	// above already resolved for this caller. The caller rides along
+	// for the memory's shared-view rule -- a sharee's page is the
+	// live members the memory's owner currently sees, the owner's
+	// own page the plain live membership.
 	rows, err := s.queries.ListAlbumItemsForCaller(r.Context(), dbgen.ListAlbumItemsForCallerParams{
 		AlbumID:       pgUUID(albumId),
+		UserID:        pgUUID(requester.userID),
 		CursorTakenAt: cursor.takenAt,
 		CursorID:      cursor.id,
 		LimitCount:    int32(limit) + 1,
