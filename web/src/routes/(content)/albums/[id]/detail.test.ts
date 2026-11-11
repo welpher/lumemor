@@ -14,8 +14,9 @@ import Page from './+page.svelte';
 // rename / set cover / delete, the owner of a directory album the
 // properties edit (title + the read-only source row + the audience
 // + the autonomy block of timeline exclusion / deletability)
-// / rescan trigger with its job-event progress line, the owner of
-// the sync album (the default album) NOTHING -- system-managed,
+// / rescan trigger with its job-event progress line / the remove
+// (the un-ingest, behind its semantics-stating confirm), the owner
+// of the sync album (the default album) NOTHING -- system-managed,
 // read-only, the localized display name for the title -- a viewer
 // the exclusion toggle alone (the departure went with the revoke
 // endpoint it rode) -- over the wall that pages the album's own
@@ -292,11 +293,21 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	// action and the
 	// add-photos handoff are GONE with the curation removal
 	// and the share dialog's fold-in: the audience is an
-	// album property.
+	// album property. The remove affordance is the directory
+	// album's own.
 	for (const label of ['Rename', 'Set cover…', 'Delete album']) {
 		expect(() => buttonByLabel(label), label).not.toThrow();
 	}
-	for (const label of ['Share…', 'Add photos', 'Properties', 'Rescan', 'Leave album', 'Lock', 'Unlock']) {
+	for (const label of [
+		'Share…',
+		'Add photos',
+		'Properties',
+		'Rescan',
+		'Remove album',
+		'Leave album',
+		'Lock',
+		'Unlock'
+	]) {
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
 
@@ -340,6 +351,7 @@ test('a viewer sees read-only: the exclusion toggle alone, no write affordances'
 		'Delete album',
 		'Properties',
 		'Rescan',
+		'Remove album',
 		'Leave album'
 	]) {
 		expect(() => buttonByLabel(label), label).toThrow();
@@ -391,8 +403,13 @@ test('the directory detail: the edit dialog, the autonomy faces and the live res
 	const rescan = buttonByLabel('Rescan');
 	expect(rescan.disabled).toBe(false);
 
+	// The remove action sits beside it: the directory album's own
+	// un-ingest affordance.
+	const remove = buttonByLabel('Remove album');
+	expect(remove.disabled).toBe(false);
+
 	// The virtual album's write set is gone, and the directory album
-	// holds neither curation, cover pin nor delete.
+	// holds neither curation, cover pin nor the virtual delete.
 	for (const label of ['Rename', 'Set cover…', 'Lock', 'Unlock', 'Delete album', 'Leave album']) {
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
@@ -451,6 +468,7 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 		'Delete album',
 		'Properties',
 		'Rescan',
+		'Remove album',
 		'Keep out of timeline',
 		'Keep in timeline',
 		'Leave album'
@@ -1085,6 +1103,49 @@ test('deleting the album confirms and leaves for the wall', async () => {
 		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'DELETE'
 	);
 	expect(deletes).toHaveLength(1);
+	expect(vi.mocked(goto)).toHaveBeenCalledWith('/albums');
+	unmount(page);
+	flushSync();
+});
+
+test('removing the directory album states the semantics and leaves for the wall', async () => {
+	detailState = {
+		...detailState,
+		type: 'directory',
+		rootPath: '/Volumes/Photos/family',
+		sourceWritable: true,
+		allowAppDeletion: true,
+		deletable: true,
+		inTimeline: true
+	};
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/albums/al1': (init?: RequestInit) => {
+				expect(init?.method).toBe('DELETE');
+				return new Response(null, { status: 204 });
+			}
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The remove affordance opens its own confirm -- the un-ingest's
+	// dialog, not the virtual delete's.
+	buttonByLabel('Remove album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	expect(dialog?.getAttribute('aria-label')).toBe('Remove this album?');
+	// THE PINNED SEMANTICS in the body: the album and its photo data
+	// go, the source folder stays untouched.
+	expect(dialog?.textContent).toContain('the source folder on disk stays untouched');
+	buttonByText('Remove album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const removes = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'DELETE'
+	);
+	expect(removes).toHaveLength(1);
 	expect(vi.mocked(goto)).toHaveBeenCalledWith('/albums');
 	unmount(page);
 	flushSync();

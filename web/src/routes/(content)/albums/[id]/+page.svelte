@@ -39,7 +39,9 @@
 	//   holds the properties (the edit dialog: title + the read-only
 	//   source row + the audience + the autonomy block) / the rescan
 	//   trigger (the three-arm diff run, its progress surfaced
-	//   through the job events the run's identifier keys); a viewer
+	//   through the job events the run's identifier keys) / the
+	//   remove (the un-ingest, behind its semantics-stating confirm);
+	//   a viewer
 	//   holds the exclusion toggle (their own preference) alone --
 	//   the sharee's departure went with the revoke endpoint it rode
 	//   (the audience write is owner-domain; the member side is the
@@ -132,9 +134,15 @@
 	let coverOpen = $state(false);
 	let coverErrorKey = $state('');
 
-	// The delete confirm.
+	// The delete confirm (the virtual album's).
 	let deleteOpen = $state(false);
 	let deleteErrorKey = $state('');
+
+	// The remove confirm (the directory album's un-ingest): the
+	// semantics say themselves -- the album and its photo data go,
+	// the source folder stays.
+	let removeOpen = $state(false);
+	let removeErrorKey = $state('');
 
 	// The bar actions' honest failure (the lock, the exclusion, the
 	// rescan trigger): the bar owns the line.
@@ -427,6 +435,27 @@
 		void goto('/albums');
 	}
 
+	// The remove write (the directory album's un-ingest): the same
+	// endpoint, the directory arm. Success leaves for the wall; the
+	// members' own convergence (the tiles dropping everywhere) rides
+	// the asset.deleted events the removal publishes.
+	async function confirmRemove(): Promise<void> {
+		const id = untrack(() => albumId);
+		if (writeBusy || detail === null || id === '') {
+			return;
+		}
+		writeBusy = true;
+		removeErrorKey = '';
+		const outcome = await deleteAlbum(id);
+		writeBusy = false;
+		if (!outcome.ok) {
+			removeErrorKey = outcome.errorKey;
+			return;
+		}
+		removeOpen = false;
+		void goto('/albums');
+	}
+
 	// The wall's batch runner: the page's own client runs the
 	// delete-only batch the wall's bar offers -- the same
 	// view-aware optimistic convergence every curatable wall uses
@@ -591,7 +620,8 @@
 		     the cover and the delete; the owner of a directory album
 		     the edit dialog (properties: title + the source row +
 		     audience + the autonomy block of exclusion /
-		     deletability) and the rescan trigger; the owner of the
+		     deletability), the rescan trigger and the remove (the
+		     un-ingest); the owner of the
 		     sync album (the default album) holds nothing --
 		     system-managed; a viewer the exclusion toggle alone (the
 		     departure went with the revoke endpoint it rode; the
@@ -651,6 +681,22 @@
 					onclick={() => void startRescan()}
 				>
 					<RefreshCw size={20} aria-hidden="true" />
+				</IconButton>
+				<!-- The remove action: the un-ingest. The confirm dialog
+				     states the semantics before the irreversible write --
+				     the album and its photo data go, the source folder
+				     stays. The sync album has no such action anywhere
+				     (its own arm below renders nothing). -->
+				<IconButton
+					variant="danger"
+					disabled={writeBusy}
+					aria-label={$_('albums_action_remove')}
+					onclick={() => {
+						removeErrorKey = '';
+						removeOpen = true;
+					}}
+				>
+					<Trash2 size={20} aria-hidden="true" />
 				</IconButton>
 			{:else if detail !== null && owner && detail.type === 'sync'}
 				<!-- The default album's arm: NOTHING. The sync album is
@@ -868,6 +914,33 @@
 		<Button variant="danger" disabled={writeBusy} onclick={() => void confirmDelete()}>
 			<Trash2 size={20} aria-hidden="true" />
 			{$_('albums_delete_confirm')}
+		</Button>
+	{/snippet}
+</Modal>
+
+<!-- The remove confirm (the directory album's un-ingest): the
+     pinned semantics in the body -- the album and its photo data
+     go, the source folder stays untouched. -->
+<Modal bind:open={removeOpen} title={$_('albums_remove_title')}>
+	<p class="album-detail__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
+		{$_('albums_remove_body')}
+	</p>
+	{#if removeErrorKey !== ''}
+		<p
+			class="album-detail__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+			role="alert"
+		>
+			{errorText(removeErrorKey)}
+		</p>
+	{/if}
+	{#snippet footer()}
+		<Button variant="ghost" disabled={writeBusy} onclick={() => (removeOpen = false)}>
+			<X size={20} aria-hidden="true" />
+			{$_('common_cancel')}
+		</Button>
+		<Button variant="danger" disabled={writeBusy} onclick={() => void confirmRemove()}>
+			<Trash2 size={20} aria-hidden="true" />
+			{$_('albums_remove_confirm')}
 		</Button>
 	{/snippet}
 </Modal>

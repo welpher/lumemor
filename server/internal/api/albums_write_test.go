@@ -823,10 +823,11 @@ func TestAlbumLockRetired(t *testing.T) {
 	})
 }
 
-// TestDeleteAlbum pins the delete: virtual albums only (directory
-// and sync ids answer the single-shape 404), the membership and
-// share rows cascade with the row, and the two-tier authorization
-// answer holds.
+// TestDeleteAlbum pins the delete's virtual arm: the row, the
+// membership and the share rows cascade together, the members'
+// asset rows survive, and the two-tier authorization answer holds.
+// The directory arm is the un-ingest removal -- albumremoval_test.go
+// owns its pins.
 func TestDeleteAlbum(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -842,8 +843,6 @@ func TestDeleteAlbum(t *testing.T) {
 	env.addTimelineItem(t, virtual, second, adminID)
 	env.shareWallAlbum(t, virtual, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
 
-	directory := fixtureWriteAlbumID("83")
-	env.insertWallAlbum(t, directory, adminID, "directory", "Archive", wallAlbumOpts{})
 	sharedToGrace := fixtureWriteAlbumID("84")
 	env.insertWallAlbum(t, sharedToGrace, adminID, "virtual", "Shared", wallAlbumOpts{})
 	env.shareWallAlbum(t, sharedToGrace, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
@@ -886,14 +885,6 @@ func TestDeleteAlbum(t *testing.T) {
 	t.Run("SecondDeleteIsNotFound", func(t *testing.T) {
 		rec := env.deleteAlbumRaw(t, env.cookie, virtual)
 		requireAlbumNotFound(t, rec)
-	})
-
-	t.Run("RefusesDirectoryAlbum", func(t *testing.T) {
-		rec := env.deleteAlbumRaw(t, env.cookie, directory)
-		requireAlbumNotFound(t, rec)
-		if got := env.queryInt(t, "SELECT count(*) FROM albums WHERE id = $1", pgUUID(directory)); got != 1 {
-			t.Errorf("directory album rows = %d, want 1 (directory removal is its own flow)", got)
-		}
 	})
 
 	t.Run("RefusesSyncAlbum", func(t *testing.T) {
@@ -1023,9 +1014,8 @@ func TestAlbumWriteEvents(t *testing.T) {
 	root := env.provisionMountRoot(t)
 
 	// The creation through the API: one album.created event. The
-	// lifecycle writes below ride a fixture virtual album (the
-	// directory album's own delete is its own flow, not this
-	// endpoint's).
+	// lifecycle writes below ride a fixture virtual album (whose
+	// plain cascade publishes exactly the one album.deleted).
 	created := env.createAlbum(t, env.cookie, "The eventful album", root, nil)
 	directoryID := uuid.UUID(created.Id)
 

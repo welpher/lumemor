@@ -192,6 +192,16 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	// territory" premise is false for it. The set is cleared by
 	// reset() with the rest of the client's memory.
 	const knownIds = new Set<string>();
+	// The caller's own feed facts, filled by ensureFeedPrefs below:
+	// the wall cards carry the caller's per-album timeline preference
+	// (the excludable cards -- the own directory albums and every
+	// shared one; the own reference sets omit the switch, the sync
+	// card is never excludable). The aggregate's insert gate reads
+	// exactly this map, so a replayed or lived asset event for an
+	// asset the caller's union holds WITHOUT the aggregate's feed
+	// (an excluded album's rescan arms) can never insert a tile the
+	// pages would never deliver.
+	const feedPrefs = new Map<string, boolean>();
 	// The favorites wall's ended memberships: the ids the unfavorite
 	// arm removed. Favoriteness is NOT evaluable from the detail the
 	// SSE convergence refetches (AssetDetail carries no isFavorite),
@@ -385,6 +395,38 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	}
 
 	/**
+	 * The caller's feed facts, fetched once per client on the first
+	 * unknown-id convergence that needs them (see feedPrefs). A failed
+	 * fetch keeps the map empty: the gate then answers the contract's
+	 * own true default -- the pre-gate behavior -- which is honest
+	 * degradation, the API failing wholesale at that point and not
+	 * this one face.
+	 */
+	let feedPrefsReady: Promise<void> | null = null;
+	async function ensureFeedPrefs(): Promise<void> {
+		if (feedPrefsReady === null) {
+			feedPrefsReady = (async () => {
+				try {
+					const response = await apiFetch('/api/v1/albums', undefined, fetcher);
+					if (!response.ok) {
+						return;
+					}
+					const body = (await response.json()) as components['schemas']['AlbumWallResponse'];
+					for (const card of body.albums ?? []) {
+						if (typeof card.inTimeline === 'boolean') {
+							feedPrefs.set(card.id, card.inTimeline);
+						}
+					}
+				} catch {
+					// The wall fetch failed: the map stays empty and the
+					// gate falls back to the feed default.
+				}
+			})();
+		}
+		await feedPrefsReady;
+	}
+
+	/**
 	 * Fetch and apply one asset's detail under its claiming event id.
 	 * The claim may move while the fetch is in flight (a newer event
 	 * or a removal); a superseded response never applies.
@@ -424,6 +466,45 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		const detail = detailFrom(body);
 		if (detail === null || detail.id !== assetId) {
 			return;
+		}
+		// THE AGGREGATE'S INSERT GATE: the stream replays its retained
+		// ring on every fresh connect, and the events name assets the
+		// caller's union holds WITHOUT the aggregate's feed -- an
+		// excluded album's asset (the creator's own preference; the
+		// rescan's ready and updated arms carry such events) must
+		// never insert a tile the pages would never deliver. The
+		// detail's albums face says where the asset lives for this
+		// caller; the caller's per-album preference rides the wall
+		// cards; the two together are the union's own rule. The sync
+		// arm is self-evident (the core stream is never excludable, no
+		// fetch), an own reference set never feeds (the wall card
+		// omits the switch), and every other arm reads the caller's
+		// pref with the contract's own true default. A page-delivered
+		// id is exempt (knownIds): the server's own pages are the
+		// membership, and the per-asset patch below must keep running
+		// for their rows. The curated views keep the detail's own
+		// rule: their membership is the caller's per-user rows, never
+		// the album feed.
+		if (albumId === undefined && view !== 'favorites' && view !== 'hidden' && !knownIds.has(assetId)) {
+			const face = detail.albums ?? [];
+			// The map arms (a directory album at either role, a shared
+			// reference set) need the caller's pref facts; the sync arm
+			// and the own-reference-set arm are self-evident.
+			if (face.some((ref) => ref.type !== 'sync' && !(ref.type === 'virtual' && ref.callerRole === 'owner'))) {
+				await ensureFeedPrefs();
+			}
+			const feeds = face.some((ref) => {
+				if (ref.type === 'sync') {
+					return true;
+				}
+				if (ref.type === 'virtual' && ref.callerRole === 'owner') {
+					return false;
+				}
+				return feedPrefs.get(ref.id) ?? true;
+			});
+			if (!feeds) {
+				return;
+			}
 		}
 		// The view's membership rule, decided by the detail: the
 		// timeline and favorites walls keep live (unhidden, untrashed)
@@ -478,8 +559,10 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	 * upsert foreign tiles into an empty or partial grid. The
 	 * narrow's membership changes arrive as album.items-changed,
 	 * which restarts the walk; the aggregate wall keeps its
-	 * insert-on-event behavior (every asset of the caller's stream is
-	 * its member by construction).
+	 * insert-on-event behavior behind the feed gate (convergeOnce:
+	 * the detail's albums face plus the caller's per-album
+	 * preference decide, so an excluded album's replayed events
+	 * insert nothing while the sync stream's uploads still land).
 	 */
 	async function convergeFromDetail(assetId: string, eventId: number): Promise<void> {
 		if (albumId !== undefined && !knownIds.has(assetId)) {

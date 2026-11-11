@@ -89,6 +89,27 @@ func (q *Queries) AddAssetToAlbum(ctx context.Context, arg AddAssetToAlbumParams
 	return err
 }
 
+const countAlbumReferencesOfAsset = `-- name: CountAlbumReferencesOfAsset :one
+SELECT count(*) FROM album_items
+WHERE asset_id = $1
+`
+
+// The removal's reference guard: how many album_items rows still
+// name the asset. The album being removed has already cascaded its
+// own membership rows away inside the same transaction, so a count
+// above zero names another album's live hold -- the sync album's
+// permanent membership covers every uploaded (blob) row, a member
+// shared with a second album survives on that reference -- and zero
+// means the un-ingest cascade takes the row. No album-type filter
+// and no live predicate on the asset: the membership rows are the
+// whole truth of who still references it.
+func (q *Queries) CountAlbumReferencesOfAsset(ctx context.Context, assetID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAlbumReferencesOfAsset, assetID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countLiveAlbumMember = `-- name: CountLiveAlbumMember :one
 SELECT count(*) AS matches
 FROM album_items ai
@@ -184,6 +205,30 @@ type DeleteAlbumTimelinePreferenceParams struct {
 // already is.
 func (q *Queries) DeleteAlbumTimelinePreference(ctx context.Context, arg DeleteAlbumTimelinePreferenceParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteAlbumTimelinePreference, arg.UserID, arg.AlbumID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteDirectoryAlbum = `-- name: DeleteDirectoryAlbum :execrows
+DELETE FROM albums
+WHERE id = $1
+  AND type = 'directory'
+`
+
+// The directory album's removal (the un-ingest): the row goes with
+// every membership, share and per-user preference row through the
+// schema's ON DELETE CASCADEs. The type guard keeps the statement
+// honest against the handler's directory-only verdict (the virtual
+// delete is its own statement above), and zero rows -- a concurrent
+// removal won the race -- is the 404 of a gone album. The members'
+// asset rows are deliberately NOT here: the handler's reference
+// guard runs AFTER this cascade has taken the album's own
+// membership rows, so the surviving album_items rows name exactly
+// the members another album still holds.
+func (q *Queries) DeleteDirectoryAlbum(ctx context.Context, albumID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDirectoryAlbum, albumID)
 	if err != nil {
 		return 0, err
 	}
@@ -621,6 +666,60 @@ func (q *Queries) ListAlbumItemsForCaller(ctx context.Context, arg ListAlbumItem
 			&i.TakenAt,
 			&i.OriginalFilename,
 			&i.MediaKind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumMemberAssets = `-- name: ListAlbumMemberAssets :many
+SELECT a.id, a.owner_id, a.file_path, a.trash_path,
+       a.storage_kind, a.media_kind, a.is_component
+FROM album_items ai
+JOIN assets a ON a.id = ai.asset_id
+WHERE ai.album_id = $1
+`
+
+type ListAlbumMemberAssetsRow struct {
+	ID          pgtype.UUID `json:"id"`
+	OwnerID     pgtype.UUID `json:"owner_id"`
+	FilePath    string      `json:"file_path"`
+	TrashPath   pgtype.Text `json:"trash_path"`
+	StorageKind StorageKind `json:"storage_kind"`
+	MediaKind   MediaKind   `json:"media_kind"`
+	IsComponent bool        `json:"is_component"`
+}
+
+// The removal's member read, taken BEFORE the album row goes (the
+// cascade below would take the membership rows with it): every
+// member asset with the columns the purge and its file half need --
+// the shared-blob count and original for a blob row, the trash copy
+// for an external row (the trash interplay: a member already in the
+// trash loses the row and the trash copy together), the kind and
+// the component flag for the events. No live predicate: a trashed
+// member's row is as much a member for the removal as a live one.
+func (q *Queries) ListAlbumMemberAssets(ctx context.Context, albumID pgtype.UUID) ([]ListAlbumMemberAssetsRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumMemberAssets, albumID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumMemberAssetsRow
+	for rows.Next() {
+		var i ListAlbumMemberAssetsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.FilePath,
+			&i.TrashPath,
+			&i.StorageKind,
+			&i.MediaKind,
+			&i.IsComponent,
 		); err != nil {
 			return nil, err
 		}
