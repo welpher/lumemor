@@ -929,6 +929,22 @@ func (e SearchAssetsParamsLocale) Valid() bool {
 	}
 }
 
+// AddAlbumItemsResponse The honest report of one membership add over the request's
+// distinct ids: the rows that landed and the ids that stayed
+// out.
+type AddAlbumItemsResponse struct {
+	// Added The membership rows the request landed -- the photos the
+	// creator currently sees and that were not members yet.
+	// Zero for an all-skipped request, which is still a 200.
+	Added int `json:"added"`
+
+	// Skipped The distinct ids that stayed out of the set: not
+	// currently visible to the caller (the re-share ground
+	// failed), not a live row, or already a member (the
+	// idempotent no-op).
+	Skipped int `json:"skipped"`
+}
+
 // AddTagAssetsResponse The honest report of one assignment add over the request's
 // distinct ids: what landed and what was skipped, invisible
 // and already-tagged ids alike.
@@ -1407,13 +1423,15 @@ type AlbumItemAsset struct {
 // AlbumItemAssetKind The asset's media kind.
 type AlbumItemAssetKind string
 
-// AlbumItemsRequest The membership write body: the list of asset ids the write
-// addresses in one memory album. Repeated ids collapse to one
+// AlbumItemsRequest The membership write body, shared by the memory's curation
+// arms: the list of asset ids to add to or remove from one
+// memory album. Repeated ids collapse to one
 // application; the report's counts cover the distinct ids.
 type AlbumItemsRequest struct {
 	// AssetIds The asset ids of the membership write, between 1 and
-	// 200 entries; the remove skips the ids that are no
-	// members.
+	// 200 entries; the add skips the ids that are not
+	// currently visible to the caller or already members, the
+	// remove the ids that are no members.
 	AssetIds []openapi_types.UUID `json:"assetIds"`
 }
 
@@ -4066,6 +4084,9 @@ type UpdateAlbumAudienceJSONRequestBody = AlbumAudienceRequest
 // RemoveAlbumItemsJSONRequestBody defines body for RemoveAlbumItems for application/json ContentType.
 type RemoveAlbumItemsJSONRequestBody = AlbumItemsRequest
 
+// AddAlbumItemsJSONRequestBody defines body for AddAlbumItems for application/json ContentType.
+type AddAlbumItemsJSONRequestBody = AlbumItemsRequest
+
 // SetAlbumTimelinePreferenceJSONRequestBody defines body for SetAlbumTimelinePreference for application/json ContentType.
 type SetAlbumTimelinePreferenceJSONRequestBody = AlbumTimelinePreferenceRequest
 
@@ -4194,6 +4215,9 @@ type ServerInterface interface {
 	// RemoveAlbumItems Remove assets from one memory album.
 	// (DELETE /albums/{albumId}/items)
 	RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
+	// AddAlbumItems Add references to one memory.
+	// (POST /albums/{albumId}/items)
+	AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
 	// RescanAlbum Start one rescan of a directory album's source.
 	// (POST /albums/{albumId}/rescan)
 	RescanAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID)
@@ -4491,6 +4515,12 @@ func (_ Unimplemented) UpdateAlbumAudience(w http.ResponseWriter, r *http.Reques
 // RemoveAlbumItems Remove assets from one memory album.
 // (DELETE /albums/{albumId}/items)
 func (_ Unimplemented) RemoveAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AddAlbumItems Add references to one memory.
+// (POST /albums/{albumId}/items)
+func (_ Unimplemented) AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5293,6 +5323,32 @@ func (siw *ServerInterfaceWrapper) RemoveAlbumItems(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RemoveAlbumItems(w, r, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddAlbumItems operation middleware
+func (siw *ServerInterfaceWrapper) AddAlbumItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", chi.URLParam(r, "albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddAlbumItems(w, r, albumId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6877,6 +6933,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/albums/{albumId}/items", wrapper.RemoveAlbumItems)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/albums/{albumId}/items", wrapper.AddAlbumItems)
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/albums/{albumId}/audience", wrapper.UpdateAlbumAudience)

@@ -224,7 +224,7 @@ export interface paths {
          *     successful patch (the convergent refetch makes the
          *     unconditional fire harmless), `album.items-changed` exactly
          *     when a membership write changed at least one row (the
-         *     removal arm, or the rescan's add arm growing the
+         *     memory's curation arms, or the rescan's add arm growing the
          *     set), and
          *     `album.shared`/`album.unshared` exactly when the audience
          *     write (or a creation's initial audience) landed or removed a
@@ -1509,7 +1509,40 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Add references to one memory.
+         * @description Adds membership rows to the caller's memory: `{added,
+         *     skipped}`, the batch surface's set semantics -- the honest
+         *     report, never per-item errors. Repeated ids collapse; the
+         *     counts cover the distinct ids.
+         *
+         *     Every id the request names must pass the re-share ground:
+         *     the creator must CURRENTLY see the photo (it is a member of
+         *     at least one album that feeds the caller's view -- their
+         *     sync stream, their directory albums, or an album shared to
+         *     them) AND it must be a live row (not trashed, not hidden,
+         *     not a Live Photo component). An id failing either check is
+         *     skipped -- the row never lands -- and so is an id that is
+         *     already a member (the set's idempotent no-op); an
+         *     all-skipped request still answers 200 with `added` 0. The
+         *     check runs at ADD time, once: what the write admits is what
+         *     the creator could see when they made the request.
+         *
+         *     MEMORY albums only: the membership write is the memory's
+         *     own curation face. A DIRECTORY album refuses it with the
+         *     single-shape 404 -- a directory album is a source, and its
+         *     membership is its own scan's verdict, never a hand-picked
+         *     set; the sync album folds into the same 404 (it is no album
+         *     resource). Authorization is the writes' two-tier answer
+         *     (invisible 404, shared-to-caller 403 -- the share is
+         *     view-only, and curation is the owner's -- the owner or an
+         *     admin override writes).
+         *
+         *     The write publishes one `album.items-changed` event exactly
+         *     when at least one row landed -- the idempotent no-op stays
+         *     silent.
+         */
+        post: operations["addAlbumItems"];
         /**
          * Remove assets from one memory album.
          * @description Removes membership rows from the caller's memory album:
@@ -1519,6 +1552,10 @@ export interface paths {
          *     skipped; an all-skipped request still answers 200 with
          *     `removed` 0. Repeated ids collapse; the counts cover the
          *     distinct ids.
+         *
+         *     The rows this face removes are the rows the add lands: the
+         *     remove is the set's own tidy-up, dropping the references the
+         *     owner no longer wants beside them.
          *
          *     The removal carries no live predicate: a trashed member's
          *     row still leaves, the honest cleanup of the set (the live
@@ -6108,17 +6145,39 @@ export interface components {
             allowAppDeletion?: boolean;
         };
         /**
-         * @description The membership write body: the list of asset ids the write
-         *     addresses in one memory album. Repeated ids collapse to one
+         * @description The membership write body, shared by the memory's curation
+         *     arms: the list of asset ids to add to or remove from one
+         *     memory album. Repeated ids collapse to one
          *     application; the report's counts cover the distinct ids.
          */
         AlbumItemsRequest: {
             /**
              * @description The asset ids of the membership write, between 1 and
-             *     200 entries; the remove skips the ids that are no
-             *     members.
+             *     200 entries; the add skips the ids that are not
+             *     currently visible to the caller or already members, the
+             *     remove the ids that are no members.
              */
             assetIds: string[];
+        };
+        /**
+         * @description The honest report of one membership add over the request's
+         *     distinct ids: the rows that landed and the ids that stayed
+         *     out.
+         */
+        AddAlbumItemsResponse: {
+            /**
+             * @description The membership rows the request landed -- the photos the
+             *     creator currently sees and that were not members yet.
+             *     Zero for an all-skipped request, which is still a 200.
+             */
+            added: number;
+            /**
+             * @description The distinct ids that stayed out of the set: not
+             *     currently visible to the caller (the re-share ground
+             *     failed), not a live row, or already a member (the
+             *     idempotent no-op).
+             */
+            skipped: number;
         };
         /**
          * @description The honest report of one membership remove over the
@@ -8439,6 +8498,99 @@ export interface operations {
              *     album belongs to another account without a share to the
              *     caller, or it is a sync album -- indistinguishable by
              *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addAlbumItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the album. */
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumItemsRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The report over the request's distinct ids: `added`
+             *     counts the membership rows the request landed, `skipped`
+             *     the rest -- the ids that are not currently visible to
+             *     the caller or already members.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddAlbumItemsResponse"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, the
+             *     list is empty, or it carries more than 200 ids.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller can see the memory but is not its owner (a
+             *     memory shared to the caller): the share is view-only, so
+             *     the curation write is an honest authorization failure.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such album for this caller: the id is unknown, the
+             *     album belongs to another account without a share to the
+             *     caller, it is a sync album, or it is a directory album
+             *     (whose membership is its scan's own verdict, never a
+             *     hand-picked set) -- indistinguishable by design.
              */
             404: {
                 headers: {

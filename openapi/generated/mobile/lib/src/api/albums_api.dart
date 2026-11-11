@@ -9,6 +9,7 @@ import 'package:built_value/serializer.dart';
 import 'package:dio/dio.dart';
 
 import 'package:lumemor_api/src/api_util.dart';
+import 'package:lumemor_api/src/model/add_album_items_response.dart';
 import 'package:lumemor_api/src/model/album_audience_request.dart';
 import 'package:lumemor_api/src/model/album_audience_response.dart';
 import 'package:lumemor_api/src/model/album_create_request.dart';
@@ -34,6 +35,114 @@ class AlbumsApi {
   final Serializers _serializers;
 
   const AlbumsApi(this._dio, this._serializers);
+
+  /// Add references to one memory.
+  /// Adds membership rows to the caller&#39;s memory: &#x60;{added, skipped}&#x60;, the batch surface&#39;s set semantics -- the honest report, never per-item errors. Repeated ids collapse; the counts cover the distinct ids.  Every id the request names must pass the re-share ground: the creator must CURRENTLY see the photo (it is a member of at least one album that feeds the caller&#39;s view -- their sync stream, their directory albums, or an album shared to them) AND it must be a live row (not trashed, not hidden, not a Live Photo component). An id failing either check is skipped -- the row never lands -- and so is an id that is already a member (the set&#39;s idempotent no-op); an all-skipped request still answers 200 with &#x60;added&#x60; 0. The check runs at ADD time, once: what the write admits is what the creator could see when they made the request.  MEMORY albums only: the membership write is the memory&#39;s own curation face. A DIRECTORY album refuses it with the single-shape 404 -- a directory album is a source, and its membership is its own scan&#39;s verdict, never a hand-picked set; the sync album folds into the same 404 (it is no album resource). Authorization is the writes&#39; two-tier answer (invisible 404, shared-to-caller 403 -- the share is view-only, and curation is the owner&#39;s -- the owner or an admin override writes).  The write publishes one &#x60;album.items-changed&#x60; event exactly when at least one row landed -- the idempotent no-op stays silent. 
+  ///
+  /// Parameters:
+  /// * [albumId] - Identifier of the album.
+  /// * [albumItemsRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [AddAlbumItemsResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<AddAlbumItemsResponse>> addAlbumItems({ 
+    required String albumId,
+    required AlbumItemsRequest albumItemsRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/albums/{albumId}/items'.replaceAll('{' r'albumId' '}', encodeQueryParameter(_serializers, albumId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(AlbumItemsRequest);
+      _bodyData = _serializers.serialize(albumItemsRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    AddAlbumItemsResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(AddAlbumItemsResponse),
+      ) as AddAlbumItemsResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<AddAlbumItemsResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
 
   /// Complete a directory album&#39;s source path.
   /// The source-path completion of the album creation dialog: the typed prefix in, the pickable directories out. The call is ADMIN-scoped: mounting an existing photo directory is the administrator&#39;s act, so the completion that browses the filesystem on the dialog&#39;s behalf is the administrator&#39;s too -- a signed-in member answers 403 &#x60;AUTH_FORBIDDEN&#x60; before the prefix is even read (the members&#39; contribution path is the upload stream; a member never needs to see the container&#39;s filesystem).  The completion domain is the container&#39;s REAL visible filesystem: whatever the operating system lets the server read, drilled segment by segment. The compose file&#39;s mounts ARE the boundary -- the operator decides what the container sees, and the completion honestly reflects that visibility instead of a software-layer allowlist (the retirement: the mount-root allowlist that used to confine this endpoint died whole, with its settings face and its validation branches). The ONE exclusion that stays is the server&#39;s own managed data tree: no row ever names the application&#39;s originals, derivatives or trash, whatever prefix would match them -- the same confine the creation&#39;s &#x60;ALBUM_PATH_IN_MANAGED_TREE&#x60; branch enforces, kept honest on both sides of the pair.  The matching rule, driven by the typed prefix:  - an empty (or absent) prefix lists the filesystem root   itself (&#x60;/&#x60;) -- the dialog&#39;s first open, \&quot;start here\&quot;; - a prefix of exactly &#x60;/&#x60; lists the root&#39;s top-level   directories (the separator says \&quot;I am at the root, show me   what it holds\&quot;); - otherwise the entries of the prefix&#39;s parent directory   whose names start with the prefix&#39;s last segment are   listed as full paths (typing &#x60;/mnt/fam&#x60; lists   &#x60;/mnt/family-archive&#x60;); - a trailing separator switches to the children of the   cleaned prefix itself (typing &#x60;/mnt/family-archive/&#x60;   drills into it), and no extra row rides along then -- the   trailing slash says \&quot;I am inside this directory\&quot;.  Only real directories are listed (symlinked entries are not), the rows are deduplicated, sorted ascending, and capped at 20 -- past the cap the user narrows by typing; there is no pagination. A prefix that matches nothing answers the empty list, never an error -- a relative prefix and an unreadable parent both answer &#x60;completions: []&#x60;.  Every row carries its write fact: as the listing lands, the server probes each row&#39;s directory once with the creation-time probe&#39;s own three steps (write a uniquely named probe file, read it back, remove it). A probe step&#39;s refusal is a FACT (&#x60;writable: false&#x60;), never an error -- the row lists alongside the others and the dialog renders the deletability switch only for the &#x60;writable&#x60; rows.  The completion runs a bounded read: at most one directory listing and at most 20 per-row probes, and the response carries at most 20 rows. 
@@ -577,7 +686,7 @@ class AlbumsApi {
   }
 
   /// Remove assets from one memory album.
-  /// Removes membership rows from the caller&#39;s memory album: &#x60;{removed, skipped}&#x60;, the batch surface&#39;s set semantics -- the honest report, never per-item errors. An id that is no member of the album -- never was, or already removed -- is skipped; an all-skipped request still answers 200 with &#x60;removed&#x60; 0. Repeated ids collapse; the counts cover the distinct ids.  The removal carries no live predicate: a trashed member&#39;s row still leaves, the honest cleanup of the set (the live views filter trashed members out of the renders; removing the row tidies the set itself).  MEMORY albums only (directory and sync albums answer the single-shape 404); authorization is the writes&#39; two-tier answer (invisible 404, shared-to-caller 403, the owner or an admin override writes).  The write publishes one &#x60;album.items-changed&#x60; event exactly when at least one row was removed -- the idempotent no-op stays silent. 
+  /// Removes membership rows from the caller&#39;s memory album: &#x60;{removed, skipped}&#x60;, the batch surface&#39;s set semantics -- the honest report, never per-item errors. An id that is no member of the album -- never was, or already removed -- is skipped; an all-skipped request still answers 200 with &#x60;removed&#x60; 0. Repeated ids collapse; the counts cover the distinct ids.  The rows this face removes are the rows the add lands: the remove is the set&#39;s own tidy-up, dropping the references the owner no longer wants beside them.  The removal carries no live predicate: a trashed member&#39;s row still leaves, the honest cleanup of the set (the live views filter trashed members out of the renders; removing the row tidies the set itself).  MEMORY albums only (directory and sync albums answer the single-shape 404); authorization is the writes&#39; two-tier answer (invisible 404, shared-to-caller 403, the owner or an admin override writes).  The write publishes one &#x60;album.items-changed&#x60; event exactly when at least one row was removed -- the idempotent no-op stays silent. 
   ///
   /// Parameters:
   /// * [albumId] - Identifier of the album.

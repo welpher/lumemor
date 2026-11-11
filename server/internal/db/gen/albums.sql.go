@@ -89,6 +89,59 @@ func (q *Queries) AddAssetToAlbum(ctx context.Context, arg AddAssetToAlbumParams
 	return err
 }
 
+const addMemoryItems = `-- name: AddMemoryItems :many
+INSERT INTO album_items (album_id, asset_id, added_by)
+SELECT $1, a.id, $2
+FROM assets a
+WHERE a.id = ANY($3::uuid[])
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND caller_asset_visible($2, a.id)
+ON CONFLICT DO NOTHING
+RETURNING asset_id
+`
+
+type AddMemoryItemsParams struct {
+	AlbumID  pgtype.UUID   `json:"album_id"`
+	AddedBy  pgtype.UUID   `json:"added_by"`
+	AssetIds []pgtype.UUID `json:"asset_ids"`
+}
+
+// The membership add, the memory curation's own arm: one
+// album_items row for every requested asset the creator CURRENTLY
+// SEES -- the re-share right's whole ground. The visibility check
+// is the caller-visible predicate over the acting creator (the
+// union of the albums that feed their view: their sync stream, their
+// directory albums, the albums shared to them), joined with the
+// live-member filter (not trashed, not hidden, not a Live Photo
+// component row) so a photo the family can no longer see never
+// enters a set that re-shares it. An id failing either check
+// matches nothing here and lands as the report's skipped; an id
+// already a member hits the conflict and lands as skipped too --
+// the honest report, never per-item errors. RETURNING carries
+// exactly the rows this write landed -- the added count, and the
+// event discipline's transition signal.
+func (q *Queries) AddMemoryItems(ctx context.Context, arg AddMemoryItemsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, addMemoryItems, arg.AlbumID, arg.AddedBy, arg.AssetIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var asset_id pgtype.UUID
+		if err := rows.Scan(&asset_id); err != nil {
+			return nil, err
+		}
+		items = append(items, asset_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countAlbumReferencesOfAsset = `-- name: CountAlbumReferencesOfAsset :one
 SELECT count(*) FROM album_items
 WHERE asset_id = $1

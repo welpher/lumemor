@@ -9,6 +9,7 @@ All URIs are relative to */api/v1*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**addAlbumItems**](AlbumsApi.md#addalbumitems) | **POST** /albums/{albumId}/items | Add references to one memory.
 [**completeAlbumPath**](AlbumsApi.md#completealbumpath) | **GET** /albums/path-completions | Complete a directory album&#39;s source path.
 [**createAlbum**](AlbumsApi.md#createalbum) | **POST** /albums | Create one directory album from an existing path.
 [**createMemory**](AlbumsApi.md#creatememory) | **POST** /memories | Create one memory.
@@ -22,6 +23,55 @@ Method | HTTP request | Description
 [**updateAlbum**](AlbumsApi.md#updatealbum) | **PATCH** /albums/{albumId} | Patch one album&#39;s properties.
 [**updateAlbumAudience**](AlbumsApi.md#updatealbumaudience) | **PUT** /albums/{albumId}/audience | Set one album&#39;s audience (the full grantee set).
 
+
+# **addAlbumItems**
+> AddAlbumItemsResponse addAlbumItems(albumId, albumItemsRequest)
+
+Add references to one memory.
+
+Adds membership rows to the caller's memory: `{added, skipped}`, the batch surface's set semantics -- the honest report, never per-item errors. Repeated ids collapse; the counts cover the distinct ids.  Every id the request names must pass the re-share ground: the creator must CURRENTLY see the photo (it is a member of at least one album that feeds the caller's view -- their sync stream, their directory albums, or an album shared to them) AND it must be a live row (not trashed, not hidden, not a Live Photo component). An id failing either check is skipped -- the row never lands -- and so is an id that is already a member (the set's idempotent no-op); an all-skipped request still answers 200 with `added` 0. The check runs at ADD time, once: what the write admits is what the creator could see when they made the request.  MEMORY albums only: the membership write is the memory's own curation face. A DIRECTORY album refuses it with the single-shape 404 -- a directory album is a source, and its membership is its own scan's verdict, never a hand-picked set; the sync album folds into the same 404 (it is no album resource). Authorization is the writes' two-tier answer (invisible 404, shared-to-caller 403 -- the share is view-only, and curation is the owner's -- the owner or an admin override writes).  The write publishes one `album.items-changed` event exactly when at least one row landed -- the idempotent no-op stays silent. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAlbumsApi();
+final String albumId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the album.
+final AlbumItemsRequest albumItemsRequest = {"assetIds":["0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072","0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073"]}; // AlbumItemsRequest | 
+
+try {
+    final response = api.addAlbumItems(albumId, albumItemsRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AlbumsApi->addAlbumItems: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **albumId** | **String**| Identifier of the album. | 
+ **albumItemsRequest** | [**AlbumItemsRequest**](AlbumItemsRequest.md)|  | 
+
+### Return type
+
+[**AddAlbumItemsResponse**](AddAlbumItemsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **completeAlbumPath**
 > AlbumPathCompletionsResponse completeAlbumPath(prefix)
@@ -309,7 +359,7 @@ This endpoint does not need any parameter.
 
 Remove assets from one memory album.
 
-Removes membership rows from the caller's memory album: `{removed, skipped}`, the batch surface's set semantics -- the honest report, never per-item errors. An id that is no member of the album -- never was, or already removed -- is skipped; an all-skipped request still answers 200 with `removed` 0. Repeated ids collapse; the counts cover the distinct ids.  The removal carries no live predicate: a trashed member's row still leaves, the honest cleanup of the set (the live views filter trashed members out of the renders; removing the row tidies the set itself).  MEMORY albums only (directory and sync albums answer the single-shape 404); authorization is the writes' two-tier answer (invisible 404, shared-to-caller 403, the owner or an admin override writes).  The write publishes one `album.items-changed` event exactly when at least one row was removed -- the idempotent no-op stays silent. 
+Removes membership rows from the caller's memory album: `{removed, skipped}`, the batch surface's set semantics -- the honest report, never per-item errors. An id that is no member of the album -- never was, or already removed -- is skipped; an all-skipped request still answers 200 with `removed` 0. Repeated ids collapse; the counts cover the distinct ids.  The rows this face removes are the rows the add lands: the remove is the set's own tidy-up, dropping the references the owner no longer wants beside them.  The removal carries no live predicate: a trashed member's row still leaves, the honest cleanup of the set (the live views filter trashed members out of the renders; removing the row tidies the set itself).  MEMORY albums only (directory and sync albums answer the single-shape 404); authorization is the writes' two-tier answer (invisible 404, shared-to-caller 403, the owner or an admin override writes).  The write publishes one `album.items-changed` event exactly when at least one row was removed -- the idempotent no-op stays silent. 
 
 ### Example
 ```dart
