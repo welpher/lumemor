@@ -14,12 +14,14 @@
 	// PRIVATE per user, so an event from another account's write
 	// must move nothing the server does not move: a labeled event for
 	// a cluster the caller's own list does not carry refetches the
-	// same answer and the page invents no card. A failed convergence
+	// same answer and the page invents no card. The asset deletions
+	// ride the same convergence (a purged asset's faces died with
+	// it). A failed convergence
 	// keeps the last good state silently (the next event retries);
 	// only the initial load's failure raises the error box.
 	import { _ } from 'svelte-i18n';
 	import { listPeople, type PersonSummary } from '$lib/api/people';
-	import { subscribePersonEvents } from '$lib/events';
+	import { subscribeAssetEvents, subscribePersonEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -81,15 +83,29 @@
 		return resolveErrorText($_, key);
 	}
 
-	// The load and the SSE subscription live for the page's lifetime:
-	// the first subscriber opens the stream, leaving the page closes
-	// it, and every person event converges through a refetch.
+	// The load and the SSE subscriptions live for the page's
+	// lifetime: the first subscriber opens the stream, leaving the
+	// page closes it, and every person event converges through a
+	// refetch. The asset deletions converge too: a purged asset's
+	// faces died with it (clusters lost members or dissolved), so
+	// the card grid's counts and its membership are stale until the
+	// refetch -- the same single-flight convergence, one more
+	// trigger.
 	$effect(() => {
 		void runLoad(false);
 		const unsubscribe = subscribePersonEvents(() => {
 			void runLoad(true);
 		});
-		return () => unsubscribe();
+		const unsubscribeAssets = subscribeAssetEvents((event) => {
+			if (event.name !== 'asset.deleted') {
+				return;
+			}
+			void runLoad(true);
+		});
+		return () => {
+			unsubscribe();
+			unsubscribeAssets();
+		};
 	});
 </script>
 
