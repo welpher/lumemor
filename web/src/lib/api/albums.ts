@@ -1,21 +1,25 @@
 // The albums surface's data client (reshaped by the
-// albums-as-sources and album-autonomy reworks, renamed with the
+// albums-as-sources and album-autonomy reworks, widened by the
 // memory's birth): the wall list, the detail read (the deletion faces
 // included -- the write probe's `sourceWritable` fact, the owner's
 // `allowAppDeletion` switch, the derived `deletable` affordance), the
 // directory creation (title + source path + audience + the two
 // autonomy switches, the honest skipped report and the probe's
-// read-only fact -- both admin-guarded writes), the property patch
-// (title, cover, deletability), the memory/directory delete, the
-// path completion of the creation dialog's combobox (the
-// system-wide domain: the container's real visible filesystem, the
-// managed tree never listed; every row carries the write fact the
-// listing's probe discovered), the audience's full-set PUT, the
-// rescan trigger, the instance's member list and the timeline
-// preference write -- each behind the repo-wide error-code
-// convention: every failure outcome carries the error code's i18n
-// key (the envelope code lowercased, 'internal' for a network
-// failure or an unparseable body, 'session_expired' for a 401).
+// read-only fact -- both admin-guarded writes), the memory creation
+// (title + audience, every member's write -- a memory is personal
+// curation, not configuration) and its curation pair (the membership
+// add and remove over the items face, each answering its honest
+// counts-only report), the property patch (title, cover,
+// deletability), the memory/directory delete, the path completion of
+// the creation dialog's combobox (the system-wide domain: the
+// container's real visible filesystem, the managed tree never
+// listed; every row carries the write fact the listing's probe
+// discovered), the audience's full-set PUT, the rescan trigger, the
+// instance's member list and the timeline preference write -- each
+// behind the repo-wide error-code convention: every failure outcome
+// carries the error code's i18n key (the envelope code lowercased,
+// 'internal' for a network failure or an unparseable body,
+// 'session_expired' for a 401).
 //
 // THE MESSAGE-KEY EXCEPTIONS (the people client's requires-label
 // pattern): the album write faces answer a handful of 400
@@ -77,6 +81,28 @@ export type AlbumListResult = { ok: true; albums: AlbumSummary[] } | { ok: false
 
 /** The detail read's outcome. */
 export type AlbumDetailResult = { ok: true; detail: AlbumDetail } | { ok: false; errorKey: string };
+
+/**
+ * The memory creation's outcome: the created wall card and the honest
+ * audience report (the requested ids that did not become audience --
+ * the dialog surfaces them before closing). A memory owns no source
+ * and no switches, so no probe facts ride this answer.
+ */
+export type MemoryCreateResult =
+	{ ok: true; memory: AlbumSummary; skipped: AlbumAudienceSkip[] } | { ok: false; errorKey: string };
+
+/**
+ * The membership add's outcome: the honest counts-only report -- the
+ * rows that landed and the distinct ids that stayed out (not visible
+ * to the caller, not live, or already members).
+ */
+export type AddAlbumItemsResult = { ok: true; added: number; skipped: number } | { ok: false; errorKey: string };
+
+/**
+ * The membership remove's outcome: the honest counts-only report --
+ * the rows that left and the distinct ids that were no members.
+ */
+export type RemoveAlbumItemsResult = { ok: true; removed: number; skipped: number } | { ok: false; errorKey: string };
 
 /**
  * The creation's outcome: the created wall card, the honest audience
@@ -280,6 +306,63 @@ function createResponseFrom(
 		skipped.push(skip);
 	}
 	return { album, skipped, sourceWritable: (body as AlbumCreateResponse).sourceWritable };
+}
+
+/**
+ * Structurally validate the memory creation's answer: the created
+ * wall card plus the required honest `skipped` report (empty when the
+ * whole audience landed). A memory's answer carries no probe facts --
+ * nothing else to validate. The returned card is the summary shape
+ * alone (the report fields are stripped -- they are the write's
+ * answer, not the card's).
+ */
+function memoryCreateResponseFrom(body: unknown): { memory: AlbumSummary; skipped: AlbumAudienceSkip[] } | null {
+	const memory = summaryFrom(body);
+	if (memory === null) {
+		return null;
+	}
+	if (!isObject(body) || !Array.isArray(body.skipped)) {
+		return null;
+	}
+	const skipped: AlbumAudienceSkip[] = [];
+	for (const entry of body.skipped) {
+		const skip = audienceSkipFrom(entry);
+		if (skip === null) {
+			return null;
+		}
+		skipped.push(skip);
+	}
+	const { skipped: _report, ...card } = body as AlbumSummary & { skipped: unknown };
+	return { memory: card as AlbumSummary, skipped };
+}
+
+/**
+ * Structurally validate one membership report: both counts present,
+ * non-negative integers. The reports are counts-only by contract --
+ * no per-id reasons ride them (the row's landing or absence is the
+ * whole answer).
+ */
+function itemsReportFrom(
+	body: unknown,
+	addedKey: string,
+	skippedKey: string
+): { landed: number; skipped: number } | null {
+	if (!isObject(body)) {
+		return null;
+	}
+	const landed = (body as Record<string, unknown>)[addedKey];
+	const skipped = (body as Record<string, unknown>)[skippedKey];
+	if (
+		typeof landed !== 'number' ||
+		!Number.isInteger(landed) ||
+		landed < 0 ||
+		typeof skipped !== 'number' ||
+		!Number.isInteger(skipped) ||
+		skipped < 0
+	) {
+		return null;
+	}
+	return { landed, skipped };
 }
 
 /** Structurally validate one album detail; null when it is not one. */
@@ -496,6 +579,131 @@ export async function createAlbum(
 		skipped: created.skipped,
 		sourceWritable: created.sourceWritable
 	};
+}
+
+/**
+ * POST /api/v1/memories: create one memory -- a reference set the
+ * caller curates photo by photo. The write is EVERY MEMBER'S: a
+ * memory is personal curation (who sees which of the caller's
+ * picks), not configuration (no filesystem location is named), so
+ * the face holds no role gate at all. The request carries the title
+ * and the starting audience, nothing else: a memory owns no source
+ * path, no deletability switch (its delete never moves files) and
+ * no timeline switch (it never feeds its creator's timeline -- the
+ * exclusion is the memory's fixed semantics, landed with the row
+ * itself). The response is the created memory's wall card (the
+ * creation-time constants: `callerRole` `owner`, `type` `memory`,
+ * no members, no cover) plus the honest audience `skipped` report
+ * (the requested ids that did not land -- the caller's own id, an
+ * unknown or disabled account).
+ */
+export async function createMemory(
+	input: { title: string; audience?: readonly string[] },
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<MemoryCreateResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			'/api/v1/memories',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					title: input.title,
+					// The audience field rides only when the dialog picked
+					// members: an absent field is the server's "only me".
+					...(input.audience !== undefined ? { audience: [...input.audience] } : {})
+				})
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const created = memoryCreateResponseFrom(await bodyOf(response));
+	if (created === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, memory: created.memory, skipped: created.skipped };
+}
+
+/**
+ * POST /api/v1/albums/{albumId}/items: add membership rows to the
+ * caller's memory -- the wall-selection curation entry's write. The
+ * request carries the picked asset ids (1-200, repeated ids
+ * collapse); a row lands only for a photo the creator currently
+ * sees as a live row, everything else (foreign-unshared, non-live,
+ * already a member) is skipped, never a per-item error -- the
+ * response is the honest counts-only report `{added, skipped}`. A
+ * no-op add still answers 200; the event family fires exactly when
+ * a row lands.
+ */
+export async function addAlbumItems(
+	albumId: string,
+	assetIds: readonly string[],
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<AddAlbumItemsResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`/api/v1/albums/${encodeURIComponent(albumId)}/items`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ assetIds: [...assetIds] })
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const report = itemsReportFrom(await bodyOf(response), 'added', 'skipped');
+	if (report === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, added: report.landed, skipped: report.skipped };
+}
+
+/**
+ * DELETE /api/v1/albums/{albumId}/items: remove membership rows from
+ * the caller's memory -- the tidy-up of the add's rows. The photos
+ * are not the memory's: they live on in the albums they were
+ * ingested through, and the references simply leave the set. The
+ * response is the honest counts-only report `{removed, skipped}`.
+ */
+export async function removeAlbumItems(
+	albumId: string,
+	assetIds: readonly string[],
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<RemoveAlbumItemsResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`/api/v1/albums/${encodeURIComponent(albumId)}/items`,
+			{
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ assetIds: [...assetIds] })
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const report = itemsReportFrom(await bodyOf(response), 'removed', 'skipped');
+	if (report === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, removed: report.landed, skipped: report.skipped };
 }
 
 /**
