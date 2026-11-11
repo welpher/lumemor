@@ -450,6 +450,149 @@ func TestAssetEndpointsOwnerScope(t *testing.T) {
 	}
 }
 
+// TestAssetDetailInfoPanelFaces pins the info panel's two deep-link
+// faces of the detail read: the `albums` array (the caller-visible
+// albums holding the asset -- the owner's own albums of every type
+// with the sync card leading, a sharee seeing only the album shared
+// to them and never the owner's sync stream) and the `place` face
+// (the locale-joined city row, null when nothing resolved, the
+// PATCH response carrying it exactly like the GET).
+func TestAssetDetailInfoPanelFaces(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "info-panel-grace@example.com")
+	env.insertPlacesFixture(t)
+
+	asset := fixtureWallAssetID("b1")
+	env.insertOwnedAsset(t, asset, adminID, time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+
+	// The asset also sits in an own directory album and an own
+	// virtual album; the virtual one is shared to grace (the share
+	// makes the asset visible to her through the caller-visible
+	// union).
+	directory := fixtureWallAlbumID("b1")
+	env.insertWallAlbum(t, directory, adminID, "directory", "Archive", wallAlbumOpts{})
+	virtual := fixtureWallAlbumID("b2")
+	env.insertWallAlbum(t, virtual, adminID, "virtual", "Picks", wallAlbumOpts{})
+	env.addTimelineItem(t, directory, asset, adminID)
+	env.addTimelineItem(t, virtual, asset, adminID)
+	env.shareWallAlbum(t, virtual, graceID, adminID, time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC))
+
+	detailOf := func(t *testing.T, cookie *http.Cookie, query string) apigen.AssetDetail {
+		t.Helper()
+		target := "/api/v1/assets/" + asset.String()
+		if query != "" {
+			target += "?" + query
+		}
+		rec := env.serveGet(t, target, cookie, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("detail status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var detail apigen.AssetDetail
+		if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+			t.Fatalf("decode detail %q: %v", rec.Body.String(), err)
+		}
+		return detail
+	}
+
+	t.Run("OwnerSeesTheirArmsSyncFirst", func(t *testing.T) {
+		detail := detailOf(t, env.cookie, "")
+		// The three arms the owner can see: the sync stream's
+		// materialized membership, the directory album, the virtual
+		// album. The sync card leads; the rest order by title
+		// case-insensitively ("Archive" before "Picks").
+		if len(detail.Albums) != 3 {
+			t.Fatalf("albums = %v, want the three own arms", detail.Albums)
+		}
+		if detail.Albums[0].Type != apigen.AssetAlbumRefTypeSync ||
+			detail.Albums[0].CallerRole != apigen.AssetAlbumRefCallerRoleOwner {
+			t.Errorf("albums[0] = {%s %s %s}, want the own sync card first",
+				detail.Albums[0].Type, detail.Albums[0].Title, detail.Albums[0].CallerRole)
+		}
+		if detail.Albums[1].Type != apigen.AssetAlbumRefTypeDirectory ||
+			detail.Albums[1].Title != "Archive" {
+			t.Errorf("albums[1] = {%s %s}, want the directory album (title order)", detail.Albums[1].Type, detail.Albums[1].Title)
+		}
+		if detail.Albums[2].Type != apigen.AssetAlbumRefTypeVirtual ||
+			detail.Albums[2].Title != "Picks" {
+			t.Errorf("albums[2] = {%s %s}, want the virtual album", detail.Albums[2].Type, detail.Albums[2].Title)
+		}
+		// No place resolved yet: the face is null, never absent.
+		if detail.Place != nil {
+			t.Errorf("place = %+v, want null (nothing resolved)", detail.Place)
+		}
+	})
+
+	t.Run("PlaceResolvesThroughTheLocaleJoin", func(t *testing.T) {
+		env.exec(t, `UPDATE assets SET place_id = $2 WHERE id = $1`, asset, placeParisID)
+
+		en := detailOf(t, env.cookie, "")
+		if en.Place == nil || en.Place.PlaceId != placeParisID || en.Place.Name != "Paris" {
+			t.Errorf("place (en) = %+v, want {2988507 Paris} (the canonical name when the locale carries none)", en.Place)
+		}
+		zh := detailOf(t, env.cookie, "locale=zh-Hans")
+		if zh.Place == nil || zh.Place.Name != "巴黎" {
+			t.Errorf("place (zh-Hans) = %+v, want the locale row's name", zh.Place)
+		}
+
+		// The locale parameter is the places face's own shape: an
+		// out-of-set value is a client bug the 400 names.
+		rec := env.serveGet(t, "/api/v1/assets/"+asset.String()+"?locale=fr", env.cookie, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("detail with locale=fr status = %d, want %d (body %q)",
+				rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+
+		// The PATCH response serves the same face at its own locale:
+		// the same-shape discipline, place join included.
+		patchBody, err := json.Marshal(map[string]any{"description": "City shot"})
+		if err != nil {
+			t.Fatalf("marshal patch body: %v", err)
+		}
+		req := httptest.NewRequest(http.MethodPatch,
+			"/api/v1/assets/"+asset.String()+"?locale=zh-Hans", bytes.NewReader(patchBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(env.cookie)
+		patchRec := httptest.NewRecorder()
+		env.router.ServeHTTP(patchRec, req)
+		if patchRec.Code != http.StatusOK {
+			t.Fatalf("PATCH with locale status = %d, want %d (body %q)",
+				patchRec.Code, http.StatusOK, patchRec.Body.String())
+		}
+		var patched apigen.AssetDetail
+		if err := json.Unmarshal(patchRec.Body.Bytes(), &patched); err != nil {
+			t.Fatalf("decode patched detail %q: %v", patchRec.Body.String(), err)
+		}
+		if patched.Place == nil || patched.Place.Name != "巴黎" {
+			t.Errorf("patched place = %+v, want the zh-Hans row's name (the PATCH carries the face like the GET)", patched.Place)
+		}
+		if len(patched.Albums) != 3 {
+			t.Errorf("patched albums = %d entries, want the same array the GET serves", len(patched.Albums))
+		}
+	})
+
+	t.Run("ShareeSeesOnlyTheSharedAlbum", func(t *testing.T) {
+		detail := detailOf(t, graceCookie, "")
+		// The share on the virtual album is what makes the asset
+		// visible to grace -- and exactly that album surfaces: the
+		// owner's sync stream and their own directory album are
+		// invisible to her, whatever their membership rows say.
+		if len(detail.Albums) != 1 {
+			t.Fatalf("the sharee albums = %v, want the one shared album", detail.Albums)
+		}
+		if detail.Albums[0].Title != "Picks" ||
+			detail.Albums[0].CallerRole != apigen.AssetAlbumRefCallerRoleViewer {
+			t.Errorf("albums[0] = {%s %s}, want Picks as viewer",
+				detail.Albums[0].Title, detail.Albums[0].CallerRole)
+		}
+		// The place face is the asset's own fact: it rides the
+		// sharee's view too.
+		if detail.Place == nil || detail.Place.PlaceId != placeParisID {
+			t.Errorf("the sharee place = %+v, want the resolved place", detail.Place)
+		}
+	})
+}
+
 // TestGetAssetThumbnailNotReady pins the derived-file-miss state: the
 // asset exists (the upload answered 201) but the thumbnail job has not
 // produced its file -- the environment wires no queue, so nothing ever

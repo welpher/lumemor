@@ -5,7 +5,14 @@
 // move), the rescan reconciles the album's membership with what that
 // directory holds, the audience is an album property (the edit
 // dialog's audience face, the full-set PUT), and the member's side of
-// the share is the read-only view. Both pickers (the path completion
+// the share is the read-only view. THE AUTONOMY BLOCK rides BOTH
+// dialogs (the lock's retirement reshaped it): the timeline-exclusion
+// toggle everywhere, the deletability row exactly where the source's
+// writable fact holds -- the create dialog learns the fact from the
+// picked completion row, the edit dialog from the stored album -- and
+// NO lock affordance anywhere (the setting gates the delete
+// affordance, the operating system gates the execution, the trash
+// catches everything). Both pickers (the path completion
 // and the audience candidates) are PORTALED floating layers (the
 // floating-layer revision) -- anchored under their triggers,
 // living in the document outside the dialogs' DOM, so the dialogs
@@ -79,8 +86,13 @@
 //     the list alone, the modal's Esc owns the next stroke.
 //  4. The read-only album's creation: the completion lists
 //     coastal-week for a typed prefix, Enter completes it, the
-//     audience stays the honest "Only you", and the POST carries the
-//     pinned triple (title, rootPath, audience). The write probe
+//     audience stays the honest "Only you", and the create dialog's
+//     autonomy block holds its read-only shape -- the
+//     timeline-exclusion toggle present and checked (the feed's
+//     default), NO deletability row (the picked row's writable fact
+//     is false: no dead affordance). The POST carries exactly what
+//     the dialog holds (title, rootPath, audience, inTimeline true
+//     -- and no allowAppDeletion key). The write probe
 //     answers sourceWritable false -- the creation FEEDBACK carries
 //     the read-only note and the Done affordance acknowledges it
 //     (the honest report face; the card lands with the honest zero
@@ -92,13 +104,15 @@
 //  6. The task panel: the rescan's job_runs row lists with its own
 //     label (the contract's JobRunKind carries album_rescan -- the
 //     row must never fall to the panel's generic failure).
-//  7. The edit dialog: the autonomy block -- the lock
-//     toggle and the caller's own timeline-exclusion toggle ride the
-//     dialog, while the deletability row DOES NOT render (the
-//     read-only source carries no row at all -- no dead affordance);
-//     the audience face then grants the member the view (the source
-//     row fixed, the picker, the drain collapse, the full-set PUT,
-//     the unchanged title writing nothing, the chip reseed).
+//  7. The edit dialog: the autonomy block -- the caller's own
+//     timeline-exclusion toggle rides the dialog and the LOCK
+//     TOGGLE IS GONE (the lock retired whole: no lock affordance
+//     renders anywhere), while the deletability row DOES NOT render
+//     (the read-only source carries no row at all -- no dead
+//     affordance); the audience face then grants the member the view
+//     (the source row fixed, the picker, the drain collapse, the
+//     full-set PUT, the unchanged title writing nothing, the chip
+//     reseed).
 //  8. The member perspective: the member signs in through their own
 //     form, the wall's "Shared with you" section carries the album,
 //     the wall renders NO creation affordance (the guard's visual
@@ -112,13 +126,26 @@
 //     owner-only write affordance.
 // 10. The writable album's creation (the probe's true arm): the
 //     completion's exact-match row for the writable fixture root, the
-//     same pinned triple, and sourceWritable true -- the writable,
-//     all-landed creation closes the dialog DIRECTLY (no report
-//     face), and the card lands.
-// 11. The writable album's rescan converges the seeded pair, and the
-//     edit dialog's deletability row RENDERS (checked on by default)
-//     beside the lock and exclusion toggles.
-// 12. The deletability chain: the deletable wall curates a
+//     same pinned triple, and the create dialog's autonomy block in
+//     its writable shape -- the deletability row RENDERS (checked on)
+//     from the picked row's writable fact, and the timeline-exclusion
+//     toggle is UNCHECKED: the album is created kept out of its
+//     creator's timeline. The POST carries both switches
+//     (allowAppDeletion true, inTimeline false), the probe answers
+//     sourceWritable true -- the writable, all-landed creation closes
+//     the dialog DIRECTLY (no report face), and the card lands.
+// 11. The writable album's rescan converges the seeded pair, and
+//     the edit dialog's autonomy block holds its writable shape --
+//     the deletability row rendered (checked on) beside the
+//     exclusion toggle (reading unchecked: the creation landed the
+//     exclusion), the lock toggle gone.
+// 12. The create-time exclusion's convergence: the administrator's
+//     aggregated timeline holds exactly the read-only album's pair
+//     (created with the feed's default) and NEVER the writable
+//     album's pair (created excluded) -- the preference landed in
+//     the creation itself scopes the aggregate, never the album's
+//     own view (scene 11's membership is complete either way).
+// 13. The deletability chain: the deletable wall curates a
 //     DELETE-ONLY selection (the hover check, the batch bar offering
 //     Trash alone), the trash moves the file out of the source, the
 //     album's live membership converges to the survivor, the trash
@@ -127,7 +154,7 @@
 //     healed).
 //
 // THE STATE HANDOFF: the scenes are serial (one stack, one story --
-// see playwright.config.ts). Scenes 1-7 and 10-12 share the admin's
+// see playwright.config.ts). Scenes 1-7 and 10-13 share the admin's
 // browser session (scene 1 signs in and saves the storage state);
 // scene 8 signs the member in through a fresh context and saves their
 // own; scene 9 replays the member's. Each scene navigates explicitly
@@ -391,8 +418,19 @@ test.describe('the administrator scenes', () => {
 		// carries the empty set.
 		await expect(dialog.getByText('Only you')).toBeVisible();
 
-		// The POST shape: the pinned triple, pinned against the real
-		// request the page sends.
+		// The create dialog's autonomy block in its read-only shape,
+		// learned from the pick: the timeline-exclusion toggle present
+		// and checked (the feed's default), NO deletability row -- the
+		// picked completion row's writable fact is false, and a
+		// read-only source renders no dead affordance.
+		const autonomy = dialog.locator('[data-testid="album-autonomy"]');
+		await expect(autonomy).toBeVisible();
+		await expect(autonomy.locator('[data-testid="album-timeline-toggle"]')).toBeChecked();
+		await expect(autonomy.locator('[data-testid="album-deletable-toggle"]')).toHaveCount(0);
+
+		// The POST shape: exactly what the dialog holds, pinned against
+		// the real request the page sends (the read-only pick's row is
+		// absent, so no allowAppDeletion key rides along).
 		const createPost = page.waitForRequest(
 			(request) => request.method() === 'POST' && request.url().endsWith('/api/v1/albums')
 		);
@@ -401,7 +439,8 @@ test.describe('the administrator scenes', () => {
 		expect(post.postDataJSON()).toEqual({
 			title: ALBUM_TITLE,
 			rootPath: SOURCE_DIR,
-			audience: []
+			audience: [],
+			inTimeline: true
 		});
 
 		// The write probe's honest face: the read-only bind
@@ -527,15 +566,16 @@ test.describe('the administrator scenes', () => {
 		await expect(dialog.locator('.album-form__source')).toContainText(SOURCE_DIR);
 		await expect(dialog.getByText('Source · fixed')).toBeVisible();
 
-		// The autonomy block: the LOCK toggle and the
-		// caller's own TIMELINE-EXCLUSION toggle ride the dialog --
-		// but the DELETABILITY row does not render at all. The
-		// read-only source carries no row: no affordance exists for a
-		// write the application can never perform (the probe's false
-		// fact kills the row, scene 4's report face said why).
+		// The autonomy block: the caller's own TIMELINE-EXCLUSION
+		// toggle rides the dialog, the LOCK TOGGLE IS GONE (the lock's
+		// retirement: no lock affordance renders anywhere), and the
+		// DELETABILITY row does not render at all. The read-only
+		// source carries no row: no affordance exists for a write the
+		// application can never perform (the probe's false fact kills
+		// the row, scene 4's report face said why).
 		const autonomy = dialog.locator('[data-testid="album-autonomy"]');
 		await expect(autonomy).toBeVisible();
-		await expect(autonomy.locator('[data-testid="album-lock-toggle"]')).toBeVisible();
+		await expect(autonomy.locator('[data-testid="album-lock-toggle"]')).toHaveCount(0);
 		await expect(autonomy.locator('[data-testid="album-timeline-toggle"]')).toBeVisible();
 		await expect(autonomy.locator('[data-testid="album-deletable-toggle"]')).toHaveCount(0);
 
@@ -709,10 +749,11 @@ test.describe('the member viewer scenes', () => {
 	});
 });
 
-// The writable arm of the story (the deletability chain):
-// the admin's session replays; the scenes walk the probe's TRUE
-// fact, the deletability row it renders, the delete-only selection
-// it arms, and the trash/restore round trip that moves the source
+// The writable arm of the story (the autonomy chain): the admin's
+// session replays; the scenes walk the probe's TRUE fact, the
+// deletability row it renders (both dialogs), the create-time
+// exclusion's convergence, the delete-only selection the derived
+// face arms, and the trash/restore round trip that moves the source
 // file itself.
 test.describe('the writable source scenes', () => {
 	test.use({ storageState: adminStatePath });
@@ -739,7 +780,25 @@ test.describe('the writable source scenes', () => {
 
 		await expect(dialog.getByText('Only you')).toBeVisible();
 
-		// The pinned triple, the same shape as the read-only story's.
+		// The create dialog's autonomy block in its writable shape,
+		// learned from the pick: the deletability row RENDERS (seeded
+		// on) -- the picked row's writable fact is true -- beside the
+		// timeline-exclusion toggle, which seeds checked too. The
+		// story then FLIPS the exclusion: this album is created kept
+		// out of its creator's timeline (scene 12 walks the
+		// convergence).
+		const autonomy = dialog.locator('[data-testid="album-autonomy"]');
+		await expect(autonomy).toBeVisible();
+		const timelineToggle = autonomy.locator('[data-testid="album-timeline-toggle"]');
+		await expect(timelineToggle).toBeChecked();
+		const deletableToggle = autonomy.locator('[data-testid="album-deletable-toggle"]');
+		await expect(deletableToggle).toBeVisible();
+		await expect(deletableToggle).toBeChecked();
+		await timelineToggle.uncheck();
+
+		// The pinned body: the triple plus BOTH switches, exactly as
+		// the dialog's drafts hold them (the deletability row's seed
+		// on, the exclusion flipped off).
 		const createPost = page.waitForRequest(
 			(request) => request.method() === 'POST' && request.url().endsWith('/api/v1/albums')
 		);
@@ -748,17 +807,25 @@ test.describe('the writable source scenes', () => {
 		expect(post.postDataJSON()).toEqual({
 			title: RW_ALBUM_TITLE,
 			rootPath: RW_MOUNT_ROOT,
-			audience: []
+			audience: [],
+			allowAppDeletion: true,
+			inTimeline: false
 		});
 
 		// The probe's TRUE arm: the writable bind answers
 		// sourceWritable true, and an all-landed, writable creation
 		// holds NO report -- the dialog closes directly (the
 		// acknowledgment face belongs to the honest problems alone).
+		// The response card also carries the landed exclusion: the
+		// album was born out of its creator's timeline.
 		const response = await post.response();
 		expect(response?.status()).toBe(201);
-		const createBody = (await response?.json()) as { sourceWritable?: boolean };
+		const createBody = (await response?.json()) as {
+			sourceWritable?: boolean;
+			inTimeline?: boolean;
+		};
 		expect(createBody.sourceWritable).toBe(true);
+		expect(createBody.inTimeline).toBe(false);
 		await expect(dialog).toHaveCount(0);
 
 		// The card lands with the honest zero count.
@@ -812,16 +879,22 @@ test.describe('the writable source scenes', () => {
 			)
 			.toBe(2);
 
-		// The deletability row RENDERS for the writable source (the
-		// edit dialog's third toggle, present exactly when the probe
-		// answered true), on by default beside the lock and exclusion
-		// toggles -- the autonomy block's full shape.
+		// The edit dialog's autonomy block holds its writable shape:
+		// the deletability row RENDERS for the writable source
+		// (present exactly when the probe answered true), checked on,
+		// beside the exclusion toggle -- and the LOCK TOGGLE IS GONE
+		// (the lock's retirement). The exclusion toggle reads
+		// UNCHECKED: the creation landed the creator's own exclusion
+		// (scene 10's flipped draft), and the dialog seeds from the
+		// detail's own fields.
 		await page.getByRole('button', { name: 'Properties', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: 'Album properties', exact: true });
 		await expect(dialog).toBeVisible();
 		const autonomy = dialog.locator('[data-testid="album-autonomy"]');
-		await expect(autonomy.locator('[data-testid="album-lock-toggle"]')).toBeVisible();
-		await expect(autonomy.locator('[data-testid="album-timeline-toggle"]')).toBeVisible();
+		await expect(autonomy.locator('[data-testid="album-lock-toggle"]')).toHaveCount(0);
+		const editTimelineToggle = autonomy.locator('[data-testid="album-timeline-toggle"]');
+		await expect(editTimelineToggle).toBeVisible();
+		await expect(editTimelineToggle).not.toBeChecked();
 		const deletableToggle = autonomy.locator('[data-testid="album-deletable-toggle"]');
 		await expect(deletableToggle).toBeVisible();
 		await expect(deletableToggle).toBeChecked();
@@ -829,7 +902,41 @@ test.describe('the writable source scenes', () => {
 		await expect(dialog).toHaveCount(0);
 	});
 
-	test("scene 12: the deletable wall trashes through the selection bar and the trash view's restore returns the file", async ({
+	test('scene 12: the excluded creation keeps the writable album out of the aggregated timeline', async ({
+		page
+	}) => {
+		// The create-time exclusion's convergence, the creator's own
+		// aggregated view: the read-only album (created with the
+		// feed's default, scene 4) feeds its two photos; the writable
+		// album (created excluded, scene 10) feeds NOTHING -- the
+		// preference landed in the creation itself. The wall is the
+		// product surface's honest answer: exactly the read-only
+		// pair's tiles.
+		await page.goto('/timeline');
+		await expect(page.getByRole('link', { name: PHOTO_A_NAME, exact: true })).toBeVisible();
+		await expect(page.getByRole('link', { name: PHOTO_B_NAME, exact: true })).toBeVisible();
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toHaveCount(0);
+		await expect(page.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toHaveCount(0);
+		await expect(page.locator('.tile')).toHaveCount(2);
+
+		// The server's own answer agrees: exactly two items, the
+		// read-only pair's -- and never the writable album's ids.
+		await expect
+			.poll(async () => {
+				const timeline = await page.request.get('/api/v1/assets/timeline');
+				expect(timeline.status()).toBe(200);
+				const body = (await timeline.json()) as {
+					items?: Array<{ id?: string; originalFilename?: string }>;
+				};
+				return (body.items ?? [])
+					.map((item) => item.originalFilename ?? item.id ?? '')
+					.sort()
+					.join(',');
+			})
+			.toBe([PHOTO_A_NAME, PHOTO_B_NAME].sort().join(','));
+	});
+
+	test("scene 13: the deletable wall trashes through the selection bar and the trash view's restore returns the file", async ({
 		page
 	}) => {
 		await page.goto(`/albums/${rwAlbumId}`);
@@ -838,8 +945,10 @@ test.describe('the writable source scenes', () => {
 
 		// The delete-only selection (the wall's capability gate rides
 		// the server-derived `deletable` face -- owner AND writable
-		// AND the switch AND unlocked, all four): the hover-reveal
-		// check is the selection entry, one click selects the tile.
+		// AND the switch, the two-layer story's data half: the setting
+		// gates the affordance, the operating system gates the
+		// execution): the hover-reveal check is the selection entry,
+		// one click selects the tile.
 		await page.getByRole('checkbox', { name: `Select: ${PHOTO_RW_A_NAME}`, exact: true }).click();
 
 		// The batch bar rises with the DELETE-ONLY subset: Trash is

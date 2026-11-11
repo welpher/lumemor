@@ -3,12 +3,13 @@
 // creator behind POST /albums (the write face's only creatable type
 // -- the request names an existing path the server validates and
 // references in place; the face is the administrator's, and the
-// creation-time write probe lands the source-writable fact), the
-// property patch behind PATCH /albums/{albumId} (with the cover's
-// live-member validation, the locked gate, and the deletability
-// switch of the directory albums), the virtual-only delete behind
-// DELETE /albums/{albumId} (locked-gated like every album write:
-// the freeze is a state to clear, not a wall to climb) and the
+// creation-time write probe lands the source-writable fact; the
+// create dialog's two switches ride the same request -- the
+// deletability switch onto the row, the creator's timeline
+// exclusion into their own preference), the property patch behind
+// PATCH /albums/{albumId} (with the cover's live-member validation
+// and the deletability switch of the directory albums), the
+// virtual-only delete behind DELETE /albums/{albumId} and the
 // membership removal behind DELETE /albums/{albumId}/items (batch
 // semantics: the honest {removed, skipped} report, never per-item
 // errors; the membership ADD is gone -- albums are sources, not
@@ -59,16 +60,9 @@ const (
 	albumItemsMaxIds = 200
 )
 
-// writeAlbumLocked emits the locked gate's 409: the album refuses its
-// curation and property writes until the owner unlocks it.
-func (s *server) writeAlbumLocked(w http.ResponseWriter) {
-	s.writeError(w, http.StatusConflict, apigen.ALBUMLOCKED,
-		"the album is locked", nil)
-}
-
 // publishAlbumEvent reports one album write onto the activity
 // stream. The payload carries ONLY the album's id and the acting
-// user's id: titles, covers, the lock state and the
+// user's id: titles, covers, the deletability switch and the
 // membership itself are album state the subscribers refetch, never
 // bus payload -- the person.* events' ids-only discipline, applied
 // to the album face. The nil guard matches the people publisher (a
@@ -165,11 +159,11 @@ func (s *server) albumWriteGate(w http.ResponseWriter, r *http.Request, requeste
 }
 
 // albumCurationGate resolves the membership writes' gate: the write
-// authorization, the virtual-only rule and the locked gate. Directory
+// authorization and the virtual-only rule. Directory
 // albums manage their own membership (the rescan flow of a later
 // milestone) and sync albums are no album resources, so both fold
-// into the single-shape 404; a locked album refuses the curation
-// with 409. It answers ok=false once it has written the response.
+// into the single-shape 404. It answers ok=false once it has
+// written the response.
 func (s *server) albumCurationGate(w http.ResponseWriter, r *http.Request, requester authContext, albumID uuid.UUID) bool {
 	gate, ok := s.albumWriteGate(w, r, requester, albumID)
 	if !ok {
@@ -177,10 +171,6 @@ func (s *server) albumCurationGate(w http.ResponseWriter, r *http.Request, reque
 	}
 	if gate.Album.Type != dbgen.AlbumTypeVirtual {
 		s.writeAlbumNotFound(w)
-		return false
-	}
-	if gate.Album.Locked {
-		s.writeAlbumLocked(w)
 		return false
 	}
 	return true
@@ -274,10 +264,17 @@ func (s *server) albumItemsIDs(w http.ResponseWriter, assetIds []openapi_types.U
 // creation feedback, never a failure. The request's audience lands
 // in the same write through the full-set semantics of the audience
 // face: unusable ids are skipped and reported, never errors. The
-// response is the fresh row's wall card -- the owner role, no
-// members, no cover -- widened with the probe's fact and the honest
-// audience report, and the write publishes album.created plus one
-// album.shared per audience row that landed.
+// create dialog's two switches ride the same request: the
+// deletability switch lands on the row (on by default; a read-only
+// source keeps the stored value governing nothing), and an
+// `inTimeline: false` lands the CREATOR's own timeline-exclusion
+// preference row in the creation itself -- the album is born out of
+// its creator's aggregated timeline, the audience's own feeds
+// governed by their own preference rows. The response is the fresh
+// row's wall card -- the owner role, no members, no cover -- widened
+// with the probe's fact and the honest audience report, and the
+// write publishes album.created plus one album.shared per audience
+// row that landed.
 func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -369,10 +366,29 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 			String: resolved,
 			Valid:  true,
 		},
-		SourceWritable: writable,
+		SourceWritable:   writable,
+		AllowAppDeletion: request.AllowAppDeletion == nil || *request.AllowAppDeletion,
 	}); err != nil {
 		s.internalError(w, r, "create the album", err)
 		return
+	}
+
+	// The creator's timeline exclusion, carried from the dialog: the
+	// per-user preference row is written HERE, in the creation, when
+	// the request excludes the album -- absent or true writes
+	// nothing (no row IS the feeding-the-timeline default, the
+	// reset face's own semantics). The exclusion is the creator's
+	// own state: the audience members' feeds are governed by their
+	// own preference rows, never by this write.
+	if request.InTimeline != nil && !*request.InTimeline {
+		if _, err := s.queries.UpsertAlbumTimelinePreference(ctx, dbgen.UpsertAlbumTimelinePreferenceParams{
+			UserID:     pgUUID(requester.userID),
+			AlbumID:    pgUUID(id),
+			InTimeline: false,
+		}); err != nil {
+			s.internalError(w, r, "record the timeline exclusion", err)
+			return
+		}
 	}
 
 	s.publishAlbumEvent("album.created", id, requester.userID)
@@ -404,7 +420,6 @@ func albumCreateResponse(card apigen.AlbumSummary, sourceWritable bool, skipped 
 		Id:             card.Id,
 		Title:          card.Title,
 		Type:           apigen.AlbumCreateResponseType(card.Type),
-		Locked:         card.Locked,
 		IsShared:       card.IsShared,
 		CoverAssetIds:  card.CoverAssetIds,
 		ItemCount:      card.ItemCount,
@@ -426,17 +441,14 @@ func albumCreateResponse(card apigen.AlbumSummary, sourceWritable bool, skipped 
 }
 
 // UpdateAlbum implements PATCH /api/v1/albums/{albumId}: the owner's
-// partial edit of the four properties -- any subset, at least one
-// field, JSON null counting as absent. The locked gate refuses the
-// property fields on a locked album (the locked field itself is
-// never gated: a patch of locked alone IS the unlock), the cover
-// validation refuses every id that is not a live member of the album
-// itself, and the deletability switch is the directory album's own
-// (a virtual album answers the field's own 400, not a generic
-// refusal). The write publishes album.updated unconditionally on
-// success -- the convergent refetch makes the unconditional fire
-// harmless -- and the response is the album's wall card after the
-// edit.
+// partial edit of the properties -- any subset, at least one
+// field, JSON null counting as absent. The cover validation refuses
+// every id that is not a live member of the album itself, and the
+// deletability switch is the directory album's own (a virtual album
+// answers the field's own 400, not a generic refusal). The write
+// publishes album.updated unconditionally on success -- the
+// convergent refetch makes the unconditional fire harmless -- and
+// the response is the album's wall card after the edit.
 func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -450,8 +462,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 	if request.Title == nil &&
-		request.CoverAssetId == nil && request.Locked == nil &&
-		request.AllowAppDeletion == nil {
+		request.CoverAssetId == nil && request.AllowAppDeletion == nil {
 		s.writeValidationError(w, "the patch must carry a field", []string{"body"})
 		return
 	}
@@ -468,15 +479,6 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 	// no home there -- the refusal names the field's own condition.
 	if request.AllowAppDeletion != nil && gate.Album.Type != dbgen.AlbumTypeDirectory {
 		s.writeMessageKey(w, "the deletability switch is a directory album's own setting", "album_deletable_not_directory")
-		return
-	}
-
-	// The locked gate: the album refuses its property and curation
-	// fields until the owner unlocks it. A mixed patch carrying the
-	// unlock is refused whole -- unlock first, then edit.
-	if gate.Album.Locked &&
-		(request.Title != nil || request.CoverAssetId != nil || request.AllowAppDeletion != nil) {
-		s.writeAlbumLocked(w)
 		return
 	}
 
@@ -511,9 +513,6 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 	if request.CoverAssetId != nil {
 		params.CoverAssetID = pgUUID(uuid.UUID(*request.CoverAssetId))
 	}
-	if request.Locked != nil {
-		params.Locked = pgtype.Bool{Bool: *request.Locked, Valid: true}
-	}
 	if request.AllowAppDeletion != nil {
 		// The owner's deletability posture, the edit dialog's switch:
 		// repeating the stored value converges through the COALESCE
@@ -545,10 +544,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 // row follows through the schema's cascades; the answer is 204 with
 // no body, and the write publishes album.deleted. VIRTUAL albums
 // only -- a directory album's removal is its own flow and answers
-// the single-shape 404 -- and the locked gate applies: the
-// permission matrix pins deletion to the UNLOCKED state (the owner
-// unlocks first -- the freeze is a state to clear, not a wall to
-// climb).
+// the single-shape 404.
 func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -564,11 +560,6 @@ func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		// Directory removal is the directory album's own flow, not a
 		// generic delete: the id folds into the single-shape 404.
 		s.writeAlbumNotFound(w)
-		return
-	}
-	if gate.Album.Locked {
-		// Deletion is a write the lock freezes like any other.
-		s.writeAlbumLocked(w)
 		return
 	}
 

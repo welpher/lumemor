@@ -1,10 +1,10 @@
 // Album surface write tests (reshaped by the albums-as-sources
 // rework): the directory album creation behind POST
-// /albums (title + the validated source path + the audience, with
-// the honest skip report of unusable audience entries), the
-// property patch (with the cover's live-member validation and the
-// locked gate), the delete (virtual only, cascades, never locked-
-// gated) and the membership removal with the batch's honest
+// /albums (title + the validated source path + the audience + the
+// two dialog switches, with the honest skip report of unusable
+// audience entries), the property patch (with the cover's
+// live-member validation) and the delete (virtual only, cascades)
+// and the membership removal with the batch's honest
 // {removed, skipped} report. The two-tier authorization answer
 // runs through every write: an invisible album answers the reads'
 // byte-identical 404, an album shared to the caller answers the
@@ -180,19 +180,6 @@ func requireAlbumWriteForbidden(t *testing.T, rec *httptest.ResponseRecorder) {
 	}
 }
 
-// requireAlbumLocked asserts the 409 of the locked gate.
-func requireAlbumLocked(t *testing.T, rec *httptest.ResponseRecorder) {
-	t.Helper()
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want %d (body %q)",
-			rec.Code, http.StatusConflict, rec.Body.String())
-	}
-	apiErr, _ := decodeError(t, rec)
-	if apiErr.Code != apigen.ALBUMLOCKED {
-		t.Errorf("code = %q, want %q", apiErr.Code, apigen.ALBUMLOCKED)
-	}
-}
-
 // requireAlbumCoverNotMember asserts the 400 VALIDATION_FAILED whose
 // details carry the album_cover_not_member message key.
 func requireAlbumCoverNotMember(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -291,9 +278,6 @@ func TestCreateAlbum(t *testing.T) {
 		}
 		if summary.Type != apigen.AlbumCreateResponseTypeDirectory {
 			t.Errorf("type = %q, want directory (the only creatable type)", summary.Type)
-		}
-		if summary.Locked {
-			t.Error("locked = true, want false")
 		}
 		if summary.IsShared {
 			t.Error("isShared = true, want false (no audience landed)")
@@ -438,6 +422,98 @@ func TestCreateAlbum(t *testing.T) {
 	})
 }
 
+// TestCreateAlbumDialogSwitches pins the two create-dialog switches
+// landing in the creation itself: the deletability switch stores
+// onto the row (on by default, off when the request carries false),
+// and an `inTimeline: false` lands the CREATOR's own preference row
+// so the album is born out of their aggregated timeline -- the
+// audience member's feed is their own preference row's business,
+// and an absent field writes no preference row at all (no row IS
+// the feeding default, the reset face's own semantics).
+func TestCreateAlbumDialogSwitches(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	graceID, graceCookie := env.createSecondUser(t, "create-switches-grace@example.com")
+	root := env.provisionMountRoot(t)
+
+	createSwitched := func(t *testing.T, title, dir string, allowAppDeletion, inTimeline *bool, audience []uuid.UUID) apigen.AlbumCreateResponse {
+		t.Helper()
+		body := map[string]any{"title": title, "rootPath": dir}
+		if allowAppDeletion != nil {
+			body["allowAppDeletion"] = *allowAppDeletion
+		}
+		if inTimeline != nil {
+			body["inTimeline"] = *inTimeline
+		}
+		if audience != nil {
+			body["audience"] = audience
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal the create body: %v", err)
+		}
+		rec := env.createAlbumRaw(t, env.cookie, string(raw))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("POST /albums status = %d, want %d (body %q)",
+				rec.Code, http.StatusCreated, rec.Body.String())
+		}
+		var response apigen.AlbumCreateResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode create album body %q: %v", rec.Body.String(), err)
+		}
+		return response
+	}
+
+	t.Run("Defaults", func(t *testing.T) {
+		summary := createSwitched(t, "Switch defaults", sourceDir(t, root, "defaults"), nil, nil, nil)
+		if got := env.queryInt(t, "SELECT allow_app_deletion::int FROM albums WHERE id = $1",
+			pgUUID(uuid.UUID(summary.Id))); got != 1 {
+			t.Errorf("stored allow_app_deletion = %d, want 1 (the default)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM user_album_prefs WHERE album_id = $1",
+			pgUUID(uuid.UUID(summary.Id))); got != 0 {
+			t.Errorf("preference rows = %d, want 0 (absent writes none; no row IS the feeding default)", got)
+		}
+		if summary.InTimeline == nil || !*summary.InTimeline {
+			t.Errorf("inTimeline = %v, want true (the card feeds the timeline)", summary.InTimeline)
+		}
+	})
+
+	t.Run("BothSwitchesOffLandInCreation", func(t *testing.T) {
+		off := false
+		summary := createSwitched(t, "Switched off", sourceDir(t, root, "switched"), &off, &off,
+			[]uuid.UUID{graceID})
+		albumID := uuid.UUID(summary.Id)
+		if got := env.queryInt(t, "SELECT allow_app_deletion::int FROM albums WHERE id = $1",
+			pgUUID(albumID)); got != 0 {
+			t.Errorf("stored allow_app_deletion = %d, want 0 (the request's switch)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM user_album_prefs WHERE album_id = $1 AND user_id = $2 AND in_timeline = false",
+			pgUUID(albumID), pgUUID(env.sessionUserID(t))); got != 1 {
+			t.Errorf("creator exclusion rows = %d, want 1 (the creation carried the exclusion)", got)
+		}
+		// The exclusion is the CREATOR's own: the audience member's
+		// feed is governed by their own (absent) preference row.
+		if got := env.queryInt(t, "SELECT count(*) FROM user_album_prefs WHERE album_id = $1 AND user_id = $2",
+			pgUUID(albumID), pgUUID(graceID)); got != 0 {
+			t.Errorf("grantee preference rows = %d, want 0 (the exclusion never reaches the audience)", got)
+		}
+		// The response card carries the landed exclusion.
+		if summary.InTimeline == nil || *summary.InTimeline {
+			t.Errorf("inTimeline = %v, want false (the exclusion landed)", summary.InTimeline)
+		}
+		// The sharee's own wall card of the same album feeds their
+		// timeline (their row is absent, the default).
+		wall := env.getAlbumWall(t, graceCookie)
+		card, ok := wallAlbumOf(wall, albumID)
+		if !ok {
+			t.Fatalf("the sharee wall holds no card for the shared album")
+		}
+		if card.InTimeline == nil || !*card.InTimeline {
+			t.Errorf("the sharee card's inTimeline = %v, want true (their own default)", card.InTimeline)
+		}
+	})
+}
+
 // TestUpdateAlbum pins the property patch: every field lands, the
 // cover validation refuses every id that is not a live member of the
 // album itself, and an unknown album answers the reads'
@@ -489,32 +565,22 @@ func TestUpdateAlbum(t *testing.T) {
 			t.Errorf("detail coverAssetId = %v, want the pinned %s", detail.CoverAssetId, older)
 		}
 
-		summary = env.patchAlbum(t, env.cookie, album, `{"locked":true}`)
-		if !summary.Locked {
-			t.Error("locked = false, want true after the patch")
-		}
-		// The unlock: locked itself is never gated.
-		summary = env.patchAlbum(t, env.cookie, album, `{"locked":false}`)
-		if summary.Locked {
-			t.Error("locked = true, want false after the unlock patch")
-		}
-
 		// The row itself carries the last patch's values.
 		if got := env.queryText(t, "SELECT title FROM albums WHERE id = $1", pgUUID(album)); got != "Renamed" {
 			t.Errorf("stored title = %q, want Renamed", got)
 		}
-		if got := env.queryInt(t, "SELECT locked::int FROM albums WHERE id = $1", pgUUID(album)); got != 0 {
-			t.Errorf("stored locked = %d, want 0 (unlocked again)", got)
-		}
 	})
 
 	t.Run("PatchesMultipleFieldsAtOnce", func(t *testing.T) {
-		body := `{"title":"Combined","locked":true}`
+		body := `{"title":"Combined","coverAssetId":"` + member.String() + `"}`
 		summary := env.patchAlbum(t, env.cookie, album, body)
-		if summary.Title != "Combined" || !summary.Locked {
-			t.Errorf("title/locked = %q/%v, want both landed", summary.Title, summary.Locked)
+		if summary.Title != "Combined" {
+			t.Errorf("title = %q, want Combined", summary.Title)
 		}
-		env.patchAlbum(t, env.cookie, album, `{"locked":false}`) // leave it unlocked
+		if len(summary.CoverAssetIds) != 1 || uuid.UUID(summary.CoverAssetIds[0]) != member {
+			t.Errorf("coverAssetIds = %v, want the pinned member", summary.CoverAssetIds)
+		}
+		env.patchAlbum(t, env.cookie, album, `{"coverAssetId":"`+older.String()+`"}`) // leave a different pin
 	})
 
 	t.Run("RequiresAtLeastOneField", func(t *testing.T) {
@@ -629,24 +695,6 @@ func TestUpdateAlbumDeletability(t *testing.T) {
 		}
 	})
 
-	t.Run("LockedAlbumRefusesTheSwitch", func(t *testing.T) {
-		env.patchAlbum(t, env.cookie, directory, `{"locked":true}`)
-		requireAlbumLocked(t, env.patchAlbumRaw(t, env.cookie, directory, `{"allowAppDeletion":false}`))
-		// A mixed patch carrying the unlock is refused whole: the
-		// unlock is its own step.
-		requireAlbumLocked(t, env.patchAlbumRaw(t, env.cookie, directory, `{"locked":false,"allowAppDeletion":false}`))
-		if got := stored(t, directory); got != 1 {
-			t.Errorf("stored allow_app_deletion = %d, want 1 (the locked refusals landed nothing)", got)
-		}
-		// The unlock, then the switch lands.
-		env.patchAlbum(t, env.cookie, directory, `{"locked":false}`)
-		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":false}`)
-		if got := stored(t, directory); got != 0 {
-			t.Errorf("stored allow_app_deletion after the unlock-then-switch = %d, want 0", got)
-		}
-		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":true}`) // leave it on
-	})
-
 	t.Run("VirtualAlbumRefusesTheSwitch", func(t *testing.T) {
 		rec := env.patchAlbumRaw(t, env.cookie, virtual, `{"allowAppDeletion":false}`)
 		if rec.Code != http.StatusBadRequest {
@@ -721,63 +769,64 @@ func TestUpdateAlbumAuthorization(t *testing.T) {
 	})
 }
 
-// TestUpdateAlbumLocked pins the locked gate: the property fields are
-// refused with 409 ALBUM_LOCKED (a mixed patch that carries the
-// unlock is refused too -- unlock first), while a patch of locked
-// alone IS the unlock and always answers.
-func TestUpdateAlbumLocked(t *testing.T) {
+// TestAlbumLockRetired pins the lock field's retirement at the
+// patch face: the contract no longer carries a `locked` field
+// anywhere, so a patch of only the dead field answers the
+// no-recognized-field 400 (the unknown key decodes as absent), a
+// mixed patch lands its LIVE fields and ignores the dead one, and
+// neither the card nor the detail JSON carries the key at all --
+// the shape-level proof that the freeze is gone whole.
+func TestAlbumLockRetired(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
 
 	album := fixtureWriteAlbumID("76")
-	env.insertWallAlbum(t, album, adminID, "virtual", "Frozen", wallAlbumOpts{locked: true})
+	env.insertWallAlbum(t, album, adminID, "virtual", "Frozen", wallAlbumOpts{})
 	member := fixtureWallAssetID("76")
 	env.insertTimelineAsset(t, member, adminID, time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.addTimelineItem(t, album, member, adminID)
 
-	t.Run("RefusesPropertyFields", func(t *testing.T) {
-		for _, body := range []string{
-			`{"title":"Nope"}`,
-			`{"coverAssetId":"` + member.String() + `"}`,
-		} {
+	t.Run("DeadFieldAloneIsAnEmptyPatch", func(t *testing.T) {
+		for _, body := range []string{`{"locked":true}`, `{"locked":false}`} {
 			rec := env.patchAlbumRaw(t, env.cookie, album, body)
-			requireAlbumLocked(t, rec)
+			requireValidationFields(t, rec, "body")
 		}
 		if got := env.queryText(t, "SELECT title FROM albums WHERE id = $1", pgUUID(album)); got != "Frozen" {
 			t.Errorf("stored title = %q, want the untouched %q", got, "Frozen")
 		}
 	})
 
-	t.Run("RefusesMixedPatchCarryingTheUnlock", func(t *testing.T) {
-		// The unlock must land alone: a patch that also edits a
-		// property is refused whole -- unlock first.
-		rec := env.patchAlbumRaw(t, env.cookie, album, `{"title":"Nope","locked":false}`)
-		requireAlbumLocked(t, rec)
-		if got := env.queryInt(t, "SELECT locked::int FROM albums WHERE id = $1", pgUUID(album)); got != 1 {
-			t.Errorf("stored locked = %d, want still 1 (the mixed patch landed nothing)", got)
+	t.Run("MixedPatchLandsTheLiveFields", func(t *testing.T) {
+		summary := env.patchAlbum(t, env.cookie, album, `{"title":"Thawed","locked":true}`)
+		if summary.Title != "Thawed" {
+			t.Errorf("title = %q, want the live field's patch", summary.Title)
 		}
 	})
 
-	t.Run("UnlockOnlyPatchIsAllowed", func(t *testing.T) {
-		summary := env.patchAlbum(t, env.cookie, album, `{"locked":false}`)
-		if summary.Locked {
-			t.Error("locked = true, want false after the unlock")
+	t.Run("TheShapeCarriesNoLockKey", func(t *testing.T) {
+		var card map[string]any
+		rec := env.patchAlbumRaw(t, env.cookie, album, `{"title":"Keyless"}`)
+		if err := json.Unmarshal(rec.Body.Bytes(), &card); err != nil {
+			t.Fatalf("decode the card: %v", err)
 		}
-		if got := env.queryInt(t, "SELECT locked::int FROM albums WHERE id = $1", pgUUID(album)); got != 0 {
-			t.Errorf("stored locked = %d, want 0", got)
+		if _, present := card["locked"]; present {
+			t.Error("the wall card still carries the retired `locked` key")
 		}
-		// Unlocked, the property fields answer again.
-		summary = env.patchAlbum(t, env.cookie, album, `{"title":"Thawed"}`)
-		if summary.Title != "Thawed" {
-			t.Errorf("title = %q, want the post-unlock edit", summary.Title)
+		detail := env.getAlbumsRaw(t, env.cookie, "/api/v1/albums/"+album.String())
+		var page map[string]any
+		if err := json.Unmarshal(detail.Body.Bytes(), &page); err != nil {
+			t.Fatalf("decode the detail: %v", err)
+		}
+		if _, present := page["locked"]; present {
+			t.Error("the album detail still carries the retired `locked` key")
 		}
 	})
 }
 
 // TestDeleteAlbum pins the delete: virtual albums only (directory
 // and sync ids answer the single-shape 404), the membership and
-// share rows cascade with the row, the locked gate never applies,
-// and the two-tier authorization answer holds.
+// share rows cascade with the row, and the two-tier authorization
+// answer holds.
 func TestDeleteAlbum(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -793,8 +842,6 @@ func TestDeleteAlbum(t *testing.T) {
 	env.addTimelineItem(t, virtual, second, adminID)
 	env.shareWallAlbum(t, virtual, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
 
-	locked := fixtureWriteAlbumID("82")
-	env.insertWallAlbum(t, locked, adminID, "virtual", "Frozen going away", wallAlbumOpts{locked: true})
 	directory := fixtureWriteAlbumID("83")
 	env.insertWallAlbum(t, directory, adminID, "directory", "Archive", wallAlbumOpts{})
 	sharedToGrace := fixtureWriteAlbumID("84")
@@ -841,23 +888,6 @@ func TestDeleteAlbum(t *testing.T) {
 		requireAlbumNotFound(t, rec)
 	})
 
-	t.Run("DeletesLockedAlbum", func(t *testing.T) {
-		// The permission matrix pins deletion to the UNLOCKED
-		// state: the lock gates the delete like every other write,
-		// and the rows stay intact.
-		rec := env.deleteAlbumRaw(t, env.cookie, locked)
-		if rec.Code != http.StatusConflict {
-			t.Fatalf("DELETE locked album status = %d, want %d (body %q)",
-				rec.Code, http.StatusConflict, rec.Body.String())
-		}
-		requireAlbumLocked(t, rec)
-		// The refused delete leaves the album standing: the detail
-		// read fatals on anything but 200.
-		if detail := env.getAlbumDetail(t, env.cookie, locked, ""); uuid.UUID(detail.Id) != locked {
-			t.Errorf("locked album id = %v, want %v", detail.Id, locked)
-		}
-	})
-
 	t.Run("RefusesDirectoryAlbum", func(t *testing.T) {
 		rec := env.deleteAlbumRaw(t, env.cookie, directory)
 		requireAlbumNotFound(t, rec)
@@ -893,8 +923,8 @@ func TestDeleteAlbum(t *testing.T) {
 
 // TestRemoveAlbumItems pins the membership remove: the rows that
 // exist leave, absent ids skip, the trashed member's row leaves too
-// (no live predicate on the removal), and the authorization, type
-// and lock gates hold.
+// (no live predicate on the removal), and the authorization and type
+// gates hold.
 func TestRemoveAlbumItems(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -902,8 +932,6 @@ func TestRemoveAlbumItems(t *testing.T) {
 
 	album := fixtureWriteAlbumID("a1")
 	env.insertWallAlbum(t, album, adminID, "virtual", "Curation", wallAlbumOpts{})
-	locked := fixtureWriteAlbumID("a2")
-	env.insertWallAlbum(t, locked, adminID, "virtual", "Frozen", wallAlbumOpts{locked: true})
 	sharedToGrace := fixtureWriteAlbumID("a3")
 	env.insertWallAlbum(t, sharedToGrace, adminID, "virtual", "Shared", wallAlbumOpts{})
 	env.shareWallAlbum(t, sharedToGrace, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
@@ -922,10 +950,6 @@ func TestRemoveAlbumItems(t *testing.T) {
 	for _, asset := range []uuid.UUID{first, second, trashedMember} {
 		env.addTimelineItem(t, album, asset, adminID)
 	}
-	lockedMember := fixtureWallAssetID("a5")
-	env.insertTimelineAsset(t, lockedMember, adminID, base.Add(4*time.Hour), timelineAssetOpts{})
-	env.addTimelineItem(t, locked, lockedMember, adminID)
-
 	t.Run("RemovesPresentAndSkipsAbsent", func(t *testing.T) {
 		report := decodeRemoveItemsReport(t, env.deleteAlbumItems(t, env.cookie, album, albumItemsBody(first, absent)))
 		if report.Removed != 1 || report.Skipped != 1 {
@@ -964,14 +988,6 @@ func TestRemoveAlbumItems(t *testing.T) {
 	t.Run("ValidatesListBounds", func(t *testing.T) {
 		rec := env.deleteAlbumItems(t, env.cookie, album, `{"assetIds":[]}`)
 		requireValidationFields(t, rec, "assetIds")
-	})
-
-	t.Run("RefusesLockedAlbum", func(t *testing.T) {
-		rec := env.deleteAlbumItems(t, env.cookie, locked, albumItemsBody(lockedMember))
-		requireAlbumLocked(t, rec)
-		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(locked)); got != 1 {
-			t.Errorf("locked album membership rows = %d, want 1 (the removal landed nothing)", got)
-		}
 	})
 
 	t.Run("ShareeIsForbidden", func(t *testing.T) {
@@ -1067,7 +1083,7 @@ func TestAlbumWriteEvents(t *testing.T) {
 				t.Errorf("%s payload = %v, want exactly the albumId/userId pair", want.name, payload)
 			}
 			for _, banned := range []string{
-				"title", "type", "locked", "coverAssetId",
+				"title", "type", "coverAssetId",
 				"itemCount", "assetIds", "added", "removed", "skipped",
 			} {
 				if payload[banned] != "" {

@@ -1120,15 +1120,17 @@ echo "    the member's completion answers 403 AUTH_FORBIDDEN"
 echo "==> the administrator's completion must list the fixture's trip directory (the system-wide domain)"
 # The boundary: the compose binds ARE the boundary, so the trip
 # directory lists with no root opened -- the honest reflection of what
-# the container sees (the same domain the m3c chain drills fully).
+# the container sees, its row carrying the write fact the listing's
+# probe discovered (the read-only bind answers false, the same fact
+# the creation-time probe reports).
 status="$(curl -sS -o "$work_dir/completions_body" -b "$admin_jar" -w '%{http_code}' \
     "$base_url/api/v1/albums/path-completions?prefix=$mount_root/tr")" \
     || fail "GET /api/v1/albums/path-completions (admin) request failed"
 [ "$status" = "200" ] \
     || fail "GET /api/v1/albums/path-completions (admin) returned status $status, want 200: $(cat "$work_dir/completions_body")"
-grep -q "\"paths\":\[\"$source_dir\"\]" "$work_dir/completions_body" \
-    || fail "the completion does not list the trip directory: $(cat "$work_dir/completions_body")"
-echo "    the completion lists the trip directory (the bind is the boundary)"
+grep -q "\"completions\":\[{\"path\":\"$source_dir\",\"writable\":false}\]" "$work_dir/completions_body" \
+    || fail "the completion does not list the trip directory with its write fact: $(cat "$work_dir/completions_body")"
+echo "    the completion lists the trip directory with its read-only write fact (the bind is the boundary)"
 
 echo "==> the member's POST /api/v1/albums must answer 403 (the creation guard)"
 status="$(curl -sS -o "$work_dir/member_create_refusal_body" -b "$member_jar" -w '%{http_code}' \

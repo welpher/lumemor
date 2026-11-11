@@ -72,6 +72,7 @@
 	import { afterNavigate, goto } from '$app/navigation';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { _ } from 'svelte-i18n';
+	import { currentLocale } from '$lib/i18n';
 	import Viewer from '$lib/viewer/Viewer.svelte';
 	import ClusterPickerDialog from '$lib/people/ClusterPickerDialog.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
@@ -164,7 +165,7 @@
 		tagReport = null;
 		let current = true;
 		void (async () => {
-			const outcome = await fetchAssetDetail(id);
+			const outcome = await fetchAssetDetail(id, { locale: currentLocale() });
 			if (!current) {
 				return;
 			}
@@ -291,7 +292,7 @@
 		// at page scale): an SSE burst fires concurrent refetches, and
 		// a slower stale response must not land over a newer one.
 		const run = ++refetchRun;
-		const outcome = await fetchAssetDetail(id);
+		const outcome = await fetchAssetDetail(id, { locale: currentLocale() });
 		if (run !== refetchRun || id !== assetId || !outcome.ok) {
 			return;
 		}
@@ -586,7 +587,7 @@
 		}
 		busy = true;
 		actionErrorKey = '';
-		const outcome = await patchAsset(current.id, { description: text });
+		const outcome = await patchAsset(current.id, { description: text }, { locale: currentLocale() });
 		busy = false;
 		if (outcome.ok) {
 			if (detail !== null && detail.id === current.id) {

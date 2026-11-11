@@ -289,14 +289,17 @@ WHERE al.id = sqlc.arg('album_id')
 -- source_writable carries the write probe's answer over that
 -- directory -- a fact, not a gate: a read-only source is a
 -- legitimate album whose photos cannot be deleted through the
--- application. The id is generated caller-side; the creation face
--- carries title, path and audience only. The wall card's companions
--- are the creation-time constants -- the caller's own audience
--- grants land right after -- so the handler reads the fresh row's
--- full card through GetAlbumSummary like every other write
--- response.
-INSERT INTO albums (id, owner_id, title, type, root_path, source_writable)
-VALUES (sqlc.arg('id'), sqlc.arg('owner_id'), sqlc.arg('title'), 'directory', sqlc.arg('root_path'), sqlc.arg('source_writable'))
+-- application. allow_app_deletion lands the create dialog's
+-- deletability switch on the row (on by default; on a read-only
+-- source the stored value governs nothing -- the derived
+-- `deletable` face stays false). The id is generated caller-side;
+-- the creation face carries title, path, the two dialog switches
+-- and audience only. The wall card's companions are the
+-- creation-time constants -- the caller's own audience grants land
+-- right after -- so the handler reads the fresh row's full card
+-- through GetAlbumSummary like every other write response.
+INSERT INTO albums (id, owner_id, title, type, root_path, source_writable, allow_app_deletion)
+VALUES (sqlc.arg('id'), sqlc.arg('owner_id'), sqlc.arg('title'), 'directory', sqlc.arg('root_path'), sqlc.arg('source_writable'), sqlc.arg('allow_app_deletion'))
 RETURNING id;
 
 -- name: GetAlbumSummary :one
@@ -334,17 +337,16 @@ WHERE al.id = sqlc.arg('album_id');
 -- so the pin can change through this face but never clear. The
 -- deletability switch joins the property fields: present
 -- updates the owner's allow-app-deletion posture of the directory
--- album, absent keeps it, and the lock's gate lives in the handler
--- (the property fields' own refusal) with the type arm that keeps
--- the switch off virtual albums. updated_at moves with the write:
--- the wall orders the own group by it. No owner guard and no type
--- guard here: the handler's gate already resolved the caller's
--- right to this write, and an album deleted between the gate and
--- the statement answers no row -- the honest 404 of a gone album.
+-- album, absent keeps it, with the type arm that keeps
+-- the switch off virtual albums living in the handler. updated_at
+-- moves with the write: the wall orders the own group by it. No
+-- owner guard and no type guard here: the handler's gate already
+-- resolved the caller's right to this write, and an album deleted
+-- between the gate and the statement answers no row -- the honest
+-- 404 of a gone album.
 UPDATE albums
 SET title = COALESCE(sqlc.narg('title'), title),
     cover_asset_id = COALESCE(sqlc.arg('cover_asset_id'), cover_asset_id),
-    locked = COALESCE(sqlc.narg('locked'), locked),
     allow_app_deletion = COALESCE(sqlc.narg('allow_app_deletion'), allow_app_deletion),
     updated_at = now()
 WHERE id = sqlc.arg('album_id')
@@ -371,8 +373,7 @@ WHERE ai.album_id = sqlc.arg('album_id')
 -- The type guard keeps the statement honest against the handler's
 -- virtual-only verdict (directory removal is the directory album's
 -- own flow), and zero rows -- a concurrent delete won the race -- is
--- the 404 of a gone album. No locked gate ever runs here: locking is
--- a curation freeze, not a tombstone.
+-- the 404 of a gone album.
 DELETE FROM albums
 WHERE id = sqlc.arg('album_id')
   AND type = 'virtual';
@@ -398,6 +399,36 @@ WHERE album_id = sqlc.arg('album_id')
 SELECT DISTINCT ai.album_id
 FROM album_items ai
 WHERE ai.asset_id = sqlc.arg('asset_id');
+
+-- name: ListAssetAlbumsForCaller :many
+-- The asset detail's `albums` face: every album whose membership row
+-- references the asset AND that the caller can see -- their own
+-- albums (any type; the sync stream's entry is the caller's own
+-- materialized membership, the upload path's AddAssetToAlbum rows)
+-- plus every album shared to them. The guard is the wall's own
+-- visibility shape: an own album passes on ownership, a shared one
+-- on its share row -- so another account's sync album (nothing can
+-- share one) and every unshared foreign album stay invisible, and
+-- the same asset answers different arrays for the owner and a
+-- sharee. Ordered with the sync card first (the wall's pinned-card
+-- discipline), then by title case-insensitively with the album id
+-- as the tiebreak. The caller must have proven the asset
+-- caller-visible first; the array carries no gate of its own.
+SELECT al.id,
+       al.title,
+       al.type,
+       al.owner_id = sqlc.arg('viewer') AS is_owner
+FROM albums al
+LEFT JOIN album_shares sh
+       ON sh.album_id = al.id AND sh.user_id = sqlc.arg('viewer')
+WHERE (al.owner_id = sqlc.arg('viewer') OR sh.user_id IS NOT NULL)
+  AND EXISTS (
+      SELECT 1
+      FROM album_items ai
+      WHERE ai.album_id = al.id
+        AND ai.asset_id = sqlc.arg('asset_id')
+  )
+ORDER BY (al.type = 'sync') DESC, lower(al.title) ASC, al.id ASC;
 
 -- Album audience (the albums-as-sources rework): the
 -- full-set write behind PUT /albums/{albumId}/audience replaces the

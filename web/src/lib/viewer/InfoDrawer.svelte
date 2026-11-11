@@ -41,13 +41,29 @@
 	// here -- the viewer owns the layered Escape rule (the page's
 	// dialog first, then this drawer, then the route) so the layers
 	// cannot race.
+	//
+	// THE DEEP-LINK ROWS (the approved L3 face): the drawer stays
+	// read-only except for its existing per-user writes, and the
+	// rows that name a browsable context become LINKS -- the tags
+	// chips into the tag-filtered browse, the camera rows into the
+	// camera-filtered browse (the facet's round-trip id), the named
+	// face chips into their person page, the resolved place into the
+	// place-filtered browse, and the albums array into each album's
+	// detail. The rows keep their labels; the affordance is link
+	// semantics under the icon-first rule (a leading decorative
+	// glyph per row type). Unnamed faces keep their assign flow: the
+	// naming write is the drawer's own, never a navigation.
 	import { locale, _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
-	import { type AssetDetail, type AssetFaceSummary } from '$lib/api/assets';
+	import { type AssetAlbumRef, type AssetDetail, type AssetFaceSummary, type AssetPlaceRef } from '$lib/api/assets';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import X from '@lucide/svelte/icons/x';
 	import Check from '@lucide/svelte/icons/check';
 	import PenLine from '@lucide/svelte/icons/pen-line';
+	import Folder from '@lucide/svelte/icons/folder';
+	import Tag from '@lucide/svelte/icons/tag';
+	import Camera from '@lucide/svelte/icons/camera';
+	import MapPin from '@lucide/svelte/icons/map-pin';
 
 	type Props = {
 		/** The current asset's detail (the page's local, optimistic copy). */
@@ -144,19 +160,31 @@
 	}
 
 	/** One label/value row of the read-only panels; nulls drop out. */
-	function row(label: string, value: string | null | undefined): { label: string; value: string } | null {
+	type FactRow = { label: string; value: string; href?: string; glyph?: typeof Camera };
+
+	function row(
+		label: string,
+		value: string | null | undefined,
+		link?: { href: string; glyph?: typeof Camera }
+	): FactRow | null {
 		if (value === null || value === undefined || value === '') {
 			return null;
 		}
-		return { label, value };
+		return { label, value, href: link?.href, glyph: link?.glyph };
 	}
 
 	function rows(
-		entries: Array<{ label: string; value: string | null | undefined }>
-	): Array<{ label: string; value: string }> {
+		entries: Array<{ label: string; value: string | null | undefined; href?: string; glyph?: typeof Camera }>
+	): FactRow[] {
 		return entries
-			.map((entry) => row(entry.label, entry.value))
-			.filter((entry): entry is { label: string; value: string } => entry !== null);
+			.map((entry) =>
+				row(
+					entry.label,
+					entry.value,
+					entry.href !== undefined ? { href: entry.href, glyph: entry.glyph } : undefined
+				)
+			)
+			.filter((entry): entry is FactRow => entry !== null);
 	}
 
 	/** Render a nullable text field ('' and null both drop the row). */
@@ -174,10 +202,32 @@
 	// pipeline has not written the extraction, or the file carries
 	// no such tag -- the two are indistinguishable on the wire).
 	const exif = $derived(detail.exif);
+	// The camera facet's round-trip filter id (`make|model`, empty
+	// where the EXIF row carries no value): the camera rows' deep
+	// link into the camera-filtered browse, present when at least
+	// one half exists.
+	const cameraHref = $derived.by(() => {
+		const make = (exif?.cameraMake ?? '').trim();
+		const model = (exif?.cameraModel ?? '').trim();
+		if (make === '' && model === '') {
+			return undefined;
+		}
+		return `/search?cameras=${encodeURIComponent(`${make}|${model}`)}`;
+	});
 	const cameraRows = $derived(
 		rows([
-			{ label: $_('viewer_exif_camera_make'), value: text(exif?.cameraMake) },
-			{ label: $_('viewer_exif_camera_model'), value: text(exif?.cameraModel) },
+			{
+				label: $_('viewer_exif_camera_make'),
+				value: text(exif?.cameraMake),
+				href: cameraHref,
+				glyph: cameraHref !== undefined ? Camera : undefined
+			},
+			{
+				label: $_('viewer_exif_camera_model'),
+				value: text(exif?.cameraModel),
+				href: cameraHref,
+				glyph: cameraHref !== undefined ? Camera : undefined
+			},
 			{ label: $_('viewer_exif_lens'), value: text(exif?.lens) }
 		])
 	);
@@ -244,7 +294,56 @@
 		}
 		return face.clusterId !== null ? $_('viewer_faces_unnamed') : $_('viewer_faces_unclustered');
 	}
+
+	/**
+	 * Whether one face chip deep-links into its person page: a NAMED
+	 * cluster (the caller's label sits on the face's cluster) -- the
+	 * naming is done, the page owns the rename. Unnamed faces keep
+	 * the assign flow (the drawer's own write).
+	 */
+	function faceLinks(face: AssetFaceSummary): boolean {
+		return face.clusterId !== null && face.label !== null;
+	}
+
+	/** The album row's display title (the sync card's localized display name). */
+	function albumTitle(album: AssetAlbumRef): string {
+		return album.type === 'sync' ? $_('album_all_photos') : album.title;
+	}
+
+	/** The resolved place's deep link into the place-filtered browse. */
+	const placeHref = $derived(
+		detail.place === null ? undefined : `/search?placeIds=${encodeURIComponent(String(detail.place.placeId))}`
+	);
+	const place: AssetPlaceRef | null = $derived(detail.place);
 </script>
+
+<!-- The shared fact-row language: the label column faint, the
+     value column text, one hairline between the rows. A row that
+     carries a deep link renders its value as a link under the
+     icon-first rule (a leading decorative glyph per row type). -->
+{#snippet factRow(entry: FactRow)}
+	<div class="info__fact flex justify-between gap-3 py-[7px]">
+		<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">
+			{entry.label}
+		</dt>
+		<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">
+			{#if entry.href !== undefined}
+				<a
+					class="info__fact-link inline-flex items-center justify-end gap-1 text-accent no-underline hover:underline"
+					href={entry.href}
+				>
+					{#if entry.glyph}
+						{@const Glyph = entry.glyph}
+						<Glyph size={14} class="shrink-0" aria-hidden="true" />
+					{/if}
+					{entry.value}
+				</a>
+			{:else}
+				{entry.value}
+			{/if}
+		</dd>
+	</div>
+{/snippet}
 
 <!-- The docked split region: at lg+ the panel is STATIC in
      the viewer's flex row -- it occupies layout space beside the
@@ -334,6 +433,35 @@
 			{/if}
 		</section>
 
+		<!-- THE ALBUMS ROWS (the approved L3 face): each visible
+		     album holding this asset deep-links into its detail --
+		     the sync card's internal label never renders (the
+		     localized display name keyed by the type). The section
+		     stands only while albums hold the asset. -->
+		{#if detail.albums.length > 0}
+			<section class="info__section mt-4">
+				<h3
+					class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
+				>
+					{$_('viewer_albums_section')}
+				</h3>
+				<ul class="info__albums m-0 p-0 list-none divide-y divide-border">
+					{#each detail.albums as album (album.id)}
+						<li>
+							<a
+								class="info__album flex items-center gap-1.5 py-[7px] font-body font-medium text-[13px] leading-[1.4] text-accent no-underline hover:underline"
+								href={`/albums/${encodeURIComponent(album.id)}`}
+								data-album-id={album.id}
+							>
+								<Folder size={14} class="shrink-0" aria-hidden="true" />
+								{albumTitle(album)}
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
 		<!-- The key-value row language: one hairline between
 		     the rows, the label column faint, the value column text,
 		     the tightened section rhythm -- no card borders, the
@@ -346,19 +474,12 @@
 			</h3>
 			<dl class="info__facts divide-y divide-border">
 				{#each fileRows as entry (entry.label)}
-					<div class="info__fact flex justify-between gap-3 py-[7px]">
-						<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">
-							{entry.label}
-						</dt>
-						<dd
-							class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]"
-						>
-							{entry.value}
-						</dd>
-					</div>
+					{@render factRow(entry)}
 				{/each}
 				<!-- The tags row: the CALLER's tags on the asset as
-				     chips, plus the assign affordance (the add-tag dialog
+				     chips, each chip a deep link into the tag-filtered
+				     browse (the caller's own vocabulary keys the facet),
+				     plus the assign affordance (the add-tag dialog
 				     the batch bar's flow reuses). Per-user state: the
 				     chips are the caller's own rows, the write is the
 				     caller's own, so the affordance is every viewer's. -->
@@ -374,10 +495,14 @@
 							>
 						{:else}
 							{#each detail.tags as tag (tag.id)}
-								<span
-									class="info__tag-chip inline-flex items-center px-2 py-0.5 font-body font-medium text-[12px] leading-[1.4] text-text bg-transparent border border-border rounded-full whitespace-nowrap"
-									data-tag-id={tag.id}>{tag.name}</span
+								<a
+									class="info__tag-chip inline-flex items-center gap-1 px-2 py-0.5 font-body font-medium text-[12px] leading-[1.4] text-text bg-transparent border border-border rounded-full whitespace-nowrap no-underline transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text hover:text-accent-soft-text"
+									href={`/search?tagIds=${encodeURIComponent(tag.id)}`}
+									data-tag-id={tag.id}
 								>
+									<Tag size={12} class="shrink-0" aria-hidden="true" />
+									{tag.name}
+								</a>
 							{/each}
 						{/if}
 						<button
@@ -418,18 +543,7 @@
 				{#if cameraRows.length > 0}
 					<dl class="info__facts divide-y divide-border">
 						{#each cameraRows as entry (entry.label)}
-							<div class="info__fact flex justify-between gap-3 py-[7px]">
-								<dt
-									class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap"
-								>
-									{entry.label}
-								</dt>
-								<dd
-									class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]"
-								>
-									{entry.value}
-								</dd>
-							</div>
+							{@render factRow(entry)}
 						{/each}
 					</dl>
 				{:else}
@@ -448,18 +562,7 @@
 				{#if exposureRows.length > 0}
 					<dl class="info__facts divide-y divide-border">
 						{#each exposureRows as entry (entry.label)}
-							<div class="info__fact flex justify-between gap-3 py-[7px]">
-								<dt
-									class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap"
-								>
-									{entry.label}
-								</dt>
-								<dd
-									class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]"
-								>
-									{entry.value}
-								</dd>
-							</div>
+							{@render factRow(entry)}
 						{/each}
 					</dl>
 				{:else}
@@ -478,18 +581,7 @@
 				{#if locationRows.length > 0}
 					<dl class="info__facts divide-y divide-border">
 						{#each locationRows as entry (entry.label)}
-							<div class="info__fact flex justify-between gap-3 py-[7px]">
-								<dt
-									class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap"
-								>
-									{entry.label}
-								</dt>
-								<dd
-									class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]"
-								>
-									{entry.value}
-								</dd>
-							</div>
+							{@render factRow(entry)}
 						{/each}
 					</dl>
 				{:else}
@@ -521,30 +613,53 @@
 			{:else}
 				<!-- One chip per face of the detail's faces array: the crop,
 				     the caller's label state of the face's cluster, and the
-				     assign affordance -- the click opens the page's assign
-				     dialog. -->
+				     affordance -- a NAMED cluster's chip deep-links into the
+				     person page; an unnamed chip keeps the assign flow
+				     (the naming write is the drawer's own, never a
+				     navigation). -->
 				<ul class="info__faces flex flex-wrap gap-2 m-0 p-0 list-none">
 					{#each detail.faces as face (face.id)}
 						<li>
-							<button
-								class="info__face flex items-center gap-2 py-1 pl-1 pr-2.5 rounded-control bg-transparent border border-border cursor-pointer transition-[background-color,border-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text focus-visible:bg-accent-soft focus-visible:border-accent-soft-text"
-								type="button"
-								data-face-id={face.id}
-								onclick={() => onassignface(face)}
-							>
-								<img
-									class="info__face-crop w-9 h-9 rounded-control object-cover bg-accent-soft"
-									src={face.thumbnail}
-									alt=""
-									loading="lazy"
-									decoding="async"
-									draggable="false"
-								/>
-								<span
-									class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate"
-									>{faceLabel(face)}</span
+							{#if faceLinks(face)}
+								<a
+									class="info__face flex items-center gap-2 py-1 pl-1 pr-2.5 rounded-control bg-transparent border border-border cursor-pointer no-underline transition-[background-color,border-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text focus-visible:bg-accent-soft focus-visible:border-accent-soft-text"
+									href={`/people/${encodeURIComponent(face.clusterId ?? '')}`}
+									data-face-id={face.id}
 								>
-							</button>
+									<img
+										class="info__face-crop w-9 h-9 rounded-control object-cover bg-accent-soft"
+										src={face.thumbnail}
+										alt=""
+										loading="lazy"
+										decoding="async"
+										draggable="false"
+									/>
+									<span
+										class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate"
+										>{faceLabel(face)}</span
+									>
+								</a>
+							{:else}
+								<button
+									class="info__face flex items-center gap-2 py-1 pl-1 pr-2.5 rounded-control bg-transparent border border-border cursor-pointer transition-[background-color,border-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text focus-visible:bg-accent-soft focus-visible:border-accent-soft-text"
+									type="button"
+									data-face-id={face.id}
+									onclick={() => onassignface(face)}
+								>
+									<img
+										class="info__face-crop w-9 h-9 rounded-control object-cover bg-accent-soft"
+										src={face.thumbnail}
+										alt=""
+										loading="lazy"
+										decoding="async"
+										draggable="false"
+									/>
+									<span
+										class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate"
+										>{faceLabel(face)}</span
+									>
+								</button>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -557,9 +672,23 @@
 			>
 				{$_('nav_places')}
 			</h3>
-			<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">
-				{$_('viewer_places_placeholder')}
-			</p>
+			{#if place !== null && placeHref !== undefined}
+				<!-- The resolved city: the row deep-links into the
+				     place-filtered browse (the places facet's own key, the
+				     display name the request's locale joined). -->
+				<a
+					class="info__place flex items-center gap-1.5 py-[7px] font-body font-medium text-[13px] leading-[1.4] text-accent no-underline hover:underline"
+					href={placeHref}
+					data-place-id={place.placeId}
+				>
+					<MapPin size={14} class="shrink-0" aria-hidden="true" />
+					{place.name}
+				</a>
+			{:else}
+				<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">
+					{$_('viewer_places_placeholder')}
+				</p>
+			{/if}
 		</section>
 	</div>
 </aside>

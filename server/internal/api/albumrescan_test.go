@@ -2,7 +2,7 @@
 // own contract -- the two-tier authorization answer (unauthenticated
 // 401, sharee 403, invisible 404), the type gate (the rescan is the
 // directory album's own flow: virtual and sync albums fold into the
-// single-shape 404), the locked gate's 409, the album-scoped
+// single-shape 404), the album-scoped
 // in-flight idempotence (200 with the joined run's identifier),
 // the 202 of a fresh enqueue through the seam, and the 500 of the
 // unwired queue. The three arms themselves live in the jobs
@@ -100,12 +100,12 @@ func (e *rescanEnv) rescanRaw(t *testing.T, cookie *http.Cookie, albumID uuid.UU
 // insertAlbum inserts one fixture album row directly (the endpoint
 // tests gate on rows the real creation flow already shaped; the
 // mount-root matrix lives in albumroots_test.go).
-func (e *rescanEnv) insertAlbum(t *testing.T, id, owner uuid.UUID, albumType, title string, locked bool) {
+func (e *rescanEnv) insertAlbum(t *testing.T, id, owner uuid.UUID, albumType, title string) {
 	t.Helper()
 	if _, err := e.pool.Exec(context.Background(), `
-		INSERT INTO albums (id, owner_id, title, type, locked)
-		VALUES ($1, $2, $3, $4, $5)`,
-		pgUUID(id), pgUUID(owner), title, albumType, locked); err != nil {
+		INSERT INTO albums (id, owner_id, title, type)
+		VALUES ($1, $2, $3, $4)`,
+		pgUUID(id), pgUUID(owner), title, albumType); err != nil {
 		t.Fatalf("insert fixture album %s: %v", id, err)
 	}
 }
@@ -132,9 +132,8 @@ func rescanResponse(t *testing.T, rec *httptest.ResponseRecorder) apigen.AlbumRe
 
 // TestRescanAlbumGates pins the endpoint's own matrix: the
 // unauthenticated 401, the single-shape 404 of the unknown id, the
-// honest 403 of the sharee, the 404 of the sync and virtual albums
-// (the rescan is the directory album's own flow), and the 409 of
-// the locked album.
+// honest 403 of the sharee, and the 404 of the sync and virtual
+// albums (the rescan is the directory album's own flow).
 func TestRescanAlbumGates(t *testing.T) {
 	env := newRescanEnv(t)
 	adminID := env.adminID
@@ -147,13 +146,11 @@ func TestRescanAlbumGates(t *testing.T) {
 		t.Fatalf("load the sync album: %v", err)
 	}
 	virtual := fixtureWallAlbumID("aa")
-	env.insertAlbum(t, virtual, adminID, "virtual", "Picks", false)
+	env.insertAlbum(t, virtual, adminID, "virtual", "Picks")
 	directory := fixtureWallAlbumID("ab")
-	env.insertAlbum(t, directory, adminID, "directory", "Family", false)
-	locked := fixtureWallAlbumID("ac")
-	env.insertAlbum(t, locked, adminID, "directory", "Locked", true)
+	env.insertAlbum(t, directory, adminID, "directory", "Family")
 	shared := fixtureWallAlbumID("ad")
-	env.insertAlbum(t, shared, adminID, "directory", "Shared", false)
+	env.insertAlbum(t, shared, adminID, "directory", "Shared")
 	env.shareAlbum(t, shared, graceID, adminID)
 
 	t.Run("Unauthenticated", func(t *testing.T) {
@@ -205,16 +202,6 @@ func TestRescanAlbumGates(t *testing.T) {
 		}
 	})
 
-	t.Run("Locked", func(t *testing.T) {
-		rec := env.rescanRaw(t, env.cookie, locked)
-		if rec.Code != http.StatusConflict {
-			t.Fatalf("status = %d, want %d (body %q)", rec.Code, http.StatusConflict, rec.Body.String())
-		}
-		apiErr, _ := decodeError(t, rec)
-		if apiErr.Code != apigen.ALBUMLOCKED {
-			t.Errorf("code = %q, want %q", apiErr.Code, apigen.ALBUMLOCKED)
-		}
-	})
 }
 
 // TestRescanAlbumStartsAndJoins pins the endpoint's happy paths and
@@ -228,8 +215,8 @@ func TestRescanAlbumStartsAndJoins(t *testing.T) {
 	adminID := env.adminID
 	directory := fixtureWallAlbumID("ba")
 	other := fixtureWallAlbumID("bb")
-	env.insertAlbum(t, directory, adminID, "directory", "Family", false)
-	env.insertAlbum(t, other, adminID, "directory", "Other", false)
+	env.insertAlbum(t, directory, adminID, "directory", "Family")
+	env.insertAlbum(t, other, adminID, "directory", "Other")
 
 	t.Run("Starts", func(t *testing.T) {
 		rec := env.rescanRaw(t, env.cookie, directory)
@@ -305,7 +292,7 @@ func TestRescanAlbumWithoutQueue(t *testing.T) {
 	env := newRescanEnv(t)
 	adminID := env.adminID
 	directory := fixtureWallAlbumID("bc")
-	env.insertAlbum(t, directory, adminID, "directory", "Family", false)
+	env.insertAlbum(t, directory, adminID, "directory", "Family")
 
 	unwired := NewRouter(&Deps{Pool: env.pool, Version: testVersion, DataDir: env.dataDir})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/albums/"+directory.String()+"/rescan", nil)

@@ -104,6 +104,8 @@ function detailBodyOf(source: TimelineItem, overrides: Record<string, unknown> =
 		exif: {},
 		faces: [],
 		tags: [],
+		albums: [],
+		place: null,
 		...source,
 		...overrides
 	};
@@ -187,7 +189,7 @@ function put(url: string, respond: () => Response | Promise<Response>): RouteRul
 
 /** The default routes of the viewer surface (an image asset). */
 function viewerRoutes(id: string, extra: RouteRule[] = []): RouteRule[] {
-	return [get(`/api/v1/assets/${id}`, () => jsonResponse(200, detailBodyOf(sequence[1]!))), ...extra];
+	return [get(`/api/v1/assets/${id}?locale=en`, () => jsonResponse(200, detailBodyOf(sequence[1]!))), ...extra];
 }
 
 function stubFetch(rules: RouteRule[]): ReturnType<typeof vi.fn> {
@@ -399,7 +401,9 @@ test('arrow keys walk the sequence and clamp at both ends', async () => {
 	flushSync();
 
 	// The head: ArrowLeft is inert (the clamp).
-	const head = mountViewer('a1', [get('/api/v1/assets/a1', () => jsonResponse(200, detailBodyOf(sequence[0]!)))]);
+	const head = mountViewer('a1', [
+		get('/api/v1/assets/a1?locale=en', () => jsonResponse(200, detailBodyOf(sequence[0]!)))
+	]);
 	await settle();
 	pressKey('ArrowLeft');
 	expect(vi.mocked(goto)).toHaveBeenCalledTimes(2);
@@ -407,7 +411,9 @@ test('arrow keys walk the sequence and clamp at both ends', async () => {
 	flushSync();
 
 	// The tail: ArrowRight is inert.
-	const tail = mountViewer('a3', [get('/api/v1/assets/a3', () => jsonResponse(200, detailBodyOf(sequence[2]!)))]);
+	const tail = mountViewer('a3', [
+		get('/api/v1/assets/a3?locale=en', () => jsonResponse(200, detailBodyOf(sequence[2]!)))
+	]);
 	await settle();
 	pressKey('ArrowRight');
 	expect(vi.mocked(goto)).toHaveBeenCalledTimes(2);
@@ -417,7 +423,9 @@ test('arrow keys walk the sequence and clamp at both ends', async () => {
 
 test('a deep link off the sequence still loads the asset; arrows and filmstrip current are inert', async () => {
 	const offPage = item('zz', '2026-10-10T08:00:00Z', { originalFilename: 'OFF.jpg' });
-	const { app } = mountViewer('zz', [get('/api/v1/assets/zz', () => jsonResponse(200, detailBodyOf(offPage)))]);
+	const { app } = mountViewer('zz', [
+		get('/api/v1/assets/zz?locale=en', () => jsonResponse(200, detailBodyOf(offPage)))
+	]);
 	await settle();
 
 	// The off-sequence detail renders.
@@ -459,10 +467,10 @@ test('Escape and the back affordance leave through history.back', async () => {
 
 test('the description edit sends the PATCH body and maps failures without touching the stored text', async () => {
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
 		// The unknown code pins the shared fallback: the drawer
 		// renders the generic message, never the raw code.
-		patch('/api/v1/assets/a2', () => jsonResponse(502, { code: 'PROXY_TEAPOT' }))
+		patch('/api/v1/assets/a2?locale=en', () => jsonResponse(502, { code: 'PROXY_TEAPOT' }))
 	]);
 	await settle();
 
@@ -475,7 +483,7 @@ test('the description edit sends the PATCH body and maps failures without touchi
 	await settle();
 
 	// The exact PATCH body of the contract.
-	const init = requestOf(fetchMock, 'PATCH', '/api/v1/assets/a2');
+	const init = requestOf(fetchMock, 'PATCH', '/api/v1/assets/a2?locale=en');
 	expect(init).toBeDefined();
 	expect(JSON.parse(String(init?.body))).toEqual({ description: 'My new caption.' });
 
@@ -496,8 +504,8 @@ test('the description edit sends the PATCH body and maps failures without touchi
 
 test('a successful edit adopts the response description', async () => {
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
-		patch('/api/v1/assets/a2', () =>
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
+		patch('/api/v1/assets/a2?locale=en', () =>
 			jsonResponse(200, detailBodyOf(sequence[1]!, { description: 'The saved caption.' }))
 		)
 	]);
@@ -520,7 +528,7 @@ test('the Live Photo press probes the component stream and toggles; not-ready ke
 	const liveDetail = () => jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
 	const probeCalls: string[] = [];
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', liveDetail),
+		get('/api/v1/assets/a2?locale=en', liveDetail),
 		get('/api/v1/assets/c2/play', () => {
 			probeCalls.push('c2');
 			return rangeResponse();
@@ -556,7 +564,7 @@ test('the Live Photo press probes the component stream and toggles; not-ready ke
 	// the still photo stays (each press re-probes).
 	let streamReady = false;
 	const waiting = mountViewer('a2', [
-		get('/api/v1/assets/a2', liveDetail),
+		get('/api/v1/assets/a2?locale=en', liveDetail),
 		get('/api/v1/assets/c2/play', () =>
 			streamReady ? rangeResponse() : jsonResponse(404, { code: 'ASSET_NOT_READY' })
 		)
@@ -580,7 +588,7 @@ test('a not-ready video shows the poster and waits for the SSE ready event', asy
 	let videoReady = false;
 	let streamReady = false;
 	const { app } = mountViewer('v1', [
-		get('/api/v1/assets/v1', () =>
+		get('/api/v1/assets/v1?locale=en', () =>
 			jsonResponse(200, {
 				...detailBodyOf(videoSource, {
 					isReady: videoReady,
@@ -628,7 +636,7 @@ test('the bar trash action flips optimistically, rolls back on failure', async (
 		release = resolve;
 	});
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
 		post('/api/v1/assets/batch', () => batchAnswer)
 	]);
 	await settle();
@@ -656,7 +664,7 @@ test('the bar trash action flips optimistically, rolls back on failure', async (
 
 test('a successful favorite batch flips the bar label (per-user state, no events)', async () => {
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
 	]);
 	await settle();
@@ -675,7 +683,7 @@ test('a successful favorite batch flips the bar label (per-user state, no events
 
 test('a trashed asset offers Restore in the bar and runs the restore batch', async () => {
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { isTrashed: true }))),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { isTrashed: true }))),
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
 	]);
 	await settle();
@@ -701,7 +709,7 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 	// its edit affordance. The face chips stay: their assign dialog
 	// carries the per-user label write a sharee holds.
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () =>
+		get('/api/v1/assets/a2?locale=en', () =>
 			jsonResponse(200, detailBodyOf(sequence[1]!, { ownerId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70' }))
 		),
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
@@ -849,8 +857,8 @@ test('the +/- keys and the double-click ride the gradual zoom; a neighbor resets
 	// zoomed stage flips synchronously with the intent). Navigating
 	// to a neighbor snaps back to the resting scale.
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
-		get('/api/v1/assets/a1', () => jsonResponse(200, detailBodyOf(sequence[0]!)))
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
+		get('/api/v1/assets/a1?locale=en', () => jsonResponse(200, detailBodyOf(sequence[0]!)))
 	]);
 	await settle();
 	const stage = () => element('.viewer__stage');
@@ -884,7 +892,9 @@ test('the +/- keys and the double-click ride the gradual zoom; a neighbor resets
 
 	// A fresh neighbor starts unzoomed: the engine's hard reset ran on
 	// the asset change.
-	const neighbor = mountViewer('a1', [get('/api/v1/assets/a1', () => jsonResponse(200, detailBodyOf(sequence[0]!)))]);
+	const neighbor = mountViewer('a1', [
+		get('/api/v1/assets/a1?locale=en', () => jsonResponse(200, detailBodyOf(sequence[0]!)))
+	]);
 	await settle();
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(false);
 	unmount(neighbor.app);
@@ -894,7 +904,7 @@ test('the +/- keys and the double-click ride the gradual zoom; a neighbor resets
 test("a Live Photo's double press is the press pair, never a zoom toggle", async () => {
 	const liveDetail = () => jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', liveDetail),
+		get('/api/v1/assets/a2?locale=en', liveDetail),
 		get('/api/v1/assets/c2/play', () => rangeResponse())
 	]);
 	await settle();
@@ -942,7 +952,7 @@ test('the layered Escape closes the assign dialog, then the drawer, then leaves'
 	// dialog is gone with the permanent delete's departure).
 	const faces = [faceSummary('f2')];
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
 		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
 		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [] }))
 	]);
@@ -999,7 +1009,7 @@ test('the i key toggles the drawer and typing never reaches the viewer keys', as
 test('a failed detail load shows the mapped error with a working retry', async () => {
 	let failing = true;
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () =>
+		get('/api/v1/assets/a2?locale=en', () =>
 			failing ? jsonResponse(500, { code: 'PROXY_TEAPOT' }) : jsonResponse(200, detailBodyOf(sequence[1]!))
 		)
 	]);
@@ -1021,7 +1031,7 @@ test('a failed detail load shows the mapped error with a working retry', async (
 
 test('the stage keeps its loaded and zoomed state across same-id detail replacements', async () => {
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!)))
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!)))
 	]);
 	await settle();
 
@@ -1041,14 +1051,14 @@ test('the stage keeps its loaded and zoomed state across same-id detail replacem
 	// persists with its loaded class, the zoom holds, and the serving
 	// copies are never re-requested (nothing re-fires a load the
 	// browser would not send).
-	const detailCalls = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2');
+	const detailCalls = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2?locale=en');
 	handlers[0]?.({ id: 21, name: 'asset.updated', assetId: 'a2', kind: 'image' });
 	await settle();
 	const survived = Array.from(document.body.querySelectorAll<HTMLImageElement>('img.viewer__image'));
 	expect(survived[0]).toBe(images[0]);
 	expect(survived[0]?.classList.contains('viewer__image--loaded')).toBe(true);
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(true);
-	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2')).toHaveLength(
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2?locale=en')).toHaveLength(
 		detailCalls.length + 1
 	);
 	unmount(app);
@@ -1059,7 +1069,9 @@ test('the stage keeps its loaded and zoomed state across same-id detail replacem
 	// reset is approximated by the neighbor's mount -- the same
 	// approximation the drawer's reset test uses). The new asset
 	// starts unloaded and unzoomed: the crossfade begins over.
-	const neighbor = mountViewer('a3', [get('/api/v1/assets/a3', () => jsonResponse(200, detailBodyOf(sequence[2]!)))]);
+	const neighbor = mountViewer('a3', [
+		get('/api/v1/assets/a3?locale=en', () => jsonResponse(200, detailBodyOf(sequence[2]!)))
+	]);
 	await settle();
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(false);
 	expect(
@@ -1074,7 +1086,7 @@ test('the stage keeps its loaded and zoomed state across same-id detail replacem
 test('a failed initial load re-seeds the favorite flag when the convergence refetch recovers', async () => {
 	let failing = true;
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () =>
+		get('/api/v1/assets/a2?locale=en', () =>
 			failing ? jsonResponse(500, { code: 'PROXY_TEAPOT' }) : jsonResponse(200, detailBodyOf(sequence[1]!))
 		)
 	]);
@@ -1113,7 +1125,7 @@ test('SSE events of other assets are ignored (the wall converges on remount)', a
 	handlers[0]?.({ id: 12, name: 'asset.ready', assetId: 'a3', kind: 'image' });
 	await settle();
 	// No refetch of the open asset, no navigation.
-	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2')).toHaveLength(1);
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2?locale=en')).toHaveLength(1);
 	expect(goto).not.toHaveBeenCalled();
 	unmount(app);
 	flushSync();
@@ -1131,7 +1143,7 @@ test('leaving the viewer unsubscribes from the event stream', async () => {
 
 test('a not-ready video carries the stage on the placeholder when the poster request fails', async () => {
 	const { app } = mountViewer('v1', [
-		get('/api/v1/assets/v1', () => jsonResponse(200, detailBodyOf(videoSource, { isReady: false }))),
+		get('/api/v1/assets/v1?locale=en', () => jsonResponse(200, detailBodyOf(videoSource, { isReady: false }))),
 		get('/api/v1/assets/v1/play', () => jsonResponse(404, { code: 'ASSET_NOT_READY' }))
 	]);
 	await settle();
@@ -1191,7 +1203,7 @@ test('an in-progress description draft survives same-id detail replacements', as
 		release = resolve;
 	});
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!))),
 		post('/api/v1/assets/batch', () => batchAnswer)
 	]);
 	await settle();
@@ -1214,7 +1226,7 @@ test('an in-progress description draft survives same-id detail replacements', as
 	// draft survives that replacement too.
 	handlers[0]?.({ id: 14, name: 'asset.updated', assetId: 'a2', kind: 'image' });
 	await settle();
-	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2')).toHaveLength(2);
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2?locale=en')).toHaveLength(2);
 	expect(document.body.querySelector<HTMLTextAreaElement>('textarea.info__editor')?.value).toBe(
 		'My work in progress.'
 	);
@@ -1231,7 +1243,7 @@ test('an in-progress description draft survives same-id detail replacements', as
 	// needed -- the read view renders and the draft never leaks
 	// across assets.
 	const neighbor = mountViewer('a1', [
-		get('/api/v1/assets/a1', () =>
+		get('/api/v1/assets/a1?locale=en', () =>
 			jsonResponse(200, detailBodyOf(sequence[0]!, { description: 'The neighbor caption.' }))
 		)
 	]);
@@ -1245,7 +1257,7 @@ test('an in-progress description draft survives same-id detail replacements', as
 test('concurrent convergence refetches apply newest-wins: a stale response never lands', async () => {
 	const pending: Array<(response: Response) => void> = [];
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => new Promise<Response>((resolve) => pending.push(resolve)))
+		get('/api/v1/assets/a2?locale=en', () => new Promise<Response>((resolve) => pending.push(resolve)))
 	]);
 	await settle();
 
@@ -1277,7 +1289,7 @@ test('concurrent convergence refetches apply newest-wins: a stale response never
 test('a successful convergence refetch recovers a failed initial load', async () => {
 	let failing = true;
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () =>
+		get('/api/v1/assets/a2?locale=en', () =>
 			failing ? jsonResponse(500, { code: 'PROXY_TEAPOT' }) : jsonResponse(200, detailBodyOf(sequence[1]!))
 		)
 	]);
@@ -1331,7 +1343,7 @@ test('Esc falls back to the timeline when no in-app history sits behind a deep l
 test('a zoomed Live Photo press keeps the motion layer inside the zoomed stage', async () => {
 	const liveDetail = () => jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', liveDetail),
+		get('/api/v1/assets/a2?locale=en', liveDetail),
 		get('/api/v1/assets/c2/play', () => rangeResponse())
 	]);
 	await settle();
@@ -1360,7 +1372,7 @@ test('the drawer renders one chip per face with the caller-visible label states'
 		faceSummary('f3', { clusterId: null })
 	];
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces })))
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces })))
 	]);
 	await settle();
 	openDrawer();
@@ -1382,12 +1394,62 @@ test('the drawer renders one chip per face with the caller-visible label states'
 	// first half left it open -- so no toggle click precedes the
 	// assertion.)
 	const empty = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: [] })))
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: [] })))
 	]);
 	await settle();
 	expect(document.body.querySelector('.info__face')).toBeNull();
 	expect(element('.info__faces-empty').textContent).toBe('No people recognized in this photo.');
 	unmount(empty.app);
+	flushSync();
+});
+
+test("the drawer's browsable rows deep-link: albums, tags, camera, named faces, place", async () => {
+	// The approved L3 face: the rows that name a browsable context
+	// render as links (the icon-first rule's leading glyph rides the
+	// row types), the drawer stays read-only otherwise.
+	const detail = detailBodyOf(sequence[1]!, {
+		exif: { cameraMake: 'Apple', cameraModel: 'iPhone 15' },
+		tags: [{ id: 't1', name: 'Beach' }],
+		albums: [
+			{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner' },
+			{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'owner' }
+		],
+		place: { placeId: 2988507, name: 'Paris' },
+		faces: [faceSummary('f1', { label: { name: 'Ada', isHidden: false } })]
+	});
+	const { app } = mountViewer('a2', [get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detail))]);
+	await settle();
+	openDrawer();
+
+	// The albums rows: one link per visible album, the sync card's
+	// localized display name keyed by the type.
+	const albumLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__album'));
+	expect(albumLinks.map((link) => link.getAttribute('href'))).toEqual(['/albums/al-1', '/albums/al-2']);
+	expect(albumLinks[1]?.textContent?.trim()).toBe('My photos');
+
+	// The tag chips: deep links into the tag-filtered browse.
+	const tagLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__tag-chip'));
+	expect(tagLinks.map((link) => link.getAttribute('href'))).toEqual(['/search?tagIds=t1']);
+	expect(tagLinks[0]?.textContent?.trim()).toBe('Beach');
+
+	// The camera rows: the facet's round-trip id (`make|model`).
+	const cameraLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__fact-link'));
+	expect(cameraLinks.map((link) => link.getAttribute('href'))).toEqual([
+		'/search?cameras=Apple%7CiPhone%2015',
+		'/search?cameras=Apple%7CiPhone%2015'
+	]);
+
+	// The named face: the person page link; the unnamed arm keeps the
+	// assign flow (its own test).
+	const faceLink = document.body.querySelector<HTMLAnchorElement>('[data-face-id="f1"]');
+	expect(faceLink?.getAttribute('href')).toBe('/people/c-f1');
+
+	// The resolved place: the place-filtered browse link.
+	const placeLink = document.body.querySelector<HTMLAnchorElement>('.info__place');
+	expect(placeLink?.getAttribute('href')).toBe('/search?placeIds=2988507');
+	expect(placeLink?.textContent?.trim()).toBe('Paris');
+
+	unmount(app);
 	flushSync();
 });
 
@@ -1400,7 +1462,7 @@ test('the assign flow moves a face onto an existing person and the chip converge
 		moved ? faceSummary('f2', { clusterId: 'c1', label: { name: 'Ada', isHidden: false } }) : faceSummary('f2')
 	];
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
 		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
 		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [unnamedTarget('c9', 4)] })),
 		post('/api/v1/faces/f2/move', () => {
@@ -1441,7 +1503,7 @@ test('the assign flow moves a face onto an existing person and the chip converge
 test('a move on a not-yet-grouped face surfaces the not-grouped message', async () => {
 	const faces = [faceSummary('f3', { clusterId: null })];
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
 		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
 		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], nextCursor: null })),
 		post('/api/v1/faces/f3/move', () => jsonResponse(404, { code: 'PERSON_NOT_FOUND' }))
@@ -1467,14 +1529,14 @@ test('a move on a not-yet-grouped face surfaces the not-grouped message', async 
 	flushSync();
 });
 
-test('an unnamed-cluster chip names its cluster as a new person; labeled chips are not offered', async () => {
+test('a named face chip deep-links into the person page; an unnamed chip names its cluster as a new person', async () => {
 	let named = false;
 	const facesNow = () => [
 		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
 		named ? faceSummary('f2', { label: { name: 'Grace', isHidden: false } }) : faceSummary('f2')
 	];
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
 		get('/api/v1/people', () => jsonResponse(200, [])),
 		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [unnamedTarget('c9', 4)] })),
 		put('/api/v1/people/c-f2/label', () => {
@@ -1485,13 +1547,12 @@ test('an unnamed-cluster chip names its cluster as a new person; labeled chips a
 	await settle();
 	openDrawer();
 
-	// The labeled chip: no new-person mode (renaming an existing
-	// person belongs to the people page) -- the picker only.
-	click(element('[data-face-id="f1"]'));
-	await settle();
-	expect(document.body.querySelector('input[name="cluster-picker-mode"]')).toBeNull();
-	click(buttonByText('Cancel'));
-	await settle();
+	// The labeled chip: a LINK into the person's page (the naming is
+	// done, the page owns the rename) -- it never opens the assign
+	// dialog, so no new-person mode exists for it at all.
+	const namedChip = document.body.querySelector<HTMLAnchorElement>('[data-face-id="f1"]');
+	expect(namedChip?.tagName).toBe('A');
+	expect(namedChip?.getAttribute('href')).toBe('/people/c-f1');
 	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 
 	// The unnamed chip: the new-person path with the family note.
@@ -1527,12 +1588,13 @@ test('person events converge the chips through the refetch; unrelated events add
 	let labeled = false;
 	const facesNow = () => [faceSummary('f2', labeled ? { label: { name: 'Ada', isHidden: false } } : {})];
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() })))
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() })))
 	]);
 	await settle();
 	openDrawer();
 	expect(element('.info__face-name').textContent).toBe('Unnamed');
-	const detailCalls = () => fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2').length;
+	const detailCalls = () =>
+		fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2?locale=en').length;
 	const before = detailCalls();
 
 	// A person event off every rendered cluster and face: no refetch.
@@ -1596,7 +1658,7 @@ function scopedButtonByText(scope: ParentNode, text: string): HTMLButtonElement 
 
 test("the drawer's file section renders the tags row: the caller's chips, the empty note, the assign affordance", async () => {
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () =>
+		get('/api/v1/assets/a2?locale=en', () =>
 			jsonResponse(200, detailBodyOf(sequence[1]!, { tags: [tagEntry('t1', 'Beach')] }))
 		)
 	]);
@@ -1631,7 +1693,7 @@ test("the drawer's file section renders the tags row: the caller's chips, the em
 test('the tag assign flow: picking an existing tag writes the single id, the report lands, Done converges the row', async () => {
 	let detailCalls = 0;
 	const { app, fetchMock } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () => {
+		get('/api/v1/assets/a2?locale=en', () => {
 			detailCalls += 1;
 			return jsonResponse(
 				200,
@@ -1729,7 +1791,7 @@ test("the tags row's assign affordance is every viewer's own write (per-user sta
 	// -- the tag write is the CALLER's own per-user row, and the
 	// union deliberately carries it.
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2', () =>
+		get('/api/v1/assets/a2?locale=en', () =>
 			jsonResponse(
 				200,
 				detailBodyOf(sequence[1]!, {

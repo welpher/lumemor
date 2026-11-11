@@ -34,8 +34,27 @@ export type AssetDetail = components['schemas']['AssetDetail'];
 /** One face of the detail's faces array, the contract's AssetFaceSummary. */
 export type AssetFaceSummary = components['schemas']['AssetFaceSummary'];
 
+/** One entry of the detail's `albums` array, the contract's AssetAlbumRef. */
+export type AssetAlbumRef = components['schemas']['AssetAlbumRef'];
+
+/** The detail's `place` face, the contract's AssetPlaceRef. */
+export type AssetPlaceRef = components['schemas']['AssetPlaceRef'];
+
 /** The PATCH body: either owner-level attribute, at least one. */
 export type AssetPatch = components['schemas']['AssetPatch'];
+
+/** A detail-bearing call's options: the fetch implementation and the place face's display locale. */
+export type AssetDetailOptions = {
+	/** The fetch implementation (tests inject a mock; the app uses the global). */
+	fetcher?: typeof fetch;
+	/**
+	 * The display locale of the response's `place` face (`en` or
+	 * `zh-Hans`, the places face's own parameter -- the web app owns
+	 * the active locale and passes it along; the server never
+	 * guesses it from headers). Absent means `en`.
+	 */
+	locale?: string;
+};
 
 /** A detail-bearing call's outcome: the detail, or the failure's i18n key. */
 export type AssetDetailResult = { ok: true; detail: AssetDetail } | { ok: false; errorKey: string };
@@ -151,6 +170,41 @@ function detailFrom(body: unknown): AssetDetail | null {
 			return null;
 		}
 	}
+	// The albums array joined the fixed shape (the info panel's deep
+	// links): every entry carries its identity, title, type and the
+	// caller's relation.
+	if (!Array.isArray(candidate.albums)) {
+		return null;
+	}
+	for (const entry of candidate.albums) {
+		if (entry === null || typeof entry !== 'object') {
+			return null;
+		}
+		const album = entry as Partial<AssetAlbumRef>;
+		if (typeof album.id !== 'string' || typeof album.title !== 'string') {
+			return null;
+		}
+		if (album.type !== 'virtual' && album.type !== 'directory' && album.type !== 'sync') {
+			return null;
+		}
+		if (album.callerRole !== 'owner' && album.callerRole !== 'viewer') {
+			return null;
+		}
+	}
+	// The place face is required and nullable: a present value must
+	// carry the deep link's key and the display name.
+	if (candidate.place !== null) {
+		if (typeof candidate.place !== 'object') {
+			return null;
+		}
+		const place = candidate.place as Partial<AssetPlaceRef>;
+		if (typeof place.placeId !== 'number' || !Number.isInteger(place.placeId)) {
+			return null;
+		}
+		if (typeof place.name !== 'string') {
+			return null;
+		}
+	}
 	return body as AssetDetail;
 }
 
@@ -158,15 +212,15 @@ function detailFrom(body: unknown): AssetDetail | null {
  * GET /api/v1/assets/{id}: the asset detail. A 404 (unknown or
  * foreign id -- the anti-enumeration pair is indistinguishable)
  * maps to asset_not_found; a trashed asset answers 200 and arrives
- * like any other.
+ * like any other. The `locale` option rides the place face's
+ * display join (the web app owns the active locale).
  */
-export async function fetchAssetDetail(
-	id: string,
-	fetcher: typeof fetch = globalThis.fetch
-): Promise<AssetDetailResult> {
+export async function fetchAssetDetail(id: string, options: AssetDetailOptions = {}): Promise<AssetDetailResult> {
+	const fetcher = options.fetcher ?? globalThis.fetch;
+	const query = options.locale === undefined ? '' : `?locale=${encodeURIComponent(options.locale)}`;
 	let response: Response;
 	try {
-		response = await apiFetch(`/api/v1/assets/${encodeURIComponent(id)}`, undefined, fetcher);
+		response = await apiFetch(`/api/v1/assets/${encodeURIComponent(id)}${query}`, undefined, fetcher);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}
@@ -194,17 +248,21 @@ export async function fetchAssetDetail(
  * PATCH /api/v1/assets/{id}: edit the description and/or the hidden
  * switch. The response is the full detail after the edit (the
  * idempotent no-op answers it too), so the caller adopts it as the
- * fresh state -- no refetch.
+ * fresh state -- no refetch. The `locale` option rides the response's
+ * place face (the same-shape discipline: the PATCH serves the detail
+ * exactly as the GET serves it).
  */
 export async function patchAsset(
 	id: string,
 	patch: AssetPatch,
-	fetcher: typeof fetch = globalThis.fetch
+	options: AssetDetailOptions = {}
 ): Promise<AssetDetailResult> {
+	const fetcher = options.fetcher ?? globalThis.fetch;
+	const query = options.locale === undefined ? '' : `?locale=${encodeURIComponent(options.locale)}`;
 	let response: Response;
 	try {
 		response = await apiFetch(
-			`/api/v1/assets/${encodeURIComponent(id)}`,
+			`/api/v1/assets/${encodeURIComponent(id)}${query}`,
 			{
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },

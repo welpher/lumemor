@@ -118,17 +118,18 @@ func (q *Queries) CountLiveAlbumMember(ctx context.Context, arg CountLiveAlbumMe
 }
 
 const createDirectoryAlbum = `-- name: CreateDirectoryAlbum :one
-INSERT INTO albums (id, owner_id, title, type, root_path, source_writable)
-VALUES ($1, $2, $3, 'directory', $4, $5)
+INSERT INTO albums (id, owner_id, title, type, root_path, source_writable, allow_app_deletion)
+VALUES ($1, $2, $3, 'directory', $4, $5, $6)
 RETURNING id
 `
 
 type CreateDirectoryAlbumParams struct {
-	ID             pgtype.UUID `json:"id"`
-	OwnerID        pgtype.UUID `json:"owner_id"`
-	Title          string      `json:"title"`
-	RootPath       pgtype.Text `json:"root_path"`
-	SourceWritable bool        `json:"source_writable"`
+	ID               pgtype.UUID `json:"id"`
+	OwnerID          pgtype.UUID `json:"owner_id"`
+	Title            string      `json:"title"`
+	RootPath         pgtype.Text `json:"root_path"`
+	SourceWritable   bool        `json:"source_writable"`
+	AllowAppDeletion bool        `json:"allow_app_deletion"`
 }
 
 // The directory album creator (the albums-as-sources rework, widened
@@ -143,12 +144,15 @@ type CreateDirectoryAlbumParams struct {
 // source_writable carries the write probe's answer over that
 // directory -- a fact, not a gate: a read-only source is a
 // legitimate album whose photos cannot be deleted through the
-// application. The id is generated caller-side; the creation face
-// carries title, path and audience only. The wall card's companions
-// are the creation-time constants -- the caller's own audience
-// grants land right after -- so the handler reads the fresh row's
-// full card through GetAlbumSummary like every other write
-// response.
+// application. allow_app_deletion lands the create dialog's
+// deletability switch on the row (on by default; on a read-only
+// source the stored value governs nothing -- the derived
+// `deletable` face stays false). The id is generated caller-side;
+// the creation face carries title, path, the two dialog switches
+// and audience only. The wall card's companions are the
+// creation-time constants -- the caller's own audience grants land
+// right after -- so the handler reads the fresh row's full card
+// through GetAlbumSummary like every other write response.
 func (q *Queries) CreateDirectoryAlbum(ctx context.Context, arg CreateDirectoryAlbumParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, createDirectoryAlbum,
 		arg.ID,
@@ -156,6 +160,7 @@ func (q *Queries) CreateDirectoryAlbum(ctx context.Context, arg CreateDirectoryA
 		arg.Title,
 		arg.RootPath,
 		arg.SourceWritable,
+		arg.AllowAppDeletion,
 	)
 	var id pgtype.UUID
 	err := row.Scan(&id)
@@ -196,8 +201,7 @@ WHERE id = $1
 // The type guard keeps the statement honest against the handler's
 // virtual-only verdict (directory removal is the directory album's
 // own flow), and zero rows -- a concurrent delete won the race -- is
-// the 404 of a gone album. No locked gate ever runs here: locking is
-// a curation freeze, not a tombstone.
+// the 404 of a gone album.
 func (q *Queries) DeleteVirtualAlbum(ctx context.Context, albumID pgtype.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteVirtualAlbum, albumID)
 	if err != nil {
@@ -244,7 +248,7 @@ func (q *Queries) EnsureSyncAlbum(ctx context.Context, arg EnsureSyncAlbumParams
 }
 
 const getAlbumForCaller = `-- name: GetAlbumForCaller :one
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        CASE
            WHEN al.owner_id = $1 THEN 'owner'::text
            ELSE 'viewer'::text
@@ -310,7 +314,6 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 		&i.Album.OwnerID,
 		&i.Album.Title,
 		&i.Album.Type,
-		&i.Album.Locked,
 		&i.Album.CoverAssetID,
 		&i.Album.RootPath,
 		&i.Album.LastScannedAt,
@@ -327,7 +330,7 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 
 const getAlbumForTimelinePref = `-- name: GetAlbumForTimelinePref :one
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        CASE
            WHEN al.owner_id = $1 THEN 'owner'::text
            ELSE 'viewer'::text
@@ -375,7 +378,6 @@ func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTi
 		&i.Album.OwnerID,
 		&i.Album.Title,
 		&i.Album.Type,
-		&i.Album.Locked,
 		&i.Album.CoverAssetID,
 		&i.Album.RootPath,
 		&i.Album.LastScannedAt,
@@ -390,7 +392,7 @@ func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTi
 
 const getAlbumForWrite = `-- name: GetAlbumForWrite :one
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        EXISTS (
            SELECT 1 FROM album_shares s
            WHERE s.album_id = al.id AND s.user_id = $1
@@ -433,7 +435,6 @@ func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWritePara
 		&i.Album.OwnerID,
 		&i.Album.Title,
 		&i.Album.Type,
-		&i.Album.Locked,
 		&i.Album.CoverAssetID,
 		&i.Album.RootPath,
 		&i.Album.LastScannedAt,
@@ -447,7 +448,7 @@ func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWritePara
 }
 
 const getAlbumSummary = `-- name: GetAlbumSummary :one
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        EXISTS (
            SELECT 1 FROM album_shares s WHERE s.album_id = al.id
        ) AS is_shared,
@@ -494,7 +495,6 @@ func (q *Queries) GetAlbumSummary(ctx context.Context, arg GetAlbumSummaryParams
 		&i.Album.OwnerID,
 		&i.Album.Title,
 		&i.Album.Type,
-		&i.Album.Locked,
 		&i.Album.CoverAssetID,
 		&i.Album.RootPath,
 		&i.Album.LastScannedAt,
@@ -703,9 +703,77 @@ func (q *Queries) ListAlbumsOfAsset(ctx context.Context, assetID pgtype.UUID) ([
 	return items, nil
 }
 
+const listAssetAlbumsForCaller = `-- name: ListAssetAlbumsForCaller :many
+SELECT al.id,
+       al.title,
+       al.type,
+       al.owner_id = $1 AS is_owner
+FROM albums al
+LEFT JOIN album_shares sh
+       ON sh.album_id = al.id AND sh.user_id = $1
+WHERE (al.owner_id = $1 OR sh.user_id IS NOT NULL)
+  AND EXISTS (
+      SELECT 1
+      FROM album_items ai
+      WHERE ai.album_id = al.id
+        AND ai.asset_id = $2
+  )
+ORDER BY (al.type = 'sync') DESC, lower(al.title) ASC, al.id ASC
+`
+
+type ListAssetAlbumsForCallerParams struct {
+	Viewer  pgtype.UUID `json:"viewer"`
+	AssetID pgtype.UUID `json:"asset_id"`
+}
+
+type ListAssetAlbumsForCallerRow struct {
+	ID      pgtype.UUID `json:"id"`
+	Title   string      `json:"title"`
+	Type    AlbumType   `json:"type"`
+	IsOwner bool        `json:"is_owner"`
+}
+
+// The asset detail's `albums` face: every album whose membership row
+// references the asset AND that the caller can see -- their own
+// albums (any type; the sync stream's entry is the caller's own
+// materialized membership, the upload path's AddAssetToAlbum rows)
+// plus every album shared to them. The guard is the wall's own
+// visibility shape: an own album passes on ownership, a shared one
+// on its share row -- so another account's sync album (nothing can
+// share one) and every unshared foreign album stay invisible, and
+// the same asset answers different arrays for the owner and a
+// sharee. Ordered with the sync card first (the wall's pinned-card
+// discipline), then by title case-insensitively with the album id
+// as the tiebreak. The caller must have proven the asset
+// caller-visible first; the array carries no gate of its own.
+func (q *Queries) ListAssetAlbumsForCaller(ctx context.Context, arg ListAssetAlbumsForCallerParams) ([]ListAssetAlbumsForCallerRow, error) {
+	rows, err := q.db.Query(ctx, listAssetAlbumsForCaller, arg.Viewer, arg.AssetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAssetAlbumsForCallerRow
+	for rows.Next() {
+		var i ListAssetAlbumsForCallerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Type,
+			&i.IsOwner,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWallAlbumsForCaller = `-- name: ListWallAlbumsForCaller :many
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
@@ -736,7 +804,7 @@ WHERE al.owner_id = $1
 
 UNION ALL
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
@@ -763,7 +831,7 @@ WHERE al.owner_id = $1
 
 UNION ALL
 
-SELECT al.id, al.owner_id, al.title, al.type, al.locked, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        'viewer'::text AS caller_role,
        u.id AS owner_user_id,
        u.email AS owner_email,
@@ -849,7 +917,6 @@ func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUI
 			&i.Album.OwnerID,
 			&i.Album.Title,
 			&i.Album.Type,
-			&i.Album.Locked,
 			&i.Album.CoverAssetID,
 			&i.Album.RootPath,
 			&i.Album.LastScannedAt,
@@ -942,17 +1009,15 @@ const updateAlbumFields = `-- name: UpdateAlbumFields :one
 UPDATE albums
 SET title = COALESCE($1, title),
     cover_asset_id = COALESCE($2, cover_asset_id),
-    locked = COALESCE($3, locked),
-    allow_app_deletion = COALESCE($4, allow_app_deletion),
+    allow_app_deletion = COALESCE($3, allow_app_deletion),
     updated_at = now()
-WHERE id = $5
+WHERE id = $4
 RETURNING id
 `
 
 type UpdateAlbumFieldsParams struct {
 	Title            pgtype.Text `json:"title"`
 	CoverAssetID     pgtype.UUID `json:"cover_asset_id"`
-	Locked           pgtype.Bool `json:"locked"`
 	AllowAppDeletion pgtype.Bool `json:"allow_app_deletion"`
 	AlbumID          pgtype.UUID `json:"album_id"`
 }
@@ -964,18 +1029,17 @@ type UpdateAlbumFieldsParams struct {
 // so the pin can change through this face but never clear. The
 // deletability switch joins the property fields: present
 // updates the owner's allow-app-deletion posture of the directory
-// album, absent keeps it, and the lock's gate lives in the handler
-// (the property fields' own refusal) with the type arm that keeps
-// the switch off virtual albums. updated_at moves with the write:
-// the wall orders the own group by it. No owner guard and no type
-// guard here: the handler's gate already resolved the caller's
-// right to this write, and an album deleted between the gate and
-// the statement answers no row -- the honest 404 of a gone album.
+// album, absent keeps it, with the type arm that keeps
+// the switch off virtual albums living in the handler. updated_at
+// moves with the write: the wall orders the own group by it. No
+// owner guard and no type guard here: the handler's gate already
+// resolved the caller's right to this write, and an album deleted
+// between the gate and the statement answers no row -- the honest
+// 404 of a gone album.
 func (q *Queries) UpdateAlbumFields(ctx context.Context, arg UpdateAlbumFieldsParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, updateAlbumFields,
 		arg.Title,
 		arg.CoverAssetID,
-		arg.Locked,
 		arg.AllowAppDeletion,
 		arg.AlbumID,
 	)
