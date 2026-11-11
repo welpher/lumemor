@@ -50,6 +50,10 @@ function detailOf(timelineItem: TimelineItem, overrides: Record<string, unknown>
 		description: '',
 		exif: {},
 		isHidden: false,
+		// The detail's albums face at its upload default: the sync
+		// stream's entry (the upload's home, never excludable) -- the
+		// aggregate's insert gate reads this face.
+		albums: [{ id: 'sync-1', title: 'Sync', type: 'sync', callerRole: 'owner' }],
 		...timelineItem,
 		...overrides
 	});
@@ -375,6 +379,211 @@ describe('SSE convergence', () => {
 
 		expect(fetches).toContain('/api/v1/assets/a2');
 		expect(get(memberWall).items.find((i) => i.id === 'a2')?.isReady).toBe(true);
+	});
+
+	test("the aggregate's insert gate keeps an excluded album's replayed event out", async () => {
+		// The stream's ring replays every event a fresh connect missed,
+		// and an excluded album's assets ride those replays: the
+		// creator's own preference (the wall card's inTimeline false)
+		// is the union's own answer, so the convergence must insert
+		// nothing -- the pages never deliver that tile either.
+		const fetches: string[] = [];
+		const timeline = createTimelineClient({
+			fetcher: vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				fetches.push(url);
+				if (url === '/api/v1/assets/timeline?limit=100') {
+					return page(pageOneItems);
+				}
+				if (url === '/api/v1/assets/x1') {
+					return detailOf(item('x1', '2026-11-03T08:00:00Z'), {
+						albums: [{ id: 'alx', title: 'Excluded', type: 'directory', callerRole: 'owner' }]
+					});
+				}
+				if (url === '/api/v1/albums') {
+					return jsonResponse(200, {
+						albums: [
+							{ id: 'sync-1', title: 'Sync', type: 'sync', callerRole: 'owner' },
+							{
+								id: 'alx',
+								title: 'Excluded',
+								type: 'directory',
+								callerRole: 'owner',
+								inTimeline: false
+							}
+						]
+					});
+				}
+				throw new Error(`unexpected fetch ${url}`);
+			})
+		});
+		await timeline.loadMore();
+
+		await timeline.applyEvent({ id: 1, name: 'asset.ready', assetId: 'x1', kind: 'image' });
+
+		expect(fetches).toContain('/api/v1/albums');
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+
+	test("the aggregate's insert gate lands a feeding album's replayed event", async () => {
+		// The same replay against a feeding album: the caller's pref
+		// (the card's inTimeline true) admits the tile exactly where
+		// the pages would have delivered it.
+		const timeline = clientWith((url) => {
+			if (url === '/api/v1/assets/timeline?limit=100') {
+				return page(pageOneItems);
+			}
+			if (url === '/api/v1/assets/x1') {
+				return detailOf(item('x1', '2026-11-03T08:00:00Z'), {
+					albums: [{ id: 'alx', title: 'Fed', type: 'directory', callerRole: 'owner' }]
+				});
+			}
+			if (url === '/api/v1/albums') {
+				return jsonResponse(200, {
+					albums: [
+						{ id: 'sync-1', title: 'Sync', type: 'sync', callerRole: 'owner' },
+						{ id: 'alx', title: 'Fed', type: 'directory', callerRole: 'owner', inTimeline: true }
+					]
+				});
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await timeline.loadMore();
+
+		await timeline.applyEvent({ id: 1, name: 'asset.ready', assetId: 'x1', kind: 'image' });
+
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['x1', 'a1', 'a2', 'a3']);
+	});
+
+	test('the sync stream upload inserts without consulting the wall facts', async () => {
+		// The upload's home is the sync album (never excludable): the
+		// detail's face alone decides, no wall fetch ever fires -- a
+		// wall fetch here would throw and fail the scene.
+		const timeline = clientWith((url) => {
+			if (url === '/api/v1/assets/timeline?limit=100') {
+				return page([]);
+			}
+			if (url === '/api/v1/assets/n1') {
+				return detailOf(item('n1', '2026-11-03T08:00:00Z'));
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await timeline.loadMore();
+
+		await timeline.applyEvent({ id: 1, name: 'asset.uploaded', assetId: 'n1', kind: 'image' });
+
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['n1']);
+	});
+
+	test("an own reference set's replayed event inserts nothing", async () => {
+		// The reference sets never feed their creator's own aggregate
+		// (the wall card omits the switch): the face's owner-virtual
+		// entry decides alone, no wall fetch.
+		const fetches: string[] = [];
+		const timeline = createTimelineClient({
+			fetcher: vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				fetches.push(url);
+				if (url === '/api/v1/assets/timeline?limit=100') {
+					return page(pageOneItems);
+				}
+				if (url === '/api/v1/assets/m1') {
+					return detailOf(item('m1', '2026-11-03T08:00:00Z'), {
+						albums: [{ id: 'mem1', title: 'Trip', type: 'virtual', callerRole: 'owner' }]
+					});
+				}
+				throw new Error(`unexpected fetch ${url}`);
+			})
+		});
+		await timeline.loadMore();
+
+		await timeline.applyEvent({ id: 1, name: 'asset.ready', assetId: 'm1', kind: 'image' });
+
+		expect(fetches).not.toContain('/api/v1/albums');
+		expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+
+	test('a shared reference set rides the sharee own switch', async () => {
+		// The share arm of the union has no type filter: a shared
+		// reference set's member feeds the sharee's aggregate under
+		// the sharee's own preference (the shared card's inTimeline),
+		// so the map's two arms decide opposite outcomes for the same
+		// face.
+		const build = (inTimeline: boolean) =>
+			createTimelineClient({
+				fetcher: vi.fn(async (input: RequestInfo | URL) => {
+					const url = String(input);
+					if (url === '/api/v1/assets/timeline?limit=100') {
+						return page(pageOneItems);
+					}
+					if (url === '/api/v1/assets/s1') {
+						return detailOf(item('s1', '2026-11-03T08:00:00Z'), {
+							albums: [{ id: 'mem2', title: 'Shared trip', type: 'virtual', callerRole: 'viewer' }]
+						});
+					}
+					if (url === '/api/v1/albums') {
+						return jsonResponse(200, {
+							albums: [
+								{
+									id: 'mem2',
+									title: 'Shared trip',
+									type: 'virtual',
+									callerRole: 'viewer',
+									inTimeline
+								}
+							]
+						});
+					}
+					throw new Error(`unexpected fetch ${url}`);
+				})
+			});
+
+		const fed = build(true);
+		await fed.loadMore();
+		await fed.applyEvent({ id: 1, name: 'asset.ready', assetId: 's1', kind: 'image' });
+		expect(get(fed).items.map((i) => i.id)).toEqual(['s1', 'a1', 'a2', 'a3']);
+
+		const excluded = build(false);
+		await excluded.loadMore();
+		await excluded.applyEvent({ id: 1, name: 'asset.ready', assetId: 's1', kind: 'image' });
+		expect(get(excluded).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+
+	test('a page-delivered tile patches regardless of the feed facts', async () => {
+		// The gate is the insert path's alone: the server's own pages
+		// are the membership, so a delivered tile's convergence keeps
+		// running even when the caller's pref map would refuse the
+		// same album's unknown ids.
+		const fetches: string[] = [];
+		const timeline = createTimelineClient({
+			fetcher: vi.fn(async (input: RequestInfo | URL) => {
+				const url = String(input);
+				fetches.push(url);
+				if (url === '/api/v1/assets/timeline?limit=100') {
+					return page(pageOneItems.map((i) => item(i.id, i.takenAt, { isReady: false })));
+				}
+				if (url === '/api/v1/assets/a2') {
+					return detailOf(item('a2', '2026-11-01T09:00:00Z'), {
+						isReady: true,
+						albums: [{ id: 'alx', title: 'Excluded', type: 'directory', callerRole: 'owner' }]
+					});
+				}
+				if (url === '/api/v1/albums') {
+					return jsonResponse(200, {
+						albums: [
+							{ id: 'alx', title: 'Excluded', type: 'directory', callerRole: 'owner', inTimeline: false }
+						]
+					});
+				}
+				throw new Error(`unexpected fetch ${url}`);
+			})
+		});
+		await timeline.loadMore();
+
+		await timeline.applyEvent({ id: 1, name: 'asset.ready', assetId: 'a2', kind: 'image' });
+
+		expect(fetches).not.toContain('/api/v1/albums');
+		expect(get(timeline).items.find((i) => i.id === 'a2')?.isReady).toBe(true);
 	});
 
 	test('asset.updated with a hidden detail removes the tile; unhide returns it in place', async () => {
