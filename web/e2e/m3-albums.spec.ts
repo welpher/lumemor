@@ -1235,8 +1235,13 @@ test.describe('the removal scenes', () => {
 		await expect(memberPage.locator('.tile')).toHaveCount(4);
 
 		const searchPage = await page.context().newPage();
-		await searchPage.goto('/search?q=IMG_E6');
-		await expect(searchPage.locator('.tile')).toHaveCount(2);
+		await searchPage.goto('/search?query=IMG_E6');
+		// The unified search's semantic path ranks the whole visible
+		// library beside the text hits (the m3-search story's pin), so
+		// the writable pair answers among the results -- the held wall
+		// carries them until the removal's events converge it.
+		await expect(searchPage.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
+		await expect(searchPage.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toBeVisible();
 
 		const peoplePage = await page.context().newPage();
 		await peoplePage.goto('/people');
@@ -1289,8 +1294,13 @@ test.describe('the removal scenes', () => {
 		await memberContext.close();
 
 		// The admin's held search wall: the purged tiles fall (the
-		// refetch IS the search's convergence) and the wall empties.
-		await expect(searchPage.locator('.tile')).toHaveCount(0, { timeout: 30_000 });
+		// refetch IS the search's convergence) and the answer shrinks
+		// to the surviving read-only pair.
+		await expect(searchPage.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toHaveCount(0, {
+			timeout: 30_000
+		});
+		await expect(searchPage.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toHaveCount(0);
+		await expect(searchPage.locator('.tile')).toHaveCount(2, { timeout: 30_000 });
 		await searchPage.close();
 
 		// The admin's held people page: the named person's card drops
@@ -1350,10 +1360,10 @@ test.describe('the removal scenes', () => {
 		await expect(page.locator('a.album-card')).toHaveCount(2);
 
 		// The library's fresh answers: the aggregated timeline is the
-		// read-only pair's alone, and the search answers the writable
-		// pair's name with nothing -- both members purged with the
-		// album (no other album referenced them), the whole library
-		// domain of those tiles is gone.
+		// read-only pair's alone, and the search's merged answer (the
+		// text path's zero hits beside the semantic path's whole
+		// visible library) carries exactly the surviving pair -- the
+		// purged rows answer nothing on any path.
 		await expect
 			.poll(async () => {
 				const timeline = await page.request.get('/api/v1/assets/timeline');
@@ -1366,10 +1376,17 @@ test.describe('the removal scenes', () => {
 			})
 			.toBe([PHOTO_A_NAME, PHOTO_B_NAME].sort().join(','));
 
-		const purgedSearch = await page.request.get('/api/v1/search?q=IMG_E6');
-		expect(purgedSearch.status()).toBe(200);
-		const purgedBody = (await purgedSearch.json()) as { items?: unknown[] };
-		expect(purgedBody.items).toEqual([]);
+		await expect
+			.poll(async () => {
+				const search = await page.request.get('/api/v1/search?query=IMG_E6');
+				expect(search.status()).toBe(200);
+				const body = (await search.json()) as { items?: Array<{ originalFilename?: string }> };
+				return (body.items ?? [])
+					.map((item) => item.originalFilename ?? '')
+					.sort()
+					.join(',');
+			})
+			.toBe([PHOTO_A_NAME, PHOTO_B_NAME].sort().join(','));
 
 		// The people surface: the named person is gone (the label row
 		// cascaded with the dissolved cluster), the unnamed region
