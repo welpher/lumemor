@@ -445,6 +445,32 @@ DELETE FROM album_items
 WHERE album_id = sqlc.arg('album_id')
   AND asset_id = ANY(sqlc.arg('asset_ids')::uuid[]);
 
+-- name: AddMemoryItems :many
+-- The membership add, the memory curation's own arm: one
+-- album_items row for every requested asset the creator CURRENTLY
+-- SEES -- the re-share right's whole ground. The visibility check
+-- is the caller-visible predicate over the acting creator (the
+-- union of the albums that feed their view: their sync stream, their
+-- directory albums, the albums shared to them), joined with the
+-- live-member filter (not trashed, not hidden, not a Live Photo
+-- component row) so a photo the family can no longer see never
+-- enters a set that re-shares it. An id failing either check
+-- matches nothing here and lands as the report's skipped; an id
+-- already a member hits the conflict and lands as skipped too --
+-- the honest report, never per-item errors. RETURNING carries
+-- exactly the rows this write landed -- the added count, and the
+-- event discipline's transition signal.
+INSERT INTO album_items (album_id, asset_id, added_by)
+SELECT sqlc.arg('album_id'), a.id, sqlc.arg('added_by')
+FROM assets a
+WHERE a.id = ANY(sqlc.arg('asset_ids')::uuid[])
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND caller_asset_visible(sqlc.arg('added_by'), a.id)
+ON CONFLICT DO NOTHING
+RETURNING asset_id;
+
 -- name: ListAlbumsOfAsset :many
 -- The albums holding membership rows for one asset: the ids whose
 -- LIVE membership a trash or restore just changed (the deletability

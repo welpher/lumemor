@@ -4,9 +4,9 @@
 // timeline-exclusion row that lands with the memory (an own memory
 // never feeds the creator's aggregated timeline), the audience's
 // full-set convergence through the creation, and the event family
-// the memory rides. The membership curation arms and the shared
-// views' live filter land in their own tests (albums_write_test.go
-// and the visibility suite).
+// the memory rides. The membership curation add's re-share ground
+// and refusal matrix land here too; the shared views' live filter
+// lands in its own test below.
 package api
 
 import (
@@ -21,6 +21,13 @@ import (
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 )
+
+// fixtureMemoryAlbumID builds a deterministic fixture album id of
+// the memory tests, in a namespace disjoint from every other
+// fixture family (the wall's 50.. and the ad-hoc 70.. ids).
+func fixtureMemoryAlbumID(suffix string) uuid.UUID {
+	return uuid.MustParse("80000000-0000-0000-0000-0000000000" + suffix)
+}
 
 // fixtureMemoryAssetID builds a deterministic fixture asset id of
 // the memory tests, in a namespace disjoint from every other
@@ -306,6 +313,167 @@ func TestMemoryTimelineExclusion(t *testing.T) {
 			t.Errorf("preference rows = %d, want 1 (the birth row survives the refused write)", rows)
 		}
 	})
+}
+
+// TestMemoryCurationAdd pins the membership add's re-share ground
+// and report: every id must be a photo the creator CURRENTLY sees
+// as a live row -- an own upload (the sync arm), a photo of an
+// album shared to the creator (the shared arm) -- and every other
+// id (a foreign unshared photo, a trashed or hidden row, an id
+// already a member) stays out as the honest skipped count. The
+// event fires exactly when a row lands, and the type and
+// authorization gates hold the memory's own shape.
+func TestMemoryCurationAdd(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "memory-curation-grace@example.com")
+
+	created := env.createMemory(t, env.cookie, "The curated set", nil)
+	memory := uuid.UUID(created.Id)
+
+	// Grace's album shared to the admin: its member is a photo the
+	// admin sees through the shared arm (the re-share's chain
+	// ground -- a photo seen because someone shared it with you).
+	sharedAlbum := fixtureMemoryAlbumID("a1")
+	env.insertTimelineAlbum(t, sharedAlbum, graceID, "directory")
+	env.shareTimelineAlbum(t, sharedAlbum, adminID, graceID)
+
+	base := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	own := fixtureMemoryAssetID("11")       // the admin's upload (sync arm)
+	sharedIn := fixtureMemoryAssetID("12")  // grace's photo inside the album shared to the admin
+	foreign := fixtureMemoryAssetID("13")   // grace's unshared photo -- invisible to the admin
+	trashed := fixtureMemoryAssetID("14")   // the admin's own upload, trashed
+	hidden := fixtureMemoryAssetID("15")    // the admin's own upload, hidden
+	component := fixtureMemoryAssetID("16") // the admin's own upload, a Live Photo component row
+	env.insertOwnedAsset(t, own, adminID, base, timelineAssetOpts{})
+	env.insertTimelineAsset(t, sharedIn, graceID, base.Add(time.Hour), timelineAssetOpts{})
+	env.addTimelineItem(t, sharedAlbum, sharedIn, graceID)
+	env.insertTimelineAsset(t, foreign, graceID, base.Add(2*time.Hour), timelineAssetOpts{})
+	env.insertOwnedAsset(t, trashed, adminID, base.Add(3*time.Hour), timelineAssetOpts{deleted: true})
+	env.insertOwnedAsset(t, hidden, adminID, base.Add(4*time.Hour), timelineAssetOpts{isHidden: true})
+	env.insertOwnedAsset(t, component, adminID, base.Add(5*time.Hour), timelineAssetOpts{isComponent: true})
+
+	// A second memory shared to Grace: the sharee's refusal arm.
+	sharedToGrace := fixtureMemoryAlbumID("a2")
+	env.insertTimelineAlbum(t, sharedToGrace, adminID, "memory")
+	env.shareTimelineAlbum(t, sharedToGrace, graceID, adminID)
+	// A directory album and the caller's own sync: the type refusals.
+	directory := fixtureMemoryAlbumID("a3")
+	env.insertTimelineAlbum(t, directory, adminID, "directory")
+
+	t.Run("ReShareGroundAdmitsTheVisibleLiveRows", func(t *testing.T) {
+		report := env.addMemoryItems(t, env.cookie, memory, albumItemsBody(own, sharedIn, foreign, trashed, hidden, component))
+		if report.Added != 2 || report.Skipped != 4 {
+			t.Errorf("added/skipped = %d/%d, want 2/4 (the own upload and the shared album's member land; the foreign, trashed, hidden and component rows stay out)",
+				report.Added, report.Skipped)
+		}
+		for _, id := range []uuid.UUID{own, sharedIn} {
+			if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
+				pgUUID(memory), pgUUID(id)); got != 1 {
+				t.Errorf("membership rows for %s = %d, want 1", id, got)
+			}
+		}
+		for _, id := range []uuid.UUID{foreign, trashed, hidden, component} {
+			if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
+				pgUUID(memory), pgUUID(id)); got != 0 {
+				t.Errorf("membership rows for %s = %d, want 0 (the re-share ground refused it)", id, got)
+			}
+		}
+	})
+
+	t.Run("AlreadyMemberIsTheIdempotentSkip", func(t *testing.T) {
+		// The same id again: no error, no row, no event -- the
+		// set's own no-op.
+		before := len(eventsOfAlbum(t, env.bus, "album.items-changed", memory))
+		report := env.addMemoryItems(t, env.cookie, memory, albumItemsBody(own))
+		if report.Added != 0 || report.Skipped != 1 {
+			t.Errorf("added/skipped = %d/%d, want 0/1 (already a member)", report.Added, report.Skipped)
+		}
+		if after := len(eventsOfAlbum(t, env.bus, "album.items-changed", memory)); after != before {
+			t.Errorf("album.items-changed events after the no-op = %d, want still %d", after, before)
+		}
+	})
+
+	t.Run("CollapsesRepeatedIds", func(t *testing.T) {
+		fresh := env.createMemory(t, env.cookie, "The repeat probe", nil)
+		report := env.addMemoryItems(t, env.cookie, uuid.UUID(fresh.Id), albumItemsBody(own, own))
+		if report.Added != 1 || report.Skipped != 0 {
+			t.Errorf("added/skipped = %d/%d, want 1/0 (repeated ids collapse)", report.Added, report.Skipped)
+		}
+	})
+
+	t.Run("EventFiresPerLandingWrite", func(t *testing.T) {
+		fresh := env.createMemory(t, env.cookie, "The eventful add", nil)
+		env.addMemoryItems(t, env.cookie, uuid.UUID(fresh.Id), albumItemsBody(own))
+		events := eventsOfAlbum(t, env.bus, "album.items-changed", uuid.UUID(fresh.Id))
+		if len(events) != 1 {
+			t.Fatalf("album.items-changed events = %d, want exactly 1", len(events))
+		}
+		for _, payload := range events {
+			if len(payload) != 2 {
+				t.Errorf("album.items-changed payload = %v, want exactly the albumId/userId pair", payload)
+			}
+		}
+	})
+
+	t.Run("ValidatesListBounds", func(t *testing.T) {
+		rec := env.addMemoryItemsRaw(t, env.cookie, memory, `{"assetIds":[]}`)
+		requireValidationFields(t, rec, "assetIds")
+		rec = env.addMemoryItemsRaw(t, env.cookie, memory, `not json`)
+		requireValidationFields(t, rec, "body")
+	})
+
+	t.Run("ShareeIsForbidden", func(t *testing.T) {
+		rec := env.addMemoryItemsRaw(t, graceCookie, sharedToGrace, albumItemsBody(own))
+		requireAlbumWriteForbidden(t, rec)
+	})
+
+	t.Run("RefusesDirectoryAlbum", func(t *testing.T) {
+		// A directory album is a source: its membership is its
+		// scan's own verdict, never a hand-picked set.
+		rec := env.addMemoryItemsRaw(t, env.cookie, directory, albumItemsBody(own))
+		requireAlbumNotFound(t, rec)
+	})
+
+	t.Run("RefusesSyncAlbum", func(t *testing.T) {
+		ownSync := env.syncAlbumIDOf(t, adminID)
+		rec := env.addMemoryItemsRaw(t, env.cookie, ownSync, albumItemsBody(own))
+		requireAlbumNotFound(t, rec)
+	})
+
+	t.Run("UnknownAlbum", func(t *testing.T) {
+		rec := env.addMemoryItemsRaw(t, env.cookie, fixtureMemoryAlbumID("ff"), albumItemsBody(own))
+		requireAlbumNotFound(t, rec)
+	})
+
+	t.Run("RequiresSession", func(t *testing.T) {
+		rec := env.addMemoryItemsRaw(t, nil, memory, albumItemsBody(own))
+		requireUnauthorized(t, rec)
+	})
+}
+
+// addMemoryItemsRaw fires POST /albums/{albumId}/items with the raw
+// body (a nil cookie sends it unauthenticated).
+func (e *assetEnv) addMemoryItemsRaw(t *testing.T, cookie *http.Cookie, albumID uuid.UUID, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.writeAlbumRaw(t, cookie, http.MethodPost,
+		"/api/v1/albums/"+albumID.String()+"/items", body)
+}
+
+// addMemoryItems fires POST /albums/{albumId}/items and decodes the
+// 200 report.
+func (e *assetEnv) addMemoryItems(t *testing.T, cookie *http.Cookie, albumID uuid.UUID, body string) apigen.AddAlbumItemsResponse {
+	t.Helper()
+	rec := e.addMemoryItemsRaw(t, cookie, albumID, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /albums/%s/items status = %d, want %d (body %q)",
+			albumID, rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var report apigen.AddAlbumItemsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+		t.Fatalf("decode add items body %q: %v", rec.Body.String(), err)
+	}
+	return report
 }
 
 // TestMemoryCreationEvents pins the creation's events: one

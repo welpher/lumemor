@@ -103,6 +103,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**updateTranscodingSettings**](doc/AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
 [*AdminApi*](doc/AdminApi.md) | [**updateTrashSettings**](doc/AdminApi.md#updatetrashsettings) | **PUT** /admin/settings/trash | Save the trash retention setting.
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**addAlbumItems**](doc/AlbumsApi.md#addalbumitems) | **POST** /albums/{albumId}/items | Add references to one memory.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**completeAlbumPath**](doc/AlbumsApi.md#completealbumpath) | **GET** /albums/path-completions | Complete a directory album&#39;s source path.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**createAlbum**](doc/AlbumsApi.md#createalbum) | **POST** /albums | Create one directory album from an existing path.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**createMemory**](doc/AlbumsApi.md#creatememory) | **POST** /memories | Create one memory.
@@ -165,6 +166,7 @@ Class | Method | HTTP request | Description
 
 ## Documentation For Models
 
+ - [AddAlbumItemsResponse](doc/AddAlbumItemsResponse.md)
  - [AddTagAssetsResponse](doc/AddTagAssetsResponse.md)
  - [AdminCreateUserRequest](doc/AdminCreateUserRequest.md)
  - [AdminUserListResponse](doc/AdminUserListResponse.md)

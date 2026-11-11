@@ -376,6 +376,11 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Post("/albums", wrapper.CreateAlbum)
 				r.Patch("/albums/{albumId}", wrapper.UpdateAlbum)
 				r.Delete("/albums/{albumId}", wrapper.DeleteAlbum)
+				// The memory's membership curation pair: the add
+				// (the re-share ground's validation folded into one
+				// bounded insert) and the remove (one bounded delete),
+				// both capped at 200 ids by the contract.
+				r.Post("/albums/{albumId}/items", wrapper.AddAlbumItems)
 				r.Delete("/albums/{albumId}/items", wrapper.RemoveAlbumItems)
 				// The memory creation (every member's own write): one
 				// bounded row insert, the creator's one preference row
