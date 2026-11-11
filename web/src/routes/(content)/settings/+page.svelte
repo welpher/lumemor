@@ -26,7 +26,7 @@
 		type DeviceSession,
 		type UserSelf
 	} from '$lib/api/userSettings';
-	import { setLocale, type AppLocale } from '$lib/i18n';
+	import { APP_LOCALES, localeLanguageName, setLocale, type AppLocale } from '$lib/i18n';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { setThemePreference, type ThemePreference } from '$lib/theme/theme.svelte';
 	import User from '@lucide/svelte/icons/user';
@@ -384,13 +384,17 @@
 		return device.ipAddress === undefined ? seen : `${seen} · ${device.ipAddress}`;
 	}
 
-	// The locale dropdown renders the installed locales in their OWN
-	// language (the shared table's per-locale names are already the
-	// native ones); the current locale's own entry leads.
-	const localeChoices: ReadonlyArray<{ value: AppLocale; labelKey: string }> = [
-		{ value: 'en', labelKey: 'language_english' },
-		{ value: 'zh-Hans', labelKey: 'language_chinese' }
-	];
+	// The locale picker iterates the DERIVED registry (the directory
+	// is the registry -- APP_LOCALES folds from the shared i18n/
+	// directory's own file list, the registry's order is its own
+	// deterministic sort), each option reading its dictionary through
+	// the RAW name reader: a locale's `meta_language_name` declares
+	// its own name in its own language, never routed through `$_()`
+	// (it must not follow the active locale).
+	const localeChoices: ReadonlyArray<{ value: AppLocale; name: string }> = APP_LOCALES.map((value) => ({
+		value,
+		name: localeLanguageName(value)
+	}));
 </script>
 
 <svelte:head>
@@ -580,7 +584,7 @@
 								void pickLocale((event.currentTarget as HTMLSelectElement).value as AppLocale)}
 						>
 							{#each localeChoices as choice (choice.value)}
-								<option value={choice.value}>{$_(choice.labelKey)}</option>
+								<option value={choice.value}>{choice.name}</option>
 							{/each}
 						</select>
 						<p class="settings__note font-body font-normal text-[12px] leading-[1.5] text-text-faint">

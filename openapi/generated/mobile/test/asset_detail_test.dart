@@ -139,5 +139,17 @@ void main() {
       // TODO
     });
 
+    // The albums holding this asset, as the calling user sees them: every album whose membership row references the asset and that the caller can see -- their own albums (the sync stream included: the pinned core card the uploads land in) plus every album shared to them. An album the caller cannot see -- another account's sync album, an unshared album -- never surfaces, so the same asset answers different arrays for the owner and a sharee. The caller's own sync album is included exactly when it is theirs (its membership is the upload stream's materialized rows), and every entry's `callerRole` is the viewer's relation to that album. Ordered with the sync card first, then by title case-insensitively with the album id as the tiebreak. Always present, empty when no visible album holds the asset. The PATCH response serves the same array, exactly as the GET serves it. 
+    // BuiltList<AssetAlbumRef> albums
+    test('to test the property `albums`', () async {
+      // TODO
+    });
+
+    // The asset's resolved place (the metadata job's GPS resolution, the `assets.place_id` the pipeline wrote), as the info panel's city row: the place id -- the deep link's key into the place-filtered browse -- and the display name joined at the request's `locale` (the `place_names` row of that locale when the place data carries one, the GeoNames canonical name otherwise; the `GET /places` join's exact discipline). Null when the asset carries no resolved place -- no GPS, the pipeline has not run yet, or the deployment baked no place data. The PATCH response serves the same face at its own `locale`, exactly as the GET serves it. 
+    // AssetPlaceRef place
+    test('to test the property `place`', () async {
+      // TODO
+    });
+
   });
 }

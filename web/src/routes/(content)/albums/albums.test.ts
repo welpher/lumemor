@@ -10,14 +10,16 @@ import Page from './+page.svelte';
 // default "My photos" album first, its localized display name keyed
 // by `type === 'sync'`), then the albums shared to them (with the
 // honest owner attribution) -- with the collage covers (one
-// full-bleed, two split, three 2+1, four quad), the locked / shared
-// / excluded badges, the counts and the honest owner attribution on
+// full-bleed, two split, three 2+1, four quad), the shared /
+// excluded badges, the counts and the honest owner attribution on
 // the shared cards. The "New album" dialog creates one directory
 // album -- the entry is the ADMINISTRATOR'S alone: pointing
 // at the file system is configuration, a member
 // never sees the affordance), and the create's honest answers (the
 // skipped report, the write probe's read-only fact) hold the dialog
-// until acknowledged; every album.* SSE event converges through ONE
+// until acknowledged; the dialog's autonomy block carries the two
+// switches (the exclusion always, the deletability row exactly for
+// a writable pick). Every album.* SSE event converges through ONE
 // fresh wall fetch (the collapsed single-flight of the people
 // page), and the refetched SERVER answer decides what changed. The
 // events module is mocked with a captured handler registry, the
@@ -44,7 +46,6 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 		id,
 		title: `Album ${id}`,
 		type: 'virtual',
-		locked: false,
 		isShared: false,
 		coverAssetIds: [],
 		itemCount: 0,
@@ -72,7 +73,6 @@ const myPhotos = summary('sync1', {
 const familyArchive = summary('al2', {
 	title: 'Family archive',
 	type: 'directory',
-	locked: true,
 	itemCount: 2048,
 	inTimeline: false
 });
@@ -281,9 +281,8 @@ test('the pinned sync card leads the own group with the localized display name',
 	);
 	expect(syncCoverImgs).toEqual(['/api/v1/assets/s1/thumbnail?size=tile', '/api/v1/assets/s2/thumbnail?size=tile']);
 	expect(ownCards[0]?.querySelector('.album-card__cover')?.classList.contains('album-card__cover--split')).toBe(true);
-	// No badges: no lock, no share, no exclusion -- the default
+	// No badges: no share, no exclusion -- the default
 	// album is system-managed and never excludable.
-	expect(ownCards[0]?.querySelector('.album-card__badge--locked')).toBeNull();
 	expect(ownCards[0]?.querySelector('.album-card__badge--shared')).toBeNull();
 	expect(ownCards[0]?.querySelector('.album-card__badge--excluded')).toBeNull();
 
@@ -341,20 +340,18 @@ test('three covers fall to the 2+1 collage: two cells, then one spanning both', 
 	flushSync();
 });
 
-test('the badges ride the cards: locked, shared, excluded', async () => {
+test('the badges ride the cards: shared, excluded', async () => {
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
 	const page = mountPage();
 	await settle();
 
 	const roadTripCard = cards()[1];
 	expect(roadTripCard?.querySelector('.album-card__badge--shared')?.textContent?.trim()).toBe('Shared');
-	expect(roadTripCard?.querySelector('.album-card__badge--locked')).toBeNull();
 	expect(roadTripCard?.textContent).toContain('128 photos');
 
-	const archiveCard = cards()[2];
-	expect(archiveCard?.querySelector('.album-card__badge--locked')?.textContent?.trim()).toBe('Locked');
 	// The exclusion badge rides the excludable cards only: the own
 	// directory item here, and every shared item.
+	const archiveCard = cards()[2];
 	expect(archiveCard?.querySelector('.album-card__badge--excluded')?.textContent?.trim()).toBe('Not in timeline');
 
 	const sharedCard = cards()[4];
@@ -364,6 +361,12 @@ test('the badges ride the cards: locked, shared, excluded', async () => {
 	// The own virtual card carries no exclusion badge: it never feeds
 	// the caller's own timeline.
 	expect(cards()[3]?.querySelector('.album-card__badge--excluded')).toBeNull();
+
+	// The lock badge is retired: no card renders one, whatever the
+	// album's history.
+	for (const card of cards()) {
+		expect(card.querySelector('.album-card__badge--locked')).toBeNull();
+	}
 
 	unmount(page);
 	flushSync();
@@ -455,7 +458,7 @@ test('the create dialog POSTs the title, path and audience; the refetched wall g
 	flushSync();
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('New album');
-	const fields = Array.from(dialog?.querySelectorAll<HTMLInputElement>('input') ?? []);
+	const fields = Array.from(dialog?.querySelectorAll<HTMLInputElement>('input[id^="create-album-"]') ?? []);
 	// The pinned order: the title above, the path below.
 	expect(fields.map((field) => field.id)).toEqual(['create-album-title', 'create-album-path']);
 	fillField(dialog as ParentNode, 'Weekend in the hills', 'create-album-title');
@@ -470,13 +473,103 @@ test('the create dialog POSTs the title, path and audience; the refetched wall g
 	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({
 		title: 'Weekend in the hills',
 		rootPath: '/Volumes/Photos/hills',
-		audience: []
+		audience: [],
+		inTimeline: true
 	});
 	// The refetch placed the created card after the pinned sync card,
 	// at the head of the curated own group.
 	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe('Weekend in the hills');
 	expect(cards()[0]?.querySelector('.album-card__title')?.textContent).toBe('My photos');
 	expect(modal()).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the create dialog renders the deletability row from the picked completion row and carries the switches', async () => {
+	// The picked directory's writability is known at selection time
+	// (the completion row's write fact): the writable pick renders
+	// the deletability row (checked on, the server's default), the
+	// read-only pick renders no row at all -- no dead affordance --
+	// and the honest probe feedback explains the fact on the report
+	// face. The fact rides the exact picked path: a hand edit drops
+	// the row with it.
+	await bootWallSession('u1', 'admin');
+	const fetchMock = stubFetch(
+		wallRoutes({
+			'/api/v1/albums/path-completions?prefix=%2Fmnt': () =>
+				jsonResponse(200, {
+					completions: [
+						{ path: '/mnt/rw-photos', writable: true },
+						{ path: '/mnt/ro-photos', writable: false }
+					]
+				})
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByText('New album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	fillField(dialog as ParentNode, 'Family archive', 'create-album-title');
+
+	// The block's initial shape: the exclusion toggle on (the album
+	// feeds the creator's timeline), no deletability row (nothing
+	// picked yet).
+	expect(dialog?.querySelector('[data-testid="album-timeline-toggle"]')).not.toBeNull();
+	const timelineToggle = dialog?.querySelector<HTMLInputElement>('[data-testid="album-timeline-toggle"]');
+	expect(timelineToggle?.checked).toBe(true);
+	expect(dialog?.querySelector('[data-testid="album-deletable-toggle"]')).toBeNull();
+
+	// The typed prefix lands the completion rows in the portaled
+	// layer; the writable row's pick renders the deletability row.
+	fillField(dialog as ParentNode, '/mnt', 'create-album-path');
+	await new Promise((resolve) => setTimeout(resolve, 300));
+	await settle();
+	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.path-completion__row'));
+	expect(rows.map((row) => row.textContent?.trim())).toEqual(['/mnt/rw-photos', '/mnt/ro-photos']);
+	rows[0]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+	flushSync();
+
+	const deletableToggle = dialog?.querySelector<HTMLInputElement>('[data-testid="album-deletable-toggle"]');
+	expect(deletableToggle).not.toBeNull();
+	expect(deletableToggle?.checked).toBe(true);
+
+	// The fact rides the exact picked path: a hand edit drops the
+	// stale row (and its draft) immediately -- no dead affordance
+	// over a path the fact no longer describes.
+	fillField(dialog as ParentNode, '/mnt/rw', 'create-album-path');
+	flushSync();
+	expect(dialog?.querySelector('[data-testid="album-deletable-toggle"]')).toBeNull();
+
+	// The read-only pick: re-drill, pick the ro row -- the row does
+	// not render at all (the honest absent-row arm).
+	fillField(dialog as ParentNode, '/mnt', 'create-album-path');
+	await new Promise((resolve) => setTimeout(resolve, 300));
+	await settle();
+	const secondRows = Array.from(document.body.querySelectorAll<HTMLElement>('.path-completion__row'));
+	secondRows[1]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+	flushSync();
+	expect(dialog?.querySelector('[data-testid="album-deletable-toggle"]')).toBeNull();
+
+	// The exclusion off; the POST carries the exclusion draft and no
+	// deletability switch (the row did not exist for this pick).
+	timelineToggle!.checked = false;
+	timelineToggle!.dispatchEvent(new Event('change', { bubbles: true }));
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/albums' && init?.method === 'POST'
+	);
+	expect(posts).toHaveLength(1);
+	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({
+		title: 'Family archive',
+		rootPath: '/mnt/ro-photos',
+		audience: [],
+		inTimeline: false
+	});
 	unmount(page);
 	flushSync();
 });
@@ -534,7 +627,8 @@ test('the create dialog carries the picked audience into the POST', async () => 
 	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({
 		title: 'Family archive',
 		rootPath: '/Volumes/Photos/family',
-		audience: ['u3']
+		audience: ['u3'],
+		inTimeline: true
 	});
 	unmount(page);
 	flushSync();

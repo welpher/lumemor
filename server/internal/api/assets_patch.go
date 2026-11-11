@@ -39,11 +39,23 @@ const descriptionLimit = 10000
 // detail after the edit -- the same read and serializer the GET
 // endpoint serves, so the client sees the applied values (and the
 // idempotent no-op sees the row's current state unchanged).
-func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params apigen.PatchAssetParams) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
 		s.rejectUnauthenticated(w)
 		return
+	}
+
+	// The locale parameter: the GET face's own check, riding the
+	// same-shape discipline (the PATCH response serves the detail
+	// exactly as the GET serves it, place join included).
+	locale := apigen.PatchAssetParamsLocaleEn
+	if params.Locale != nil {
+		if !params.Locale.Valid() {
+			s.writeValidationError(w, "locale must be one of: en, zh-Hans", []string{"locale"})
+			return
+		}
+		locale = *params.Locale
 	}
 
 	// The body is a small JSON document (the route group's 1 MiB cap
@@ -163,6 +175,7 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 	detail, err := s.queries.GetAssetDetail(r.Context(), dbgen.GetAssetDetailParams{
 		ID:     pgUUID(id),
 		Viewer: pgUUID(requester.userID),
+		Locale: string(locale),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.writeAssetNotFound(w)
@@ -182,5 +195,10 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		s.internalError(w, r, "load patched asset tags", err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces, tags))
+	albums, err := s.assetAlbumsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
+	if err != nil {
+		s.internalError(w, r, "load patched asset albums", err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces, tags, albums))
 }

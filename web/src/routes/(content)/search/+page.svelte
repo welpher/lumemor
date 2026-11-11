@@ -37,18 +37,127 @@
 		searchParamsFromFilters,
 		type SearchFilters
 	} from '$lib/api/search';
+	import { addTagAssets, createTag, listTags, type TagSummary } from '$lib/api/tags';
+	import type { BatchAction, BatchOutcome } from '$lib/api/timeline';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
 	import FlatWall from '$lib/timeline/FlatWall.svelte';
 	import FacetChips, { type FacetChip } from '$lib/search/FacetChips.svelte';
+	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Search from '@lucide/svelte/icons/search';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	const search = createSearchClient();
+
+	// THE WALLS' SELECTION (the curation ruling: BOTH search walls
+	// carry the per-user subset, every role): the batch runner over
+	// the client (the optimistic favorite flip and its rollback live
+	// there; the visible-domain rule -- the B4 union for everyone,
+	// the owner resolution per caller -- is the endpoint's own) and
+	// the add-tag dialog flow the walls' openers feed (the captured
+	// ids, the done continuation). The bar renders the subset: the
+	// favorite toggle and the tag affordance; hide/unhide/trash/
+	// restore stay off -- ownership actions belong to the surfaces
+	// that own them.
+	const BATCH_ACTIONS: readonly BatchAction[] = ['favorite'];
+
+	// The add-tag flow's state (the timeline page's pattern): the
+	// vocabulary fetched on open, the honest report of the last
+	// landed add, and the captured-ids + done-continuation pair the
+	// walls' openers hand over. Tag writes are per-user state and
+	// publish nothing, so the report is the outcome and the wall
+	// never converges.
+	let tagIds: readonly string[] = [];
+	let tagDone: (() => void) | undefined;
+	let tagOpen = $state(false);
+	let tagBusy = $state(false);
+	let tagErrorKey = $state('');
+	let tagList = $state<TagSummary[]>([]);
+	let tagLoading = $state(false);
+	let tagReport = $state<{ added: number; skipped: number } | null>(null);
+
+	/** The walls' batch runner: the client owns the write. */
+	function runBatch(action: BatchAction, ids: readonly string[]): Promise<BatchOutcome> {
+		return search.runBatch(action, [...ids]);
+	}
+
+	/** Open the add-tag dialog over the wall's captured ids. */
+	function openTagDialog(ids: readonly string[], done: () => void): void {
+		tagIds = ids;
+		tagDone = done;
+		tagErrorKey = '';
+		tagReport = null;
+		tagOpen = true;
+		tagList = [];
+		tagLoading = true;
+		void (async () => {
+			const outcome = await listTags();
+			if (!tagOpen) {
+				return;
+			}
+			tagLoading = false;
+			if (outcome.ok) {
+				tagList = outcome.tags;
+			} else {
+				tagErrorKey = outcome.errorKey;
+			}
+		})();
+	}
+
+	// The existing-tag path: the honest {added, skipped} report of
+	// the write's own answer lands in the dialog.
+	async function addToExistingTag(tagId: string): Promise<void> {
+		if (tagBusy || tagIds.length === 0) {
+			return;
+		}
+		tagBusy = true;
+		tagErrorKey = '';
+		const outcome = await addTagAssets(tagId, [...tagIds]);
+		tagBusy = false;
+		if (!outcome.ok) {
+			tagErrorKey = outcome.errorKey;
+			return;
+		}
+		tagReport = outcome.report;
+	}
+
+	// The new-tag path: create the tag (idempotently), then tag the
+	// captured ids with it.
+	async function addToNewTag(name: string): Promise<void> {
+		if (tagBusy || tagIds.length === 0) {
+			return;
+		}
+		tagBusy = true;
+		tagErrorKey = '';
+		const created = await createTag(name);
+		if (!created.ok) {
+			tagBusy = false;
+			tagErrorKey = created.errorKey;
+			return;
+		}
+		const outcome = await addTagAssets(created.tag.id, [...tagIds]);
+		tagBusy = false;
+		if (!outcome.ok) {
+			tagErrorKey = outcome.errorKey;
+			return;
+		}
+		tagReport = outcome.report;
+	}
+
+	// The tag report's done: close the dialog and fire the wall's
+	// done continuation -- the caller's own tags landed, no wall
+	// convergence follows (per-user state, silent by contract), and
+	// the wall clears its selection (the success arm).
+	function finishTag(): void {
+		tagOpen = false;
+		tagReport = null;
+		tagDone?.();
+		tagDone = undefined;
+	}
 
 	// The URL state: the page derives its filters off the route URL,
 	// and the run effect re-executes the search whenever the URL
@@ -70,10 +179,11 @@
 
 	// The browse mode's month/day fold lives inside the shared Wall
 	// (the one renderer every photo surface composes); QUERY mode
-	// keeps the flat order. BOTH modes stay pure navigation
-	// (the no-curation refusal): neither wall gets an onbatch runner, so no
-	// check renders and no bar ever rises -- search gaining
-	// curation is a page-level opt-in the owner may make later.
+	// keeps the flat order. BOTH walls curate the per-user subset
+	// (the curation ruling): the batch bar's favorite toggle + the
+	// tag affordance, every role -- the endpoint's owner resolution
+	// applies to the admin too, and the honest missing report
+	// handles the edge.
 
 	const firstLoad = $derived($search.items.length === 0 && $search.status === 'loading');
 	const settledEmpty = $derived(
@@ -333,14 +443,14 @@
 			</div>
 		{:else if queryMode}
 			<!-- QUERY mode: the FLAT justified wall -- rank order
-			     preserved, no grouping, no selection (the tiles are pure
-			     navigation). -->
-			<FlatWall items={$search.items} />
+			     preserved, no grouping; the selection flow is the flat
+			     wall's own organ (the same subset). -->
+			<FlatWall items={$search.items} actions={BATCH_ACTIONS} onbatch={runBatch} onaddtag={openTagDialog} />
 		{:else}
 			<!-- BROWSE mode: the unified month-grouped day-block wall --
-			     the same renderer every photo surface composes, no
-			     selection here either. -->
-			<Wall items={$search.items} />
+			     the same renderer every photo surface composes, with
+			     the per-user subset. -->
+			<Wall items={$search.items} actions={BATCH_ACTIONS} onbatch={runBatch} onaddtag={openTagDialog} />
 		{/if}
 
 		{#if $search.status === 'error' && $search.items.length > 0}
@@ -366,3 +476,17 @@
 		<div class="search__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
 	</div>
 </section>
+
+<!-- The add-tag dialog the walls' openers feed (the captured ids,
+     the honest report, the done continuation). -->
+<AddTagDialog
+	bind:open={tagOpen}
+	tags={tagList}
+	loading={tagLoading}
+	busy={tagBusy}
+	errorKey={tagErrorKey}
+	report={tagReport}
+	onpick={(tagId) => void addToExistingTag(tagId)}
+	oncreate={(name) => void addToNewTag(name)}
+	ondone={finishTag}
+/>

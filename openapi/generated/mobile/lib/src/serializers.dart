@@ -31,6 +31,7 @@ import 'package:lumemor_api/src/model/album_item_asset.dart';
 import 'package:lumemor_api/src/model/album_items_request.dart';
 import 'package:lumemor_api/src/model/album_owner_ref.dart';
 import 'package:lumemor_api/src/model/album_patch.dart';
+import 'package:lumemor_api/src/model/album_path_completion.dart';
 import 'package:lumemor_api/src/model/album_path_completions_response.dart';
 import 'package:lumemor_api/src/model/album_rescan_response.dart';
 import 'package:lumemor_api/src/model/album_share_entry.dart';
@@ -38,9 +39,11 @@ import 'package:lumemor_api/src/model/album_summary.dart';
 import 'package:lumemor_api/src/model/album_timeline_preference_request.dart';
 import 'package:lumemor_api/src/model/album_timeline_preference_response.dart';
 import 'package:lumemor_api/src/model/album_wall_response.dart';
+import 'package:lumemor_api/src/model/asset_album_ref.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_face_summary.dart';
 import 'package:lumemor_api/src/model/asset_patch.dart';
+import 'package:lumemor_api/src/model/asset_place_ref.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
 import 'package:lumemor_api/src/model/asset_tag_summary.dart';
 import 'package:lumemor_api/src/model/batch_request.dart';
@@ -142,6 +145,7 @@ part 'serializers.g.dart';
   AlbumItemsRequest,
   AlbumOwnerRef,
   AlbumPatch,
+  AlbumPathCompletion,
   AlbumPathCompletionsResponse,
   AlbumRescanResponse,
   AlbumShareEntry,
@@ -149,9 +153,11 @@ part 'serializers.g.dart';
   AlbumTimelinePreferenceRequest,
   AlbumTimelinePreferenceResponse,
   AlbumWallResponse,
+  AssetAlbumRef,
   AssetDetail,
   AssetFaceSummary,
   AssetPatch,
+  AssetPlaceRef,
   AssetResponse,
   AssetTagSummary,
   BatchRequest,
@@ -291,6 +297,10 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<JobRunResponse>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AssetAlbumRef)]),
+        () => ListBuilder<AssetAlbumRef>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(AssetFaceSummary)]),
         () => ListBuilder<AssetFaceSummary>(),
       )
@@ -353,6 +363,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(String)]),
         () => ListBuilder<String>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AlbumPathCompletion)]),
+        () => ListBuilder<AlbumPathCompletion>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(FaceDetail)]),

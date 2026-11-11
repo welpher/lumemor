@@ -88,7 +88,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 /** Route table for the fetch stub; every test installs its own. */
-type FetchRoute = Record<string, () => Response>;
+type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 
 function searchRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
@@ -100,13 +100,13 @@ function searchRoutes(overrides: FetchRoute = {}): FetchRoute {
 }
 
 function stubFetch(route: FetchRoute): ReturnType<typeof vi.fn> {
-	return vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+	return vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 		const url = String(input);
 		const answer = route[url];
 		if (answer === undefined) {
 			throw new Error(`unexpected fetch ${url}`);
 		}
-		return answer();
+		return answer(init);
 	});
 }
 
@@ -133,6 +133,15 @@ function buttonByText(text: string, scope: ParentNode = document.body): HTMLButt
 	const found = buttons.find((button) => button.textContent?.includes(text));
 	if (found === undefined) {
 		throw new Error(`missing button ${text}`);
+	}
+	return found;
+}
+
+/** The icon-only action buttons carry their name on the aria-label. */
+function buttonByLabel(label: string, scope: ParentNode = document.body): HTMLButtonElement {
+	const found = scope.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (found === null) {
+		throw new Error(`missing button labeled ${label}`);
 	}
 	return found;
 }
@@ -172,10 +181,10 @@ test('no query opens the filter browse: the month-grouped wall, the chips, the c
 	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
 	expect(document.body.querySelectorAll('.wall__day-header')).toHaveLength(3);
 	expect(tiles()).toHaveLength(3);
-	// The refusal: the page wires no onbatch runner, so
-	// no check renders and no bar ever rises -- the tiles are pure
-	// navigation.
-	expect(document.body.querySelector('.tile__check')).toBeNull();
+	// The per-user subset rides the wall: the check affordance is
+	// wired (the hover-reveal entry; a selection raises the bar) and
+	// the bar carries no buttons while nothing is selected.
+	expect(document.body.querySelector('.tile__check')).not.toBeNull();
 	expect(document.body.querySelector('.batchbar')).toBeNull();
 	// The loaded page items publish as the viewer's sequence.
 	expect(wallItems().map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3']);
@@ -205,6 +214,64 @@ test('no query opens the filter browse: the month-grouped wall, the chips, the c
 	flushSync();
 });
 
+test('the walls curate the per-user subset: favorite + tag on the bar, the batch write lands, every role', async () => {
+	// The curation ruling: BOTH search walls carry the action subset
+	// [favorite, tag] for EVERY role -- the ownership actions
+	// (hide/trash/restore) stay off the bar, the endpoint's
+	// owner-per-caller resolution applies to the admin too, and the
+	// honest missing report handles the edge.
+	let batchBody: unknown = null;
+	const fetchMock = stubFetch(
+		searchRoutes({
+			'/api/v1/assets/batch': (init?: RequestInit) => {
+				batchBody = JSON.parse(String(init?.body));
+				return jsonResponse(200, { affected: 1, missing: [] });
+			},
+			'/api/v1/tags': () => jsonResponse(200, { tags: [] })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The check entry is the hover affordance; the first click
+	// enters the selection and the bar rises.
+	tiles()[0]
+		?.querySelector<HTMLElement>('.tile__check')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const bar = document.body.querySelector<HTMLElement>('.batchbar');
+	expect(bar).not.toBeNull();
+	expect(bar?.getAttribute('role')).toBe('toolbar');
+	// The subset: favorite + tag; the ownership actions absent.
+	expect(() => buttonByLabel('Favorite', bar as ParentNode)).not.toThrow();
+	expect(() => buttonByLabel('Add tag', bar as ParentNode)).not.toThrow();
+	for (const label of ['Hide', 'Unhide', 'Trash', 'Restore']) {
+		expect(() => buttonByLabel(label, bar as ParentNode), label).toThrow();
+	}
+
+	// The favorite batch runs through the client: the optimistic
+	// flip, the POST, and the success arm's clear (the bar drops).
+	buttonByLabel('Favorite', bar as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(batchBody).toEqual({ action: 'favorite', ids: ['a1'] });
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+
+	// The tag flow rides the opener: the dialog opens over the ids
+	// captured at open (the vocabulary fetches fresh).
+	tiles()[1]
+		?.querySelector<HTMLElement>('.tile__check')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	buttonByLabel('Add tag').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(document.body.querySelector('.modal__panel')?.textContent).toContain('Add tag');
+	expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/v1/tags')).toBe(true);
+
+	unmount(page);
+	flushSync();
+});
+
 test('a text query renders the flat justified wall: rank order, no month or day headers', async () => {
 	const fetchMock = stubFetch(
 		searchRoutes({
@@ -224,9 +291,10 @@ test('a text query renders the flat justified wall: rank order, no month or day 
 	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(0);
 	expect(document.body.querySelectorAll('.wall__day-header')).toHaveLength(0);
 	expect(tiles()).toHaveLength(3);
-	// The same refusal as the browse wall: pure navigation, no check,
-	// no bar (the flat wall carries no selection props at all).
-	expect(document.body.querySelector('.tile__check')).toBeNull();
+	// The flat wall carries the same per-user subset: the check
+	// affordance is wired (its own organ), no bar while nothing is
+	// selected.
+	expect(document.body.querySelector('.tile__check')).not.toBeNull();
 	expect(document.body.querySelector('.batchbar')).toBeNull();
 	// The rank order is the wall's sequence (the viewer walks it).
 	expect(wallItems().map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3']);

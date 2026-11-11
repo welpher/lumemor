@@ -5,14 +5,16 @@
 // ignore_for_file: unused_element
 import 'package:lumemor_api/src/model/exif_summary.dart';
 import 'package:built_collection/built_collection.dart';
+import 'package:lumemor_api/src/model/asset_place_ref.dart';
 import 'package:lumemor_api/src/model/asset_tag_summary.dart';
+import 'package:lumemor_api/src/model/asset_album_ref.dart';
 import 'package:lumemor_api/src/model/asset_face_summary.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
 part 'asset_detail.g.dart';
 
-/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, the two owner-level attributes the PATCH endpoint edits (`description`, `isHidden`), the asset's faces as the calling user sees them (`faces`), and the CALLER's tags on the asset (`tags`). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
+/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, the two owner-level attributes the PATCH endpoint edits (`description`, `isHidden`), the asset's faces as the calling user sees them (`faces`), and the CALLER's tags on the asset (`tags`). The caller-visible album memberships surface as `albums` (the info panel's where-does-this-live row) and the GPS resolution as `place` (the info panel's city row, the locale-joined display name). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the asset.
@@ -37,6 +39,8 @@ part 'asset_detail.g.dart';
 /// * [exif] - The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
 /// * [faces] - The asset's faces as the calling user sees them, strongest score first with the face id as the tiebreak. The array is caller-scoped: the asset being visible to the caller is the gate -- the faces ride on the detail's own permission -- and each entry's `label` is the caller's own label of the face's cluster, never another account's. Always present, empty when the asset carries no faces (none detected, or detection has not run yet). The PATCH response serves the same array, exactly as the GET serves it. 
 /// * [tags] - The CALLER's tags on this asset: the caller's own assignment rows joined to their own tag rows, sorted by name case-insensitively with the tag id as the tiebreak (the vocabulary listing's own ordering). Another account's tags on the same asset never surface, so the same shared asset answers different arrays for the owner and the sharee (each sees their own, or none). Always present, empty when the caller tagged the asset with nothing. The PATCH response serves the same array, exactly as the GET serves it. 
+/// * [albums] - The albums holding this asset, as the calling user sees them: every album whose membership row references the asset and that the caller can see -- their own albums (the sync stream included: the pinned core card the uploads land in) plus every album shared to them. An album the caller cannot see -- another account's sync album, an unshared album -- never surfaces, so the same asset answers different arrays for the owner and a sharee. The caller's own sync album is included exactly when it is theirs (its membership is the upload stream's materialized rows), and every entry's `callerRole` is the viewer's relation to that album. Ordered with the sync card first, then by title case-insensitively with the album id as the tiebreak. Always present, empty when no visible album holds the asset. The PATCH response serves the same array, exactly as the GET serves it. 
+/// * [place] - The asset's resolved place (the metadata job's GPS resolution, the `assets.place_id` the pipeline wrote), as the info panel's city row: the place id -- the deep link's key into the place-filtered browse -- and the display name joined at the request's `locale` (the `place_names` row of that locale when the place data carries one, the GeoNames canonical name otherwise; the `GET /places` join's exact discipline). Null when the asset carries no resolved place -- no GPS, the pipeline has not run yet, or the deployment baked no place data. The PATCH response serves the same face at its own `locale`, exactly as the GET serves it. 
 @BuiltValue()
 abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   /// UUIDv7 identifier of the asset.
@@ -128,6 +132,14 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   /// The CALLER's tags on this asset: the caller's own assignment rows joined to their own tag rows, sorted by name case-insensitively with the tag id as the tiebreak (the vocabulary listing's own ordering). Another account's tags on the same asset never surface, so the same shared asset answers different arrays for the owner and the sharee (each sees their own, or none). Always present, empty when the caller tagged the asset with nothing. The PATCH response serves the same array, exactly as the GET serves it. 
   @BuiltValueField(wireName: r'tags')
   BuiltList<AssetTagSummary> get tags;
+
+  /// The albums holding this asset, as the calling user sees them: every album whose membership row references the asset and that the caller can see -- their own albums (the sync stream included: the pinned core card the uploads land in) plus every album shared to them. An album the caller cannot see -- another account's sync album, an unshared album -- never surfaces, so the same asset answers different arrays for the owner and a sharee. The caller's own sync album is included exactly when it is theirs (its membership is the upload stream's materialized rows), and every entry's `callerRole` is the viewer's relation to that album. Ordered with the sync card first, then by title case-insensitively with the album id as the tiebreak. Always present, empty when no visible album holds the asset. The PATCH response serves the same array, exactly as the GET serves it. 
+  @BuiltValueField(wireName: r'albums')
+  BuiltList<AssetAlbumRef> get albums;
+
+  /// The asset's resolved place (the metadata job's GPS resolution, the `assets.place_id` the pipeline wrote), as the info panel's city row: the place id -- the deep link's key into the place-filtered browse -- and the display name joined at the request's `locale` (the `place_names` row of that locale when the place data carries one, the GeoNames canonical name otherwise; the `GET /places` join's exact discipline). Null when the asset carries no resolved place -- no GPS, the pipeline has not run yet, or the deployment baked no place data. The PATCH response serves the same face at its own `locale`, exactly as the GET serves it. 
+  @BuiltValueField(wireName: r'place')
+  AssetPlaceRef? get place;
 
   AssetDetail._();
 
@@ -261,6 +273,16 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
     yield serializers.serialize(
       object.tags,
       specifiedType: const FullType(BuiltList, [FullType(AssetTagSummary)]),
+    );
+    yield r'albums';
+    yield serializers.serialize(
+      object.albums,
+      specifiedType: const FullType(BuiltList, [FullType(AssetAlbumRef)]),
+    );
+    yield r'place';
+    yield object.place == null ? null : serializers.serialize(
+      object.place,
+      specifiedType: const FullType.nullable(AssetPlaceRef),
     );
   }
 
@@ -443,6 +465,21 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
             specifiedType: const FullType(BuiltList, [FullType(AssetTagSummary)]),
           ) as BuiltList<AssetTagSummary>;
           result.tags.replace(valueDes);
+          break;
+        case r'albums':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(AssetAlbumRef)]),
+          ) as BuiltList<AssetAlbumRef>;
+          result.albums.replace(valueDes);
+          break;
+        case r'place':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(AssetPlaceRef),
+          ) as AssetPlaceRef?;
+          if (valueDes == null) continue;
+          result.place.replace(valueDes);
           break;
         default:
           unhandled.add(key);

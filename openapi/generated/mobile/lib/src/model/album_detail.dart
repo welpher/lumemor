@@ -17,12 +17,11 @@ part 'album_detail.g.dart';
 /// * [id] - Identifier of the album.
 /// * [title] - The album's display title.
 /// * [type] - The album's type; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
-/// * [locked] - The owner's lock (metadata to a viewer).
 /// * [coverAssetId] - The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
 /// * [rootPath] - The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Virtual and sync albums omit it. 
 /// * [sourceWritable] - The creation-time write probe's fact: whether the source directory could be written, read back and removed from when the album was created. Present exactly on `directory` albums, both roles -- the fact is the album's own, not a role's. `false` is not an error state: a readable but read-only directory is a legitimate source whose photos cannot be deleted through the application. The truth is discovered exactly once, at creation; nothing re-probes it at runtime. 
 /// * [allowAppDeletion] - The owner's deletability switch: whether deleting this album's photos THROUGH the application -- the trash move of the source file -- is permitted. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face stays false whatever it says. 
-/// * [deletable] - The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, the deletability switch is on, and the album is not locked. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
+/// * [deletable] - The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, and the deletability switch is on. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
 /// * [callerRole] - The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
 /// * [itemCount] - The album's live member count, the same predicate as the items below. 
 /// * [items] - One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
@@ -44,10 +43,6 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   AlbumDetailTypeEnum get type;
   // enum typeEnum {  virtual,  directory,  sync,  };
 
-  /// The owner's lock (metadata to a viewer).
-  @BuiltValueField(wireName: r'locked')
-  bool get locked;
-
   /// The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
   @BuiltValueField(wireName: r'coverAssetId')
   String? get coverAssetId;
@@ -64,7 +59,7 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   @BuiltValueField(wireName: r'allowAppDeletion')
   bool? get allowAppDeletion;
 
-  /// The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, the deletability switch is on, and the album is not locked. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
+  /// The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, and the deletability switch is on. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
   @BuiltValueField(wireName: r'deletable')
   bool? get deletable;
 
@@ -130,11 +125,6 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
     yield serializers.serialize(
       object.type,
       specifiedType: const FullType(AlbumDetailTypeEnum),
-    );
-    yield r'locked';
-    yield serializers.serialize(
-      object.locked,
-      specifiedType: const FullType(bool),
     );
     yield r'coverAssetId';
     yield object.coverAssetId == null ? null : serializers.serialize(
@@ -248,13 +238,6 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
             specifiedType: const FullType(AlbumDetailTypeEnum),
           ) as AlbumDetailTypeEnum;
           result.type = valueDes;
-          break;
-        case r'locked':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(bool),
-          ) as bool;
-          result.locked = valueDes;
           break;
         case r'coverAssetId':
           final valueDes = serializers.deserialize(

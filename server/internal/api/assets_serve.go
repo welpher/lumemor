@@ -44,13 +44,28 @@ const mediaCacheControl = "private, max-age=31536000, immutable"
 // GetAsset implements GET /api/v1/assets/{id}: the asset detail -- the
 // identity and storage fields of the upload response plus the
 // pipeline's refinements (dimensions, duration, blurhash, the EXIF hot
-// fields, readiness) and the asset's faces with the caller's label
-// state of each face's cluster (the people section's read).
-func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+// fields, readiness), the asset's faces with the caller's label
+// state of each face's cluster (the people section's read), the
+// caller-visible albums holding the asset and the resolved place
+// (the info panel's two deep-link rows).
+func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params apigen.GetAssetParams) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
 		s.rejectUnauthenticated(w)
 		return
+	}
+
+	// The locale parameter: the contract's enum is the instance's
+	// language set, and the generated binder binds the raw string, so
+	// the membership check lives here -- an out-of-set locale is a
+	// client bug the 400 names (the places face's own check).
+	locale := apigen.GetAssetParamsLocaleEn
+	if params.Locale != nil {
+		if !params.Locale.Valid() {
+			s.writeValidationError(w, "locale must be one of: en, zh-Hans", []string{"locale"})
+			return
+		}
+		locale = *params.Locale
 	}
 
 	// The caller-visible union in the query is the permission check
@@ -62,6 +77,7 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 	row, err := s.queries.GetAssetDetail(r.Context(), dbgen.GetAssetDetailParams{
 		ID:     pgUUID(id),
 		Viewer: pgUUID(requester.userID),
+		Locale: string(locale),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.writeAssetNotFound(w)
@@ -87,8 +103,15 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 		s.internalError(w, r, "load asset tags", err)
 		return
 	}
+	// The albums face rides the same permission: the visible
+	// membership rows only, never an album the caller cannot see.
+	albums, err := s.assetAlbumsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
+	if err != nil {
+		s.internalError(w, r, "load asset albums", err)
+		return
+	}
 
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(row, faces, tags))
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(row, faces, tags, albums))
 }
 
 // GetAssetThumbnail implements GET /api/v1/assets/{id}/thumbnail: the
@@ -415,6 +438,38 @@ func (s *server) assetFacesForCaller(ctx context.Context, assetID, callerID pgty
 	return faces, nil
 }
 
+// assetAlbumsForCaller reads the albums holding one asset as the
+// CALLER sees them -- the info panel's where-does-this-live rows.
+// The read both detail-serving endpoints (GET and PATCH) share, so
+// the PATCH response carries the albums exactly as the GET serves
+// them. Callers must have proven the asset caller-visible first;
+// the array carries no gate of its own.
+func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgtype.UUID) ([]apigen.AssetAlbumRef, error) {
+	rows, err := s.queries.ListAssetAlbumsForCaller(ctx, dbgen.ListAssetAlbumsForCallerParams{
+		Viewer:  callerID,
+		AssetID: assetID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// A non-nil empty slice: the fixed-shape contract wants an array,
+	// never JSON null, for an asset no visible album holds.
+	albums := make([]apigen.AssetAlbumRef, 0, len(rows))
+	for _, row := range rows {
+		role := apigen.AssetAlbumRefCallerRoleViewer
+		if row.IsOwner {
+			role = apigen.AssetAlbumRefCallerRoleOwner
+		}
+		albums = append(albums, apigen.AssetAlbumRef{
+			Id:         uuid.UUID(row.ID.Bytes),
+			Title:      row.Title,
+			Type:       apigen.AssetAlbumRefType(row.Type),
+			CallerRole: role,
+		})
+	}
+	return albums, nil
+}
+
 // assetDetailFrom maps the detail read onto the API shape. The
 // pipeline-dependent values cross as null while the jobs have not
 // produced them: width/height stay 0 in the row until the metadata
@@ -424,10 +479,11 @@ func (s *server) assetFacesForCaller(ctx context.Context, assetID, callerID pgty
 // editable attributes (description, isHidden) cross as the row
 // carries them -- the PATCH response reuses this mapper, so the
 // applied values surface exactly as the GET endpoint serves them,
-// faces and tags included (the caller passes the same reads'
-// answers).
-func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary, tags []apigen.AssetTagSummary) apigen.AssetDetail {
-	return apigen.AssetDetail{
+// faces, tags, albums and place included (the caller passes the same
+// reads' answers). The place face rides the read's own locale join:
+// a null place_id (no GPS, no baked data) answers null.
+func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary, tags []apigen.AssetTagSummary, albums []apigen.AssetAlbumRef) apigen.AssetDetail {
+	detail := apigen.AssetDetail{
 		Id:               uuid.UUID(row.ID.Bytes),
 		OwnerId:          uuid.UUID(row.OwnerID.Bytes),
 		Kind:             apigen.AssetDetailKind(row.MediaKind),
@@ -450,7 +506,24 @@ func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummar
 		Exif:             exifSummaryFrom(row),
 		Faces:            faces,
 		Tags:             tags,
+		Albums:           albums,
 	}
+	if row.PlaceID.Valid {
+		// The locale join's exact discipline (the `GET /places`
+		// read's own): the locale's place_names row when the place
+		// data carries one, the canonical name otherwise. The
+		// canonical column is NOT NULL on a place row, so a valid
+		// place_id always answers a name.
+		name := row.CanonicalName.String
+		if row.LocaleName.Valid {
+			name = row.LocaleName.String
+		}
+		detail.Place = &apigen.AssetPlaceRef{
+			PlaceId: row.PlaceID.Int32,
+			Name:    name,
+		}
+	}
+	return detail
 }
 
 // exifSummaryFrom flattens the joined exif hot fields onto the API

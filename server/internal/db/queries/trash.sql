@@ -68,28 +68,6 @@ WHERE id = sqlc.arg('id')
   AND storage_kind = 'external'
   AND deleted_at IS NULL;
 
--- name: CountLockedDirectoryAlbumsOfAsset :one
--- The album lock's delete gate (the content-protection freeze
--- widened from the rescan to the deletion): how many LOCKED
--- directory albums the asset is a member of. The batch's external
--- trash arm asks this before moving a live row's file -- a nonzero
--- answer refuses the whole batch with the curation writes' own 409,
--- exactly the rescan endpoint's refusal (the owner unlocks first).
--- The lock rides the ALBUM rows, not the asset: one external file
--- can hold memberships of several directory albums (the overlap
--- arm of the old path matrix retired with the allowlist), so the
--- gate counts every containing album -- the freeze of any one of
--- them stops the file's deletion. Only directory albums count:
--- a virtual membership is not the file's home, and a lock on a
--- virtual album never froze a file move. The membership count of
--- one asset bounds the read.
-SELECT count(*) AS locked_albums
-FROM album_items ai
-JOIN albums al ON al.id = ai.album_id
-WHERE ai.asset_id = sqlc.arg('asset_id')
-  AND al.type = 'directory'
-  AND al.locked;
-
 -- name: ListTrash :many
 -- The trash view of one owner: every trashed, non-component asset
 -- newest deletion first, each with the countdown of whole days
