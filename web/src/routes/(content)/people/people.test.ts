@@ -12,20 +12,32 @@ import Page from './+page.svelte';
 // person.* event refetches the list and the SERVER's answer decides
 // what changed (labels are private per user, so an event from
 // another account's write must move nothing the server does not
-// move; the page never invents state). The events module is mocked
-// with a captured handler registry, the timeline page's pattern.
+// move; the page never invents state). The asset deletions converge
+// the same way (a purged asset's faces died with it). The events
+// module is mocked with a captured handler registry, the timeline
+// page's pattern.
 
-const { handlers } = vi.hoisted(() => ({
-	handlers: [] as Array<(event: unknown) => void>
+const { personHandlers, assetHandlers } = vi.hoisted(() => ({
+	personHandlers: [] as Array<(event: unknown) => void>,
+	assetHandlers: [] as Array<(event: unknown) => void>
 }));
 
 vi.mock('$lib/events', () => ({
 	subscribePersonEvents: (listener: (event: unknown) => void) => {
-		handlers.push(listener);
+		personHandlers.push(listener);
 		return () => {
-			const index = handlers.indexOf(listener);
+			const index = personHandlers.indexOf(listener);
 			if (index !== -1) {
-				handlers.splice(index, 1);
+				personHandlers.splice(index, 1);
+			}
+		};
+	},
+	subscribeAssetEvents: (listener: (event: unknown) => void) => {
+		assetHandlers.push(listener);
+		return () => {
+			const index = assetHandlers.indexOf(listener);
+			if (index !== -1) {
+				assetHandlers.splice(index, 1);
 			}
 		};
 	}
@@ -90,14 +102,22 @@ function buttonByText(text: string): HTMLButtonElement {
 
 /** Fire one parsed person event to every live subscriber. */
 function firePersonEvent(event: Record<string, unknown>): void {
-	for (const handler of [...handlers]) {
+	for (const handler of [...personHandlers]) {
+		handler(event);
+	}
+}
+
+/** Fire one parsed asset event to every live subscriber. */
+function fireAssetEvent(event: Record<string, unknown>): void {
+	for (const handler of [...assetHandlers]) {
 		handler(event);
 	}
 }
 
 beforeEach(async () => {
 	document.body.textContent = '';
-	handlers.length = 0;
+	personHandlers.length = 0;
+	assetHandlers.length = 0;
 	vi.clearAllMocks();
 	peopleState = [ada, grace, ivy];
 	// Boot the session store unauthenticated (the interceptor stays
@@ -302,13 +322,48 @@ test('a burst of events collapses into one trailing refetch', async () => {
 	flushSync();
 });
 
+test('SSE asset.deleted converges: the faces died with the asset, the refetch follows', async () => {
+	peopleState = [ada, grace, ivy];
+	vi.stubGlobal('fetch', stubFetch());
+	const page = mountPage();
+	await settle();
+	expect(cards()).toHaveLength(3);
+
+	// A purged asset's faces cascade-died; the server's answer now
+	// carries the shrunken cluster and the dissolved one is gone.
+	peopleState = [person('c1', 'Ada', 9), ivy];
+	fireAssetEvent({ id: 2, name: 'asset.deleted', assetId: 'a1', kind: 'image' });
+	await settle();
+
+	expect(cards()).toHaveLength(2);
+	expect(cards()[0]?.textContent).toContain('9 faces');
+	unmount(page);
+	flushSync();
+});
+
+test('SSE asset.updated converges nothing: only the deletions move the face aggregates', async () => {
+	vi.stubGlobal('fetch', stubFetch());
+	const page = mountPage();
+	await settle();
+	expect(cards()).toHaveLength(3);
+
+	// A metadata update changes no face: no refetch.
+	fireAssetEvent({ id: 2, name: 'asset.updated', assetId: 'a1', kind: 'image' });
+	await settle();
+	expect(cards()).toHaveLength(3);
+	unmount(page);
+	flushSync();
+});
+
 test('leaving the page unsubscribes from the event stream', async () => {
 	vi.stubGlobal('fetch', stubFetch());
 	const page = mountPage();
 	await settle();
-	expect(handlers).toHaveLength(1);
+	expect(personHandlers).toHaveLength(1);
+	expect(assetHandlers).toHaveLength(1);
 
 	unmount(page);
 	flushSync();
-	expect(handlers).toHaveLength(0);
+	expect(personHandlers).toHaveLength(0);
+	expect(assetHandlers).toHaveLength(0);
 });
