@@ -15,23 +15,23 @@ import {
 import { sessionStatus } from '$lib/auth/session.svelte';
 
 // The albums surface's data client (the albums-as-sources reshape,
-// completed by album autonomy): the wall list, the detail read
-// (the deletion faces included), the directory creation (title +
-// source path + audience, the honest skipped report and the write
-// probe's sourceWritable fact -- both admin-guarded writes), the
-// property patch (title, cover, deletability), the
-// virtual/directory delete, the path completion of the creation
-// dialog's combobox, the audience's full-set PUT, the rescan
-// trigger, the member list and the timeline preference -- each
-// behind the repo-wide error-code convention, and the write faces'
-// message keys surfaced as error keys (the people client's
+// completed by album autonomy, renamed with the memory's birth): the
+// wall list, the detail read (the deletion faces included), the
+// directory creation (title + source path + audience, the honest
+// skipped report and the write probe's sourceWritable fact -- both
+// admin-guarded writes), the property patch (title, cover,
+// deletability), the memory/directory delete, the path completion of
+// the creation dialog's combobox, the audience's full-set PUT, the
+// rescan trigger, the member list and the timeline preference --
+// each behind the repo-wide error-code convention, and the write
+// faces' message keys surfaced as error keys (the people client's
 // requires-label pattern). Every case drives one call through an
 // injected fetch mock.
 
 const ownCard: AlbumSummary = {
 	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 	title: 'Road trip 2026',
-	type: 'virtual',
+	type: 'memory',
 	isShared: true,
 	coverAssetIds: [
 		'0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072',
@@ -58,7 +58,7 @@ const directoryCard: AlbumSummary = {
 const detailBody = {
 	id: ownCard.id,
 	title: ownCard.title,
-	type: 'virtual',
+	type: 'memory',
 	coverAssetId: null,
 	callerRole: 'owner',
 	itemCount: 2,
@@ -478,7 +478,7 @@ test("patchAlbum surfaces the write faces' message keys", async () => {
 		errorKey: 'album_cover_not_member'
 	});
 
-	// The deletability switch's own refusal: a virtual album answers
+	// The deletability switch's own refusal: a memory album answers
 	// the message key, not a generic validation text.
 	vi.stubGlobal(
 		'fetch',

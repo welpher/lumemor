@@ -45,7 +45,7 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 	return {
 		id,
 		title: `Album ${id}`,
-		type: 'virtual',
+		type: 'memory',
 		isShared: false,
 		coverAssetIds: [],
 		itemCount: 0,
@@ -358,7 +358,7 @@ test('the badges ride the cards: shared, excluded', async () => {
 	expect(sharedCard?.querySelector('.album-card__badge--excluded')).toBeNull();
 	expect(sharedCard?.textContent).toContain('17 photos');
 
-	// The own virtual card carries no exclusion badge: it never feeds
+	// The own memory card carries no exclusion badge: it never feeds
 	// the caller's own timeline.
 	expect(cards()[3]?.querySelector('.album-card__badge--excluded')).toBeNull();
 

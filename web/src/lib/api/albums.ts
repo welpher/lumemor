@@ -1,12 +1,12 @@
 // The albums surface's data client (reshaped by the
-// albums-as-sources and album-autonomy reworks, and by the lock's
-// retirement): the wall list, the detail read (the deletion faces
+// albums-as-sources and album-autonomy reworks, renamed with the
+// memory's birth): the wall list, the detail read (the deletion faces
 // included -- the write probe's `sourceWritable` fact, the owner's
-// `allowAppDeletion` switch, the derived `deletable` affordance),
-// the directory creation (title + source path + audience + the two
+// `allowAppDeletion` switch, the derived `deletable` affordance), the
+// directory creation (title + source path + audience + the two
 // autonomy switches, the honest skipped report and the probe's
 // read-only fact -- both admin-guarded writes), the property patch
-// (title, cover, deletability), the virtual/directory delete, the
+// (title, cover, deletability), the memory/directory delete, the
 // path completion of the creation dialog's combobox (the
 // system-wide domain: the container's real visible filesystem, the
 // managed tree never listed; every row carries the write fact the
@@ -191,7 +191,7 @@ function summaryFrom(body: unknown): AlbumSummary | null {
 	if (typeof candidate.id !== 'string' || typeof candidate.title !== 'string') {
 		return null;
 	}
-	if (candidate.type !== 'virtual' && candidate.type !== 'directory' && candidate.type !== 'sync') {
+	if (candidate.type !== 'memory' && candidate.type !== 'directory' && candidate.type !== 'sync') {
 		return null;
 	}
 	if (candidate.isShared !== true && candidate.isShared !== false) {
@@ -291,7 +291,7 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 	if (candidate.id !== albumId || typeof candidate.title !== 'string') {
 		return null;
 	}
-	if (candidate.type !== 'virtual' && candidate.type !== 'directory' && candidate.type !== 'sync') {
+	if (candidate.type !== 'memory' && candidate.type !== 'directory' && candidate.type !== 'sync') {
 		return null;
 	}
 	if (candidate.coverAssetId !== null && typeof candidate.coverAssetId !== 'string') {
@@ -547,7 +547,7 @@ export async function completeAlbumPath(
  * PATCH /api/v1/albums/{albumId}: the owner's partial edit of the
  * properties (`title`, `coverAssetId`, `allowAppDeletion`, any
  * subset). The response is the album's wall card after the edit.
- * The deletability switch is the DIRECTORY album's own (a virtual
+ * The deletability switch is the DIRECTORY album's own (a memory
  * album answers the message key `album_deletable_not_directory`).
  */
 export async function patchAlbum(
@@ -683,12 +683,14 @@ export async function rescanAlbum(
 }
 
 /**
- * DELETE /api/v1/albums/{albumId}: remove the caller's virtual or
+ * DELETE /api/v1/albums/{albumId}: remove the caller's memory or
  * directory album. The row goes with its membership, share and
- * preference rows (the schema's cascades); the directory arm is the
- * un-ingest -- every member no other album references is purged from
- * the library (its source file untouched), the guarded survivors
- * keep their rows. 204, no body.
+ * preference rows (the schema's cascades). The MEMORY arm is the
+ * light cascade: the references and the audience die, the photos are
+ * untouched (they live in the albums they were ingested through).
+ * The directory arm is the un-ingest -- every member no other album
+ * references is purged from the library (its source file untouched),
+ * the guarded survivors keep their rows. 204, no body.
  */
 export async function deleteAlbum(
 	albumId: string,
