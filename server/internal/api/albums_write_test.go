@@ -893,6 +893,10 @@ func TestDeleteAlbum(t *testing.T) {
 	env.insertWallAlbum(t, private, adminID, "memory", "Private", wallAlbumOpts{})
 
 	t.Run("DeletesMemoryAndCascades", func(t *testing.T) {
+		// The birth row rides the cascade too: a created memory
+		// carries the creator's timeline-exclusion preference from
+		// its POST, and the delete takes it with the row.
+		env.setTimelinePref(t, graceID, memory, false)
 		rec := env.deleteAlbumRaw(t, env.cookie, memory)
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("DELETE /albums/%s status = %d, want %d (body %q)",
@@ -901,12 +905,16 @@ func TestDeleteAlbum(t *testing.T) {
 		if got := env.queryInt(t, "SELECT count(*) FROM albums WHERE id = $1", pgUUID(memory)); got != 0 {
 			t.Errorf("album rows = %d, want 0", got)
 		}
-		// The membership and share rows cascade with the row.
+		// The membership, share and preference rows cascade with the
+		// row.
 		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(memory)); got != 0 {
 			t.Errorf("membership rows = %d, want 0 (cascaded)", got)
 		}
 		if got := env.queryInt(t, "SELECT count(*) FROM album_shares WHERE album_id = $1", pgUUID(memory)); got != 0 {
 			t.Errorf("share rows = %d, want 0 (cascaded)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM user_album_prefs WHERE album_id = $1", pgUUID(memory)); got != 0 {
+			t.Errorf("preference rows = %d, want 0 (cascaded)", got)
 		}
 		// The assets themselves survive: deleting an album never
 		// deletes photos.
