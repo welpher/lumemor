@@ -450,7 +450,9 @@
 						<li>
 							<a
 								class="info__album flex items-center gap-1.5 py-[7px] font-body font-medium text-[13px] leading-[1.4] text-accent no-underline hover:underline"
-								href={`/albums/${encodeURIComponent(album.id)}`}
+								href={album.type === 'memory'
+									? `/memories/${encodeURIComponent(album.id)}`
+									: `/albums/${encodeURIComponent(album.id)}`}
 								data-album-id={album.id}
 							>
 								<Folder size={14} class="shrink-0" aria-hidden="true" />

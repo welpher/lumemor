@@ -45,7 +45,7 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 	return {
 		id,
 		title: `Album ${id}`,
-		type: 'memory',
+		type: 'directory',
 		isShared: false,
 		coverAssetIds: [],
 		itemCount: 0,
@@ -260,6 +260,49 @@ test('the wall sections the albums off the callerRole: own first, shared after',
 	flushSync();
 });
 
+test('the memory rows leave the album wall: the reference sets live on their own route', async () => {
+	// The memories moved to their own wall; the album wall filters
+	// the memory type out of BOTH groups -- the containers (the sync
+	// card, the directory albums) are this page's alone.
+	wallState = [
+		myPhotos,
+		familyArchive,
+		summary('mem-own', { title: 'Spring Festival 2026', type: 'memory', itemCount: 12 }),
+		summary('mem-shared', {
+			title: 'Sanya trip',
+			type: 'memory',
+			callerRole: 'viewer',
+			owner: { id: 'u2', email: 'grace@example.com' }
+		})
+	];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	expect(cards()).toHaveLength(2);
+	for (const card of cards()) {
+		expect(card.getAttribute('href')?.startsWith('/memories/')).toBe(false);
+	}
+
+	unmount(page);
+	flushSync();
+});
+
+test('a wall holding only memories renders the empty state: their home is elsewhere', async () => {
+	wallState = [summary('mem-own', { title: 'Spring Festival 2026', type: 'memory', itemCount: 12 })];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	expect(cards()).toHaveLength(0);
+	expect(document.body.querySelector('.albums__empty')?.textContent).toContain(
+		'No albums yet. Create one to gather photos around a moment.'
+	);
+
+	unmount(page);
+	flushSync();
+});
+
 test('the pinned sync card leads the own group with the localized display name', async () => {
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
 	const page = mountPage();
@@ -358,8 +401,8 @@ test('the badges ride the cards: shared, excluded', async () => {
 	expect(sharedCard?.querySelector('.album-card__badge--excluded')).toBeNull();
 	expect(sharedCard?.textContent).toContain('17 photos');
 
-	// The own memory card carries no exclusion badge: it never feeds
-	// the caller's own timeline.
+	// A card with no preference row renders no badge (the true
+	// default): the exclusion badge rides the field alone.
 	expect(cards()[3]?.querySelector('.album-card__badge--excluded')).toBeNull();
 
 	// The lock badge is retired: no card renders one, whatever the
