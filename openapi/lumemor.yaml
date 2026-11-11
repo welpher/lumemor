@@ -42,8 +42,10 @@ tags:
   - name: albums
     description: 'The album surface: the wall of the caller''s own and
       shared albums, one album''s detail with its keyset-paged items,
-      the owner''s write face -- the directory album creation, the
-      property patch, the delete and the membership curation -- the owner''s
+      the write faces -- the directory album creation (the
+      administrator''s own), the memory creation (every member''s
+      own), the property patch, the delete and the membership
+      curation -- the owner''s
       sharing face, granting and revoking the view-only ACL, and the
       caller''s per-user timeline preference over their own directory
       and shared albums. The caller''s own sync album surfaces here
@@ -562,7 +564,8 @@ paths:
         source cluster ids comma-joined as `mergedClusterIds`, and
         `person.face_moved` carries the face's new `clusterId`.
 
-        The `album.*` events report the album write surface: creation
+        The `album.*` events report the album write surface: the
+        directory album's and the memory's creation
         (`album.created`), the property patch (`album.updated`), the
         delete (`album.deleted`), the membership writes
         (`album.items-changed`) and the audience writes
@@ -574,7 +577,8 @@ paths:
         successful patch (the convergent refetch makes the
         unconditional fire harmless), `album.items-changed` exactly
         when a membership write changed at least one row (the
-        removal arm, or the rescan's add arm growing the set), and
+        removal arm, or the rescan's add arm growing the
+        set), and
         `album.shared`/`album.unshared` exactly when the audience
         write (or a creation's initial audience) landed or removed a
         row -- one event per row transition, every idempotent no-op
@@ -2999,10 +3003,9 @@ paths:
         place, the files stay where they are (zero copy, zero move;
         the rescan that fills the album's membership is a later flow).
         No type field exists: this endpoint IS directory creation --
-        the curation-into-a-container story is gone (memory albums
-        already owned keep their edit and delete faces, but nothing
-        creates one through this face), and every account's sync
-        album is born with the account.
+        the curation-into-a-container story is gone (a memory is
+        born through its own every-member face, POST /memories),
+        and every account's sync album is born with the account.
 
         Mounting an existing photo directory is a CONFIGURATION act:
         it points the application at a filesystem location, and a
@@ -4657,6 +4660,156 @@ paths:
                   value:
                     code: ALBUM_NOT_FOUND
                     message: no such album for this caller
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /memories:
+    post:
+      operationId: createMemory
+      tags:
+        - albums
+      summary: Create one memory.
+      description: |
+        Creates one memory owned by the calling user: a reference
+        set the owner curates photos into -- the photos themselves
+        live in the albums they were ingested through, the memory
+        holds references to them. The request carries a title and
+        an audience, nothing else: a memory owns no `rootPath` (no
+        source to name -- the directory album's own field is absent
+        from this request and from the memory's every response
+        shape), no deletability switch (a memory's delete never
+        moves files), and no timeline switch (a memory never feeds
+        its creator's own timeline, so there is nothing to switch).
+
+        EVERY member may create. Curation is personal expression,
+        not configuration: a memory names no filesystem location,
+        touches no source, and borrows nothing but photos the
+        creator already sees -- the exact opposite gate of the
+        directory album's administrator-only creation. Any signed-in
+        account's POST succeeds; there is no role check to refuse.
+
+        The title is trimmed and must span 1-64 Unicode characters
+        (the count is over runes, so multi-byte titles stay within
+        the bound at the same length).
+
+        `audience` is the memory's audience, the full grantee set of
+        view ACL rows the creation lands in the same request:
+        absent (or empty) means "only me". Its semantics are the
+        audience write's: every id that cannot be granted -- an
+        unknown or disabled account, or the caller's own id (the
+        owner sees the memory by construction) -- is skipped,
+        never an error, and the response's `skipped` list reports
+        each with its reason.
+
+        The memory is born out of its creator's aggregated
+        timeline: the creation writes the creator's own timeline
+        preference row (`inTimeline: false`) in the same write, so
+        the aggregate never feeds the memory's photos whatever
+        future arms admit. The exclusion is the creator's own --
+        the audience members' feeds are governed by their own
+        preference rows, never by this write.
+
+        The response is the created memory's wall card -- the
+        summary exactly as `GET /albums` lists it: `callerRole`
+        `owner`, `type` `memory`, an empty `coverAssetIds` array
+        (never null), `itemCount` 0 (nothing is a member yet), no
+        `inTimeline` field (an own memory card omits it) -- widened
+        with the honest audience report. The write publishes one
+        `album.created` event and one `album.shared` event per
+        audience row that landed.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryCreateRequest'
+            examples:
+              titled:
+                summary: A titled memory with an initial audience.
+                value:
+                  title: Road trip 2026
+                  audience:
+                    - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+              bare:
+                summary: The minimal creation, title only.
+                value:
+                  title: Quick picks
+      responses:
+        '201':
+          description: |
+            The memory exists; the response is its wall card (the
+            creation-time zeros: no member, no cover) with the
+            honest audience report. The grants that landed are the
+            request's usable ids; the `skipped` entries are the rest.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryCreateResponse'
+              examples:
+                freshMemory:
+                  summary: The freshly created memory, one grantee landed.
+                  value:
+                    id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f60a1
+                    title: Road trip 2026
+                    type: memory
+                    isShared: true
+                    coverAssetIds: []
+                    itemCount: 0
+                    updatedAt: '2026-11-11T10:15:00Z'
+                    callerRole: owner
+                    skipped: []
+                skippedAudience:
+                  summary: The creation landed, one requested audience id did not.
+                  value:
+                    id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f60a2
+                    title: Road trip 2026
+                    type: memory
+                    isShared: false
+                    coverAssetIds: []
+                    itemCount: 0
+                    updatedAt: '2026-11-11T10:15:00Z'
+                    callerRole: owner
+                    skipped:
+                      - userId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f99
+                        reason: invalid_account
+        '400':
+          description: |
+            The request is invalid: the body is not valid JSON, the
+            title is missing, empty, whitespace-only or spans more
+            than 64 characters, or the audience carries more than
+            200 ids.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                titleTooLong:
+                  summary: A title past the bound.
+                  value:
+                    code: VALIDATION_FAILED
+                    message: title must span 1-64 characters
+                    details:
+                      fields:
+                        - title
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
         '500':
           description: Unexpected server failure.
           content:
@@ -12490,6 +12643,65 @@ components:
               description: |
                 The requested audience ids that stayed ungranted:
                 the album's own owner and every id that names no
+                usable account. Empty when the whole audience
+                landed.
+              items:
+                $ref: '#/components/schemas/AlbumAudienceSkip'
+    MemoryCreateRequest:
+      type: object
+      description: |
+        The creation body of one memory: the title and the audience
+        the memory starts with, nothing else. A memory owns no
+        source path, no deletability switch and no timeline switch
+        -- the fields the directory album's creation carries have no
+        home on a reference set, and the shape says so by omitting
+        them.
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |
+            The memory's display title, trimmed server-side; it must
+            span 1-64 Unicode characters after the trim (the count
+            is over runes, so multi-byte titles stay within the
+            bound at the same length).
+        audience:
+          type: array
+          maxItems: 200
+          description: |
+            The accounts the memory starts being visible to: the
+            initial `album_shares` set, empty (or absent) meaning
+            "only me". Entries that cannot be granted -- an unknown
+            or disabled account, or the caller's own id -- are
+            skipped and reported in the response's `skipped` list,
+            never errors.
+          items:
+            type: string
+            format: uuid
+    MemoryCreateResponse:
+      description: |
+        The creation answer: the fresh memory's wall card (the
+        summary exactly as `GET /albums` lists it) plus the honest
+        audience report. The card's companions are the creation-time
+        constants: `callerRole` `owner`, `type` `memory`, `isShared`
+        true exactly when the audience landed a row, an empty
+        `coverAssetIds`, `itemCount` 0, no `inTimeline` field (an
+        own memory card omits it -- the memory never feeds its
+        creator's timeline).
+      allOf:
+        - $ref: '#/components/schemas/AlbumSummary'
+        - type: object
+          required:
+            - skipped
+          properties:
+            skipped:
+              type: array
+              description: |
+                The requested audience ids that stayed ungranted:
+                the memory's own owner and every id that names no
                 usable account. Empty when the whole audience
                 landed.
               items:

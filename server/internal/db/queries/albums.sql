@@ -302,6 +302,21 @@ INSERT INTO albums (id, owner_id, title, type, root_path, source_writable, allow
 VALUES (sqlc.arg('id'), sqlc.arg('owner_id'), sqlc.arg('title'), 'directory', sqlc.arg('root_path'), sqlc.arg('source_writable'), sqlc.arg('allow_app_deletion'))
 RETURNING id;
 
+-- name: CreateMemoryAlbum :one
+-- The memory creator: a bare reference-set row -- owner, title,
+-- type, nothing else. The row owns no path (a memory has no source:
+-- its photos live in the albums they were ingested through), so
+-- root_path stays NULL and the directory albums' own columns keep
+-- their defaults. The id is generated caller-side; the creation
+-- face carries title and audience only. The wall card's companions
+-- are the creation-time constants -- no members, no cover, the
+-- caller's own audience grants land right after -- so the handler
+-- reads the fresh row's full card through GetAlbumSummary like
+-- every other write response.
+INSERT INTO albums (id, owner_id, title, type)
+VALUES (sqlc.arg('id'), sqlc.arg('owner_id'), sqlc.arg('title'), 'memory')
+RETURNING id;
+
 -- name: GetAlbumSummary :one
 -- The album row with the wall card's honest companions: whether any
 -- share row exists, the live member count, and the caller's raw

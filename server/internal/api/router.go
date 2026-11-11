@@ -377,6 +377,12 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Patch("/albums/{albumId}", wrapper.UpdateAlbum)
 				r.Delete("/albums/{albumId}", wrapper.DeleteAlbum)
 				r.Delete("/albums/{albumId}/items", wrapper.RemoveAlbumItems)
+				// The memory creation (every member's own write): one
+				// bounded row insert, the creator's one preference row
+				// and the audience grants -- the same bounded cost class
+				// as the album writes, and the static /memories segment
+				// never contends with any /albums route.
+				r.Post("/memories", wrapper.CreateMemory)
 				// The album audience face (the
 				// albums-as-sources rework): the full-set
 				// view-ACL write behind PUT

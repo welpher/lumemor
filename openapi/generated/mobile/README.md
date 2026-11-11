@@ -105,6 +105,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**completeAlbumPath**](doc/AlbumsApi.md#completealbumpath) | **GET** /albums/path-completions | Complete a directory album&#39;s source path.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**createAlbum**](doc/AlbumsApi.md#createalbum) | **POST** /albums | Create one directory album from an existing path.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**createMemory**](doc/AlbumsApi.md#creatememory) | **POST** /memories | Create one memory.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**deleteAlbum**](doc/AlbumsApi.md#deletealbum) | **DELETE** /albums/{albumId} | Remove one album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**getAlbum**](doc/AlbumsApi.md#getalbum) | **GET** /albums/{albumId} | One album&#39;s detail and one page of its items.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**listAlbums**](doc/AlbumsApi.md#listalbums) | **GET** /albums | The caller&#39;s album wall.
@@ -216,6 +217,8 @@ Class | Method | HTTP request | Description
  - [LabelPersonRequest](doc/LabelPersonRequest.md)
  - [LoginRequest](doc/LoginRequest.md)
  - [MediaKind](doc/MediaKind.md)
+ - [MemoryCreateRequest](doc/MemoryCreateRequest.md)
+ - [MemoryCreateResponse](doc/MemoryCreateResponse.md)
  - [MergePeopleRequest](doc/MergePeopleRequest.md)
  - [MergePeopleResponse](doc/MergePeopleResponse.md)
  - [ModelActivateResponse](doc/ModelActivateResponse.md)

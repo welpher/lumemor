@@ -512,6 +512,45 @@ func (e MediaKind) Valid() bool {
 	}
 }
 
+// Defines values for MemoryCreateResponseCallerRole.
+const (
+	MemoryCreateResponseCallerRoleOwner  MemoryCreateResponseCallerRole = "owner"
+	MemoryCreateResponseCallerRoleViewer MemoryCreateResponseCallerRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the MemoryCreateResponseCallerRole enum.
+func (e MemoryCreateResponseCallerRole) Valid() bool {
+	switch e {
+	case MemoryCreateResponseCallerRoleOwner:
+		return true
+	case MemoryCreateResponseCallerRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MemoryCreateResponseType.
+const (
+	MemoryCreateResponseTypeDirectory MemoryCreateResponseType = "directory"
+	MemoryCreateResponseTypeMemory    MemoryCreateResponseType = "memory"
+	MemoryCreateResponseTypeSync      MemoryCreateResponseType = "sync"
+)
+
+// Valid indicates whether the value is a known member of the MemoryCreateResponseType enum.
+func (e MemoryCreateResponseType) Valid() bool {
+	switch e {
+	case MemoryCreateResponseTypeDirectory:
+		return true
+	case MemoryCreateResponseTypeMemory:
+		return true
+	case MemoryCreateResponseTypeSync:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ModelSlot.
 const (
 	ClipEmbed     ModelSlot = "clip_embed"
@@ -2365,6 +2404,118 @@ type LoginRequest struct {
 // timeline or the search.
 type MediaKind string
 
+// MemoryCreateRequest The creation body of one memory: the title and the audience
+// the memory starts with, nothing else. A memory owns no
+// source path, no deletability switch and no timeline switch
+// -- the fields the directory album's creation carries have no
+// home on a reference set, and the shape says so by omitting
+// them.
+type MemoryCreateRequest struct {
+	// Audience The accounts the memory starts being visible to: the
+	// initial `album_shares` set, empty (or absent) meaning
+	// "only me". Entries that cannot be granted -- an unknown
+	// or disabled account, or the caller's own id -- are
+	// skipped and reported in the response's `skipped` list,
+	// never errors.
+	Audience *[]openapi_types.UUID `json:"audience,omitempty"`
+
+	// Title The memory's display title, trimmed server-side; it must
+	// span 1-64 Unicode characters after the trim (the count
+	// is over runes, so multi-byte titles stay within the
+	// bound at the same length).
+	Title string `json:"title"`
+}
+
+// MemoryCreateResponse The creation answer: the fresh memory's wall card (the
+// summary exactly as `GET /albums` lists it) plus the honest
+// audience report. The card's companions are the creation-time
+// constants: `callerRole` `owner`, `type` `memory`, `isShared`
+// true exactly when the audience landed a row, an empty
+// `coverAssetIds`, `itemCount` 0, no `inTimeline` field (an
+// own memory card omits it -- the memory never feeds its
+// creator's timeline).
+type MemoryCreateResponse struct {
+	// CallerRole The caller's relation to this album: `owner` items belong
+	// to the own group, `viewer` items to the shared group. The
+	// web client sections the wall off this discriminator.
+	CallerRole MemoryCreateResponseCallerRole `json:"callerRole"`
+
+	// CoverAssetIds The collage source of the wall card: the pinned cover
+	// asset as a single-element list when the owner set one,
+	// otherwise the album's most recent live member assets (up
+	// to four, `takenAt` descending, the asset id as the
+	// tiebreak). Empty for an album with no live members.
+	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
+
+	// Id Identifier of the album.
+	Id openapi_types.UUID `json:"id"`
+
+	// InTimeline The caller's timeline preference of this album: whether
+	// it feeds their aggregated timeline. Present exactly on
+	// the excludable cards -- the own `directory` items and
+	// every shared item; the own `memory` items omit it
+	// (they never feed the caller's own timeline, so there is
+	// nothing to exclude), and the pinned `sync` card omits it
+	// too (the core stream is never excludable). The value is
+	// the preference row's switch, true when no row exists
+	// (the default).
+	InTimeline *bool `json:"inTimeline,omitempty"`
+
+	// IsShared True when the album carries at least one `album_shares`
+	// row -- someone besides the owner can see it. Always true
+	// on shared-group items by construction.
+	IsShared bool `json:"isShared"`
+
+	// ItemCount The album's live member count: trashed, hidden and Live
+	// Photo component rows never count (a hidden asset is
+	// invisible to the whole family).
+	ItemCount int `json:"itemCount"`
+
+	// Owner The owner attribution of a shared item: the account that
+	// owns the album. Present exactly when `callerRole` is
+	// `viewer`; own items omit it (the owner is the caller).
+	Owner *AlbumOwnerRef `json:"owner,omitempty"`
+
+	// Skipped The requested audience ids that stayed ungranted:
+	// the memory's own owner and every id that names no
+	// usable account. Empty when the whole audience
+	// landed.
+	Skipped []AlbumAudienceSkip `json:"skipped"`
+
+	// Title The album's display title.
+	Title string `json:"title"`
+
+	// Type The album's type. `memory` albums are reference sets
+	// curated by their owner -- photos live in the albums they
+	// were ingested through, a memory holds references to
+	// them; `directory` albums mirror a filesystem path. The
+	// one `sync` card, when present, is the caller's own
+	// default album pinned first (never another account's):
+	// its `title` is the internal system label ('Sync') and
+	// clients render the localized display name instead (en
+	// "My photos", zh-Hans "我的照片").
+	Type MemoryCreateResponseType `json:"type"`
+
+	// UpdatedAt When the album row last changed (RFC 3339 UTC).
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// MemoryCreateResponseCallerRole The caller's relation to this album: `owner` items belong
+// to the own group, `viewer` items to the shared group. The
+// web client sections the wall off this discriminator.
+type MemoryCreateResponseCallerRole string
+
+// MemoryCreateResponseType The album's type. `memory` albums are reference sets
+// curated by their owner -- photos live in the albums they
+// were ingested through, a memory holds references to
+// them; `directory` albums mirror a filesystem path. The
+// one `sync` card, when present, is the caller's own
+// default album pinned first (never another account's):
+// its `title` is the internal system label ('Sync') and
+// clients render the localized display name instead (en
+// "My photos", zh-Hans "我的照片").
+type MemoryCreateResponseType string
+
 // MergePeopleRequest One merge: 1-50 source clusters folded into one target
 // cluster. The source clusters dissolve with their labels (the
 // honest documented cost -- a source cluster's user-given name
@@ -3936,6 +4087,9 @@ type ConsumePairingTokenJSONRequestBody = PairingConsumeRequest
 // MoveFaceJSONRequestBody defines body for MoveFace for application/json ContentType.
 type MoveFaceJSONRequestBody = MoveFaceRequest
 
+// CreateMemoryJSONRequestBody defines body for CreateMemory for application/json ContentType.
+type CreateMemoryJSONRequestBody = MemoryCreateRequest
+
 // MergePeopleJSONRequestBody defines body for MergePeople for application/json ContentType.
 type MergePeopleJSONRequestBody = MergePeopleRequest
 
@@ -4112,6 +4266,9 @@ type ServerInterface interface {
 	// GetFaceThumbnail Serve one face's 256x256 crop thumbnail.
 	// (GET /faces/{faceId}/thumbnail)
 	GetFaceThumbnail(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
+	// CreateMemory Create one memory.
+	// (POST /memories)
+	CreateMemory(w http.ResponseWriter, r *http.Request)
 	// ListPeople The caller's named people.
 	// (GET /people)
 	ListPeople(w http.ResponseWriter, r *http.Request)
@@ -4478,6 +4635,12 @@ func (_ Unimplemented) MoveFace(w http.ResponseWriter, r *http.Request, faceId o
 // GetFaceThumbnail Serve one face's 256x256 crop thumbnail.
 // (GET /faces/{faceId}/thumbnail)
 func (_ Unimplemented) GetFaceThumbnail(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateMemory Create one memory.
+// (POST /memories)
+func (_ Unimplemented) CreateMemory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5815,6 +5978,20 @@ func (siw *ServerInterfaceWrapper) GetFaceThumbnail(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// CreateMemory operation middleware
+func (siw *ServerInterfaceWrapper) CreateMemory(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateMemory(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPeople operation middleware
 func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Request) {
 
@@ -6712,6 +6889,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/albums/{albumId}/timeline-preference", wrapper.SetAlbumTimelinePreference)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/memories", wrapper.CreateMemory)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/people", wrapper.ListPeople)

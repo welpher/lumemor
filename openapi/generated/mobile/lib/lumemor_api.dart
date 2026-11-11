@@ -74,6 +74,8 @@ export 'package:lumemor_api/src/model/kind_facet_count.dart';
 export 'package:lumemor_api/src/model/label_person_request.dart';
 export 'package:lumemor_api/src/model/login_request.dart';
 export 'package:lumemor_api/src/model/media_kind.dart';
+export 'package:lumemor_api/src/model/memory_create_request.dart';
+export 'package:lumemor_api/src/model/memory_create_response.dart';
 export 'package:lumemor_api/src/model/merge_people_request.dart';
 export 'package:lumemor_api/src/model/merge_people_response.dart';
 export 'package:lumemor_api/src/model/model_activate_response.dart';
