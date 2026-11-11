@@ -38,7 +38,7 @@ const maxWorkers = 4
 // detection, face recognition, CLIP embedding, OCR):
 // its worker pool is deliberately SMALL, because the ML jobs are the
 // pipeline's only CPU-heavy work (onnxruntime inference over decoded
-// rasters), and the plan's discipline pins their concurrency
+// rasters), and the pinned discipline keeps their concurrency
 // conservative so a burst of ML work never starves the media pipeline
 // or the API of worker slots. The separation is also structural for
 // the rerun driver: the driver runs on the default queue and WAITS

@@ -82,17 +82,17 @@ services:
       # `docker run --rm -u 0 -v ./lumemor:/var/lib/lumemor <image>
       #  chown -R 10001:10001 /var/lib/lumemor`.
       - ./lumemor:/var/lib/lumemor
-      # The e2e source fixtures (E4, widened by E6): the m3-albums
+      # The e2e source fixtures: the m3-albums
       # story and the acceptance chains create directory albums
       # pointing at real trees, and these binds ARE those trees -- the
-      # E6 boundary itself (the compose mounts are what the container
+      # boundary itself (the compose mounts are what the container
       # sees; the mount-root allowlist layer is retired). The
       # read-only bind pins the zero-copy ingest by construction (a
       # scan that tried to write into the source would fail loudly
       # against it) and answers the creation-time write probe with the
       # honest false fact; see web/e2e/fixtures/m3-source/README.md.
       - ./web/e2e/fixtures/m3-source:/mnt/e2e-source:ro
-      # The writable sibling (E6): the write probe's true arm and the
+      # The writable sibling: the write probe's true arm and the
       # deletability chain -- the trash move out of the source, the
       # restore's move back -- need a source the application can
       # actually write, and this bind is that source. The photos are

@@ -548,7 +548,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 // asset rows untouched. The DIRECTORY arm is the un-ingest (see
 // albumremoval.go): the album's own rows go in the same single
 // transaction as every member asset no other album references --
-// the reference guard's survivors keep their rows, and the source
+// the guard's survivors keep their rows, and the source
 // files of the purged stay on the mount whatever happens to the
 // library data. Both arms answer 204 with no body and publish
 // album.deleted; the directory arm additionally publishes

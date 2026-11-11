@@ -19,7 +19,7 @@
 	// dialog's height is invariant to the validation's comings and
 	// goings exactly as it is to the picker's open/close.
 	//
-	// THE REQUEST DISCIPLINE (the plan's pinned semantics): debounced
+	// THE REQUEST DISCIPLINE (the pinned semantics): debounced
 	// ~250ms and single-flight -- a burst of keystrokes costs ONE
 	// in-flight request (later triggers park behind it and one
 	// trailing fetch runs when it lands), and a stale answer NEVER
@@ -81,7 +81,7 @@
 		onpick
 	}: Props = $props();
 
-	/** The debounce window the plan pins (~250ms). */
+	/** The debounce window (~250ms). */
 	const DEBOUNCE_MS = 250;
 
 	type CompletionState = 'idle' | 'loading' | 'ready' | 'failed';

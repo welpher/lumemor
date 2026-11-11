@@ -1,6 +1,6 @@
 // The album removal tests (the un-ingest): the directory arm of
-// DELETE /albums/{albumId} against the real surfaces. The reference
-// guard's three arms are pinned here -- the unreferenced external
+// DELETE /albums/{albumId} against the real surfaces. The guard's
+// three arms are pinned here -- the unreferenced external
 // member purges, the member another album holds survives on that
 // reference (the dedup-borrow shape included: an uploaded blob row
 // the album linked keeps its sync album's hold), and the blob rows

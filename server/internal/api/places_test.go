@@ -153,7 +153,7 @@ func TestPlacesCityGrouping(t *testing.T) {
 	t.Run("ZhHansLocaleJoin", func(t *testing.T) {
 		// The locale switch must not move asset rows: capture the
 		// updated_at of every fixture asset before the join and
-		// assert it after (the review focus's determinism pin -- the
+		// assert it after (the determinism pin -- the
 		// display name is a JOIN, never a denormalized rewrite).
 		var before []time.Time
 		rows, err := env.pool.Query(context.Background(), `

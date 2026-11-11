@@ -13,7 +13,7 @@
 	// Intl.DisplayNames(region) is that table, so no country name is
 	// hardcoded (a locale switch relabels without a refetch).
 	//
-	// THE MAP PLACEHOLDER: the honest copy the plan pins -- the tile
+	// THE MAP PLACEHOLDER: the pinned honest copy -- the tile
 	// source is a self-hosting decision of a later update, the city
 	// grouping comes first. No map machinery, no stub.
 	//

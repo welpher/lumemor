@@ -476,7 +476,7 @@ describe('SSE convergence', () => {
 	});
 
 	test("an own reference set's replayed event inserts nothing", async () => {
-		// The reference sets never feed their creator's own aggregate
+		// The assets' reference sets never feed their creator's own aggregate
 		// (the wall card omits the switch): the face's owner-virtual
 		// entry decides alone, no wall fetch.
 		const fetches: string[] = [];

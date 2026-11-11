@@ -56,7 +56,7 @@
 	// THE WALLS' SELECTION (the curation ruling: BOTH search walls
 	// carry the per-user subset, every role): the batch runner over
 	// the client (the optimistic favorite flip and its rollback live
-	// there; the visible-domain rule -- the B4 union for everyone,
+	// there; the visible-domain rule -- one union for everyone,
 	// the owner resolution per caller -- is the endpoint's own) and
 	// the add-tag dialog flow the walls' openers feed (the captured
 	// ids, the done continuation). The bar renders the subset: the
