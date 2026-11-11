@@ -8,9 +8,11 @@
 // deletability switch onto the row, the creator's timeline
 // exclusion into their own preference), the property patch behind
 // PATCH /albums/{albumId} (with the cover's live-member validation
-// and the deletability switch of the directory albums), the
-// virtual-only delete behind DELETE /albums/{albumId} and the
-// membership removal behind DELETE /albums/{albumId}/items (batch
+// and the deletability switch of the directory albums), the album
+// removal behind DELETE /albums/{albumId} (the virtual reference
+// set's plain cascade and the directory album's un-ingest -- see
+// albumremoval.go) and the membership removal behind
+// DELETE /albums/{albumId}/items (batch
 // semantics: the honest {removed, skipped} report, never per-item
 // errors; the membership ADD is gone -- albums are sources, not
 // curation targets).
@@ -539,12 +541,23 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 	s.writeJSON(w, http.StatusOK, summary)
 }
 
-// DeleteAlbum implements DELETE /api/v1/albums/{albumId}: the
-// virtual album delete. The row goes and every membership and share
-// row follows through the schema's cascades; the answer is 204 with
-// no body, and the write publishes album.deleted. VIRTUAL albums
-// only -- a directory album's removal is its own flow and answers
-// the single-shape 404.
+// DeleteAlbum implements DELETE /api/v1/albums/{albumId}: the album
+// removal, two arms behind one gate. The VIRTUAL arm is the
+// reference set's plain delete: the row goes and every membership
+// and share row follows through the schema's cascades, the members'
+// asset rows untouched. The DIRECTORY arm is the un-ingest (see
+// albumremoval.go): the album's own rows go in the same single
+// transaction as every member asset no other album references --
+// the reference guard's survivors keep their rows, and the source
+// files of the purged stay on the mount whatever happens to the
+// library data. Both arms answer 204 with no body and publish
+// album.deleted; the directory arm additionally publishes
+// asset.deleted for every purged non-component member after the
+// commit, so the timeline, the search and the people surfaces drop
+// their tiles while the file half is still running. The sync album
+// folds into the single-shape 404 at the gate (it is no album
+// resource), and a concurrent removal that won the race answers the
+// same 404 like an unknown id.
 func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -556,26 +569,55 @@ func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 	if !ok {
 		return
 	}
-	if gate.Album.Type != dbgen.AlbumTypeVirtual {
-		// Directory removal is the directory album's own flow, not a
-		// generic delete: the id folds into the single-shape 404.
-		s.writeAlbumNotFound(w)
+
+	if gate.Album.Type == dbgen.AlbumTypeVirtual {
+		deleted, err := s.queries.DeleteVirtualAlbum(r.Context(), pgUUID(albumId))
+		if err != nil {
+			s.internalError(w, r, "delete the album", err)
+			return
+		}
+		if deleted == 0 {
+			// A concurrent delete won the race: the album is gone
+			// exactly like an unknown id.
+			s.writeAlbumNotFound(w)
+			return
+		}
+
+		s.publishAlbumEvent("album.deleted", uuid.UUID(albumId), requester.userID)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	deleted, err := s.queries.DeleteVirtualAlbum(r.Context(), pgUUID(albumId))
+	// The directory arm: the un-ingest. The database half is one
+	// transaction (the album's rows plus every guarded member's
+	// purge); the events and the file half follow the commit --
+	// the events first, because they announce rows that are already
+	// committed and the file half may be slow; the files best-effort,
+	// because a missed file is inert garbage, never a row that names
+	// it.
+	purged, ok, err := s.removeDirectoryAlbum(r.Context(), uuid.UUID(albumId))
 	if err != nil {
-		s.internalError(w, r, "delete the album", err)
+		s.internalError(w, r, "remove the album", err)
 		return
 	}
-	if deleted == 0 {
-		// A concurrent delete won the race: the album is gone
+	if !ok {
+		// A concurrent removal won the race: the album is gone
 		// exactly like an unknown id.
 		s.writeAlbumNotFound(w)
 		return
 	}
 
 	s.publishAlbumEvent("album.deleted", uuid.UUID(albumId), requester.userID)
+	for _, member := range purged {
+		if !member.component {
+			// The component rows stay silent (the purge events'
+			// standing discipline): no client view ever listed one,
+			// so an announcement for it is noise no client can act
+			// on -- the row still went.
+			s.publishAssetEventByID("asset.deleted", member.id, member.kind)
+		}
+		s.removePurgedMemberFiles(r, member)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
