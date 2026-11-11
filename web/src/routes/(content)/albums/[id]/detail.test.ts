@@ -10,7 +10,7 @@ import Page from './+page.svelte';
 // The album detail (the albums-as-sources reshape,
 // completed by the autonomy face, simplified by the lock's
 // retirement): the metadata header with its
-// callerRole x type action set -- the owner of a virtual album holds
+// callerRole x type action set -- the owner of a memory album holds
 // rename / set cover / delete, the owner of a directory album the
 // properties edit (title + the read-only source row + the audience
 // + the autonomy block of timeline exclusion / deletability)
@@ -81,7 +81,7 @@ function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 	return {
 		id: 'al1',
 		title: 'Road trip 2026',
-		type: 'virtual',
+		type: 'memory',
 		isShared: false,
 		coverAssetIds: ['a1', 'a2'],
 		itemCount: 2,
@@ -94,7 +94,7 @@ function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 let detailState: AlbumDetail = {
 	id: 'al1',
 	title: 'Road trip 2026',
-	type: 'virtual',
+	type: 'memory',
 	coverAssetId: null,
 	callerRole: 'owner',
 	itemCount: 2,
@@ -238,7 +238,7 @@ beforeEach(async () => {
 	detailState = {
 		id: 'al1',
 		title: 'Road trip 2026',
-		type: 'virtual',
+		type: 'memory',
 		coverAssetId: null,
 		callerRole: 'owner',
 		itemCount: 2,
@@ -288,7 +288,7 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	expect(document.body.querySelector('.album-detail__description')).toBeNull();
 	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
 
-	// The owner of a virtual album holds the write set: rename
+	// The owner of a memory album holds the write set: rename
 	// (the dialog opener), the cover and the delete. The share
 	// action and the
 	// add-photos handoff are GONE with the curation removal
@@ -311,7 +311,7 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
 
-	// THE NO-SELECTION WALL: a virtual album's tiles are pure
+	// THE NO-SELECTION WALL: a memory album's tiles are pure
 	// navigation -- no hover checkbox, no select-mode entry, no
 	// batch bar ever rises (the deletable face is the directory
 	// album's own).
@@ -366,7 +366,7 @@ test('a viewer sees read-only: the exclusion toggle alone, no write affordances'
 	flushSync();
 });
 
-test('the own virtual album offers no exclusion toggle: it never feeds the own timeline', async () => {
+test('the own memory album offers no exclusion toggle: it never feeds the own timeline', async () => {
 	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
 	const page = mountPage();
 	await settle();
@@ -408,8 +408,8 @@ test('the directory detail: the edit dialog, the autonomy faces and the live res
 	const remove = buttonByLabel('Remove album');
 	expect(remove.disabled).toBe(false);
 
-	// The virtual album's write set is gone, and the directory album
-	// holds neither curation, cover pin nor the virtual delete.
+	// The memory album's write set is gone, and the directory album
+	// holds neither curation, cover pin nor the memory delete.
 	for (const label of ['Rename', 'Set cover…', 'Lock', 'Unlock', 'Delete album', 'Leave album']) {
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
@@ -1131,7 +1131,7 @@ test('removing the directory album states the semantics and leaves for the wall'
 	await settle();
 
 	// The remove affordance opens its own confirm -- the un-ingest's
-	// dialog, not the virtual delete's.
+	// dialog, not the memory delete's.
 	buttonByLabel('Remove album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();

@@ -490,14 +490,14 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			// The map arms (a directory album at either role, a shared
 			// reference set) need the caller's pref facts; the sync arm
 			// and the own-reference-set arm are self-evident.
-			if (face.some((ref) => ref.type !== 'sync' && !(ref.type === 'virtual' && ref.callerRole === 'owner'))) {
+			if (face.some((ref) => ref.type !== 'sync' && !(ref.type === 'memory' && ref.callerRole === 'owner'))) {
 				await ensureFeedPrefs();
 			}
 			const feeds = face.some((ref) => {
 				if (ref.type === 'sync') {
 					return true;
 				}
-				if (ref.type === 'virtual' && ref.callerRole === 'owner') {
+				if (ref.type === 'memory' && ref.callerRole === 'owner') {
 					return false;
 				}
 				return feedPrefs.get(ref.id) ?? true;

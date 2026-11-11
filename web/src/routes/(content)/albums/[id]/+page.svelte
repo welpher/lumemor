@@ -34,7 +34,7 @@
 	// by the autonomy face, simplified by the lock's retirement):
 	//
 	// - The action set follows the role and the type: the owner of a
-	//   virtual album holds rename / set cover (picked from the
+	//   memory album holds rename / set cover (picked from the
 	//   rendered members) / delete; the owner of a directory album
 	//   holds the properties (the edit dialog: title + the read-only
 	//   source row + the audience + the autonomy block) / the rescan
@@ -134,7 +134,7 @@
 	let coverOpen = $state(false);
 	let coverErrorKey = $state('');
 
-	// The delete confirm (the virtual album's).
+	// The delete confirm (the memory album's).
 	let deleteOpen = $state(false);
 	let deleteErrorKey = $state('');
 
@@ -173,7 +173,7 @@
 	let wallResetKey = $state(0);
 
 	const owner = $derived(detail?.callerRole === 'owner');
-	const virtual = $derived(detail?.type === 'virtual');
+	const memory = $derived(detail?.type === 'memory');
 	const excluded = $derived(detail?.inTimeline === false);
 	const excludable = $derived(detail?.inTimeline !== undefined);
 	// The wall's delete affordance: the server-derived face --
@@ -615,7 +615,7 @@
 
 		<!-- The action set, per callerRole x type, as icon-only
 		     buttons (the icon-first rule; the aria-labels are the
-		     actions' own strings): the owner of a virtual album holds
+		     actions' own strings): the owner of a memory album holds
 		     the edit dialog (rename + audience + the autonomy block),
 		     the cover and the delete; the owner of a directory album
 		     the edit dialog (properties: title + the source row +
@@ -627,7 +627,7 @@
 		     departure went with the revoke endpoint it rode; the
 		     audience is owner-domain). -->
 		<div class="album-detail__actions ml-auto flex items-center gap-1">
-			{#if detail !== null && owner && virtual}
+			{#if detail !== null && owner && memory}
 				<IconButton
 					disabled={writeBusy}
 					aria-label={$_('albums_action_rename')}

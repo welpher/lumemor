@@ -37,7 +37,8 @@
 	//
 	// Render windowing is row-level: every justified row carries
 	// content-visibility with its engine-computed height (see the
-	// Wall component); full virtualization stays an option if the
+	// Wall component); full offscreen-recycling windowing stays an
+	// option if the
 	// wall outgrows it.
 	import { _ } from 'svelte-i18n';
 	import { createTimelineClient, type BatchAction, type BatchOutcome } from '$lib/api/timeline';

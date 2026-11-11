@@ -1,7 +1,7 @@
 <script lang="ts">
 	// The album wall: the cover-card grid in its two
 	// sections -- the caller's own albums (the pinned sync card of
-	// the default "My photos" album first, then the virtual and
+	// the default "My photos" album first, then the memory and
 	// directory albums in the server's own-group order) then the
 	// albums shared to them (with the honest owner attribution) --
 	// with the collage covers (the pinned cover full-bleed,
