@@ -413,7 +413,7 @@ func TestUpdateAlbumAudienceAuthorization(t *testing.T) {
 // TestUpdateAlbumAudienceAlbumTypes pins the type matrix: every sync
 // album answers the single-shape 404 through the audience face
 // (whoever owns it -- the timeline is the sync stream's face), and
-// the directory and virtual albums converge freely -- the write's
+// the directory and memory albums converge freely -- the write's
 // own authorization is the whole gate (an audience member only ever
 // reads).
 func TestUpdateAlbumAudienceAlbumTypes(t *testing.T) {

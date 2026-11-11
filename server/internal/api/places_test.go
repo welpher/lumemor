@@ -253,7 +253,7 @@ func TestPlacesShareeVisibility(t *testing.T) {
 	// The admin's album shared to Grace, carrying a1 and aTrash; a2
 	// stays unshared.
 	sharedAlbum := fixtureAlbumID("e1")
-	env.insertTimelineAlbum(t, sharedAlbum, adminID, "virtual")
+	env.insertTimelineAlbum(t, sharedAlbum, adminID, "memory")
 	env.shareTimelineAlbum(t, sharedAlbum, graceID, adminID)
 	a1 := placeAssetID("11")
 	a2 := placeAssetID("12")

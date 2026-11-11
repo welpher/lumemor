@@ -3,8 +3,8 @@
 // PUT/DELETE /albums/{albumId}/timeline-preference. The scope is the
 // albums whose membership a caller could want out of their feed --
 // their own directory albums and the albums shared to them; the
-// caller's own sync and own virtual albums answer the 400 (the core
-// stream is never excludable, and an own virtual album never feeds
+// caller's own sync and own memory albums answer the 400 (the core
+// stream is never excludable, and an own memory album never feeds
 // the owner's timeline at all). The preference is self-affecting
 // state: no event publishes, the caller's own response is the only
 // view that changed. The reset deletes the row, which returns the
@@ -25,7 +25,7 @@ import (
 
 // loadAlbumForTimelinePref resolves the album for a preference
 // write: every type is in scope for the READ (the caller's own sync
-// and own virtual albums must reach the handler so their 400 can
+// and own memory albums must reach the handler so their 400 can
 // answer), and a row the caller neither owns nor holds a share of
 // resolves to nothing -- the single-shape 404 every album face
 // answers. It answers ok=false once it has written the response.
@@ -48,12 +48,12 @@ func (s *server) loadAlbumForTimelinePref(w http.ResponseWriter, r *http.Request
 // requireExcludableAlbum answers whether the album is a preference
 // target for the caller: an own directory album or any album shared
 // to them. The refusal (the caller's own sync album, the caller's
-// own virtual album, or a sync album a share row somehow names)
+// own memory album, or a sync album a share row somehow names)
 // answers the 400 message key the contract pins. It answers
 // ok=false once it has written the response.
 func (s *server) requireExcludableAlbum(w http.ResponseWriter, row dbgen.GetAlbumForTimelinePrefRow, callerID uuid.UUID) bool {
 	if row.Album.Type == dbgen.AlbumTypeSync ||
-		(row.Album.Type == dbgen.AlbumTypeVirtual && row.CallerRole == "owner") {
+		(row.Album.Type == dbgen.AlbumTypeMemory && row.CallerRole == "owner") {
 		s.writeMessageKey(w, "this album cannot be excluded from the timeline", "album_pref_not_excludable")
 		return false
 	}

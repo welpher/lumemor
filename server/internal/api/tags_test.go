@@ -353,7 +353,7 @@ func TestTagAssignmentBatch(t *testing.T) {
 	adminID := env.sessionUserID(t)
 	graceID, graceCookie := env.createSecondUser(t, "tag-batch-grace@example.com")
 
-	// The admin's assets: a1 and a2 shared to Grace through a virtual
+	// The admin's assets: a1 and a2 shared to Grace through a memory
 	// album, a3 unshared.
 	a1 := tagAssetID("11")
 	a2 := tagAssetID("12")
@@ -362,7 +362,7 @@ func TestTagAssignmentBatch(t *testing.T) {
 		env.insertOwnedAsset(t, id, adminID, time.Date(2026, 8, 1+i, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	}
 	sharedAlbum := fixtureAlbumID("e1")
-	env.insertTimelineAlbum(t, sharedAlbum, adminID, "virtual")
+	env.insertTimelineAlbum(t, sharedAlbum, adminID, "memory")
 	env.shareTimelineAlbum(t, sharedAlbum, graceID, adminID)
 	env.addTimelineItem(t, sharedAlbum, a1, adminID)
 	env.addTimelineItem(t, sharedAlbum, a2, adminID)
@@ -509,7 +509,7 @@ func TestTagsCallerIsolation(t *testing.T) {
 	env.insertOwnedAsset(t, shared, adminID, time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertOwnedAsset(t, private, adminID, time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	album := fixtureAlbumID("e2")
-	env.insertTimelineAlbum(t, album, adminID, "virtual")
+	env.insertTimelineAlbum(t, album, adminID, "memory")
 	env.shareTimelineAlbum(t, album, graceID, adminID)
 	env.addTimelineItem(t, album, shared, adminID)
 

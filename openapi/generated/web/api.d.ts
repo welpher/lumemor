@@ -406,10 +406,10 @@ export interface paths {
          *     that feed it -- the caller's sync album (the core backup
          *     stream, never excludable), the caller's own directory albums,
          *     and every album shared to the caller regardless of type
-         *     (virtual albums included) -- minus the albums the caller
+         *     (memory albums included) -- minus the albums the caller
          *     turned off with the per-user "keep out of the timeline"
          *     preference (a missing preference row means kept in). The
-         *     caller's own virtual albums never feed their own timeline:
+         *     caller's own memory albums never feed their own timeline:
          *     in-stream curation would be pure duplication. One asset
          *     visible through several albums appears once.
          *
@@ -1066,7 +1066,7 @@ export interface paths {
          *     upload stream surfaced as the default "My photos" album --
          *     every upload lands in it, so a fresh account's wall is never
          *     empty. The own group follows: the albums the caller owns of
-         *     type `virtual` or `directory`, the most recently updated
+         *     type `memory` or `directory`, the most recently updated
          *     first (the album id descending as the tiebreak). The shared
          *     group follows last: every album shared to the caller through
          *     an `album_shares` row, the caller's most recently granted
@@ -1075,7 +1075,7 @@ export interface paths {
          *     another account's album: the owner's id and email.
          *
          *     A sync album of ANOTHER account never appears, in either
-         *     group: the shared arm carries `virtual` and `directory`
+         *     group: the shared arm carries `memory` and `directory`
          *     albums only, whatever share rows exist. The pinned card's
          *     `title` is the system's internal fixed label ('Sync') -- the
          *     display name is the CLIENT's: `type: 'sync'` keys the
@@ -1101,7 +1101,7 @@ export interface paths {
          *     `directory` items and every shared item: the caller's
          *     timeline preference of that album, true when no preference
          *     row exists (the default of feeding the timeline). The own
-         *     `virtual` items omit the field: they never feed the caller's
+         *     `memory` items omit the field: they never feed the caller's
          *     own timeline. The pinned `sync` card omits it too: the core
          *     stream is never excludable (the preference face answers 400
          *     for it). The field is the toggle's source of truth for
@@ -1117,12 +1117,11 @@ export interface paths {
          *     existing directory the server validates and references in
          *     place, the files stay where they are (zero copy, zero move;
          *     the rescan that fills the album's membership is a later flow).
-         *     No type field exists: this endpoint IS directory creation, the
-         *     one creatable album type of the albums-as-sources design -- the
-         *     curation-into-a-container story is gone (virtual albums
+         *     No type field exists: this endpoint IS directory creation --
+         *     the curation-into-a-container story is gone (memory albums
          *     already owned keep their edit and delete faces, but nothing
-         *     creates one anymore), and every account's sync album is born
-         *     with the account.
+         *     creates one through this face), and every account's sync
+         *     album is born with the account.
          *
          *     Mounting an existing photo directory is a CONFIGURATION act:
          *     it points the application at a filesystem location, and a
@@ -1354,7 +1353,8 @@ export interface paths {
          *     source, the resolved absolute path the row stores -- the
          *     edit dialog's read-only source line (the source is pinned
          *     at creation; the property patch carries no field for it).
-         *     Virtual and sync albums omit it.
+         *     Memory and sync albums omit it: a memory has no source --
+         *     its photos live in the albums they were ingested through.
          *
          *     `sourceWritable` rides beside it, on the `directory` albums
          *     only: the creation-time write probe's fact, false for a
@@ -1381,7 +1381,7 @@ export interface paths {
          *     album (the exclusion toggle's source of truth): present on
          *     the excludable types -- the caller's own `directory` albums
          *     and the albums shared to them -- and absent on the caller's
-         *     own `virtual` albums. The preference scopes the aggregate:
+         *     own `memory` albums. The preference scopes the aggregate:
          *     it never filters this album's own items, so browsing a
          *     switched-off album still shows everything.
          *
@@ -1406,9 +1406,16 @@ export interface paths {
          *     follows through the schema's cascades.
          *
          *     What happens to the album's MEMBERS splits by the album's
-         *     type. A `virtual` album is a reference set over existing
-         *     photos: its members are untouched, whatever their storage
-         *     kind. A `directory` album is a source, and removing it is the
+         *     type. A `memory` album is a reference set over existing
+         *     photos: removing it is the reference set's own plain
+         *     cascade -- the album row, its membership rows, its audience
+         *     and its per-user preference rows go, and NOTHING else does.
+         *     The photos are not the memory's: they live in the albums
+         *     they were ingested through, and every one of their states
+         *     (the asset rows, the per-user favorites and tags, the faces,
+         *     the generated files) is untouched, whatever their storage
+         *     kind -- no reference guard runs, nothing is purged, no file
+         *     is contacted. A `directory` album is a source, and removing it is the
          *     UN-INGEST of what its scans brought in: every member asset
          *     that NO OTHER album references (the album union -- the sync
          *     album's permanent membership covers every uploaded row, and a
@@ -1479,8 +1486,8 @@ export interface paths {
          *
          *     The deletability switch (`allowAppDeletion`) is the
          *     directory album's own field: a patch that carries it on a
-         *     virtual album answers 400 `VALIDATION_FAILED` with the
-         *     message key `album_deletable_not_directory` (a virtual
+         *     memory album answers 400 `VALIDATION_FAILED` with the
+         *     message key `album_deletable_not_directory` (a memory
          *     album's deletions never move files, so the switch has no
          *     home there). The write is idempotent -- repeating the stored
          *     value converges.
@@ -1503,8 +1510,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Remove assets from one virtual album.
-         * @description Removes membership rows from the caller's virtual album:
+         * Remove assets from one memory album.
+         * @description Removes membership rows from the caller's memory album:
          *     `{removed, skipped}`, the batch surface's set semantics --
          *     the honest report, never per-item errors. An id that is no
          *     member of the album -- never was, or already removed -- is
@@ -1512,18 +1519,12 @@ export interface paths {
          *     `removed` 0. Repeated ids collapse; the counts cover the
          *     distinct ids.
          *
-         *     The rows this face removes are rows no face writes anymore
-         *     (the albums-as-sources design retired the membership add):
-         *     virtual albums from before the rework, and whatever
-         *     membership a later flow leaves behind -- the removal is the tidy-up of
-         *     the set, not a curation flow.
-         *
          *     The removal carries no live predicate: a trashed member's
          *     row still leaves, the honest cleanup of the set (the live
          *     views filter trashed members out of the renders; removing
          *     the row tidies the set itself).
          *
-         *     VIRTUAL albums only (directory and sync albums answer the
+         *     MEMORY albums only (directory and sync albums answer the
          *     single-shape 404); authorization is the writes' two-tier
          *     answer (invisible 404, shared-to-caller 403, the owner or an
          *     admin override writes).
@@ -1664,9 +1665,11 @@ export interface paths {
          *     Permission is the album writes' own: the owner (or an
          *     administrator) proceeds, a sharee answers the honest 403,
          *     everyone else folds into the album 404. A non-directory
-         *     album -- the caller's own sync album, a virtual album --
+         *     album -- the caller's own sync album, a memory album --
          *     answers the same 404: the rescan is the directory album's
-         *     own flow, and ids stay unproammable.
+         *     own flow (a memory holds references to photos that live
+         *     elsewhere -- there is no source to walk), and ids stay
+         *     unproammable.
          */
         post: operations["rescanAlbum"];
         delete?: never;
@@ -1703,7 +1706,7 @@ export interface paths {
          *       the core stream is never excludable (the aggregation
          *       formula exempts the sync arm from the preference row --
          *       a stray row there excludes nothing);
-         *     - the caller's own `virtual` albums: they never feed the
+         *     - the caller's own `memory` albums: they never feed the
          *       caller's own timeline at all (in-stream curation would be
          *       pure duplication), so there is nothing to exclude.
          *
@@ -1732,7 +1735,7 @@ export interface paths {
          *     scope is the PUT's own -- the caller's own directory albums
          *     and the albums shared to the caller; the same 400
          *     `album_pref_not_excludable` answers the caller's own sync
-         *     and own virtual albums, and the same single-shape 404
+         *     and own memory albums, and the same single-shape 404
          *     answers an album the caller cannot see.
          *
          *     The delete is idempotent: an album with no preference row
@@ -4479,10 +4482,13 @@ export interface components {
             /** @description The album's display title (the sync card's internal label). */
             title: string;
             /**
-             * @description The album's type.
+             * @description The album's type. A `memory` entry is one of the viewer's
+             *     own or shared reference sets; `directory` entries are
+             *     sources. The one `sync` entry, when present, is the
+             *     viewer's own default album (never another account's).
              * @enum {string}
              */
-            type: "virtual" | "directory" | "sync";
+            type: "memory" | "directory" | "sync";
             /**
              * @description The caller's relation to this album: `owner` items are
              *     the caller's own (the sync stream's entry is always
@@ -5575,7 +5581,7 @@ export interface components {
             /**
              * @description Every wall album: the pinned sync card first (the
              *     caller's own core upload stream, the default "My
-             *     photos" album), then the own group (the caller's virtual
+             *     photos" album), then the own group (the caller's memory
              *     and directory albums, `updatedAt` descending), then the
              *     shared group (the albums shared to the caller, the
              *     caller's grant time descending). Each group breaks ties
@@ -5600,8 +5606,10 @@ export interface components {
             /** @description The album's display title. */
             title: string;
             /**
-             * @description The album's type. `virtual` albums are curated by their
-             *     owner; `directory` albums mirror a filesystem path. The
+             * @description The album's type. `memory` albums are reference sets
+             *     curated by their owner -- photos live in the albums they
+             *     were ingested through, a memory holds references to
+             *     them; `directory` albums mirror a filesystem path. The
              *     one `sync` card, when present, is the caller's own
              *     default album pinned first (never another account's):
              *     its `title` is the internal system label ('Sync') and
@@ -5609,7 +5617,7 @@ export interface components {
              *     "My photos", zh-Hans "我的照片").
              * @enum {string}
              */
-            type: "virtual" | "directory" | "sync";
+            type: "memory" | "directory" | "sync";
             /**
              * @description True when the album carries at least one `album_shares`
              *     row -- someone besides the owner can see it. Always true
@@ -5652,7 +5660,7 @@ export interface components {
              * @description The caller's timeline preference of this album: whether
              *     it feeds their aggregated timeline. Present exactly on
              *     the excludable cards -- the own `directory` items and
-             *     every shared item; the own `virtual` items omit it
+             *     every shared item; the own `memory` items omit it
              *     (they never feed the caller's own timeline, so there is
              *     nothing to exclude), and the pinned `sync` card omits it
              *     too (the core stream is never excludable). The value is
@@ -5691,7 +5699,9 @@ export interface components {
             /** @description The album's display title. */
             title: string;
             /**
-             * @description The album's type; `sync` is the caller's own default
+             * @description The album's type. `memory` is a reference set the caller
+             *     owns or that is shared to them; `sync` is the caller's
+             *     own default
              *     album -- a read-only, system-managed detail (no write
              *     affordance applies, the display name is the client's
              *     localized one keyed by the type). Another account's sync
@@ -5699,7 +5709,7 @@ export interface components {
              *     single-shape 404.
              * @enum {string}
              */
-            type: "virtual" | "directory" | "sync";
+            type: "memory" | "directory" | "sync";
             /**
              * @description The pinned cover asset, or null when unset -- the raw
              *     column; the wall derives its collage fallback, the detail
@@ -5711,7 +5721,8 @@ export interface components {
              *     the album row stores, present exactly on `directory`
              *     albums (the edit dialog's read-only source line; the
              *     property patch carries no field for it -- the source is
-             *     pinned at creation). Virtual and sync albums omit it.
+             *     pinned at creation). Memory and sync albums omit it: a
+             *     memory has no source.
              */
             rootPath?: string;
             /**
@@ -5785,7 +5796,7 @@ export interface components {
              *     it feeds their aggregated timeline. Present exactly when
              *     the album is excludable for the caller -- an own
              *     `directory` album or an album shared to them; an own
-             *     `virtual` album omits the field (it never feeds the
+             *     `memory` album omits the field (it never feeds the
              *     caller's own timeline), and the caller's own `sync`
              *     album omits it too (the core stream is never
              *     excludable). The value is the preference row's
@@ -5976,22 +5987,22 @@ export interface components {
              *     file-system deletions themselves turns it off, and the
              *     wall's delete affordances disappear with it (the derived
              *     `deletable` face of the detail read). A patch carrying
-             *     the field on a virtual album answers 400 with the
+             *     the field on a memory album answers 400 with the
              *     message key `album_deletable_not_directory` -- the
-             *     switch is the directory album's own, a virtual album's
+             *     switch is the directory album's own, a memory album's
              *     deletions never move files. Idempotent: repeating the
              *     stored value converges.
              */
             allowAppDeletion?: boolean;
         };
         /**
-         * @description The membership removal body: the list of asset ids to remove
-         *     from one virtual album. Repeated ids collapse to one
+         * @description The membership write body: the list of asset ids the write
+         *     addresses in one memory album. Repeated ids collapse to one
          *     application; the report's counts cover the distinct ids.
          */
         AlbumItemsRequest: {
             /**
-             * @description The asset ids of the membership removal, between 1 and
+             * @description The asset ids of the membership write, between 1 and
              *     200 entries; the remove skips the ids that are no
              *     members.
              */
@@ -7869,7 +7880,7 @@ export interface operations {
              * @description The caller's wall: the pinned sync card, then the own
              *     group, then the shared group. The array is empty only
              *     when the caller's account predates the sync-album
-             *     wiring (no sync album exists) and no virtual or
+             *     wiring (no sync album exists) and no memory or
              *     directory album is theirs and no album is shared to
              *     them -- the sync card otherwise always leads.
              */
@@ -8590,7 +8601,7 @@ export interface operations {
              * @description No such album for this caller: the id is unknown, the
              *     album belongs to another account without a share to the
              *     caller, it is a sync album, or it is not a directory
-             *     album (a virtual album) -- indistinguishable by design.
+             *     album (a memory album) -- indistinguishable by design.
              */
             404: {
                 headers: {
@@ -8650,7 +8661,7 @@ export interface operations {
              * @description The request is not a well-formed preference: the body is
              *     not valid JSON or carries no `inTimeline`; or the album
              *     is not excludable from the caller's timeline (the
-             *     caller's own sync or own virtual album, the
+             *     caller's own sync or own memory album, the
              *     `album_pref_not_excludable` message key in the details).
              */
             400: {
@@ -8722,7 +8733,7 @@ export interface operations {
             };
             /**
              * @description The album is not excludable from the caller's timeline:
-             *     the caller's own sync or own virtual album
+             *     the caller's own sync or own memory album
              *     (`album_pref_not_excludable` in the details).
              */
             400: {

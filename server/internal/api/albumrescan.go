@@ -58,7 +58,7 @@ func (s *server) RescanAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 	// The type gate: the rescan is the directory album's own flow.
-	// A virtual album (the caller's own included) and the sync album
+	// A memory album (the caller's own included) and the sync album
 	// (already folded by the gate's read) answer the single-shape
 	// 404 -- the membership writes' own type discipline, keeping
 	// album ids unproammable.

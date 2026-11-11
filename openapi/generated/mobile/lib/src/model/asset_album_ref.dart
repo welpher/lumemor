@@ -14,7 +14,7 @@ part 'asset_album_ref.g.dart';
 /// Properties:
 /// * [id] - Identifier of the album (the detail face's deep link).
 /// * [title] - The album's display title (the sync card's internal label).
-/// * [type] - The album's type.
+/// * [type] - The album's type. A `memory` entry is one of the viewer's own or shared reference sets; `directory` entries are sources. The one `sync` entry, when present, is the viewer's own default album (never another account's). 
 /// * [callerRole] - The caller's relation to this album: `owner` items are the caller's own (the sync stream's entry is always one), `viewer` items the albums shared to them. 
 @BuiltValue()
 abstract class AssetAlbumRef implements Built<AssetAlbumRef, AssetAlbumRefBuilder> {
@@ -26,10 +26,10 @@ abstract class AssetAlbumRef implements Built<AssetAlbumRef, AssetAlbumRefBuilde
   @BuiltValueField(wireName: r'title')
   String get title;
 
-  /// The album's type.
+  /// The album's type. A `memory` entry is one of the viewer's own or shared reference sets; `directory` entries are sources. The one `sync` entry, when present, is the viewer's own default album (never another account's). 
   @BuiltValueField(wireName: r'type')
   AssetAlbumRefTypeEnum get type;
-  // enum typeEnum {  virtual,  directory,  sync,  };
+  // enum typeEnum {  memory,  directory,  sync,  };
 
   /// The caller's relation to this album: `owner` items are the caller's own (the sync stream's entry is always one), `viewer` items the albums shared to them. 
   @BuiltValueField(wireName: r'callerRole')
@@ -160,11 +160,11 @@ class _$AssetAlbumRefSerializer implements PrimitiveSerializer<AssetAlbumRef> {
 }
 
 
-/// The album's type.
+/// The album's type. A `memory` entry is one of the viewer's own or shared reference sets; `directory` entries are sources. The one `sync` entry, when present, is the viewer's own default album (never another account's). 
 class AssetAlbumRefTypeEnum extends EnumClass {
 
-  @BuiltValueEnumConst(wireName: r'virtual')
-  static const AssetAlbumRefTypeEnum virtual = _$assetAlbumRefTypeEnum_virtual;
+  @BuiltValueEnumConst(wireName: r'memory')
+  static const AssetAlbumRefTypeEnum memory = _$assetAlbumRefTypeEnum_memory;
   @BuiltValueEnumConst(wireName: r'directory')
   static const AssetAlbumRefTypeEnum directory = _$assetAlbumRefTypeEnum_directory;
   @BuiltValueEnumConst(wireName: r'sync')

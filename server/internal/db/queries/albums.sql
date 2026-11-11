@@ -45,7 +45,7 @@ ON CONFLICT DO NOTHING;
 -- name: ListWallAlbumsForCaller :many
 -- The wall of the calling user in one statement: the pinned sync
 -- card (the caller's own core stream, the default "My photos"
--- album) UNION ALL the own group (the caller's virtual and
+-- album) UNION ALL the own group (the caller's memory and
 -- directory albums, updated_at descending) UNION ALL the shared
 -- group (the albums shared to the caller, the caller's grant time
 -- descending), each group breaking ties on the album id descending.
@@ -56,14 +56,14 @@ ON CONFLICT DO NOTHING;
 -- cards, the caller's granted_at for shared ones).
 --
 -- A sync album of ANOTHER account never appears: the sync arm is
--- owner-scoped and the shared arm admits virtual and directory
+-- owner-scoped and the shared arm admits memory and directory
 -- albums only (a sync album a share row names -- nothing can
 -- produce one -- feeds no wall card for the sharee).
 --
 -- in_timeline is the caller's raw timeline preference row of the
 -- card's album (the exclusion toggle's stored state): NULL means no
 -- row, which the handler maps to the default of feeding the timeline
--- -- except on the caller's own virtual cards, where the field stays
+-- -- except on the caller's own memory cards, where the field stays
 -- absent entirely (they never feed the caller's own timeline), and
 -- on the sync card (the handler omits it there too: the core stream
 -- is never excludable, so the stored value -- always NULL, the
@@ -122,7 +122,7 @@ FROM albums al
 LEFT JOIN user_album_prefs p
        ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
 WHERE al.owner_id = sqlc.arg('user_id')
-  AND al.type IN ('virtual', 'directory')
+  AND al.type IN ('memory', 'directory')
 
 UNION ALL
 
@@ -150,7 +150,7 @@ JOIN album_shares s ON s.album_id = al.id AND s.user_id = sqlc.arg('user_id')
 JOIN users u ON u.id = al.owner_id
 LEFT JOIN user_album_prefs p
        ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
-WHERE al.type IN ('virtual', 'directory')
+WHERE al.type IN ('memory', 'directory')
 
 ORDER BY arm_rank, sort_at DESC, id DESC;
 
@@ -195,7 +195,7 @@ ORDER BY ranked.album_id, ranked.recency_rank;
 -- in_timeline is the caller's raw preference row (NULL = no row);
 -- the handler maps it to the excludable cards' field -- present for
 -- the own directory albums and the shared albums, absent for the
--- caller's own virtual albums and for the caller's own sync album
+-- caller's own memory albums and for the caller's own sync album
 -- (the core stream is never excludable), true when no row exists.
 SELECT sqlc.embed(al),
        CASE
@@ -306,7 +306,7 @@ RETURNING id;
 -- The album row with the wall card's honest companions: whether any
 -- share row exists, the live member count, and the caller's raw
 -- timeline preference row (the write face's caller is the owner, so a
--- virtual album's card carries no preference field; the handler maps
+-- memory album's card carries no preference field; the handler maps
 -- NULL to the default the same way the wall does). The write face's
 -- responses build their cards off this row; the derived cover
 -- candidates ride along through the wall's own follow-up query.
@@ -338,7 +338,7 @@ WHERE al.id = sqlc.arg('album_id');
 -- deletability switch joins the property fields: present
 -- updates the owner's allow-app-deletion posture of the directory
 -- album, absent keeps it, with the type arm that keeps
--- the switch off virtual albums living in the handler. updated_at
+-- the switch off memory albums living in the handler. updated_at
 -- moves with the write: the wall orders the own group by it. No
 -- owner guard and no type guard here: the handler's gate already
 -- resolved the caller's right to this write, and an album deleted
@@ -367,28 +367,28 @@ WHERE ai.album_id = sqlc.arg('album_id')
   AND a.is_hidden = false
   AND a.is_component = false;
 
--- name: DeleteVirtualAlbum :execrows
--- The virtual album delete: the row goes and every album_items and
--- album_shares row follows through the schema's ON DELETE CASCADE.
--- The type guard keeps the statement honest against the handler's
--- virtual-only verdict (directory removal is the directory album's
--- own flow), and zero rows -- a concurrent delete won the race -- is
--- the 404 of a gone album.
+-- name: DeleteMemoryAlbum :execrows
+-- The memory album delete: the row goes and every album_items,
+-- album_shares and per-user timeline preference row follows through
+-- the schema's ON DELETE CASCADE. The type guard keeps the statement
+-- honest against the handler's memory-only verdict (directory
+-- removal is the directory album's own flow), and zero rows -- a
+-- concurrent delete won the race -- is the 404 of a gone album.
 DELETE FROM albums
 WHERE id = sqlc.arg('album_id')
-  AND type = 'virtual';
+  AND type = 'memory';
 
 -- name: DeleteDirectoryAlbum :execrows
 -- The directory album's removal (the un-ingest): the row goes with
 -- every membership, share and per-user preference row through the
 -- schema's ON DELETE CASCADEs. The type guard keeps the statement
--- honest against the handler's directory-only verdict (the virtual
+-- honest against the handler's directory-only verdict (the memory
 -- delete is its own statement above), and zero rows -- a concurrent
 -- removal won the race -- is the 404 of a gone album. The members'
--- asset rows are deliberately NOT here: the handler's reference
--- guard runs AFTER this cascade has taken the album's own
--- membership rows, so the surviving album_items rows name exactly
--- the members another album still holds.
+-- asset rows are deliberately NOT here: the handler's guard on the
+-- other albums' references runs AFTER this cascade has taken the
+-- album's own membership rows, so the surviving album_items rows
+-- name exactly the members another album still holds.
 DELETE FROM albums
 WHERE id = sqlc.arg('album_id')
   AND type = 'directory';
@@ -532,7 +532,7 @@ ORDER BY s.granted_at ASC, s.user_id ASC;
 -- name: GetAlbumForTimelinePref :one
 -- The preference face's gate: the album row with the caller's role.
 -- Unlike GetAlbumForCaller this resolves EVERY album type -- the
--- caller's own sync and own virtual albums must reach the handler so
+-- caller's own sync and own memory albums must reach the handler so
 -- their 400 (not excludable) can answer, and a sync album a share
 -- row names (nothing can produce one, but a defense holds anyway)
 -- resolves as a viewer row the handler's type check refuses. No row
