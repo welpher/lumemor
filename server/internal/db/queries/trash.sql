@@ -111,7 +111,7 @@ LIMIT sqlc.arg('limit_count');
 -- Photo, on its linked component video row -- the same pair
 -- predicate as the soft delete, addressed from either side, because
 -- the pair restores as ONE asset. The deleted_at IS NOT NULL arm is
--- the set-semantics guard of the plan: restoring an already-live row
+-- the set-semantics guard: restoring an already-live row
 -- is a no-op (zero affected rows), which the handler answers as the
 -- same 204 -- the row is already in the desired state. The owner
 -- guard is the permission check: a foreign id matches no row,

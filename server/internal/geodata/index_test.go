@@ -160,7 +160,7 @@ func TestIndexBeyondThresholdIsNull(t *testing.T) {
 }
 
 // TestIndexDeterministicAcrossCallsAndRebuilds is the resolution
-// determinism evidence the plan's review focus #3 demands: the same
+// determinism evidence: the same
 // GPS answers the same place on every call, and a freshly built
 // index over the same centroids answers the same place (no
 // map-iteration or allocation order may leak into the answer).

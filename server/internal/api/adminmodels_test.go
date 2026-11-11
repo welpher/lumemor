@@ -505,7 +505,7 @@ func TestListModelsMapsTheRegistryRows(t *testing.T) {
 }
 
 // TestPatchModelSameDimensionKeepsProducts pins the coexist contract
-// (the review focus's payload): a same-dimension switch flips the
+// (the pinned payload): a same-dimension switch flips the
 // activation flags and deletes NOTHING -- the old model's embedding
 // rows and the faces' embedding rows stay in the table, the
 // active-model filtered query stops seeing the old rows, and
@@ -609,7 +609,7 @@ func TestPatchModelCrossDimensionWipesAndRedimensions(t *testing.T) {
 }
 
 // TestPatchModelCrossDimensionRollsBackOnAlterFailure pins the atomic
-// of the cross-dimension switch (the review focus's payload): a model
+// of the cross-dimension switch (the pinned payload): a model
 // whose dimension no vector column can hold fails the switch at the
 // ALTER -- after the wipe already ran inside the transaction -- and
 // the rollback restores the wiped rows, the column dimension and the

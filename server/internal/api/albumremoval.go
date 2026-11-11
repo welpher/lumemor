@@ -8,7 +8,7 @@
 // The purge is the permanent delete's own cascade (the face cluster
 // sweep rides it: a representative must re-home or the cluster
 // dissolve before the asset's faces go), applied member by member
-// behind the reference guard -- the sync album's permanent
+// behind the guard on the other albums' references -- the sync album's permanent
 // membership covers every uploaded row, a member shared with a
 // second album survives on that reference, and the dedup-borrowed
 // member (an existing upload row that linked into the album) is

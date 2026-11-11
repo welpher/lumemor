@@ -791,7 +791,7 @@ func (e *assetEnv) getSearchRaw2(t *testing.T, rawQuery string) *httptest.Respon
 }
 
 // TestSearchVisibility pins the union predicate's penetration through
-// BOTH arms and the facets (the dual-account review focus): a sharee
+// BOTH arms and the facets (the dual-account scene): a sharee
 // never sees an invisible asset from the text arm or the vector arm,
 // the facet counts share the scoping, and a revoked share retracts
 // everything.

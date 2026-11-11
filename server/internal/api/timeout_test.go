@@ -71,7 +71,7 @@ func TestHandlerTimeout(t *testing.T) {
 			}
 		}()
 
-		// Review focus: the stream is still delivering events more
+		// The stream is still delivering events more
 		// than a second in -- 10x the test timeout, 30x nothing for a
 		// route (wrongly) wrapped in the timeout wrapper: that would
 		// buffer every write (no Flusher) and cut the stream at the
@@ -121,7 +121,7 @@ func TestHandlerTimeout(t *testing.T) {
 		if rec.Code != http.StatusServiceUnavailable {
 			t.Fatalf("login with a parked handler: status = %d, want %d (body %q)", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
 		}
-		// Review focus: the 503 comes from the handler timeout, well
+		// The 503 comes from the handler timeout, well
 		// before the parked query resolves on its own at the request
 		// context bound.
 		if elapsed > 2*time.Second {

@@ -4,7 +4,7 @@
 // /albums/{id}/rescan) starts one run through EnqueueAlbumRescan;
 // this worker executes it.
 //
-// The diff's shape is the plan's pinned table, one arm per
+// The diff's shape is the pinned arm table, one arm per
 // resolution:
 //
 //   - ADD: a file no live member matches is ingested by reference

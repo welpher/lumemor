@@ -20,7 +20,7 @@ const sessionTokenBytes = 32
 // (32 random bytes, hex-encoded) together with the SHA-256 hex hash of
 // those bytes that the sessions table stores.
 //
-// The two-value signature is pinned by the plan. crypto/rand only fails
+// The two-value signature is the pinned contract. crypto/rand only fails
 // when the system CSPRNG itself is broken; like uuid.New for the same
 // reason, this panics loudly rather than silently weakening a
 // credential -- a process without working entropy must not serve
