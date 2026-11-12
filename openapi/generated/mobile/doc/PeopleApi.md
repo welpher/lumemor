@@ -9,6 +9,8 @@ All URIs are relative to */api/v1*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**clusterFace**](PeopleApi.md#clusterface) | **POST** /faces/{faceId}/cluster | Seed a new person from one face.
+[**detachFace**](PeopleApi.md#detachface) | **DELETE** /faces/{faceId} | Release one face from its person.
 [**getFaceThumbnail**](PeopleApi.md#getfacethumbnail) | **GET** /faces/{faceId}/thumbnail | Serve one face&#39;s 256x256 crop thumbnail.
 [**getPersonCluster**](PeopleApi.md#getpersoncluster) | **GET** /people/{clusterId} | One face cluster&#39;s detail as the caller sees it.
 [**labelPerson**](PeopleApi.md#labelperson) | **PUT** /people/{clusterId}/label | Name one face cluster (the caller&#39;s private label).
@@ -19,6 +21,99 @@ Method | HTTP request | Description
 [**setPersonHidden**](PeopleApi.md#setpersonhidden) | **PUT** /people/{clusterId}/hidden | Flip the caller&#39;s hidden switch of one face cluster.
 [**unlabelPerson**](PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
 
+
+# **clusterFace**
+> ClusterFaceResponse clusterFace(faceId)
+
+Seed a new person from one face.
+
+The from-face person creation: the face leaves whatever cluster it occupies and becomes the sole member AND the representative face of a brand-new cluster. Naming acts on a whole cluster, so a face grouped into the wrong person becomes its own person here -- the caller labels the new cluster afterwards like any other.  The refusal discipline is the face move's own: the face must sit on an asset the caller OWNS and that is live -- any other state (unknown face, another account's asset, an asset shared to the caller but not owned, a trashed, hidden or Live Photo component asset) answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). A face the clustering has not yet assigned to any cluster is VALID here: the creation seeds the new cluster with it and there is simply no source to maintain.  A call on a face that already holds a cluster is a CREATE, never a no-op: the face re-homes onto a new cluster and the vacated source follows the cluster maintenance discipline -- its representative re-homes to the best surviving member, or the cluster dissolves with its label rows cascading when this creation emptied it (the same honest cost a merge pays; a source cluster's user-given name dies with the cluster).  The whole structural change lands as ONE transaction. The write publishes `person.face_clustered` with the face id, the new cluster id and the acting user's id. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getPeopleApi();
+final String faceId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the face that seeds the new cluster.
+
+try {
+    final response = api.clusterFace(faceId);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling PeopleApi->clusterFace: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **faceId** | **String**| Identifier of the face that seeds the new cluster. | 
+
+### Return type
+
+[**ClusterFaceResponse**](ClusterFaceResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **detachFace**
+> detachFace(faceId)
+
+Release one face from its person.
+
+The single-face detach: the face's cluster assignment goes NULL, returning it to the not-yet-grouped pool it came from (the state a freshly detected face holds before the clustering assigns it). The face row survives -- it still lists among its asset's faces, now carrying no person -- and any later assign write can re-home it.  The refusal discipline is the face move's own: the face must sit on an asset the caller OWNS and that is live -- any other state (unknown face, another account's asset, an asset shared to the caller but not owned, a trashed, hidden or Live Photo component asset) answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). A face the clustering has not yet assigned to any cluster is part of no person and answers the same 404: there is no membership to release.  The source cluster does NOT dissolve unless this detach emptied it; the vacated cluster re-homes its representative to the best surviving member, and an emptied cluster dissolves WITH its label rows cascading -- the same honest cost a merge pays. The whole structural change lands as ONE transaction. The write publishes `person.face_detached` with the face id, the cluster the face left and the acting user's id. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getPeopleApi();
+final String faceId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the face to release.
+
+try {
+    api.detachFace(faceId);
+} on DioException catch (e) {
+    print('Exception when calling PeopleApi->detachFace: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **faceId** | **String**| Identifier of the face to release. | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **getFaceThumbnail**
 > Uint8List getFaceThumbnail(faceId)
@@ -307,7 +402,7 @@ Name | Type | Description  | Notes
 
 Move one face onto an existing face cluster.
 
-One face's move onto an existing target cluster: the tidy-up primitive behind the viewer's face chips. The face must sit on an asset the caller OWNS and that is live, and the target must be caller-visible -- any other state (unknown face, another account's asset, an asset shared to the caller but not owned -- the move is curation, and curation is the owner's alone -- an invisible or unknown target) answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). A face the clustering has not yet assigned to any cluster is not part of any person and answers the same 404.  The move runs as ONE transaction through the cluster maintenance discipline: the target's representative face recomputes to its strongest member, and the vacated source cluster re-homes its representative to the best surviving member -- or dissolves with its label rows cascading when the move empties it (a source cluster's user-given name dies with the cluster, the same honest cost as a merge).  Moving a face onto the cluster it already occupies is an accepted no-op. The write publishes `person.face_moved` with the face id, the cluster it now occupies and the acting user's id. 
+One face's move onto an existing target cluster: the tidy-up primitive behind the viewer's face chips. The face must sit on an asset the caller OWNS and that is live, and the target must be caller-visible -- any other state (unknown face, another account's asset, an asset shared to the caller but not owned -- the move is curation, and curation is the owner's alone -- an invisible or unknown target) answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). A face the clustering has not yet assigned to any cluster is a valid source: it simply joins the target (there is no source cluster to maintain).  The move runs as ONE transaction through the cluster maintenance discipline: the target's representative face recomputes to its strongest member, and the vacated source cluster re-homes its representative to the best surviving member -- or dissolves with its label rows cascading when the move empties it (a source cluster's user-given name dies with the cluster, the same honest cost as a merge).  Moving a face onto the cluster it already occupies is an accepted no-op. The write publishes `person.face_moved` with the face id, the cluster it now occupies and the acting user's id. 
 
 ### Example
 ```dart

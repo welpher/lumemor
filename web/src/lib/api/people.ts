@@ -1,11 +1,12 @@
 // The people surface's data client: the three reads of the people
 // domain (the named list, the unnamed region's keyset pages, the
-// cluster detail) and the five writes (label upsert, label delete,
-// the hidden switch, the structural merge, the single-face move),
-// each behind the repo-wide error-code convention -- every failure
-// outcome carries the error code's i18n key (the envelope code
-// lowercased, 'internal' for a network failure or an unparseable
-// body, 'session_expired' for a 401).
+// cluster detail) and the seven writes (label upsert, label delete,
+// the hidden switch, the structural merge, the single-face move, the
+// from-face person creation, the single-face detach), each behind
+// the repo-wide error-code convention -- every failure outcome
+// carries the error code's i18n key (the envelope code lowercased,
+// 'internal' for a network failure or an unparseable body,
+// 'session_expired' for a 401).
 //
 // THE ONE MESSAGE-KEY EXCEPTION: the hidden switch rides on the
 // caller's label row, so hiding an UNLABELED cluster answers 400
@@ -45,6 +46,9 @@ export type MergePeopleResponse = components['schemas']['MergePeopleResponse'];
 /** The face move's response. */
 export type MoveFaceResponse = components['schemas']['MoveFaceResponse'];
 
+/** The from-face person creation's response. */
+export type ClusterFaceResponse = components['schemas']['ClusterFaceResponse'];
+
 /** The named list's outcome. */
 export type PeopleListResult = { ok: true; people: PersonSummary[] } | { ok: false; errorKey: string };
 
@@ -68,6 +72,9 @@ export type MergeResult = { ok: true; merge: MergePeopleResponse } | { ok: false
 
 /** The face move's outcome. */
 export type MoveResult = { ok: true; move: MoveFaceResponse } | { ok: false; errorKey: string };
+
+/** The from-face person creation's outcome. */
+export type ClusterFaceResult = { ok: true; cluster: ClusterFaceResponse } | { ok: false; errorKey: string };
 
 /** The contract's default page size of the unnamed region. */
 export const UNNAMED_PAGE_LIMIT = 60;
@@ -497,4 +504,61 @@ export async function moveFace(
 		return { ok: false, errorKey: 'internal' };
 	}
 	return { ok: true, move: body as MoveFaceResponse };
+}
+
+/**
+ * POST /api/v1/faces/{faceId}/cluster: the from-face person creation.
+ * The face -- clustered or not -- becomes the sole member AND the
+ * representative of a brand-new cluster; a repeat call on a
+ * clustered face is another CREATE, never a no-op, and the vacated
+ * source cluster may dissolve with its label rows (the server's
+ * honest cost). Refusals: an unknown face, a face on an asset the
+ * caller does not own, or a trashed, hidden or component asset --
+ * the same byte-identical 404 as the move (anti-enumeration).
+ */
+export async function clusterFace(
+	faceId: string,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<ClusterFaceResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(`/api/v1/faces/${encodeURIComponent(faceId)}/cluster`, { method: 'POST' }, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const body = await bodyOf(response);
+	if (body === null || typeof body !== 'object') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const candidate = body as Partial<ClusterFaceResponse>;
+	if (typeof candidate.faceId !== 'string' || typeof candidate.clusterId !== 'string') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, cluster: body as ClusterFaceResponse };
+}
+
+/**
+ * DELETE /api/v1/faces/{faceId}: the single-face detach. The face's
+ * cluster assignment goes null -- back to the not-yet-grouped pool
+ * it came from; the face row survives (it still lists among its
+ * asset's faces, now carrying no person) and any later assign write
+ * can re-home it. The source dissolves only when the detach emptied
+ * it (the label cascade, the same honest cost a merge pays).
+ * Refusals: the move's own matrix plus the NULL-cluster rule -- a
+ * face part of no person answers the same 404.
+ */
+export async function detachFace(faceId: string, fetcher: typeof fetch = globalThis.fetch): Promise<MutationResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(`/api/v1/faces/${encodeURIComponent(faceId)}`, { method: 'DELETE' }, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (response.ok) {
+		return { ok: true };
+	}
+	return { ok: false, errorKey: await errorKeyFrom(response) };
 }

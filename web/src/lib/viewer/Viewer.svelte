@@ -30,6 +30,8 @@
 	// full-height over the right edge) and the action cluster keeps
 	// its left shift to clear it. The open preference persists in
 	// localStorage (one key, default closed) and restores on mount.
+	// The edit-people panel stands in this region while it is open
+	// (the same form, the photo's layout untouched).
 	//
 	// THE GRADUAL ZOOM: the in/out/reset buttons, the +/- keys
 	// and the stage's double-click all drive one engine (see ./zoom.ts)
@@ -66,6 +68,7 @@
 	import { _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
 	import InfoDrawer from './InfoDrawer.svelte';
+	import EditFacesPanel from './EditFacesPanel.svelte';
 	import { createZoomEngine, VIEWER_ZOOM_BASE, VIEWER_ZOOM_MAX, type ZoomState } from './zoom';
 	import {
 		assetThumbnailUrl,
@@ -132,6 +135,35 @@
 		 * drawer's tags row; per-user state, every viewer's own write).
 		 */
 		onassigntag: () => void;
+		/**
+		 * The edit-people panel's state and flow. The PAGE owns the
+		 * open flag, the staged edits and every write; THIS component
+		 * owns the composition alone -- the panel stands in the
+		 * information drawer's place (the same docked/overlay form, so
+		 * the photo stays visible and re-fits), the drawer's pencil
+		 * opens it, and the layered Escape falls from the page's
+		 * dialogs to the panel, then to the drawer, then to the route.
+		 */
+		/** Whether the edit-people panel stands in the drawer's place. */
+		editFacesOpen: boolean;
+		/** A staged edit's label for one face; undefined when none is staged. */
+		stageLabelOf: (face: AssetFaceSummary) => string | undefined;
+		/** How many faces carry a staged edit (the panel's apply gate). */
+		editStagedCount: number;
+		/** The edit flow's commit is in flight. */
+		editBusy: boolean;
+		/** The error-code i18n key of the last failed edit commit ('' when none). */
+		editErrorKey: string;
+		/** Open the edit-people panel (the drawer's People pencil). */
+		oneditfaces: () => void;
+		/** Return from the edit-people panel to the information drawer. */
+		oneditfacesclose: () => void;
+		/** Open the choose-person dialog for one face of the panel. */
+		onreassignface: (face: AssetFaceSummary) => void;
+		/** Open the detach confirm for one face of the panel. */
+		ondetachface: (face: AssetFaceSummary) => void;
+		/** Commit every staged edit of the panel. */
+		onapplyfaces: () => void;
 	};
 
 	let {
@@ -152,7 +184,17 @@
 		onedit,
 		onaction,
 		onassignface,
-		onassigntag
+		onassigntag,
+		editFacesOpen,
+		stageLabelOf,
+		editStagedCount,
+		editBusy,
+		editErrorKey,
+		oneditfaces,
+		oneditfacesclose,
+		onreassignface,
+		ondetachface,
+		onapplyfaces
 	}: Props = $props();
 
 	// The panel's open-preference persistence: one key, default
@@ -332,11 +374,11 @@
 			return;
 		}
 		if (event.key === 'Escape') {
-			// The layered dismissal: the page's dialog, then the
-			// panel, then the route. The assign dialog (modalOpen)
-			// owns its own Escape; this handler defers to it so the
-			// panel underneath stays open.
 			if (modalOpen) {
+				return;
+			}
+			if (editFacesOpen) {
+				oneditfacesclose();
 				return;
 			}
 			if (drawerOpen) {
@@ -767,8 +809,33 @@
 	{#if drawerOpen && detail !== null}
 		<!-- The docked split region: a flex sibling of the media
 		     column at lg+ (lg:static inside the row -- the stage re-fits
-		     through the flow), the fixed overlay drawer below lg. -->
-		<InfoDrawer {detail} {isOwner} onclose={() => (drawerOpen = false)} {onedit} {onassignface} {onassigntag} />
+		     through the flow), the fixed overlay drawer below lg. The
+		     edit-people panel STANDS IN the drawer's place while it is
+		     open: the same form (so the photo keeps its layout), a
+		     different surface (the per-face correction flow). -->
+		{#if editFacesOpen}
+			<EditFacesPanel
+				{detail}
+				{stageLabelOf}
+				stagedCount={editStagedCount}
+				busy={editBusy}
+				errorKey={editErrorKey}
+				onclose={oneditfacesclose}
+				onreassign={onreassignface}
+				ondetach={ondetachface}
+				onapply={onapplyfaces}
+			/>
+		{:else}
+			<InfoDrawer
+				{detail}
+				{isOwner}
+				onclose={() => (drawerOpen = false)}
+				{onedit}
+				{onassignface}
+				{onassigntag}
+				{oneditfaces}
+			/>
+		{/if}
 	{/if}
 </div>
 

@@ -93,19 +93,30 @@ export type JobEventListener = (event: JobEvent) => void;
 export type JobRunState = 'queued' | 'running' | 'succeeded' | 'failed';
 
 /**
- * The people surface's person.* events: the label, hidden, merge and
- * face-move writes. Every payload carries the acting user's id
- * beside the cluster (or face) id ONLY: the label text and the
- * hidden switch are one account's private state, so they never
- * ride the shared stream -- a subscriber filters by the ids it
- * renders, never by another account's change, and the SERVER's
- * answer decides what actually moved.
+ * The people surface's person.* events: the label, hidden, merge,
+ * face-move, face-creation and face-detach writes. Every payload
+ * carries the acting user's id beside the cluster (or face) id
+ * ONLY: the label text and the hidden switch are one account's
+ * private state, so they never ride the shared stream -- a
+ * subscriber filters by the ids it renders, never by another
+ * account's change, and the SERVER's answer decides what actually
+ * moved.
  *
  * `person.merged` carries the dissolved sources comma-joined on the
- * wire and split here.
+ * wire and split here. `person.face_clustered` carries the NEWLY
+ * CREATED cluster's id; `person.face_detached` carries the cluster
+ * the face LEFT (the face holds no cluster after that write, and
+ * the converging surfaces need the person whose membership
+ * changed).
  */
 export type PersonEventName =
-	'person.labeled' | 'person.unlabeled' | 'person.hidden' | 'person.merged' | 'person.face_moved';
+	| 'person.labeled'
+	| 'person.unlabeled'
+	| 'person.hidden'
+	| 'person.merged'
+	| 'person.face_moved'
+	| 'person.face_clustered'
+	| 'person.face_detached';
 
 export type PersonEvent =
 	| {
@@ -141,6 +152,22 @@ export type PersonEvent =
 			name: 'person.face_moved';
 			faceId: string;
 			/** The cluster the face occupies after the move. */
+			clusterId: string;
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.face_clustered';
+			faceId: string;
+			/** The cluster the creation built (the face's new home). */
+			clusterId: string;
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.face_detached';
+			faceId: string;
+			/** The cluster the face left (its membership is gone after the write). */
 			clusterId: string;
 			userId: string;
 	  };
@@ -214,7 +241,9 @@ const PERSON_EVENT_NAMES: readonly PersonEventName[] = [
 	'person.unlabeled',
 	'person.hidden',
 	'person.merged',
-	'person.face_moved'
+	'person.face_moved',
+	'person.face_clustered',
+	'person.face_detached'
 ];
 
 const FACE_EVENT_NAMES: readonly FaceEventName[] = ['face.clustered'];
@@ -395,6 +424,19 @@ function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonE
 			return { id: base.id, name, survivingClusterId: payload.survivingClusterId, mergedClusterIds, userId };
 		}
 		case 'person.face_moved': {
+			if (typeof payload.faceId !== 'string' || payload.faceId === '') {
+				return null;
+			}
+			if (typeof clusterId !== 'string' || clusterId === '') {
+				return null;
+			}
+			return { id: base.id, name, faceId: payload.faceId, clusterId, userId };
+		}
+		// The creation and the detach share the moved face's wire
+		// shape: the face id beside ONE cluster id (the new cluster
+		// for the creation, the vacated one for the detach).
+		case 'person.face_clustered':
+		case 'person.face_detached': {
 			if (typeof payload.faceId !== 'string' || payload.faceId === '') {
 				return null;
 			}

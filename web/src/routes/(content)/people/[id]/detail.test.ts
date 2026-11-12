@@ -2,6 +2,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import { sessionStatus } from '$lib/auth/session.svelte';
+import { clearToasts, toasts } from '$lib/components/toast.svelte';
 import type { ClusterDetail } from '$lib/api/people';
 import Page from './+page.svelte';
 
@@ -188,10 +189,14 @@ beforeEach(async () => {
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
+	// The toast organ is shared module state: every case starts empty
+	// (the echo assertions read exactly their own flow's toasts).
+	clearToasts();
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
+	clearToasts();
 });
 
 test('the labeled detail renders the name, the faces and their asset context', async () => {
@@ -313,7 +318,7 @@ test('hiding an unlabeled person surfaces the requires-label error and keeps the
 	flushSync();
 });
 
-test('merge-into POSTs the merge and navigates back to the named region', async () => {
+test("merge-into POSTs the merge and lands on the surviving person's page", async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
 			'/api/v1/people/merge': () => jsonResponse(200, { survivingClusterId: 'p1', mergedClusterIds: ['c1'] })
@@ -326,11 +331,27 @@ test('merge-into POSTs the merge and navigates back to the named region', async 
 	buttonByText('Merge into…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
+	// The merge face: the filterable person target list (this cluster
+	// never its own target), the honest cost in the body.
 	const dialog = modal();
-	expect(dialog?.getAttribute('aria-label')).toBe('Merge people');
+	expect(dialog?.getAttribute('aria-label')).toBe('Merge into…');
 	expect(dialog?.textContent).toContain('This cluster disappears and its name is lost.');
-	chooseOption(dialog as ParentNode, 'p1');
-	buttonByText('Merge', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	expect(dialog?.textContent).toContain('Existing people');
+	// The target list carries Grace's row (the face count beside the
+	// name) -- the local filter narrows to her.
+	const rows = Array.from((dialog as ParentNode).querySelectorAll<HTMLButtonElement>('.person-picker__row'));
+	expect(rows.map((row) => (row.textContent ?? '').replace(/\s+/g, ' ').trim())).toEqual(['Grace 9']);
+	const filter = (dialog as ParentNode).querySelector<HTMLInputElement>('.person-picker__filter');
+	if (filter === null) {
+		throw new Error('missing merge filter');
+	}
+	filter.value = 'grace';
+	filter.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+	expect(Array.from((dialog as ParentNode).querySelectorAll('.person-picker__row'))).toHaveLength(1);
+	// No toast rides the merge: the landing is the feedback.
+	rows[0]!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	buttonByText('Merge into…', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/merge');
@@ -339,7 +360,50 @@ test('merge-into POSTs the merge and navigates back to the named region', async 
 		sourceClusterIds: ['c1'],
 		targetClusterId: 'p1'
 	});
-	expect(vi.mocked(goto)).toHaveBeenCalledWith('/people');
+	// The navigation lands on the SURVIVING cluster's person page (the
+	// response's own answer names the destination).
+	expect(vi.mocked(goto)).toHaveBeenCalledWith('/people/p1');
+	expect(toasts()).toHaveLength(0);
+	unmount(page);
+	flushSync();
+});
+
+test('the unname write is immediate: no confirm, the toast echo, the unnamed state', async () => {
+	// The label route answers both arms: the DELETE releases the
+	// label (204), anything else is the rename's PUT shape.
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/people/c1/label': (init?: RequestInit) =>
+				init?.method === 'DELETE'
+					? new Response(null, { status: 204 })
+					: jsonResponse(200, { clusterId: 'c1', name: 'Ada', isHidden: false })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The unname affordance: icon-only, the labeled state's own row
+	// (an unnamed cluster has nothing to unname).
+	const unname = document.body.querySelector<HTMLButtonElement>('[aria-label="Remove name"]');
+	expect(unname).not.toBeNull();
+	unname!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+
+	// The DELETE ran once, immediately -- no dialog ever stood between
+	// the click and the write (naming is reversible).
+	const deletes = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/people/c1/label' && init?.method === 'DELETE'
+	);
+	expect(deletes).toHaveLength(1);
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+
+	// The echo landed and the header adopted the unnamed state (the
+	// naming CTA is the way back).
+	expect(toasts().map((entry) => entry.text)).toEqual(['Name removed; this person is unnamed again.']);
+	expect(document.body.querySelector('.person-detail__title')?.textContent?.trim()).toBe('Unnamed person');
+	expect(() => buttonByText('Name this person')).not.toThrow();
+	expect(document.body.querySelector('[aria-label="Remove name"]')).toBeNull();
 	unmount(page);
 	flushSync();
 });
@@ -386,6 +450,33 @@ test('moving a face POSTs the move and the face list refetches', async () => {
 	expect(faceCards()).toHaveLength(1);
 	expect(faceCards()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/faces/f2/thumbnail');
 	expect(modal()).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the move picker with no other people says there are no people yet', async () => {
+	// This dialog carries no filter: its empty state is the honest
+	// no-people line, never the filtered list's no-match copy.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			detailRoutes({
+				'/api/v1/people': () => jsonResponse(200, []),
+				'/api/v1/people/unnamed?limit=60': () => jsonResponse(200, { items: [], nextCursor: null })
+			})
+		)
+	);
+	const page = mountPage();
+	await settle();
+	faceCards()[0]
+		?.querySelector<HTMLButtonElement>('.face-card__move')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const dialog = modal();
+	const empty = dialog?.querySelector('.cluster-picker__empty');
+	expect(empty?.textContent?.trim()).toBe('No people yet.');
+	expect(dialog?.textContent).not.toContain('No people match.');
 	unmount(page);
 	flushSync();
 });

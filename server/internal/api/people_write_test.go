@@ -1,12 +1,12 @@
-// People surface write tests: the label, hidden, merge
-// and face-move endpoints, with the pinned semantics under load --
-// labels are per-caller upserts, duplicate names are allowed,
-// hiding rides on the label row, and every structural cluster change
-// re-points representatives and dissolves vacated clusters (source
-// labels die with them -- the honest documented cost). Fixtures
-// insert models, faces, clusters and assets directly in the database
-// and drive every write through the API, exactly like the read-side
-// tests before them.
+// People surface write tests: the label, hidden, merge, face-move,
+// from-face creation and face-detach endpoints, with the pinned
+// semantics under load -- labels are per-caller upserts, duplicate
+// names are allowed, hiding rides on the label row, and every
+// structural cluster change re-points representatives and dissolves
+// vacated clusters (source labels die with them -- the honest
+// documented cost). Fixtures insert models, faces, clusters and
+// assets directly in the database and drive every write through the
+// API, exactly like the read-side tests before them.
 package api
 
 import (
@@ -93,6 +93,66 @@ func (e *assetEnv) postPeopleMerge(t *testing.T, cookie *http.Cookie, body strin
 func (e *assetEnv) postFaceMove(t *testing.T, cookie *http.Cookie, faceID uuid.UUID, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	return e.writePeopleRaw(t, cookie, http.MethodPost, "/api/v1/faces/"+faceID.String()+"/move", body)
+}
+
+// postFaceCluster fires POST /faces/{faceId}/cluster: the from-face
+// person creation carries no body at all.
+func (e *assetEnv) postFaceCluster(t *testing.T, cookie *http.Cookie, faceID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.writePeopleRaw(t, cookie, http.MethodPost, "/api/v1/faces/"+faceID.String()+"/cluster", "")
+}
+
+// deleteFace fires DELETE /faces/{faceId}: the single-face detach.
+func (e *assetEnv) deleteFace(t *testing.T, cookie *http.Cookie, faceID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.writePeopleRaw(t, cookie, http.MethodDelete, "/api/v1/faces/"+faceID.String(), "")
+}
+
+// getAssetFaces reads one asset's detail and returns its faces
+// array: the face-level tests' read-side proof that a released face
+// still lists on its asset, now carrying no cluster.
+func (e *assetEnv) getAssetFaces(t *testing.T, cookie *http.Cookie, assetID uuid.UUID) []apigen.AssetFaceSummary {
+	t.Helper()
+	rec := e.writePeopleRaw(t, cookie, http.MethodGet, "/api/v1/assets/"+assetID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET asset detail status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var detail apigen.AssetDetail
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("decode asset detail %q: %v", rec.Body.String(), err)
+	}
+	return detail.Faces
+}
+
+// requireSoleMemberAndRepresentative pins the from-face creation's
+// core invariant: the cluster holds exactly the seeding face, and
+// that face is the cluster's representative (a sole member is the
+// strongest member by definition).
+func (e *assetEnv) requireSoleMemberAndRepresentative(t *testing.T, clusterID, faceID uuid.UUID) {
+	t.Helper()
+	if got := e.queryInt(t, "SELECT count(*) FROM faces WHERE cluster_id = $1", pgUUID(clusterID)); got != 1 {
+		t.Errorf("cluster %s holds %d faces, want exactly the seeding one", clusterID, got)
+	}
+	if got := e.queryInt(t,
+		"SELECT count(*) FROM face_clusters WHERE id = $1 AND representative_face_id = $2",
+		pgUUID(clusterID), pgUUID(faceID)); got != 1 {
+		t.Errorf("cluster %s points at another representative than the seeding face %s", clusterID, faceID)
+	}
+}
+
+// requirePayloadIDs asserts the person event discipline: the payload
+// carries exactly the given ids plus the acting user -- ids only,
+// never any account's private state.
+func requirePayloadIDs(t *testing.T, payload map[string]string, what string, want map[string]string) {
+	t.Helper()
+	for key, value := range want {
+		if payload[key] != value {
+			t.Errorf("%s payload[%q] = %q, want %q", what, key, payload[key], value)
+		}
+	}
+	if len(payload) != len(want) {
+		t.Errorf("%s payload = %v, want exactly the keys %v (ids only)", what, payload, want)
+	}
 }
 
 // writePeopleRaw is the shared write dispatcher: an empty body means
@@ -732,8 +792,9 @@ func TestPeopleMergeValidation(t *testing.T) {
 // TestPeopleFaceMove walks the single-face move: the face lands on
 // the target, the target's representative recomputes, the vacated
 // source re-homes its representative (or dissolves with its label
-// when the move empties it), and every invisible constellation
-// answers the anti-enumeration 404.
+// when the move empties it), a clusterless face joins a target with
+// no source maintenance, and every invisible constellation answers
+// the anti-enumeration 404.
 func TestPeopleFaceMove(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -863,10 +924,6 @@ func TestPeopleFaceMove(t *testing.T) {
 		env.seedWriteCluster(t, fixtureWriteAssetID("44"), graceID,
 			time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC), graceTo,
 			writeFaceSpec{fixtureWriteFaceID("47"), 0.55})
-		// A face the clustering has not assigned to any cluster is
-		// part of no person.
-		unclustered := fixtureWriteFaceID("46")
-		env.insertFace(t, unclustered, fixtureWriteAssetID("41"), 0.40)
 
 		for _, probe := range []struct {
 			what string
@@ -875,7 +932,6 @@ func TestPeopleFaceMove(t *testing.T) {
 		}{
 			{"unknown face", fixtureWriteFaceID("ff"), moveBody},
 			{"foreign-asset face", fixtureWriteFaceID("44"), moveBody},
-			{"unclustered face", unclustered, moveBody},
 			{"invisible target", g3.id, `{"targetClusterId":"` + graceFrom.String() + `"}`},
 			{"unknown target", g3.id, `{"targetClusterId":"` + fixtureWriteClusterID("fe").String() + `"}`},
 		} {
@@ -893,6 +949,59 @@ func TestPeopleFaceMove(t *testing.T) {
 		}
 		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(graceFrom)); got != 0 {
 			t.Errorf("grace's emptied cluster rows = %d, want 0 (dissolved)", got)
+		}
+	})
+
+	t.Run("ClusterlessSourceMovesIntoATarget", func(t *testing.T) {
+		// The clusterless-source pin: a face the clustering has not
+		// grouped yet may JOIN an existing person. The move's object
+		// is the face's membership, and with no source cluster there
+		// is nothing to maintain -- no representative re-home, no
+		// dissolution -- so only the target's own side runs.
+		clusterless := fixtureWriteFaceID("48")
+		env.insertFace(t, clusterless, fixtureWriteAssetID("41"), 0.40)
+
+		clustersBefore := env.queryInt(t, "SELECT count(*) FROM face_clusters")
+		eventsBefore := len(busEventsOf(t, env.bus, "person.face_moved"))
+
+		rec := env.postFaceMove(t, env.cookie, clusterless, moveBody)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("clusterless POST move status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var moved apigen.MoveFaceResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &moved); err != nil {
+			t.Fatalf("decode clusterless move response %q: %v", rec.Body.String(), err)
+		}
+		if uuid.UUID(moved.FaceId) != clusterless || uuid.UUID(moved.ClusterId) != target {
+			t.Errorf("clusterless move response = (%s, %s), want (%s, %s)", moved.FaceId, moved.ClusterId, clusterless, target)
+		}
+
+		// The target absorbed the face and its representative stayed
+		// its strongest member: the newcomer is weaker than every
+		// face already there.
+		detail := env.getClusterDetail(t, env.cookie, target)
+		if len(detail.Faces) != 4 || uuid.UUID(detail.Faces[0].Id) != g1.id {
+			t.Fatalf("target faces = %v, want 4 strongest-first from %s", detail.Faces, g1.id)
+		}
+
+		// No source maintenance ran: nothing dissolved, nothing was
+		// minted, and no cluster took the moved face as its
+		// representative.
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters"); got != clustersBefore {
+			t.Errorf("face_clusters rows = %d after the clusterless move, want %d (no dissolution, no mint)", got, clustersBefore)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE representative_face_id = $1", pgUUID(clusterless)); got != 0 {
+			t.Errorf("clusters represented by the moved face = %d, want 0 (the target kept its strongest member)", got)
+		}
+
+		// The write reports the change like any other move.
+		movedEvents := busEventsOf(t, env.bus, "person.face_moved")
+		if len(movedEvents) != eventsBefore+1 {
+			t.Fatalf("person.face_moved events = %d, want %d", len(movedEvents), eventsBefore+1)
+		}
+		last := movedEvents[len(movedEvents)-1]
+		if last["faceId"] != clusterless.String() || last["clusterId"] != target.String() || last["userId"] != adminID.String() {
+			t.Errorf("face_moved payload = %v, want face %s on %s by %s", last, clusterless, target, adminID)
 		}
 	})
 
@@ -1051,4 +1160,386 @@ func TestPeopleWriteDeleteAssetCascades(t *testing.T) {
 	if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(cluster)); got != 0 {
 		t.Errorf("dissolved cluster rows = %d, want 0", got)
 	}
+}
+
+// TestPeopleFaceClusterCreate walks the from-face person creation:
+// the seeding face re-homes onto a brand-new cluster as its sole
+// member and representative, the vacated source follows the
+// maintenance discipline (representative re-home, or dissolution
+// with the label cascade), a repeat call CREATES again (never a
+// no-op), a clusterless face seeds a cluster with no source to
+// maintain, and every invisible constellation answers the
+// anti-enumeration 404.
+func TestPeopleFaceClusterCreate(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "face-create-grace@example.com")
+	env.insertPeopleModel(t)
+
+	// The fixtures: a labeled two-face source (representative
+	// first) and one clusterless face on the owner's asset.
+	source := fixtureWriteClusterID("71")
+	k1 := writeFaceSpec{fixtureWriteFaceID("71"), 0.90} // source representative
+	k2 := writeFaceSpec{fixtureWriteFaceID("72"), 0.70}
+	asset := fixtureWriteAssetID("71")
+	env.seedWriteCluster(t, asset, adminID, time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC), source, k1, k2)
+	clusterless := fixtureWriteFaceID("73")
+	env.insertFace(t, clusterless, asset, 0.50)
+
+	if rec := env.putPersonLabel(t, env.cookie, source, `{"name":"Kim"}`); rec.Code != http.StatusOK {
+		t.Fatalf("label the source: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var firstCluster uuid.UUID
+	t.Run("ClusteredFaceBecomesSoleMemberAndRepresentative", func(t *testing.T) {
+		rec := env.postFaceCluster(t, env.cookie, k2.id)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("POST cluster status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var created apigen.ClusterFaceResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("decode cluster response %q: %v", rec.Body.String(), err)
+		}
+		firstCluster = uuid.UUID(created.ClusterId)
+		if uuid.UUID(created.FaceId) != k2.id {
+			t.Errorf("cluster response faceId = %s, want the seeded %s", created.FaceId, k2.id)
+		}
+		if firstCluster == source {
+			t.Fatalf("the new cluster is the source itself -- the creation must build a new row")
+		}
+		env.requireSoleMemberAndRepresentative(t, firstCluster, k2.id)
+
+		// The new cluster is unnamed, so it surfaces in the
+		// caller's unnamed region holding one face.
+		page := env.getUnnamedPage(t, env.cookie, "")
+		requireUnnamedOrder(t, page.Items, firstCluster)
+
+		// The source survives with its remaining face: the
+		// representative stays the strongest member (k2 was
+		// never it), and the label rides along untouched.
+		people := env.getPeopleList(t, env.cookie)
+		if len(people) != 1 || people[0].Name != "Kim" || uuid.UUID(people[0].ClusterId) != source {
+			t.Fatalf("/people = %+v, want exactly Kim on the surviving source", people)
+		}
+		if uuid.UUID(people[0].RepresentativeFaceId) != k1.id || people[0].FaceCount != 1 {
+			t.Errorf("source state = %+v, want representative %s with faceCount 1", people[0], k1.id)
+		}
+	})
+
+	t.Run("RepeatCallCreatesAnotherCluster", func(t *testing.T) {
+		// The pin: a call on a face that already holds a cluster
+		// is a CREATE, never a no-op -- the face re-homes again
+		// and the cluster it left dies with zero members.
+		rec := env.postFaceCluster(t, env.cookie, k2.id)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("repeat POST cluster status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var created apigen.ClusterFaceResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("decode repeat cluster response %q: %v", rec.Body.String(), err)
+		}
+		secondCluster := uuid.UUID(created.ClusterId)
+		if secondCluster == firstCluster {
+			t.Fatalf("repeat creation returned the same cluster %s -- it must build another", secondCluster)
+		}
+		env.requireSoleMemberAndRepresentative(t, secondCluster, k2.id)
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(firstCluster)); got != 0 {
+			t.Errorf("the vacated first cluster holds %d rows, want 0 (dissolved with no member)", got)
+		}
+		page := env.getUnnamedPage(t, env.cookie, "")
+		requireUnnamedOrder(t, page.Items, secondCluster)
+	})
+
+	t.Run("ClusterlessFaceSeedsANewCluster", func(t *testing.T) {
+		// The clusterless arm: no source to maintain, the face
+		// simply gains its own person.
+		rec := env.postFaceCluster(t, env.cookie, clusterless)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("clusterless POST cluster status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var created apigen.ClusterFaceResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("decode clusterless cluster response %q: %v", rec.Body.String(), err)
+		}
+		env.requireSoleMemberAndRepresentative(t, uuid.UUID(created.ClusterId), clusterless)
+	})
+
+	t.Run("EmptyingTheSourceDissolvesItWithTheLabelCascade", func(t *testing.T) {
+		// k1 is the source's last member now (k2 left twice).
+		rec := env.postFaceCluster(t, env.cookie, k1.id)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("POST cluster of the last member status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(source)); got != 0 {
+			t.Errorf("emptied source rows = %d, want 0 (dissolved)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM user_face_labels WHERE cluster_id = $1", pgUUID(source)); got != 0 {
+			t.Errorf("labels on the emptied source = %d, want 0 (cascaded)", got)
+		}
+		if people := env.getPeopleList(t, env.cookie); len(people) != 0 {
+			t.Errorf("/people = %+v after the dissolve, want empty (Kim died with the cluster)", people)
+		}
+	})
+
+	t.Run("GraceCreatesFromHerOwnFace", func(t *testing.T) {
+		// The gate is owner-scoped curation, not admin power:
+		// Grace creates from a face on her own asset.
+		graceCluster := fixtureWriteClusterID("72")
+		graceFace := fixtureWriteFaceID("74")
+		env.seedWriteCluster(t, fixtureWriteAssetID("72"), graceID,
+			time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC), graceCluster,
+			writeFaceSpec{graceFace, 0.60})
+		rec := env.postFaceCluster(t, graceCookie, graceFace)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("grace's own POST cluster status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var created apigen.ClusterFaceResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("decode grace's cluster response %q: %v", rec.Body.String(), err)
+		}
+		env.requireSoleMemberAndRepresentative(t, uuid.UUID(created.ClusterId), graceFace)
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(graceCluster)); got != 0 {
+			t.Errorf("grace's emptied source rows = %d, want 0 (dissolved)", got)
+		}
+	})
+
+	t.Run("InvisibleConstellationsNotFound", func(t *testing.T) {
+		// The revoked arms: the caller's own assets, but not
+		// live -- trashed and hidden both fail the same gate.
+		trashed := fixtureWriteFaceID("75")
+		env.insertOwnedAsset(t, fixtureWriteAssetID("73"), adminID,
+			time.Date(2026, 6, 3, 10, 0, 0, 0, time.UTC), timelineAssetOpts{deleted: true})
+		env.insertFace(t, trashed, fixtureWriteAssetID("73"), 0.40)
+		hidden := fixtureWriteFaceID("76")
+		env.insertOwnedAsset(t, fixtureWriteAssetID("74"), adminID,
+			time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC), timelineAssetOpts{isHidden: true})
+		env.insertFace(t, hidden, fixtureWriteAssetID("74"), 0.45)
+
+		probes := []struct {
+			what string
+			face uuid.UUID
+		}{
+			{"unknown face", fixtureWriteFaceID("ff")},
+			{"foreign-asset face", fixtureWriteFaceID("74")},
+			{"trashed-asset face", trashed},
+			{"hidden-asset face", hidden},
+		}
+		var bodies []string
+		for _, probe := range probes {
+			rec := env.postFaceCluster(t, env.cookie, probe.face)
+			requirePersonNotFound(t, rec, probe.what)
+			bodies = append(bodies, rec.Body.String())
+		}
+		for _, body := range bodies[1:] {
+			if body != bodies[0] {
+				t.Errorf("404 bodies differ across the refusal matrix: %q vs %q", body, bodies[0])
+			}
+		}
+	})
+
+	t.Run("EventsCarryFaceAndNewCluster", func(t *testing.T) {
+		clustered := busEventsOf(t, env.bus, "person.face_clustered")
+		// One per committed creation: k2, k2 again, the
+		// clusterless face, k1 emptying the source, grace's own.
+		if len(clustered) != 5 {
+			t.Fatalf("person.face_clustered events = %d, want 5 (one per creation)", len(clustered))
+		}
+		for _, payload := range clustered {
+			if payload["faceId"] == "" || payload["clusterId"] == "" {
+				t.Errorf("person.face_clustered payload = %v, want the face and cluster ids", payload)
+			}
+			if payload["userId"] != adminID.String() && payload["userId"] != graceID.String() {
+				t.Errorf("person.face_clustered userId = %q, want the acting user", payload["userId"])
+			}
+		}
+		requirePayloadIDs(t, clustered[0], "first creation", map[string]string{
+			"faceId":    k2.id.String(),
+			"clusterId": firstCluster.String(),
+			"userId":    adminID.String(),
+		})
+
+		// The detach event family stays silent: nothing was
+		// released, and a release is the only thing it reports.
+		if detached := busEventsOf(t, env.bus, "person.face_detached"); len(detached) != 0 {
+			t.Errorf("person.face_detached events = %d, want 0 (no detach happened)", len(detached))
+		}
+	})
+
+	t.Run("RequiresSession", func(t *testing.T) {
+		rec := env.postFaceCluster(t, nil, fixtureWriteFaceID("ff"))
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated POST cluster status = %d, want %d", rec.Code, http.StatusUnauthorized)
+		}
+	})
+}
+
+// TestPeopleFaceDetach walks the single-face detach: the face's
+// cluster assignment goes NULL (the not-yet-grouped pool its asset's
+// face list reads), the source survives with a re-homed
+// representative unless the detach emptied it (then the dissolution
+// and label cascade), a released face can seed a new person again,
+// and every invisible constellation -- a clusterless face included,
+// part of no person -- answers the anti-enumeration 404.
+func TestPeopleFaceDetach(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, _ := env.createSecondUser(t, "face-detach-grace@example.com")
+	env.insertPeopleModel(t)
+
+	// The fixtures: a labeled two-face source (representative
+	// first) on the owner's asset.
+	source := fixtureWriteClusterID("81")
+	h1 := writeFaceSpec{fixtureWriteFaceID("81"), 0.90} // source representative
+	h2 := writeFaceSpec{fixtureWriteFaceID("82"), 0.70}
+	asset := fixtureWriteAssetID("81")
+	env.seedWriteCluster(t, asset, adminID, time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC), source, h1, h2)
+
+	if rec := env.putPersonLabel(t, env.cookie, source, `{"name":"Dad"}`); rec.Code != http.StatusOK {
+		t.Fatalf("label the source: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	t.Run("DetachReleasesTheFaceAndRehomesTheSource", func(t *testing.T) {
+		rec := env.deleteFace(t, env.cookie, h2.id)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("DELETE face status = %d, want %d (body %q)", rec.Code, http.StatusNoContent, rec.Body.String())
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM faces WHERE id = $1 AND cluster_id IS NULL", pgUUID(h2.id)); got != 1 {
+			t.Errorf("the detached face holds a cluster still: rows with NULL = %d, want 1", got)
+		}
+
+		// The source survives: its representative re-homes to
+		// the best survivor (h1 was it already -- the detach of
+		// h2 changes nothing), and the label rides along.
+		people := env.getPeopleList(t, env.cookie)
+		if len(people) != 1 || people[0].Name != "Dad" || uuid.UUID(people[0].ClusterId) != source {
+			t.Fatalf("/people = %+v, want exactly Dad on the surviving source", people)
+		}
+		if uuid.UUID(people[0].RepresentativeFaceId) != h1.id || people[0].FaceCount != 1 {
+			t.Errorf("source state = %+v, want representative %s with faceCount 1", people[0], h1.id)
+		}
+	})
+
+	t.Run("DetachedFaceStillListsOnItsAsset", func(t *testing.T) {
+		faces := env.getAssetFaces(t, env.cookie, asset)
+		if len(faces) != 2 {
+			t.Fatalf("asset faces = %d, want both (the row survives the detach)", len(faces))
+		}
+		// Strongest first: h1 (0.90) leads, the detached h2
+		// follows carrying no cluster and no person to label.
+		if uuid.UUID(faces[0].Id) != h1.id || faces[0].ClusterId == nil || *faces[0].ClusterId != source {
+			t.Errorf("faces[0] = %+v, want %s on cluster %s", faces[0], h1.id, source)
+		}
+		if uuid.UUID(faces[1].Id) != h2.id || faces[1].ClusterId != nil || faces[1].Label != nil {
+			t.Errorf("faces[1] = %+v, want the detached %s with no cluster and no label", faces[1], h2.id)
+		}
+	})
+
+	t.Run("DetachedFaceCanSeedANewPerson", func(t *testing.T) {
+		// The roundtrip: a released face is exactly the
+		// clusterless state the creation accepts.
+		rec := env.postFaceCluster(t, env.cookie, h2.id)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("POST cluster of a detached face status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var created apigen.ClusterFaceResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("decode cluster response %q: %v", rec.Body.String(), err)
+		}
+		env.requireSoleMemberAndRepresentative(t, uuid.UUID(created.ClusterId), h2.id)
+	})
+
+	t.Run("EmptyingDetachDissolvesWithTheLabelCascade", func(t *testing.T) {
+		// h1 is the source's last member now (h2 left).
+		rec := env.deleteFace(t, env.cookie, h1.id)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("DELETE last member status = %d, want %d (body %q)", rec.Code, http.StatusNoContent, rec.Body.String())
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM faces WHERE id = $1 AND cluster_id IS NULL", pgUUID(h1.id)); got != 1 {
+			t.Errorf("the last detached face holds a cluster still: rows with NULL = %d, want 1", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(source)); got != 0 {
+			t.Errorf("emptied source rows = %d, want 0 (dissolved)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM user_face_labels WHERE cluster_id = $1", pgUUID(source)); got != 0 {
+			t.Errorf("labels on the emptied source = %d, want 0 (cascaded)", got)
+		}
+		if people := env.getPeopleList(t, env.cookie); len(people) != 0 {
+			t.Errorf("/people = %+v after the dissolve, want empty (Dad died with the cluster)", people)
+		}
+	})
+
+	t.Run("InvisibleConstellationsNotFound", func(t *testing.T) {
+		// Grace's face on her own asset, a face on the caller's
+		// trashed asset, and a clusterless face: a face part of
+		// no person has no membership to release, the same 404
+		// the move answers.
+		graceFace := fixtureWriteFaceID("84")
+		env.seedWriteCluster(t, fixtureWriteAssetID("82"), graceID,
+			time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC), fixtureWriteClusterID("82"),
+			writeFaceSpec{graceFace, 0.55})
+		trashed := fixtureWriteFaceID("83")
+		env.insertOwnedAsset(t, fixtureWriteAssetID("83"), adminID,
+			time.Date(2026, 6, 3, 10, 0, 0, 0, time.UTC), timelineAssetOpts{deleted: true})
+		env.insertFace(t, trashed, fixtureWriteAssetID("83"), 0.40)
+		clusterless := fixtureWriteFaceID("85")
+		env.insertFace(t, clusterless, asset, 0.35)
+
+		probes := []struct {
+			what string
+			face uuid.UUID
+		}{
+			{"unknown face", fixtureWriteFaceID("ff")},
+			{"foreign-asset face", graceFace},
+			{"trashed-asset face", trashed},
+			{"clusterless face", clusterless},
+		}
+		var bodies []string
+		for _, probe := range probes {
+			rec := env.deleteFace(t, env.cookie, probe.face)
+			requirePersonNotFound(t, rec, probe.what)
+			bodies = append(bodies, rec.Body.String())
+		}
+		for _, body := range bodies[1:] {
+			if body != bodies[0] {
+				t.Errorf("404 bodies differ across the refusal matrix: %q vs %q", body, bodies[0])
+			}
+		}
+
+		// Nothing was written by any rejected request: the
+		// clusterless face still holds no cluster, grace's face
+		// still sits on grace's cluster.
+		if got := env.queryInt(t, "SELECT count(*) FROM faces WHERE id = $1 AND cluster_id IS NULL", pgUUID(clusterless)); got != 1 {
+			t.Errorf("clusterless face rows with NULL = %d, want 1 (no side effect)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM faces WHERE id = $1 AND cluster_id = $2", pgUUID(graceFace), pgUUID(fixtureWriteClusterID("82"))); got != 1 {
+			t.Errorf("grace's face moved = %d rows, want 1 (no side effect)", got)
+		}
+	})
+
+	t.Run("EventsCarryTheLeftCluster", func(t *testing.T) {
+		detached := busEventsOf(t, env.bus, "person.face_detached")
+		// One per committed release: h2, then h1 -- both left
+		// the same source, whose person surface shrank each
+		// time (until it died).
+		if len(detached) != 2 {
+			t.Fatalf("person.face_detached events = %d, want 2 (one per release)", len(detached))
+		}
+		requirePayloadIDs(t, detached[0], "first detach", map[string]string{
+			"faceId":    h2.id.String(),
+			"clusterId": source.String(),
+			"userId":    adminID.String(),
+		})
+		requirePayloadIDs(t, detached[1], "emptying detach", map[string]string{
+			"faceId":    h1.id.String(),
+			"clusterId": source.String(),
+			"userId":    adminID.String(),
+		})
+	})
+
+	t.Run("RequiresSession", func(t *testing.T) {
+		rec := env.deleteFace(t, nil, fixtureWriteFaceID("ff"))
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated DELETE face status = %d, want %d", rec.Code, http.StatusUnauthorized)
+		}
+	})
 }

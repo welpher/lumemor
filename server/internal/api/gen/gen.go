@@ -2164,6 +2164,18 @@ type ClusterDetail struct {
 	Label *PersonLabel `json:"label"`
 }
 
+// ClusterFaceResponse One committed from-face person creation: the seeding face
+// occupies the new cluster alone and serves as its
+// representative face.
+type ClusterFaceResponse struct {
+	// ClusterId The newly created cluster: the face is its sole member
+	// and its representative face.
+	ClusterId openapi_types.UUID `json:"clusterId"`
+
+	// FaceId Identifier of the seeding face.
+	FaceId openapi_types.UUID `json:"faceId"`
+}
+
 // CreateAdminRequest Payload of the first-run wizard (`POST /server/setup/admin`).
 type CreateAdminRequest struct {
 	// Email Login address of the administrator.
@@ -4289,6 +4301,12 @@ type ServerInterface interface {
 	// GetEvents Stream instance activity over server-sent events.
 	// (GET /events)
 	GetEvents(w http.ResponseWriter, r *http.Request, params GetEventsParams)
+	// DetachFace Release one face from its person.
+	// (DELETE /faces/{faceId})
+	DetachFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
+	// ClusterFace Seed a new person from one face.
+	// (POST /faces/{faceId}/cluster)
+	ClusterFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
 	// MoveFace Move one face onto an existing face cluster.
 	// (POST /faces/{faceId}/move)
 	MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
@@ -4658,6 +4676,18 @@ func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id 
 // GetEvents Stream instance activity over server-sent events.
 // (GET /events)
 func (_ Unimplemented) GetEvents(w http.ResponseWriter, r *http.Request, params GetEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DetachFace Release one face from its person.
+// (DELETE /faces/{faceId})
+func (_ Unimplemented) DetachFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ClusterFace Seed a new person from one face.
+// (POST /faces/{faceId}/cluster)
+func (_ Unimplemented) ClusterFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5987,6 +6017,58 @@ func (siw *ServerInterfaceWrapper) GetEvents(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// DetachFace operation middleware
+func (siw *ServerInterfaceWrapper) DetachFace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "faceId" -------------
+	var faceId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "faceId", chi.URLParam(r, "faceId"), &faceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "faceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DetachFace(w, r, faceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClusterFace operation middleware
+func (siw *ServerInterfaceWrapper) ClusterFace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "faceId" -------------
+	var faceId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "faceId", chi.URLParam(r, "faceId"), &faceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "faceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClusterFace(w, r, faceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // MoveFace operation middleware
 func (siw *ServerInterfaceWrapper) MoveFace(w http.ResponseWriter, r *http.Request) {
 
@@ -6977,6 +7059,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/people/merge", wrapper.MergePeople)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/faces/{faceId}", wrapper.DetachFace)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/faces/{faceId}/cluster", wrapper.ClusterFace)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/faces/{faceId}/move", wrapper.MoveFace)
