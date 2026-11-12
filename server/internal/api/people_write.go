@@ -1,8 +1,10 @@
 // The people surface writes: the caller's label and
 // hidden switches behind PUT/DELETE /people/{clusterId}/label and
 // PUT /people/{clusterId}/hidden, the cluster merge behind
-// POST /people/merge and the single face move behind
-// POST /faces/{faceId}/move.
+// POST /people/merge, the single face move behind
+// POST /faces/{faceId}/move, the from-face person creation behind
+// POST /faces/{faceId}/cluster and the single-face detach behind
+// DELETE /faces/{faceId}.
 //
 // The per-user-state discipline runs through every label write: the writes are
 // per-caller upserts on the (user_id, cluster_id) pair -- they never
@@ -544,4 +546,205 @@ func (s *server) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi
 		FaceId:    faceId,
 		ClusterId: target,
 	})
+}
+
+// ClusterFace implements POST /faces/{faceId}/cluster: the
+// from-face person creation. The face -- clustered or not -- becomes
+// the sole member AND the representative of a brand-new cluster; the
+// vacated source follows the same maintenance discipline as the move
+// (representative re-home, then dissolution with the labels when
+// nothing survived). A clusterless face is valid seed: there is
+// simply no source to maintain. The write publishes
+// person.face_clustered with the face id, the new cluster id and the
+// acting user.
+func (s *server) ClusterFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	ctx := r.Context()
+	callerID := pgUUID(requester.userID)
+	faceID := pgUUID(uuid.UUID(faceId))
+
+	// The face-side gate, the move's own: no row means an unknown
+	// face or one on an asset the caller cannot curate, and both
+	// miss shapes answer the one 404. A NULL cluster is NOT a
+	// refusal here -- the creation is defined by its result, and a
+	// clusterless face seeds the new cluster exactly like a
+	// re-homed one.
+	face, err := s.queries.GetFaceForCaller(ctx, dbgen.GetFaceForCallerParams{
+		FaceID: faceID,
+		UserID: callerID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.writePersonNotFound(w)
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "load the face", err)
+		return
+	}
+	source, hasSource := uuid.UUID{}, face.ClusterID.Valid
+	if hasSource {
+		source = uuid.UUID(face.ClusterID.Bytes)
+	}
+
+	// The new cluster's identity is minted here, inside the
+	// request: every caller naming this person later holds the id
+	// this write returns.
+	cluster := uuid.New()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.internalError(w, r, "begin face cluster transaction", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := dbgen.New(tx)
+
+	// The discipline in order: the cluster is BORN first, its
+	// representative fixed to the seeding face (a sole member is
+	// the strongest member by definition) -- the circular
+	// faces/face_clusters foreign keys require the row before the
+	// face can point at it. The face then re-homes onto it, and
+	// the vacated source follows the move's own maintenance:
+	// representative re-home, then dissolution with the labels
+	// when nothing survived.
+	if err := queries.SeedFaceCluster(ctx, dbgen.SeedFaceClusterParams{
+		ID:                   pgUUID(cluster),
+		RepresentativeFaceID: faceID,
+	}); err != nil {
+		if personFKViolation(err) {
+			// The face vanished in the race against the
+			// insert: no such person to create from.
+			s.writePersonNotFound(w)
+			return
+		}
+		s.internalError(w, r, "seed the new cluster", err)
+		return
+	}
+	if err := queries.MoveFaceToCluster(ctx, dbgen.MoveFaceToClusterParams{
+		FaceID:          faceID,
+		TargetClusterID: pgUUID(cluster),
+	}); err != nil {
+		if personFKViolation(err) {
+			s.writePersonNotFound(w)
+			return
+		}
+		s.internalError(w, r, "move the face onto the new cluster", err)
+		return
+	}
+	if hasSource {
+		if err := queries.RepointVacatedClusterRepresentatives(ctx, pgUUIDs([]uuid.UUID{source})); err != nil {
+			s.internalError(w, r, "repoint the vacated cluster's representative", err)
+			return
+		}
+		if err := queries.DissolveVacatedClustersByID(ctx, pgUUIDs([]uuid.UUID{source})); err != nil {
+			s.internalError(w, r, "dissolve the vacated cluster", err)
+			return
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		if personFKViolation(err) {
+			// The face vanished under the transaction: no
+			// such person to create from.
+			s.writePersonNotFound(w)
+			return
+		}
+		s.internalError(w, r, "commit face cluster transaction", err)
+		return
+	}
+
+	s.publishPersonEvent("person.face_clustered", map[string]string{
+		"faceId":    uuid.UUID(faceId).String(),
+		"clusterId": cluster.String(),
+		"userId":    requester.userID.String(),
+	})
+
+	s.writeJSON(w, http.StatusOK, apigen.ClusterFaceResponse{
+		FaceId:    faceId,
+		ClusterId: cluster,
+	})
+}
+
+// DetachFace implements DELETE /faces/{faceId}: the single-face
+// detach. The face's cluster assignment goes NULL -- back to the
+// not-yet-grouped pool a freshly detected face holds -- and the
+// source does NOT dissolve unless this emptied it (then the same
+// dissolution and label cascade as the merge). The write publishes
+// person.face_detached with the face id, the cluster the face left
+// and the acting user.
+func (s *server) DetachFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	ctx := r.Context()
+	callerID := pgUUID(requester.userID)
+	faceID := pgUUID(uuid.UUID(faceId))
+
+	// The face-side gate, the move's own -- including its
+	// NULL-cluster refusal: the detach's object is the face's
+	// person membership, and a face part of no person is no such
+	// detachable face, the same 404 byte for byte.
+	face, err := s.queries.GetFaceForCaller(ctx, dbgen.GetFaceForCallerParams{
+		FaceID: faceID,
+		UserID: callerID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.writePersonNotFound(w)
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "load the face", err)
+		return
+	}
+	if !face.ClusterID.Valid {
+		s.writePersonNotFound(w)
+		return
+	}
+	source := uuid.UUID(face.ClusterID.Bytes)
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.internalError(w, r, "begin face detach transaction", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := dbgen.New(tx)
+
+	// The discipline in order: the face's assignment goes NULL,
+	// then the vacated source follows the move's own maintenance
+	// -- representative re-home, then dissolution with the labels
+	// when nothing survived.
+	if err := queries.DetachFaceFromCluster(ctx, faceID); err != nil {
+		s.internalError(w, r, "detach the face", err)
+		return
+	}
+	if err := queries.RepointVacatedClusterRepresentatives(ctx, pgUUIDs([]uuid.UUID{source})); err != nil {
+		s.internalError(w, r, "repoint the vacated cluster's representative", err)
+		return
+	}
+	if err := queries.DissolveVacatedClustersByID(ctx, pgUUIDs([]uuid.UUID{source})); err != nil {
+		s.internalError(w, r, "dissolve the vacated cluster", err)
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		s.internalError(w, r, "commit face detach transaction", err)
+		return
+	}
+
+	s.publishPersonEvent("person.face_detached", map[string]string{
+		"faceId":    uuid.UUID(faceId).String(),
+		"clusterId": source.String(),
+		"userId":    requester.userID.String(),
+	})
+
+	w.WriteHeader(http.StatusNoContent)
 }
