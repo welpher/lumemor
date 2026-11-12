@@ -19,30 +19,16 @@
 
 name: e2e
 
+# The heavy acceptance tier: ON DEMAND, not per-PR. The per-block
+# discipline runs the chain and the specs locally on fresh stack
+# lifetimes (the e2e hard rule); this workflow is the outside-in
+# reproduction -- dispatched when wanted, and kept from rotting by
+# the monthly schedule.
+
 on:
-  pull_request:
-    paths:
-      - 'web/**'
-      - 'server/**'
-      - 'openapi/**'
-      - 'i18n/**'
-      - 'scripts/**'
-      - 'docker/**'
-      - 'docker-compose.yml'
-      - '.dockerignore'
-      - '.github/workflows/e2e.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'web/**'
-      - 'server/**'
-      - 'openapi/**'
-      - 'i18n/**'
-      - 'scripts/**'
-      - 'docker/**'
-      - 'docker-compose.yml'
-      - '.dockerignore'
-      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '37 4 3 * *'
 
 permissions:
   contents: read

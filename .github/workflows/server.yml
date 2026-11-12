@@ -1,25 +1,21 @@
 # Continuous integration for the Go server: lint, test, sqlc codegen
-# drift check, and build. The path filters keep this workflow from
-# running on changes that cannot affect it; each workflow also runs
-# when its own definition changes. Web changes are included: the
-# server embeds the web app's build output, so it compiles against it.
+# drift check, and build. The heavy tiers run ON DEMAND, not per-PR:
+# the merge-time machine gate is the local `make ci-local` target
+# (the same checks, cold containers), and this workflow is the
+# outside-in reproduction -- dispatched when wanted, and kept from
+# rotting by the monthly schedule (a silent workflow rots: the runner
+# image moves, the setup steps drift, and the first run after a long
+# silence fails for infrastructure rather than for code). Web changes
+# are included: the server embeds the web app's build output, so it
+# compiles against it.
 
 name: server
 
 on:
-  pull_request:
-    paths:
-      - 'server/**'
-      - 'web/**'
-      - 'Makefile'
-      - '.github/workflows/server.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - 'web/**'
-      - 'Makefile'
-      - '.github/workflows/server.yml'
+  workflow_dispatch:
+  schedule:
+    # Monthly, off-peak UTC; scheduled runs take the default branch.
+    - cron: '23 4 3 * *'
 
 permissions:
   contents: read
