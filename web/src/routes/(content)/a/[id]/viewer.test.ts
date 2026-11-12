@@ -2010,7 +2010,7 @@ test('the reassign stages locally, the check commits once, and the echo counts t
 	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/faces/f2/move')).toHaveLength(1);
 	expect(document.body.querySelector('.faces-panel')).toBeNull();
 	expect(document.body.querySelector('.info')).not.toBeNull();
-	expect(toasts().map((entry) => entry.text)).toEqual(['Made 1 changes.']);
+	expect(toasts().map((entry) => entry.text)).toEqual(['Made 1 change.']);
 	// The information drawer returned with the server's converged
 	// truth: the moved face's chip carries Mom's label.
 	expect(Array.from(document.body.querySelectorAll('.info__face-name')).map((node) => node.textContent)).toEqual([
@@ -2062,7 +2062,7 @@ test('the create-from-face stages and the commit seeds the person; the detach wr
 	await settle();
 	const init = requestOf(fetchMock, 'POST', '/api/v1/faces/f3/cluster');
 	expect(init?.body).toBeUndefined();
-	expect(toasts().map((entry) => entry.text)).toEqual(['Created a new person from this face.', 'Made 1 changes.']);
+	expect(toasts().map((entry) => entry.text)).toEqual(['Created a new person from this face.', 'Made 1 change.']);
 	// The convergence refetch re-rendered the detail from the
 	// server's truth (the initial load plus the commit's refetch).
 	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2?locale=en').length).toBe(2);
