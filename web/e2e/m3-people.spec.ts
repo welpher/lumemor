@@ -454,7 +454,7 @@ test.describe('the signed-in scenes', () => {
 		// the successful commit CLOSES the panel (the landing is the
 		// feedback -- the created cluster surfaces on its own).
 		await panel.getByRole('button', { name: 'Finish editing', exact: true }).click();
-		await expect(page.locator('.toasts')).toContainText('Made 1 changes.');
+		await expect(page.locator('.toasts')).toContainText('Made 1 change.');
 		await expect(panel).toHaveCount(0);
 
 		// The seeded cluster lands in the unnamed region with the one
@@ -505,7 +505,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(picker).toHaveCount(0);
 		await expect(panel.locator('li[data-staged="true"]')).toHaveCount(1);
 		await panel.getByRole('button', { name: 'Finish editing', exact: true }).click();
-		await expect(page.locator('.toasts')).toContainText('Made 1 changes.');
+		await expect(page.locator('.toasts')).toContainText('Made 1 change.');
 		await expect(panel).toHaveCount(0);
 
 		// The drawer stays (the panel returns to the info panel's

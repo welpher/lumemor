@@ -400,7 +400,7 @@
   "people_edit_faces": "Edit people",
   "people_edit_faces_hint": "Every face in this photo is here. A face matched to the wrong person can be reassigned to someone else, or removed from the person it sits on.",
   "people_edit_faces_apply": "Finish editing",
-  "people_edits_count": "Made {count} changes.",
+  "people_edits_count": "{count, plural, one {Made # change.} other {Made # changes.}}",
   "people_face_reassign": "Reassign this face",
   "people_face_detach": "Remove this face",
   "people_detach_dialog_title": "Remove this face",

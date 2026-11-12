@@ -400,7 +400,7 @@
   "people_edit_faces": "编辑人物",
   "people_edit_faces_hint": "这张照片里的每一张脸都在这里。认错的脸可以改派给其他人，或从当前人物身上移出。",
   "people_edit_faces_apply": "完成编辑",
-  "people_edits_count": "已修改 {count} 处",
+  "people_edits_count": "{count, plural, other {已修改 # 处}}",
   "people_face_reassign": "改派这张脸",
   "people_face_detach": "移出这张脸",
   "people_detach_dialog_title": "移出这张脸",
