@@ -1518,13 +1518,25 @@ test('the assign flow moves a face onto an existing person and the chip converge
 	flushSync();
 });
 
-test('a move on a not-yet-grouped face surfaces the not-grouped message', async () => {
-	const faces = [faceSummary('f3', { clusterId: null })];
-	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
+test('a move on a not-yet-grouped face lands on the picked person', async () => {
+	// The clusterless chip's assign flow is a move like any other:
+	// the endpoint takes a clusterless source (no source cluster to
+	// maintain), so the write lands and the chip converges to the
+	// target's label.
+	let moved = false;
+	const facesNow = () => [
+		moved
+			? faceSummary('f3', { clusterId: 'c1', label: { name: 'Ada', isHidden: false } })
+			: faceSummary('f3', { clusterId: null })
+	];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
 		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
 		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], nextCursor: null })),
-		post('/api/v1/faces/f3/move', () => jsonResponse(404, { code: 'PERSON_NOT_FOUND' }))
+		post('/api/v1/faces/f3/move', () => {
+			moved = true;
+			return jsonResponse(200, { faceId: 'f3', clusterId: 'c1' });
+		})
 	]);
 	await settle();
 	openDrawer();
@@ -1536,13 +1548,13 @@ test('a move on a not-yet-grouped face surfaces the not-grouped message', async 
 	click(buttonByText('Assign'));
 	await settle();
 
-	// The 404 stays the dialog's honest not-grouped message, never
-	// the raw code's person-missing text.
-	expect(element('[role="dialog"]')).not.toBeNull();
-	const error = element('.cluster-picker__failure');
-	expect(error.getAttribute('role')).toBe('alert');
-	expect(error.textContent).toContain('has not been grouped yet');
-	expect(error.textContent).not.toContain('person_not_found');
+	// The move writes the contract's body with no refusal: the
+	// dialog closes and the chip carries the target's label.
+	const init = requestOf(fetchMock, 'POST', '/api/v1/faces/f3/move');
+	expect(JSON.parse(String(init?.body))).toEqual({ targetClusterId: 'c1' });
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+	expect(document.body.querySelector('.cluster-picker__failure')).toBeNull();
+	expect(document.body.querySelectorAll('.info__face-name')[0]?.textContent).toBe('Ada');
 	unmount(app);
 	flushSync();
 });

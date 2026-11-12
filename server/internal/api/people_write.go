@@ -419,8 +419,10 @@ func (s *server) MergePeople(w http.ResponseWriter, r *http.Request) {
 // onto an existing target cluster inside the same one-transaction
 // discipline as the merge -- the target's representative recomputes,
 // the vacated source re-homes its representative to its best
-// survivor and dissolves with its label when nothing survives. The
-// write publishes person.face_moved.
+// survivor and dissolves with its label when nothing survives. A
+// clusterless face is valid source too (the creation's own shape):
+// it simply joins the target, with no source to maintain. The write
+// publishes person.face_moved.
 func (s *server) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -440,9 +442,11 @@ func (s *server) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi
 	faceID := pgUUID(uuid.UUID(faceId))
 
 	// The face-side gate and source read in one: no row means an
-	// unknown face or one on an asset the caller cannot see, and a
-	// NULL cluster means the clustering has not made the face part
-	// of any person yet -- every miss is the same 404.
+	// unknown face or one on an asset the caller cannot see, and
+	// both miss shapes answer the one 404. A NULL cluster is NOT a
+	// refusal here -- the move's object is the face's membership,
+	// and a face the clustering has not grouped yet simply joins
+	// the target.
 	face, err := s.queries.GetFaceForCaller(ctx, dbgen.GetFaceForCallerParams{
 		FaceID: faceID,
 		UserID: callerID,
@@ -455,16 +459,15 @@ func (s *server) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi
 		s.internalError(w, r, "load the face", err)
 		return
 	}
-	if !face.ClusterID.Valid {
-		s.writePersonNotFound(w)
-		return
+	source, hasSource := uuid.UUID{}, face.ClusterID.Valid
+	if hasSource {
+		source = uuid.UUID(face.ClusterID.Bytes)
 	}
-	source := uuid.UUID(face.ClusterID.Bytes)
 
 	// The no-op: the face already occupies the target. Accepted and
 	// silent -- the batch surface's report-changes-not-repeats
 	// discipline applies to a repeat of the same structural state.
-	if source == target {
+	if hasSource && source == target {
 		s.writeJSON(w, http.StatusOK, apigen.MoveFaceResponse{
 			FaceId:    faceId,
 			ClusterId: target,
@@ -496,10 +499,10 @@ func (s *server) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi
 	queries := dbgen.New(tx)
 
 	// The discipline in order: the face moves, the target's
-	// representative recomputes over its new membership, the
-	// vacated source follows its best survivor when its own
-	// representative moved away, and the source dissolves with its
-	// label when nothing survived.
+	// representative recomputes over its new membership, and when
+	// the face had a source cluster the vacated source follows its
+	// best survivor -- and dissolves with its label when nothing
+	// survived. A clusterless face has nothing to maintain.
 	if err := queries.MoveFaceToCluster(ctx, dbgen.MoveFaceToClusterParams{
 		FaceID:          faceID,
 		TargetClusterID: pgUUID(target),
@@ -517,13 +520,15 @@ func (s *server) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi
 		s.internalError(w, r, "repoint the target cluster's representative", err)
 		return
 	}
-	if err := queries.RepointVacatedClusterRepresentatives(ctx, pgUUIDs([]uuid.UUID{source})); err != nil {
-		s.internalError(w, r, "repoint the vacated cluster's representative", err)
-		return
-	}
-	if err := queries.DissolveVacatedClustersByID(ctx, pgUUIDs([]uuid.UUID{source})); err != nil {
-		s.internalError(w, r, "dissolve the vacated cluster", err)
-		return
+	if hasSource {
+		if err := queries.RepointVacatedClusterRepresentatives(ctx, pgUUIDs([]uuid.UUID{source})); err != nil {
+			s.internalError(w, r, "repoint the vacated cluster's representative", err)
+			return
+		}
+		if err := queries.DissolveVacatedClustersByID(ctx, pgUUIDs([]uuid.UUID{source})); err != nil {
+			s.internalError(w, r, "dissolve the vacated cluster", err)
+			return
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

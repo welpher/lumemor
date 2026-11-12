@@ -430,7 +430,6 @@
   "viewer_assign_mode_existing": "现有人物",
   "viewer_assign_mode_new": "新人物",
   "viewer_assign_note": "这将为整组命名：与这张人脸分在同一组的所有面孔都共享这个名字。",
-  "viewer_face_not_grouped": "这张人脸尚未分组，暂时无法指派。请在分组完成后重试。",
   "search_query_placeholder": "搜索你的照片——关键词与语义都行",
   "search_loading": "正在搜索…",
   "search_result_count": "{count, plural, other {# 个结果}}",

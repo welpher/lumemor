@@ -528,6 +528,29 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.toasts')).toContainText('Face removed; it is back among the not grouped yet.');
 		await expect(reopen.locator('.faces-panel__name').first()).toContainText('Not grouped yet');
 
+		// The clusterless row's reassign is the same staged flow and
+		// it LANDS: a face the clustering has not grouped yet may
+		// join an existing person (there is no source cluster to
+		// maintain), so the move the panel stages is accepted and
+		// the row converges to the picked person.
+		await reopen.getByRole('button', { name: 'Reassign this face', exact: true }).click();
+		const rehome = page.getByRole('dialog', { name: 'Choose person', exact: true });
+		await expect(rehome).toBeVisible();
+		await rehome.getByRole('radio', { name: PERSON_C }).click();
+		await rehome.getByRole('button', { name: 'Assign', exact: true }).click();
+		await expect(rehome).toHaveCount(0);
+		await expect(reopen.locator('li[data-staged="true"]')).toHaveCount(1);
+		await reopen.getByRole('button', { name: 'Finish editing', exact: true }).click();
+		await expect(page.locator('.toasts')).toContainText('Made 1 change.');
+		await expect(reopen).toHaveCount(0);
+
+		// The landing is the feedback: the re-opened panel's row
+		// carries the picked person, the group restored.
+		await page.getByRole('button', { name: 'Edit people', exact: true }).click();
+		const landed = page.getByRole('complementary', { name: 'Edit people' });
+		await expect(landed).toBeVisible();
+		await expect(landed.locator('.faces-panel__name').first()).toContainText(PERSON_C);
+
 		// The first person's unname is immediate and carries the toast
 		// echo (the named list keeps the second person alone).
 		await page.goto('/people');

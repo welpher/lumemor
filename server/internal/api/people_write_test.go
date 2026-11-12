@@ -792,8 +792,9 @@ func TestPeopleMergeValidation(t *testing.T) {
 // TestPeopleFaceMove walks the single-face move: the face lands on
 // the target, the target's representative recomputes, the vacated
 // source re-homes its representative (or dissolves with its label
-// when the move empties it), and every invisible constellation
-// answers the anti-enumeration 404.
+// when the move empties it), a clusterless face joins a target with
+// no source maintenance, and every invisible constellation answers
+// the anti-enumeration 404.
 func TestPeopleFaceMove(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -923,10 +924,6 @@ func TestPeopleFaceMove(t *testing.T) {
 		env.seedWriteCluster(t, fixtureWriteAssetID("44"), graceID,
 			time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC), graceTo,
 			writeFaceSpec{fixtureWriteFaceID("47"), 0.55})
-		// A face the clustering has not assigned to any cluster is
-		// part of no person.
-		unclustered := fixtureWriteFaceID("46")
-		env.insertFace(t, unclustered, fixtureWriteAssetID("41"), 0.40)
 
 		for _, probe := range []struct {
 			what string
@@ -935,7 +932,6 @@ func TestPeopleFaceMove(t *testing.T) {
 		}{
 			{"unknown face", fixtureWriteFaceID("ff"), moveBody},
 			{"foreign-asset face", fixtureWriteFaceID("44"), moveBody},
-			{"unclustered face", unclustered, moveBody},
 			{"invisible target", g3.id, `{"targetClusterId":"` + graceFrom.String() + `"}`},
 			{"unknown target", g3.id, `{"targetClusterId":"` + fixtureWriteClusterID("fe").String() + `"}`},
 		} {
@@ -953,6 +949,59 @@ func TestPeopleFaceMove(t *testing.T) {
 		}
 		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(graceFrom)); got != 0 {
 			t.Errorf("grace's emptied cluster rows = %d, want 0 (dissolved)", got)
+		}
+	})
+
+	t.Run("ClusterlessSourceMovesIntoATarget", func(t *testing.T) {
+		// The clusterless-source pin: a face the clustering has not
+		// grouped yet may JOIN an existing person. The move's object
+		// is the face's membership, and with no source cluster there
+		// is nothing to maintain -- no representative re-home, no
+		// dissolution -- so only the target's own side runs.
+		clusterless := fixtureWriteFaceID("48")
+		env.insertFace(t, clusterless, fixtureWriteAssetID("41"), 0.40)
+
+		clustersBefore := env.queryInt(t, "SELECT count(*) FROM face_clusters")
+		eventsBefore := len(busEventsOf(t, env.bus, "person.face_moved"))
+
+		rec := env.postFaceMove(t, env.cookie, clusterless, moveBody)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("clusterless POST move status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var moved apigen.MoveFaceResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &moved); err != nil {
+			t.Fatalf("decode clusterless move response %q: %v", rec.Body.String(), err)
+		}
+		if uuid.UUID(moved.FaceId) != clusterless || uuid.UUID(moved.ClusterId) != target {
+			t.Errorf("clusterless move response = (%s, %s), want (%s, %s)", moved.FaceId, moved.ClusterId, clusterless, target)
+		}
+
+		// The target absorbed the face and its representative stayed
+		// its strongest member: the newcomer is weaker than every
+		// face already there.
+		detail := env.getClusterDetail(t, env.cookie, target)
+		if len(detail.Faces) != 4 || uuid.UUID(detail.Faces[0].Id) != g1.id {
+			t.Fatalf("target faces = %v, want 4 strongest-first from %s", detail.Faces, g1.id)
+		}
+
+		// No source maintenance ran: nothing dissolved, nothing was
+		// minted, and no cluster took the moved face as its
+		// representative.
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters"); got != clustersBefore {
+			t.Errorf("face_clusters rows = %d after the clusterless move, want %d (no dissolution, no mint)", got, clustersBefore)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE representative_face_id = $1", pgUUID(clusterless)); got != 0 {
+			t.Errorf("clusters represented by the moved face = %d, want 0 (the target kept its strongest member)", got)
+		}
+
+		// The write reports the change like any other move.
+		movedEvents := busEventsOf(t, env.bus, "person.face_moved")
+		if len(movedEvents) != eventsBefore+1 {
+			t.Fatalf("person.face_moved events = %d, want %d", len(movedEvents), eventsBefore+1)
+		}
+		last := movedEvents[len(movedEvents)-1]
+		if last["faceId"] != clusterless.String() || last["clusterId"] != target.String() || last["userId"] != adminID.String() {
+			t.Errorf("face_moved payload = %v, want face %s on %s by %s", last, clusterless, target, adminID)
 		}
 	})
 
