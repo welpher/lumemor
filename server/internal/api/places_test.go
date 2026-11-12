@@ -153,7 +153,7 @@ func TestPlacesCityGrouping(t *testing.T) {
 	t.Run("ZhHansLocaleJoin", func(t *testing.T) {
 		// The locale switch must not move asset rows: capture the
 		// updated_at of every fixture asset before the join and
-		// assert it after (the review focus's determinism pin -- the
+		// assert it after (the determinism pin -- the
 		// display name is a JOIN, never a denormalized rewrite).
 		var before []time.Time
 		rows, err := env.pool.Query(context.Background(), `
@@ -253,7 +253,7 @@ func TestPlacesShareeVisibility(t *testing.T) {
 	// The admin's album shared to Grace, carrying a1 and aTrash; a2
 	// stays unshared.
 	sharedAlbum := fixtureAlbumID("e1")
-	env.insertTimelineAlbum(t, sharedAlbum, adminID, "virtual")
+	env.insertTimelineAlbum(t, sharedAlbum, adminID, "memory")
 	env.shareTimelineAlbum(t, sharedAlbum, graceID, adminID)
 	a1 := placeAssetID("11")
 	a2 := placeAssetID("12")

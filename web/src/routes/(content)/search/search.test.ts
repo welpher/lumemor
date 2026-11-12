@@ -227,7 +227,23 @@ test('the walls curate the per-user subset: favorite + tag on the bar, the batch
 				batchBody = JSON.parse(String(init?.body));
 				return jsonResponse(200, { affected: 1, missing: [] });
 			},
-			'/api/v1/tags': () => jsonResponse(200, { tags: [] })
+			'/api/v1/tags': () => jsonResponse(200, { tags: [] }),
+			'/api/v1/albums/mem1/items': () => jsonResponse(200, { added: 1, skipped: 0 }),
+			'/api/v1/albums': () =>
+				jsonResponse(200, {
+					albums: [
+						{
+							id: 'mem1',
+							title: 'Beach 2026',
+							type: 'memory',
+							isShared: false,
+							coverAssetIds: [],
+							itemCount: 4,
+							updatedAt: '2026-11-05T10:15:00Z',
+							callerRole: 'owner'
+						}
+					]
+				})
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -243,9 +259,11 @@ test('the walls curate the per-user subset: favorite + tag on the bar, the batch
 	const bar = document.body.querySelector<HTMLElement>('.batchbar');
 	expect(bar).not.toBeNull();
 	expect(bar?.getAttribute('role')).toBe('toolbar');
-	// The subset: favorite + tag; the ownership actions absent.
+	// The subset: favorite + tag + the memory entry; the ownership
+	// actions absent.
 	expect(() => buttonByLabel('Favorite', bar as ParentNode)).not.toThrow();
 	expect(() => buttonByLabel('Add tag', bar as ParentNode)).not.toThrow();
+	expect(() => buttonByLabel('Add to memory', bar as ParentNode)).not.toThrow();
 	for (const label of ['Hide', 'Unhide', 'Trash', 'Restore']) {
 		expect(() => buttonByLabel(label, bar as ParentNode), label).toThrow();
 	}
@@ -267,6 +285,35 @@ test('the walls curate the per-user subset: favorite + tag on the bar, the batch
 	await settle();
 	expect(document.body.querySelector('.modal__panel')?.textContent).toContain('Add tag');
 	expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/v1/tags')).toBe(true);
+	// Close the tag dialog before the memory step (one modal at a
+	// time; the wall keeps its selection through the cancel).
+	buttonByText('Cancel').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The memory entry rides the same opener shape: the picker opens
+	// over the ids captured at open (the memory list fetches fresh),
+	// and a row pick adds them through the items face.
+	tiles()[2]
+		?.querySelector<HTMLElement>('.tile__check')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	buttonByLabel('Add to memory').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(document.body.querySelector('.modal__panel')?.textContent).toContain('Add to memory');
+	expect(document.body.querySelector('.modal__panel')?.textContent).toContain('Beach 2026');
+	const memoryRow = document.body.querySelector<HTMLElement>('.add-memory__row');
+	memoryRow?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+	await settle();
+	expect(
+		fetchMock.mock.calls.some(
+			([input, init]) => String(input) === '/api/v1/albums/mem1/items' && init?.method === 'POST'
+		)
+	).toBe(true);
+	// The pass's Done clears the selection (the success arm): the bar
+	// drops.
+	buttonByText('Done').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
 
 	unmount(page);
 	flushSync();

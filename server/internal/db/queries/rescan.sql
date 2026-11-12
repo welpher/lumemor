@@ -29,7 +29,7 @@
 -- enqueue's gate proved the type at request time, but the worker
 -- runs later and against whatever the row is now -- a row that
 -- stopped being a directory album (nothing in v1 can do this, the
--- delete face is virtual-only) answers no row and the run closes
+-- delete face is memory-only) answers no row and the run closes
 -- failed instead of walking a source the album no longer claims.
 SELECT owner_id, root_path
 FROM albums

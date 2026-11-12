@@ -46,6 +46,7 @@
 	import FlatWall from '$lib/timeline/FlatWall.svelte';
 	import FacetChips, { type FacetChip } from '$lib/search/FacetChips.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
+	import AddToMemoryDialog from '$lib/memories/AddToMemoryDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Search from '@lucide/svelte/icons/search';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -56,7 +57,7 @@
 	// THE WALLS' SELECTION (the curation ruling: BOTH search walls
 	// carry the per-user subset, every role): the batch runner over
 	// the client (the optimistic favorite flip and its rollback live
-	// there; the visible-domain rule -- the B4 union for everyone,
+	// there; the visible-domain rule -- one union for everyone,
 	// the owner resolution per caller -- is the endpoint's own) and
 	// the add-tag dialog flow the walls' openers feed (the captured
 	// ids, the done continuation). The bar renders the subset: the
@@ -79,6 +80,13 @@
 	let tagList = $state<TagSummary[]>([]);
 	let tagLoading = $state(false);
 	let tagReport = $state<{ added: number; skipped: number } | null>(null);
+
+	// The add-to-memory flow's state: the same captured-ids +
+	// done-continuation pair the walls' openers hand over -- the
+	// dialog owns the flow's own state and writes.
+	let memoryIds = $state<readonly string[]>([]);
+	let memoryDone: (() => void) | undefined;
+	let memoryOpen = $state(false);
 
 	/** The walls' batch runner: the client owns the write. */
 	function runBatch(action: BatchAction, ids: readonly string[]): Promise<BatchOutcome> {
@@ -146,6 +154,21 @@
 			return;
 		}
 		tagReport = outcome.report;
+	}
+
+	// The memory picker's opener (the wall's captured ids and done
+	// continuation ride the dialog); the pass's landing fires the
+	// success arm -- the wall clears its selection, no convergence
+	// follows (adding to a memory changes no photo's state).
+	function openMemoryDialog(ids: readonly string[], done: () => void): void {
+		memoryIds = ids;
+		memoryDone = done;
+		memoryOpen = true;
+	}
+
+	function finishMemory(): void {
+		memoryDone?.();
+		memoryDone = undefined;
 	}
 
 	// The tag report's done: close the dialog and fire the wall's
@@ -445,12 +468,24 @@
 			<!-- QUERY mode: the FLAT justified wall -- rank order
 			     preserved, no grouping; the selection flow is the flat
 			     wall's own organ (the same subset). -->
-			<FlatWall items={$search.items} actions={BATCH_ACTIONS} onbatch={runBatch} onaddtag={openTagDialog} />
+			<FlatWall
+				items={$search.items}
+				actions={BATCH_ACTIONS}
+				onbatch={runBatch}
+				onaddtag={openTagDialog}
+				onaddmemory={openMemoryDialog}
+			/>
 		{:else}
 			<!-- BROWSE mode: the unified month-grouped day-block wall --
 			     the same renderer every photo surface composes, with
 			     the per-user subset. -->
-			<Wall items={$search.items} actions={BATCH_ACTIONS} onbatch={runBatch} onaddtag={openTagDialog} />
+			<Wall
+				items={$search.items}
+				actions={BATCH_ACTIONS}
+				onbatch={runBatch}
+				onaddtag={openTagDialog}
+				onaddmemory={openMemoryDialog}
+			/>
 		{/if}
 
 		{#if $search.status === 'error' && $search.items.length > 0}
@@ -490,3 +525,7 @@
 	oncreate={(name) => void addToNewTag(name)}
 	ondone={finishTag}
 />
+
+<!-- The memory picker the walls' openers feed (the captured ids, the
+     done continuation). -->
+<AddToMemoryDialog bind:open={memoryOpen} ids={memoryIds} onpass={finishMemory} />

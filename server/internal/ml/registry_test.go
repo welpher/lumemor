@@ -464,7 +464,7 @@ func TestActivateRejectsMissingFile(t *testing.T) {
 }
 
 // TestSameDimensionActivationCoexists pins the same-dimension half of
-// the dimension policy (review focus: switching keeps products):
+// the dimension policy (switching keeps the products):
 // activating a second clip model of the column's current dimension
 // flips the active flag and touches nothing else -- the embedding rows
 // survive and the column dimension stays as it was.
@@ -564,7 +564,7 @@ func TestCrossDimensionActivationWipesAndAlters(t *testing.T) {
 }
 
 // TestCrossDimensionActivationRollsBack pins the atomicity of the
-// dimension switch (review focus: half-done switches must roll back):
+// dimension switch (half-done switches must roll back):
 // when the ALTER fails after the wipe, the transaction rolls the
 // embedding rows, the column dimension, the index and the activation
 // flags back to their original state.

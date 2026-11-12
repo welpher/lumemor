@@ -19,7 +19,7 @@ void main() {
       // TODO
     });
 
-    // The album's type.
+    // The album's type. A `memory` entry is one of the viewer's own or shared reference sets; `directory` entries are sources. The one `sync` entry, when present, is the viewer's own default album (never another account's). 
     // String type
     test('to test the property `type`', () async {
       // TODO

@@ -9,13 +9,14 @@
 // exclusion into their own preference), the property patch behind
 // PATCH /albums/{albumId} (with the cover's live-member validation
 // and the deletability switch of the directory albums), the album
-// removal behind DELETE /albums/{albumId} (the virtual reference
+// removal behind DELETE /albums/{albumId} (the memory reference
 // set's plain cascade and the directory album's un-ingest -- see
-// albumremoval.go) and the membership removal behind
-// DELETE /albums/{albumId}/items (batch
-// semantics: the honest {removed, skipped} report, never per-item
-// errors; the membership ADD is gone -- albums are sources, not
-// curation targets).
+// albumremoval.go) and the memory's membership curation behind
+// POST/DELETE /albums/{albumId}/items (batch
+// semantics: the honest {added, removed} / skipped reports, never
+// per-item errors; the membership writes are the memory album's
+// own curation faces -- a directory album is a source, not a
+// curation target).
 //
 // Every write shares the two-tier authorization answer: an album the
 // caller cannot see at all (unknown, foreign-unshared, every sync
@@ -161,17 +162,16 @@ func (s *server) albumWriteGate(w http.ResponseWriter, r *http.Request, requeste
 }
 
 // albumCurationGate resolves the membership writes' gate: the write
-// authorization and the virtual-only rule. Directory
-// albums manage their own membership (the rescan flow of a later
-// milestone) and sync albums are no album resources, so both fold
-// into the single-shape 404. It answers ok=false once it has
-// written the response.
+// authorization and the memory-only rule. Directory albums manage
+// their own membership (the rescan flow) and sync albums are no
+// album resources, so both fold into the single-shape 404. It
+// answers ok=false once it has written the response.
 func (s *server) albumCurationGate(w http.ResponseWriter, r *http.Request, requester authContext, albumID uuid.UUID) bool {
 	gate, ok := s.albumWriteGate(w, r, requester, albumID)
 	if !ok {
 		return false
 	}
-	if gate.Album.Type != dbgen.AlbumTypeVirtual {
+	if gate.Album.Type != dbgen.AlbumTypeMemory {
 		s.writeAlbumNotFound(w)
 		return false
 	}
@@ -202,10 +202,17 @@ func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, c
 	}
 
 	// The derived cover: the wall's own candidates query over the one
-	// album, bounded at four rows by construction.
+	// album, bounded at four rows by construction. The caller rides
+	// along: the write's caller is the owner or an administrator
+	// overriding the owner check, and the candidates query's own
+	// owner check passes both for an own memory -- so the write's
+	// card carries the owner's live tiles either way.
 	var derived []uuid.UUID
 	if !row.Album.CoverAssetID.Valid {
-		candidates, err := s.queries.ListAlbumCoverCandidates(r.Context(), []pgtype.UUID{row.Album.ID})
+		candidates, err := s.queries.ListAlbumCoverCandidates(r.Context(), dbgen.ListAlbumCoverCandidatesParams{
+			AlbumIds: []pgtype.UUID{row.Album.ID},
+			UserID:   pgUUID(callerID),
+		})
 		if err != nil {
 			s.internalError(w, r, "load album cover candidates", err)
 			return apigen.AlbumSummary{}, false
@@ -249,9 +256,9 @@ func (s *server) albumItemsIDs(w http.ResponseWriter, assetIds []openapi_types.U
 
 // CreateAlbum implements POST /api/v1/albums: the directory album
 // creator, the albums-as-sources core. The request carries no type
-// field -- this endpoint IS directory creation, the one creatable
-// album type (the sync album is born per account, the virtual album
-// is a legacy shape nothing creates anymore) -- and the source path
+// field -- this endpoint IS directory creation (the sync album is
+// born per account; a memory is born through its own creation face)
+// -- and the source path
 // runs the full validation matrix before anything is written: each
 // failing branch answers its own 400 error code, and the album row
 // stores the RESOLVED path. The face is the ADMINISTRATOR's (the
@@ -446,7 +453,7 @@ func albumCreateResponse(card apigen.AlbumSummary, sourceWritable bool, skipped 
 // partial edit of the properties -- any subset, at least one
 // field, JSON null counting as absent. The cover validation refuses
 // every id that is not a live member of the album itself, and the
-// deletability switch is the directory album's own (a virtual album
+// deletability switch is the directory album's own (a memory album
 // answers the field's own 400, not a generic refusal). The write
 // publishes album.updated unconditionally on success -- the
 // convergent refetch makes the unconditional fire harmless -- and
@@ -477,7 +484,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 	}
 
 	// The deletability switch is the directory album's own field: a
-	// virtual album's deletions never move files, so the switch has
+	// memory album's deletions never move files, so the switch has
 	// no home there -- the refusal names the field's own condition.
 	if request.AllowAppDeletion != nil && gate.Album.Type != dbgen.AlbumTypeDirectory {
 		s.writeMessageKey(w, "the deletability switch is a directory album's own setting", "album_deletable_not_directory")
@@ -542,13 +549,16 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 }
 
 // DeleteAlbum implements DELETE /api/v1/albums/{albumId}: the album
-// removal, two arms behind one gate. The VIRTUAL arm is the
-// reference set's plain delete: the row goes and every membership
-// and share row follows through the schema's cascades, the members'
-// asset rows untouched. The DIRECTORY arm is the un-ingest (see
+// removal, two arms behind one gate. The MEMORY arm is the
+// reference set's plain delete: the row goes and every membership,
+// share and preference row follows through the schema's cascades,
+// the members' asset rows and their per-user states untouched --
+// a memory holds references, never the photos themselves, so its
+// removal touches nothing but its own rows. The DIRECTORY arm is
+// the un-ingest (see
 // albumremoval.go): the album's own rows go in the same single
 // transaction as every member asset no other album references --
-// the reference guard's survivors keep their rows, and the source
+// the guard's survivors keep their rows, and the source
 // files of the purged stay on the mount whatever happens to the
 // library data. Both arms answer 204 with no body and publish
 // album.deleted; the directory arm additionally publishes
@@ -570,8 +580,8 @@ func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 
-	if gate.Album.Type == dbgen.AlbumTypeVirtual {
-		deleted, err := s.queries.DeleteVirtualAlbum(r.Context(), pgUUID(albumId))
+	if gate.Album.Type == dbgen.AlbumTypeMemory {
+		deleted, err := s.queries.DeleteMemoryAlbum(r.Context(), pgUUID(albumId))
 		if err != nil {
 			s.internalError(w, r, "delete the album", err)
 			return
@@ -619,6 +629,60 @@ func (s *server) DeleteAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		s.removePurgedMemberFiles(r, member)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// AddAlbumItems implements POST /api/v1/albums/{albumId}/items: the
+// membership add, the memory curation's own arm. Every id the
+// request names must pass the re-share ground -- the creator
+// currently sees the photo, and it is a live row -- and the ids
+// that fail (plus the ids already members) are the skipped of the
+// honest report: the row never lands, never a per-item error, the
+// batch surface's own discipline. The write publishes
+// album.items-changed exactly when at least one row landed.
+func (s *server) AddAlbumItems(w http.ResponseWriter, r *http.Request, albumId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	var request apigen.AlbumItemsRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+		return
+	}
+	ids, ok := s.albumItemsIDs(w, request.AssetIds)
+	if !ok {
+		return
+	}
+
+	if !s.albumCurationGate(w, r, requester, uuid.UUID(albumId)) {
+		return
+	}
+
+	// The add's validation and insert are ONE statement: the rows
+	// that land are exactly the requested ids the creator currently
+	// sees as live rows, and everything else folds into the skipped
+	// count -- no pre-validation pass could race any tighter than
+	// the insert's own predicate.
+	added, err := s.queries.AddMemoryItems(r.Context(), dbgen.AddMemoryItemsParams{
+		AlbumID:  pgUUID(albumId),
+		AssetIds: pgUUIDs(ids),
+		AddedBy:  pgUUID(requester.userID),
+	})
+	if err != nil {
+		s.internalError(w, r, "add the album items", err)
+		return
+	}
+
+	if len(added) > 0 {
+		s.publishAlbumEvent("album.items-changed", uuid.UUID(albumId), requester.userID)
+	}
+
+	s.writeJSON(w, http.StatusOK, apigen.AddAlbumItemsResponse{
+		Added:   len(added),
+		Skipped: len(ids) - len(added),
+	})
 }
 
 // RemoveAlbumItems implements DELETE /api/v1/albums/{albumId}/items:

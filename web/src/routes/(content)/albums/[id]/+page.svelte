@@ -5,6 +5,14 @@
 	// narrow -- the album's live members in the timeline's exact
 	// shape and keyset order).
 	//
+	// THE MEMORY HAND-OVER: a memory-typed id never renders here --
+	// the memory's own route owns its whole face (the curation bar,
+	// the removal selection, the member's read-only view), so the
+	// detail read that answers `type: memory` redirects there and
+	// this page's arms serve the CONTAINERS alone (the directory
+	// album's properties/rescan/remove, the sync album's read-only
+	// grid, the viewer's exclusion toggle).
+	//
 	// THE CONTEXTUAL BAR: the page
 	// REPLACES the shell's global topbar while it is active -- the
 	// content shell hides its own bar on this route, and this page's
@@ -34,14 +42,12 @@
 	// by the autonomy face, simplified by the lock's retirement):
 	//
 	// - The action set follows the role and the type: the owner of a
-	//   virtual album holds rename / set cover (picked from the
-	//   rendered members) / delete; the owner of a directory album
-	//   holds the properties (the edit dialog: title + the read-only
-	//   source row + the audience + the autonomy block) / the rescan
-	//   trigger (the three-arm diff run, its progress surfaced
-	//   through the job events the run's identifier keys) / the
-	//   remove (the un-ingest, behind its semantics-stating confirm);
-	//   a viewer
+	//   directory album holds the properties (the edit dialog: title
+	//   + the read-only source row + the audience + the autonomy
+	//   block), the rescan trigger (the three-arm diff run, its
+	//   progress surfaced through the job events the run's
+	//   identifier keys) and the remove (the un-ingest, behind its
+	//   semantics-stating confirm); a viewer
 	//   holds the exclusion toggle (their own preference) alone --
 	//   the sharee's departure went with the revoke endpoint it rode
 	//   (the audience write is owner-domain; the member side is the
@@ -95,20 +101,18 @@
 	import { createTimelineClient, type BatchAction } from '$lib/api/timeline';
 	import { subscribeAlbumEvents, subscribeAssetEvents, subscribeJobEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
-	import { publishWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
+	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import AlbumPropertiesDialog, { type AlbumAutonomyDraft } from '$lib/albums/AlbumPropertiesDialog.svelte';
-	import CoverPickerDialog from '$lib/albums/CoverPickerDialog.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import PenLine from '@lucide/svelte/icons/pen-line';
-	import Images from '@lucide/svelte/icons/images';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import CalendarOff from '@lucide/svelte/icons/calendar-off';
 	import Calendar from '@lucide/svelte/icons/calendar';
-	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import X from '@lucide/svelte/icons/x';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -129,14 +133,6 @@
 	// The properties dialog (the edit: title + source + audience).
 	let propertiesOpen = $state(false);
 	let propertiesErrorKey = $state('');
-
-	// The cover picker.
-	let coverOpen = $state(false);
-	let coverErrorKey = $state('');
-
-	// The delete confirm (the virtual album's).
-	let deleteOpen = $state(false);
-	let deleteErrorKey = $state('');
 
 	// The remove confirm (the directory album's un-ingest): the
 	// semantics say themselves -- the album and its photo data go,
@@ -173,7 +169,6 @@
 	let wallResetKey = $state(0);
 
 	const owner = $derived(detail?.callerRole === 'owner');
-	const virtual = $derived(detail?.type === 'virtual');
 	const excluded = $derived(detail?.inTimeline === false);
 	const excludable = $derived(detail?.inTimeline !== undefined);
 	// The wall's delete affordance: the server-derived face --
@@ -201,6 +196,15 @@
 	/** Apply one detail outcome; the superseded runs never call this. */
 	function apply(outcome: Awaited<ReturnType<typeof fetchAlbumDetail>>): void {
 		if (outcome.ok) {
+			// THE MEMORY HAND-OVER: a memory-typed id bounces to its
+			// own route (the memory's curation face); this page keeps
+			// rendering nothing for it.
+			if (outcome.detail.type === 'memory') {
+				detail = null;
+				status = 'loading';
+				void goto(`/memories/${encodeURIComponent(outcome.detail.id)}`);
+				return;
+			}
 			detail = outcome.detail;
 			errorKey = '';
 			status = 'ready';
@@ -259,11 +263,6 @@
 			unsubscribe();
 		};
 	});
-
-	// The members the cover picker offers: the wall's published items
-	// -- exactly the grid the detail renders (the picker itself only
-	// renders while the detail is loaded).
-	const members = $derived(wallItems());
 
 	/** Adopt a write response's wall card into the detail's fields. */
 	function applyWriteFields(next: { title: string; itemCount: number }): void {
@@ -347,27 +346,6 @@
 		propertiesOpen = false;
 	}
 
-	// The cover write: the 200 proves the pin landed, so the detail
-	// adopts the picked id (the SSE echo refetches anyway).
-	async function submitCover(assetId: string): Promise<void> {
-		const id = untrack(() => albumId);
-		if (writeBusy || detail === null || id === '') {
-			return;
-		}
-		writeBusy = true;
-		coverErrorKey = '';
-		const outcome = await patchAlbum(id, { coverAssetId: assetId });
-		writeBusy = false;
-		if (!outcome.ok) {
-			coverErrorKey = outcome.errorKey;
-			return;
-		}
-		if (detail !== null) {
-			detail = { ...detail, coverAssetId: assetId };
-		}
-		coverOpen = false;
-	}
-
 	// The rescan trigger: POST the run, adopt the identifier it
 	// answers (202 the freshly created run, 200 the in-flight one of
 	// THIS album the request joined -- the endpoint's idempotence),
@@ -415,25 +393,6 @@
 			};
 		});
 	});
-
-	// The delete write: success leaves for the wall (a deep link may
-	// have no history to back through).
-	async function confirmDelete(): Promise<void> {
-		const id = untrack(() => albumId);
-		if (writeBusy || detail === null || id === '') {
-			return;
-		}
-		writeBusy = true;
-		deleteErrorKey = '';
-		const outcome = await deleteAlbum(id);
-		writeBusy = false;
-		if (!outcome.ok) {
-			deleteErrorKey = outcome.errorKey;
-			return;
-		}
-		deleteOpen = false;
-		void goto('/albums');
-	}
 
 	// The remove write (the directory album's un-ingest): the same
 	// endpoint, the directory arm. Success leaves for the wall; the
@@ -615,9 +574,7 @@
 
 		<!-- The action set, per callerRole x type, as icon-only
 		     buttons (the icon-first rule; the aria-labels are the
-		     actions' own strings): the owner of a virtual album holds
-		     the edit dialog (rename + audience + the autonomy block),
-		     the cover and the delete; the owner of a directory album
+		     actions' own strings): the owner of a directory album
 		     the edit dialog (properties: title + the source row +
 		     audience + the autonomy block of exclusion /
 		     deletability), the rescan trigger and the remove (the
@@ -625,41 +582,11 @@
 		     sync album (the default album) holds nothing --
 		     system-managed; a viewer the exclusion toggle alone (the
 		     departure went with the revoke endpoint it rode; the
-		     audience is owner-domain). -->
+		     audience is owner-domain). A memory id never reaches this
+		     bar: the detail read that answers one redirects to the
+		     memory's own route before the arms render. -->
 		<div class="album-detail__actions ml-auto flex items-center gap-1">
-			{#if detail !== null && owner && virtual}
-				<IconButton
-					disabled={writeBusy}
-					aria-label={$_('albums_action_rename')}
-					onclick={() => {
-						propertiesErrorKey = '';
-						propertiesOpen = true;
-					}}
-				>
-					<PenLine size={20} aria-hidden="true" />
-				</IconButton>
-				<IconButton
-					disabled={writeBusy}
-					aria-label={$_('albums_action_cover')}
-					onclick={() => {
-						coverErrorKey = '';
-						coverOpen = true;
-					}}
-				>
-					<Images size={20} aria-hidden="true" />
-				</IconButton>
-				<IconButton
-					variant="danger"
-					disabled={writeBusy}
-					aria-label={$_('albums_action_delete')}
-					onclick={() => {
-						deleteErrorKey = '';
-						deleteOpen = true;
-					}}
-				>
-					<Trash2 size={20} aria-hidden="true" />
-				</IconButton>
-			{:else if detail !== null && owner && detail.type === 'directory'}
+			{#if detail !== null && owner && detail.type === 'directory'}
 				<IconButton
 					disabled={writeBusy}
 					aria-label={$_('albums_action_properties')}
@@ -881,42 +808,7 @@
 		errorKey={propertiesErrorKey}
 		onsubmit={(draft) => void submitProperties(draft)}
 	/>
-
-	<CoverPickerDialog
-		bind:open={coverOpen}
-		items={members}
-		currentCoverId={detail.coverAssetId}
-		busy={writeBusy}
-		errorKey={coverErrorKey}
-		onsubmit={(assetId) => void submitCover(assetId)}
-	/>
 {/if}
-
-<!-- The delete confirm: the album goes, its photo list and shares
-     with it -- the photos themselves stay. -->
-<Modal bind:open={deleteOpen} title={$_('albums_delete_title')}>
-	<p class="album-detail__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-		{$_('albums_delete_body', { values: { title: detail?.title ?? '' } })}
-	</p>
-	{#if deleteErrorKey !== ''}
-		<p
-			class="album-detail__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
-			role="alert"
-		>
-			{errorText(deleteErrorKey)}
-		</p>
-	{/if}
-	{#snippet footer()}
-		<Button variant="ghost" disabled={writeBusy} onclick={() => (deleteOpen = false)}>
-			<X size={20} aria-hidden="true" />
-			{$_('common_cancel')}
-		</Button>
-		<Button variant="danger" disabled={writeBusy} onclick={() => void confirmDelete()}>
-			<Trash2 size={20} aria-hidden="true" />
-			{$_('albums_delete_confirm')}
-		</Button>
-	{/snippet}
-</Modal>
 
 <!-- The remove confirm (the directory album's un-ingest): the
      pinned semantics in the body -- the album and its photo data

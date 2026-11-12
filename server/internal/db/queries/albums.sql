@@ -45,7 +45,7 @@ ON CONFLICT DO NOTHING;
 -- name: ListWallAlbumsForCaller :many
 -- The wall of the calling user in one statement: the pinned sync
 -- card (the caller's own core stream, the default "My photos"
--- album) UNION ALL the own group (the caller's virtual and
+-- album) UNION ALL the own group (the caller's memory and
 -- directory albums, updated_at descending) UNION ALL the shared
 -- group (the albums shared to the caller, the caller's grant time
 -- descending), each group breaking ties on the album id descending.
@@ -56,14 +56,14 @@ ON CONFLICT DO NOTHING;
 -- cards, the caller's granted_at for shared ones).
 --
 -- A sync album of ANOTHER account never appears: the sync arm is
--- owner-scoped and the shared arm admits virtual and directory
+-- owner-scoped and the shared arm admits memory and directory
 -- albums only (a sync album a share row names -- nothing can
 -- produce one -- feeds no wall card for the sharee).
 --
 -- in_timeline is the caller's raw timeline preference row of the
 -- card's album (the exclusion toggle's stored state): NULL means no
 -- row, which the handler maps to the default of feeding the timeline
--- -- except on the caller's own virtual cards, where the field stays
+-- -- except on the caller's own memory cards, where the field stays
 -- absent entirely (they never feed the caller's own timeline), and
 -- on the sync card (the handler omits it there too: the core stream
 -- is never excludable, so the stored value -- always NULL, the
@@ -122,7 +122,7 @@ FROM albums al
 LEFT JOIN user_album_prefs p
        ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
 WHERE al.owner_id = sqlc.arg('user_id')
-  AND al.type IN ('virtual', 'directory')
+  AND al.type IN ('memory', 'directory')
 
 UNION ALL
 
@@ -133,6 +133,12 @@ SELECT sqlc.embed(al),
        -- The shared arm's is_shared holds true by construction: the
        -- caller's own share row is the reason this row exists.
        true AS is_shared,
+       -- The shared arm's count carries the memory's shared-view
+       -- rule: the sharee's card counts the live members the
+       -- memory's owner currently sees -- the re-share ground,
+       -- revalidated at read time, so a revoked photo leaves the
+       -- sharee's card with no snapshot residue. (The caller here
+       -- is never the album's owner: no share row can name them.)
        (
            SELECT count(*)
            FROM album_items ai
@@ -141,6 +147,7 @@ SELECT sqlc.embed(al),
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
+             AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
        ) AS item_count,
        p.in_timeline,
        2::int AS arm_rank,
@@ -150,7 +157,7 @@ JOIN album_shares s ON s.album_id = al.id AND s.user_id = sqlc.arg('user_id')
 JOIN users u ON u.id = al.owner_id
 LEFT JOIN user_album_prefs p
        ON p.album_id = al.id AND p.user_id = sqlc.arg('user_id')
-WHERE al.type IN ('virtual', 'directory')
+WHERE al.type IN ('memory', 'directory')
 
 ORDER BY arm_rank, sort_at DESC, id DESC;
 
@@ -159,7 +166,12 @@ ORDER BY arm_rank, sort_at DESC, id DESC;
 -- recent live members, taken_at descending with the asset id as the
 -- tiebreak -- the exact rows the wall renders for an album without a
 -- pinned cover asset. The window keeps the result bounded at four
--- rows per album however many members an album holds.
+-- rows per album however many members an album holds. The memory's
+-- shared-view rule rides the same predicate as the pages and the
+-- counts: a sharee's collage tiles are the owner-visible live
+-- members, the owner's own (the caller is the album's owner) are
+-- the plain live ones, so the card's tiles never name a photo the
+-- card's count already dropped.
 SELECT ranked.album_id,
        ranked.asset_id
 FROM (
@@ -170,11 +182,17 @@ FROM (
                ORDER BY a.taken_at DESC, a.id DESC
            ) AS recency_rank
     FROM album_items ai
+    JOIN albums al ON al.id = ai.album_id
     JOIN assets a ON a.id = ai.asset_id
     WHERE ai.album_id = ANY(sqlc.arg('album_ids')::uuid[])
       AND a.deleted_at IS NULL
       AND a.is_hidden = false
       AND a.is_component = false
+      AND (
+          al.type <> 'memory'
+          OR al.owner_id = sqlc.arg('user_id')
+          OR caller_asset_visible(al.owner_id, a.id)
+      )
 ) ranked
 WHERE ranked.recency_rank <= 4
 ORDER BY ranked.album_id, ranked.recency_rank;
@@ -195,8 +213,13 @@ ORDER BY ranked.album_id, ranked.recency_rank;
 -- in_timeline is the caller's raw preference row (NULL = no row);
 -- the handler maps it to the excludable cards' field -- present for
 -- the own directory albums and the shared albums, absent for the
--- caller's own virtual albums and for the caller's own sync album
+-- caller's own memory albums and for the caller's own sync album
 -- (the core stream is never excludable), true when no row exists.
+-- item_count carries the memory's shared-view rule: a sharee's
+-- count is the live members the memory's owner currently sees (the
+-- re-share ground, revalidated at read time), while the owner's own
+-- count is the plain live membership -- the owner's curation is
+-- their own view of the set.
 SELECT sqlc.embed(al),
        CASE
            WHEN al.owner_id = sqlc.arg('user_id') THEN 'owner'::text
@@ -210,6 +233,11 @@ SELECT sqlc.embed(al),
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
+             AND (
+                 al.type <> 'memory'
+                 OR al.owner_id = sqlc.arg('user_id')
+                 OR caller_asset_visible(al.owner_id, a.id)
+             )
        ) AS item_count,
        p.in_timeline
 FROM albums al
@@ -231,18 +259,30 @@ WHERE al.id = sqlc.arg('album_id')
 -- same row-value predicate and the same NULL-init first page. The
 -- caller's visibility gate is NOT here: the handler runs this only
 -- after GetAlbumForCaller returned the album, so the rows it lists
--- are rows of an album the caller already proved they may see.
+-- are rows of an album the caller already proved they may see. The
+-- memory's shared-view rule rides along: a sharee's page carries
+-- the live members the memory's owner CURRENTLY sees (the re-share
+-- ground, revalidated at read time -- a photo whose source
+-- visibility died leaves every shared view live, no snapshot
+-- residue), while the owner's own page is the plain live
+-- membership.
 SELECT ai.asset_id,
        ai.added_at,
        a.taken_at,
        a.original_filename,
        a.media_kind
 FROM album_items ai
+JOIN albums al ON al.id = ai.album_id
 JOIN assets a ON a.id = ai.asset_id
 WHERE ai.album_id = sqlc.arg('album_id')
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND (
+      al.type <> 'memory'
+      OR al.owner_id = sqlc.arg('user_id')
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
   AND (
       sqlc.narg('cursor_taken_at')::timestamptz IS NULL
       OR (a.taken_at, a.id) < (sqlc.narg('cursor_taken_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
@@ -302,11 +342,26 @@ INSERT INTO albums (id, owner_id, title, type, root_path, source_writable, allow
 VALUES (sqlc.arg('id'), sqlc.arg('owner_id'), sqlc.arg('title'), 'directory', sqlc.arg('root_path'), sqlc.arg('source_writable'), sqlc.arg('allow_app_deletion'))
 RETURNING id;
 
+-- name: CreateMemoryAlbum :one
+-- The memory creator: a bare reference-set row -- owner, title,
+-- type, nothing else. The row owns no path (a memory has no source:
+-- its photos live in the albums they were ingested through), so
+-- root_path stays NULL and the directory albums' own columns keep
+-- their defaults. The id is generated caller-side; the creation
+-- face carries title and audience only. The wall card's companions
+-- are the creation-time constants -- no members, no cover, the
+-- caller's own audience grants land right after -- so the handler
+-- reads the fresh row's full card through GetAlbumSummary like
+-- every other write response.
+INSERT INTO albums (id, owner_id, title, type)
+VALUES (sqlc.arg('id'), sqlc.arg('owner_id'), sqlc.arg('title'), 'memory')
+RETURNING id;
+
 -- name: GetAlbumSummary :one
 -- The album row with the wall card's honest companions: whether any
 -- share row exists, the live member count, and the caller's raw
 -- timeline preference row (the write face's caller is the owner, so a
--- virtual album's card carries no preference field; the handler maps
+-- memory album's card carries no preference field; the handler maps
 -- NULL to the default the same way the wall does). The write face's
 -- responses build their cards off this row; the derived cover
 -- candidates ride along through the wall's own follow-up query.
@@ -338,7 +393,7 @@ WHERE al.id = sqlc.arg('album_id');
 -- deletability switch joins the property fields: present
 -- updates the owner's allow-app-deletion posture of the directory
 -- album, absent keeps it, with the type arm that keeps
--- the switch off virtual albums living in the handler. updated_at
+-- the switch off memory albums living in the handler. updated_at
 -- moves with the write: the wall orders the own group by it. No
 -- owner guard and no type guard here: the handler's gate already
 -- resolved the caller's right to this write, and an album deleted
@@ -367,28 +422,28 @@ WHERE ai.album_id = sqlc.arg('album_id')
   AND a.is_hidden = false
   AND a.is_component = false;
 
--- name: DeleteVirtualAlbum :execrows
--- The virtual album delete: the row goes and every album_items and
--- album_shares row follows through the schema's ON DELETE CASCADE.
--- The type guard keeps the statement honest against the handler's
--- virtual-only verdict (directory removal is the directory album's
--- own flow), and zero rows -- a concurrent delete won the race -- is
--- the 404 of a gone album.
+-- name: DeleteMemoryAlbum :execrows
+-- The memory album delete: the row goes and every album_items,
+-- album_shares and per-user timeline preference row follows through
+-- the schema's ON DELETE CASCADE. The type guard keeps the statement
+-- honest against the handler's memory-only verdict (directory
+-- removal is the directory album's own flow), and zero rows -- a
+-- concurrent delete won the race -- is the 404 of a gone album.
 DELETE FROM albums
 WHERE id = sqlc.arg('album_id')
-  AND type = 'virtual';
+  AND type = 'memory';
 
 -- name: DeleteDirectoryAlbum :execrows
 -- The directory album's removal (the un-ingest): the row goes with
 -- every membership, share and per-user preference row through the
 -- schema's ON DELETE CASCADEs. The type guard keeps the statement
--- honest against the handler's directory-only verdict (the virtual
+-- honest against the handler's directory-only verdict (the memory
 -- delete is its own statement above), and zero rows -- a concurrent
 -- removal won the race -- is the 404 of a gone album. The members'
--- asset rows are deliberately NOT here: the handler's reference
--- guard runs AFTER this cascade has taken the album's own
--- membership rows, so the surviving album_items rows name exactly
--- the members another album still holds.
+-- asset rows are deliberately NOT here: the handler's guard on the
+-- other albums' references runs AFTER this cascade has taken the
+-- album's own membership rows, so the surviving album_items rows
+-- name exactly the members another album still holds.
 DELETE FROM albums
 WHERE id = sqlc.arg('album_id')
   AND type = 'directory';
@@ -429,6 +484,32 @@ WHERE asset_id = sqlc.arg('asset_id');
 DELETE FROM album_items
 WHERE album_id = sqlc.arg('album_id')
   AND asset_id = ANY(sqlc.arg('asset_ids')::uuid[]);
+
+-- name: AddMemoryItems :many
+-- The membership add, the memory curation's own arm: one
+-- album_items row for every requested asset the creator CURRENTLY
+-- SEES -- the re-share right's whole ground. The visibility check
+-- is the caller-visible predicate over the acting creator (the
+-- union of the albums that feed their view: their sync stream, their
+-- directory albums, the albums shared to them), joined with the
+-- live-member filter (not trashed, not hidden, not a Live Photo
+-- component row) so a photo the family can no longer see never
+-- enters a set that re-shares it. An id failing either check
+-- matches nothing here and lands as the report's skipped; an id
+-- already a member hits the conflict and lands as skipped too --
+-- the honest report, never per-item errors. RETURNING carries
+-- exactly the rows this write landed -- the added count, and the
+-- event discipline's transition signal.
+INSERT INTO album_items (album_id, asset_id, added_by)
+SELECT sqlc.arg('album_id'), a.id, sqlc.arg('added_by')
+FROM assets a
+WHERE a.id = ANY(sqlc.arg('asset_ids')::uuid[])
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND caller_asset_visible(sqlc.arg('added_by'), a.id)
+ON CONFLICT DO NOTHING
+RETURNING asset_id;
 
 -- name: ListAlbumsOfAsset :many
 -- The albums holding membership rows for one asset: the ids whose
@@ -532,7 +613,7 @@ ORDER BY s.granted_at ASC, s.user_id ASC;
 -- name: GetAlbumForTimelinePref :one
 -- The preference face's gate: the album row with the caller's role.
 -- Unlike GetAlbumForCaller this resolves EVERY album type -- the
--- caller's own sync and own virtual albums must reach the handler so
+-- caller's own sync and own memory albums must reach the handler so
 -- their 400 (not excludable) can answer, and a sync album a share
 -- row names (nothing can produce one, but a defense holds anyway)
 -- resolves as a viewer row the handler's type check refuses. No row

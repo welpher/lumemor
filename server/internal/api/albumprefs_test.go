@@ -129,25 +129,25 @@ func TestSetAlbumTimelinePreference(t *testing.T) {
 	env.addTimelineItem(t, ownDirectory, dirOnly, adminID)
 	env.addTimelineItem(t, adminSync, syncOnly, adminID)
 
-	// Grace shares one virtual album carrying two of her assets to
+	// Grace shares one memory album carrying two of her assets to
 	// the admin; her private one stays in her own sync stream (the
 	// helper ensures the seeded account's sync album, exactly like
 	// the upload path would).
-	sharedVirtual := fixtureAlbumID("b3")
-	env.insertTimelineAlbum(t, sharedVirtual, graceID, "virtual")
-	env.shareTimelineAlbum(t, sharedVirtual, adminID, graceID)
+	sharedMemory := fixtureAlbumID("b3")
+	env.insertTimelineAlbum(t, sharedMemory, graceID, "memory")
+	env.shareTimelineAlbum(t, sharedMemory, adminID, graceID)
 	sharedA := fixtureAssetID("b3")
 	sharedB := fixtureAssetID("b4")
 	gracePrivate := fixtureAssetID("b5")
 	env.insertOwnedAsset(t, sharedA, graceID, time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertOwnedAsset(t, sharedB, graceID, time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertOwnedAsset(t, gracePrivate, graceID, time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.addTimelineItem(t, sharedVirtual, sharedA, graceID)
-	env.addTimelineItem(t, sharedVirtual, sharedB, graceID)
+	env.addTimelineItem(t, sharedMemory, sharedA, graceID)
+	env.addTimelineItem(t, sharedMemory, sharedB, graceID)
 
-	// The admin's own virtual album: never excludable.
-	ownVirtual := fixtureAlbumID("b6")
-	env.insertTimelineAlbum(t, ownVirtual, adminID, "virtual")
+	// The admin's own memory album: never excludable.
+	ownMemory := fixtureAlbumID("b6")
+	env.insertTimelineAlbum(t, ownMemory, adminID, "memory")
 
 	t.Run("ExcludesDirectoryArmOnly", func(t *testing.T) {
 		// Baseline: the shared album's assets (the share is live
@@ -195,7 +195,7 @@ func TestSetAlbumTimelinePreference(t *testing.T) {
 		page := env.getTimeline(t, env.cookie, "")
 		requireTimelineIDs(t, page.Items, sharedB, sharedA, dirOnly, syncOnly)
 
-		env.setTimelinePreference(t, env.cookie, sharedVirtual, false)
+		env.setTimelinePreference(t, env.cookie, sharedMemory, false)
 		page = env.getTimeline(t, env.cookie, "")
 		requireTimelineIDs(t, page.Items, dirOnly, syncOnly)
 
@@ -206,7 +206,7 @@ func TestSetAlbumTimelinePreference(t *testing.T) {
 		// the same as before the admin's toggle.
 		gracePage := env.getTimeline(t, graceCookie, "")
 		requireTimelineIDs(t, gracePage.Items, gracePrivate, sharedB, sharedA)
-		if rows := env.prefRowsOf(t, graceID, sharedVirtual); rows != 0 {
+		if rows := env.prefRowsOf(t, graceID, sharedMemory); rows != 0 {
 			t.Errorf("grace preference rows = %d, want 0 (the pref is the caller's own)", rows)
 		}
 	})
@@ -215,7 +215,7 @@ func TestSetAlbumTimelinePreference(t *testing.T) {
 		// The subtests above leave the shared album excluded; reset
 		// it so the assertions below read one known state, then
 		// flip it through the wall's own value.
-		env.setTimelinePreference(t, env.cookie, sharedVirtual, true)
+		env.setTimelinePreference(t, env.cookie, sharedMemory, true)
 		wall := env.getAlbumWall(t, env.cookie)
 		byID := make(map[uuid.UUID]apigen.AlbumSummary, len(wall.Albums))
 		for _, card := range wall.Albums {
@@ -223,33 +223,33 @@ func TestSetAlbumTimelinePreference(t *testing.T) {
 		}
 		// The excludable cards carry the field with the stored
 		// state (true -- the last write flipped it back), the own
-		// virtual card omits it.
+		// memory card omits it.
 		if card := byID[ownDirectory]; card.InTimeline == nil || !*card.InTimeline {
 			t.Errorf("own directory card inTimeline = %v, want true", card.InTimeline)
 		}
-		if card := byID[sharedVirtual]; card.InTimeline == nil || !*card.InTimeline {
+		if card := byID[sharedMemory]; card.InTimeline == nil || !*card.InTimeline {
 			t.Errorf("shared card inTimeline = %v, want true", card.InTimeline)
 		}
-		if card := byID[ownVirtual]; card.InTimeline != nil {
-			t.Errorf("own virtual card inTimeline = %v, want absent", card.InTimeline)
+		if card := byID[ownMemory]; card.InTimeline != nil {
+			t.Errorf("own memory card inTimeline = %v, want absent", card.InTimeline)
 		}
 
 		detail := env.getAlbumDetail(t, env.cookie, ownDirectory, "")
 		if detail.InTimeline == nil || !*detail.InTimeline {
 			t.Errorf("own directory detail inTimeline = %v, want true", detail.InTimeline)
 		}
-		sharedDetail := env.getAlbumDetail(t, env.cookie, sharedVirtual, "")
+		sharedDetail := env.getAlbumDetail(t, env.cookie, sharedMemory, "")
 		if sharedDetail.InTimeline == nil || !*sharedDetail.InTimeline {
 			t.Errorf("shared detail inTimeline = %v, want true", sharedDetail.InTimeline)
 		}
-		virtualDetail := env.getAlbumDetail(t, env.cookie, ownVirtual, "")
-		if virtualDetail.InTimeline != nil {
-			t.Errorf("own virtual detail inTimeline = %v, want absent", virtualDetail.InTimeline)
+		memoryDetail := env.getAlbumDetail(t, env.cookie, ownMemory, "")
+		if memoryDetail.InTimeline != nil {
+			t.Errorf("own memory detail inTimeline = %v, want absent", memoryDetail.InTimeline)
 		}
 
 		// And the toggle's value follows the row, not the default.
-		env.setTimelinePreference(t, env.cookie, sharedVirtual, false)
-		if card := byIDWall(t, env, sharedVirtual); card.InTimeline == nil || *card.InTimeline {
+		env.setTimelinePreference(t, env.cookie, sharedMemory, false)
+		if card := byIDWall(t, env, sharedMemory); card.InTimeline == nil || *card.InTimeline {
 			t.Errorf("shared card inTimeline after exclusion = %v, want false", card.InTimeline)
 		}
 	})
@@ -275,8 +275,8 @@ func TestSetAlbumTimelinePreference(t *testing.T) {
 		}
 	})
 
-	t.Run("SyncAndOwnVirtualRefused", func(t *testing.T) {
-		for _, album := range []uuid.UUID{adminSync, ownVirtual} {
+	t.Run("SyncAndOwnMemoryRefused", func(t *testing.T) {
+		for _, album := range []uuid.UUID{adminSync, ownMemory} {
 			rec := env.setTimelinePreferenceRaw(t, env.cookie, album, `{"inTimeline":false}`)
 			requireAlbumPrefKey(t, rec, "album_pref_not_excludable")
 			if rows := env.prefRowsOf(t, adminID, album); rows != 0 {
@@ -291,7 +291,7 @@ func TestSetAlbumTimelinePreference(t *testing.T) {
 	t.Run("NotFoundSingleShape", func(t *testing.T) {
 		unknown := fixtureAlbumID("ff")
 		foreignUnshared := fixtureAlbumID("b7")
-		env.insertTimelineAlbum(t, foreignUnshared, graceID, "virtual")
+		env.insertTimelineAlbum(t, foreignUnshared, graceID, "memory")
 
 		for _, album := range []uuid.UUID{unknown, foreignUnshared} {
 			put := env.setTimelinePreferenceRaw(t, env.cookie, album, `{"inTimeline":false}`)
@@ -314,10 +314,10 @@ func TestSetAlbumTimelinePreference(t *testing.T) {
 		// timeline's contents shift, but the event discipline
 		// covers writes other sessions refetch, and only the
 		// caller's own view changed).
-		env.setTimelinePreference(t, env.cookie, sharedVirtual, false)
-		env.setTimelinePreference(t, env.cookie, sharedVirtual, false)
-		env.setTimelinePreference(t, env.cookie, sharedVirtual, true)
-		reset := env.resetTimelinePreferenceRaw(t, env.cookie, sharedVirtual)
+		env.setTimelinePreference(t, env.cookie, sharedMemory, false)
+		env.setTimelinePreference(t, env.cookie, sharedMemory, false)
+		env.setTimelinePreference(t, env.cookie, sharedMemory, true)
+		reset := env.resetTimelinePreferenceRaw(t, env.cookie, sharedMemory)
 		if reset.Code != http.StatusNoContent {
 			t.Fatalf("DELETE status = %d, want %d (body %q)",
 				reset.Code, http.StatusNoContent, reset.Body.String())
@@ -375,7 +375,7 @@ func TestResetAlbumTimelinePreference(t *testing.T) {
 	// row is theirs, so the departure semantics never apply here.
 	graceID, graceCookie := env.createSecondUser(t, "reset-grace@example.com")
 	shared := fixtureAlbumID("c2")
-	env.insertTimelineAlbum(t, shared, graceID, "virtual")
+	env.insertTimelineAlbum(t, shared, graceID, "memory")
 	env.shareTimelineAlbum(t, shared, adminID, graceID)
 
 	rec = env.resetTimelinePreferenceRaw(t, env.cookie, shared)
@@ -392,8 +392,8 @@ func TestResetAlbumTimelinePreference(t *testing.T) {
 	}
 
 	// The ALBUM'S OWNER holds no preference scope either: their own
-	// virtual album never feeds their own timeline, so Grace's own
-	// write on it answers the same 400 as the admin's own virtual.
+	// memory album never feeds their own timeline, so Grace's own
+	// write on it answers the same 400 as the admin's own memory.
 	own := env.setTimelinePreferenceRaw(t, graceCookie, shared, `{"inTimeline":false}`)
 	requireAlbumPrefKey(t, own, "album_pref_not_excludable")
 	if rows := env.prefRowsOf(t, graceID, shared); rows != 0 {

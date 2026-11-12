@@ -348,27 +348,27 @@ func TestTimeline(t *testing.T) {
 	graceSync := fixtureAlbumID("01")
 	env.insertTimelineAlbum(t, graceSync, graceID, "sync")
 
-	// Albums shared to the admin by Grace (virtual type: the shared
+	// Albums shared to the admin by Grace (memory type: the shared
 	// arm accepts every type). toAdminOff carries the admin's
 	// "keep out of the timeline" preference.
 	toAdmin := fixtureAlbumID("02")
-	env.insertTimelineAlbum(t, toAdmin, graceID, "virtual")
+	env.insertTimelineAlbum(t, toAdmin, graceID, "memory")
 	env.shareTimelineAlbum(t, toAdmin, adminID, graceID)
 	toAdminOff := fixtureAlbumID("03")
-	env.insertTimelineAlbum(t, toAdminOff, graceID, "virtual")
+	env.insertTimelineAlbum(t, toAdminOff, graceID, "memory")
 	env.shareTimelineAlbum(t, toAdminOff, adminID, graceID)
 	env.setTimelinePref(t, adminID, toAdminOff, false)
 
 	// The admin's own album, shared TO Grace: it feeds Grace's
 	// timeline, never the admin's own.
 	adminShared := fixtureAlbumID("04")
-	env.insertTimelineAlbum(t, adminShared, adminID, "virtual")
+	env.insertTimelineAlbum(t, adminShared, adminID, "memory")
 	env.shareTimelineAlbum(t, adminShared, graceID, adminID)
 
-	// The admin's own virtual album, unshared: feeds no one's
+	// The admin's own memory album, unshared: feeds no one's
 	// timeline, but its own in-album view works.
-	ownVirtual := fixtureAlbumID("05")
-	env.insertTimelineAlbum(t, ownVirtual, adminID, "virtual")
+	ownMemory := fixtureAlbumID("05")
+	env.insertTimelineAlbum(t, ownMemory, adminID, "memory")
 
 	// Admin assets in the sync album.
 	a1 := fixtureAssetID("01") // dedup fixture: sync + shared album
@@ -376,8 +376,8 @@ func TestTimeline(t *testing.T) {
 	d1 := fixtureAssetID("03") // trashed
 	c1 := fixtureAssetID("04") // Live Photo component
 	s1 := fixtureAssetID("05") // the share Grace receives
-	e1 := fixtureAssetID("06") // own virtual only
-	e2 := fixtureAssetID("07") // own virtual only
+	e1 := fixtureAssetID("06") // own memory only
+	e2 := fixtureAssetID("07") // own memory only
 	x1 := fixtureAssetID("15") // sync-ONLY live asset
 	env.insertTimelineAsset(t, a1, adminID, time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertTimelineAsset(t, h1, adminID, time.Date(2026, 1, 11, 12, 0, 0, 0, time.UTC), timelineAssetOpts{isHidden: true})
@@ -392,23 +392,26 @@ func TestTimeline(t *testing.T) {
 	}
 
 	// Grace's assets: b2 and v1 reach the admin through the shared
-	// virtual album, b1 sits in the pref-switched-off album, p1 stays
-	// private in Grace's sync album.
+	// memory album, b1 sits in the pref-switched-off album, p1 stays
+	// private in Grace's sync album. The three the memories curate
+	// ride her sync stream as well -- the production invariant of the
+	// upload path (an owner sees their own rows through the sync
+	// arm), which the memory's re-share ground reads.
 	b1 := fixtureAssetID("11")
 	b2 := fixtureAssetID("12")
 	v1 := fixtureAssetID("13")
 	p1 := fixtureAssetID("14")
-	env.insertTimelineAsset(t, b1, graceID, time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.insertTimelineAsset(t, b2, graceID, time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.insertTimelineAsset(t, v1, graceID, time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, b1, graceID, time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, b2, graceID, time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, v1, graceID, time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertTimelineAsset(t, p1, graceID, time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.addTimelineItem(t, toAdmin, a1, graceID)
 	env.addTimelineItem(t, toAdmin, b2, graceID)
 	env.addTimelineItem(t, toAdmin, v1, graceID)
 	env.addTimelineItem(t, toAdminOff, b1, graceID)
 	env.addTimelineItem(t, adminShared, s1, adminID)
-	env.addTimelineItem(t, ownVirtual, e1, adminID)
-	env.addTimelineItem(t, ownVirtual, e2, adminID)
+	env.addTimelineItem(t, ownMemory, e1, adminID)
+	env.addTimelineItem(t, ownMemory, e2, adminID)
 	env.addTimelineItem(t, graceSync, p1, graceID)
 
 	t.Run("AggregateDedupAndExclusions", func(t *testing.T) {
@@ -416,7 +419,7 @@ func TestTimeline(t *testing.T) {
 		// February), a1 (own sync + shared, once), x1 (own sync only,
 		// January). Everything else is filtered: the hidden, trashed
 		// and component rows; the pref-switched-off album's b1; the
-		// own virtual album's e1/e2; the album shared TO someone else
+		// own memory album's e1/e2; the album shared TO someone else
 		// (s1); Grace's private p1.
 		page := env.getTimeline(t, env.cookie, "")
 		requireTimelineIDs(t, page.Items, v1, b2, a1, x1)
@@ -442,21 +445,28 @@ func TestTimeline(t *testing.T) {
 	})
 
 	t.Run("SecondUserTimeline", func(t *testing.T) {
-		// Grace sees her own sync stream (p1) and the album the admin
-		// shared to her (s1); the admin's private content and Grace's
-		// own virtual albums stay out.
+		// Grace sees her own sync stream (p1 and the three her
+		// memories curate -- once each, through their own arms: the
+		// memory albums themselves are no arm of the union and inject
+		// nothing) and the album the admin shared to her (s1); the
+		// admin's private content stays out.
 		page := env.getTimeline(t, graceCookie, "")
-		requireTimelineIDs(t, page.Items, s1, p1)
+		requireTimelineIDs(t, page.Items, v1, s1, b2, b1, p1)
 	})
 
 	t.Run("AlbumScopeOwn", func(t *testing.T) {
-		page := env.getTimeline(t, env.cookie, "albumId="+ownVirtual.String())
+		page := env.getTimeline(t, env.cookie, "albumId="+ownMemory.String())
 		requireTimelineIDs(t, page.Items, e2, e1)
 	})
 
 	t.Run("AlbumScopeSharedToCaller", func(t *testing.T) {
+		// The sharee's walk carries the memory's re-share ground: the
+		// members the memory's owner currently sees (her own v1 and
+		// b2, through her sync arm) stay, while a1 -- a member whose
+		// owner-sight died (the revocation shape) -- leaves the walk
+		// live, no snapshot residue.
 		page := env.getTimeline(t, env.cookie, "albumId="+toAdmin.String())
-		requireTimelineIDs(t, page.Items, v1, b2, a1)
+		requireTimelineIDs(t, page.Items, v1, b2)
 	})
 
 	t.Run("AlbumScopeIgnoresTimelinePreference", func(t *testing.T) {
@@ -482,7 +492,7 @@ func TestTimeline(t *testing.T) {
 	})
 
 	t.Run("ReadyAssetCarriesPipelineFields", func(t *testing.T) {
-		page := env.getTimeline(t, env.cookie, "albumId="+ownVirtual.String())
+		page := env.getTimeline(t, env.cookie, "albumId="+ownMemory.String())
 		requireTimelineIDs(t, page.Items, e2, e1)
 		item := page.Items[0]
 		if !item.IsReady {

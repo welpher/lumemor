@@ -62,7 +62,7 @@
 		initialTitle?: string;
 		/**
 		 * The directory album's source path; the read-only source row
-		 * renders exactly when set (virtual and sync albums hold none).
+		 * renders exactly when set (memory and sync albums hold none).
 		 */
 		rootPath?: string;
 		/** The current grants -- the detail's `shares` array, the chips' seed. */

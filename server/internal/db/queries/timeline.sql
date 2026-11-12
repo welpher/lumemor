@@ -4,15 +4,15 @@
 -- The aggregate is the union of the albums that feed the caller's
 -- timeline: the caller's sync album (the core stream, never
 -- excludable), the caller's own directory albums, and every album
--- shared to the caller regardless of type (virtual albums included).
+-- shared to the caller regardless of type (memory albums included).
 -- Each non-sync album carries a per-user "keep out of the timeline"
 -- switch; a missing preference row means kept in. The preference's
 -- scope is the own directory albums and the shared albums -- the sync
 -- arm is deliberately exempt from it, so a stray preference row on
 -- the sync album excludes nothing (the core stream is the stream).
--- The caller's own virtual albums never feed their own timeline
+-- The caller's own memory albums never feed their own timeline
 -- (in-stream curation would be pure duplication), which falls out of
--- the three arms below: an own virtual album is neither sync nor
+-- the three arms below: an own memory album is neither sync nor
 -- directory nor shared to its owner.
 --
 -- The three arms below are the arms of caller_asset_visible (the
@@ -110,6 +110,18 @@ WHERE al.id = sqlc.arg('album_id')
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  -- The memory's shared-view rule rides the same arm as the detail's
+  -- pages, the counts and the collages: a sharee's walk carries the
+  -- live members the memory's owner CURRENTLY sees (the re-share
+  -- ground, revalidated at read time -- a photo whose source
+  -- visibility died leaves the walk, no snapshot residue), while the
+  -- owner's own walk is the plain live membership. Directory and sync
+  -- albums take the first arm and never reach the ground.
+  AND (
+      al.type <> 'memory'
+      OR al.owner_id = sqlc.arg('user_id')
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
   AND (
       sqlc.narg('cursor_taken_at')::timestamptz IS NULL
       OR (a.taken_at, a.id) < (sqlc.narg('cursor_taken_at')::timestamptz, sqlc.narg('cursor_id')::uuid)

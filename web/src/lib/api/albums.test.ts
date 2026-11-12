@@ -1,12 +1,15 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import {
+	addAlbumItems,
 	completeAlbumPath,
 	createAlbum,
+	createMemory,
 	deleteAlbum,
 	fetchAlbumDetail,
 	listAlbums,
 	listUsers,
 	patchAlbum,
+	removeAlbumItems,
 	rescanAlbum,
 	setAlbumTimelinePreference,
 	updateAlbumAudience,
@@ -15,23 +18,26 @@ import {
 import { sessionStatus } from '$lib/auth/session.svelte';
 
 // The albums surface's data client (the albums-as-sources reshape,
-// completed by album autonomy): the wall list, the detail read
-// (the deletion faces included), the directory creation (title +
-// source path + audience, the honest skipped report and the write
-// probe's sourceWritable fact -- both admin-guarded writes), the
-// property patch (title, cover, deletability), the
-// virtual/directory delete, the path completion of the creation
-// dialog's combobox, the audience's full-set PUT, the rescan
-// trigger, the member list and the timeline preference -- each
-// behind the repo-wide error-code convention, and the write faces'
-// message keys surfaced as error keys (the people client's
+// completed by album autonomy, widened by the memory's birth): the
+// wall list, the detail read (the deletion faces included), the
+// directory creation (title + source path + audience, the honest
+// skipped report and the write probe's sourceWritable fact -- both
+// admin-guarded writes), the memory creation (title + audience, every
+// member's write) and its curation pair (the membership add and
+// remove over the items face, the honest {added, skipped} /
+// {removed, skipped} counts), the property patch (title, cover,
+// deletability), the memory/directory delete, the path completion of
+// the creation dialog's combobox, the audience's full-set PUT, the
+// rescan trigger, the member list and the timeline preference --
+// each behind the repo-wide error-code convention, and the write
+// faces' message keys surfaced as error keys (the people client's
 // requires-label pattern). Every case drives one call through an
 // injected fetch mock.
 
 const ownCard: AlbumSummary = {
 	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 	title: 'Road trip 2026',
-	type: 'virtual',
+	type: 'memory',
 	isShared: true,
 	coverAssetIds: [
 		'0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072',
@@ -58,7 +64,7 @@ const directoryCard: AlbumSummary = {
 const detailBody = {
 	id: ownCard.id,
 	title: ownCard.title,
-	type: 'virtual',
+	type: 'memory',
 	coverAssetId: null,
 	callerRole: 'owner',
 	itemCount: 2,
@@ -478,7 +484,7 @@ test("patchAlbum surfaces the write faces' message keys", async () => {
 		errorKey: 'album_cover_not_member'
 	});
 
-	// The deletability switch's own refusal: a virtual album answers
+	// The deletability switch's own refusal: a memory album answers
 	// the message key, not a generic validation text.
 	vi.stubGlobal(
 		'fetch',
@@ -667,4 +673,175 @@ test('setAlbumTimelinePreference surfaces the not-excludable message key', async
 		ok: false,
 		errorKey: 'album_pref_not_excludable'
 	});
+});
+
+test('createMemory posts title and audience, answering the card with the skipped report', async () => {
+	const createdCard: AlbumSummary = {
+		id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6090',
+		title: 'Spring Festival 2026',
+		type: 'memory',
+		isShared: false,
+		coverAssetIds: [],
+		itemCount: 0,
+		updatedAt: '2026-11-08T09:00:00Z',
+		callerRole: 'owner'
+	};
+	const fetchMock = stubFetch({
+		'/api/v1/memories': (init?: RequestInit) => {
+			expect(init?.method).toBe('POST');
+			const body = JSON.parse(String(init?.body));
+			expect(body).toEqual({ title: 'Spring Festival 2026', audience: ['u2'] });
+			return jsonResponse(201, {
+				...createdCard,
+				skipped: [{ userId: 'u9', reason: 'invalid_account' }]
+			});
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	const outcome = await createMemory({ title: 'Spring Festival 2026', audience: ['u2'] });
+	expect(outcome).toEqual({
+		ok: true,
+		memory: createdCard,
+		skipped: [{ userId: 'u9', reason: 'invalid_account' }]
+	});
+});
+
+test('createMemory carries no audience field when none is picked', async () => {
+	const createdCard: AlbumSummary = {
+		id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6091',
+		title: 'Quiet one',
+		type: 'memory',
+		isShared: false,
+		coverAssetIds: [],
+		itemCount: 0,
+		updatedAt: '2026-11-08T09:05:00Z',
+		callerRole: 'owner'
+	};
+	const fetchMock = stubFetch({
+		'/api/v1/memories': (init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body));
+			expect(body).toEqual({ title: 'Quiet one' });
+			return jsonResponse(201, { ...createdCard, skipped: [] });
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	const outcome = await createMemory({ title: 'Quiet one' });
+	expect(outcome).toEqual({ ok: true, memory: createdCard, skipped: [] });
+});
+
+test('createMemory maps the failure codes and refuses drifted bodies', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/memories': () =>
+				jsonResponse(400, { code: 'VALIDATION_FAILED', message: 'title must span 1-64 characters' })
+		})
+	);
+	expect(await createMemory({ title: '  ' })).toEqual({ ok: false, errorKey: 'validation_failed' });
+
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/memories': () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })
+		})
+	);
+	expect(await createMemory({ title: 'X' })).toEqual({ ok: false, errorKey: 'session_expired' });
+
+	// A body without the honest skipped list is a drifted answer: the
+	// generic failure, never an invented report.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/memories': () => jsonResponse(201, { ...ownCard, type: 'memory' })
+		})
+	);
+	expect(await createMemory({ title: 'X' })).toEqual({ ok: false, errorKey: 'internal' });
+});
+
+test('addAlbumItems POSTs the id list, answering the honest counts', async () => {
+	const fetchMock = stubFetch({
+		[`/api/v1/albums/${ownCard.id}/items`]: (init?: RequestInit) => {
+			expect(init?.method).toBe('POST');
+			const body = JSON.parse(String(init?.body));
+			expect(body).toEqual({ assetIds: ['a1', 'a2', 'a2'] });
+			return jsonResponse(200, { added: 2, skipped: 1 });
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	const outcome = await addAlbumItems(ownCard.id, ['a1', 'a2', 'a2']);
+	expect(outcome).toEqual({ ok: true, added: 2, skipped: 1 });
+});
+
+test('addAlbumItems maps the refusal matrix onto the error keys', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${directoryCard.id}/items`]: () => jsonResponse(404, { code: 'ALBUM_NOT_FOUND' })
+		})
+	);
+	expect(await addAlbumItems(directoryCard.id, ['a1'])).toEqual({
+		ok: false,
+		errorKey: 'album_not_found'
+	});
+
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${ownCard.id}/items`]: () =>
+				jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'the sharee cannot curate' })
+		})
+	);
+	expect(await addAlbumItems(ownCard.id, ['a1'])).toEqual({
+		ok: false,
+		errorKey: 'auth_forbidden'
+	});
+
+	// A drifted answer (a report without the counts) maps to the
+	// generic failure like any unparseable body.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${ownCard.id}/items`]: () => jsonResponse(200, { added: 'two' })
+		})
+	);
+	expect(await addAlbumItems(ownCard.id, ['a1'])).toEqual({ ok: false, errorKey: 'internal' });
+});
+
+test('removeAlbumItems DELETEs the id list, answering the honest counts', async () => {
+	const fetchMock = stubFetch({
+		[`/api/v1/albums/${ownCard.id}/items`]: (init?: RequestInit) => {
+			expect(init?.method).toBe('DELETE');
+			const body = JSON.parse(String(init?.body));
+			expect(body).toEqual({ assetIds: ['a1', 'a2'] });
+			return jsonResponse(200, { removed: 2, skipped: 0 });
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	const outcome = await removeAlbumItems(ownCard.id, ['a1', 'a2']);
+	expect(outcome).toEqual({ ok: true, removed: 2, skipped: 0 });
+});
+
+test('removeAlbumItems maps failures and refuses drifted bodies', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${ownCard.id}/items`]: () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })
+		})
+	);
+	expect(await removeAlbumItems(ownCard.id, ['a1'])).toEqual({
+		ok: false,
+		errorKey: 'session_expired'
+	});
+
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			[`/api/v1/albums/${ownCard.id}/items`]: () => jsonResponse(200, { removed: 1 })
+		})
+	);
+	expect(await removeAlbumItems(ownCard.id, ['a1'])).toEqual({ ok: false, errorKey: 'internal' });
 });

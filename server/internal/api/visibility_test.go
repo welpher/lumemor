@@ -51,7 +51,7 @@ func TestSharedVisibilityPeople(t *testing.T) {
 	// aTrash (trashed -- live filters still apply through the
 	// union). a3 stays unshared.
 	sharedAlbum := fixtureAlbumID("d1")
-	env.insertTimelineAlbum(t, sharedAlbum, adminID, "virtual")
+	env.insertTimelineAlbum(t, sharedAlbum, adminID, "memory")
 	env.shareTimelineAlbum(t, sharedAlbum, graceID, adminID)
 	a1 := fixturePeopleAssetID("d1")
 	aTrash := fixturePeopleAssetID("d2")
@@ -198,7 +198,7 @@ func TestPersonCardBestVisibleFace(t *testing.T) {
 	// assets; a2 stays unshared and carries the strongest face of
 	// the cluster (the global representative's home too).
 	sharedAlbum := fixtureAlbumID("e1")
-	env.insertTimelineAlbum(t, sharedAlbum, adminID, "virtual")
+	env.insertTimelineAlbum(t, sharedAlbum, adminID, "memory")
 	env.shareTimelineAlbum(t, sharedAlbum, graceID, adminID)
 	a1 := fixturePeopleAssetID("e1")
 	a2 := fixturePeopleAssetID("e2")
@@ -460,7 +460,7 @@ func TestSharedVisibilityFavorites(t *testing.T) {
 	graceID, graceCookie := env.createSecondUser(t, "favorites-shared-grace@example.com")
 
 	sharedAlbum := fixtureAlbumID("f1")
-	env.insertTimelineAlbum(t, sharedAlbum, adminID, "virtual")
+	env.insertTimelineAlbum(t, sharedAlbum, adminID, "memory")
 	env.shareTimelineAlbum(t, sharedAlbum, graceID, adminID)
 	taken := time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC)
 	shared := fixtureAssetID("f1")

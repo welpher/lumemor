@@ -379,7 +379,7 @@ test.describe('the signed-in scenes', () => {
 		// THE SUBSET (the curation ruling: [favorite, tag] for EVERY
 		// role): the favorite toggle and the tag affordance render;
 		// the ownership actions stay off the search walls' bars -- the
-		// B4 domain is everyone's, the endpoint's owner-per-caller
+		// search surface is everyone's, the endpoint's owner-per-caller
 		// resolution included.
 		await expect(bar.getByRole('button', { name: 'Favorite', exact: true })).toBeVisible();
 		await expect(bar.getByRole('button', { name: 'Add tag', exact: true })).toBeVisible();

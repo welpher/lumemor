@@ -4,9 +4,11 @@
 # M3b and M3a chains and through them the whole M1/M2 line, every
 # script owning its own compose stack and tearing it down fully,
 # including the database volume) runs first and must be green before
-# the M3d phases start. Then two stack lifetimes of this repository's
-# own compose deployment walk the search story -- the
-# chain's own finale line, "a search for 海边 answers photos":
+# the M3d phases start. Then four stack lifetimes of this
+# repository's own compose deployment walk the search story and the
+# memories story -- the chain's finale lines, "a search for 海边
+# answers photos" and "the memory's shared view drops a photo the
+# moment the sight it was grounded in dies":
 #
 # Phase 1 (the search and places story over the API, two accounts):
 # the stack starts fresh, the first-run admin is created and signed
@@ -86,6 +88,49 @@
 # library through the APIs, the model group's download through the
 # admin API), exactly the way every prior e2e spec owns its stack's
 # bootstrap.
+#
+# Phase 3 (the memories story over the API, three accounts): a fresh
+# stack again; the first-run admin is created and signed in, a
+# CREATOR member (the memory's owner) and a SHAREE member (the
+# audience) are provisioned through the admin API and sign in with
+# their own sessions, and the default model group downloads through
+# the admin API. The ADMINISTRATOR owns the source half: the
+# directory album over the read-only coastal-week fixture (the
+# audience grant riding the POST, so the CREATOR sees its two photos
+# through the share -- the re-share's own ground) and the rescan
+# converging the membership. The CREATOR then walks the memory's
+# whole life over the API: the creation (POST /memories -- every
+# member may create, the row lands type memory with no source path,
+# and the creation writes the creator's own timeline-exclusion
+# preference row in the same write), the curation add
+# (POST /albums/{id}/items -- the honest {added, skipped} report:
+# the creator's own pair and the shared photo land, the bogus id
+# stays out, the repeat answers the idempotent all-skip), the
+# audience PUT (the full set granting the SHAREE, the idempotent
+# repeat landing nothing), the sharee's display predicate (the live
+# filter: the sharee's card and detail count the live members the
+# memory's owner currently sees -- the source grant's revocation
+# drops the re-shared photo from the sharee's views, the detail
+# wall's walk included, while the owner's own view keeps the plain
+# live membership), the removal
+# (DELETE /albums/{id}/items -- the set's tidy-up with its own
+# honest report), and the delete cascade (DELETE /albums/{id}: the
+# psql counts prove the references, the audience and the preference
+# rows die while the asset rows live on untouched).
+#
+# Phase 4 (the e2e stack): a fresh stack whose models ride the SAME
+# storage bind mount; the Playwright spec
+# web/e2e/m3-memories.spec.ts walks the memories story of the web
+# app through a real browser -- the every-member creation dialog,
+# the wall-selection entry's picker (the added flip and the honest
+# skip note), the audience edit dialog, the sharee's read-only view,
+# the source revocation cascading into the sharee's open memories
+# wall live, the timeline exclusion, the removal's remove-only
+# subset, the album-route hand-over and the light-cascade delete.
+# The spec bootstraps itself (the first-run admin, the two members
+# and the library through the APIs, the model group's download
+# through the admin API), exactly the way every prior e2e spec owns
+# its stack's bootstrap.
 #
 # DOWNLOAD SOURCES (two modes, the m3c script's knobs -- the M3d
 # script accepts the same M3C_SOURCE / M3C_HF_MIRROR variables plus
@@ -730,7 +775,7 @@ echo "    acceptance_m3c (and its chained M1/M2/M3a/M3b line) passed after $(ela
 # visibility, the tags and the places).
 # ---------------------------------------------------------------------------
 
-echo "==> phase 1/2: the search and places story over the API (source: $source_mode)"
+echo "==> phase 1/4: the search and places story over the API (source: $source_mode)"
 reset_stack_state
 prepare_bind_mount
 start_stack
@@ -1389,7 +1434,7 @@ echo "    phase 1 passed after $(elapsed)s"
 # Phase 2: the e2e stack (the search story of the web app).
 # ---------------------------------------------------------------------------
 
-echo "==> phase 2/2: the e2e stack (the search story of the web app)"
+echo "==> phase 2/4: the e2e stack (the search story of the web app)"
 reset_stack_state
 prepare_bind_mount
 start_stack
@@ -1403,6 +1448,365 @@ if ! (cd web && pnpm e2e e2e/m3-search.spec.ts); then
 fi
 teardown_stack
 echo "    phase 2 passed after $(elapsed)s"
+
+# ---------------------------------------------------------------------------
+# Phase 3: the memories story over the API (three accounts: the
+# source's administrator, the memory's creator, the memory's
+# audience).
+# ---------------------------------------------------------------------------
+
+echo "==> phase 3/4: the memories story over the API (source: $source_mode)"
+reset_stack_state
+prepare_bind_mount
+start_stack
+probe_offline_mirror
+create_admin_and_login mem
+admin_jar="$work_dir/cookies_mem"
+create_member_and_login creator grace "Grace Hopper"
+creator_user_id="$member_user_id"
+creator_jar="$work_dir/cookies_creator"
+# The provisioning helper leaves cookie_jar on the member it just
+# logged in; the second provisioning and the model download below
+# are the administrator's acts, so the jar re-points before each.
+cookie_jar="$admin_jar"
+create_member_and_login sharee hedy "Hedy Lamarr"
+sharee_user_id="$member_user_id"
+sharee_jar="$work_dir/cookies_sharee"
+cookie_jar="$admin_jar"
+wait_model_download
+
+# The memories phase's fixtures (the phase's own seed, distinct bytes
+# from the scan's pair so the story's rows never collide): the
+# creator's own two photos.
+own_photo_a="$repo_root/server/internal/ml/testdata/face-portrait-other.jpg"
+own_photo_b="$repo_root/server/internal/ml/testdata/face-portrait-other-second.jpg"
+for own_fixture in "$own_photo_a" "$own_photo_b"; do
+    [ -f "$own_fixture" ] || fail "fixture missing: $own_fixture"
+done
+
+# The source half: the directory album over the read-only
+# coastal-week fixture (the same tree the sharing acceptance's story
+# walks), the creator's grant riding the creation POST.
+mem_source_dir="/mnt/e2e-source/coastal-week"
+
+echo "==> POST /api/v1/albums must create the source album with the creator in the audience at create"
+status="$(curl -sS -o "$work_dir/mem_source_body" -b "$admin_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"title\":\"M3D Memories Source\",\"rootPath\":\"$mem_source_dir\",\"audience\":[\"$creator_user_id\"]}" \
+    "$base_url/api/v1/albums")" \
+    || fail "POST /api/v1/albums (memories source) request failed"
+[ "$status" = "201" ] \
+    || fail "POST /api/v1/albums (memories source) returned status $status, want 201: $(cat "$work_dir/mem_source_body")"
+grep -q '"isShared":true' "$work_dir/mem_source_body" \
+    || fail "the source creation does not carry the landed grant: $(cat "$work_dir/mem_source_body")"
+mem_source_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/mem_source_body")"
+[ -n "$mem_source_id" ] \
+    || fail "the source album carries no id: $(cat "$work_dir/mem_source_body")"
+echo "    the source album exists ($mem_source_id); the creator's grant landed at create"
+
+echo "==> POST /api/v1/albums/{id}/rescan must converge the fixture's pair (up to ${rescan_timeout_seconds}s)"
+status="$(curl -sS -o "$work_dir/mem_rescan_body" -b "$admin_jar" -w '%{http_code}' \
+    -X POST "$base_url/api/v1/albums/$mem_source_id/rescan")" \
+    || fail "POST /api/v1/albums/$mem_source_id/rescan request failed"
+[ "$status" = "202" ] \
+    || fail "POST /api/v1/albums/$mem_source_id/rescan returned status $status, want 202: $(cat "$work_dir/mem_rescan_body")"
+deadline="$(( $(date +%s) + rescan_timeout_seconds ))"
+while :; do
+    status="$(curl -sS -o "$work_dir/mem_source_detail_body" -b "$admin_jar" -w '%{http_code}' \
+        "$base_url/api/v1/albums/$mem_source_id")" \
+        || fail "GET /api/v1/albums/$mem_source_id (scanning) request failed"
+    [ "$status" = "200" ] \
+        || fail "GET /api/v1/albums/$mem_source_id (scanning) returned status $status, want 200: $(cat "$work_dir/mem_source_detail_body")"
+    grep -q '"itemCount":2' "$work_dir/mem_source_detail_body" && break
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the source album's membership did not converge onto the fixture's pair within ${rescan_timeout_seconds}s: $(cat "$work_dir/mem_source_detail_body")"
+    fi
+    sleep 3
+done
+# The re-shared member: the FIRST item of the detail's page (the
+# taken-at-descending order the page carries).
+via_share_id="$(grep -o '"assetId"[[:space:]]*:[[:space:]]*"[^"]*"' "$work_dir/mem_source_detail_body" \
+    | sed 's/.*"\([^"]*\)"$/\1/' | head -1)"
+[ -n "$via_share_id" ] \
+    || fail "the source album's page carries no member id: $(cat "$work_dir/mem_source_detail_body")"
+echo "    the membership is the fixture's pair; the re-shared member is $via_share_id"
+
+echo "==> the creator's own pair must upload and reach ready"
+own_a_id="$(upload_fixture \
+    "$own_photo_a" IMG_MEM_A.jpg image/jpeg \
+    "m3d-acceptance-${run_stamp}-mem-a" "2026-09-10T12:00:00Z" mem-a "$creator_jar")"
+own_b_id="$(upload_fixture \
+    "$own_photo_b" IMG_MEM_B.jpg image/jpeg \
+    "m3d-acceptance-${run_stamp}-mem-b" "2026-09-11T12:00:00Z" mem-b "$creator_jar")"
+wait_asset_ready "$own_a_id" mem-a "$creator_jar"
+wait_asset_ready "$own_b_id" mem-b "$creator_jar"
+
+echo "==> POST /api/v1/memories must return 201 for the plain member (every member curates)"
+status="$(curl -sS -o "$work_dir/memory_create_body" -b "$creator_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d '{"title":"M3D Acceptance Memory","audience":[]}' \
+    "$base_url/api/v1/memories")" \
+    || fail "POST /api/v1/memories request failed"
+[ "$status" = "201" ] \
+    || fail "POST /api/v1/memories returned status $status, want 201: $(cat "$work_dir/memory_create_body")"
+grep -q '"type":"memory"' "$work_dir/memory_create_body" \
+    || fail "the created memory's card is not memory-typed: $(cat "$work_dir/memory_create_body")"
+grep -q '"callerRole":"owner"' "$work_dir/memory_create_body" \
+    || fail "the created memory's card is not the creator's: $(cat "$work_dir/memory_create_body")"
+grep -q '"itemCount":0' "$work_dir/memory_create_body" \
+    || fail "the created memory's count is not the honest zero: $(cat "$work_dir/memory_create_body")"
+grep -q '"skipped":\[\]' "$work_dir/memory_create_body" \
+    || fail "the creation's audience report skipped an id: $(cat "$work_dir/memory_create_body")"
+memory_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_dir/memory_create_body")"
+[ -n "$memory_id" ] \
+    || fail "the created memory carries no id: $(cat "$work_dir/memory_create_body")"
+memory_type="$(psql_query "SELECT type FROM albums WHERE id = '$memory_id'")"
+[ "$memory_type" = "memory" ] \
+    || fail "the memory's stored row is type $memory_type, want memory"
+memory_root="$(psql_query "SELECT root_path IS NULL FROM albums WHERE id = '$memory_id'")"
+[ "$memory_root" = "t" ] \
+    || fail "the memory's stored row carries a source path, want none"
+birth_pref="$(psql_query "SELECT count(*) FROM user_album_prefs WHERE album_id = '$memory_id' AND user_id = '$creator_user_id' AND in_timeline = false")"
+[ "$birth_pref" = "1" ] \
+    || fail "the creation wrote $birth_pref exclusion preference rows, want exactly 1 (the memory never feeds its creator's timeline, and the creation states it durably)"
+echo "    the memory exists ($memory_id): type memory, no source, the birth exclusion row landed"
+
+echo "==> POST /api/v1/albums/{id}/items must answer the honest counts report"
+status="$(curl -sS -o "$work_dir/mem_add_body" -b "$creator_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"assetIds\":[\"$own_a_id\",\"$own_b_id\",\"$via_share_id\",\"00000000-0000-0000-0000-000000000000\"]}" \
+    "$base_url/api/v1/albums/$memory_id/items")" \
+    || fail "POST /api/v1/albums/$memory_id/items request failed"
+[ "$status" = "200" ] \
+    || fail "POST /api/v1/albums/$memory_id/items returned status $status, want 200: $(cat "$work_dir/mem_add_body")"
+grep -q '"added":3' "$work_dir/mem_add_body" \
+    || fail "the first add did not land the three visible photos: $(cat "$work_dir/mem_add_body")"
+grep -q '"skipped":1' "$work_dir/mem_add_body" \
+    || fail "the bogus id did not answer the honest skip: $(cat "$work_dir/mem_add_body")"
+mem_item_rows="$(psql_query "SELECT count(*) FROM album_items WHERE album_id = '$memory_id'")"
+[ "$mem_item_rows" = "3" ] \
+    || fail "the memory holds $mem_item_rows membership rows, want the three landed"
+echo "    added 3 (the own pair and the re-shared photo), skipped 1 (the bogus id)"
+status="$(curl -sS -o "$work_dir/mem_add2_body" -b "$creator_jar" -w '%{http_code}' \
+    -H 'Content-Type: application/json' \
+    -d "{\"assetIds\":[\"$own_a_id\"]}" \
+    "$base_url/api/v1/albums/$memory_id/items")" \
+    || fail "POST /api/v1/albums/$memory_id/items (repeat) request failed"
+[ "$status" = "200" ] \
+    || fail "POST /api/v1/albums/$memory_id/items (repeat) returned status $status, want 200: $(cat "$work_dir/mem_add2_body")"
+grep -q '"added":0' "$work_dir/mem_add2_body" \
+    || fail "the repeated add landed rows, want the set semantics: $(cat "$work_dir/mem_add2_body")"
+grep -q '"skipped":1' "$work_dir/mem_add2_body" \
+    || fail "the repeated add did not skip the already-member: $(cat "$work_dir/mem_add2_body")"
+echo "    the repeat answers added 0, skipped 1 (the idempotent set)"
+
+echo "==> PUT /api/v1/albums/{id}/audience must grant the sharee (the full-set write)"
+status="$(curl -sS -o "$work_dir/mem_audience_body" -b "$creator_jar" -w '%{http_code}' \
+    -X PUT -H 'Content-Type: application/json' \
+    -d "{\"audience\":[\"$sharee_user_id\"]}" \
+    "$base_url/api/v1/albums/$memory_id/audience")" \
+    || fail "PUT /api/v1/albums/$memory_id/audience request failed"
+[ "$status" = "200" ] \
+    || fail "PUT /api/v1/albums/$memory_id/audience returned status $status, want 200: $(cat "$work_dir/mem_audience_body")"
+grep -q "\"granted\":\[\"$sharee_user_id\"\]" "$work_dir/mem_audience_body" \
+    || fail "the audience write did not report the sharee's grant: $(cat "$work_dir/mem_audience_body")"
+status="$(curl -sS -o "$work_dir/mem_audience2_body" -b "$creator_jar" -w '%{http_code}' \
+    -X PUT -H 'Content-Type: application/json' \
+    -d "{\"audience\":[\"$sharee_user_id\"]}" \
+    "$base_url/api/v1/albums/$memory_id/audience")" \
+    || fail "PUT /api/v1/albums/$memory_id/audience (repeat) request failed"
+[ "$status" = "200" ] \
+    || fail "PUT /api/v1/albums/$memory_id/audience (repeat) returned status $status, want 200: $(cat "$work_dir/mem_audience2_body")"
+grep -q '"granted":\[\]' "$work_dir/mem_audience2_body" \
+    || fail "the idempotent audience repeat granted rows, want none: $(cat "$work_dir/mem_audience2_body")"
+grep -q '"revoked":\[\]' "$work_dir/mem_audience2_body" \
+    || fail "the idempotent audience repeat revoked rows, want none: $(cat "$work_dir/mem_audience2_body")"
+mem_share_rows="$(psql_query "SELECT count(*) FROM album_shares WHERE album_id = '$memory_id'")"
+[ "$mem_share_rows" = "1" ] \
+    || fail "the memory holds $mem_share_rows share rows, want the sharee's one"
+echo "    the sharee is the audience; the idempotent repeat lands nothing"
+
+echo "==> the sharee's views must count the live members the memory's owner currently sees"
+status="$(curl -sS -o "$work_dir/mem_sharee_detail_body" -b "$sharee_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$memory_id")" \
+    || fail "GET /api/v1/albums/$memory_id (sharee) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/$memory_id (sharee) returned status $status, want 200: $(cat "$work_dir/mem_sharee_detail_body")"
+grep -q '"itemCount":3' "$work_dir/mem_sharee_detail_body" \
+    || fail "the sharee's memory count is not the three the owner currently sees: $(cat "$work_dir/mem_sharee_detail_body")"
+status="$(curl -sS -o "$work_dir/mem_sharee_wall_body" -b "$sharee_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums")" \
+    || fail "GET /api/v1/albums (sharee) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums (sharee) returned status $status, want 200: $(cat "$work_dir/mem_sharee_wall_body")"
+grep -q "\"id\":\"$memory_id\"" "$work_dir/mem_sharee_wall_body" \
+    || fail "the sharee's wall does not carry the shared memory: $(cat "$work_dir/mem_sharee_wall_body")"
+grep -q '"itemCount":3' "$work_dir/mem_sharee_wall_body" \
+    || fail "the sharee's shared card does not count the three: $(cat "$work_dir/mem_sharee_wall_body")"
+echo "    the sharee's detail and card both count the three live members"
+
+echo "==> the source grant's revocation must drop the re-shared photo from the sharee's views"
+status="$(curl -sS -o "$work_dir/mem_revoke_body" -b "$admin_jar" -w '%{http_code}' \
+    -X PUT -H 'Content-Type: application/json' \
+    -d '{"audience":[]}' \
+    "$base_url/api/v1/albums/$mem_source_id/audience")" \
+    || fail "PUT /api/v1/albums/$mem_source_id/audience (revocation) request failed"
+[ "$status" = "200" ] \
+    || fail "PUT /api/v1/albums/$mem_source_id/audience (revocation) returned status $status, want 200: $(cat "$work_dir/mem_revoke_body")"
+status="$(curl -sS -o "$work_dir/mem_sharee_detail2_body" -b "$sharee_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$memory_id")" \
+    || fail "GET /api/v1/albums/$memory_id (sharee, revoked) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/$memory_id (sharee, revoked) returned status $status, want 200: $(cat "$work_dir/mem_sharee_detail2_body")"
+grep -q '"itemCount":2' "$work_dir/mem_sharee_detail2_body" \
+    || fail "the sharee's memory count after the revocation is not 2 (the re-shared photo left live): $(cat "$work_dir/mem_sharee_detail2_body")"
+sharee_member_ids="$(grep -o '"assetId"[[:space:]]*:[[:space:]]*"[^"]*"' "$work_dir/mem_sharee_detail2_body" \
+    | sed 's/.*"\([^"]*\)"$/\1/' | sort | tr '\n' ' ' || true)"
+[ "$sharee_member_ids" = "$(printf '%s\n' "$own_a_id" "$own_b_id" | sort | tr '\n' ' ')" ] \
+    || fail "the sharee's members after the revocation are [$sharee_member_ids], want the creator's own pair: $(cat "$work_dir/mem_sharee_detail2_body")"
+grep -q "\"assetId\"[[:space:]]*:[[:space:]]*\"$via_share_id\"" "$work_dir/mem_sharee_detail2_body" \
+    && fail "the sharee's view still answers the re-shared photo after the revocation: $(cat "$work_dir/mem_sharee_detail2_body")"
+status="$(curl -sS -o "$work_dir/mem_sharee_wall2_body" -b "$sharee_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums")" \
+    || fail "GET /api/v1/albums (sharee, revoked) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums (sharee, revoked) returned status $status, want 200: $(cat "$work_dir/mem_sharee_wall2_body")"
+grep -q '"itemCount":2' "$work_dir/mem_sharee_wall2_body" \
+    || fail "the sharee's shared card does not count the two after the revocation: $(cat "$work_dir/mem_sharee_wall2_body")"
+# The owner's own view keeps the plain live membership: the row
+# stays -- the set is the owner's to tidy.
+status="$(curl -sS -o "$work_dir/mem_creator_detail_body" -b "$creator_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$memory_id")" \
+    || fail "GET /api/v1/albums/$memory_id (creator, revoked) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/albums/$memory_id (creator, revoked) returned status $status, want 200: $(cat "$work_dir/mem_creator_detail_body")"
+grep -q '"itemCount":3' "$work_dir/mem_creator_detail_body" \
+    || fail "the creator's own memory count after the revocation is not 3 (the owner's view keeps the live membership): $(cat "$work_dir/mem_creator_detail_body")"
+echo "    the sharee's views dropped the re-shared photo; the owner's own view keeps the row"
+
+echo "==> the sharee's wall walk must carry the same ground as the counts"
+# The timeline endpoint's album narrow is the memory detail page's own
+# tiles: the walk answers the same re-share ground the counts ride, so
+# the sharee's page never renders a grounded count beside the revoked
+# photo's tile.
+status="$(curl -sS -o "$work_dir/mem_sharee_walk_body" -b "$sharee_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline?albumId=$memory_id")" \
+    || fail "GET /api/v1/assets/timeline?albumId=$memory_id (sharee walk) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline?albumId=$memory_id (sharee walk) returned status $status, want 200: $(cat "$work_dir/mem_sharee_walk_body")"
+sharee_walk_ids="$(item_ids "$work_dir/mem_sharee_walk_body" | sort | tr '\n' ' ')"
+[ "$sharee_walk_ids" = "$(printf '%s\n' "$own_a_id" "$own_b_id" | sort | tr '\n' ' ')" ] \
+    || fail "the sharee's wall walk answers [$sharee_walk_ids], want the creator's own pair: $(cat "$work_dir/mem_sharee_walk_body")"
+# The owner's walk keeps the plain live membership: the row stays --
+# the set is the owner's to tidy.
+status="$(curl -sS -o "$work_dir/mem_creator_walk_body" -b "$creator_jar" -w '%{http_code}' \
+    "$base_url/api/v1/assets/timeline?albumId=$memory_id")" \
+    || fail "GET /api/v1/assets/timeline?albumId=$memory_id (creator walk) request failed"
+[ "$status" = "200" ] \
+    || fail "GET /api/v1/assets/timeline?albumId=$memory_id (creator walk) returned status $status, want 200: $(cat "$work_dir/mem_creator_walk_body")"
+creator_walk_ids="$(item_ids "$work_dir/mem_creator_walk_body" | sort | tr '\n' ' ')"
+[ "$creator_walk_ids" = "$(printf '%s\n' "$own_a_id" "$own_b_id" "$via_share_id" | sort | tr '\n' ' ')" ] \
+    || fail "the creator's wall walk answers [$creator_walk_ids], want the plain live three: $(cat "$work_dir/mem_creator_walk_body")"
+echo "    the sharee's walk dropped the revoked photo; the creator's walk keeps the plain live three"
+
+echo "==> DELETE /api/v1/albums/{id}/items must tidy the set with its own honest report"
+status="$(curl -sS -o "$work_dir/mem_remove_body" -b "$creator_jar" -w '%{http_code}' \
+    -X DELETE -H 'Content-Type: application/json' \
+    -d "{\"assetIds\":[\"$own_b_id\"]}" \
+    "$base_url/api/v1/albums/$memory_id/items")" \
+    || fail "DELETE /api/v1/albums/$memory_id/items request failed"
+[ "$status" = "200" ] \
+    || fail "DELETE /api/v1/albums/$memory_id/items returned status $status, want 200: $(cat "$work_dir/mem_remove_body")"
+grep -q '"removed":1' "$work_dir/mem_remove_body" \
+    || fail "the removal did not remove the one row: $(cat "$work_dir/mem_remove_body")"
+grep -q '"skipped":0' "$work_dir/mem_remove_body" \
+    || fail "the removal's skip count is not the honest zero: $(cat "$work_dir/mem_remove_body")"
+status="$(curl -sS -o "$work_dir/mem_remove2_body" -b "$creator_jar" -w '%{http_code}' \
+    -X DELETE -H 'Content-Type: application/json' \
+    -d "{\"assetIds\":[\"$own_b_id\"]}" \
+    "$base_url/api/v1/albums/$memory_id/items")" \
+    || fail "DELETE /api/v1/albums/$memory_id/items (repeat) request failed"
+[ "$status" = "200" ] \
+    || fail "DELETE /api/v1/albums/$memory_id/items (repeat) returned status $status, want 200: $(cat "$work_dir/mem_remove2_body")"
+grep -q '"removed":0' "$work_dir/mem_remove2_body" \
+    || fail "the repeated removal removed rows, want none: $(cat "$work_dir/mem_remove2_body")"
+grep -q '"skipped":1' "$work_dir/mem_remove2_body" \
+    || fail "the repeated removal did not skip the no-longer-member: $(cat "$work_dir/mem_remove2_body")"
+# The photo itself stays: the asset row is the library's, not the
+# memory's.
+removed_asset_rows="$(psql_query "SELECT count(*) FROM assets WHERE id = '$own_b_id'")"
+[ "$removed_asset_rows" = "1" ] \
+    || fail "the removed member's asset row left the library ($removed_asset_rows, want 1 -- the memory holds references, never photos)"
+mem_item_rows="$(psql_query "SELECT count(*) FROM album_items WHERE album_id = '$memory_id'")"
+[ "$mem_item_rows" = "2" ] \
+    || fail "the memory holds $mem_item_rows membership rows after the removal, want 2"
+echo "    removed 1, the repeat skipped 1; the photo's row stays in the library"
+
+echo "==> DELETE /api/v1/albums/{id} must cascade the memory's own rows alone"
+status="$(curl -sS -o /dev/null -b "$creator_jar" -w '%{http_code}' \
+    -X DELETE "$base_url/api/v1/albums/$memory_id")" \
+    || fail "DELETE /api/v1/albums/$memory_id request failed"
+[ "$status" = "204" ] \
+    || fail "DELETE /api/v1/albums/$memory_id returned status $status, want 204"
+# The cascade's own counts: the memory's row, its references, its
+# audience and the preference rows die; the asset rows live on
+# untouched (the photos were never the memory's to take).
+cascade_album_row="$(psql_query "SELECT count(*) FROM albums WHERE id = '$memory_id'")"
+[ "$cascade_album_row" = "0" ] \
+    || fail "the memory's row survived its own delete"
+cascade_item_rows="$(psql_query "SELECT count(*) FROM album_items WHERE album_id = '$memory_id'")"
+[ "$cascade_item_rows" = "0" ] \
+    || fail "the memory's references survived its own delete"
+cascade_share_rows="$(psql_query "SELECT count(*) FROM album_shares WHERE album_id = '$memory_id'")"
+[ "$cascade_share_rows" = "0" ] \
+    || fail "the memory's audience survived its own delete"
+cascade_pref_rows="$(psql_query "SELECT count(*) FROM user_album_prefs WHERE album_id = '$memory_id'")"
+[ "$cascade_pref_rows" = "0" ] \
+    || fail "the memory's preference rows survived its own delete"
+cascade_asset_rows="$(psql_query 'SELECT count(*) FROM assets')"
+[ "$cascade_asset_rows" = "4" ] \
+    || fail "the delete touched the library's asset rows ($cascade_asset_rows assets, want the phase's four untouched)"
+# The aftermath: the single-shape 404, to the creator and the sharee
+# alike.
+status="$(curl -sS -o "$work_dir/mem_gone_body" -b "$creator_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$memory_id")" \
+    || fail "GET /api/v1/albums/$memory_id (deleted) request failed"
+[ "$status" = "404" ] \
+    || fail "GET /api/v1/albums/$memory_id (deleted) returned status $status, want 404"
+grep -q 'ALBUM_NOT_FOUND' "$work_dir/mem_gone_body" \
+    || fail "the deleted memory's read does not answer ALBUM_NOT_FOUND: $(cat "$work_dir/mem_gone_body")"
+status="$(curl -sS -o "$work_dir/mem_gone_sharee_body" -b "$sharee_jar" -w '%{http_code}' \
+    "$base_url/api/v1/albums/$memory_id")" \
+    || fail "GET /api/v1/albums/$memory_id (sharee, deleted) request failed"
+[ "$status" = "404" ] \
+    || fail "GET /api/v1/albums/$memory_id (sharee, deleted) returned status $status, want 404 (the audience died with the memory)"
+echo "    the memory's rows died whole; the four asset rows live on"
+
+if compose logs --no-color lumemor 2>/dev/null | grep -q 'panic'; then
+    fail "the server panicked during the memories phase (see compose logs)"
+fi
+teardown_stack
+echo "    phase 3 passed after $(elapsed)s"
+
+# ---------------------------------------------------------------------------
+# Phase 4: the e2e stack (the memories story of the web app).
+# ---------------------------------------------------------------------------
+
+echo "==> phase 4/4: the e2e stack (the memories story of the web app)"
+reset_stack_state
+prepare_bind_mount
+start_stack
+probe_offline_mirror
+
+echo "==> running the Playwright spec (web/e2e/m3-memories.spec.ts)"
+if ! (cd web && pnpm e2e e2e/m3-memories.spec.ts); then
+    echo "==> server logs at the time of the failure:"
+    compose logs --no-color --tail 200 lumemor || true
+    fail "the memories e2e spec failed (see the report above; artifacts under web/test-results/)"
+fi
+teardown_stack
+echo "    phase 4 passed after $(elapsed)s"
 
 echo "==> acceptance flow completed in $(elapsed)s"
 echo "M3D ACCEPTANCE PASS"

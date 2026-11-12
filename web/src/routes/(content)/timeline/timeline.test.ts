@@ -396,7 +396,23 @@ test('without an observer the manual pager loads the next page', async () => {
 test('selection: the check entry raises the bar, a batch trash removes the tiles', async () => {
 	const fetchMock = stubFetch(
 		timelineRoutes({
-			'/api/v1/assets/batch': () => jsonResponse(200, { affected: 2, missing: [] })
+			'/api/v1/assets/batch': () => jsonResponse(200, { affected: 2, missing: [] }),
+			'/api/v1/albums': () =>
+				jsonResponse(200, {
+					albums: [
+						{
+							id: 'mem1',
+							title: 'Road trip 2026',
+							type: 'memory',
+							isShared: false,
+							coverAssetIds: [],
+							itemCount: 3,
+							updatedAt: '2026-11-05T10:15:00Z',
+							callerRole: 'owner'
+						}
+					]
+				}),
+			'/api/v1/albums/mem1/items': () => jsonResponse(200, { added: 2, skipped: 0 })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -418,6 +434,10 @@ test('selection: the check entry raises the bar, a batch trash removes the tiles
 
 	const bar = document.body.querySelector('.batchbar');
 	expect(bar?.textContent).toContain('2 selected');
+	// The wall-selection entry rides the bar beside the tag
+	// affordance (the sparkles opener).
+	expect(() => buttonByLabel('Add tag', bar as ParentNode)).not.toThrow();
+	expect(() => buttonByLabel('Add to memory', bar as ParentNode)).not.toThrow();
 
 	buttonByLabel('Trash').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	await settle();
@@ -430,6 +450,74 @@ test('selection: the check entry raises the bar, a batch trash removes the tiles
 	]);
 	// The successful action cleared the selection: the bar is gone.
 	expect(document.body.querySelector('.batchbar')).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('the wall-selection entry: the picker adds the captured ids to a memory', async () => {
+	const fetchMock = stubFetch(
+		timelineRoutes({
+			'/api/v1/albums': () =>
+				jsonResponse(200, {
+					albums: [
+						{
+							id: 'mem1',
+							title: 'Road trip 2026',
+							type: 'memory',
+							isShared: false,
+							coverAssetIds: [],
+							itemCount: 3,
+							updatedAt: '2026-11-05T10:15:00Z',
+							callerRole: 'owner'
+						}
+					]
+				}),
+			'/api/v1/albums/mem1/items': () => jsonResponse(200, { added: 2, skipped: 1 })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The ids are captured at open: pick two, open the picker, add a
+	// third check after the open -- the write carries the captured
+	// pair, never the live set.
+	clickTileCheck(0);
+	clickTileCheck(1);
+	buttonByLabel('Add to memory').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+	clickTileCheck(2);
+
+	expect(document.body.querySelector('.modal__panel')?.textContent).toContain('Add to memory');
+	expect(document.body.querySelector('.modal__panel')?.textContent).toContain('2 photos are selected');
+	const memoryRow = document.body.querySelector<HTMLElement>('.add-memory__row');
+	memoryRow?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+	await settle();
+
+	const adds = fetchMock.mock.calls.filter(
+		([input, init]) => String(input) === '/api/v1/albums/mem1/items' && init?.method === 'POST'
+	);
+	expect(adds).toHaveLength(1);
+	expect(JSON.parse(String(adds[0]?.[1]?.body))).toEqual({ assetIds: ['a1', 'a2'] });
+	// The row flipped to the added state; the honest report renders
+	// the skip-note line.
+	expect(document.body.querySelector('.add-memory__row')?.textContent).toContain('Added');
+	expect(document.body.querySelector('.add-memory__skip-note')?.textContent).toContain(
+		'1 photo is not visible right now'
+	);
+
+	// The pass's Done fires the wall's success arm: the selection
+	// clears and the bar drops. No timeline convergence follows (the
+	// memory never feeds the caller's timeline -- the walk did not
+	// refetch).
+	const walks = fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/assets/timeline')).length;
+	buttonByText('Done').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+	expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/assets/timeline')).length).toBe(
+		walks
+	);
+
 	unmount(page);
 	flushSync();
 });

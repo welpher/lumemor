@@ -476,8 +476,8 @@ describe('SSE convergence', () => {
 	});
 
 	test("an own reference set's replayed event inserts nothing", async () => {
-		// The reference sets never feed their creator's own aggregate
-		// (the wall card omits the switch): the face's owner-virtual
+		// The assets' reference sets never feed their creator's own aggregate
+		// (the wall card omits the switch): the face's owner-memory
 		// entry decides alone, no wall fetch.
 		const fetches: string[] = [];
 		const timeline = createTimelineClient({
@@ -489,7 +489,7 @@ describe('SSE convergence', () => {
 				}
 				if (url === '/api/v1/assets/m1') {
 					return detailOf(item('m1', '2026-11-03T08:00:00Z'), {
-						albums: [{ id: 'mem1', title: 'Trip', type: 'virtual', callerRole: 'owner' }]
+						albums: [{ id: 'mem1', title: 'Trip', type: 'memory', callerRole: 'owner' }]
 					});
 				}
 				throw new Error(`unexpected fetch ${url}`);
@@ -518,7 +518,7 @@ describe('SSE convergence', () => {
 					}
 					if (url === '/api/v1/assets/s1') {
 						return detailOf(item('s1', '2026-11-03T08:00:00Z'), {
-							albums: [{ id: 'mem2', title: 'Shared trip', type: 'virtual', callerRole: 'viewer' }]
+							albums: [{ id: 'mem2', title: 'Shared trip', type: 'memory', callerRole: 'viewer' }]
 						});
 					}
 					if (url === '/api/v1/albums') {
@@ -527,7 +527,7 @@ describe('SSE convergence', () => {
 								{
 									id: 'mem2',
 									title: 'Shared trip',
-									type: 'virtual',
+									type: 'memory',
 									callerRole: 'viewer',
 									inTimeline
 								}

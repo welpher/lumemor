@@ -250,11 +250,16 @@ test('the selection bar carries exactly the unfavorite action, and it ends the m
 	expect(document.body.querySelector('.batchbar')).not.toBeNull();
 	// The subset: the unfavorite toggle renders, none of the other
 	// timeline actions.
+	const bar = document.body.querySelector<HTMLElement>('.batchbar');
 	expect(hasButtonByLabel('Unfavorite')).toBe(true);
+	// The wall-selection entry joins the bar (a favorite is in the
+	// caller's current sight -- the entry's ground).
+	expect(hasButtonByLabel('Add to memory')).toBe(true);
 	expect(hasButtonByLabel('Hide')).toBe(false);
 	expect(hasButtonByLabel('Unhide')).toBe(false);
 	expect(hasButtonByLabel('Trash')).toBe(false);
 	expect(hasButtonByLabel('Restore')).toBe(false);
+	expect(bar?.textContent).toContain('1 selected');
 
 	buttonByLabel('Unfavorite').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();

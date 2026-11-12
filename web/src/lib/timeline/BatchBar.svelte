@@ -6,10 +6,12 @@
 	// the selected count, a clear action (Escape does the same from
 	// the page) and the last failed action's message. The bar owns
 	// presentation only: the page runs the actions and owns the
-	// selection. The add-tag affordance rides an optional callback
-	// (the flow carries a dialog and an endpoint of its own, not a
-	// batch action); the add-to-album affordance is GONE (the albums-as-sources rework -- an album is a source, not a container photos get
-	// curated into).
+	// selection. The add-tag and add-to-memory affordances ride
+	// optional callbacks (each flow carries a dialog and an endpoint
+	// of its own, not a batch action); the membership removal of the
+	// memory wall rides one too -- the write is the memory's own
+	// curation endpoint, and the wall that composes this bar runs it
+	// with the same choreography as a batch action.
 	//
 	// THE ICON-FIRST RULE:
 	// the bar is a TOOLBAR, so every action is an icon-only button
@@ -28,6 +30,8 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import type { BatchAction } from '$lib/api/timeline';
 	import Tag from '@lucide/svelte/icons/tag';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import Minus from '@lucide/svelte/icons/minus';
 	import Star from '@lucide/svelte/icons/star';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Eye from '@lucide/svelte/icons/eye';
@@ -60,13 +64,39 @@
 		 * action set.
 		 */
 		onaddtag?: () => void;
+		/**
+		 * Open the memory picker over the current selection (the
+		 * wall-selection entry): the memory flow carries its own
+		 * dialog and write, not a batch action -- the same optional
+		 * callback shape as the tag opener.
+		 */
+		onaddmemory?: () => void;
+		/**
+		 * Remove the selected rows' memberships from the memory the
+		 * wall renders (the memory's own curation write). The wall
+		 * runs it with the batch choreography -- busy, the success
+		 * arm clearing the selection, a failure keeping it -- while
+		 * the bar stays presentation-only.
+		 */
+		onremovememory?: () => void;
 		/** Run one batch action over the current selection. */
 		onaction: (action: BatchAction) => void;
 		/** Clear the selection. */
 		onclear: () => void;
 	};
 
-	let { count, allFavorite, errorKey, busy, actions, onaddtag, onaction, onclear }: Props = $props();
+	let {
+		count,
+		allFavorite,
+		errorKey,
+		busy,
+		actions,
+		onaddtag,
+		onaddmemory,
+		onremovememory,
+		onaction,
+		onclear
+	}: Props = $props();
 
 	// The default is the full set of the bar's buttons; a caller's
 	// subset keeps its order (the toggle, hide, unhide, trash,
@@ -109,6 +139,19 @@
 				onclick={onaddtag}
 			>
 				<Tag size={20} aria-hidden="true" />
+			</IconButton>
+		{/if}
+
+		{#if onaddmemory !== undefined}
+			<IconButton
+				class="batchbar__action batchbar__action--add-memory"
+				variant="ghost"
+				disabled={busy}
+				aria-label={$_('action_add_memory')}
+				title={$_('action_add_memory')}
+				onclick={onaddmemory}
+			>
+				<Sparkles size={20} aria-hidden="true" />
 			</IconButton>
 		{/if}
 
@@ -170,6 +213,19 @@
 				onclick={() => onaction('restore')}
 			>
 				<RotateCcw size={20} aria-hidden="true" />
+			</IconButton>
+		{/if}
+
+		{#if onremovememory !== undefined}
+			<IconButton
+				class="batchbar__action batchbar__action--remove-memory"
+				variant="danger"
+				disabled={busy}
+				aria-label={$_('action_remove_from_memory')}
+				title={$_('action_remove_from_memory')}
+				onclick={onremovememory}
+			>
+				<Minus size={20} aria-hidden="true" />
 			</IconButton>
 		{/if}
 
