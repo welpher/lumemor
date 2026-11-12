@@ -31,6 +31,15 @@
 	// and the photos are ALWAYS sharp. (The viewer's image branch
 	// keeps its own view/original pair -- untouched.)
 	//
+	// THE LOST LOAD EVENT (the 2026-11-12 resize blur): a DIFFERENT
+	// problem from the serving copy above, never to be conflated with
+	// it. That pin was the browser re-estimating a responsive
+	// candidate; this one is the `load` event itself going missing
+	// when the wall's re-pack re-creates a tile whose image already
+	// sits in the memory cache (the effect below reads the element's
+	// own completion state instead of waiting for an event nobody
+	// fires).
+	//
 	// THE PINNED LIVE-PHOTO DECISION: TimelineItem carries
 	// livePhotoVideoId, so a Live Photo tile shows its small live
 	// badge here; the hover video preview arrives with the viewer and
@@ -90,16 +99,27 @@
 
 	let loaded = $state(false);
 	let canvas: HTMLCanvasElement | undefined = $state();
+	let image: HTMLImageElement | undefined = $state();
 
 	/** The view-size serving copy (always -- see the serving pin above). */
 	const viewUrl = $derived(`/api/v1/assets/${encodeURIComponent(item.id)}/thumbnail?size=view`);
 
-	// Reset the crossfade when the tile's image identity changes (the
-	// item object is replaced by patches, not mutated).
+	// THE CACHE-HIT RACE (the resize blur): the wall re-packs on a
+	// container resize and moves tiles between rows, so Svelte
+	// destroys and re-creates the tile; the fresh <img> gets its src
+	// before Svelte attaches onload, and a fully decoded image from
+	// the memory cache can dispatch `load` synchronously inside that
+	// window. That event never reaches the component and nobody
+	// fires it again, so the tile would sit on its blurhash forever.
+	// The old unconditional `loaded = false` then wiped the only
+	// signal the element had. The mount check reads the element's own
+	// completion state instead: a cache hit shows immediately, an
+	// async load still lands through onload.
 	$effect(() => {
 		void item.id;
 		void item.isReady;
-		loaded = false;
+		const element = image;
+		loaded = element !== undefined && element.complete && element.naturalWidth > 0;
 	});
 
 	// Paint the blurhash placeholder. jsdom (and any context-less
@@ -191,6 +211,7 @@
 				alt=""
 				loading="lazy"
 				decoding="async"
+				bind:this={image}
 				onload={() => (loaded = true)}
 				onerror={() => (loaded = false)}
 				draggable="false"
