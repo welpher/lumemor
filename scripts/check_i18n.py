@@ -342,7 +342,6 @@ NON_ERROR_KEYS = {
     "viewer_assign_mode_existing",
     "viewer_assign_mode_new",
     "viewer_assign_note",
-    "viewer_face_not_grouped",
     # Trash, favorites, hidden and admin user management UI strings
     "trash_note",
     "trash_loading",

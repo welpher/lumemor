@@ -2279,8 +2279,8 @@ export interface paths {
          *     owner's alone -- an invisible or unknown target) answers the
          *     same byte-identical 404 `PERSON_NOT_FOUND`
          *     (anti-enumeration). A face the clustering has not yet
-         *     assigned to any cluster is not part of any person and
-         *     answers the same 404.
+         *     assigned to any cluster is a valid source: it simply joins
+         *     the target (there is no source cluster to maintain).
          *
          *     The move runs as ONE transaction through the cluster
          *     maintenance discipline: the target's representative face
@@ -9876,8 +9876,8 @@ export interface operations {
             };
             /**
              * @description No such movable face for this caller: the face id is
-             *     unknown, its asset (or the target cluster) is invisible
-             *     to the caller, or the face belongs to no cluster yet --
+             *     unknown, its asset is not the caller's own live asset,
+             *     or the target cluster is invisible to the caller --
              *     indistinguishable by design.
              */
             404: {

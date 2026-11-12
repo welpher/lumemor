@@ -57,8 +57,9 @@
 	//   the face's CURRENT cluster -- naming the whole group, the
 	//   family semantics the dialog copy explains -- never a move.
 	//   A face the clustering has not grouped yet has no cluster to
-	//   name and its move answers the people 404, which the assign
-	//   context surfaces as the honest not-grouped message. Every
+	//   name, and its move simply joins the picked person (the
+	//   endpoint accepts a clusterless source: there is no source
+	//   cluster to maintain). Every
 	//   write converges through the detail refetch: the faces array
 	//   IS the chips' truth, and the person.* events of other
 	//   sessions refetch it the same way (the server's answer
@@ -467,12 +468,7 @@
 		const outcome = await moveFace(faceId, targetId);
 		assignBusy = false;
 		if (!outcome.ok) {
-			// The assign context gives the move's 404 its honest
-			// meaning: the caller owns the asset the face sits on, so
-			// a face the endpoint cannot resolve is one the clustering
-			// has not grouped yet (the one message-key exception --
-			// same discipline as the people client's requires-label).
-			assignErrorKey = outcome.errorKey === 'person_not_found' ? 'viewer_face_not_grouped' : outcome.errorKey;
+			assignErrorKey = outcome.errorKey;
 			return;
 		}
 		assignFaceId = null;
