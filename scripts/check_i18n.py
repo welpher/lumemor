@@ -228,6 +228,30 @@ NON_ERROR_KEYS = {
     "people_move_target_label",
     "people_move_group_unnamed",
     "people_move_submit",
+    # The face-correction surfaces: the edit-people side panel, the
+    # target-list picker (both dialogs share it), the detach
+    # confirm, and the person detail's unname echo. The age keys
+    # land ahead of the birth-date contract work (the display is
+    # data-gated until the field exists).
+    "people_edit_faces",
+    "people_edit_faces_hint",
+    "people_edit_faces_apply",
+    "people_edits_count",
+    "people_face_reassign",
+    "people_face_detach",
+    "people_detach_dialog_title",
+    "people_detach_dialog_body",
+    "people_detach_submit",
+    "people_detach_done",
+    "people_select_person_title",
+    "people_select_person_body",
+    "people_create_from_face",
+    "people_create_from_face_done",
+    "people_picker_filter",
+    "person_age_years",
+    "person_age_months",
+    "person_age_year_months",
+    "person_unname_done",
     "people_detail_unnamed",
     "people_detail_faces_heading",
     "people_face_alt",
