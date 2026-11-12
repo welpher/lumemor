@@ -30,40 +30,29 @@
 >
 	{#each live as entry (entry.id)}
 		{@const Glyph = glyphOf(entry.tone)}
+		{@const toneText =
+			entry.tone === 'success' ? 'text-success' : entry.tone === 'danger' ? 'text-danger-text' : 'text-accent'}
 		<button
 			class="toast pointer-events-auto flex items-center gap-2 max-w-[min(420px,calc(100vw-32px))] px-3.5 py-2.5 font-body font-semibold text-[13px] leading-[1.4] text-text bg-card border border-border rounded-control shadow-overlay cursor-pointer transition-[opacity] duration-(--motion-fast) ease-standard"
-			class:toast--success={entry.tone === 'success'}
-			class:toast--danger={entry.tone === 'danger'}
-			class:toast--info={entry.tone === 'info'}
 			class:opacity-0={entry.leaving}
 			type="button"
 			role={entry.tone === 'danger' ? 'alert' : 'status'}
 			data-toast-id={entry.id}
+			data-toast-tone={entry.tone}
 			onclick={() => dismissToast(entry.id)}
 		>
-			<Glyph size={16} class="toast__icon shrink-0" aria-hidden="true" />
+			<Glyph size={16} class="toast__icon shrink-0 {toneText}" aria-hidden="true" />
 			<span class="toast__text">{entry.text}</span>
 		</button>
 	{/each}
 </div>
 
 <style>
-	/* The tone's icon color: the success check teal, the danger
-	 * warning ember, the info glyph accent. */
-	.toast--success .toast__icon {
-		color: var(--color-success);
-	}
-
-	.toast--danger .toast__icon {
-		color: var(--color-danger-text);
-	}
-
-	.toast--info .toast__icon {
-		color: var(--color-accent);
-	}
-
 	/* Residual styles (the specimen's own): the entrance keyframe;
-	 * the leaving fade rides the opacity transition utility above. */
+	 * the leaving fade rides the opacity transition utility above,
+	 * and the tone's icon colors ride the palette's own utilities on
+	 * the glyph (teal success, ember danger, accent info) -- no
+	 * tone-specific rules here to prune. */
 	.toast {
 		animation: toast-in var(--motion-base) var(--ease-standard);
 	}

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import { sessionStatus } from '$lib/auth/session.svelte';
 import { clearWallItems, publishWallItems } from '$lib/timeline/wall-sequence.svelte';
+import { clearToasts, toasts } from '$lib/components/toast.svelte';
 import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
 
@@ -183,6 +184,10 @@ function post(url: string, respond: () => Response | Promise<Response>): RouteRu
 	return { method: 'POST', url, respond };
 }
 
+function del(url: string, respond: () => Response | Promise<Response>): RouteRule {
+	return { method: 'DELETE', url, respond };
+}
+
 function put(url: string, respond: () => Response | Promise<Response>): RouteRule {
 	return { method: 'PUT', url, respond };
 }
@@ -347,12 +352,17 @@ beforeEach(async () => {
 	expect(sessionStatus()).toBe('authenticated');
 	await initI18n();
 	publishWallItems(sequence);
+	// The toast organ is module state shared across these tests:
+	// every case starts with an empty queue (the echo assertions
+	// read exactly their own flow's toasts).
+	clearToasts();
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 	clearWallItems();
+	clearToasts();
 });
 
 test('an image deep link renders the serving layers and the filmstrip', async () => {
@@ -1817,6 +1827,405 @@ test("the tags row's assign affordance is every viewer's own write (per-user sta
 	expect(info.querySelector('.info__tag-chip')?.textContent?.trim()).toBe('Sunrise');
 	expect(scopedButtonByText(info, 'Add tag')).toBeTruthy();
 
+	unmount(app);
+	flushSync();
+});
+
+// --- the edit-people panel (the People section's pencil) -----------------------
+
+/** The pencil that opens the edit-people panel. */
+function peoplePencil(): HTMLButtonElement {
+	const found = document.body.querySelector<HTMLButtonElement>('.info__faces-edit');
+	if (found === null) {
+		throw new Error('missing people pencil');
+	}
+	return found;
+}
+
+/** One edit-people panel row, addressed by its face id. */
+function editRow(faceId: string): HTMLLIElement {
+	const found = document.body.querySelector<HTMLLIElement>(`.faces-panel__row[data-face-id="${faceId}"]`);
+	if (found === null) {
+		throw new Error(`missing edit row ${faceId}`);
+	}
+	return found;
+}
+
+/** One row button of the edit-people panel, by aria-label. */
+function editRowButton(faceId: string, label: string): HTMLButtonElement {
+	const found = Array.from(editRow(faceId).querySelectorAll<HTMLButtonElement>('button')).find(
+		(button) => button.getAttribute('aria-label') === label
+	);
+	if (found === undefined) {
+		throw new Error(`missing row button ${label}`);
+	}
+	return found;
+}
+
+test("the People pencil opens the edit-people panel in the drawer's place; the photo stays", async () => {
+	const faces = [
+		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		faceSummary('f2'),
+		faceSummary('f3', { clusterId: null })
+	];
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces })))
+	]);
+	await settle();
+
+	openDrawer();
+	expect(document.body.querySelector('.info')).not.toBeNull();
+	expect(document.body.querySelector('.faces-panel')).toBeNull();
+
+	click(peoplePencil());
+	await settle();
+
+	// The panel stands in the information drawer's place -- the
+	// drawer itself is still open underneath -- and the media stage
+	// never unmounted (the photo stays visible).
+	expect(document.body.querySelector('.faces-panel')).not.toBeNull();
+	expect(document.body.querySelector('.info')).toBeNull();
+	expect(document.body.querySelector('.viewer__image')).not.toBeNull();
+
+	// The section's hint and one row per face, the three label states.
+	expect(element('.faces-panel__hint').textContent).toContain('Every face in this photo');
+	expect(
+		Array.from(document.body.querySelectorAll<HTMLElement>('.faces-panel__row')).map((row) => row.dataset.faceId)
+	).toEqual(['f1', 'f2', 'f3']);
+
+	// The back affordance returns to the information drawer.
+	click(element('.faces-panel__back'));
+	await settle();
+	expect(document.body.querySelector('.faces-panel')).toBeNull();
+	expect(document.body.querySelector('.info')).not.toBeNull();
+	unmount(app);
+	flushSync();
+});
+
+test("the pencil is the owner's curation alone and never renders without faces", async () => {
+	// A sharee's drawer: no pencil (the face correction writes are
+	// the owner's), the chips keep their own assign flow.
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(
+				200,
+				detailBodyOf(sequence[1]!, {
+					faces: [faceSummary('f2')],
+					ownerId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70'
+				})
+			)
+		)
+	]);
+	await settle();
+	openDrawer();
+	expect(document.body.querySelector('.info__faces-edit')).toBeNull();
+	unmount(app);
+	flushSync();
+
+	// A photo with no faces: the section is the placeholder, no rows
+	// to edit, no pencil.
+	const { app: bare } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: [] })))
+	]);
+	await settle();
+	// The first half's toggle persisted the open preference: the
+	// drawer renders without another toggle.
+	expect(document.body.querySelector('.info')).not.toBeNull();
+	expect(document.body.querySelector('.info__faces-edit')).toBeNull();
+	expect(element('.info__faces-empty').textContent).toContain('No people recognized');
+	unmount(bare);
+	flushSync();
+});
+
+test('the reassign stages locally, the check commits once, and the echo counts the edits', async () => {
+	// The server's truth: f2 sits on an unnamed cluster; the commit
+	// moves it onto Mom's cluster and the refetch carries the label.
+	let moved = false;
+	const facesNow = () => [
+		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		moved ? faceSummary('f2', { clusterId: 'p2', label: { name: 'Mom', isHidden: false } }) : faceSummary('f2')
+	];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
+		get('/api/v1/people', () => jsonResponse(200, [personTarget('p1', 'Ada'), personTarget('p2', 'Mom')])),
+		post('/api/v1/faces/f2/move', () => {
+			moved = true;
+			return jsonResponse(200, { faceId: 'f2', clusterId: 'p2' });
+		})
+	]);
+	await settle();
+
+	openDrawer();
+	click(peoplePencil());
+	await settle();
+	click(editRowButton('f2', 'Reassign this face'));
+	await settle();
+
+	// The choose-person dialog: the filterable target list, the
+	// face's own cluster never a target.
+	expect(element('[role="dialog"]').getAttribute('aria-label')).toBe('Choose person');
+	const filter = document.body.querySelector<HTMLInputElement>('.person-picker__filter');
+	if (filter === null) {
+		throw new Error('missing filter input');
+	}
+	expect(
+		Array.from(document.querySelectorAll('.person-picker__row')).map((row) =>
+			row.textContent?.replace(/\s+/g, ' ').trim()
+		)
+	).toEqual(['Ada 12', 'Mom 12']);
+	// The local filter narrows the rows (no request rides it).
+	const peopleFetches = () => fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people').length;
+	const before = peopleFetches();
+	filter.value = 'mom';
+	filter.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+	expect(
+		Array.from(document.querySelectorAll('.person-picker__row')).map((row) =>
+			row.textContent?.replace(/\s+/g, ' ').trim()
+		)
+	).toEqual(['Mom 12']);
+	expect(peopleFetches()).toBe(before);
+	// No move has posted: the pick STAGES, never writes.
+	expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/v1/faces/f2/move')).toBe(false);
+
+	click(buttonByText('Assign'));
+	await settle();
+
+	// The dialog closed and the row carries the staged target with
+	// its pending marker -- still no write.
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+	expect(editRow('f2').dataset.staged).toBe('true');
+	expect(editRow('f2').textContent?.trim()).toBe('Mom');
+	expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/v1/faces/f2/move')).toBe(false);
+	// The apply gate opened with the stage.
+	expect(document.querySelector<HTMLButtonElement>('.faces-panel__apply')?.disabled).toBe(false);
+
+	// The one-shot commit: ONE move with the contract's body, the
+	// panel returns to the drawer, the count echo lands, and the
+	// convergence refetch re-renders the row from the server's truth.
+	click(element('.faces-panel__apply'));
+	await settle();
+	const init = requestOf(fetchMock, 'POST', '/api/v1/faces/f2/move');
+	expect(JSON.parse(String(init?.body))).toEqual({ targetClusterId: 'p2' });
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/faces/f2/move')).toHaveLength(1);
+	expect(document.body.querySelector('.faces-panel')).toBeNull();
+	expect(document.body.querySelector('.info')).not.toBeNull();
+	expect(toasts().map((entry) => entry.text)).toEqual(['Made 1 changes.']);
+	// The information drawer returned with the server's converged
+	// truth: the moved face's chip carries Mom's label.
+	expect(Array.from(document.body.querySelectorAll('.info__face-name')).map((node) => node.textContent)).toEqual([
+		'Ada',
+		'Mom'
+	]);
+	unmount(app);
+	flushSync();
+});
+
+test('the create-from-face stages and the commit seeds the person; the detach writes immediately', async () => {
+	// f3 is not-yet-grouped: its only action is the reassign pencil,
+	// whose dialog holds the create row.
+	let created = false;
+	const facesNow = () => [
+		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		created ? faceSummary('f3', { clusterId: 'n1' }) : faceSummary('f3', { clusterId: null })
+	];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
+		get('/api/v1/people', () => jsonResponse(200, [personTarget('p1', 'Ada')])),
+		post('/api/v1/faces/f3/cluster', () => {
+			created = true;
+			return jsonResponse(200, { faceId: 'f3', clusterId: 'n1' });
+		}),
+		del('/api/v1/faces/f1', () => new Response(null, { status: 204 }))
+	]);
+	await settle();
+
+	openDrawer();
+	click(peoplePencil());
+	await settle();
+	// The clusterless row carries the reassign pencil alone.
+	expect(editRow('f3').querySelectorAll('button')).toHaveLength(1);
+	click(editRowButton('f3', 'Reassign this face'));
+	await settle();
+
+	// The create row sits below the list; clicking it stages the
+	// creation (no write yet).
+	click(buttonByText('Create a new person from this face'));
+	await settle();
+	expect(editRow('f3').dataset.staged).toBe('true');
+	expect(editRow('f3').textContent?.trim()).toBe('Create a new person from this face');
+	expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/v1/faces/f3/cluster')).toBe(false);
+
+	// The commit seeds the person through the creation endpoint; the
+	// create carries its own echo and the count follows.
+	click(element('.faces-panel__apply'));
+	await settle();
+	const init = requestOf(fetchMock, 'POST', '/api/v1/faces/f3/cluster');
+	expect(init?.body).toBeUndefined();
+	expect(toasts().map((entry) => entry.text)).toEqual(['Created a new person from this face.', 'Made 1 changes.']);
+	// The convergence refetch re-rendered the detail from the
+	// server's truth (the initial load plus the commit's refetch).
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2?locale=en').length).toBe(2);
+	unmount(app);
+	flushSync();
+});
+
+test('the detach confirm names the person, the write is immediate, and the row leaves its person', async () => {
+	// The server's truth after the detach: f1's membership is gone
+	// -- the face row SURVIVES among its asset's faces, now
+	// not-yet-grouped (the honest post-state the refetch carries).
+	let detached = false;
+	const facesNow = () => [
+		detached
+			? faceSummary('f1', { clusterId: null, label: null })
+			: faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		faceSummary('f2')
+	];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
+		del('/api/v1/faces/f1', () => {
+			detached = true;
+			return new Response(null, { status: 204 });
+		})
+	]);
+	await settle();
+
+	openDrawer();
+	click(peoplePencil());
+	await settle();
+	// The named row carries both affordances; the unnamed row's only
+	// action is the pencil (the component's own pin, seen live).
+	expect(editRow('f2').querySelector('[aria-label="Remove this face"]')).toBeNull();
+	click(editRowButton('f1', 'Remove this face'));
+	await settle();
+
+	// The confirm names the person and states the honest cost.
+	expect(element('[role="dialog"]').getAttribute('aria-label')).toBe('Remove this face');
+	expect(element('.detach-dialog__body').textContent).toContain("Ada's face goes back to not grouped yet");
+
+	click(buttonByText('Remove'));
+	await settle();
+
+	// The write ran immediately (a confirm, never a stage): the
+	// panel STAYS, the echo lands, and the refetch re-renders the
+	// row among the not-yet-grouped.
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/faces/f1')).toHaveLength(1);
+	expect(document.body.querySelector('.faces-panel')).not.toBeNull();
+	expect(toasts().map((entry) => entry.text)).toEqual(['Face removed; it is back among the not grouped yet.']);
+	expect(editRow('f1').textContent?.trim()).toBe('Not grouped yet');
+	expect(editRow('f1').querySelector('[aria-label="Remove this face"]')).toBeNull();
+	unmount(app);
+	flushSync();
+});
+
+test('the commit failure keeps the panel and the uncommitted stages; the error renders beside the apply', async () => {
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(200, detailBodyOf(sequence[1]!, { faces: [faceSummary('f2')] }))
+		),
+		get('/api/v1/people', () => jsonResponse(200, [personTarget('p1', 'Ada')])),
+		post('/api/v1/faces/f2/move', () => jsonResponse(404, { code: 'PERSON_NOT_FOUND' }))
+	]);
+	await settle();
+
+	openDrawer();
+	click(peoplePencil());
+	await settle();
+	click(editRowButton('f2', 'Reassign this face'));
+	await settle();
+	click(buttonByText('Assign'));
+	await settle();
+	expect(editRow('f2').dataset.staged).toBe('true');
+
+	click(element('.faces-panel__apply'));
+	await settle();
+
+	// The refusal kept the panel open with the honest error line and
+	// the stage staged (a retry never re-picks); no echo landed.
+	expect(document.body.querySelector('.faces-panel')).not.toBeNull();
+	const error = element('.faces-panel__error');
+	expect(error.getAttribute('role')).toBe('alert');
+	expect(error.textContent).toContain('does not exist or is not visible');
+	expect(editRow('f2').dataset.staged).toBe('true');
+	expect(toasts()).toHaveLength(0);
+	// One refused write only: the loop stopped, never retried itself.
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/faces/f2/move')).toHaveLength(1);
+	unmount(app);
+	flushSync();
+});
+
+test('the layered Escape falls from the pick dialog to the panel, then the drawer, then the route', async () => {
+	const back = vi.spyOn(history, 'back').mockImplementation(() => undefined);
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(200, detailBodyOf(sequence[1]!, { faces: [faceSummary('f2')] }))
+		),
+		get('/api/v1/people', () => jsonResponse(200, [personTarget('p1', 'Ada')]))
+	]);
+	await settle();
+
+	openDrawer();
+	click(peoplePencil());
+	await settle();
+	click(editRowButton('f2', 'Reassign this face'));
+	await settle();
+	expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+
+	// The dialog owns the first Escape; the panel stays.
+	pressKey('Escape');
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+	expect(document.body.querySelector('.faces-panel')).not.toBeNull();
+	expect(back).not.toHaveBeenCalled();
+
+	// The panel's Escape returns to the information drawer (its back
+	// affordance's own behavior), not out of the viewer.
+	pressKey('Escape');
+	expect(document.body.querySelector('.faces-panel')).toBeNull();
+	expect(document.body.querySelector('.info')).not.toBeNull();
+	expect(back).not.toHaveBeenCalled();
+
+	pressKey('Escape');
+	expect(document.body.querySelector('.info')).toBeNull();
+	pressKey('Escape');
+	expect(back).toHaveBeenCalledTimes(1);
+	unmount(app);
+	flushSync();
+});
+
+test('the face creation and detach events of other sessions converge the detail', async () => {
+	let detached = false;
+	const facesNow = () => [
+		faceSummary('f1', detached ? { clusterId: null, label: null } : { label: { name: 'Ada', isHidden: false } })
+	];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() })))
+	]);
+	await settle();
+	openDrawer();
+	const fetches = () =>
+		fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2?locale=en').length;
+	const base = fetches();
+
+	// A face creation naming this asset's face (another session
+	// seeded a person from it): the refetch converges.
+	firePersonEvent({ id: 1, name: 'person.face_clustered', faceId: 'f1', clusterId: 'n1', userId: 'u9' });
+	await settle();
+	expect(fetches()).toBe(base + 1);
+
+	// A detach naming the cluster this asset's face sits on: the
+	// refetch converges the row onto the server's post-state (the
+	// state flips before the event -- the refetch reads it at fetch
+	// time).
+	detached = true;
+	firePersonEvent({ id: 2, name: 'person.face_detached', faceId: 'f1', clusterId: 'c-f1', userId: 'u9' });
+	await settle();
+	expect(fetches()).toBe(base + 2);
+	expect(element('.info__face-name').textContent?.trim()).toBe('Not grouped yet');
+
+	// An event off every rendered face adds no fetch.
+	firePersonEvent({ id: 3, name: 'person.face_detached', faceId: 'f9', clusterId: 'c9', userId: 'u9' });
+	await settle();
+	expect(fetches()).toBe(base + 2);
 	unmount(app);
 	flushSync();
 });
