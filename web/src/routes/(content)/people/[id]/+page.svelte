@@ -3,7 +3,7 @@
 	// caller's label state over the cluster's caller-visible faces,
 	// strongest first. The unnamed state (label null) renders the
 	// unnamed header and the naming CTA; a label renders the name
-	// with the rename, hidden-toggle and merge-into actions.
+	// with the rename, unname, hidden-toggle and merge-into actions.
 	//
 	// THE PINNED CHOICES:
 	//
@@ -11,21 +11,29 @@
 	//   body's answer IS the fresh label state -- a rename keeps the
 	//   hidden switch), no refetch; the SSE self-events converge
 	//   anyway.
+	// - The unname write is immediate and unceremonious: naming is
+	//   reversible (rename restores it), so no confirm stands between
+	//   the click and the write -- the toast echo carries the
+	//   feedback, and the label adoption lands the unnamed state.
 	// - Hiding rides on the label row: an unlabeled cluster answers
 	//   400 with the message key `person_hide_requires_label`, which
 	//   surfaces as the honest message line right beside the naming
 	//   CTA -- the nudge to name first, never a silent failure.
 	// - The merge-into fold posts THIS cluster as the single source
-	//   and leaves for /people (this cluster -- and its name -- dies
-	//   with the merge; the target's label persists).
+	//   and lands on the SURVIVING person's page (the response's own
+	//   answer decides the destination): the landing is the feedback
+	//   -- this cluster (and its name) dies with the merge, the
+	//   target's page is where the person continues, so no toast
+	//   stands beside the navigation.
 	// - The single-face move posts /faces/{id}/move and converges
 	//   through a refetch: the moved face left, the counts and the
 	//   ordering are the server's to recompute.
 	// - SSE: the person events that touch THIS cluster (a label or
 	//   hidden change on it, a merge that dissolves or survives as
-	//   it, a face move onto or out of it) refetch the detail; the
-	//   refetched answer owns the truth -- a foreign label event
-	//   changes nothing here (labels are private per user).
+	//   it, a face write that joins it, leaves it or releases one of
+	//   its faces) refetch the detail; the refetched answer owns the
+	//   truth -- a foreign label event changes nothing here (labels
+	//   are private per user).
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { _ } from 'svelte-i18n';
@@ -39,20 +47,24 @@
 		mergePeople,
 		moveFace,
 		setPersonHidden,
+		unlabelPerson,
 		type ClusterDetail,
 		type PersonSummary,
 		type UnnamedClusterSummary
 	} from '$lib/api/people';
 	import { subscribePersonEvents, type PersonEvent } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import { toast } from '$lib/components/toast.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import PersonNameDialog from '$lib/people/PersonNameDialog.svelte';
 	import ClusterPickerDialog from '$lib/people/ClusterPickerDialog.svelte';
+	import PersonPickerDialog from '$lib/people/PersonPickerDialog.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Eye from '@lucide/svelte/icons/eye';
 	import GitMerge from '@lucide/svelte/icons/git-merge';
+	import UserX from '@lucide/svelte/icons/user-x';
 
 	const clusterId = $derived(page.params.id ?? '');
 
@@ -81,6 +93,10 @@
 	let mergeIntoErrorKey = $state('');
 	let mergeIntoPeople = $state<PersonSummary[]>([]);
 	let mergeIntoLoading = $state(false);
+
+	// The unname write's honest failure (a dead session, a vanished
+	// cluster) -- the header owns the line beside the actions.
+	let unnameErrorKey = $state('');
 
 	// The single-face move dialog: the face being moved (null while
 	// closed), with the named people and the unnamed region's first
@@ -131,7 +147,8 @@
 	// Whether one person event concerns this cluster: the label and
 	// hidden writes on it, a merge that dissolves it (this cluster
 	// was a source) or survives it (it absorbed the sources), a face
-	// move that joins it or leaves it.
+	// write that joins it, leaves it, or releases a face of this
+	// cluster's own.
 	function touchesThisCluster(event: PersonEvent): boolean {
 		const id = untrack(() => clusterId);
 		switch (event.name) {
@@ -142,6 +159,8 @@
 			case 'person.merged':
 				return event.survivingClusterId === id || event.mergedClusterIds.includes(id);
 			case 'person.face_moved':
+			case 'person.face_clustered':
+			case 'person.face_detached':
 				return event.clusterId === id || (detail?.faces.some((face) => face.id === event.faceId) ?? false);
 		}
 	}
@@ -219,7 +238,9 @@
 
 	// The merge-into fold: this cluster is the single source, so it
 	// dissolves (with its name -- the honest cost); the target's
-	// label persists. Success leaves for the named region.
+	// label persists. Success lands on the SURVIVING person's page --
+	// the response's own answer names the destination, and the
+	// landing itself is the feedback (no toast beside it).
 	async function runMergeInto(targetId: string): Promise<void> {
 		if (writeBusy) {
 			return;
@@ -233,7 +254,28 @@
 			return;
 		}
 		mergeIntoOpen = false;
-		void goto('/people');
+		void goto(`/people/${encodeURIComponent(outcome.merge.survivingClusterId)}`);
+	}
+
+	// The unname write: immediate, no confirm (naming is reversible --
+	// a rename restores it; the ceremony would only guard a
+	// reversible act). The toast echo carries the feedback and the
+	// label adoption lands the unnamed state; the SSE self-event
+	// converges the same answer.
+	async function runUnname(): Promise<void> {
+		if (writeBusy || detail === null || detail.label === null) {
+			return;
+		}
+		writeBusy = true;
+		unnameErrorKey = '';
+		const outcome = await unlabelPerson(clusterId);
+		writeBusy = false;
+		if (!outcome.ok) {
+			unnameErrorKey = outcome.errorKey;
+			return;
+		}
+		detail = { ...detail, label: null };
+		toast($_('person_unname_done'), 'success');
 	}
 
 	// The single-face move: the face joins the picked cluster; the
@@ -316,14 +358,7 @@
 		return resolveErrorText($_, key);
 	}
 
-	const mergeIntoGroups = $derived([
-		{
-			label: $_('people_merge_group_people'),
-			options: mergeIntoPeople
-				.filter((entry) => entry.clusterId !== clusterId)
-				.map((entry) => ({ id: entry.clusterId, label: entry.name }))
-		}
-	]);
+	const mergeIntoTargets = $derived(mergeIntoPeople.filter((entry) => entry.clusterId !== clusterId));
 	const moveGroups = $derived([
 		{
 			label: $_('people_merge_group_people'),
@@ -393,8 +428,8 @@
 					>{$_('people_hidden_badge')}</span
 				>
 			{/if}
-			<!-- The actions: naming (or renaming), the hidden toggle and
-			     the merge-into fold. -->
+			<!-- The actions: naming (or renaming), the unname, the hidden
+			     toggle and the merge-into fold. -->
 			<div class="person-detail__actions ml-auto flex flex-wrap items-center gap-2">
 				{#if detail.label === null}
 					<Button
@@ -411,6 +446,19 @@
 							nameDialogOpen = true;
 						}}><PenLine size={20} aria-hidden="true" />{$_('people_rename_action')}</Button
 					>
+					<!-- The unname: an icon-only ghost affordance -- naming
+					     is reversible (a rename restores it), so no confirm
+					     stands between the click and the write; the toast
+					     is the echo. -->
+					<Button
+						variant="ghost"
+						disabled={writeBusy}
+						aria-label={$_('people_unname_action')}
+						title={$_('people_unname_action')}
+						onclick={() => void runUnname()}
+					>
+						<UserX size={20} aria-hidden="true" />
+					</Button>
 				{/if}
 				<Button variant="ghost" disabled={writeBusy} onclick={() => void toggleHidden()}>
 					{#if hidden}
@@ -446,6 +494,17 @@
 				role="alert"
 			>
 				{errorText(hideErrorKey)}
+			</p>
+		{/if}
+		{#if unnameErrorKey !== ''}
+			<!-- The unname write's honest failure (a dead session, a
+			     cluster another session dissolved mid-flight): the line
+			     sits under the action that failed it. -->
+			<p
+				class="person-detail__unname-error my-0 mb-4 font-body font-medium text-[14px] leading-[1.5] text-danger-text"
+				role="alert"
+			>
+				{errorText(unnameErrorKey)}
 			</p>
 		{/if}
 
@@ -526,16 +585,18 @@
 	onsubmit={(name) => void submitName(name)}
 />
 
-<ClusterPickerDialog
+<!-- The merge face: the filterable person target list (this cluster
+     never its own target). The submit folds this cluster into the
+     picked person; the navigation lands on the surviving person's
+     page -- the landing is the feedback, no toast beside it. -->
+<PersonPickerDialog
 	bind:open={mergeIntoOpen}
-	titleKey="people_merge_dialog_title"
+	titleKey="people_merge_into_action"
 	bodyKey="people_merge_into_body"
-	targetLabelKey="people_merge_target_label"
-	submitKey="people_merge_action"
-	emptyKey="people_picker_empty"
-	groups={mergeIntoGroups}
+	submitKey="people_merge_into_action"
+	groupKey="people_merge_group_people"
+	people={mergeIntoTargets}
 	loading={mergeIntoLoading}
-	busy={writeBusy}
 	errorKey={mergeIntoErrorKey}
 	onsubmit={(targetId) => void runMergeInto(targetId)}
 />

@@ -416,6 +416,7 @@
   "people_detail_faces_heading": "Faces",
   "people_face_alt": "Face in {file}",
   "people_hidden_notice": "Hidden. They stay in your people list with a badge.",
+  "people_unname_action": "Remove name",
   "person_age_years": "{years} years old",
   "person_age_months": "{months} months",
   "person_age_year_months": "{years} years {months} months",

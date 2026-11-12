@@ -416,6 +416,7 @@
   "people_detail_faces_heading": "人脸",
   "people_face_alt": "{file} 中的人脸",
   "people_hidden_notice": "已隐藏。该人物仍会保留在人物列表中并带有标记。",
+  "people_unname_action": "取消命名",
   "person_age_years": "{years} 岁",
   "person_age_months": "{months} 个月",
   "person_age_year_months": "{years} 岁 {months} 个月",
