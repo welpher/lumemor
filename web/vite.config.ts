@@ -21,6 +21,18 @@ export default defineConfig({
 	// class names to generate.
 	plugins: [tailwindcss(), sveltekit()],
 	server: {
+		// The dev server pins its port: 8243 sits beside the dogfood
+		// API's 8244 (the two halves of the same local pair), and
+		// strictPort makes an occupied port fail loudly instead of
+		// silently drifting onto another number (or another project
+		// quietly taking the other address family).
+		// Pinned to loopback: the printed URL and the bound socket must
+		// agree (an unpinned `localhost` binds one address family only,
+		// which lets another project take the other family on the same
+		// port -- the collision this pin removes).
+		host: '127.0.0.1',
+		port: 8243,
+		strictPort: true,
 		fs: {
 			allow: [projectRoot, repositoryRoot]
 		},
