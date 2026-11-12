@@ -1,5 +1,5 @@
 import { flushSync, mount, unmount } from 'svelte';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import PhotoTile from './PhotoTile.svelte';
 import type { TimelineItem } from '$lib/api/timeline';
@@ -75,6 +75,22 @@ beforeEach(async () => {
 	await initI18n();
 });
 
+// The image-state stubs answer the element's own completion state, the
+// signal a cache-hit tile has instead of a load event (jsdom answers
+// false/0 for an untouched element, which is why the existing tests
+// dispatch `load` by hand).
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
+/** Stub the image element's completion state: `complete` and
+ *  `naturalWidth` are the two halves of the loaded test (only the pair
+ *  distinguishes a decoded image from a broken one). */
+function stubImageState(complete: boolean, naturalWidth: number): void {
+	vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(complete);
+	vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(naturalWidth);
+}
+
 test('a ready asset requests the view-size derivative over the blurhash placeholder', () => {
 	const { tile } = mountTile({});
 	const image = tileRoot().querySelector('img.tile__image');
@@ -123,6 +139,47 @@ test('the thumbnail crossfades in on load and drops back on error', () => {
 	image?.dispatchEvent(new Event('error'));
 	flushSync();
 	expect(image?.className).not.toContain('tile__image--loaded');
+	unmount(tile);
+	flushSync();
+});
+
+test('a cache-hit image shows on mount, with no load event ever dispatched', () => {
+	// THE HOT-CACHE MOUNT (the resize blur's unit pin): the wall
+	// re-packs on a container resize and moves tiles between rows, so
+	// Svelte destroys and re-creates the tile; the fresh <img> gets its
+	// src before onload is attached, and a fully decoded image from the
+	// memory cache dispatches `load` synchronously inside that window.
+	// The event is lost forever -- there is no second load. The tile
+	// therefore reads the element's own completion state on mount: a
+	// cache hit is on screen at once (the image loaded, the placeholder
+	// hidden), with no event dispatched in this test at all.
+	stubImageState(true, 1080);
+	const { tile } = mountTile({});
+	const image = tileRoot().querySelector<HTMLElement>('img.tile__image');
+	const canvas = tileRoot().querySelector<HTMLElement>('canvas.tile__placeholder');
+
+	expect(image?.className).toContain('tile__image--loaded');
+	expect(image?.className).not.toContain('opacity-0');
+	expect(canvas?.className).toContain('tile__placeholder--hidden');
+	expect(canvas?.className).toContain('opacity-0');
+	unmount(tile);
+	flushSync();
+});
+
+test('a failed image stays on the placeholder: complete alone never counts', () => {
+	// The bare-`complete` trap: a broken image reports complete true
+	// with naturalWidth 0 (and so does an element whose src was never
+	// set). Only `complete && naturalWidth > 0` is a loaded image --
+	// this tile keeps the blurhash placeholder and never fades in.
+	stubImageState(true, 0);
+	const { tile } = mountTile({});
+	const image = tileRoot().querySelector<HTMLElement>('img.tile__image');
+	const canvas = tileRoot().querySelector<HTMLElement>('canvas.tile__placeholder');
+
+	expect(image?.className).not.toContain('tile__image--loaded');
+	expect(image?.className).toContain('opacity-0');
+	expect(canvas?.className).not.toContain('tile__placeholder--hidden');
+	expect(canvas?.className).not.toContain('opacity-0');
 	unmount(tile);
 	flushSync();
 });
