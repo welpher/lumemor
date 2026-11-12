@@ -641,7 +641,9 @@
 	 * stage -- the membership release is one honest transaction, not
 	 * a batched intent). The row re-renders among the not-yet-grouped
 	 * through the convergence refetch: the face row survives on its
-	 * asset, its membership does not.
+	 * asset, its membership does not. A reassign staged on the row
+	 * dies with the detach: the membership it was staged against is
+	 * gone, so keeping it would post a surprise move on the commit.
 	 */
 	async function runDetach(): Promise<void> {
 		const faceId = detachConfirmId;
@@ -657,6 +659,7 @@
 			return;
 		}
 		detachConfirmId = null;
+		delete faceStages[faceId];
 		toast($_('people_detach_done'), 'success');
 		void refetchDetail();
 	}
