@@ -57,12 +57,22 @@
 	//   the face's CURRENT cluster -- naming the whole group, the
 	//   family semantics the dialog copy explains -- never a move.
 	//   A face the clustering has not grouped yet has no cluster to
-	//   name and its move answers the people 404, which the assign
-	//   context surfaces as the honest not-grouped message. Every
+	//   name, and its move simply joins the picked person (the
+	//   endpoint accepts a clusterless source: there is no source
+	//   cluster to maintain). Every
 	//   write converges through the detail refetch: the faces array
 	//   IS the chips' truth, and the person.* events of other
 	//   sessions refetch it the same way (the server's answer
 	//   decides -- the page never patches local state).
+	// - The edit-people flow (the People section's pencil): the
+	//   panel lists EVERY face of this photo; reassign picks and
+	//   create picks STAGE locally (the panel's one-shot commit
+	//   loops the moves and creates them once, the done echo
+	//   counting them); the detach is an immediate confirm-gated
+	//   write (the row re-renders among the not-yet-grouped -- the
+	//   face row survives, its membership does not). All three
+	//   writes are the owner's curation, so the pencil never
+	//   renders for a viewer the owner shared to.
 	// - A deletion of the open asset (another session, the expiry
 	//   job) leaves the viewer through SSE (the detail would 404
 	//   from here on). Escape follows the history-back rule:
@@ -75,7 +85,10 @@
 	import { currentLocale } from '$lib/i18n';
 	import Viewer from '$lib/viewer/Viewer.svelte';
 	import ClusterPickerDialog from '$lib/people/ClusterPickerDialog.svelte';
+	import PersonPickerDialog from '$lib/people/PersonPickerDialog.svelte';
+	import DetachFaceDialog from '$lib/viewer/DetachFaceDialog.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
+	import { toast } from '$lib/components/toast.svelte';
 	import { wallItems } from '$lib/timeline/wall-sequence.svelte';
 	import type { BatchAction } from '$lib/api/timeline';
 	import {
@@ -88,6 +101,8 @@
 	} from '$lib/api/assets';
 	import { addTagAssets, createTag, listTags, type TagSummary } from '$lib/api/tags';
 	import {
+		clusterFace,
+		detachFace,
 		labelPerson,
 		listPeople,
 		listUnnamedPeople,
@@ -163,6 +178,17 @@
 		tagOpen = false;
 		tagErrorKey = '';
 		tagReport = null;
+		// The edit-people flow is asset-scoped the same way: the
+		// panel, its staging record and its two dialogs close, and
+		// the staged edits die with them (a staged edit belongs to a
+		// face of THIS photo).
+		editFacesOpen = false;
+		pickFaceId = null;
+		detachConfirmId = null;
+		faceStages = {};
+		editErrorKey = '';
+		pickErrorKey = '';
+		detachErrorKey = '';
 		let current = true;
 		void (async () => {
 			const outcome = await fetchAssetDetail(id, { locale: currentLocale() });
@@ -274,7 +300,14 @@
 						face.clusterId !== null &&
 						(event.survivingClusterId === face.clusterId || event.mergedClusterIds.includes(face.clusterId))
 				);
+			// The moved, created and detached faces all name ONE face
+			// and one cluster: the creation's cluster is the brand-new
+			// one (the face itself is this asset's concern), the
+			// detach's is the cluster the face left (a face of ours
+			// still on it, or the detached one itself, converges).
 			case 'person.face_moved':
+			case 'person.face_clustered':
+			case 'person.face_detached':
 				return faces.some((face) => face.id === event.faceId || face.clusterId === event.clusterId);
 		}
 	}
@@ -435,12 +468,7 @@
 		const outcome = await moveFace(faceId, targetId);
 		assignBusy = false;
 		if (!outcome.ok) {
-			// The assign context gives the move's 404 its honest
-			// meaning: the caller owns the asset the face sits on, so
-			// a face the endpoint cannot resolve is one the clustering
-			// has not grouped yet (the one message-key exception --
-			// same discipline as the people client's requires-label).
-			assignErrorKey = outcome.errorKey === 'person_not_found' ? 'viewer_face_not_grouped' : outcome.errorKey;
+			assignErrorKey = outcome.errorKey;
 			return;
 		}
 		assignFaceId = null;
@@ -462,6 +490,226 @@
 		}
 		assignFaceId = null;
 		void refetchDetail();
+	}
+
+	// The edit-people flow (the People section's pencil): the staged
+	// edits, the choose-person dialog, the detach confirm, and the
+	// one-shot commit. The root asymmetry holds throughout: a stage
+	// or a detach acts on ONE FACE (never the cluster's name -- the
+	// chips' assign flow owns the naming).
+	/**
+	 * One staged edit of the panel: the reassign target (the move the
+	 * commit will post) or the from-face creation (the new person the
+	 * commit will seed). The label is what the panel's row shows
+	 * while the edit is pending.
+	 */
+	type FaceStage = { kind: 'move'; targetClusterId: string; label: string } | { kind: 'create'; label: string };
+
+	/** Whether the edit-people panel stands in the drawer's place. */
+	let editFacesOpen = $state(false);
+	/** The face whose choose-person dialog is open; null while closed. */
+	let pickFaceId = $state<string | null>(null);
+	/** The face whose detach confirm is open; null while closed. */
+	let detachConfirmId = $state<string | null>(null);
+	/** The staged edits, keyed by face id: the panel's check commits them once. */
+	let faceStages = $state<Record<string, FaceStage>>({});
+	/** The commit (or the detach write) is in flight. */
+	let editBusy = $state(false);
+	/** The error-code i18n key of the last failed commit ('' when none). */
+	let editErrorKey = $state('');
+	/** The choose-person list: the existing people, fetched on open. */
+	let editPeople = $state<PersonSummary[]>([]);
+	let editLoading = $state(false);
+	/** The error-code i18n key of the failed list fetch ('' when none). */
+	let pickErrorKey = $state('');
+	/** The error-code i18n key of the failed detach write ('' when none). */
+	let detachErrorKey = $state('');
+
+	/** The face behind the choose-person dialog, resolved against the detail. */
+	const pickFace = $derived(
+		pickFaceId === null ? null : (detail?.faces.find((face) => face.id === pickFaceId) ?? null)
+	);
+
+	/** The face behind the detach confirm, resolved against the detail. */
+	const detachingFace = $derived(
+		detachConfirmId === null ? null : (detail?.faces.find((face) => face.id === detachConfirmId) ?? null)
+	);
+
+	/** The person the detach confirm names (the face's cluster label). */
+	const detachingName = $derived(
+		detachingFace === null
+			? ''
+			: detachingFace.label !== null
+				? detachingFace.label.name
+				: $_('viewer_faces_unnamed')
+	);
+
+	/**
+	 * The choose-person list: the caller's named people minus the
+	 * face's own cluster (a reassign onto the current cluster is an
+	 * accepted no-op -- never offered, the move dialog's discipline).
+	 */
+	const pickPeople = $derived(editPeople.filter((entry) => entry.clusterId !== pickFace?.clusterId));
+
+	/** The panel's staged label for one face; undefined when no edit is pending on it. */
+	function stageLabelOf(face: AssetFaceSummary): string | undefined {
+		return faceStages[face.id]?.label;
+	}
+
+	/** How many faces carry a staged edit (the panel's apply gate). */
+	const editStagedCount = $derived(Object.keys(faceStages).length);
+
+	// Fetch the choose-person list on open: the caller's named
+	// people, fresh every open (the fetched answer owns the options,
+	// the assign flow's discipline).
+	$effect(() => {
+		if (pickFaceId === null) {
+			return;
+		}
+		pickErrorKey = '';
+		editPeople = [];
+		editLoading = true;
+		void (async () => {
+			const outcome = await listPeople();
+			if (pickFaceId === null) {
+				// Closed mid-flight: the next open refetches.
+				return;
+			}
+			editLoading = false;
+			if (outcome.ok) {
+				editPeople = outcome.people;
+			} else {
+				pickErrorKey = outcome.errorKey;
+			}
+		})();
+	});
+
+	/** Open the edit-people panel (the drawer's pencil): a fresh staging session. */
+	function startEditFaces(): void {
+		editErrorKey = '';
+		faceStages = {};
+		editFacesOpen = true;
+	}
+
+	/** Return from the panel to the information drawer (the back affordance, the layered Escape). */
+	function closeEditFaces(): void {
+		editFacesOpen = false;
+	}
+
+	/** Open the choose-person dialog for one face (the row's reassign pencil). */
+	function startPick(face: AssetFaceSummary): void {
+		pickErrorKey = '';
+		pickFaceId = face.id;
+	}
+
+	/**
+	 * Stage the reassign: the picked person becomes the face's
+	 * pending edit. The pick stages, never writes -- the panel's
+	 * check is the one writer.
+	 */
+	function stageReassign(targetClusterId: string): void {
+		const faceId = pickFaceId;
+		if (faceId === null) {
+			return;
+		}
+		const target = editPeople.find((entry) => entry.clusterId === targetClusterId);
+		if (target === undefined) {
+			return;
+		}
+		faceStages[faceId] = { kind: 'move', targetClusterId, label: target.name };
+		pickFaceId = null;
+	}
+
+	/** Stage the from-face creation: the face seeds a brand-new person at commit. */
+	function stageCreate(): void {
+		const faceId = pickFaceId;
+		if (faceId === null) {
+			return;
+		}
+		faceStages[faceId] = { kind: 'create', label: $_('people_create_from_face') };
+		pickFaceId = null;
+	}
+
+	/** Open the detach confirm for one face (the row's trash). */
+	function startDetachConfirm(face: AssetFaceSummary): void {
+		detachErrorKey = '';
+		detachConfirmId = face.id;
+	}
+
+	/**
+	 * The detach write: immediate (a confirm-gated write, never a
+	 * stage -- the membership release is one honest transaction, not
+	 * a batched intent). The row re-renders among the not-yet-grouped
+	 * through the convergence refetch: the face row survives on its
+	 * asset, its membership does not. A reassign staged on the row
+	 * dies with the detach: the membership it was staged against is
+	 * gone, so keeping it would post a surprise move on the commit.
+	 */
+	async function runDetach(): Promise<void> {
+		const faceId = detachConfirmId;
+		if (faceId === null || editBusy) {
+			return;
+		}
+		editBusy = true;
+		detachErrorKey = '';
+		const outcome = await detachFace(faceId);
+		editBusy = false;
+		if (!outcome.ok) {
+			detachErrorKey = outcome.errorKey;
+			return;
+		}
+		detachConfirmId = null;
+		delete faceStages[faceId];
+		toast($_('people_detach_done'), 'success');
+		void refetchDetail();
+	}
+
+	/**
+	 * The one-shot commit: the staged reassigns (the move loop, in
+	 * the faces' own order) then the staged creates (each seeding a
+	 * person from its face). The loop stops at the FIRST refusal --
+	 * the writes that landed stay landed (their stages dropped),
+	 * the rest stay staged for a retry, and the failure renders
+	 * beside the apply button. The full commit returns to the
+	 * information drawer with the count echo; every create carries
+	 * its own echo (the new person exists from that write).
+	 */
+	async function commitEdits(): Promise<void> {
+		const current = detail;
+		if (current === null || editBusy) {
+			return;
+		}
+		const entries = current.faces.flatMap((face) => {
+			const stage = faceStages[face.id];
+			return stage === undefined ? [] : [{ face, stage }];
+		});
+		if (entries.length === 0) {
+			return;
+		}
+		editBusy = true;
+		editErrorKey = '';
+		let committed = 0;
+		for (const { face, stage } of entries) {
+			const outcome =
+				stage.kind === 'move' ? await moveFace(face.id, stage.targetClusterId) : await clusterFace(face.id);
+			if (!outcome.ok) {
+				editErrorKey = outcome.errorKey;
+				break;
+			}
+			delete faceStages[face.id];
+			committed += 1;
+			if (stage.kind === 'create') {
+				toast($_('people_create_from_face_done'), 'success');
+			}
+		}
+		editBusy = false;
+		if (committed === entries.length) {
+			editFacesOpen = false;
+			toast($_('people_edits_count', { values: { count: committed } }), 'success');
+		}
+		if (committed > 0) {
+			void refetchDetail();
+		}
 	}
 
 	// The tag assign flow (the drawer's tags row): the dialog
@@ -667,7 +915,7 @@
 	{videoPlayable}
 	{busy}
 	{actionErrorKey}
-	modalOpen={assignFaceId !== null || tagOpen}
+	modalOpen={assignFaceId !== null || tagOpen || pickFaceId !== null || detachConfirmId !== null}
 	onnavigate={navigateTo}
 	onexit={exitViewer}
 	onretry={retryDetail}
@@ -676,6 +924,16 @@
 	onaction={runAction}
 	onassignface={startAssign}
 	onassigntag={openTagDialog}
+	{editFacesOpen}
+	{stageLabelOf}
+	{editStagedCount}
+	{editBusy}
+	{editErrorKey}
+	oneditfaces={startEditFaces}
+	oneditfacesclose={closeEditFaces}
+	onreassignface={startPick}
+	ondetachface={startDetachConfirm}
+	onapplyfaces={() => void commitEdits()}
 />
 
 <!-- The assign dialog of the drawer's People section: pick an
@@ -689,7 +947,7 @@
 	bodyKey="viewer_assign_body"
 	targetLabelKey="viewer_assign_target_label"
 	submitKey="viewer_assign_submit"
-	emptyKey="people_picker_empty"
+	emptyKey="people_picker_no_people"
 	groups={assignGroups}
 	newPerson={assignNewPerson}
 	loading={assignLoading}
@@ -713,4 +971,34 @@
 	onpick={(tagId) => void addToExistingTag(tagId)}
 	oncreate={(name) => void addToNewTag(name)}
 	ondone={finishTag}
+/>
+
+<!-- The choose-person dialog of the edit-people panel: the
+     filterable target list. Picking an existing person STAGES the
+     reassign; the create row STAGES the from-face creation -- the
+     dialog itself never writes (the panel's check is the one
+     writer). -->
+<PersonPickerDialog
+	open={pickFaceId !== null}
+	titleKey="people_select_person_title"
+	bodyKey="people_select_person_body"
+	submitKey="viewer_assign_submit"
+	people={pickPeople}
+	loading={editLoading}
+	errorKey={pickErrorKey}
+	oncreate={stageCreate}
+	onclose={() => (pickFaceId = null)}
+	onsubmit={(clusterId) => stageReassign(clusterId)}
+/>
+
+<!-- The detach confirm of the edit-people panel: the body names the
+     person, the write is immediate, and the row converges through
+     the detail refetch. -->
+<DetachFaceDialog
+	open={detachConfirmId !== null}
+	name={detachingName}
+	busy={editBusy}
+	errorKey={detachErrorKey}
+	onclose={() => (detachConfirmId = null)}
+	onsubmit={() => void runDetach()}
 />

@@ -164,7 +164,8 @@ ORDER BY f.score DESC, f.id;
 -- The write side. The label and hidden writes are
 -- per-caller upserts on the (user_id, cluster_id) pair -- the
 -- per-user-state discipline's writes: they never read or touch another account's
--- row. The structural writes (merge, face move) stick to the
+-- row. The structural writes (merge, face move, from-face creation,
+-- detach) stick to the
 -- cluster-maintenance discipline for every
 -- faces.cluster_id change: the member moves land inside ONE
 -- transaction together with the representative maintenance and the
@@ -236,6 +237,28 @@ WHERE cluster_id = ANY(sqlc.arg('source_cluster_ids')::uuid[]);
 -- discipline as the merge.
 UPDATE faces
 SET cluster_id = sqlc.arg('target_cluster_id'), updated_at = now()
+WHERE id = sqlc.arg('face_id');
+
+-- name: SeedFaceCluster :exec
+-- The from-face person creation's birth write: one cluster row
+-- whose representative is the seeding face (a sole member is the
+-- strongest member by definition). Runs inside the creation
+-- transaction BEFORE the face re-homes onto the row -- the circular
+-- faces/face_clusters foreign keys require the cluster to exist
+-- first -- and the vacated source's maintenance rides the same
+-- transaction.
+INSERT INTO face_clusters (id, representative_face_id)
+VALUES (sqlc.arg('id'), sqlc.arg('representative_face_id'));
+
+-- name: DetachFaceFromCluster :exec
+-- The single-face detach's member write: the face's cluster
+-- assignment goes NULL, the same state a freshly detected face
+-- holds before the clustering assigns it. Wrapped in the same
+-- transaction discipline as the move: the vacated source's
+-- representative maintenance and possible dissolution ride the
+-- same transaction, never a bare member release.
+UPDATE faces
+SET cluster_id = NULL, updated_at = now()
 WHERE id = sqlc.arg('face_id');
 
 -- name: RepointClusterRepresentative :exec

@@ -6,7 +6,9 @@
 	// optimistic curation flips and the SSE convergence), the People
 	// section (one face chip per face of the detail's faces array,
 	// the caller's label state per cluster, the click delegating to
-	// the page's assign dialog), the EXIF hot fields folded into
+	// the page's assign dialog, and the owner's pencil opening the
+	// edit-people panel -- the face-level correction surface), the
+	// EXIF hot fields folded into
 	// collapsible groups, the file facts with the tags row (the
 	// caller's own tags as chips plus the assign affordance),
 	// and the places placeholder pinned to its future domain. The
@@ -91,9 +93,17 @@
 		 * every viewer's, never the owner's alone.
 		 */
 		onassigntag: () => void;
+		/**
+		 * Open the edit-people panel (the page owns the panel's flow
+		 * and writes; the panel replaces this drawer in the viewer's
+		 * composition). The face-level correction writes are the
+		 * owner's curation, so the affordance is the owner's alone --
+		 * a viewer the owner shared to keeps the read-only drawer.
+		 */
+		oneditfaces: () => void;
 	};
 
-	let { detail, isOwner, onclose, onedit, onassignface, onassigntag }: Props = $props();
+	let { detail, isOwner, onclose, onedit, onassignface, onassigntag, oneditfaces }: Props = $props();
 
 	let editing = $state(false);
 	let draft = $state('');
@@ -280,6 +290,16 @@
 			{ label: $_('viewer_file_duration'), value: durationLabel }
 		])
 	);
+
+	/**
+	 * Whether the People section lists its faces (the chips' gate):
+	 * a trashed or hidden asset keeps its faces in the detail but
+	 * every crop endpoint answers 404 for it, and a photo with no
+	 * faces has nothing to list -- the placeholder stands in. The
+	 * section's edit affordance (the pencil into the edit-people
+	 * panel) rides the same gate: the panel lists these very rows.
+	 */
+	const facesListed = $derived(!detail.isTrashed && !detail.isHidden && detail.faces.length > 0);
 
 	/**
 	 * The chip label of one face: the caller's own label of the face's
@@ -597,11 +617,29 @@
 		</section>
 
 		<section class="info__section mt-4">
-			<h3
-				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
-			>
-				{$_('nav_people')}
-			</h3>
+			<!-- The People section's heading row: the micro-head plus, for
+			     the owner on a face-listing photo, the pencil into the
+			     edit-people panel (the per-face reassign / detach /
+			     create-from-face surface -- the chips answer WHO is in
+			     this photo, the panel answers WHO this face belongs to). -->
+			<div class="info__heading-row flex items-center justify-between gap-2 mb-1">
+				<h3
+					class="info__heading m-0 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
+				>
+					{$_('nav_people')}
+				</h3>
+				{#if isOwner && facesListed}
+					<button
+						class="info__faces-edit inline-flex items-center justify-center w-7 h-7 shrink-0 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+						type="button"
+						aria-label={$_('people_edit_faces')}
+						title={$_('people_edit_faces')}
+						onclick={oneditfaces}
+					>
+						<PenLine size={18} />
+					</button>
+				{/if}
+			</div>
 			{#if detail.isTrashed || detail.isHidden || detail.faces.length === 0}
 				<!-- A trashed or hidden asset keeps its faces in the
 				     detail but every crop endpoint answers 404 for it

@@ -60,6 +60,7 @@ export 'package:lumemor_api/src/model/batch_response.dart';
 export 'package:lumemor_api/src/model/bearer_session.dart';
 export 'package:lumemor_api/src/model/camera_facet_count.dart';
 export 'package:lumemor_api/src/model/cluster_detail.dart';
+export 'package:lumemor_api/src/model/cluster_face_response.dart';
 export 'package:lumemor_api/src/model/create_admin_request.dart';
 export 'package:lumemor_api/src/model/device_session.dart';
 export 'package:lumemor_api/src/model/download_format.dart';
