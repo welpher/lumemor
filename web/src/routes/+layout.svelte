@@ -11,6 +11,7 @@
 	import { page } from '$app/state';
 	import { initTheme } from '$lib/theme/theme.svelte';
 	import SessionGuard from '$lib/auth/SessionGuard.svelte';
+	import Toasts from '$lib/components/Toasts.svelte';
 
 	let { children } = $props();
 
@@ -18,4 +19,8 @@
 </script>
 
 <SessionGuard currentPath={page.url.pathname + page.url.search} />
+<!-- The transient-confirmation organ: mounted once at the root so
+     every surface's success echo (the face-correction flows, the
+     batch counts) renders above whatever page is live. -->
+<Toasts />
 {@render children()}

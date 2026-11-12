@@ -238,7 +238,8 @@
 	 *   content chips < sticky chrome < fixed page surfaces <
 	 *   the top bar's menu < floating toolbars < the status panel <
 	 *   the active toolbar < the side drawer < scrims < the nav
-	 *   drawer < the modal < the portaled picker layers.
+	 *   drawer < the modal < the portaled picker layers < the
+	 *   transient toasts.
 	 */
 	/* The viewer stage's media stack (scoped to the viewer). */
 	--z-stage-media: 1; /* the video, poster and full-res layers over the placeholder */
@@ -262,6 +263,7 @@
 	--z-drawer: 100; /* the navigation drawer's panel */
 	--z-modal: 110; /* the modal (backdrop and panel) */
 	--z-dropdown: 115; /* a portaled picker layer, above the modal it serves: anchored under its trigger inside the dialog's visual space, but living on the body outside the modal's DOM (its overflow never clips, and the dialog never grows for it) */
+	--z-toast: 120; /* the transient toast confirmations (bottom-center), above the modal so an echo fired while a dialog still stands is never hidden behind it */
 
 	/* ---------------------------------------------------------------- */
 	/* The justified photo wall (the wall's density rhythm)              */
