@@ -195,3 +195,80 @@ docker-lint: web-build
 		$(TEST_ENV) \
 		$(DEV_IMAGE) \
 		sh -c 'unformatted=$$(gofmt -l .); if [ -n "$$unformatted" ]; then echo "gofmt needed on:" $$unformatted; exit 1; fi && go vet ./... && golangci-lint run'
+
+# --- Local CI tier ------------------------------------------------------------
+#
+# The machine tier's local form: what the per-PR workflows verify,
+# reproduced cold on this machine so a merge never waits on a hosted
+# runner. Cold means no warm caches: the web suite runs in an
+# ephemeral node container (a fresh dependency install; the host's
+# node_modules and pnpm store stay untouched, nothing is mounted
+# writable), and the server suite runs in the dev container WITHOUT
+# the gocache/gomodcache volumes (a fresh module download and a fresh
+# compile). The web container copies the web tree minus its generated
+# state -- node_modules, build and .svelte-kit are EXCLUDED (the host's
+# node_modules is platform-specific: a copied-in store makes the frozen
+# install skip re-platforming, and the wrong-architecture native
+# bindings crash the suite) -- plus its two repo-root siblings, the
+# generated contract types (openapi/) and the locale JSONs (i18n/),
+# both reached from the web sources by repo-root-relative paths, so
+# the install regenerates what it needs and the type-check, the tests
+# and the build see the same tree the host sees. The contract lint, the
+# codegen drift checks and the locale
+# check run on the host toolchain with the repository tree as the only
+# state; the API drift check runs twice -- regenerating twice against
+# the committed artifacts is the determinism sample (the same bytes,
+# again).
+#
+# The end-to-end tier is deliberately NOT here: the acceptance chain
+# and the Playwright suites keep their own discipline (a fresh compose
+# lifetime per spec, the dogfood stopped first and restored last).
+#
+# The hosted workflows that stay per-PR (openapi, i18n, web) are the
+# outside-in thread; the two heavy ones (server, e2e) are dispatched
+# on demand and kept from rotting by their monthly schedule.
+
+COLD_WEB_IMAGE ?= node:22
+# Restricted networks: pull the base images through a registry mirror
+# (e.g. docker.m.daocloud.io/library/node:22, the same prefix the
+# other base images in this environment use) and pass it via
+# COLD_WEB_IMAGE, or retag it -- the default carries no mirror
+# configuration, same as APT_MIRROR below.
+
+.PHONY: ci-local
+ci-local: web-build
+	@echo "=== ci-local 1/6: the contract lints ==="
+	make api-lint
+	@echo "=== ci-local 2/6: the web suite, cold (ephemeral node container) ==="
+	docker run --rm \
+		-v $(CURDIR):/src:ro \
+		$(COLD_WEB_IMAGE) \
+		sh -c 'set -e; corepack enable; mkdir -p /tree/web; tar -C /src/web --exclude=./node_modules --exclude=./build --exclude=./.svelte-kit -cf - . | tar -C /tree/web -xf -; cp -R /src/openapi /tree/openapi; cp -R /src/i18n /tree/i18n; cd /tree/web; pnpm install --frozen-lockfile; pnpm run format:check; pnpm run lint; pnpm run check; pnpm run test; pnpm run build'
+	@echo "=== ci-local 3/6: the server suite, cold (dev container, no cache volumes) ==="
+	docker build -f docker/dev.Dockerfile \
+		--build-arg APT_MIRROR=$(APT_MIRROR) \
+		--build-arg GOPROXY=$(shell go env GOPROXY) \
+		--build-arg ONNXRUNTIME_URL=$(ONNXRUNTIME_URL) \
+		--build-arg https_proxy=$(ONNXRUNTIME_PROXY) \
+		-t $(DEV_IMAGE) .
+	docker run --rm \
+		-v $(CURDIR):/src \
+		-w /src/server \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-e GOPROXY=$(shell go env GOPROXY) \
+		$(TEST_ENV) \
+		$(DEV_IMAGE) \
+		sh -c 'unformatted=$$(gofmt -l .); if [ -n "$$unformatted" ]; then echo "gofmt needed on:" $$unformatted; exit 1; fi && go vet ./... && golangci-lint run && go test -p 1 -timeout 20m ./...'
+	@echo "=== ci-local 4/6: the API artifacts regenerate without drift (twice: the determinism sample) ==="
+	make api-check
+	make api-check
+	@echo "=== ci-local 5/6: the sqlc output regenerates without drift ==="
+	make sqlc-gen
+	git diff --exit-code -- server/internal/db/gen
+	@if git status --porcelain -- server/internal/db/gen | grep -q .; then \
+		echo "sqlc output drifted: untracked or changed files"; \
+		exit 1; \
+	fi
+	@echo "=== ci-local 6/6: the locales agree ==="
+	python3 scripts/check_i18n.py
+	@echo "ci-local: all green"
