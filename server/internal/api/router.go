@@ -471,17 +471,30 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// bounded-JSON cost class as the timeline.
 				r.Get("/search", wrapper.SearchAssets)
 				// The people surface writes: the caller's
-				// label and hidden switches, the cluster merge and the
-				// single face move. All are bounded row reads and
-				// writes (the merge touches at most 50 source
-				// clusters); the static /people/merge segment never
-				// contends with the /people/{clusterId} routes (a
+				// label and hidden switches, the cluster
+				// merge, the single face move, the
+				// from-face person creation and the
+				// single-face detach. All are bounded row
+				// reads and writes (the merge touches at
+				// most 50 source clusters, the face writes
+				// exactly one row plus the vacated
+				// cluster's maintenance); the static
+				// /people/merge segment never contends
+				// with the /people/{clusterId} routes (a
 				// different method and path shape).
 				r.Put("/people/{clusterId}/label", wrapper.LabelPerson)
 				r.Delete("/people/{clusterId}/label", wrapper.UnlabelPerson)
 				r.Put("/people/{clusterId}/hidden", wrapper.SetPersonHidden)
 				r.Post("/people/merge", wrapper.MergePeople)
 				r.Post("/faces/{faceId}/move", wrapper.MoveFace)
+				// The from-face creation and the detach:
+				// the same owner-gated curation discipline
+				// as the move, one face at a time -- the
+				// creation seeds a brand-new cluster with
+				// the face, the detach releases the face to
+				// the not-yet-grouped pool.
+				r.Post("/faces/{faceId}/cluster", wrapper.ClusterFace)
+				r.Delete("/faces/{faceId}", wrapper.DetachFace)
 				// The face crop pixels: the 256x256 AVIF
 				// crop of one face, derived at query time from its
 				// asset's view derivative -- one bounded decode of a

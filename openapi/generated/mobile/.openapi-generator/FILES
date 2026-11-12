@@ -44,6 +44,7 @@ doc/BatchResponse.md
 doc/BearerSession.md
 doc/CameraFacetCount.md
 doc/ClusterDetail.md
+doc/ClusterFaceResponse.md
 doc/CreateAdminRequest.md
 doc/DeviceSession.md
 doc/DownloadFormat.md
@@ -184,6 +185,7 @@ lib/src/model/batch_response.dart
 lib/src/model/bearer_session.dart
 lib/src/model/camera_facet_count.dart
 lib/src/model/cluster_detail.dart
+lib/src/model/cluster_face_response.dart
 lib/src/model/create_admin_request.dart
 lib/src/model/date.dart
 lib/src/model/device_session.dart
@@ -304,6 +306,7 @@ test/batch_response_test.dart
 test/bearer_session_test.dart
 test/camera_facet_count_test.dart
 test/cluster_detail_test.dart
+test/cluster_face_response_test.dart
 test/create_admin_request_test.dart
 test/device_session_test.dart
 test/download_format_test.dart

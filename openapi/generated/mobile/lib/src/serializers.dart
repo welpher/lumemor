@@ -52,6 +52,7 @@ import 'package:lumemor_api/src/model/batch_response.dart';
 import 'package:lumemor_api/src/model/bearer_session.dart';
 import 'package:lumemor_api/src/model/camera_facet_count.dart';
 import 'package:lumemor_api/src/model/cluster_detail.dart';
+import 'package:lumemor_api/src/model/cluster_face_response.dart';
 import 'package:lumemor_api/src/model/create_admin_request.dart';
 import 'package:lumemor_api/src/model/device_session.dart';
 import 'package:lumemor_api/src/model/download_format.dart';
@@ -169,6 +170,7 @@ part 'serializers.g.dart';
   BearerSession,
   CameraFacetCount,
   ClusterDetail,
+  ClusterFaceResponse,
   CreateAdminRequest,
   DeviceSession,
   DownloadFormat,
