@@ -252,6 +252,7 @@ NON_ERROR_KEYS = {
     "person_age_months",
     "person_age_year_months",
     "person_unname_done",
+    "people_unname_action",
     "people_detail_unnamed",
     "people_detail_faces_heading",
     "people_face_alt",
