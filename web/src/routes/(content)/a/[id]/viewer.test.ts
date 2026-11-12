@@ -2130,6 +2130,65 @@ test('the detach confirm names the person, the write is immediate, and the row l
 	flushSync();
 });
 
+test('the detach drops the row\u2019s staged reassign', async () => {
+	// A staged reassign followed by a detach: the membership the
+	// stage was aimed at is gone, so the stage dies with it -- the
+	// row never keeps a pending dot the commit would turn into a
+	// surprise move.
+	let detached = false;
+	const facesNow = () => [
+		detached
+			? faceSummary('f1', { clusterId: null, label: null })
+			: faceSummary('f1', { label: { name: 'Ada', isHidden: false } })
+	];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
+		get('/api/v1/people', () => jsonResponse(200, [personTarget('p1', 'Ada'), personTarget('p2', 'Mom')])),
+		post('/api/v1/faces/f1/move', () => jsonResponse(200, { faceId: 'f1', clusterId: 'p2' })),
+		del('/api/v1/faces/f1', () => {
+			detached = true;
+			return new Response(null, { status: 204 });
+		})
+	]);
+	await settle();
+
+	openDrawer();
+	click(peoplePencil());
+	await settle();
+
+	// Stage the reassign onto Mom (a pick never writes).
+	click(editRowButton('f1', 'Reassign this face'));
+	await settle();
+	const momRow = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.person-picker__row')).find((row) =>
+		row.textContent?.includes('Mom')
+	);
+	if (momRow === undefined) {
+		throw new Error('missing Mom row');
+	}
+	click(momRow);
+	click(buttonByText('Assign'));
+	await settle();
+	expect(editRow('f1').dataset.staged).toBe('true');
+	expect(element('.faces-panel__apply').dataset.stagedCount).toBe('1');
+
+	// The detach on the same row writes immediately and clears the
+	// stage: the row carries no pending marker and the apply gate
+	// has nothing left to commit.
+	click(editRowButton('f1', 'Remove this face'));
+	await settle();
+	click(buttonByText('Remove'));
+	await settle();
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/faces/f1')).toHaveLength(1);
+	expect(editRow('f1').textContent?.trim()).toBe('Not grouped yet');
+	expect(editRow('f1').dataset.staged).toBe('false');
+	expect(element('.faces-panel__apply').dataset.stagedCount).toBe('0');
+	expect(document.querySelector<HTMLButtonElement>('.faces-panel__apply')?.disabled).toBe(true);
+	expect(toasts().map((entry) => entry.text)).toEqual(['Face removed; it is back among the not grouped yet.']);
+	expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/v1/faces/f1/move')).toBe(false);
+	unmount(app);
+	flushSync();
+});
+
 test('the commit failure keeps the panel and the uncommitted stages; the error renders beside the apply', async () => {
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () =>
