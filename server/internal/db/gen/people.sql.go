@@ -90,6 +90,23 @@ func (q *Queries) DeleteUserFaceLabel(ctx context.Context, arg DeleteUserFaceLab
 	return err
 }
 
+const detachFaceFromCluster = `-- name: DetachFaceFromCluster :exec
+UPDATE faces
+SET cluster_id = NULL, updated_at = now()
+WHERE id = $1
+`
+
+// The single-face detach's member write: the face's cluster
+// assignment goes NULL, the same state a freshly detected face
+// holds before the clustering assigns it. Wrapped in the same
+// transaction discipline as the move: the vacated source's
+// representative maintenance and possible dissolution ride the
+// same transaction, never a bare member release.
+func (q *Queries) DetachFaceFromCluster(ctx context.Context, faceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, detachFaceFromCluster, faceID)
+	return err
+}
+
 const dissolveVacatedClustersByID = `-- name: DissolveVacatedClustersByID :exec
 DELETE FROM face_clusters fc
 WHERE fc.id = ANY($1::uuid[])
@@ -638,6 +655,28 @@ func (q *Queries) RepointVacatedClusterRepresentatives(ctx context.Context, clus
 	return err
 }
 
+const seedFaceCluster = `-- name: SeedFaceCluster :exec
+INSERT INTO face_clusters (id, representative_face_id)
+VALUES ($1, $2)
+`
+
+type SeedFaceClusterParams struct {
+	ID                   pgtype.UUID `json:"id"`
+	RepresentativeFaceID pgtype.UUID `json:"representative_face_id"`
+}
+
+// The from-face person creation's birth write: one cluster row
+// whose representative is the seeding face (a sole member is the
+// strongest member by definition). Runs inside the creation
+// transaction BEFORE the face re-homes onto the row -- the circular
+// faces/face_clusters foreign keys require the cluster to exist
+// first -- and the vacated source's maintenance rides the same
+// transaction.
+func (q *Queries) SeedFaceCluster(ctx context.Context, arg SeedFaceClusterParams) error {
+	_, err := q.db.Exec(ctx, seedFaceCluster, arg.ID, arg.RepresentativeFaceID)
+	return err
+}
+
 const setUserFaceLabelHidden = `-- name: SetUserFaceLabelHidden :one
 UPDATE user_face_labels
 SET is_hidden = $1, updated_at = now()
@@ -690,7 +729,8 @@ type UpsertUserFaceLabelRow struct {
 // The write side. The label and hidden writes are
 // per-caller upserts on the (user_id, cluster_id) pair -- the
 // per-user-state discipline's writes: they never read or touch another account's
-// row. The structural writes (merge, face move) stick to the
+// row. The structural writes (merge, face move, from-face creation,
+// detach) stick to the
 // cluster-maintenance discipline for every
 // faces.cluster_id change: the member moves land inside ONE
 // transaction together with the representative maintenance and the
