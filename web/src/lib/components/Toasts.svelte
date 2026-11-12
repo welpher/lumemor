@@ -48,11 +48,11 @@
 </div>
 
 <style>
-	/* Residual styles (the specimen's own): the entrance keyframe;
-	 * the leaving fade rides the opacity transition utility above,
-	 * and the tone's icon colors ride the palette's own utilities on
-	 * the glyph (teal success, ember danger, accent info) -- no
-	 * tone-specific rules here to prune. */
+	/* Residual styles: the entrance keyframe; the leaving fade rides
+	 * the opacity transition utility above, and the tone's icon
+	 * colors ride the palette's own utilities on the glyph (teal
+	 * success, ember danger, accent info) -- no tone-specific rules
+	 * here to prune. */
 	.toast {
 		animation: toast-in var(--motion-base) var(--ease-standard);
 	}
