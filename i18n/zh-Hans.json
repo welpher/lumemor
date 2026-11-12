@@ -391,6 +391,7 @@
   "people_merge_into_action": "合并到…",
   "people_merge_into_body": "该人物将合并到您选择的目标。此聚类会消失，其名称也会丢失。",
   "people_picker_empty": "没有匹配的人物。",
+  "people_picker_no_people": "还没有人物。",
   "people_face_move_action": "移动人脸",
   "people_move_dialog_title": "移动人脸",
   "people_move_body": "选择这张人脸加入的人物。",

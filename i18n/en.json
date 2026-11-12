@@ -391,6 +391,7 @@
   "people_merge_into_action": "Merge into…",
   "people_merge_into_body": "This person merges into the one you pick. This cluster disappears and its name is lost.",
   "people_picker_empty": "No people match.",
+  "people_picker_no_people": "No people yet.",
   "people_face_move_action": "Move face",
   "people_move_dialog_title": "Move face",
   "people_move_body": "Pick the person this face joins.",

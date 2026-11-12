@@ -947,7 +947,7 @@
 	bodyKey="viewer_assign_body"
 	targetLabelKey="viewer_assign_target_label"
 	submitKey="viewer_assign_submit"
-	emptyKey="people_picker_empty"
+	emptyKey="people_picker_no_people"
 	groups={assignGroups}
 	newPerson={assignNewPerson}
 	loading={assignLoading}
