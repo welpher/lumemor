@@ -345,7 +345,7 @@ func requireTrashExcludes(t *testing.T, e *env, assetID uuid.UUID) {
 	}
 }
 
-// TestAlbumRescanIdempotent pins the plan's pinned contract: the
+// TestAlbumRescanIdempotent pins the idempotence contract: the
 // SAME directory scanned twice with no disk changes performs ZERO
 // product writes (no new rows, no membership changes, no snapshot
 // updates -- every row's updated_at keeps its stamp) and publishes

@@ -1,0 +1,368 @@
+<script lang="ts">
+	// The memory wall: the reference-set cards in their two sections
+	// -- the caller's own memories (the manual origin badge on every
+	// card) then the memories shared to them (the honest owner
+	// attribution and the read-only badge) -- with the same collage
+	// cover language the album cards carry. A memory card NEVER
+	// carries the timeline-exclusion badge: a memory never feeds its
+	// creator's timeline by construction (the exclusion is the
+	// memory's fixed semantics, not a signal worth a badge).
+	// Card clicks open the memory's own detail (the reference-set
+	// face -- the curation bar and the removal selection).
+	//
+	// THE CREATION ENTRY IS EVERY MEMBER'S: a memory is personal
+	// curation, the OPPOSITE gate of the album wall's
+	// administrator-only "New album" (pointing at the file system is
+	// configuration; naming a reference set of one's own sighted
+	// photos is not). The "New memory" button renders for every
+	// session and the server holds no role gate on the write.
+	//
+	// SSE CONVERGENCE: every album.* event converges through ONE
+	// fresh wall fetch, collapsed single-flight (the albums page's
+	// pattern): the memories ride the album event family, and the
+	// refetched SERVER answer decides what changed. A failed
+	// convergence keeps the last good state silently; only the
+	// initial load's failure raises the error box.
+	import { _ } from 'svelte-i18n';
+	import { listAlbums, createMemory, type AlbumSummary, type AlbumAudienceSkip } from '$lib/api/albums';
+	import { subscribeAlbumEvents } from '$lib/events';
+	import { resolveErrorText } from '$lib/i18n/errors';
+	import Button from '$lib/components/Button.svelte';
+	import CreateMemoryDialog from '$lib/memories/CreateMemoryDialog.svelte';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import Plus from '@lucide/svelte/icons/plus';
+
+	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+	// The memories are the wall's memory-typed rows: the server's
+	// own group answers the caller's memories, the shared group the
+	// memories others granted them.
+	let memories = $state<AlbumSummary[]>([]);
+	let status = $state<ListStatus>('idle');
+	/** The error-code i18n key of the last failed load ('' when none). */
+	let errorKey = $state('');
+
+	// The creation dialog (title + audience); the created card lands
+	// through the refetch the write triggers, and the write's honest
+	// `skipped` report (the requested audience ids that did not
+	// land) holds the dialog open until acknowledged.
+	let createOpen = $state(false);
+	let createBusy = $state(false);
+	let createErrorKey = $state('');
+	let createSkipped = $state<readonly AlbumAudienceSkip[] | null>(null);
+
+	// The single-flight guard: while one fetch runs, later triggers
+	// park (the burst's tail) and one trailing fetch runs when it
+	// lands -- the albums page's collapse.
+	let running = false;
+	let queued = false;
+
+	/**
+	 * Fetch the wall and keep the memory rows. `converge` marks an
+	 * SSE-driven run: the visible state stays and a failure keeps the
+	 * last good answer -- later events retry.
+	 */
+	async function runLoad(converge: boolean): Promise<void> {
+		if (running) {
+			queued = true;
+			return;
+		}
+		running = true;
+		if (!converge) {
+			status = 'loading';
+		}
+		try {
+			const outcome = await listAlbums();
+			if (outcome.ok) {
+				memories = outcome.albums.filter((album) => album.type === 'memory');
+				errorKey = '';
+				status = 'ready';
+			} else if (!converge) {
+				status = 'error';
+				errorKey = outcome.errorKey;
+			}
+		} finally {
+			running = false;
+			if (queued) {
+				queued = false;
+				void runLoad(true);
+			}
+		}
+	}
+
+	// The sections ride the items' own `callerRole` discriminator:
+	// the server's concatenation is own-first, shared-after, and each
+	// group's order is the server's.
+	const ownMemories = $derived(memories.filter((memory) => memory.callerRole === 'owner'));
+	const sharedMemories = $derived(memories.filter((memory) => memory.callerRole === 'viewer'));
+
+	const firstLoad = $derived(memories.length === 0 && status === 'loading');
+	const settledEmpty = $derived(memories.length === 0 && status === 'ready');
+
+	// The shared unknown-code fallback (a code with no i18n entry
+	// renders the generic message, never raw code jargon); the
+	// reactive `$_` keeps the text locale-tracked.
+	function errorText(key: string): string {
+		return resolveErrorText($_, key);
+	}
+
+	// The cover layout class of one card: the pinned cover and the
+	// single newest member render full-bleed, two split, three the
+	// 2+1 fall, four the quad; a bare memory renders the placeholder.
+	function coverClass(count: number): string {
+		switch (count) {
+			case 0:
+				return 'memory-card__cover--empty';
+			case 1:
+				return 'memory-card__cover--single';
+			case 2:
+				return 'memory-card__cover--split';
+			case 3:
+				return 'memory-card__cover--duo-plus-one';
+			default:
+				return 'memory-card__cover--quad';
+		}
+	}
+
+	// The creation write: the refetch the write's SSE echo triggers
+	// places the new card in the server's order (the single-flight
+	// collapses the pair). The write's honest `skipped` report (the
+	// requested audience ids that did not land) holds the dialog
+	// open until acknowledged; an all-landed creation closes it
+	// directly.
+	async function submitCreate(title: string, audience: readonly { userId: string; email: string }[]): Promise<void> {
+		if (createBusy) {
+			return;
+		}
+		createBusy = true;
+		createErrorKey = '';
+		const outcome = await createMemory({
+			title,
+			audience: audience.map((member) => member.userId)
+		});
+		createBusy = false;
+		if (!outcome.ok) {
+			createErrorKey = outcome.errorKey;
+			return;
+		}
+		createSkipped = outcome.skipped;
+		void runLoad(true);
+		if (outcome.skipped.length === 0) {
+			createOpen = false;
+		}
+	}
+
+	// The report's done: close the dialog and clear the report (the
+	// wall behind already converged through the write's refetch).
+	function finishCreate(): void {
+		createOpen = false;
+		createSkipped = null;
+	}
+
+	// The load and the SSE subscription live for the page's lifetime:
+	// the first subscriber opens the stream, leaving the page closes
+	// it, and every album event converges through a refetch.
+	$effect(() => {
+		void runLoad(false);
+		const unsubscribe = subscribeAlbumEvents(() => {
+			void runLoad(true);
+		});
+		return () => unsubscribe();
+	});
+</script>
+
+<svelte:head>
+	<title>{$_('memories_title')} · lumemor</title>
+</svelte:head>
+
+<section class="memories max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
+	<!-- The one toolbar of the wall: the memory creation, the primary
+	     action -- EVERY MEMBER'S (a memory is personal curation, not
+	     configuration; the server holds no role gate on the write). -->
+	<div class="memories__toolbar flex justify-end items-center mb-3">
+		<Button
+			onclick={() => {
+				createErrorKey = '';
+				createSkipped = null;
+				createOpen = true;
+			}}><Plus size={20} aria-hidden="true" />{$_('memories_new')}</Button
+		>
+	</div>
+
+	{#if firstLoad}
+		<p class="memories__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+			{$_('memories_loading')}
+		</p>
+	{:else if settledEmpty}
+		<div
+			class="memories__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+		>
+			<h1 class="text-[22px] mb-2">{$_('memories_own_section')}</h1>
+			<!-- The empty copy points at the wall-selection entry: the
+			     first memory begins from the photos, not from here. -->
+			<p class="text-text-soft">{$_('memories_empty')}</p>
+		</div>
+	{:else if status === 'error' && memories.length === 0}
+		<div
+			class="memories__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
+			<p>{errorText(errorKey)}</p>
+			<Button variant="primary" onclick={() => void runLoad(false)}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
+		</div>
+	{:else}
+		<section class="memories__own-section">
+			<h1 class="memories__section-title mt-2 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">
+				{$_('memories_own_section')}
+			</h1>
+			{#if ownMemories.length === 0}
+				<!-- Own-empty with shared cards behind: the pointer line
+				     (the page-level empty card's copy), not a bare grid. -->
+				<p class="memories__own-hint m-0 mb-3 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+					{$_('memories_empty')}
+				</p>
+			{:else}
+				<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
+					{#each ownMemories as memory (memory.id)}
+						{@render card(memory)}
+					{/each}
+				</div>
+			{/if}
+		</section>
+		{#if sharedMemories.length > 0}
+			<section class="memories__shared-section">
+				<h2
+					class="memories__section-title mt-6 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text"
+				>
+					{$_('memories_shared_section')}
+				</h2>
+				<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
+					{#each sharedMemories as memory (memory.id)}
+						{@render card(memory)}
+					{/each}
+				</div>
+			</section>
+		{/if}
+	{/if}
+
+	{#if status === 'error' && memories.length > 0}
+		<!-- A failed convergence while cards exist: the page stays, the
+		     next event retries; the box keeps the retry affordance. -->
+		<div
+			class="memories__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+			role="alert"
+		>
+			<p>{errorText(errorKey)}</p>
+			<Button variant="primary" onclick={() => void runLoad(false)}
+				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			>
+		</div>
+	{/if}
+</section>
+
+{#snippet card(memory: AlbumSummary)}
+	<!-- One memory card: the collage cover, the title, the count, the
+	     manual origin badge on the own cards, the owner attribution
+	     and the read-only badge on the shared ones. No exclusion
+	     badge anywhere: a memory never feeds its creator's timeline. -->
+	<a
+		class="memory-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+		href="/memories/{encodeURIComponent(memory.id)}"
+	>
+		<span
+			class="memory-card__cover {coverClass(
+				memory.coverAssetIds.length
+			)} relative block aspect-[4/3] bg-accent-soft"
+			aria-hidden="true"
+		>
+			{#if memory.coverAssetIds.length === 1}
+				<img
+					class="absolute inset-0 w-full h-full object-cover"
+					src={`/api/v1/assets/${encodeURIComponent(memory.coverAssetIds[0] ?? '')}/thumbnail?size=tile`}
+					alt=""
+					loading="lazy"
+					decoding="async"
+					draggable="false"
+				/>
+			{:else if memory.coverAssetIds.length > 1}
+				<!-- The collage cells: the 2+1 fall's third cell spans both
+				     columns, the quad fills the 2x2 grid. -->
+				<span class="memory-card__cells grid grid-cols-2 absolute inset-0">
+					{#each memory.coverAssetIds.slice(0, 4) as coverId, index (coverId)}
+						<span
+							class="memory-card__cell {memory.coverAssetIds.length === 3 && index === 2
+								? 'memory-card__cell--wide col-span-2'
+								: ''} overflow-hidden"
+						>
+							<img
+								class="w-full h-full object-cover"
+								src={`/api/v1/assets/${encodeURIComponent(coverId)}/thumbnail?size=tile`}
+								alt=""
+								loading="lazy"
+								decoding="async"
+								draggable="false"
+							/>
+						</span>
+					{/each}
+				</span>
+			{:else}
+				<!-- A bare memory: the honest placeholder, no requests. -->
+				<span class="memory-card__placeholder absolute inset-0 grid place-items-center text-text-faint">
+					<svg viewBox="0 0 24 24" width="28" height="28" fill="none">
+						<path
+							d="M4 7c0-1.1.9-2 2-2l1.7.0a2 2 0 0 1 1.7 1l.8 1.4a2 2 0 0 0 1.7 1H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</span>
+			{/if}
+		</span>
+		<span class="memory-card__caption flex flex-col gap-0.5 px-3 py-2.5">
+			<span class="memory-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
+				>{memory.title}</span
+			>
+			{#if memory.owner !== undefined}
+				<span class="memory-card__owner font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
+					>{$_('albums_shared_by', { values: { email: memory.owner.email } })}</span
+				>
+			{/if}
+			<span class="memory-card__meta flex flex-wrap items-center gap-1.5 mt-0.5">
+				<span
+					class="memory-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
+					>{$_('memories_photo_count', { values: { count: memory.itemCount } })}</span
+				>
+				{#if memory.callerRole === 'owner'}
+					<!-- The manual origin badge: the reference set the owner
+					     curated photo by photo. -->
+					<span
+						class="memory-card__badge memory-card__badge--manual inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+					>
+						{$_('memories_manual_badge')}
+					</span>
+				{:else}
+					<!-- The read-only badge: the sharee's honest state -- the
+					     audience is the owner's domain, the member's view
+					     never carries a write affordance. -->
+					<span
+						class="memory-card__badge memory-card__badge--readonly inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+					>
+						{$_('memories_shared_badge')}
+					</span>
+				{/if}
+			</span>
+		</span>
+	</a>
+{/snippet}
+
+<CreateMemoryDialog
+	bind:open={createOpen}
+	busy={createBusy}
+	errorKey={createErrorKey}
+	skipped={createSkipped}
+	onsubmit={(title, audience) => void submitCreate(title, audience)}
+	ondone={finishCreate}
+/>

@@ -13,7 +13,7 @@ part 'album_patch.g.dart';
 /// Properties:
 /// * [title] - The album's display title, trimmed server-side; when present it must span 1-64 Unicode characters after the trim. 
 /// * [coverAssetId] - The pinned cover asset. When present it must be a LIVE member of THIS album (the membership row exists and the asset is not trashed, not hidden, not a Live Photo component row) -- otherwise the answer is 400 with the message key `album_cover_not_member`. Absent (or JSON null, which decodes as absent) leaves the pin unchanged. 
-/// * [allowAppDeletion] - The owner's deletability switch of a DIRECTORY album: whether the album's photos may be deleted through the application (the trash move of the source file). On for a writable source by default; the owner who manages file-system deletions themselves turns it off, and the wall's delete affordances disappear with it (the derived `deletable` face of the detail read). A patch carrying the field on a virtual album answers 400 with the message key `album_deletable_not_directory` -- the switch is the directory album's own, a virtual album's deletions never move files. Idempotent: repeating the stored value converges. 
+/// * [allowAppDeletion] - The owner's deletability switch of a DIRECTORY album: whether the album's photos may be deleted through the application (the trash move of the source file). On for a writable source by default; the owner who manages file-system deletions themselves turns it off, and the wall's delete affordances disappear with it (the derived `deletable` face of the detail read). A patch carrying the field on a memory album answers 400 with the message key `album_deletable_not_directory` -- the switch is the directory album's own, a memory album's deletions never move files. Idempotent: repeating the stored value converges. 
 @BuiltValue()
 abstract class AlbumPatch implements Built<AlbumPatch, AlbumPatchBuilder> {
   /// The album's display title, trimmed server-side; when present it must span 1-64 Unicode characters after the trim. 
@@ -24,7 +24,7 @@ abstract class AlbumPatch implements Built<AlbumPatch, AlbumPatchBuilder> {
   @BuiltValueField(wireName: r'coverAssetId')
   String? get coverAssetId;
 
-  /// The owner's deletability switch of a DIRECTORY album: whether the album's photos may be deleted through the application (the trash move of the source file). On for a writable source by default; the owner who manages file-system deletions themselves turns it off, and the wall's delete affordances disappear with it (the derived `deletable` face of the detail read). A patch carrying the field on a virtual album answers 400 with the message key `album_deletable_not_directory` -- the switch is the directory album's own, a virtual album's deletions never move files. Idempotent: repeating the stored value converges. 
+  /// The owner's deletability switch of a DIRECTORY album: whether the album's photos may be deleted through the application (the trash move of the source file). On for a writable source by default; the owner who manages file-system deletions themselves turns it off, and the wall's delete affordances disappear with it (the derived `deletable` face of the detail read). A patch carrying the field on a memory album answers 400 with the message key `album_deletable_not_directory` -- the switch is the directory album's own, a memory album's deletions never move files. Idempotent: repeating the stored value converges. 
   @BuiltValueField(wireName: r'allowAppDeletion')
   bool? get allowAppDeletion;
 

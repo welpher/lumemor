@@ -3,7 +3,7 @@
 // /albums (title + the validated source path + the audience + the
 // two dialog switches, with the honest skip report of unusable
 // audience entries), the property patch (with the cover's
-// live-member validation) and the delete (virtual only, cascades)
+// live-member validation) and the delete (memory only, cascades)
 // and the membership removal with the batch's honest
 // {removed, skipped} report. The two-tier authorization answer
 // runs through every write: an invisible album answers the reads'
@@ -17,6 +17,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -523,7 +524,7 @@ func TestUpdateAlbum(t *testing.T) {
 	adminID := env.sessionUserID(t)
 
 	album := fixtureWriteAlbumID("71")
-	env.insertWallAlbum(t, album, adminID, "virtual", "Original title", wallAlbumOpts{})
+	env.insertWallAlbum(t, album, adminID, "memory", "Original title", wallAlbumOpts{})
 
 	// Two live members, three non-live members, one live non-member
 	// of the caller's own, and one live asset of another account.
@@ -662,9 +663,9 @@ func TestUpdateAlbum(t *testing.T) {
 // face: the owner flips it on a directory album (idempotently, the
 // property patch's own convergence), the lock refuses it like every
 // property field (a mixed patch carrying the unlock is refused
-// whole -- unlock first, then edit), and a virtual album answers
+// whole -- unlock first, then edit), and a memory album answers
 // the switch's own message key -- the setting is the directory
-// album's; a virtual album's deletions never move files.
+// album's; a memory album's deletions never move files.
 func TestUpdateAlbumDeletability(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -672,8 +673,8 @@ func TestUpdateAlbumDeletability(t *testing.T) {
 
 	directory := uuid.UUID(env.createAlbum(t, env.cookie, "Deletable source",
 		sourceDir(t, root, "deletable"), nil).Id)
-	virtual := fixtureWriteAlbumID("77")
-	env.insertWallAlbum(t, virtual, adminID, "virtual", "Legacy picks", wallAlbumOpts{})
+	memory := fixtureWriteAlbumID("77")
+	env.insertWallAlbum(t, memory, adminID, "memory", "Legacy picks", wallAlbumOpts{})
 	stored := func(t *testing.T, album uuid.UUID) int {
 		t.Helper()
 		return env.queryInt(t, "SELECT allow_app_deletion::int FROM albums WHERE id = $1", pgUUID(album))
@@ -695,10 +696,10 @@ func TestUpdateAlbumDeletability(t *testing.T) {
 		}
 	})
 
-	t.Run("VirtualAlbumRefusesTheSwitch", func(t *testing.T) {
-		rec := env.patchAlbumRaw(t, env.cookie, virtual, `{"allowAppDeletion":false}`)
+	t.Run("MemoryAlbumRefusesTheSwitch", func(t *testing.T) {
+		rec := env.patchAlbumRaw(t, env.cookie, memory, `{"allowAppDeletion":false}`)
 		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("PATCH the virtual album status = %d, want %d (body %q)",
+			t.Fatalf("PATCH the memory album status = %d, want %d (body %q)",
 				rec.Code, http.StatusBadRequest, rec.Body.String())
 		}
 		apiErr, _ := decodeError(t, rec)
@@ -711,8 +712,8 @@ func TestUpdateAlbumDeletability(t *testing.T) {
 		if key, _ := (*apiErr.Details)["key"]; key != "album_deletable_not_directory" {
 			t.Errorf("details.key = %v, want album_deletable_not_directory", key)
 		}
-		if got := stored(t, virtual); got != 1 {
-			t.Errorf("stored allow_app_deletion of the virtual album = %d, want 1 (untouched)", got)
+		if got := stored(t, memory); got != 1 {
+			t.Errorf("stored allow_app_deletion of the memory album = %d, want 1 (untouched)", got)
 		}
 	})
 }
@@ -727,14 +728,14 @@ func TestUpdateAlbumAuthorization(t *testing.T) {
 	graceID, graceCookie := env.createSecondUser(t, "patch-auth-grace@example.com")
 
 	shared := fixtureWriteAlbumID("73")
-	env.insertWallAlbum(t, shared, adminID, "virtual", "Shared onward", wallAlbumOpts{})
+	env.insertWallAlbum(t, shared, adminID, "memory", "Shared onward", wallAlbumOpts{})
 	env.shareWallAlbum(t, shared, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
 
 	unshared := fixtureWriteAlbumID("74")
-	env.insertWallAlbum(t, unshared, adminID, "virtual", "Private", wallAlbumOpts{})
+	env.insertWallAlbum(t, unshared, adminID, "memory", "Private", wallAlbumOpts{})
 
 	graceOwn := fixtureWriteAlbumID("75")
-	env.insertWallAlbum(t, graceOwn, graceID, "virtual", "Grace's album", wallAlbumOpts{})
+	env.insertWallAlbum(t, graceOwn, graceID, "memory", "Grace's album", wallAlbumOpts{})
 
 	t.Run("ShareeIsForbidden", func(t *testing.T) {
 		rec := env.patchAlbumRaw(t, graceCookie, shared, `{"title":"Grace's edit"}`)
@@ -781,7 +782,7 @@ func TestAlbumLockRetired(t *testing.T) {
 	adminID := env.sessionUserID(t)
 
 	album := fixtureWriteAlbumID("76")
-	env.insertWallAlbum(t, album, adminID, "virtual", "Frozen", wallAlbumOpts{})
+	env.insertWallAlbum(t, album, adminID, "memory", "Frozen", wallAlbumOpts{})
 	member := fixtureWallAssetID("76")
 	env.insertTimelineAsset(t, member, adminID, time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.addTimelineItem(t, album, member, adminID)
@@ -823,7 +824,49 @@ func TestAlbumLockRetired(t *testing.T) {
 	})
 }
 
-// TestDeleteAlbum pins the delete's virtual arm: the row, the
+// TestMemoryTypeRetired pins the type rename whole: the retired enum
+// value 'virtual' refuses every write at the database's own enum
+// guard, and rows of the live value surface as `memory` on every
+// face. The word leaves the product vocabulary with the value.
+func TestMemoryTypeRetired(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+
+	t.Run("RetiredValueRefusesDirectInserts", func(t *testing.T) {
+		if _, err := env.pool.Exec(context.Background(),
+			"INSERT INTO albums (id, owner_id, title, type) VALUES ($1, $2, 'Ghost', 'virtual')",
+			pgUUID(fixtureWriteAlbumID("e1")), pgUUID(adminID)); err == nil {
+			t.Fatal("an album row of the retired type value 'virtual' inserted, want the enum's refusal")
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM albums WHERE type::text = 'virtual'"); got != 0 {
+			t.Errorf("rows of the retired type value = %d, want 0", got)
+		}
+	})
+
+	t.Run("RenamedRowsCarryTheMemoryType", func(t *testing.T) {
+		memory := fixtureWriteAlbumID("e2")
+		env.insertWallAlbum(t, memory, adminID, "memory", "The kept set", wallAlbumOpts{})
+		wall := env.getAlbumWall(t, env.cookie)
+		found := false
+		for _, card := range wall.Albums {
+			if uuid.UUID(card.Id) == memory {
+				found = true
+				if card.Type != apigen.AlbumSummaryTypeMemory {
+					t.Errorf("wall card type = %q, want memory", card.Type)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("the memory album is missing from the wall (%v)", wall.Albums)
+		}
+		detail := env.getAlbumDetail(t, env.cookie, memory, "")
+		if detail.Type != apigen.AlbumDetailTypeMemory {
+			t.Errorf("detail type = %q, want memory", detail.Type)
+		}
+	})
+}
+
+// TestDeleteAlbum pins the delete's memory arm: the row, the
 // membership and the share rows cascade together, the members'
 // asset rows survive, and the two-tier authorization answer holds.
 // The directory arm is the un-ingest removal -- albumremoval_test.go
@@ -833,37 +876,45 @@ func TestDeleteAlbum(t *testing.T) {
 	adminID := env.sessionUserID(t)
 	graceID, graceCookie := env.createSecondUser(t, "delete-grace@example.com")
 
-	virtual := fixtureWriteAlbumID("81")
-	env.insertWallAlbum(t, virtual, adminID, "virtual", "Going away", wallAlbumOpts{})
+	memory := fixtureWriteAlbumID("81")
+	env.insertWallAlbum(t, memory, adminID, "memory", "Going away", wallAlbumOpts{})
 	member := fixtureWallAssetID("81")
 	second := fixtureWallAssetID("82")
 	env.insertTimelineAsset(t, member, adminID, time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertTimelineAsset(t, second, adminID, time.Date(2026, 8, 3, 13, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.addTimelineItem(t, virtual, member, adminID)
-	env.addTimelineItem(t, virtual, second, adminID)
-	env.shareWallAlbum(t, virtual, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
+	env.addTimelineItem(t, memory, member, adminID)
+	env.addTimelineItem(t, memory, second, adminID)
+	env.shareWallAlbum(t, memory, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
 
 	sharedToGrace := fixtureWriteAlbumID("84")
-	env.insertWallAlbum(t, sharedToGrace, adminID, "virtual", "Shared", wallAlbumOpts{})
+	env.insertWallAlbum(t, sharedToGrace, adminID, "memory", "Shared", wallAlbumOpts{})
 	env.shareWallAlbum(t, sharedToGrace, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
 	private := fixtureWriteAlbumID("85")
-	env.insertWallAlbum(t, private, adminID, "virtual", "Private", wallAlbumOpts{})
+	env.insertWallAlbum(t, private, adminID, "memory", "Private", wallAlbumOpts{})
 
-	t.Run("DeletesVirtualAndCascades", func(t *testing.T) {
-		rec := env.deleteAlbumRaw(t, env.cookie, virtual)
+	t.Run("DeletesMemoryAndCascades", func(t *testing.T) {
+		// The birth row rides the cascade too: a created memory
+		// carries the creator's timeline-exclusion preference from
+		// its POST, and the delete takes it with the row.
+		env.setTimelinePref(t, graceID, memory, false)
+		rec := env.deleteAlbumRaw(t, env.cookie, memory)
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("DELETE /albums/%s status = %d, want %d (body %q)",
-				virtual, rec.Code, http.StatusNoContent, rec.Body.String())
+				memory, rec.Code, http.StatusNoContent, rec.Body.String())
 		}
-		if got := env.queryInt(t, "SELECT count(*) FROM albums WHERE id = $1", pgUUID(virtual)); got != 0 {
+		if got := env.queryInt(t, "SELECT count(*) FROM albums WHERE id = $1", pgUUID(memory)); got != 0 {
 			t.Errorf("album rows = %d, want 0", got)
 		}
-		// The membership and share rows cascade with the row.
-		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(virtual)); got != 0 {
+		// The membership, share and preference rows cascade with the
+		// row.
+		if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1", pgUUID(memory)); got != 0 {
 			t.Errorf("membership rows = %d, want 0 (cascaded)", got)
 		}
-		if got := env.queryInt(t, "SELECT count(*) FROM album_shares WHERE album_id = $1", pgUUID(virtual)); got != 0 {
+		if got := env.queryInt(t, "SELECT count(*) FROM album_shares WHERE album_id = $1", pgUUID(memory)); got != 0 {
 			t.Errorf("share rows = %d, want 0 (cascaded)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM user_album_prefs WHERE album_id = $1", pgUUID(memory)); got != 0 {
+			t.Errorf("preference rows = %d, want 0 (cascaded)", got)
 		}
 		// The assets themselves survive: deleting an album never
 		// deletes photos.
@@ -874,16 +925,16 @@ func TestDeleteAlbum(t *testing.T) {
 
 		wall := env.getAlbumWall(t, env.cookie)
 		for _, card := range wall.Albums {
-			if uuid.UUID(card.Id) == virtual {
+			if uuid.UUID(card.Id) == memory {
 				t.Fatalf("the deleted album is still on the wall (%v)", wall.Albums)
 			}
 		}
-		rec = env.getAlbumsRaw(t, env.cookie, "/api/v1/albums/"+virtual.String())
+		rec = env.getAlbumsRaw(t, env.cookie, "/api/v1/albums/"+memory.String())
 		requireAlbumNotFound(t, rec)
 	})
 
 	t.Run("SecondDeleteIsNotFound", func(t *testing.T) {
-		rec := env.deleteAlbumRaw(t, env.cookie, virtual)
+		rec := env.deleteAlbumRaw(t, env.cookie, memory)
 		requireAlbumNotFound(t, rec)
 	})
 
@@ -922,9 +973,9 @@ func TestRemoveAlbumItems(t *testing.T) {
 	graceID, graceCookie := env.createSecondUser(t, "remove-items-grace@example.com")
 
 	album := fixtureWriteAlbumID("a1")
-	env.insertWallAlbum(t, album, adminID, "virtual", "Curation", wallAlbumOpts{})
+	env.insertWallAlbum(t, album, adminID, "memory", "Curation", wallAlbumOpts{})
 	sharedToGrace := fixtureWriteAlbumID("a3")
-	env.insertWallAlbum(t, sharedToGrace, adminID, "virtual", "Shared", wallAlbumOpts{})
+	env.insertWallAlbum(t, sharedToGrace, adminID, "memory", "Shared", wallAlbumOpts{})
 	env.shareWallAlbum(t, sharedToGrace, graceID, adminID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
 	directory := fixtureWriteAlbumID("a4")
 	env.insertWallAlbum(t, directory, adminID, "directory", "Archive", wallAlbumOpts{})
@@ -1014,13 +1065,13 @@ func TestAlbumWriteEvents(t *testing.T) {
 	root := env.provisionMountRoot(t)
 
 	// The creation through the API: one album.created event. The
-	// lifecycle writes below ride a fixture virtual album (whose
+	// lifecycle writes below ride a fixture memory album (whose
 	// plain cascade publishes exactly the one album.deleted).
 	created := env.createAlbum(t, env.cookie, "The eventful album", root, nil)
 	directoryID := uuid.UUID(created.Id)
 
 	album := fixtureWriteAlbumID("b0")
-	env.insertWallAlbum(t, album, adminID, "virtual", "The eventful album", wallAlbumOpts{})
+	env.insertWallAlbum(t, album, adminID, "memory", "The eventful album", wallAlbumOpts{})
 	env.patchAlbum(t, env.cookie, album, `{"title":"The renamed album"}`)
 
 	member := fixtureWallAssetID("b1")
@@ -1056,7 +1107,7 @@ func TestAlbumWriteEvents(t *testing.T) {
 				want.name, len(payloads), want.count, payloads)
 		}
 		// The created event names the created directory album, the
-		// lifecycle events the fixture virtual album.
+		// lifecycle events the fixture memory album.
 		wantAlbum := album
 		if want.name == "album.created" {
 			wantAlbum = directoryID

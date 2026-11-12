@@ -1,6 +1,6 @@
 // Places resolution tests: the metadata job's GPS step
 // and the admin re-resolution run, both against a fixture grid. The
-// determinism the plan's review focus demands is pinned three ways
+// determinism is pinned three ways
 // here: the same extraction resolves to the same place on a re-run,
 // the re-resolution walk converges to the same answers the metadata
 // step wrote (one deterministic function of the coordinates), and a

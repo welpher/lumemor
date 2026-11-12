@@ -68,9 +68,14 @@
 		 * this opener, exactly the month wall's contract).
 		 */
 		onaddtag?: (ids: readonly string[], done: () => void) => void;
+		/**
+		 * Open the memory picker over the ids CAPTURED AT OPEN (the
+		 * wall-selection entry, the month wall's same opener shape).
+		 */
+		onaddmemory?: (ids: readonly string[], done: () => void) => void;
 	};
 
-	let { items, onbatch, actions, onaddtag }: Props = $props();
+	let { items, onbatch, actions, onaddtag, onaddmemory }: Props = $props();
 
 	// The selection is the wall's own reactive id set (the month
 	// wall's semantics, shared): the tiles' check affordances toggle
@@ -178,6 +183,14 @@
 		}
 		onaddtag([...selection], () => selection.clear());
 	}
+
+	// The memory picker's opener: the same captured-ids hand-over.
+	function openAddMemory(): void {
+		if (onaddmemory === undefined || selection.size === 0) {
+			return;
+		}
+		onaddmemory([...selection], () => selection.clear());
+	}
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -224,6 +237,7 @@
 		busy={batchBusy}
 		{actions}
 		onaddtag={onaddtag !== undefined ? openAddTag : undefined}
+		onaddmemory={onaddmemory !== undefined ? openAddMemory : undefined}
 		onaction={runAction}
 		onclear={exitSelection}
 	/>

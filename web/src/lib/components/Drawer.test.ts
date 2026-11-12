@@ -4,12 +4,13 @@ import { initI18n } from '$lib/i18n';
 import { probeSession, sessionStatus } from '$lib/auth/session.svelte';
 import Drawer from './Drawer.svelte';
 
-// The drawer contract: eight content items (the
-// albums wall's entry live since the albums surface; the hidden view's
-// entry moved here from the timeline's toolbar), one
-// disabled placeholder, the admin panel's role-gated entry (the
-// identity seam: an admin's session renders it, a member's never
-// does), Escape and an outside click closing it. The settings entry
+// The drawer contract: eight content items, all live (the albums
+// wall's entry live since the albums surface; the hidden view's
+// entry moved here from the timeline's toolbar; the memories wall's
+// entry went live with the memory route), the admin panel's
+// role-gated entry (the identity seam: an admin's session renders
+// it, a member's never does), Escape and an outside click closing
+// it. The settings entry
 // is GONE: the account dropdown's
 // link is settings' only home, and this file pins the drawer's side
 // of that promise -- no /settings door here, for any role.
@@ -100,21 +101,30 @@ test('closed renders nothing; open renders the eight content items in IA order',
 	expect(iconClasses.size).toBe(8);
 
 	// The live links: the timeline, the albums wall, the people,
-	// the places grid, favorites, hidden and trash routes -- and
-	// NO /settings door (the account dropdown owns it alone).
+	// the places grid, the memories wall, favorites, hidden and
+	// trash routes -- and NO /settings door (the account dropdown
+	// owns it alone).
 	const links = [...document.body.querySelectorAll<HTMLAnchorElement>('a.drawer__item')].map((link) =>
 		link.getAttribute('href')
 	);
-	expect(links).toEqual(['/timeline', '/albums', '/people', '/places', '/favorites', '/hidden', '/trash']);
+	expect(links).toEqual([
+		'/timeline',
+		'/albums',
+		'/people',
+		'/places',
+		'/memories',
+		'/favorites',
+		'/hidden',
+		'/trash'
+	]);
 	expect(document.body.querySelector('a.drawer__item[href="/settings"]')).toBeNull();
 
-	// The placeholder: present, visible, disabled.
+	// No disabled placeholders remain: the memories entry went live
+	// with its route (every content section is reachable).
 	const disabled = [...document.body.querySelectorAll<HTMLButtonElement>('button.drawer__item--disabled')];
-	expect(disabled.map((button) => button.textContent?.trim())).toEqual(['Memories']);
-	expect(disabled.every((button) => button.disabled)).toBe(true);
-	expect(disabled.every((button) => button.title !== '')).toBe(true);
+	expect(disabled).toEqual([]);
 
-	// The coming-later footnote explains the disabled section.
+	// The coming-later footnote stays (the section list may yet grow).
 	expect(panel?.textContent).toContain('The remaining sections arrive in a later update.');
 
 	// A signed-out caller holds no role: the admin entry never renders.

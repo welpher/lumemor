@@ -219,8 +219,8 @@ func TestAlbumWallEmptyDB(t *testing.T) {
 }
 
 // TestAlbumWall pins the brief's seeded wall: the caller's sync
-// album pinned first, then the caller's own virtual and directory
-// albums (updated_at descending), then another account's virtual
+// album pinned first, then the caller's own memory and directory
+// albums (updated_at descending), then another account's memory
 // album shared to the caller (the caller's grant time descending)
 // with owner attribution and the viewer role. A foreign sync album
 // (even carrying a share row) never appears; an unshared foreign
@@ -233,29 +233,33 @@ func TestAlbumWall(t *testing.T) {
 
 	// The caller's own two albums. VA carries a share to Grace (the
 	// owner's isShared view) and two live members; DA is empty.
-	ownVirtual := fixtureWallAlbumID("01")
+	ownMemory := fixtureWallAlbumID("01")
 	ownDirectory := fixtureWallAlbumID("02")
-	env.insertWallAlbum(t, ownVirtual, adminID, "virtual", "Trip to the coast", wallAlbumOpts{
+	env.insertWallAlbum(t, ownMemory, adminID, "memory", "Trip to the coast", wallAlbumOpts{
 		updatedAt: time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC),
 	})
 	env.insertWallAlbum(t, ownDirectory, adminID, "directory", "Archive", wallAlbumOpts{
 		updatedAt: time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC),
 	})
-	env.shareWallAlbum(t, ownVirtual, graceID, adminID, time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC))
+	env.shareWallAlbum(t, ownMemory, graceID, adminID, time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC))
 
-	// Grace's shared virtual album with one live member of her own.
+	// Grace's shared memory album with one live member of her own.
+	// The member lands in her sync album too (the production
+	// invariant every owned asset carries), so Grace CURRENTLY sees
+	// it -- the sharee's card counts it under the memory's
+	// shared-view rule.
 	shared := fixtureWallAlbumID("03")
-	env.insertWallAlbum(t, shared, graceID, "virtual", "Grace picks", wallAlbumOpts{
+	env.insertWallAlbum(t, shared, graceID, "memory", "Grace picks", wallAlbumOpts{
 		updatedAt: time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC),
 	})
 	sharedAsset := fixtureWallAssetID("03")
-	env.insertTimelineAsset(t, sharedAsset, graceID, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, sharedAsset, graceID, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.addTimelineItem(t, shared, sharedAsset, graceID)
 	env.shareWallAlbum(t, shared, adminID, graceID, time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC))
 
 	// Grace's unshared album: never on the caller's wall.
 	unshared := fixtureWallAlbumID("04")
-	env.insertWallAlbum(t, unshared, graceID, "virtual", "Private", wallAlbumOpts{})
+	env.insertWallAlbum(t, unshared, graceID, "memory", "Private", wallAlbumOpts{})
 
 	// The caller's own members: two live assets (the newer first in
 	// the derived cover).
@@ -263,21 +267,22 @@ func TestAlbumWall(t *testing.T) {
 	ownOlder := fixtureWallAssetID("02")
 	env.insertTimelineAsset(t, ownNewer, adminID, time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.insertTimelineAsset(t, ownOlder, adminID, time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.addTimelineItem(t, ownVirtual, ownNewer, adminID)
-	env.addTimelineItem(t, ownVirtual, ownOlder, adminID)
+	env.addTimelineItem(t, ownMemory, ownNewer, adminID)
+	env.addTimelineItem(t, ownMemory, ownOlder, adminID)
 
 	// A sync album carrying a share row to the caller: still never a
-	// wall card, in either group.
-	graceSync := fixtureWallAlbumID("05")
-	env.insertWallAlbum(t, graceSync, graceID, "sync", "Sync", wallAlbumOpts{})
+	// wall card, in either group. (Grace's sync album exists by now
+	// -- insertOwnedAsset ensured it -- so the share names the real
+	// row instead of a second fixture one.)
+	graceSync := env.syncAlbumIDOf(t, graceID)
 	env.shareWallAlbum(t, graceSync, adminID, graceID, time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC))
 
 	wall := env.getAlbumWall(t, env.cookie)
 	if len(wall.Albums) != 4 {
-		t.Fatalf("GET /albums holds %d items, want 4 (the pinned sync + own virtual + own directory + one shared; got %v)",
+		t.Fatalf("GET /albums holds %d items, want 4 (the pinned sync + own memory + own directory + one shared; got %v)",
 			len(wall.Albums), wall.Albums)
 	}
-	syncCard, virtual, directory, sharedItem := wall.Albums[0], wall.Albums[1], wall.Albums[2], wall.Albums[3]
+	syncCard, memory, directory, sharedItem := wall.Albums[0], wall.Albums[1], wall.Albums[2], wall.Albums[3]
 
 	// The pinned default card: the caller's own sync album, first,
 	// with the internal title and the excludable field absent.
@@ -309,37 +314,37 @@ func TestAlbumWall(t *testing.T) {
 		t.Errorf("wall[0].owner = %+v, want absent on an own card", syncCard.Owner)
 	}
 
-	if uuid.UUID(virtual.Id) != ownVirtual {
-		t.Errorf("wall[1].id = %s, want the own virtual %s", virtual.Id, ownVirtual)
+	if uuid.UUID(memory.Id) != ownMemory {
+		t.Errorf("wall[1].id = %s, want the own memory %s", memory.Id, ownMemory)
 	}
-	if virtual.CallerRole != apigen.AlbumSummaryCallerRoleOwner {
-		t.Errorf("wall[1].callerRole = %q, want owner", virtual.CallerRole)
+	if memory.CallerRole != apigen.AlbumSummaryCallerRoleOwner {
+		t.Errorf("wall[1].callerRole = %q, want owner", memory.CallerRole)
 	}
-	if virtual.Title != "Trip to the coast" {
-		t.Errorf("wall[1].title = %q, want the stored value", virtual.Title)
+	if memory.Title != "Trip to the coast" {
+		t.Errorf("wall[1].title = %q, want the stored value", memory.Title)
 	}
-	if virtual.Type != apigen.AlbumSummaryTypeVirtual {
-		t.Errorf("wall[1].type = %q, want virtual", virtual.Type)
+	if memory.Type != apigen.AlbumSummaryTypeMemory {
+		t.Errorf("wall[1].type = %q, want memory", memory.Type)
 	}
 	// The share to Grace: the owner's isShared view.
-	if !virtual.IsShared {
+	if !memory.IsShared {
 		t.Error("wall[1].isShared = false, want true (the album carries a share row)")
 	}
-	if virtual.ItemCount != 2 {
-		t.Errorf("wall[1].itemCount = %d, want 2", virtual.ItemCount)
+	if memory.ItemCount != 2 {
+		t.Errorf("wall[1].itemCount = %d, want 2", memory.ItemCount)
 	}
 	// No pinned cover: the two most recent live members, newest first.
-	if len(virtual.CoverAssetIds) != 2 ||
-		uuid.UUID(virtual.CoverAssetIds[0]) != ownNewer ||
-		uuid.UUID(virtual.CoverAssetIds[1]) != ownOlder {
+	if len(memory.CoverAssetIds) != 2 ||
+		uuid.UUID(memory.CoverAssetIds[0]) != ownNewer ||
+		uuid.UUID(memory.CoverAssetIds[1]) != ownOlder {
 		t.Errorf("wall[1].coverAssetIds = %v, want [%s %s] (the derived cover, newest first)",
-			virtual.CoverAssetIds, ownNewer, ownOlder)
+			memory.CoverAssetIds, ownNewer, ownOlder)
 	}
-	if want := time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC); !virtual.UpdatedAt.Truncate(time.Microsecond).Equal(want) {
-		t.Errorf("wall[1].updatedAt = %v, want %v", virtual.UpdatedAt, want)
+	if want := time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC); !memory.UpdatedAt.Truncate(time.Microsecond).Equal(want) {
+		t.Errorf("wall[1].updatedAt = %v, want %v", memory.UpdatedAt, want)
 	}
-	if virtual.Owner != nil {
-		t.Errorf("wall[1].owner = %+v, want absent on an own item", virtual.Owner)
+	if memory.Owner != nil {
+		t.Errorf("wall[1].owner = %+v, want absent on an own item", memory.Owner)
 	}
 
 	if uuid.UUID(directory.Id) != ownDirectory {
@@ -362,7 +367,7 @@ func TestAlbumWall(t *testing.T) {
 	}
 
 	if uuid.UUID(sharedItem.Id) != shared {
-		t.Errorf("wall[3].id = %s, want the shared virtual %s", sharedItem.Id, shared)
+		t.Errorf("wall[3].id = %s, want the shared memory %s", sharedItem.Id, shared)
 	}
 	if sharedItem.CallerRole != apigen.AlbumSummaryCallerRoleViewer {
 		t.Errorf("wall[3].callerRole = %q, want viewer", sharedItem.CallerRole)
@@ -402,16 +407,16 @@ func TestAlbumWallOrdering(t *testing.T) {
 	// sync row: the pin must lead them anyway (the pin is structural,
 	// not recency), and the id tiebreak walks the higher id first.
 	tie := time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
-	env.insertWallAlbum(t, fixtureWallAlbumID("61"), adminID, "virtual", "A", wallAlbumOpts{updatedAt: tie})
-	env.insertWallAlbum(t, fixtureWallAlbumID("62"), adminID, "virtual", "B", wallAlbumOpts{updatedAt: tie})
+	env.insertWallAlbum(t, fixtureWallAlbumID("61"), adminID, "memory", "A", wallAlbumOpts{updatedAt: tie})
+	env.insertWallAlbum(t, fixtureWallAlbumID("62"), adminID, "memory", "B", wallAlbumOpts{updatedAt: tie})
 
 	// Two shared albums: the later grant first, whatever their
 	// updated_at values say (the grant time owns the shared group).
-	env.insertWallAlbum(t, fixtureWallAlbumID("63"), graceID, "virtual", "C", wallAlbumOpts{
+	env.insertWallAlbum(t, fixtureWallAlbumID("63"), graceID, "memory", "C", wallAlbumOpts{
 		updatedAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
 	})
 	env.shareWallAlbum(t, fixtureWallAlbumID("63"), adminID, graceID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
-	env.insertWallAlbum(t, fixtureWallAlbumID("64"), graceID, "virtual", "D", wallAlbumOpts{
+	env.insertWallAlbum(t, fixtureWallAlbumID("64"), graceID, "memory", "D", wallAlbumOpts{
 		updatedAt: time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC),
 	})
 	env.shareWallAlbum(t, fixtureWallAlbumID("64"), adminID, graceID, time.Date(2026, 11, 5, 7, 0, 0, 0, time.UTC))
@@ -474,7 +479,7 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 	// members are the NEWEST -- an implementation that let any of them
 	// through would put them into the cover's head.
 	derived := fixtureWallAlbumID("11")
-	env.insertWallAlbum(t, derived, adminID, "virtual", "Derived cover", wallAlbumOpts{})
+	env.insertWallAlbum(t, derived, adminID, "memory", "Derived cover", wallAlbumOpts{})
 	base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	live := make([]uuid.UUID, 6)
 	for i := range live {
@@ -500,7 +505,7 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 	// the most recent -- the pin wins over the derived candidates.
 	pinned := fixtureWallAlbumID("12")
 	pinnedCover := fixtureWallAssetID("31")
-	env.insertWallAlbum(t, pinned, adminID, "virtual", "Pinned cover", wallAlbumOpts{
+	env.insertWallAlbum(t, pinned, adminID, "memory", "Pinned cover", wallAlbumOpts{
 		coverAssetID: &pinnedCover,
 	})
 	for i, days := range []int{5, 10, 1, 0} {
@@ -593,7 +598,7 @@ func TestAlbumDetail(t *testing.T) {
 	adminID := env.sessionUserID(t)
 
 	album := fixtureWallAlbumID("21")
-	env.insertWallAlbum(t, album, adminID, "virtual", "The long walk", wallAlbumOpts{})
+	env.insertWallAlbum(t, album, adminID, "memory", "The long walk", wallAlbumOpts{})
 
 	// 61 live members. Asset i was taken (60 - i) minutes after the
 	// base, except items 3 and 4 share one taken_at: the tie pair
@@ -702,8 +707,8 @@ func TestAlbumDetail(t *testing.T) {
 		if page.Title != "The long walk" {
 			t.Errorf("detail title = %q, want the stored value", page.Title)
 		}
-		if page.Type != apigen.AlbumDetailTypeVirtual {
-			t.Errorf("detail type = %q, want virtual", page.Type)
+		if page.Type != apigen.AlbumDetailTypeMemory {
+			t.Errorf("detail type = %q, want memory", page.Type)
 		}
 		if page.CoverAssetId != nil {
 			t.Errorf("detail coverAssetId = %v, want null (no pin)", *page.CoverAssetId)
@@ -749,14 +754,14 @@ func TestAlbumDetailNotFound(t *testing.T) {
 	graceID, _ := env.createSecondUser(t, "album-404-grace@example.com")
 
 	unshared := fixtureWallAlbumID("41")
-	env.insertWallAlbum(t, unshared, graceID, "virtual", "Private", wallAlbumOpts{})
+	env.insertWallAlbum(t, unshared, graceID, "memory", "Private", wallAlbumOpts{})
 
 	graceSync := fixtureWallAlbumID("42")
 	env.insertWallAlbum(t, graceSync, graceID, "sync", "Sync", wallAlbumOpts{})
 	env.shareWallAlbum(t, graceSync, adminID, graceID, time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC))
 
 	revoked := fixtureWallAlbumID("43")
-	env.insertWallAlbum(t, revoked, graceID, "virtual", "Revoked", wallAlbumOpts{})
+	env.insertWallAlbum(t, revoked, graceID, "memory", "Revoked", wallAlbumOpts{})
 	env.shareWallAlbum(t, revoked, adminID, graceID, time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC))
 	env.exec(t, "DELETE FROM album_shares WHERE album_id = $1 AND user_id = $2",
 		pgUUID(revoked), pgUUID(adminID))
@@ -795,7 +800,7 @@ func TestAlbumDetailNotFound(t *testing.T) {
 // same album are pinned where they live: TestUpdateAlbum's
 // RefusesSyncAlbum (PATCH), TestRemoveAlbumItems (the membership
 // removal), TestUpdateAlbumAudienceAlbumTypes (the audience write),
-// TestSetAlbumTimelinePreference's SyncAndOwnVirtualRefused
+// TestSetAlbumTimelinePreference's SyncAndOwnMemoryRefused
 // (the preference), and TestDeleteAlbum (the delete) -- the read
 // admitting the caller's own sync changes none of them.
 func TestSyncAlbumDetail(t *testing.T) {
@@ -931,11 +936,14 @@ func TestAlbumDetailViewer(t *testing.T) {
 	graceID, graceCookie := env.createSecondUser(t, "viewer-grace@example.com")
 
 	shared := fixtureWallAlbumID("51")
-	env.insertWallAlbum(t, shared, graceID, "virtual", "For the family", wallAlbumOpts{})
+	env.insertWallAlbum(t, shared, graceID, "memory", "For the family", wallAlbumOpts{})
 	newer := fixtureWallAssetID("51")
 	older := fixtureWallAssetID("52")
-	env.insertTimelineAsset(t, newer, graceID, time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
-	env.insertTimelineAsset(t, older, graceID, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	// Both members land in Grace's sync album too (the production
+	// invariant): she CURRENTLY sees them, so the sharee's pages and
+	// count carry them under the memory's shared-view rule.
+	env.insertOwnedAsset(t, newer, graceID, time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, older, graceID, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	env.addTimelineItem(t, shared, newer, graceID)
 	env.addTimelineItem(t, shared, older, graceID)
 	env.shareWallAlbum(t, shared, adminID, graceID, time.Date(2026, 11, 5, 9, 0, 0, 0, time.UTC))
@@ -1030,9 +1038,9 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 	}
 	readOnly := uuid.UUID(env.createAlbum(t, env.cookie, "Read-only source", readOnlyDir, nil).Id)
 
-	// A legacy virtual album: no faces at all.
-	virtual := fixtureWallAlbumID("76")
-	env.insertWallAlbum(t, virtual, adminID, "virtual", "Legacy picks", wallAlbumOpts{})
+	// A legacy memory album: no faces at all.
+	memory := fixtureWallAlbumID("76")
+	env.insertWallAlbum(t, memory, adminID, "memory", "Legacy picks", wallAlbumOpts{})
 
 	t.Run("OwnerOfAWritableAlbum", func(t *testing.T) {
 		detail := env.getAlbumDetail(t, env.cookie, writable, "")
@@ -1109,10 +1117,10 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 		}
 	})
 
-	t.Run("VirtualAlbumCarriesNoFaces", func(t *testing.T) {
-		detail := env.getAlbumDetail(t, env.cookie, virtual, "")
+	t.Run("MemoryAlbumCarriesNoFaces", func(t *testing.T) {
+		detail := env.getAlbumDetail(t, env.cookie, memory, "")
 		if detail.SourceWritable != nil || detail.AllowAppDeletion != nil || detail.Deletable != nil {
-			t.Errorf("deletion faces = (%v, %v, %v), want all absent on a virtual album",
+			t.Errorf("deletion faces = (%v, %v, %v), want all absent on a memory album",
 				detail.SourceWritable, detail.AllowAppDeletion, detail.Deletable)
 		}
 	})

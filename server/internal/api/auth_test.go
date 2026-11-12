@@ -203,7 +203,7 @@ func TestLogin(t *testing.T) {
 		cookie, info := loginCookie(t, env.router, "ada@example.com", testPassword, "Firefox on macOS")
 		after := time.Now()
 
-		// Review focus: the cookie attributes over plain http.
+		// The cookie attributes over plain http.
 		if cookie.HttpOnly != true {
 			t.Error("cookie HttpOnly = false, want true")
 		}
@@ -240,7 +240,7 @@ func TestLogin(t *testing.T) {
 			t.Errorf("session expiresAt = %v, want ~%v (30 days out)", info.ExpiresAt, want)
 		}
 
-		// Review focus: the credential is stored only as its hash.
+		// The credential is stored only as its hash.
 		raw := cookie.Value
 		if raw == "" {
 			t.Fatal("cookie carries an empty credential")
@@ -261,7 +261,7 @@ func TestLogin(t *testing.T) {
 	})
 
 	t.Run("UppercaseEmailHits", func(t *testing.T) {
-		// Review focus: the stored address is lower-case; a login with
+		// The stored address is lower-case; a login with
 		// mixed case (and stray spaces) must still hit it.
 		rec := postLogin(t, env.router, "  ADA@EXAMPLE.COM ", testPassword, "")
 		if rec.Code != http.StatusOK {
@@ -308,7 +308,7 @@ func TestLogin(t *testing.T) {
 	})
 
 	t.Run("RateLimitLocksSixthAttempt", func(t *testing.T) {
-		// Review focus: five failures lock the pair; the sixth attempt
+		// Five failures lock the pair; the sixth attempt
 		// is rejected with 429 even though its password is correct.
 		// The wizard is one-time, so the second account is seeded
 		// directly with a real password hash.

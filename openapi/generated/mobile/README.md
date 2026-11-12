@@ -103,12 +103,14 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**updateTranscodingSettings**](doc/AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
 [*AdminApi*](doc/AdminApi.md) | [**updateTrashSettings**](doc/AdminApi.md#updatetrashsettings) | **PUT** /admin/settings/trash | Save the trash retention setting.
 [*AdminApi*](doc/AdminApi.md) | [**updateUser**](doc/AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**addAlbumItems**](doc/AlbumsApi.md#addalbumitems) | **POST** /albums/{albumId}/items | Add references to one memory.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**completeAlbumPath**](doc/AlbumsApi.md#completealbumpath) | **GET** /albums/path-completions | Complete a directory album&#39;s source path.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**createAlbum**](doc/AlbumsApi.md#createalbum) | **POST** /albums | Create one directory album from an existing path.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**createMemory**](doc/AlbumsApi.md#creatememory) | **POST** /memories | Create one memory.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**deleteAlbum**](doc/AlbumsApi.md#deletealbum) | **DELETE** /albums/{albumId} | Remove one album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**getAlbum**](doc/AlbumsApi.md#getalbum) | **GET** /albums/{albumId} | One album&#39;s detail and one page of its items.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**listAlbums**](doc/AlbumsApi.md#listalbums) | **GET** /albums | The caller&#39;s album wall.
-[*AlbumsApi*](doc/AlbumsApi.md) | [**removeAlbumItems**](doc/AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one virtual album.
+[*AlbumsApi*](doc/AlbumsApi.md) | [**removeAlbumItems**](doc/AlbumsApi.md#removealbumitems) | **DELETE** /albums/{albumId}/items | Remove assets from one memory album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**rescanAlbum**](doc/AlbumsApi.md#rescanalbum) | **POST** /albums/{albumId}/rescan | Start one rescan of a directory album&#39;s source.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**resetAlbumTimelinePreference**](doc/AlbumsApi.md#resetalbumtimelinepreference) | **DELETE** /albums/{albumId}/timeline-preference | Reset the caller&#39;s timeline preference of one album.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**setAlbumTimelinePreference**](doc/AlbumsApi.md#setalbumtimelinepreference) | **PUT** /albums/{albumId}/timeline-preference | Set the caller&#39;s timeline preference of one album.
@@ -164,6 +166,7 @@ Class | Method | HTTP request | Description
 
 ## Documentation For Models
 
+ - [AddAlbumItemsResponse](doc/AddAlbumItemsResponse.md)
  - [AddTagAssetsResponse](doc/AddTagAssetsResponse.md)
  - [AdminCreateUserRequest](doc/AdminCreateUserRequest.md)
  - [AdminUserListResponse](doc/AdminUserListResponse.md)
@@ -216,6 +219,8 @@ Class | Method | HTTP request | Description
  - [LabelPersonRequest](doc/LabelPersonRequest.md)
  - [LoginRequest](doc/LoginRequest.md)
  - [MediaKind](doc/MediaKind.md)
+ - [MemoryCreateRequest](doc/MemoryCreateRequest.md)
+ - [MemoryCreateResponse](doc/MemoryCreateResponse.md)
  - [MergePeopleRequest](doc/MergePeopleRequest.md)
  - [MergePeopleResponse](doc/MergePeopleResponse.md)
  - [ModelActivateResponse](doc/ModelActivateResponse.md)

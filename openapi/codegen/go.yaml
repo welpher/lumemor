@@ -7,7 +7,7 @@
 package: gen
 output: server/internal/api/gen/gen.go
 generate:
-  # Task 5 implements gen.ServerInterface in server/internal/api.
+  # gen.ServerInterface is implemented in server/internal/api.
   chi-server: true
   models: true
   strict-server: false

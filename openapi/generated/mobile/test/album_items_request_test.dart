@@ -7,7 +7,7 @@ void main() {
   // TODO add properties to the builder and call build()
 
   group(AlbumItemsRequest, () {
-    // The asset ids of the membership removal, between 1 and 200 entries; the remove skips the ids that are no members. 
+    // The asset ids of the membership write, between 1 and 200 entries; the add skips the ids that are not currently visible to the caller or already members, the remove the ids that are no members. 
     // BuiltList<String> assetIds
     test('to test the property `assetIds`', () async {
       // TODO

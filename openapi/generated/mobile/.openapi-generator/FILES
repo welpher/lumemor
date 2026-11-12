@@ -2,6 +2,7 @@
 .openapi-generator-ignore
 README.md
 analysis_options.yaml
+doc/AddAlbumItemsResponse.md
 doc/AddTagAssetsResponse.md
 doc/AdminApi.md
 doc/AdminCreateUserRequest.md
@@ -59,6 +60,8 @@ doc/KindFacetCount.md
 doc/LabelPersonRequest.md
 doc/LoginRequest.md
 doc/MediaKind.md
+doc/MemoryCreateRequest.md
+doc/MemoryCreateResponse.md
 doc/MergePeopleRequest.md
 doc/MergePeopleResponse.md
 doc/ModelActivateResponse.md
@@ -143,6 +146,7 @@ lib/src/auth/basic_auth.dart
 lib/src/auth/bearer_auth.dart
 lib/src/auth/oauth.dart
 lib/src/date_serializer.dart
+lib/src/model/add_album_items_response.dart
 lib/src/model/add_tag_assets_response.dart
 lib/src/model/admin_create_user_request.dart
 lib/src/model/admin_user_list_response.dart
@@ -196,6 +200,8 @@ lib/src/model/kind_facet_count.dart
 lib/src/model/label_person_request.dart
 lib/src/model/login_request.dart
 lib/src/model/media_kind.dart
+lib/src/model/memory_create_request.dart
+lib/src/model/memory_create_response.dart
 lib/src/model/merge_people_request.dart
 lib/src/model/merge_people_response.dart
 lib/src/model/model_activate_response.dart
@@ -256,6 +262,7 @@ lib/src/model/user_theme.dart
 lib/src/model/year_facet_count.dart
 lib/src/serializers.dart
 pubspec.yaml
+test/add_album_items_response_test.dart
 test/add_tag_assets_response_test.dart
 test/admin_api_test.dart
 test/admin_create_user_request_test.dart
@@ -313,6 +320,8 @@ test/kind_facet_count_test.dart
 test/label_person_request_test.dart
 test/login_request_test.dart
 test/media_kind_test.dart
+test/memory_create_request_test.dart
+test/memory_create_response_test.dart
 test/merge_people_request_test.dart
 test/merge_people_response_test.dart
 test/model_activate_response_test.dart

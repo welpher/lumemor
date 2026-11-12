@@ -184,7 +184,7 @@ function detailFrom(body: unknown): AssetDetail | null {
 		if (typeof album.id !== 'string' || typeof album.title !== 'string') {
 			return null;
 		}
-		if (album.type !== 'virtual' && album.type !== 'directory' && album.type !== 'sync') {
+		if (album.type !== 'memory' && album.type !== 'directory' && album.type !== 'sync') {
 			return null;
 		}
 		if (album.callerRole !== 'owner' && album.callerRole !== 'viewer') {

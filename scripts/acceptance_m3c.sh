@@ -60,9 +60,9 @@
 # single-shape 404 (the default stream is no album resource -- the
 # removal's system-level arm) and the refusal moved nothing -- the
 # directory album, its membership and its now-empty share rows stay,
-# and the referenced photos never leave the source.
+# and the photos never leave the source.
 #
-# The album removal (the un-ingest, the E8 semantics, the closing
+# The album removal (the un-ingest, the closing
 # beat of phase 1 over the SAME writable source): a second directory
 # album is created over the rw root (inTimeline true, the affirm
 # arm), and its rescan does the dedup's own trick -- it links the
@@ -217,7 +217,7 @@ rw_source_host_dir="$repo_root/web/e2e/fixtures/m3-source-rw"
 rw_seed_template="$repo_root/server/internal/ml/testdata/face-portrait-other.jpg"
 rw_fixture_photo="IMG_E6_0001.jpg"
 
-# The removal beat's own seed (the E8 semantics): genuinely distinct
+# The removal beat's own seed (the un-ingest's semantics): genuinely distinct
 # bytes (the second person's SECOND portrait -- the first is the rw
 # fixture's own seeded photo), so the removal album's rescan ingests
 # it fresh while the dedup links the first album's member into the
@@ -1396,7 +1396,7 @@ grep -q 'ALBUM_NOT_FOUND' "$work_dir/admin_delete_body" \
 # directory album -- its membership rows, its now-empty share rows
 # and its two live photos -- stands untouched beside it (the
 # audience write above is the only face that ever touched the share
-# rows, and the referenced photos never leave the source).
+# rows, and the photos never leave the source).
 album_rows="$(psql_query "SELECT count(*) FROM albums WHERE id = '$album_id'")"
 [ "$album_rows" = "1" ] \
     || fail "the refusal touched the directory album's row ($album_rows rows, want 1)"
@@ -1601,7 +1601,7 @@ rw_restored="$(psql_query "SELECT count(*) FROM assets WHERE id = '$rw_asset_id'
 echo "    the restore returned the row to live and the file to the source (the fixture healed)"
 
 # ---------------------------------------------------------------------------
-# The album removal (the un-ingest): the E8 semantics over the SAME
+# The album removal (the un-ingest): the removal's semantics over the SAME
 # writable source. A second directory album over the rw root makes
 # its rescan link the first album's member (the owner+checksum dedup)
 # AND ingest the removal's own seed fresh, so one removal exercises

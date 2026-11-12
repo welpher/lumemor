@@ -1,7 +1,7 @@
 // The rescan endpoint tests: POST /albums/{albumId}/rescan's
 // own contract -- the two-tier authorization answer (unauthenticated
 // 401, sharee 403, invisible 404), the type gate (the rescan is the
-// directory album's own flow: virtual and sync albums fold into the
+// directory album's own flow: memory and sync albums fold into the
 // single-shape 404), the album-scoped
 // in-flight idempotence (200 with the joined run's identifier),
 // the 202 of a fresh enqueue through the seam, and the 500 of the
@@ -132,7 +132,7 @@ func rescanResponse(t *testing.T, rec *httptest.ResponseRecorder) apigen.AlbumRe
 
 // TestRescanAlbumGates pins the endpoint's own matrix: the
 // unauthenticated 401, the single-shape 404 of the unknown id, the
-// honest 403 of the sharee, and the 404 of the sync and virtual
+// honest 403 of the sharee, and the 404 of the sync and memory
 // albums (the rescan is the directory album's own flow).
 func TestRescanAlbumGates(t *testing.T) {
 	env := newRescanEnv(t)
@@ -145,8 +145,8 @@ func TestRescanAlbumGates(t *testing.T) {
 		"SELECT id FROM albums WHERE owner_id = $1 AND type = 'sync'", pgUUID(adminID)).Scan(&syncAlbum); err != nil {
 		t.Fatalf("load the sync album: %v", err)
 	}
-	virtual := fixtureWallAlbumID("aa")
-	env.insertAlbum(t, virtual, adminID, "virtual", "Picks")
+	memory := fixtureWallAlbumID("aa")
+	env.insertAlbum(t, memory, adminID, "memory", "Picks")
 	directory := fixtureWallAlbumID("ab")
 	env.insertAlbum(t, directory, adminID, "directory", "Family")
 	shared := fixtureWallAlbumID("ad")
@@ -180,8 +180,8 @@ func TestRescanAlbumGates(t *testing.T) {
 		}
 	})
 
-	t.Run("VirtualAlbum", func(t *testing.T) {
-		rec := env.rescanRaw(t, env.cookie, virtual)
+	t.Run("MemoryAlbum", func(t *testing.T) {
+		rec := env.rescanRaw(t, env.cookie, memory)
 		if rec.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want the single-shape 404 (body %q)", rec.Code, rec.Body.String())
 		}

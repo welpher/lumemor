@@ -31,24 +31,28 @@
 	// their data walks, their action subsets, their batch runs
 	// (through `onbatch`, which the wall awaits while owning the
 	// busy/error/clear choreography) and their dialogs (through the
-	// add-tag opener, which receives the ids CAPTURED AT OPEN). The
-	// capability gate is `onbatch`'s PRESENCE: a wall whose caller
-	// wired the runner renders the tiles' check affordance (the
-	// hover-reveal entry, the select-mode reveal, the mid-selection
-	// tile-toggle) and composes the bar; a wall with no runner
-	// renders NO check at all -- the tiles are pure click-to-viewer
-	// navigation (the album detail's wall, the sync-album read-only
-	// pin). No page ever wires a dead affordance. `selectMode` is
-	// the one bindable: a page-level arming writes it; the wall owns
-	// the drops (Escape, the bar's clear). The add-to-album opener
-	// is GONE with its flow.
+	// add-tag and add-to-memory openers, which receive the ids
+	// CAPTURED AT OPEN). The capability gate is the runners'
+	// PRESENCE -- `onbatch` OR the memory's membership removal
+	// (`onremovememory`): a wall whose caller wired either renders
+	// the tiles' check affordance (the hover-reveal entry, the
+	// select-mode reveal, the mid-selection tile-toggle) and composes
+	// the bar; a wall with neither renders NO check at all -- the
+	// tiles are pure click-to-viewer navigation (the album detail's
+	// wall, the sync-album read-only pin). No page ever wires a dead
+	// affordance. `selectMode` is the one bindable: a page-level
+	// arming writes it; the wall owns the drops (Escape, the bar's
+	// clear). The membership removal runs with the batch
+	// choreography -- the wall awaits it, the success arm clears the
+	// selection, a failure keeps it and surfaces the mapped error.
 	//
 	// THE SUCCESS ARM: a landed curation pass -- an `onbatch` run
-	// that resolves ok, or a dialog flow whose `done` continuation
-	// the page fires from its report's done affordance -- clears
-	// the selection but PERSISTS an armed select mode (the next
-	// pass starts immediately); a failure keeps the selection (the
-	// retry affordance) and surfaces the mapped error in the bar.
+	// that resolves ok, a removal that resolves ok, or a dialog flow
+	// whose `done` continuation the page fires from its report's done
+	// affordance -- clears the selection but PERSISTS an armed select
+	// mode (the next pass starts immediately); a failure keeps the
+	// selection (the retry affordance) and surfaces the mapped error
+	// in the bar.
 	//
 	// THE ROWS: each day group packs independently (rows never span
 	// a group boundary -- the pinned rule), rows fill the container
@@ -139,9 +143,34 @@
 		 * persist an armed mode).
 		 */
 		onaddtag?: (ids: readonly string[], done: () => void) => void;
+		/**
+		 * Open the memory picker over the ids CAPTURED AT OPEN: the
+		 * wall-selection entry, the same hand-over as the tag opener
+		 * (the picker is modal, the ids ride it, the `done`
+		 * continuation carries the pass's landing).
+		 */
+		onaddmemory?: (ids: readonly string[], done: () => void) => void;
+		/**
+		 * Remove the selected rows' memberships from the memory this
+		 * wall renders -- the memory's own curation write, run with
+		 * the batch choreography (the wall awaits it; ok clears the
+		 * selection, a failure keeps it and surfaces the mapped
+		 * error). Its PRESENCE widens the capability gate: a wall
+		 * wired for the removal alone renders the check affordance
+		 * and composes the bar exactly like an `onbatch` wall.
+		 */
+		onremovememory?: (ids: readonly string[]) => Promise<WallBatchOutcome>;
 	};
 
-	let { items, selectMode = $bindable(false), onbatch, actions, onaddtag }: Props = $props();
+	let {
+		items,
+		selectMode = $bindable(false),
+		onbatch,
+		actions,
+		onaddtag,
+		onaddmemory,
+		onremovememory
+	}: Props = $props();
 
 	// The selection is the wall's own reactive id set: the tiles'
 	// check affordances toggle it (the entry: the check
@@ -158,8 +187,11 @@
 
 	// The check affordance renders exactly when the wall can curate
 	// AND the selection is alive: an armed select mode or one checked
-	// tile (the mid-selection reveal, the touch-friendly path).
-	const selectable = $derived(onbatch !== undefined && (selectMode || selection.size > 0));
+	// tile (the mid-selection reveal, the touch-friendly path). The
+	// wall curates when either runner is wired -- a timeline batch
+	// runner OR the memory's membership removal.
+	const curatable = $derived((onbatch ?? onremovememory) !== undefined);
+	const selectable = $derived(curatable && (selectMode || selection.size > 0));
 
 	const selectedItems = $derived(items.filter((timelineItem) => selection.has(timelineItem.id)));
 	const allFavorite = $derived(
@@ -406,6 +438,34 @@
 		}
 		onaddtag([...selection], passLanded);
 	}
+
+	// The memory picker's opener: the same captured-ids hand-over
+	// (the modal-pinned selection discipline).
+	function openAddMemory(): void {
+		if (onaddmemory === undefined || selection.size === 0) {
+			return;
+		}
+		onaddmemory([...selection], passLanded);
+	}
+
+	// The membership removal: the page's write, the wall's
+	// choreography -- exactly the batch run's shape (busy disables
+	// the bar, the success arm clears the selection, a failure keeps
+	// it and surfaces the mapped error).
+	async function runRemoveMemory(): Promise<void> {
+		if (onremovememory === undefined || batchBusy || selection.size === 0) {
+			return;
+		}
+		batchBusy = true;
+		batchErrorKey = '';
+		const outcome = await onremovememory([...selection]);
+		batchBusy = false;
+		if (outcome.ok) {
+			passLanded();
+		} else {
+			batchErrorKey = outcome.errorKey;
+		}
+	}
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -451,7 +511,7 @@
 								{#each row.tiles as tile (tile.item.id)}
 									<div class="wall__cell shrink-0" style="width:{tile.width}px">
 										<!-- The capability gate rides the onselect hand-off: a
-									     wall with no onbatch runner passes no toggle, so
+									     wall with no runner wired passes no toggle, so
 									     PhotoTile renders no check at all (the pure
 									     navigation walls); a curatable wall always passes
 									     it and the reveal rides the selectable state. -->
@@ -459,7 +519,7 @@
 											item={tile.item}
 											selected={selection.has(tile.item.id)}
 											{selectable}
-											onselect={onbatch !== undefined ? toggleSelected : undefined}
+											onselect={curatable ? toggleSelected : undefined}
 										/>
 									</div>
 								{/each}
@@ -499,6 +559,8 @@
 		busy={batchBusy}
 		{actions}
 		onaddtag={onaddtag !== undefined ? openAddTag : undefined}
+		onaddmemory={onaddmemory !== undefined ? openAddMemory : undefined}
+		onremovememory={onremovememory !== undefined ? runRemoveMemory : undefined}
 		onaction={runAction}
 		onclear={exitSelection}
 	/>

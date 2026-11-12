@@ -12,7 +12,10 @@
 	// tells the wall its endpoint, its view, its strings and its
 	// action subset, runs the batch writes the wall awaits (through
 	// `onbatch`), and owns the toolbar whose toggle writes the wall's
-	// bound select mode. The album detail owns its own no-selection
+	// bound select mode. The memory picker's opener is a passthrough:
+	// a page that offers the wall-selection entry wires it, a page
+	// that does not (the trash view owns no wall at all) never
+	// renders the affordance. The album detail owns its own no-selection
 	// walk (no onbatch wired, pure navigation).
 	import { _ } from 'svelte-i18n';
 	import { untrack } from 'svelte';
@@ -41,9 +44,15 @@
 		emptyKey: string;
 		/** Which batch actions the wall's bar offers (see BatchBar). */
 		actions: readonly BatchAction[];
+		/**
+		 * Open the memory picker over the wall's captured selection
+		 * (the wall-selection entry, the page's dialog flow). Absent
+		 * = the bar carries no memory affordance.
+		 */
+		onaddmemory?: (ids: readonly string[], done: () => void) => void;
 	};
 
-	let { path, view, titleKey = '', loadingKey, emptyKey, actions }: Props = $props();
+	let { path, view, titleKey = '', loadingKey, emptyKey, actions, onaddmemory }: Props = $props();
 
 	// The client is constructed ONCE per wall: a route's endpoint and
 	// view never change while its wall is mounted (a route change
@@ -177,7 +186,7 @@
 		     the batch bar are the one wall component every curatable
 		     view renders. The action subset and the batch runner are
 		     this view's own. -->
-		<Wall items={$wall.items} bind:selectMode {actions} onbatch={runBatch} />
+		<Wall items={$wall.items} bind:selectMode {actions} onbatch={runBatch} {onaddmemory} />
 	{/if}
 
 	{#if $wall.status === 'error' && $wall.items.length > 0}

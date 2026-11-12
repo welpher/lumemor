@@ -123,7 +123,7 @@ func TestCreatePairingToken(t *testing.T) {
 		resp := generatePairingToken(t, env.router, cookie)
 		after := time.Now()
 
-		// Review focus: 16 random bytes, hex-encoded -- 32 lowercase
+		// 16 random bytes, hex-encoded -- 32 lowercase
 		// hex characters, decodable, no other shape.
 		if len(resp.Token) != 32 {
 			t.Errorf("token = %q, want 32 hex characters (16 bytes)", resp.Token)
@@ -132,12 +132,12 @@ func TestCreatePairingToken(t *testing.T) {
 			t.Errorf("token = %q, want lowercase hex", resp.Token)
 		}
 
-		// Review focus: the expiry is five minutes out.
+		// The expiry is five minutes out.
 		if want := before.Add(wantPairingTokenTTL); resp.ExpiresAt.Before(want.Add(-time.Minute)) || resp.ExpiresAt.After(after.Add(wantPairingTokenTTL).Add(time.Minute)) {
 			t.Errorf("expiresAt = %v, want ~%v (five minutes after issuance)", resp.ExpiresAt, want)
 		}
 
-		// Review focus: the store keeps only the hash.
+		// The store keeps only the hash.
 		row := env.pairingRow(t, resp.Token)
 		if row.TokenHash == resp.Token {
 			t.Error("pairing_tokens.token_hash stores the raw token: the secret would be in the clear")
@@ -158,7 +158,7 @@ func TestCreatePairingToken(t *testing.T) {
 	})
 
 	t.Run("RequiresSession", func(t *testing.T) {
-		// Review focus: unauthenticated generation is refused before
+		// Unauthenticated generation is refused before
 		// any token work.
 		rec := postPairingToken(env.router, nil)
 		if rec.Code != http.StatusUnauthorized {
@@ -207,7 +207,7 @@ func TestPairingTokenDailyLimit(t *testing.T) {
 	env.createAdmin(t, "ada@example.com", testPassword)
 	cookie, _ := loginCookie(t, env.router, "ada@example.com", testPassword, "")
 
-	// Review focus: the first ten generations of the day succeed.
+	// The first ten generations of the day succeed.
 	for i := 0; i < wantPairingDailyLimit; i++ {
 		rec := postPairingToken(env.router, cookie)
 		if rec.Code != http.StatusOK {
@@ -215,7 +215,7 @@ func TestPairingTokenDailyLimit(t *testing.T) {
 		}
 	}
 
-	// Review focus: the eleventh is refused with 429 + Retry-After.
+	// The eleventh is refused with 429 + Retry-After.
 	rec := postPairingToken(env.router, cookie)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("generation %d: status = %d, want %d (body %q)", wantPairingDailyLimit+1, rec.Code, http.StatusTooManyRequests, rec.Body.String())
@@ -337,7 +337,7 @@ func TestConsumePairingToken(t *testing.T) {
 			t.Errorf("bearer session role = %q, want admin (the token creator's role)", bearer.Session.Role)
 		}
 
-		// Review focus: the bearer works on an authed endpoint.
+		// The bearer works on an authed endpoint.
 		authed := bearerRequest(env.router, http.MethodGet, "/api/v1/auth/sessions", bearer.Token)
 		if authed.Code != http.StatusOK {
 			t.Fatalf("authed request with the new bearer: status = %d, want %d (body %q)", authed.Code, http.StatusOK, authed.Body.String())
@@ -376,7 +376,7 @@ func TestConsumePairingToken(t *testing.T) {
 	})
 
 	t.Run("SecondConsumeRejected", func(t *testing.T) {
-		// Review focus: the same token twice -- the first exchange
+		// The same token twice -- the first exchange
 		// succeeds, the replay answers 401 PAIRING_TOKEN_INVALID.
 		pairing := generatePairingToken(t, env.router, cookie)
 		creator := pairingCreatedBy(t, env, cookie)
@@ -403,7 +403,7 @@ func TestConsumePairingToken(t *testing.T) {
 	})
 
 	t.Run("ExpiredTokenRejected", func(t *testing.T) {
-		// Review focus: a token whose five minutes elapsed (the row is
+		// A token whose five minutes elapsed (the row is
 		// backdated in the store) is refused exactly like an unknown
 		// one.
 		pairing := generatePairingToken(t, env.router, cookie)

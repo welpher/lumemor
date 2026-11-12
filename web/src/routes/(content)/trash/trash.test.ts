@@ -171,6 +171,11 @@ test('the listing renders each row with its countdown and actions', async () => 
 	expect(dayLabels()).toEqual(['30 days left', '2 days left', 'Expiring soon']);
 	expect(() => buttonByLabel('Restore')).not.toThrow();
 	expect(() => buttonByLabel('Delete permanently')).not.toThrow();
+	// No selection machinery at all -- the wall-selection entry
+	// included: a trashed photo is not in the caller's current
+	// sight, so nothing here joins a memory.
+	expect(document.body.querySelector('.tile__check')).toBeNull();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
 
 	unmount(page);
 	flushSync();

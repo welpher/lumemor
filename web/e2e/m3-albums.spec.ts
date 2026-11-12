@@ -67,7 +67,7 @@
 // create affordance; their create-album attempt and their completion
 // call both answer AUTH_FORBIDDEN).
 //
-// THE REMOVAL (the E8 block) rides the same writable album: a
+// THE REMOVAL rides the same writable album: a
 // directory album's removal is the UN-INGEST -- the album row, its
 // membership and its audience die, and every member no other album
 // references purges from the library whole (the asset row, the
@@ -1086,7 +1086,7 @@ test.describe('the writable source scenes', () => {
 	});
 });
 
-// The removal arm of the story (the E8 block): the admin's session
+// The removal arm of the story: the admin's session
 // replays; the scenes stage the removal's pre-state (the share, the
 // named person, the two clusters' identities), walk the confirm's
 // pinned semantics through the detail bar's remove action, and pin

@@ -43,14 +43,16 @@
 
 	let { children }: LayoutProps = $props();
 
-	// THE ALBUM DETAIL'S OWN CHROME: while
-	// an album detail route is active the shell's topbar HIDES -- the
-	// page pins its own contextual bar (back + title + the album's
-	// icon actions) in the topbar's place, and the drawer nav stays
-	// reachable through that bar's back affordance. Every other
-	// route keeps the shell bar (the frame's h-dvh skeleton simply
-	// grows <main> by the bar's height while it is hidden).
-	const albumDetailActive = $derived(page.route.id === '/(content)/albums/[id]');
+	// THE DETAIL ROUTES' OWN CHROME: while an album or memory detail
+	// route is active the shell's topbar HIDES -- the page pins its
+	// own contextual bar (back + title + the type's icon actions) in
+	// the topbar's place, and the drawer nav stays reachable through
+	// that bar's back affordance. Every other route keeps the shell
+	// bar (the frame's h-dvh skeleton simply grows <main> by the
+	// bar's height while it is hidden).
+	const contextDetailActive = $derived(
+		page.route.id === '/(content)/albums/[id]' || page.route.id === '/(content)/memories/[id]'
+	);
 
 	let drawerOpen = $state(false);
 	let accountMenuOpen = $state(false);
@@ -150,16 +152,16 @@
 		// bar's search box -- the one box whose Enter commits to the
 		// search page. preventDefault keeps the key from the
 		// browser's own quick-find (Firefox) and the stroke from
-		// scrolling. Two routes have no box to focus: the album
-		// detail (its own chrome replaces the shell bar) and the
-		// viewer (the fixed stage covers the bar) -- on both the
-		// stroke passes through untouched rather than focusing an
-		// element the page has covered.
+		// scrolling. Two route families have no box to focus: the
+		// detail routes (their own chrome replaces the shell bar)
+		// and the viewer (the fixed stage covers the bar) -- on both
+		// the stroke passes through untouched rather than focusing
+		// an element the page has covered.
 		if (event.key === '/' && !isEditableTarget(event.target)) {
 			if (accountMenuOpen || drawerOpen || document.querySelector('[role="dialog"]') !== null) {
 				return;
 			}
-			if (page.route.id === '/(content)/a/[id]' || albumDetailActive) {
+			if (page.route.id === '/(content)/a/[id]' || contextDetailActive) {
 				return;
 			}
 			const box = document.querySelector<HTMLInputElement>('input.topbar-search');
@@ -211,7 +213,7 @@
 	     nothing while the SSE stream is healthy or closed; it rises
 	     only on a dropped connection. -->
 	<OfflineStrip />
-	{#if !albumDetailActive}
+	{#if !contextDetailActive}
 		<header class="shell-topbar flex items-center gap-3 px-4 py-2 border-b border-border bg-card">
 			<button
 				class="topbar-icon inline-flex items-center justify-center w-9 h-9 rounded-control bg-transparent text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"

@@ -686,7 +686,7 @@
 					{/if}
 
 					{#if isLivePhoto}
-						<!-- The press affordance (the plan-pinned Live Photo
+						<!-- The press affordance (the pinned Live Photo
 					     interaction): a transparent button covering the
 					     still; pressing swaps the still for the component
 					     video's motion and pressing again swaps back. -->

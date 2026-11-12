@@ -26,6 +26,14 @@
 	// state and publish nothing, so the report is the outcome and
 	// the wall never converges.
 	//
+	// THE ADD-TO-MEMORY FLOW: the bar's picker adds the captured
+	// selection to one of the caller's memories, or creates the
+	// memory first -- the same captured-ids + done-continuation
+	// hand-over. The dialog owns the flow's writes; the wall never
+	// converges on the pass (adding to a memory changes no photo's
+	// state -- the memory never feeds this caller's timeline, the
+	// report IS the outcome).
+	//
 	// The SSE subscriptions live for the page's lifetime: the first
 	// subscriber opens the stream, leaving the page closes it, and
 	// every asset event converges through the client. The album
@@ -37,7 +45,8 @@
 	//
 	// Render windowing is row-level: every justified row carries
 	// content-visibility with its engine-computed height (see the
-	// Wall component); full virtualization stays an option if the
+	// Wall component); full offscreen-recycling windowing stays an
+	// option if the
 	// wall outgrows it.
 	import { _ } from 'svelte-i18n';
 	import { createTimelineClient, type BatchAction, type BatchOutcome } from '$lib/api/timeline';
@@ -47,6 +56,7 @@
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
+	import AddToMemoryDialog from '$lib/memories/AddToMemoryDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
@@ -66,6 +76,13 @@
 	let tagList = $state<TagSummary[]>([]);
 	let tagLoading = $state(false);
 	let tagReport = $state<{ added: number; skipped: number } | null>(null);
+
+	// The add-to-memory flow's state: the captured-ids +
+	// done-continuation pair the wall's opener hands over -- the
+	// dialog owns the flow's own state and writes.
+	let memoryIds = $state<readonly string[]>([]);
+	let memoryDone: (() => void) | undefined;
+	let memoryOpen = $state(false);
 
 	const firstLoad = $derived($timeline.items.length === 0 && $timeline.status === 'loading');
 	const settledEmpty = $derived($timeline.items.length === 0 && $timeline.status === 'ready' && !$timeline.hasMore);
@@ -161,6 +178,21 @@
 		tagReport = null;
 		tagDone?.();
 		tagDone = undefined;
+	}
+
+	// The memory picker's opener: the wall's captured ids and done
+	// continuation ride the dialog (the modal-pinned selection
+	// discipline). The pass's landing fires the success arm -- the
+	// wall clears its selection; no convergence follows.
+	function openMemoryDialog(ids: readonly string[], done: () => void): void {
+		memoryIds = ids;
+		memoryDone = done;
+		memoryOpen = true;
+	}
+
+	function finishMemory(): void {
+		memoryDone?.();
+		memoryDone = undefined;
 	}
 
 	// The month axis, the selection flow and the batch bar (the
@@ -275,7 +307,7 @@
 		     the selection state and the batch bar are the one wall
 		     component every curatable view renders. The dialog opener
 		     carries the ids the wall captured. -->
-			<Wall items={$timeline.items} onbatch={runBatch} onaddtag={openTagDialog} />
+			<Wall items={$timeline.items} onbatch={runBatch} onaddtag={openTagDialog} onaddmemory={openMemoryDialog} />
 		{/if}
 
 		{#if $timeline.status === 'error' && $timeline.items.length > 0}
@@ -313,3 +345,5 @@
 	oncreate={(name) => void addToNewTag(name)}
 	ondone={finishTag}
 />
+
+<AddToMemoryDialog bind:open={memoryOpen} ids={memoryIds} onpass={finishMemory} />

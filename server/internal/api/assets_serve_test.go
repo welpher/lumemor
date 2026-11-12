@@ -467,16 +467,16 @@ func TestAssetDetailInfoPanelFaces(t *testing.T) {
 	env.insertOwnedAsset(t, asset, adminID, time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 
 	// The asset also sits in an own directory album and an own
-	// virtual album; the virtual one is shared to grace (the share
+	// memory album; the memory one is shared to grace (the share
 	// makes the asset visible to her through the caller-visible
 	// union).
 	directory := fixtureWallAlbumID("b1")
 	env.insertWallAlbum(t, directory, adminID, "directory", "Archive", wallAlbumOpts{})
-	virtual := fixtureWallAlbumID("b2")
-	env.insertWallAlbum(t, virtual, adminID, "virtual", "Picks", wallAlbumOpts{})
+	memory := fixtureWallAlbumID("b2")
+	env.insertWallAlbum(t, memory, adminID, "memory", "Picks", wallAlbumOpts{})
 	env.addTimelineItem(t, directory, asset, adminID)
-	env.addTimelineItem(t, virtual, asset, adminID)
-	env.shareWallAlbum(t, virtual, graceID, adminID, time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC))
+	env.addTimelineItem(t, memory, asset, adminID)
+	env.shareWallAlbum(t, memory, graceID, adminID, time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC))
 
 	detailOf := func(t *testing.T, cookie *http.Cookie, query string) apigen.AssetDetail {
 		t.Helper()
@@ -498,7 +498,7 @@ func TestAssetDetailInfoPanelFaces(t *testing.T) {
 	t.Run("OwnerSeesTheirArmsSyncFirst", func(t *testing.T) {
 		detail := detailOf(t, env.cookie, "")
 		// The three arms the owner can see: the sync stream's
-		// materialized membership, the directory album, the virtual
+		// materialized membership, the directory album, the memory
 		// album. The sync card leads; the rest order by title
 		// case-insensitively ("Archive" before "Picks").
 		if len(detail.Albums) != 3 {
@@ -513,9 +513,9 @@ func TestAssetDetailInfoPanelFaces(t *testing.T) {
 			detail.Albums[1].Title != "Archive" {
 			t.Errorf("albums[1] = {%s %s}, want the directory album (title order)", detail.Albums[1].Type, detail.Albums[1].Title)
 		}
-		if detail.Albums[2].Type != apigen.AssetAlbumRefTypeVirtual ||
+		if detail.Albums[2].Type != apigen.AssetAlbumRefTypeMemory ||
 			detail.Albums[2].Title != "Picks" {
-			t.Errorf("albums[2] = {%s %s}, want the virtual album", detail.Albums[2].Type, detail.Albums[2].Title)
+			t.Errorf("albums[2] = {%s %s}, want the memory album", detail.Albums[2].Type, detail.Albums[2].Title)
 		}
 		// No place resolved yet: the face is null, never absent.
 		if detail.Place != nil {
@@ -573,7 +573,7 @@ func TestAssetDetailInfoPanelFaces(t *testing.T) {
 
 	t.Run("ShareeSeesOnlyTheSharedAlbum", func(t *testing.T) {
 		detail := detailOf(t, graceCookie, "")
-		// The share on the virtual album is what makes the asset
+		// The share on the memory album is what makes the asset
 		// visible to grace -- and exactly that album surfaces: the
 		// owner's sync stream and their own directory album are
 		// invisible to her, whatever their membership rows say.
