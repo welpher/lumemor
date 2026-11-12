@@ -454,6 +454,33 @@ test('moving a face POSTs the move and the face list refetches', async () => {
 	flushSync();
 });
 
+test('the move picker with no other people says there are no people yet', async () => {
+	// This dialog carries no filter: its empty state is the honest
+	// no-people line, never the filtered list's no-match copy.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			detailRoutes({
+				'/api/v1/people': () => jsonResponse(200, []),
+				'/api/v1/people/unnamed?limit=60': () => jsonResponse(200, { items: [], nextCursor: null })
+			})
+		)
+	);
+	const page = mountPage();
+	await settle();
+	faceCards()[0]
+		?.querySelector<HTMLButtonElement>('.face-card__move')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const dialog = modal();
+	const empty = dialog?.querySelector('.cluster-picker__empty');
+	expect(empty?.textContent?.trim()).toBe('No people yet.');
+	expect(dialog?.textContent).not.toContain('No people match.');
+	unmount(page);
+	flushSync();
+});
+
 test('an unknown or invisible cluster renders the person-not-found error', async () => {
 	vi.stubGlobal(
 		'fetch',

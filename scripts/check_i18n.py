@@ -222,6 +222,7 @@ NON_ERROR_KEYS = {
     "people_merge_into_action",
     "people_merge_into_body",
     "people_picker_empty",
+    "people_picker_no_people",
     "people_face_move_action",
     "people_move_dialog_title",
     "people_move_body",

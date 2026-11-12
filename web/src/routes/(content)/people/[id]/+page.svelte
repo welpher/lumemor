@@ -607,7 +607,7 @@
 	bodyKey="people_move_body"
 	targetLabelKey="people_move_target_label"
 	submitKey="people_move_submit"
-	emptyKey="people_picker_empty"
+	emptyKey="people_picker_no_people"
 	groups={moveGroups}
 	loading={moveLoading}
 	busy={writeBusy}

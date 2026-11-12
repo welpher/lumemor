@@ -1559,6 +1559,29 @@ test('a move on a not-yet-grouped face lands on the picked person', async () => 
 	flushSync();
 });
 
+test('the assign dialog with no people at all says there are no people yet', async () => {
+	// The assign dialog carries no filter: its empty state is the
+	// honest no-people line, never the filtered list's no-match copy.
+	const faces = [faceSummary('f3', { clusterId: null })];
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
+		get('/api/v1/people', () => jsonResponse(200, [])),
+		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], nextCursor: null }))
+	]);
+	await settle();
+	openDrawer();
+	click(element('[data-face-id="f3"]'));
+	await settle();
+	click(buttonByText('Assign'));
+	await settle();
+
+	const empty = document.body.querySelector('.cluster-picker__empty');
+	expect(empty?.textContent?.trim()).toBe('No people yet.');
+	expect(element('[role="dialog"]').textContent).not.toContain('No people match.');
+	unmount(app);
+	flushSync();
+});
+
 test('a named face chip deep-links into the person page; an unnamed chip names its cluster as a new person', async () => {
 	let named = false;
 	const facesNow = () => [
