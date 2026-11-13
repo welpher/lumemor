@@ -590,7 +590,9 @@ func TestAlbumDetailSharesField(t *testing.T) {
 // TestListInstanceUsers pins the minimal member list: any
 // authenticated account (a plain member here) enumerates the
 // instance's accounts ordered by email, each entry carrying exactly
-// the four identity fields -- no display name, no timestamps.
+// the five identity fields -- the display name (the empty string
+// when the account set none), the login address, the role and the
+// disabled switch; no timestamps.
 func TestListInstanceUsers(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -601,6 +603,10 @@ func TestListInstanceUsers(t *testing.T) {
 	bravoID, bravoCookie := env.createSecondUser(t, "list-bravo@example.com")
 	charlieID, _ := env.createSecondUser(t, "list-charlie@example.com")
 	env.exec(t, "UPDATE users SET is_disabled = true WHERE id = $1", pgUUID(charlieID))
+	// The identity reads' pair of facts: a set display name rides the
+	// entry, and an account that set none serializes the empty string.
+	env.exec(t, "UPDATE users SET name = $2 WHERE id = $1", pgUUID(bravoID), "Grace Hopper")
+	env.exec(t, "UPDATE users SET name = '' WHERE id = $1", pgUUID(deltaID))
 
 	// A plain member account reads the list (the family-instance
 	// posture: any authenticated account may enumerate it).
@@ -630,7 +636,7 @@ func TestListInstanceUsers(t *testing.T) {
 	}
 
 	// The honest fields: ada the wizard admin, charlie the disabled
-	// member, delta the plain member.
+	// member, delta the plain member whose display name is empty.
 	if uuid.UUID(listed.Users[0].Id) != adminID || listed.Users[0].Role != apigen.UserRoleAdmin || listed.Users[0].IsDisabled {
 		t.Errorf("users[0] = %s/%s/%t, want the admin %s role admin, not disabled",
 			listed.Users[0].Id, listed.Users[0].Role, listed.Users[0].IsDisabled, adminID)
@@ -638,6 +644,15 @@ func TestListInstanceUsers(t *testing.T) {
 	if uuid.UUID(listed.Users[1].Id) != bravoID || listed.Users[1].Role != apigen.UserRoleUser || listed.Users[1].IsDisabled {
 		t.Errorf("users[1] = %s/%s/%t, want bravo %s role user, not disabled",
 			listed.Users[1].Id, listed.Users[1].Role, listed.Users[1].IsDisabled, bravoID)
+	}
+	// The display name leads: bravo set one, delta set none (the
+	// client renders the email then) -- and the value is the stored
+	// one, never a client-derived fallback.
+	if listed.Users[1].Name != "Grace Hopper" {
+		t.Errorf("users[1].name = %q, want the stored display name", listed.Users[1].Name)
+	}
+	if listed.Users[3].Name != "" {
+		t.Errorf("users[3].name = %q, want the empty string (the account set none)", listed.Users[3].Name)
 	}
 	if uuid.UUID(listed.Users[2].Id) != charlieID || !listed.Users[2].IsDisabled {
 		t.Errorf("users[2] = %s/%t, want charlie %s disabled",
@@ -648,7 +663,7 @@ func TestListInstanceUsers(t *testing.T) {
 			listed.Users[3].Id, listed.Users[3].IsDisabled, deltaID)
 	}
 
-	// Exactly the four identity fields per entry: no name, no
+	// Exactly the five identity fields per entry: no
 	// timestamps, nothing else rides the minimal face.
 	var rawListed map[string]json.RawMessage
 	if err := json.Unmarshal(rec.Body.Bytes(), &rawListed); err != nil {
@@ -659,15 +674,21 @@ func TestListInstanceUsers(t *testing.T) {
 		t.Fatalf("decode raw users array: %v", err)
 	}
 	for i, entry := range rawUsers {
-		if len(entry) != 4 {
-			t.Errorf("users[%d] carries %d fields (%v), want exactly id/email/role/isDisabled",
+		if len(entry) != 5 {
+			t.Errorf("users[%d] carries %d fields (%v), want exactly id/email/name/role/isDisabled",
 				i, len(entry), entry)
 		}
-		for _, field := range []string{"id", "email", "role", "isDisabled"} {
+		for _, field := range []string{"id", "email", "name", "role", "isDisabled"} {
 			if _, present := entry[field]; !present {
 				t.Errorf("users[%d] is missing the %s field", i, field)
 			}
 		}
+	}
+	// The empty display name is a serialized empty string, not an
+	// omitted key: the client's fallback reads the value, never the
+	// field's presence.
+	if name := string(rawUsers[3]["name"]); name != `""` {
+		t.Errorf("users[3] raw name = %s, want the empty string", name)
 	}
 }
 
