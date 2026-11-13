@@ -541,5 +541,9 @@
   "people_unnamed_empty_title": "Nothing to name yet",
   "person_wall_empty_title": "This person's photos are not here yet",
   "person_wall_empty": "Photos with this person's face land here.",
-  "person_avatar_option": "Use this face as the avatar"
+  "person_avatar_option": "Use this face as the avatar",
+  "unreachable_title": "This page will not open",
+  "unreachable_body": "It may have been deleted, or you may not have access to it.",
+  "unreachable_action": "Back to the timeline",
+  "unreachable_footnote": "The address may be incomplete, or the share may have been withdrawn."
 }

@@ -149,6 +149,12 @@ NON_ERROR_KEYS = {
     "action_select",
     "action_done",
     "session_expired",
+    # The unreachable face (the one card every 404 renders): its four
+    # lines are fixed copy, never a caller-supplied string.
+    "unreachable_title",
+    "unreachable_body",
+    "unreachable_action",
+    "unreachable_footnote",
     # Album surface message keys: the cover validation's
     # message key carried in a VALIDATION_FAILED details.
     "album_cover_not_member",

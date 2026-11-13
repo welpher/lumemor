@@ -541,5 +541,9 @@
   "people_unnamed_empty_title": "暂无可命名的人脸",
   "person_wall_empty_title": "这个人的照片还没有出现",
   "person_wall_empty": "包含此人的人脸照片会归到这里。",
-  "person_avatar_option": "用这张脸作为头像"
+  "person_avatar_option": "用这张脸作为头像",
+  "unreachable_title": "打不开这个页面",
+  "unreachable_body": "它可能已被删除，或你没有访问权限。",
+  "unreachable_action": "回到时间线",
+  "unreachable_footnote": "地址可能不完整，或分享已被撤销。"
 }
