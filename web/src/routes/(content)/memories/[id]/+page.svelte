@@ -47,6 +47,7 @@
 	import { createTimelineClient } from '$lib/api/timeline';
 	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import { displayNameOf } from '$lib/identity';
 	import { publishWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
@@ -76,8 +77,9 @@
 	// viewer's bar reads it off the matching shared card -- one wall
 	// fetch when the detail answers viewer (the owner is the
 	// memory's creator, an invariant; a failed probe leaves the
-	// badge alone, honestly).
-	let ownerEmail = $state('');
+	// badge alone, honestly). The identity arrives whole -- the name
+	// leads and the email is the fallback (web-ia §7.30).
+	let ownerIdentity = $state<{ name: string; email: string } | null>(null);
 
 	// One write at a time across every action (the dialogs and the
 	// wall's removal share the flag).
@@ -129,8 +131,8 @@
 			detail = outcome.detail;
 			errorKey = '';
 			status = 'ready';
-			if (outcome.detail.callerRole === 'viewer' && ownerEmail === '') {
-				void convergeOwnerEmail(outcome.detail.id);
+			if (outcome.detail.callerRole === 'viewer' && ownerIdentity === null) {
+				void convergeOwnerIdentity(outcome.detail.id);
 			}
 			return;
 		}
@@ -140,12 +142,13 @@
 	}
 
 	/** Read the viewer's owner attribution off the matching wall card. */
-	async function convergeOwnerEmail(id: string): Promise<void> {
+	async function convergeOwnerIdentity(id: string): Promise<void> {
 		const outcome = await listAlbums();
 		if (!outcome.ok) {
 			return;
 		}
-		ownerEmail = outcome.albums.find((card) => card.id === id && card.callerRole === 'viewer')?.owner?.email ?? '';
+		const owner = outcome.albums.find((card) => card.id === id && card.callerRole === 'viewer')?.owner;
+		ownerIdentity = owner === undefined ? null : { name: owner.name, email: owner.email };
 	}
 
 	/**
@@ -441,16 +444,16 @@
 				<!-- The member's arm: the honest owner attribution and the
 				     read-only badge alone -- no action, no selection, the
 				     server refuses the member's every write anyway. -->
-				{#if ownerEmail !== ''}
+				{#if ownerIdentity !== null}
 					<span
 						class="memory-bar__owner hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
-						>{$_('albums_shared_by', { values: { email: ownerEmail } })}</span
+						>{$_('albums_shared_by', { values: { name: displayNameOf(ownerIdentity) } })}</span
 					>
 				{/if}
 				<span
 					class="memory-bar__badge inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
 				>
-					{$_('memories_shared_badge')}
+					{$_('shared_readonly_badge')}
 				</span>
 			{/if}
 		</div>
