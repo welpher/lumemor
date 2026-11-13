@@ -36,6 +36,7 @@
 	path="/api/v1/assets/hidden"
 	view="hidden"
 	titleKey="hidden_title"
+	countKey="hidden_bar_count"
 	loadingKey="hidden_loading"
 	emptyKey="hidden_empty"
 	actions={['unhide']}
