@@ -1248,12 +1248,51 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 	flushSync();
 });
 
-test('an unknown or invisible album renders the not-found error with a retry', async () => {
+test('an unknown or invisible album renders the one unreachable face', async () => {
+	// The contract answers an unknown id, another account's album and
+	// a withdrawn share with the same 404: the page renders the same
+	// card for all three, with nothing of the album on it -- no
+	// title, no count, no cover, and no retry (a dead end does not
+	// heal on a second try).
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+		if (String(input) === '/api/v1/albums/al1?limit=1') {
+			return jsonResponse(404, { code: 'ALBUM_NOT_FOUND', message: 'no such album' });
+		}
+		if (String(input).startsWith('/api/v1/assets/timeline')) {
+			return jsonResponse(200, { items: [] });
+		}
+		throw new Error(`unexpected fetch ${String(input)}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	const card = document.body.querySelector('.unreachable-card');
+	expect(card?.textContent).toContain('This page will not open');
+	expect(card?.textContent).toContain('It may have been deleted, or you may not have access to it.');
+	expect(card?.querySelector('a')?.getAttribute('href')).toBe('/timeline');
+	// Nothing distinguishes the causes, and nothing of the resource
+	// renders: the bar keeps its way back alone.
+	expect(document.body.querySelector('.state-card--error')).toBeNull();
+	expect(card?.textContent).not.toContain('Road trip 2026');
+	expect(document.body.querySelector('.album-bar__title')).toBeNull();
+	expect(document.body.querySelector('.album-detail__count')).toBeNull();
+	expect(document.body.querySelector('.album-detail__actions')?.children).toHaveLength(0);
+	expect(document.body.querySelector('.album-bar__back')).not.toBeNull();
+	// The wall stays gated behind the metadata: no tiles, no empty
+	// state from the album's timeline page.
+	expect(tiles()).toHaveLength(0);
+
+	unmount(page);
+	flushSync();
+});
+
+test('a transient detail failure stays the retryable error, not the dead end', async () => {
 	let failing = true;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		if (String(input) === '/api/v1/albums/al1?limit=1') {
 			if (failing) {
-				return jsonResponse(404, { code: 'ALBUM_NOT_FOUND', message: 'no such album' });
+				return jsonResponse(500, { code: 'INTERNAL', message: 'boom' });
 			}
 			return jsonResponse(200, detailState);
 		}
@@ -1266,12 +1305,8 @@ test('an unknown or invisible album renders the not-found error with a retry', a
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.state-card--error');
-	expect(failure?.getAttribute('role')).toBe('alert');
-	expect(failure?.textContent).toContain('This album does not exist or is not visible to you.');
-	// The wall stays gated behind the metadata: no tiles, no empty
-	// state from the album's timeline page.
-	expect(tiles()).toHaveLength(0);
+	expect(document.body.querySelector('.state-card--error')?.getAttribute('role')).toBe('alert');
+	expect(document.body.querySelector('.unreachable-card')).toBeNull();
 
 	failing = false;
 	buttonByText('Try again').dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -1322,7 +1357,7 @@ test('SSE album.items-changed restarts the items walk', async () => {
 	flushSync();
 });
 
-test('SSE album.deleted renders the not-found error state', async () => {
+test('SSE album.deleted renders the unreachable face', async () => {
 	let deleted = false;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		if (String(input) === '/api/v1/albums/al1?limit=1') {
@@ -1345,9 +1380,10 @@ test('SSE album.deleted renders the not-found error state', async () => {
 	fireAlbumEvent({ id: 4, name: 'album.deleted', albumId: 'al1', userId: 'u1' });
 	await settle();
 
-	expect(document.body.querySelector('.state-card--error')?.textContent).toContain(
-		'This album does not exist or is not visible to you.'
-	);
+	// The album vanished under the page: the same unreachable face,
+	// never a half-rendered detail.
+	expect(document.body.querySelector('.unreachable-card')?.textContent).toContain('This page will not open');
+	expect(document.body.querySelector('.album-bar__title')).toBeNull();
 	expect(tiles()).toHaveLength(0);
 	unmount(page);
 	flushSync();

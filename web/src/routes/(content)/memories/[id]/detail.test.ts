@@ -211,6 +211,30 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
+test('a deleted or withdrawn memory renders the one unreachable face', async () => {
+	// A memory the caller can no longer read answers the contract's
+	// byte-identical 404: the same card an unknown address gets, with
+	// none of the memory's own face on the page.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/albums/mem1?limit=1': () => jsonResponse(404, { code: 'ALBUM_NOT_FOUND' }),
+			'/api/v1/assets/timeline?albumId=mem1&limit=100': () => jsonResponse(200, { items: [] })
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	const card = document.body.querySelector('.unreachable-card');
+	expect(card?.textContent).toContain('This page will not open');
+	expect(card?.querySelector('a')?.getAttribute('href')).toBe('/timeline');
+	expect(document.body.querySelector('.state-card--error')).toBeNull();
+	expect(document.body.querySelector('.memory-bar__title')).toBeNull();
+	expect(document.body.querySelector('.memory-detail__wall')).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
 test('the owner detail renders the bar, the count, the write arms and the wall', async () => {
 	const fetchMock = stubFetch(detailRoutes());
 	vi.stubGlobal('fetch', fetchMock);

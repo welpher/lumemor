@@ -65,6 +65,7 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { toast } from '$lib/components/toast.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
+	import UnreachableCard from '$lib/components/UnreachableCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import PersonNameDialog from '$lib/people/PersonNameDialog.svelte';
@@ -86,6 +87,14 @@
 	let status = $state<DetailStatus>('idle');
 	/** The error-code i18n key of the last failed load ('' when none). */
 	let errorKey = $state('');
+	/**
+	 * The dead end: the cluster read answered the byte-identical
+	 * 404 (a merged-away cluster, another account's person) or a
+	 * 403. The page renders the one unreachable face then -- the bar
+	 * keeps the way back, and neither the name nor the count exists
+	 * anywhere on the page.
+	 */
+	let unreachable = $state(false);
 
 	// One write at a time across every action (the dialogs and the
 	// bar toggles share the flag).
@@ -133,6 +142,7 @@
 		detail = null;
 		status = 'error';
 		errorKey = outcome.errorKey;
+		unreachable = outcome.unreachable;
 	}
 
 	/**
@@ -181,6 +191,7 @@
 		status = 'loading';
 		detail = null;
 		errorKey = '';
+		unreachable = false;
 		void (async () => {
 			const outcome = await fetchPersonCluster(id);
 			if (fetchCurrent) {
@@ -457,6 +468,12 @@
 
 	{#if firstLoad}
 		<LoadingLine label={$_('people_loading')} />
+	{:else if status === 'error' && unreachable}
+		<!-- The dead end: one card, and none of the person's own face
+		     -- no name, no count, no avatar -- because that face is
+		     exactly what would tell a caller the cluster exists. The
+		     bar keeps the way back alone. -->
+		<UnreachableCard />
 	{:else if status === 'error'}
 		<StateCard
 			tone="error"

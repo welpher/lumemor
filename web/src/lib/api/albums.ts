@@ -82,8 +82,16 @@ export type AlbumRescanResponse = components['schemas']['AlbumRescanResponse'];
 /** The wall list's outcome. */
 export type AlbumListResult = { ok: true; albums: AlbumSummary[] } | { ok: false; errorKey: string };
 
-/** The detail read's outcome. */
-export type AlbumDetailResult = { ok: true; detail: AlbumDetail } | { ok: false; errorKey: string };
+/**
+ * The detail read's outcome. `unreachable` marks the dead-end
+ * answers -- a 404 (unknown id, another account's album, a withdrawn
+ * share, all byte-identical by contract) and a 403 -- which the
+ * detail page renders as the one unreachable face; any other failure
+ * (a network drop, a 5xx, a malformed body) is the retryable error
+ * state.
+ */
+export type AlbumDetailResult =
+	{ ok: true; detail: AlbumDetail } | { ok: false; errorKey: string; unreachable: boolean };
 
 /**
  * The memory creation's outcome: the created wall card and the honest
@@ -512,14 +520,18 @@ export async function fetchAlbumDetail(
 			fetcher
 		);
 	} catch {
-		return { ok: false, errorKey: 'internal' };
+		return { ok: false, errorKey: 'internal', unreachable: false };
 	}
 	if (!response.ok) {
-		return { ok: false, errorKey: await errorKeyFrom(response) };
+		return {
+			ok: false,
+			errorKey: await errorKeyFrom(response),
+			unreachable: response.status === 404 || response.status === 403
+		};
 	}
 	const detail = detailFrom(await bodyOf(response), albumId);
 	if (detail === null) {
-		return { ok: false, errorKey: 'internal' };
+		return { ok: false, errorKey: 'internal', unreachable: false };
 	}
 	return { ok: true, detail };
 }

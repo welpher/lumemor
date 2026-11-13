@@ -115,6 +115,7 @@
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
+	import UnreachableCard from '$lib/components/UnreachableCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import AlbumPropertiesDialog, { type AlbumAutonomyDraft } from '$lib/albums/AlbumPropertiesDialog.svelte';
@@ -135,6 +136,13 @@
 	let status = $state<DetailStatus>('idle');
 	/** The error-code i18n key of the last failed load ('' when none). */
 	let errorKey = $state('');
+	/**
+	 * The dead end: the detail read answered the byte-identical 404
+	 * (or a 403). The page renders the one unreachable face then --
+	 * no retry, no title, nothing that would say whether the album
+	 * exists -- and the bar keeps the back affordance alone.
+	 */
+	let unreachable = $state(false);
 
 	// One write at a time across every action (the dialogs and the
 	// bar toggles share the flag).
@@ -241,6 +249,7 @@
 		detail = null;
 		status = 'error';
 		errorKey = outcome.errorKey;
+		unreachable = outcome.unreachable;
 	}
 
 	/**
@@ -268,6 +277,7 @@
 		status = 'loading';
 		detail = null;
 		errorKey = '';
+		unreachable = false;
 		void (async () => {
 			const outcome = await fetchAlbumDetail(id);
 			if (fetchCurrent) {
@@ -721,6 +731,12 @@
 
 	{#if status === 'loading'}
 		<LoadingLine label={$_('albums_detail_loading')} />
+	{:else if status === 'error' && unreachable}
+		<!-- The dead end: one card, no title, no count, no cover --
+		     nothing that would distinguish a deleted album from one
+		     this caller may not see. The bar above keeps its way
+		     back alone. -->
+		<UnreachableCard />
 	{:else if status === 'error'}
 		<StateCard
 			tone="error"
