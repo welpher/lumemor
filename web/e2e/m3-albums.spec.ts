@@ -371,8 +371,18 @@ test('scene 1: the administrator signs in and lands on the pinned My photos card
 	await expect(myPhotos).toBeVisible();
 	await expect(myPhotos).toContainText('0 photos');
 	await expect(page.locator('a.album-card')).toHaveCount(1);
-	await expect(page.getByText('No albums yet. Create one to gather photos around a moment.')).toBeHidden();
+	await expect(page.getByText('Gather a trip or an occasion into an album.')).toBeHidden();
 	await expect(page.getByRole('button', { name: 'New album', exact: true })).toBeVisible();
+
+	// An address the app has no route for renders the content shell
+	// plus the one unreachable card: the same face a dead resource id
+	// gets, with the bar above it intact.
+	await page.goto('/no-such-page');
+	await expect(page.locator('.unreachable-card')).toBeVisible();
+	await expect(page.getByRole('banner')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Back to the timeline' })).toBeVisible();
+	await page.goto('/albums');
+	await expect(page).toHaveURL(/\/albums$/);
 
 	// Hand the admin session to every later admin scene: the storage
 	// state rides the login cookie (the fresh contexts replay it).
@@ -549,7 +559,7 @@ test.describe('the administrator scenes', () => {
 	test("scene 5: the rescan converges the album's membership with the source", async ({ page }) => {
 		await page.goto(`/albums/${albumId}`);
 		await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
-		await expect(page.getByText('This album has no photos yet.')).toBeVisible();
+		await expect(page.getByText('This album has no photos yet')).toBeVisible();
 
 		// The rescan trigger: the POST answers the run's identifier
 		// (202 -- the freshly created run).
@@ -777,6 +787,28 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	await expect(page.getByRole('button', { name: 'Keep out of timeline', exact: true })).toBeVisible();
 	await expect(page.locator('.tile')).toHaveCount(2);
 
+	// The unreachable face, live: an album id this caller cannot
+	// reach answers the contract's 404, and the page renders the one
+	// card. The bar keeps the way back alone, nothing of a resource
+	// renders, and two different dead ids read byte for byte the
+	// same -- the address can never narrow the answer.
+	await page.goto('/albums/0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60');
+	await expect(page.locator('.unreachable-card')).toBeVisible();
+	await expect(page.locator('.unreachable-card')).toContainText('This page will not open');
+	await expect(page.locator('.unreachable-card')).toContainText(
+		'It may have been deleted, or you may not have access to it.'
+	);
+	await expect(page.locator('.album-bar__back')).toBeVisible();
+	await expect(page.locator('.album-bar__title')).toHaveCount(0);
+	await expect(page.locator('.album-detail__count')).toHaveCount(0);
+	await expect(page.locator('.album-detail__actions button')).toHaveCount(0);
+	const unknownFace = (await page.locator('main').innerText()).trim();
+	await page.goto('/albums/0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f61');
+	await expect(page.locator('.unreachable-card')).toBeVisible();
+	expect((await page.locator('main').innerText()).trim()).toBe(unknownFace);
+	await page.goto(`/albums/${albumId}`);
+	await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
+
 	// The member's wall curates their own favorites -- and nothing
 	// else: the trash would delete the owner's files, and the hide
 	// switch writes the owner's row (the batch resolves it over the
@@ -813,7 +845,7 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	// The exclusion reaches the caller's own aggregate timeline: the
 	// member owns nothing else, so the timeline settles empty.
 	await page.goto('/timeline');
-	await expect(page.locator('.timeline__empty')).toBeVisible();
+	await expect(page.locator('.state-card')).toBeVisible();
 	await expect(page.locator('.tile')).toHaveCount(0);
 
 	// Keeping it in restores the shared items (the union's shared
@@ -962,7 +994,7 @@ test.describe('the writable source scenes', () => {
 	test("scene 11: the writable album's rescan converges and the deletability row renders", async ({ page }) => {
 		await page.goto(`/albums/${rwAlbumId}`);
 		await expect(page.locator('h1.album-bar__title')).toHaveText(RW_ALBUM_TITLE);
-		await expect(page.getByText('This album has no photos yet.')).toBeVisible();
+		await expect(page.getByText('This album has no photos yet')).toBeVisible();
 
 		// The rescan: the trigger POSTs the run and the aria-live
 		// progress line converges to complete through the job events
@@ -1133,9 +1165,7 @@ test.describe('the writable source scenes', () => {
 		// leaves the trash view and the view settles empty.
 		await page.getByRole('button', { name: 'Restore', exact: true }).click();
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toHaveCount(0);
-		await expect(
-			page.getByText('The trash is empty. Photos you delete appear here before they are removed for good.')
-		).toBeVisible();
+		await expect(page.getByText('The trash is empty', { exact: true })).toBeVisible();
 
 		// The album's fresh answer carries both photos again: the
 		// restored row rejoined the membership (the restore publishes

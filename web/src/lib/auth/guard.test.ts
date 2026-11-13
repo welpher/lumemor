@@ -198,6 +198,12 @@ test('loginRedirectTarget encodes the path and query for the round-trip', () => 
 	expect(loginRedirectTarget('/a/42?tab=exif')).toBe('/login?redirectTo=%2Fa%2F42%3Ftab%3Dexif');
 });
 
+test('loginRedirectTarget tags an expiry without losing the round-trip target', () => {
+	expect(loginRedirectTarget('/albums/x?tab=people', true)).toBe(
+		'/login?redirectTo=%2Falbums%2Fx%3Ftab%3Dpeople&expired=1'
+	);
+});
+
 // --- the root layout load (the boot probe) -------------------------
 
 test('the root layout load probes the session before the first render', async () => {

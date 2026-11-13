@@ -33,9 +33,14 @@ export async function guardSessionRoute(url: URL, parent: () => Promise<unknown>
  * query survive the round-trip encoded. The one builder for the
  * load-time guard and the SessionGuard watcher keeps both halves of
  * the matrix emitting identical URLs.
+ *
+ * `expired` tags a mid-session 401's redirect: the login page then
+ * says the session expired instead of greeting a plain sign-in. The
+ * target itself is unchanged, so the post-login return still works.
  */
-export function loginRedirectTarget(pathAndQuery: string): string {
-	return `/login?redirectTo=${encodeURIComponent(pathAndQuery)}`;
+export function loginRedirectTarget(pathAndQuery: string, expired = false): string {
+	const target = `/login?redirectTo=${encodeURIComponent(pathAndQuery)}`;
+	return expired ? `${target}&expired=1` : target;
 }
 
 /**

@@ -88,6 +88,20 @@
 
 {#if !data.setupRequired}
 	<main class="login flex flex-col items-center gap-3 pt-[12vh] px-4 pb-12">
+		{#if data.expired}
+			<!-- The expiry notice: the session ended mid-flight (a 401
+			     while signed in), which is not the same as never having
+			     signed in -- and not the unreachable face either: the
+			     way forward is right below. -->
+			<div
+				class="login__expired w-[min(400px,100%)] box-content rounded-control border border-notice bg-notice px-4 py-2.5 text-navy-900"
+				role="status"
+			>
+				<p class="m-0 font-body font-semibold text-[13px] leading-[1.4]">
+					{$_('login_expired_notice')}
+				</p>
+			</div>
+		{/if}
 		<!-- The wrapper owns the width: the Card's own element belongs to
 		     another component, so styling it from here is scoped out. -->
 		<div class="login__card w-[min(400px,100%)]">

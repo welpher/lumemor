@@ -130,6 +130,13 @@ const UPLOAD_EXTENSIONS = new Set([
 	'mkv'
 ]);
 
+/**
+ * The pickers' accept attribute: the same hint-level whitelist as the
+ * dotted list every file input carries. One source, so the shell's
+ * button and a page's own upload affordance never drift.
+ */
+export const UPLOAD_ACCEPT = [...UPLOAD_EXTENSIONS].map((extension) => `.${extension}`).join(',');
+
 /** The file extension of a name, lowercase and dotless; '' when none. */
 export function uploadExtensionOf(fileName: string): string {
 	const dot = fileName.lastIndexOf('.');

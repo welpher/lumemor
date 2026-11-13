@@ -48,8 +48,9 @@
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import AddToMemoryDialog from '$lib/memories/AddToMemoryDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import Search from '@lucide/svelte/icons/search';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	const search = createSearchClient();
@@ -449,26 +450,16 @@
 	     keeps the plain 8px margin. -->
 	<div class="search__results {queryMode ? 'px-2' : 'px-2 pe-[72px]'} pt-3 pb-12">
 		{#if firstLoad}
-			<p class="search__status my-12 text-center text-text-soft animate-loading-in" role="status">
-				{$_('search_loading')}
-			</p>
+			<LoadingLine label={$_('search_loading')} />
 		{:else if settledEmpty}
-			<div
-				class="search-empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-			>
-				<h1 class="text-[22px] mb-2">{$_('search_empty_title')}</h1>
-				<p class="text-text-soft">{$_('search_empty_body')}</p>
-			</div>
+			<StateCard title={$_('search_empty_title')} body={$_('search_empty_body')} />
 		{:else if $search.status === 'error' && $search.items.length === 0}
-			<div
-				class="search__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText($search.errorKey)}</p>
-				<Button variant="primary" onclick={() => void search.run(filters, $locale ?? 'en')}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText($search.errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void search.run(filters, $locale ?? 'en')}
+			/>
 		{:else if queryMode}
 			<!-- QUERY mode: the FLAT justified wall -- rank order
 			     preserved, no grouping; the selection flow is the flat
@@ -494,15 +485,12 @@
 		{/if}
 
 		{#if $search.status === 'error' && $search.items.length > 0}
-			<div
-				class="search__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText($search.errorKey)}</p>
-				<Button variant="primary" onclick={() => void search.loadMore()}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText($search.errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void search.loadMore()}
+			/>
 		{/if}
 
 		{#if !observerAvailable && $search.nextCursor !== null && $search.status === 'ready'}

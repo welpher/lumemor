@@ -174,7 +174,7 @@ test('an empty hidden view renders the empty state', async () => {
 	await settle();
 
 	expect(tiles()).toHaveLength(0);
-	expect(document.body.textContent).toContain('Nothing is hidden');
+	expect(document.body.textContent).toContain('Nothing hidden');
 
 	unmount(page);
 	flushSync();

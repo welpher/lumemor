@@ -38,7 +38,8 @@
 	titleKey="nav_favorites"
 	countKey="favorites_bar_count"
 	loadingKey="favorites_loading"
-	emptyKey="favorites_empty"
+	emptyTitleKey="favorites_empty_title"
+	emptyBodyKey="favorites_empty_body"
 	actions={['favorite']}
 	onaddmemory={openMemoryDialog}
 />

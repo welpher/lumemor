@@ -348,6 +348,19 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			// clears one -- see the sticky set's comment).
 			return;
 		}
+		// THE FAVORITES WALL'S MEMBERSHIP IS ITS PAGE'S ANSWER:
+		// favoriteness is not part of the detail a convergence
+		// refetches, so no detail can prove that an id this wall never
+		// delivered is a member. Letting one in would paint a row the
+		// server's own listing does not hold -- a fresh upload's
+		// asset.ready becomes a tile on a wall whose settled answer is
+		// `{"items": []}`. Ids the wall already holds still patch and
+		// still return (the loaded row, the re-shown favorite); a new
+		// membership reaches this wall through a fresh walk, which is
+		// where favoriteness is actually answered.
+		if (view === 'favorites' && !knownIds.has(candidate.id)) {
+			return;
+		}
 		tombstones.delete(candidate.id);
 		const state = get(store);
 		const index = state.items.findIndex((existing) => existing.id === candidate.id);
