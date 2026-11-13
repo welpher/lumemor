@@ -15,6 +15,7 @@ part 'unnamed_clusters_response.g.dart';
 /// Properties:
 /// * [items] - The page's clusters, ordered by `faceCount` descending with the cluster id as the tiebreak. 
 /// * [nextCursor] - The opaque continuation cursor: pass it back as the `cursor` query parameter to fetch the next page. Absent exactly when this is the last page. 
+/// * [totalCount] - The caller's whole unnamed region: every cluster this listing would walk, independent of the page size and the cursor. The people list's unnamed entry badge and the unnamed page's own count both read it. 
 @BuiltValue()
 abstract class UnnamedClustersResponse implements Built<UnnamedClustersResponse, UnnamedClustersResponseBuilder> {
   /// The page's clusters, ordered by `faceCount` descending with the cluster id as the tiebreak. 
@@ -24,6 +25,10 @@ abstract class UnnamedClustersResponse implements Built<UnnamedClustersResponse,
   /// The opaque continuation cursor: pass it back as the `cursor` query parameter to fetch the next page. Absent exactly when this is the last page. 
   @BuiltValueField(wireName: r'nextCursor')
   String? get nextCursor;
+
+  /// The caller's whole unnamed region: every cluster this listing would walk, independent of the page size and the cursor. The people list's unnamed entry badge and the unnamed page's own count both read it. 
+  @BuiltValueField(wireName: r'totalCount')
+  int get totalCount;
 
   UnnamedClustersResponse._();
 
@@ -60,6 +65,11 @@ class _$UnnamedClustersResponseSerializer implements PrimitiveSerializer<Unnamed
         specifiedType: const FullType(String),
       );
     }
+    yield r'totalCount';
+    yield serializers.serialize(
+      object.totalCount,
+      specifiedType: const FullType(int),
+    );
   }
 
   @override
@@ -97,6 +107,13 @@ class _$UnnamedClustersResponseSerializer implements PrimitiveSerializer<Unnamed
           ) as String?;
           if (valueDes == null) continue;
           result.nextCursor = valueDes;
+          break;
+        case r'totalCount':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(int),
+          ) as int;
+          result.totalCount = valueDes;
           break;
         default:
           unhandled.add(key);

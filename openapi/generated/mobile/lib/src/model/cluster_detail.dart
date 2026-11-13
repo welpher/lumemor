@@ -4,6 +4,7 @@
 
 // ignore_for_file: unused_element
 import 'package:built_collection/built_collection.dart';
+import 'package:lumemor_api/src/model/date.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
 import 'package:lumemor_api/src/model/face_detail.dart';
 import 'package:built_value/built_value.dart';
@@ -11,11 +12,14 @@ import 'package:built_value/serializer.dart';
 
 part 'cluster_detail.g.dart';
 
-/// One face cluster's detail as the calling user sees it: the caller's own label state and the cluster's faces on caller-visible assets, strongest score first. 
+/// One face cluster's detail as the calling user sees it: the caller's own label state, the person entity's global attributes and the cluster's faces on caller-visible assets, strongest score first. 
 ///
 /// Properties:
 /// * [clusterId] - Identifier of the face cluster.
 /// * [label] - The caller's label of the cluster, or null when the caller has not labeled it (the unnamed state). It is the calling user's label or no label at all: another account's label never shows here. 
+/// * [birthDate] - The person's birth date (the entity's own attribute, one value for every account), or null when unset. Rendered locale-aware by the client (`Intl.DateTimeFormat`'s numeric year/month/day -- never hand-assembled). 
+/// * [avatarFaceId] - The face this person's avatar renders (the entity's own attribute), or null when none was picked -- the reads then fall back to the cluster's best caller-visible face. 
+/// * [photoCount] - The number of DISTINCT live assets the cluster has a face on that the caller can see (photos, not faces). 
 /// * [faces] - The cluster's faces on assets visible to the caller, strongest score first with the face id as the tiebreak. Faces on other accounts' assets never appear. 
 @BuiltValue()
 abstract class ClusterDetail implements Built<ClusterDetail, ClusterDetailBuilder> {
@@ -26,6 +30,18 @@ abstract class ClusterDetail implements Built<ClusterDetail, ClusterDetailBuilde
   /// The caller's label of the cluster, or null when the caller has not labeled it (the unnamed state). It is the calling user's label or no label at all: another account's label never shows here. 
   @BuiltValueField(wireName: r'label')
   PersonLabel? get label;
+
+  /// The person's birth date (the entity's own attribute, one value for every account), or null when unset. Rendered locale-aware by the client (`Intl.DateTimeFormat`'s numeric year/month/day -- never hand-assembled). 
+  @BuiltValueField(wireName: r'birthDate')
+  Date? get birthDate;
+
+  /// The face this person's avatar renders (the entity's own attribute), or null when none was picked -- the reads then fall back to the cluster's best caller-visible face. 
+  @BuiltValueField(wireName: r'avatarFaceId')
+  String? get avatarFaceId;
+
+  /// The number of DISTINCT live assets the cluster has a face on that the caller can see (photos, not faces). 
+  @BuiltValueField(wireName: r'photoCount')
+  int get photoCount;
 
   /// The cluster's faces on assets visible to the caller, strongest score first with the face id as the tiebreak. Faces on other accounts' assets never appear. 
   @BuiltValueField(wireName: r'faces')
@@ -63,6 +79,21 @@ class _$ClusterDetailSerializer implements PrimitiveSerializer<ClusterDetail> {
     yield object.label == null ? null : serializers.serialize(
       object.label,
       specifiedType: const FullType.nullable(PersonLabel),
+    );
+    yield r'birthDate';
+    yield object.birthDate == null ? null : serializers.serialize(
+      object.birthDate,
+      specifiedType: const FullType.nullable(Date),
+    );
+    yield r'avatarFaceId';
+    yield object.avatarFaceId == null ? null : serializers.serialize(
+      object.avatarFaceId,
+      specifiedType: const FullType.nullable(String),
+    );
+    yield r'photoCount';
+    yield serializers.serialize(
+      object.photoCount,
+      specifiedType: const FullType(int),
     );
     yield r'faces';
     yield serializers.serialize(
@@ -106,6 +137,29 @@ class _$ClusterDetailSerializer implements PrimitiveSerializer<ClusterDetail> {
           ) as PersonLabel?;
           if (valueDes == null) continue;
           result.label.replace(valueDes);
+          break;
+        case r'birthDate':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(Date),
+          ) as Date?;
+          if (valueDes == null) continue;
+          result.birthDate = valueDes;
+          break;
+        case r'avatarFaceId':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(String),
+          ) as String?;
+          if (valueDes == null) continue;
+          result.avatarFaceId = valueDes;
+          break;
+        case r'photoCount':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(int),
+          ) as int;
+          result.photoCount = valueDes;
           break;
         case r'faces':
           final valueDes = serializers.deserialize(

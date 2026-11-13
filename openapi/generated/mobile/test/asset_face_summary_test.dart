@@ -37,5 +37,11 @@ void main() {
       // TODO
     });
 
+    // The person's birth date (the entity's own attribute), or null when unset or the face has no cluster. The client computes the capture-time age from it and the asset's `takenAt` -- the birth date's whole purpose beside the birthday memories. 
+    // Date birthDate
+    test('to test the property `birthDate`', () async {
+      // TODO
+    });
+
   });
 }

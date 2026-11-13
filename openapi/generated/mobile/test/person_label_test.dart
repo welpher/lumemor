@@ -13,11 +13,5 @@ void main() {
       // TODO
     });
 
-    // The caller's hidden switch. Hidden people stay listed in `GET /people` carrying this flag (badge semantics). 
-    // bool isHidden
-    test('to test the property `isHidden`', () async {
-      // TODO
-    });
-
   });
 }

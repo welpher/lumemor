@@ -13,7 +13,7 @@ part 'unnamed_cluster_summary.g.dart';
 /// Properties:
 /// * [clusterId] - Identifier of the face cluster.
 /// * [faceCount] - The cluster's faces on assets visible to the caller -- the honest per-caller count, not the global member count. 
-/// * [representativeFaceId] - The face the cluster tile renders: the cluster's strongest-scoring face on a caller-visible live asset (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, not the cluster's global representative, so a tile never crops out of an asset the caller cannot view. 
+/// * [representativeFaceId] - The face the cluster tile renders: the person's chosen avatar face when it is a caller-visible live member of the cluster, otherwise the cluster's strongest-scoring caller-visible face (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, never a face on an asset the caller cannot view. 
 /// * [thumbnail] - URL of the tile's face crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the caller-visible best face's id. 
 @BuiltValue()
 abstract class UnnamedClusterSummary implements Built<UnnamedClusterSummary, UnnamedClusterSummaryBuilder> {
@@ -25,7 +25,7 @@ abstract class UnnamedClusterSummary implements Built<UnnamedClusterSummary, Unn
   @BuiltValueField(wireName: r'faceCount')
   int get faceCount;
 
-  /// The face the cluster tile renders: the cluster's strongest-scoring face on a caller-visible live asset (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, not the cluster's global representative, so a tile never crops out of an asset the caller cannot view. 
+  /// The face the cluster tile renders: the person's chosen avatar face when it is a caller-visible live member of the cluster, otherwise the cluster's strongest-scoring caller-visible face (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, never a face on an asset the caller cannot view. 
   @BuiltValueField(wireName: r'representativeFaceId')
   String get representativeFaceId;
 

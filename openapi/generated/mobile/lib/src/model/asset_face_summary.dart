@@ -3,13 +3,14 @@
 //
 
 // ignore_for_file: unused_element
+import 'package:lumemor_api/src/model/date.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
 part 'asset_face_summary.g.dart';
 
-/// One face of the asset detail's `faces` array: the crop's identity, the detection score, the face's cluster and the CALLER's label of that cluster. The label is per-user state: another account's label of the same global cluster never shows here. `clusterId` is null while the face waits for its first clustering assignment; such a face has no person yet and every assignment write on it answers the people surface's 404. 
+/// One face of the asset detail's `faces` array: the crop's identity, the detection score, the face's cluster, the CALLER's label of that cluster and the person entity's birth date. The label is per-user state: another account's label of the same global cluster never shows here; the birth date is the entity's own attribute (one value for every account) and exists so the chip can render the person's age WHEN THIS PHOTO WAS TAKEN. `clusterId` is null while the face waits for its first clustering assignment; such a face has no person yet and every assignment write on it answers the people surface's 404. 
 ///
 /// Properties:
 /// * [id] - Identifier of the face row.
@@ -17,6 +18,7 @@ part 'asset_face_summary.g.dart';
 /// * [thumbnail] - URL of the face's crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with this face's id, serving the bounding-box crop of the asset's view-size derivative. 
 /// * [clusterId] - Identifier of the face's cluster, or null before the clustering assigned one (a face the recognition run has not grouped yet). 
 /// * [label] - The caller's own label of the face's cluster, or null when the caller has not labeled it (the unnamed state) -- and null for a clusterless face, which has no cluster to label. 
+/// * [birthDate] - The person's birth date (the entity's own attribute), or null when unset or the face has no cluster. The client computes the capture-time age from it and the asset's `takenAt` -- the birth date's whole purpose beside the birthday memories. 
 @BuiltValue()
 abstract class AssetFaceSummary implements Built<AssetFaceSummary, AssetFaceSummaryBuilder> {
   /// Identifier of the face row.
@@ -38,6 +40,10 @@ abstract class AssetFaceSummary implements Built<AssetFaceSummary, AssetFaceSumm
   /// The caller's own label of the face's cluster, or null when the caller has not labeled it (the unnamed state) -- and null for a clusterless face, which has no cluster to label. 
   @BuiltValueField(wireName: r'label')
   PersonLabel? get label;
+
+  /// The person's birth date (the entity's own attribute), or null when unset or the face has no cluster. The client computes the capture-time age from it and the asset's `takenAt` -- the birth date's whole purpose beside the birthday memories. 
+  @BuiltValueField(wireName: r'birthDate')
+  Date? get birthDate;
 
   AssetFaceSummary._();
 
@@ -86,6 +92,11 @@ class _$AssetFaceSummarySerializer implements PrimitiveSerializer<AssetFaceSumma
     yield object.label == null ? null : serializers.serialize(
       object.label,
       specifiedType: const FullType.nullable(PersonLabel),
+    );
+    yield r'birthDate';
+    yield object.birthDate == null ? null : serializers.serialize(
+      object.birthDate,
+      specifiedType: const FullType.nullable(Date),
     );
   }
 
@@ -146,6 +157,14 @@ class _$AssetFaceSummarySerializer implements PrimitiveSerializer<AssetFaceSumma
           ) as PersonLabel?;
           if (valueDes == null) continue;
           result.label.replace(valueDes);
+          break;
+        case r'birthDate':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(Date),
+          ) as Date?;
+          if (valueDes == null) continue;
+          result.birthDate = valueDes;
           break;
         default:
           unhandled.add(key);
