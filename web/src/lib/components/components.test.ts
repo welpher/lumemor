@@ -4,6 +4,7 @@ import Button from './Button.svelte';
 import IconButton from './IconButton.svelte';
 import Card from './Card.svelte';
 import Input from './Input.svelte';
+import CountLabel from './CountLabel.svelte';
 import Modal from './Modal.svelte';
 import StateCard from './StateCard.svelte';
 import LoadingLine from './LoadingLine.svelte';
@@ -276,5 +277,40 @@ test('the loading line is one status line: no spinner, no skeleton', () => {
 	expect(element?.querySelector('svg')).toBeNull();
 	expect(element?.querySelector('[class*="skeleton"]')).toBeNull();
 	unmount(line);
+	flushSync();
+});
+
+test('the count is one labeled image: glyph plus number, the wording on the accessible name', () => {
+	// The count idiom: the visible half is a glyph and the number, and
+	// the full wording survives on the wrapper's role="img" name --
+	// never read as an image of its own by the inner glyph. Photos and
+	// faces carry different glyphs and are never mixed.
+	const photos = mount(CountLabel, {
+		target: document.body,
+		props: { count: 1204, label: '1,204 photos' }
+	});
+	flushSync();
+	const element = document.body.querySelector<HTMLElement>('span.count');
+	expect(element?.getAttribute('role')).toBe('img');
+	expect(element?.getAttribute('aria-label')).toBe('1,204 photos');
+	expect(element?.getAttribute('title')).toBe('1,204 photos');
+	// The locale grouping of the digits matches the wording's own.
+	expect(element?.textContent?.trim()).toBe('1,204');
+	const glyph = element?.querySelector('svg');
+	expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+	expect(glyph?.getAttribute('class')).toContain('lucide-image');
+	unmount(photos);
+	flushSync();
+
+	const faces = mount(CountLabel, {
+		target: document.body,
+		props: { count: 3, label: '3 faces', kind: 'faces' }
+	});
+	flushSync();
+	const faceCount = document.body.querySelector<HTMLElement>('span.count');
+	expect(faceCount?.getAttribute('aria-label')).toBe('3 faces');
+	expect(faceCount?.textContent?.trim()).toBe('3');
+	expect(faceCount?.querySelector('svg')?.getAttribute('class')).toContain('lucide-scan-face');
+	unmount(faces);
 	flushSync();
 });

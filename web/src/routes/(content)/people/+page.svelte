@@ -27,9 +27,9 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import Search from '@lucide/svelte/icons/search';
 	import ScanFace from '@lucide/svelte/icons/scan-face';
-	import ImageIcon from '@lucide/svelte/icons/image';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -234,14 +234,11 @@
 								class="person-card__name min-w-0 font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
 								>{person.name}</span
 							>
-							<span
-								class="person-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft tabular-nums whitespace-nowrap inline-flex items-center gap-1"
-								role="img"
-								aria-label={$_('people_photo_count', { values: { count: person.photoCount } })}
-								title={$_('people_photo_count', { values: { count: person.photoCount } })}
-							>
-								<ImageIcon size={14} aria-hidden="true" />{person.photoCount}
-							</span>
+							<CountLabel
+								class="person-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+								count={person.photoCount}
+								label={$_('people_photo_count', { values: { count: person.photoCount } })}
+							/>
 						</span>
 					</a>
 				{/each}

@@ -253,8 +253,11 @@ test('the wall keeps the memory rows alone in ONE list, newest first', async () 
 	]);
 
 	const [own, , , shared] = cards();
-	// An own card: the title, the count, the manual origin badge.
-	expect(own?.textContent).toContain('12 photos');
+	// An own card: the title, the count (the glyph and the number --
+	// the wording rides the accessible name), the manual origin badge.
+	const ownCount = own?.querySelector('.memory-card__count');
+	expect(ownCount?.textContent?.trim()).toBe('12');
+	expect(ownCount?.getAttribute('aria-label')).toBe('12 photos');
 	expect(own?.querySelector('.memory-card__badge--manual')?.textContent?.trim()).toBe('Manual');
 	expect(own?.querySelector('.memory-card__badge--readonly')).toBeNull();
 	// The shared card: the attribution chip names the owner, the

@@ -247,7 +247,9 @@ test('the owner detail renders the bar, the count, the write arms and the wall',
 	expect(back?.getAttribute('href')).toBe('/memories');
 	expect(back?.getAttribute('aria-label')).toBe('Back to memories');
 	expect(document.body.querySelector('.memory-bar__title')?.textContent).toBe('Paris trip');
-	expect(document.body.querySelector('.memory-bar__count')?.textContent).toBe('2 photos');
+	const count = document.body.querySelector('.memory-bar__count');
+	expect(count?.textContent?.trim()).toBe('2');
+	expect(count?.getAttribute('aria-label')).toBe('2 photos');
 
 	// The owner's write set: the edit dialog, the cover, the delete.
 	for (const label of ['Edit memory', 'Change cover', 'Delete memory']) {

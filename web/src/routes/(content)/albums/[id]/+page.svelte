@@ -117,6 +117,7 @@
 	import StateCard from '$lib/components/StateCard.svelte';
 	import UnreachableCard from '$lib/components/UnreachableCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import AlbumPropertiesDialog, { type AlbumAutonomyDraft } from '$lib/albums/AlbumPropertiesDialog.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -631,10 +632,11 @@
 					{$_('albums_excluded_badge')}
 				</span>
 			{/if}
-			<span
-				class="album-detail__count hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
-				>{$_('albums_photo_count', { values: { count: detail.itemCount } })}</span
-			>
+			<CountLabel
+				class="album-detail__count hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+				count={detail.itemCount}
+				label={$_('albums_photo_count', { values: { count: detail.itemCount } })}
+			/>
 		{/if}
 
 		<!-- The action set, per callerRole x type, as icon-only

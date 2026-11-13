@@ -399,6 +399,15 @@ html.dark {
 		outline-offset: 2px;
 	}
 
+	/* The count idiom's optical alignment: a 14px glyph centred on a
+	 * 13px line box lands half a pixel below the digits' optical
+	 * centre, which reads as "not aligned" at card size. The glyph
+	 * rides the digits instead. Scoped to the labeled count wrapper
+	 * (role="img"), whose only SVG child is that glyph. */
+	[role='img'] > svg {
+		transform: translateY(-0.5px);
+	}
+
 	/* The hairline default: every `border`-style utility paints the
 	 * theme's border color unless the component overrides it, so
 	 * hairlines exist without per-component color utilities. The

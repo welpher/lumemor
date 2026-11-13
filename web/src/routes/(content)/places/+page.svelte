@@ -29,6 +29,7 @@
 	import { subscribeAssetEvents } from '$lib/events';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import { untrack } from 'svelte';
 
@@ -252,10 +253,11 @@
 			<span class="place-card__region font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
 				>{countryName(place.country, $locale ?? 'en')}</span
 			>
-			<span
-				class="place-card__count font-body font-normal text-[12px] leading-[1.4] text-text-faint whitespace-nowrap tabular-nums"
-				>{$_('places_photo_count', { values: { count: place.assetCount } })}</span
-			>
+			<CountLabel
+				class="place-card__count font-body font-normal text-[12px] leading-[1.4] text-text-faint"
+				count={place.assetCount}
+				label={$_('places_photo_count', { values: { count: place.assetCount } })}
+			/>
 		</span>
 	</a>
 {/snippet}
