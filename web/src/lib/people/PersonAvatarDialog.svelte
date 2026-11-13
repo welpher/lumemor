@@ -77,7 +77,7 @@
 						: 'border-border hover:border-accent'}"
 					type="button"
 					aria-pressed={picked === face.id}
-					aria-label={$_('person_avatar_set')}
+					aria-label={$_('person_avatar_option')}
 					onclick={() => (picked = face.id)}
 				>
 					<img

@@ -530,5 +530,6 @@
   "people_empty_title": "No people yet",
   "people_unnamed_empty_title": "Nothing to name yet",
   "person_wall_empty_title": "This person's photos are not here yet",
-  "person_wall_empty": "Photos with this person's face land here."
+  "person_wall_empty": "Photos with this person's face land here.",
+  "person_avatar_option": "Use this face as the avatar"
 }

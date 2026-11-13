@@ -444,7 +444,7 @@ test.describe('the signed-in scenes', () => {
 		const avatarDialog = page.getByRole('dialog', { name: 'Change avatar', exact: true });
 		await expect(avatarDialog).toBeVisible();
 		await expect(avatarDialog).toContainText("Pick one of this person's faces as their avatar.");
-		const options = avatarDialog.locator('.avatar-option');
+		const options = avatarDialog.getByRole('button', { name: 'Use this face as the avatar', exact: true });
 		await expect(options).toHaveCount(2);
 		await expect(avatarDialog).not.toContainText(PHOTO_A1_NAME);
 		await expect(avatarDialog.locator('.avatar-option__badge')).toHaveCount(0);
