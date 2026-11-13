@@ -471,7 +471,7 @@ test('no results render the empty state with the honest suggestion', async () =>
 
 	expect(tiles()).toHaveLength(0);
 	const empty = document.body.querySelector('.state-card');
-	expect(empty?.textContent).toContain('No matching results');
+	expect(empty?.textContent).toContain('No matching photos');
 	expect(empty?.textContent).toContain('Try a different keyword, or drop a filter.');
 
 	unmount(page);

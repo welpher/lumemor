@@ -442,7 +442,7 @@
   "search_facet_tags": "标签",
   "search_kind_image": "照片",
   "search_kind_video": "视频",
-  "search_empty_title": "没有匹配的结果",
+  "search_empty_title": "没有匹配的照片",
   "search_empty_body": "换个关键词，或去掉一个过滤条件。",
   "places_loading": "正在加载地点…",
   "places_bar_count": "{count, plural, other {# 座城市}}",
