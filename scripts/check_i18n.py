@@ -373,6 +373,7 @@ NON_ERROR_KEYS = {
     "trash_empty_title",
     "trash_empty_body",
     "trash_remaining_days",
+    "trash_remaining_days_label",
     "trash_delete_permanently",
     "trash_delete_title",
     "trash_delete_body",

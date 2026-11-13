@@ -183,6 +183,16 @@ test('the listing renders each row with its countdown and actions', async () => 
 	expect(note?.closest('.trash__content')?.className).toContain('pt-4');
 	// The countdown is locale-aware plural with the zero arm.
 	expect(dayLabels()).toEqual(['30 days left', '2 days left', 'Expiring soon']);
+	// The badge's sr-only sentence joins the file to its countdown: the
+	// chip alone never says which photo is leaving when.
+	const badgeLabels = Array.from(document.body.querySelectorAll<HTMLElement>('p.sr-only')).map(
+		(node) => node.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+	);
+	expect(badgeLabels).toEqual([
+		'IMG_0001.jpg, 30 days left',
+		'IMG_0001.jpg, 2 days left',
+		'IMG_0001.jpg, expiring soon'
+	]);
 	expect(() => buttonByLabel('Restore')).not.toThrow();
 	expect(() => buttonByLabel('Delete permanently')).not.toThrow();
 	// No selection machinery at all -- the wall-selection entry

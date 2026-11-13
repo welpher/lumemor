@@ -252,6 +252,15 @@
 							>
 								{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}
 							</p>
+							<!-- The badge's full sentence for screen readers: the
+							     chip states the remaining days alone, the file it
+							     belongs to lives on the tile's own link -- the
+							     sr-only line joins the two. -->
+							<p class="sr-only">
+								{$_('trash_remaining_days_label', {
+									values: { name: entry.originalFilename, count: entry.remainingDays }
+								})}
+							</p>
 						</div>
 						<div class="trash__actions flex gap-2">
 							<!-- The row's actions are icon-only (the icon-first rule):
