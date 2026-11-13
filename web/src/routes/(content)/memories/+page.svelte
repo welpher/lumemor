@@ -41,6 +41,8 @@
 	// convergence keeps the last good state silently; only the
 	// initial load's failure raises the error box.
 	import { _ } from 'svelte-i18n';
+	import { page } from '$app/state';
+	import { pushState, replaceState } from '$app/navigation';
 	import { listAlbums, createMemory, type AlbumSummary, type AlbumAudienceSkip } from '$lib/api/albums';
 	import { subscribeAlbumEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
@@ -50,6 +52,7 @@
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import CountLabel from '$lib/components/CountLabel.svelte';
 	import CreateMemoryDialog from '$lib/memories/CreateMemoryDialog.svelte';
+	import MemoryOverlay, { type MemoryMode } from '$lib/memories/MemoryOverlay.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -151,6 +154,55 @@
 	// fills the band, two split it, three or more fill the 3x2 strip
 	// left to right -- the count never reorders them.
 	const COVER_FRAMES = 6;
+
+	// THE OVERLAY'S ADDRESS. The playback overlay is a state of this
+	// page, not a route: `?memory=<id>` opens it (the deep link the
+	// review and the viewer's album row use), `mode=grid` opens its
+	// management face. The card click PUSHES the entry -- so the
+	// browser's back closes the overlay exactly like Escape -- and a
+	// deep link's close replaces the entry instead (there is no
+	// in-app history behind it).
+	const overlayId = $derived(page.url.searchParams.get('memory') ?? '');
+	const overlayMode = $derived<MemoryMode>(page.url.searchParams.get('mode') === 'grid' ? 'grid' : 'play');
+	/** The card the overlay opened from: the wall is its reachability gate. */
+	const overlayCard = $derived(memories.find((memory) => memory.id === overlayId) ?? null);
+	/** The overlay's attribution title: the email when the name is not unique. */
+	const overlayOwnerTitle = $derived(overlayCard === null ? undefined : ownerTitle(overlayCard));
+	/** Whether this page pushed the current overlay entry (close goes back). */
+	let pushedOverlay = false;
+
+	/** Open the playback overlay on one memory (a card click). */
+	function openMemory(id: string): void {
+		const url = new URL(page.url);
+		url.searchParams.set('memory', id);
+		url.searchParams.delete('mode');
+		pushState(url, page.state);
+		pushedOverlay = true;
+	}
+
+	/** Close the overlay: back through our own push, replace for a deep link. */
+	function closeMemory(): void {
+		if (pushedOverlay) {
+			pushedOverlay = false;
+			history.back();
+			return;
+		}
+		const url = new URL(page.url);
+		url.searchParams.delete('memory');
+		url.searchParams.delete('mode');
+		replaceState(url, page.state);
+	}
+
+	/** Flip the overlay's face (the grid is a state of the same entry). */
+	function changeMemoryMode(mode: MemoryMode): void {
+		const url = new URL(page.url);
+		if (mode === 'grid') {
+			url.searchParams.set('mode', 'grid');
+		} else {
+			url.searchParams.delete('mode');
+		}
+		replaceState(url, page.state);
+	}
 
 	// The creation write: the refetch the write's SSE echo triggers
 	// places the new card in the server's order (the single-flight
@@ -287,9 +339,10 @@
 	     count and the badges no-wrap on the right. The band's cells
 	     carry the same 1px seam the design's strip does. -->
 	{@const frames = memory.coverAssetIds.slice(0, COVER_FRAMES)}
-	<a
-		class="memory-card group flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
-		href="/memories/{encodeURIComponent(memory.id)}"
+	<button
+		class="memory-card group flex w-full flex-col overflow-hidden rounded-card bg-card border border-border text-left text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
+		type="button"
+		onclick={() => openMemory(memory.id)}
 	>
 		<span class="memory-card__cover relative block aspect-[3/1] overflow-hidden bg-accent-soft" aria-hidden="true">
 			{#if frames.length > 0}
@@ -359,7 +412,7 @@
 				</span>
 			</span>
 		</span>
-	</a>
+	</button>
 {/snippet}
 
 <CreateMemoryDialog
@@ -370,6 +423,24 @@
 	onsubmit={(title, audience) => void submitCreate(title, audience)}
 	ondone={finishCreate}
 />
+
+<!-- The playback overlay: the reference set's own face, opened over
+     this page. A deep link (`?memory=<id>`) mounts it before the wall
+     settles -- the wall's answer then decides whether it opens. -->
+{#if overlayId !== ''}
+	<MemoryOverlay
+		open={true}
+		memoryId={overlayId}
+		card={overlayCard}
+		wallStatus={status}
+		wallErrorKey={errorKey}
+		ownerTitle={overlayOwnerTitle}
+		mode={overlayMode}
+		onclose={closeMemory}
+		onmodechange={changeMemoryMode}
+		onretrywall={() => void runLoad(false)}
+	/>
+{/if}
 
 <style>
 	/* The band's hover push: the cover's frames step 2% toward the
