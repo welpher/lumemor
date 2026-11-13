@@ -106,6 +106,8 @@
   "upload_state_failed": "失败",
   "upload_active_count": "{count, plural, other {# 个进行中}}",
   "upload_dismiss": "从列表移除",
+  "upload_collapse": "收起上传队列",
+  "upload_expand": "展开上传队列",
   "upload_resolve_conflict": "处理",
   "upload_drop_hint": "松开以上传文件",
   "upload_conflict_title": "回收站中已有副本",

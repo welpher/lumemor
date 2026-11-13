@@ -295,6 +295,8 @@ NON_ERROR_KEYS = {
     "upload_state_failed",
     "upload_active_count",
     "upload_dismiss",
+    "upload_collapse",
+    "upload_expand",
     "upload_resolve_conflict",
     "upload_drop_hint",
     "upload_conflict_title",
