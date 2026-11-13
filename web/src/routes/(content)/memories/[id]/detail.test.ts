@@ -24,8 +24,8 @@ import Page from './+page.svelte';
 
 const { pageState, albumHandlers, assetHandlers } = vi.hoisted(() => ({
 	pageState: {
-		params: { id: 'mem1' } as { id: string },
-		url: new URL('http://localhost/memories/mem1')
+		params: { id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072' } as { id: string },
+		url: new URL('http://localhost/memories/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072')
 	},
 	albumHandlers: [] as Array<(event: unknown) => void>,
 	assetHandlers: [] as Array<(event: unknown) => void>
@@ -59,7 +59,7 @@ vi.mock('$lib/events', () => ({
 import { goto } from '$app/navigation';
 
 let detailState: AlbumDetail = {
-	id: 'mem1',
+	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072',
 	title: 'Paris trip',
 	type: 'memory',
 	coverAssetId: null,
@@ -114,8 +114,9 @@ type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 
 function detailRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
-		'/api/v1/albums/mem1?limit=1': () => jsonResponse(200, detailState),
-		'/api/v1/assets/timeline?albumId=mem1&limit=100': () => jsonResponse(200, { items: wallItems }),
+		'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072?limit=1': () => jsonResponse(200, detailState),
+		'/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072&limit=100': () =>
+			jsonResponse(200, { items: wallItems }),
 		'/api/v1/users': () => jsonResponse(200, usersBody),
 		...overrides
 	};
@@ -193,7 +194,7 @@ beforeEach(async () => {
 	assetHandlers.length = 0;
 	vi.clearAllMocks();
 	detailState = {
-		id: 'mem1',
+		id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072',
 		title: 'Paris trip',
 		type: 'memory',
 		coverAssetId: null,
@@ -218,8 +219,10 @@ test('a deleted or withdrawn memory renders the one unreachable face', async () 
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
-			'/api/v1/albums/mem1?limit=1': () => jsonResponse(404, { code: 'ALBUM_NOT_FOUND' }),
-			'/api/v1/assets/timeline?albumId=mem1&limit=100': () => jsonResponse(200, { items: [] })
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072?limit=1': () =>
+				jsonResponse(404, { code: 'ALBUM_NOT_FOUND' }),
+			'/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072&limit=100': () =>
+				jsonResponse(200, { items: [] })
 		})
 	);
 	const page = mountPage();
@@ -273,7 +276,7 @@ test('the owner wall curates the removal subset: the minus action alone', async 
 	const removals: string[][] = [];
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/mem1/items': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072/items': (init?: RequestInit) => {
 				expect(init?.method).toBe('DELETE');
 				const body = JSON.parse(String(init?.body)) as { assetIds: string[] };
 				removals.push(body.assetIds);
@@ -311,7 +314,7 @@ test('the owner wall curates the removal subset: the minus action alone', async 
 	expect(document.body.querySelector('.batchbar')).toBeNull();
 	// The membership's own convergence: the landing write's event
 	// restarts the walk (the fresh page answer owns the tiles).
-	fireAlbumEvent({ name: 'album.items-changed', albumId: 'mem1', userId: 'u1' });
+	fireAlbumEvent({ name: 'album.items-changed', albumId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072', userId: 'u1' });
 	await settle();
 	expect(
 		fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/assets/timeline')).length
@@ -326,7 +329,7 @@ test('a failed removal keeps the selection and maps the error in the bar', async
 		'fetch',
 		stubFetch(
 			detailRoutes({
-				'/api/v1/albums/mem1/items': () =>
+				'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072/items': () =>
 					jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'the sharee cannot curate' })
 			})
 		)
@@ -359,7 +362,7 @@ test('a viewer sees read-only: the attribution, the badge, no checks at all', as
 	// face, so the viewer's bar reads it off the matching shared
 	// wall card.
 	const sharedCard = {
-		id: 'mem1',
+		id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072',
 		title: 'Paris trip',
 		type: 'memory',
 		isShared: true,
@@ -400,13 +403,13 @@ test('the edit dialog edits the title and PATCHes it alone', async () => {
 	let titleSaved = false;
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/mem1': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072': (init?: RequestInit) => {
 				expect(init?.method).toBe('PATCH');
 				const body = JSON.parse(String(init?.body));
 				expect(body).toEqual({ title: 'Paris 2026' });
 				titleSaved = true;
 				return jsonResponse(200, {
-					id: 'mem1',
+					id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072',
 					title: 'Paris 2026',
 					type: 'memory',
 					isShared: true,
@@ -416,7 +419,7 @@ test('the edit dialog edits the title and PATCHes it alone', async () => {
 					callerRole: 'owner'
 				});
 			},
-			'/api/v1/albums/mem1?limit=1': () =>
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072?limit=1': () =>
 				titleSaved ? jsonResponse(200, { ...detailState, title: 'Paris 2026' }) : jsonResponse(200, detailState)
 		})
 	);
@@ -454,10 +457,10 @@ test('the edit dialog edits the title and PATCHes it alone', async () => {
 test('the cover dialog picks from the grid members and PATCHes the pin', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/mem1': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072': (init?: RequestInit) => {
 				expect(JSON.parse(String(init?.body))).toEqual({ coverAssetId: 'a2' });
 				return jsonResponse(200, {
-					id: 'mem1',
+					id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072',
 					title: 'Paris trip',
 					type: 'memory',
 					isShared: true,
@@ -488,7 +491,8 @@ test('the cover dialog picks from the grid members and PATCHes the pin', async (
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/albums/mem1' && init?.method === 'PATCH'
+		([input, init]) =>
+			String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072' && init?.method === 'PATCH'
 	);
 	expect(patches).toHaveLength(1);
 	expect(modal()).toBeNull();
@@ -499,7 +503,8 @@ test('the cover dialog picks from the grid members and PATCHes the pin', async (
 test('the cover dialog renders the current pin and the empty state', async () => {
 	detailState = { ...detailState, coverAssetId: 'a1', itemCount: 0 };
 	const routes = detailRoutes({
-		'/api/v1/assets/timeline?albumId=mem1&limit=100': () => jsonResponse(200, { items: [] })
+		'/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072&limit=100': () =>
+			jsonResponse(200, { items: [] })
 	});
 	vi.stubGlobal('fetch', stubFetch(routes));
 	const page = mountPage();
@@ -516,7 +521,7 @@ test('the cover dialog renders the current pin and the empty state', async () =>
 test('the delete confirm states the light cascade and leaves for the wall', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/mem1': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072': (init?: RequestInit) => {
 				if (init?.method === 'DELETE') {
 					return new Response(null, { status: 204 });
 				}
@@ -546,7 +551,8 @@ test('the delete confirm states the light cascade and leaves for the wall', asyn
 
 	expect(
 		fetchMock.mock.calls.some(
-			([input, init]) => String(input) === '/api/v1/albums/mem1' && init?.method === 'DELETE'
+			([input, init]) =>
+				String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072' && init?.method === 'DELETE'
 		)
 	).toBe(true);
 	expect(vi.mocked(goto)).toHaveBeenCalledWith('/memories');
@@ -563,7 +569,9 @@ test('SSE membership changes restart the walk and refetch the detail', async () 
 	await settle();
 
 	const detailCalls = () =>
-		fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/albums/mem1?limit=1').length;
+		fetchMock.mock.calls.filter(
+			([input]) => String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072?limit=1'
+		).length;
 	const walkCalls = () =>
 		fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/assets/timeline')).length;
 	expect(detailCalls()).toBe(1);
@@ -576,11 +584,11 @@ test('SSE membership changes restart the walk and refetch the detail', async () 
 
 	// THIS memory's membership change restarts the walk and refetches
 	// the metadata; every other album event refetches alone.
-	fireAlbumEvent({ name: 'album.items-changed', albumId: 'mem1', userId: 'u1' });
+	fireAlbumEvent({ name: 'album.items-changed', albumId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072', userId: 'u1' });
 	await settle();
 	expect(detailCalls()).toBe(2);
 	expect(walkCalls()).toBe(2);
-	fireAlbumEvent({ name: 'album.updated', albumId: 'mem1' });
+	fireAlbumEvent({ name: 'album.updated', albumId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072' });
 	await settle();
 	expect(detailCalls()).toBe(3);
 	expect(walkCalls()).toBe(2);

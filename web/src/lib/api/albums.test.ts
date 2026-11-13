@@ -228,6 +228,19 @@ test('fetchAlbumDetail maps the single-shape 404', async () => {
 	expect(outcome).toEqual({ ok: false, errorKey: 'album_not_found', unreachable: true });
 });
 
+test('a non-UUID album id is the dead end before any request', async () => {
+	// The malformed-id edge: the server's binder would answer 400
+	// VALIDATION_FAILED, whose retryable face invites a retry of a
+	// mistyped address forever. A non-UUID names no resource, so the
+	// client answers the unreachable face itself -- and no request
+	// leaves.
+	const fetchMock = stubFetch({});
+	vi.stubGlobal('fetch', fetchMock);
+	const outcome = await fetchAlbumDetail('not-a-uuid');
+	expect(outcome).toEqual({ ok: false, errorKey: 'album_not_found', unreachable: true });
+	expect(fetchMock).not.toHaveBeenCalled();
+});
+
 test('createAlbum POSTs the title, source path and audience, and answers the report with the probe fact', async () => {
 	const fetchMock = stubFetch({
 		'/api/v1/albums': (init?: RequestInit) => {
