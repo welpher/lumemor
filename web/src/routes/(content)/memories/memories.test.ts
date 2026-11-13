@@ -30,9 +30,23 @@ import Page from './+page.svelte';
 // 3 across 2 down, and its caption is ONE row (the 20px title
 // truncating beside the count and the no-wrap badges).
 
-const { handlers } = vi.hoisted(() => ({
-	handlers: [] as Array<(event: unknown) => void>
+const { handlers, pageState, pushStateMock, replaceStateMock } = vi.hoisted(() => ({
+	handlers: [] as Array<(event: unknown) => void>,
+	pageState: {
+		url: new URL('http://localhost/memories'),
+		params: {} as Record<string, string>,
+		state: {}
+	},
+	pushStateMock: vi.fn((url: URL) => {
+		pageState.url = new URL(url);
+	}),
+	replaceStateMock: vi.fn((url: URL) => {
+		pageState.url = new URL(url);
+	})
 }));
+
+vi.mock('$app/state', () => ({ page: pageState }));
+vi.mock('$app/navigation', () => ({ pushState: pushStateMock, replaceState: replaceStateMock }));
 
 vi.mock('$lib/events', () => ({
 	subscribeAlbumEvents: (listener: (event: unknown) => void) => {
@@ -44,6 +58,8 @@ vi.mock('$lib/events', () => ({
 			}
 		};
 	},
+	// The playback overlay (mounted by a deep link) subscribes to the
+	// asset stream too; this suite's scenes never fire asset events.
 	subscribeAssetEvents: () => () => undefined
 }));
 
@@ -223,6 +239,7 @@ beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
 	vi.clearAllMocks();
+	pageState.url = new URL('http://localhost/memories');
 	wallState = [myPhotos, springFestival, paris, weekendPark, sanya, familyArchive];
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
@@ -281,10 +298,12 @@ test('the wall keeps the memory rows alone in ONE list, newest first', async () 
 	expect(shared?.querySelector('.memory-card__owner')).toBeNull();
 	expect(shared?.textContent).not.toContain('{name}');
 	expect(shared?.querySelectorAll('.memory-card__badge--owner')).toHaveLength(1);
-	// Cards link into the memory's own detail (the route the wall's
-	// cards open until the playback overlay lands).
-	expect(own?.getAttribute('href')).toBe('/memories/mem1');
-	expect(shared?.getAttribute('href')).toBe('/memories/mem4');
+	// A card is a control that opens the playback overlay (the
+	// reference set has no page of its own to route to).
+	expect(own?.tagName).toBe('BUTTON');
+	own?.click();
+	expect(pushStateMock).toHaveBeenCalledTimes(1);
+	expect(String(pushStateMock.mock.calls[0]?.[0])).toBe('http://localhost/memories?memory=mem1');
 
 	// THE GRID'S OWN SHAPE: full width, and a column floor that is
 	// exactly one third of the band minus the two 16px gaps -- a
@@ -625,6 +644,90 @@ test('a failed initial load raises the error box with a working retry', async ()
 
 	expect(document.body.querySelector('.state-card--error')).toBeNull();
 	expect(cards()).toHaveLength(4);
+
+	unmount(page);
+	flushSync();
+});
+
+test('a ?memory= deep link opens the playback overlay over the wall', async () => {
+	const id = '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071';
+	wallState = [summary(id, { title: 'Deep link memory', coverAssetIds: ['d1'], itemCount: 2 })];
+	pageState.url = new URL(`http://localhost/memories?memory=${id}`);
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			wallRoutes({
+				[`/api/v1/albums/${id}?limit=1`]: () =>
+					jsonResponse(200, {
+						id,
+						title: 'Deep link memory',
+						type: 'memory',
+						coverAssetId: null,
+						callerRole: 'owner',
+						itemCount: 2,
+						items: [],
+						shares: []
+					}),
+				[`/api/v1/assets/timeline?albumId=${id}&limit=100`]: () =>
+					jsonResponse(200, {
+						items: [
+							{
+								id: 'd1',
+								takenAt: '2026-09-10T12:00:00Z',
+								originalFilename: 'IMG_0001.jpg',
+								ownerId: 'u1',
+								kind: 'image',
+								fileSize: 1000,
+								mimeType: 'image/jpeg',
+								checksum: 'c',
+								createdAt: '2026-09-10T12:00:00Z',
+								takenAtSource: 'exif',
+								isTrashed: false,
+								isFavorite: false,
+								isReady: true,
+								width: 4000,
+								height: 3000,
+								durationMs: null,
+								blurhash: 'UHL6aAof00WBWB00ayWB00',
+								livePhotoVideoId: null
+							},
+							{
+								id: 'd2',
+								takenAt: '2026-09-09T12:00:00Z',
+								originalFilename: 'IMG_0002.jpg',
+								ownerId: 'u1',
+								kind: 'image',
+								fileSize: 1000,
+								mimeType: 'image/jpeg',
+								checksum: 'c',
+								createdAt: '2026-09-09T12:00:00Z',
+								takenAtSource: 'exif',
+								isTrashed: false,
+								isFavorite: false,
+								isReady: true,
+								width: 4000,
+								height: 3000,
+								durationMs: null,
+								blurhash: 'UHL6aAof00WBWB00ayWB00',
+								livePhotoVideoId: null
+							}
+						]
+					})
+			})
+		)
+	);
+	const page = mountPage();
+	await settle();
+	await settle();
+
+	const overlay = document.body.querySelector<HTMLElement>('.memory-overlay__panel');
+	expect(overlay?.getAttribute('aria-label')).toBe('Memory playback');
+	expect(overlay?.querySelector('.memory-overlay__title')?.textContent?.trim()).toBe('Deep link memory');
+	expect(overlay?.querySelector('.memory-overlay__index')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('1 / 2');
+
+	// The card behind is still the wall's, not a second page: the
+	// overlay is a state of THIS route.
+	expect(cards()).toHaveLength(1);
 
 	unmount(page);
 	flushSync();
