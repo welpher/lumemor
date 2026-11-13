@@ -167,6 +167,17 @@ test('the listing renders each row with its countdown and actions', async () => 
 	await settle();
 
 	expect(cells()).toHaveLength(3);
+	// The one-row action bar: the title with the row count, one
+	// divider under it, and the retention note BELOW the divider (it
+	// explains the list, it is not an action).
+	expect(document.body.querySelector('.trash__title')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+		'Trash · 3 photos'
+	);
+	const note = document.body.querySelector('.trash__note');
+	const bar = document.body.querySelector('.trash__toolbar');
+	expect(bar?.className).toContain('border-b');
+	expect(bar?.contains(note)).toBe(false);
+	expect(note?.closest('.trash__content')?.className).toContain('pt-4');
 	// The countdown is locale-aware plural with the zero arm.
 	expect(dayLabels()).toEqual(['30 days left', '2 days left', 'Expiring soon']);
 	expect(() => buttonByLabel('Restore')).not.toThrow();

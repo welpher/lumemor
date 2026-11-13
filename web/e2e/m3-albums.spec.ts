@@ -1063,7 +1063,9 @@ test.describe('the writable source scenes', () => {
 		// The trash view carries the row with its retention countdown
 		// -- the moved file waits there for the expiry or the restore.
 		await page.goto('/trash');
-		await expect(page.getByRole('heading', { level: 1, name: 'Trash', exact: true })).toBeVisible();
+		// The page's one row: the trash title with its count (the
+		// count belongs to the title, never a row of its own).
+		await expect(page.getByRole('heading', { level: 1, name: /^Trash · 1 photo$/ })).toBeVisible();
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
 		await expect(page.getByText(/^(Expiring soon|\d+ days? left)$/)).toBeVisible();
 

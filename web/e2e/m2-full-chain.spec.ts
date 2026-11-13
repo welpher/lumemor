@@ -490,7 +490,7 @@ test.describe('the signed-in scenes', () => {
 		// The trash page's recovery card carries the permanent delete.
 		await navigateViaDrawer(page, 'Trash');
 		await expect(page).toHaveURL(/\/trash$/);
-		await expect(page.getByRole('heading', { level: 1, name: 'Trash', exact: true })).toBeVisible();
+		await expect(page.getByRole('heading', { level: 1, name: /^Trash · \d+ photos?$/ })).toBeVisible();
 		await page.getByRole('button', { name: 'Delete permanently', exact: true }).click();
 
 		// The confirm dialog names the asset and requires the explicit
@@ -533,7 +533,7 @@ test.describe('the signed-in scenes', () => {
 		// default retention is 30 days).
 		await navigateViaDrawer(page, 'Trash');
 		await expect(page).toHaveURL(/\/trash$/);
-		await expect(page.getByRole('heading', { level: 1, name: 'Trash', exact: true })).toBeVisible();
+		await expect(page.getByRole('heading', { level: 1, name: /^Trash · \d+ photos?$/ })).toBeVisible();
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
 		await expect(page.getByText(/^(Expiring soon|\d+ days? left)$/)).toBeVisible();
 
