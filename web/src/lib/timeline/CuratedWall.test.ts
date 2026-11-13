@@ -96,7 +96,13 @@ test('the page bar carries the title, its count and the selection switch', async
 	await settle();
 
 	const title = document.body.querySelector('.wall-page__title');
-	expect(title?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Favorites · 2 photos');
+	expect(title?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Favorites 2');
+	// The count is one labeled image: the full wording lives on the
+	// accessible name, the visible half is the glyph and the number.
+	const count = title?.querySelector('.wall-page__title-count');
+	expect(count?.getAttribute('role')).toBe('img');
+	expect(count?.getAttribute('aria-label')).toBe('2 photos');
+	expect(count?.textContent?.trim()).toBe('2');
 	const bar = document.body.querySelector('.wall-page__toolbar');
 	expect(bar?.className).toContain('pb-4');
 	expect(bar?.className).toContain('border-b');

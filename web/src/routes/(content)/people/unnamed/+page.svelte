@@ -27,8 +27,8 @@
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-	import ScanFace from '@lucide/svelte/icons/scan-face';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -195,7 +195,7 @@
 	<title>{$_('people_unnamed_title')} · lumemor</title>
 </svelte:head>
 
-<section class="unnamed max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<section class="unnamed px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
 	<!-- THE ONE ROW: the back control, the title with the
 	     region's count -- and no action at all: the cards are the
 	     entrances, not a selection surface. -->
@@ -239,7 +239,7 @@
 					     No check circle, no pressed state: the card is an
 					     entrance. -->
 					<a
-						class="cluster-card relative flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+						class="cluster-card relative flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
 						href="/people/{encodeURIComponent(cluster.clusterId)}?state=unnamed"
 					>
 						<span class="cluster-card__crop relative block aspect-square bg-accent-soft" aria-hidden="true">
@@ -257,14 +257,12 @@
 								class="cluster-card__name min-w-0 font-body font-semibold text-[14px] leading-[1.4] text-text truncate"
 								>{$_('people_unnamed_title')}</span
 							>
-							<span
-								class="cluster-card__count ml-auto inline-flex items-center gap-1 font-body font-normal text-[13px] leading-[1.4] text-text-soft tabular-nums whitespace-nowrap"
-								role="img"
-								aria-label={$_('people_face_count', { values: { count: cluster.faceCount } })}
-								title={$_('people_face_count', { values: { count: cluster.faceCount } })}
-							>
-								<ScanFace size={14} aria-hidden="true" />{cluster.faceCount}
-							</span>
+							<CountLabel
+								class="cluster-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+								count={cluster.faceCount}
+								kind="faces"
+								label={$_('people_face_count', { values: { count: cluster.faceCount } })}
+							/>
 						</span>
 					</a>
 				{/each}

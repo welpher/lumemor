@@ -294,7 +294,7 @@
 							for="admin-storage-preset">{$_('admin_settings_preset_label')}</label
 						>
 						<select
-							class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+							class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 							id="admin-storage-preset"
 							bind:value={formPreset}
 							onchange={pickPreset}
@@ -388,7 +388,7 @@
 							for="admin-trash-days">{$_('admin_settings_trash_days')}</label
 						>
 						<input
-							class="settings__number w-[120px] px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+							class="settings__number w-[120px] px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 							id="admin-trash-days"
 							type="number"
 							min="0"
@@ -452,7 +452,7 @@
 							for="admin-transcode-preset">{$_('admin_settings_transcode_preset')}</label
 						>
 						<select
-							class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+							class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 							id="admin-transcode-preset"
 							data-testid="transcode-preset"
 							bind:value={formTranscoding.preset}
@@ -468,7 +468,7 @@
 							for="admin-transcode-concurrency">{$_('admin_settings_transcode_concurrency')}</label
 						>
 						<select
-							class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+							class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 							id="admin-transcode-concurrency"
 							data-testid="transcode-concurrency"
 							bind:value={formTranscoding.concurrency}

@@ -21,7 +21,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import Check from '@lucide/svelte/icons/check';
 	import Search from '@lucide/svelte/icons/search';
-	import Image from '@lucide/svelte/icons/image';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { PersonSummary } from '$lib/api/people';
 	import { resolveErrorText } from '$lib/i18n/errors';
@@ -147,7 +147,7 @@
 					aria-hidden="true"
 				/>
 				<input
-					class="person-picker__filter w-full ps-9 pe-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text bg-page border border-border-strong rounded-control focus:border-accent"
+					class="person-picker__filter w-full ps-9 pe-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text bg-page border border-border-strong rounded-control"
 					type="search"
 					placeholder={$_('people_picker_filter')}
 					aria-label={$_('people_picker_filter')}
@@ -196,15 +196,11 @@
 									draggable="false"
 								/>
 								<span class="min-w-0 flex-1 truncate">{person.name}</span>
-								<span
-									class="flex-none font-normal text-[12px] leading-[1.4] text-text-faint tabular-nums inline-flex items-center gap-1"
-									role="img"
-									aria-label={$_('people_photo_count', { values: { count: person.photoCount } })}
-									title={$_('people_photo_count', { values: { count: person.photoCount } })}
-								>
-									<Image size={14} class="shrink-0" aria-hidden="true" />
-									{person.photoCount}
-								</span>
+								<CountLabel
+									class="flex-none font-normal text-[12px] leading-[1.4] text-text-faint"
+									count={person.photoCount}
+									label={$_('people_photo_count', { values: { count: person.photoCount } })}
+								/>
 								<!-- The picked row's trailing check, visible only on
 								     the selected row (the group-aria-checked gate). -->
 								<Check

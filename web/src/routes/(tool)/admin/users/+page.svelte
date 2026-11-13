@@ -411,7 +411,7 @@
 				for="admin-user-role">{$_('admin_users_field_role')}</label
 			>
 			<select
-				class="users__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+				class="users__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 				id="admin-user-role"
 				bind:value={formRole}
 			>

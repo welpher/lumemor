@@ -496,7 +496,10 @@ test.describe('the creator scenes', () => {
 
 	test('scene 5: the every-member creation lands the memory through the dialog', async ({ page }) => {
 		await page.goto('/memories');
-		await page.getByRole('button', { name: 'New memory', exact: true }).click();
+		// The page bar's entry, not the empty state's own CTA: an empty
+		// wall offers the creation twice, and the toolbar's is the entry
+		// this scene pins.
+		await page.locator('.memories__actions').getByRole('button', { name: 'New memory', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: 'New memory', exact: true });
 		await expect(dialog).toBeVisible();
 
@@ -529,7 +532,7 @@ test.describe('the creator scenes', () => {
 		// badge.
 		const card = page.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
 		await expect(card).toBeVisible();
-		await expect(card).toContainText('0 photos');
+		await expect(card.locator('.memory-card__count')).toHaveAttribute('aria-label', '0 photos');
 		await expect(card).toContainText('Manual');
 
 		// The created memory's id, for the later scenes' deep links
@@ -566,7 +569,7 @@ test.describe('the creator scenes', () => {
 		await expect(dialog.getByText('3 photos are selected — pick a memory, or create one.')).toBeVisible();
 		const row = dialog.locator('.add-memory__row').filter({ hasText: MEMORY_TITLE });
 		await expect(row).toBeVisible();
-		await expect(row).toContainText('0 photos');
+		await expect(row.locator('.count')).toHaveAttribute('aria-label', '0 photos');
 
 		// The pick: the POST carries the ids captured at open, and
 		// the answer is the honest counts-only report.
@@ -719,7 +722,7 @@ test('scene 9: the sharee signs in and the shared memory reads view-only', async
 	await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
 	const card = page.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
 	await expect(card).toBeVisible();
-	await expect(card).toContainText('3 photos');
+	await expect(card.locator('.memory-card__count')).toHaveAttribute('aria-label', '3 photos');
 	await expect(card.locator('.memory-card__badge--owner')).toHaveText(`Shared by ${CREATOR_NAME}`);
 	await expect(card.locator('.memory-card__badge--owner')).not.toContainText(CREATOR_EMAIL);
 	await expect(card.locator('.memory-card__badge--readonly')).toHaveText('Read-only');
@@ -730,7 +733,7 @@ test('scene 9: the sharee signs in and the shared memory reads view-only', async
 	await card.click();
 	await expect(page).toHaveURL(new RegExp(`/memories/${memoryId}$`));
 	await expect(page.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
-	await expect(page.locator('.memory-bar__count')).toContainText('3 photos');
+	await expect(page.locator('.memory-bar__count')).toHaveAttribute('aria-label', '3 photos');
 	await expect(page.locator('.memory-bar__owner')).toHaveText(`Shared by ${CREATOR_NAME}`);
 	await expect(page.locator('.memory-bar__badge')).toContainText('Read-only');
 	for (const label of [
@@ -771,14 +774,14 @@ test.describe('the closing scenes', () => {
 		await shareePage.goto('/memories');
 		const shareeCard = shareePage.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
 		await expect(shareeCard).toBeVisible();
-		await expect(shareeCard).toContainText('3 photos');
+		await expect(shareeCard.locator('.memory-card__count')).toHaveAttribute('aria-label', '3 photos');
 		await expect(shareeCard.locator('img')).toHaveCount(3);
 
 		const creatorList = await page.context().newPage();
 		await creatorList.goto('/memories');
 		const ownCard = creatorList.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
 		await expect(ownCard).toBeVisible();
-		await expect(ownCard).toContainText('3 photos');
+		await expect(ownCard.locator('.memory-card__count')).toHaveAttribute('aria-label', '3 photos');
 
 		const creatorTimeline = await page.context().newPage();
 		await creatorTimeline.goto('/timeline');
@@ -804,7 +807,7 @@ test.describe('the closing scenes', () => {
 		// count drops and the collage loses the re-shared photo --
 		// the shared view recomputes against the owner's current
 		// sight, with no snapshot residue.
-		await expect(shareeCard).toContainText('2 photos');
+		await expect(shareeCard.locator('.memory-card__count')).toHaveAttribute('aria-label', '2 photos');
 		await expect(shareeCard.locator('img')).toHaveCount(2);
 
 		// The sharee's detail wall, the FRESH visit: the count and
@@ -819,14 +822,14 @@ test.describe('the closing scenes', () => {
 		const shareeDetail = await shareeContext.newPage();
 		await shareeDetail.goto(`/memories/${memoryId}`);
 		await expect(shareeDetail.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
-		await expect(shareeDetail.locator('.memory-bar__count')).toContainText('2 photos');
+		await expect(shareeDetail.locator('.memory-bar__count')).toHaveAttribute('aria-label', '2 photos');
 		await expect(shareeDetail.locator('.tile')).toHaveCount(2);
 		await expect(shareeDetail.getByRole('link', { name: VIA_SHARE_A_NAME, exact: true })).toHaveCount(0);
 		await shareeDetail.close();
 
 		// The creator's own card keeps the plain live membership:
 		// the row stays (the set is the owner's to tidy).
-		await expect(ownCard).toContainText('3 photos');
+		await expect(ownCard.locator('.memory-card__count')).toHaveAttribute('aria-label', '3 photos');
 
 		// The creator's held timeline drops the shared pair (the
 		// grant's death ends the shared arm) -- and the memory's row
@@ -881,7 +884,7 @@ test.describe('the closing scenes', () => {
 		// no rescan and no un-ingest anywhere (a memory owns no
 		// source to walk and no files to purge).
 		await expect(page.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
-		await expect(page.locator('.memory-bar__count')).toContainText('3 photos');
+		await expect(page.locator('.memory-bar__count')).toHaveAttribute('aria-label', '3 photos');
 		for (const label of ['Edit memory', 'Change cover', 'Delete memory']) {
 			await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
 		}
@@ -929,7 +932,7 @@ test.describe('the closing scenes', () => {
 		// leaves, the bar's count drops, the selection clears.
 		await expect(page.getByRole('link', { name: VIA_SHARE_A_NAME, exact: true })).toHaveCount(0);
 		await expect(page.locator('.tile')).toHaveCount(2);
-		await expect(page.locator('.memory-bar__count')).toContainText('2 photos');
+		await expect(page.locator('.memory-bar__count')).toHaveAttribute('aria-label', '2 photos');
 		await expect(bar).toHaveCount(0);
 
 		// The photo itself stays: the library row lives on, its
@@ -961,7 +964,7 @@ test.describe('the closing scenes', () => {
 		await page.goto(`/albums/${memoryId}`);
 		await expect(page).toHaveURL(new RegExp(`/memories/${memoryId}$`));
 		await expect(page.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
-		await expect(page.locator('.memory-bar__count')).toContainText('2 photos');
+		await expect(page.locator('.memory-bar__count')).toHaveAttribute('aria-label', '2 photos');
 	});
 
 	test('scene 14: the delete takes the references and the audience, never the photos', async ({ page, browser }) => {
@@ -976,7 +979,7 @@ test.describe('the closing scenes', () => {
 		await shareePage.goto('/memories');
 		const shareeCard = shareePage.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
 		await expect(shareeCard).toBeVisible();
-		await expect(shareeCard).toContainText('2 photos');
+		await expect(shareeCard.locator('.memory-card__count')).toHaveAttribute('aria-label', '2 photos');
 
 		// The delete: the confirm states the light cascade -- the
 		// memory's references and its audience die, the photos

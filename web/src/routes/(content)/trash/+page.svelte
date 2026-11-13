@@ -27,6 +27,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import PhotoTile from '$lib/timeline/PhotoTile.svelte';
@@ -202,7 +203,7 @@
 	<title>Trash · lumemor</title>
 </svelte:head>
 
-<section class="trash max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<section class="trash px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
 	<!-- THE ONE ROW: the page title with the row count on the left,
 	     no action on the right (a row's actions live on the row),
 	     one divider under the row. The retention note is NOT an
@@ -212,11 +213,11 @@
 		<h1 class="trash__title m-0 font-display font-bold text-[20px] leading-[1.3] text-text">
 			{$_('nav_trash')}
 			{#if status === 'ready'}
-				<span
-					class="trash__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft tabular-nums"
-				>
-					· {$_('trash_bar_count', { values: { count: items.length } })}
-				</span>
+				<CountLabel
+					class="trash__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft"
+					count={items.length}
+					label={$_('trash_bar_count', { values: { count: items.length } })}
+				/>
 			{/if}
 		</h1>
 	</div>
@@ -250,6 +251,15 @@
 								class="trash__days absolute bottom-1.5 left-1.5 z-(--z-tile-chip) py-0.5 px-2 font-body font-semibold text-[12px] leading-[1.5] text-cream-text bg-night rounded-control tabular-nums"
 							>
 								{$_('trash_remaining_days', { values: { count: entry.remainingDays } })}
+							</p>
+							<!-- The badge's full sentence for screen readers: the
+							     chip states the remaining days alone, the file it
+							     belongs to lives on the tile's own link -- the
+							     sr-only line joins the two. -->
+							<p class="sr-only">
+								{$_('trash_remaining_days_label', {
+									values: { name: entry.originalFilename, count: entry.remainingDays }
+								})}
 							</p>
 						</div>
 						<div class="trash__actions flex gap-2">

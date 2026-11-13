@@ -230,9 +230,9 @@
 		>{label}</label
 	>
 	<input
-		class="path-completion__input w-full px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-card border rounded-control outline-none transition-[border-color] duration-(--motion-fast) ease-standard {failure ===
+		class="path-completion__input w-full px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-card border rounded-control transition-[border-color] duration-(--motion-fast) ease-standard {failure ===
 		''
-			? 'border-border-strong focus:border-accent'
+			? 'border-border-strong'
 			: 'border-danger'}"
 		{id}
 		bind:this={input}

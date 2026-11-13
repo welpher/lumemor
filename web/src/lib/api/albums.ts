@@ -47,6 +47,7 @@
 // never the stored title.
 
 import { apiFetch } from '$lib/auth/api';
+import { isUuidShaped } from '$lib/api/ids';
 import type { components } from '../../../../openapi/generated/web/api';
 
 /** One wall card, exactly the contract's AlbumSummary shape. */
@@ -512,6 +513,14 @@ export async function fetchAlbumDetail(
 	albumId: string,
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<AlbumDetailResult> {
+	// A path id that is not UUID-shaped names no resource: the server
+	// would answer 400 VALIDATION_FAILED before any lookup, and that
+	// retryable face would ask the reader to retry a mistyped address
+	// forever. Nothing can be revealed, so the dead-end face answers
+	// without a request.
+	if (!isUuidShaped(albumId)) {
+		return { ok: false, errorKey: 'album_not_found', unreachable: true };
+	}
 	let response: Response;
 	try {
 		response = await apiFetch(

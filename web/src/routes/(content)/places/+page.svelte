@@ -29,6 +29,7 @@
 	import { subscribeAssetEvents } from '$lib/events';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import { untrack } from 'svelte';
 
@@ -199,7 +200,7 @@
 	     per-caller count below. The click deep-links into the
 	     filtered browse. -->
 	<a
-		class="place-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+		class="place-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
 		href="/search?placeIds={place.placeId}"
 	>
 		<span class="place-card__cover relative block aspect-[4/3] bg-accent-soft" aria-hidden="true">
@@ -252,10 +253,11 @@
 			<span class="place-card__region font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
 				>{countryName(place.country, $locale ?? 'en')}</span
 			>
-			<span
-				class="place-card__count font-body font-normal text-[12px] leading-[1.4] text-text-faint whitespace-nowrap tabular-nums"
-				>{$_('places_photo_count', { values: { count: place.assetCount } })}</span
-			>
+			<CountLabel
+				class="place-card__count font-body font-normal text-[12px] leading-[1.4] text-text-faint"
+				count={place.assetCount}
+				label={$_('places_photo_count', { values: { count: place.assetCount } })}
+			/>
 		</span>
 	</a>
 {/snippet}

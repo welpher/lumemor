@@ -426,7 +426,7 @@
 		<form class="search-form relative max-w-[640px]" role="search" onsubmit={submitQuery}>
 			<Search size={18} class="absolute start-3.5 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
 			<input
-				class="search-query w-full ps-11 pe-4 py-3 font-body font-normal text-[17px] leading-[1.4] text-text bg-card border border-border-strong rounded-control outline-none transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+				class="search-query w-full ps-11 pe-4 py-3 font-body font-normal text-[17px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 				type="search"
 				placeholder={$_('search_query_placeholder')}
 				aria-label={$_('nav_search')}

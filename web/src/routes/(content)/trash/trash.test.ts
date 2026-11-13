@@ -170,9 +170,12 @@ test('the listing renders each row with its countdown and actions', async () => 
 	// The one-row action bar: the title with the row count, one
 	// divider under it, and the retention note BELOW the divider (it
 	// explains the list, it is not an action).
-	expect(document.body.querySelector('.trash__title')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-		'Trash · 3 photos'
-	);
+	expect(document.body.querySelector('.trash__title')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Trash 3');
+	// The count is one labeled image: the wording is the accessible
+	// name, the visible half the glyph and the number.
+	const count = document.body.querySelector('.trash__title-count');
+	expect(count?.getAttribute('role')).toBe('img');
+	expect(count?.getAttribute('aria-label')).toBe('3 photos');
 	const note = document.body.querySelector('.trash__note');
 	const bar = document.body.querySelector('.trash__toolbar');
 	expect(bar?.className).toContain('border-b');
@@ -180,6 +183,16 @@ test('the listing renders each row with its countdown and actions', async () => 
 	expect(note?.closest('.trash__content')?.className).toContain('pt-4');
 	// The countdown is locale-aware plural with the zero arm.
 	expect(dayLabels()).toEqual(['30 days left', '2 days left', 'Expiring soon']);
+	// The badge's sr-only sentence joins the file to its countdown: the
+	// chip alone never says which photo is leaving when.
+	const badgeLabels = Array.from(document.body.querySelectorAll<HTMLElement>('p.sr-only')).map(
+		(node) => node.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+	);
+	expect(badgeLabels).toEqual([
+		'IMG_0001.jpg, 30 days left',
+		'IMG_0001.jpg, 2 days left',
+		'IMG_0001.jpg, expiring soon'
+	]);
 	expect(() => buttonByLabel('Restore')).not.toThrow();
 	expect(() => buttonByLabel('Delete permanently')).not.toThrow();
 	// No selection machinery at all -- the wall-selection entry

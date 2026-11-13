@@ -576,7 +576,7 @@
 							for="settings-locale">{$_('settings_appearance_locale')}</label
 						>
 						<select
-							class="settings__select w-full px-3 py-[9px] pe-9 font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control cursor-pointer transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+							class="settings__select w-full px-3 py-[9px] pe-9 font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control cursor-pointer transition-[border-color] duration-(--motion-fast) ease-standard"
 							id="settings-locale"
 							data-testid="settings-locale"
 							value={self.locale}
