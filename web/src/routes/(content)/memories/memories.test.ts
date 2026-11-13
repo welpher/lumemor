@@ -22,6 +22,13 @@ import Page from './+page.svelte';
 // fetch (the albums page's collapsed single-flight); the refetched
 // SERVER answer decides what changed. The events module is mocked
 // with a captured handler registry, the albums page's pattern.
+//
+// The GRID is this page's own shape, deliberately unlike the album
+// wall's: the column floor is the fixed third of the band, so the
+// count tops out at three at every width and the cards widen
+// instead; each card's cover is a 3:1 strip of up to six frames laid
+// 3 across 2 down, and its caption is ONE row (the 20px title
+// truncating beside the count and the no-wrap badges).
 
 const { handlers } = vi.hoisted(() => ({
 	handlers: [] as Array<(event: unknown) => void>
@@ -36,7 +43,8 @@ vi.mock('$lib/events', () => ({
 				handlers.splice(index, 1);
 			}
 		};
-	}
+	},
+	subscribeAssetEvents: () => () => undefined
 }));
 
 function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummary {
@@ -273,9 +281,77 @@ test('the wall keeps the memory rows alone in ONE list, newest first', async () 
 	expect(shared?.querySelector('.memory-card__owner')).toBeNull();
 	expect(shared?.textContent).not.toContain('{name}');
 	expect(shared?.querySelectorAll('.memory-card__badge--owner')).toHaveLength(1);
-	// Cards link into the memory's own detail.
+	// Cards link into the memory's own detail (the route the wall's
+	// cards open until the playback overlay lands).
 	expect(own?.getAttribute('href')).toBe('/memories/mem1');
 	expect(shared?.getAttribute('href')).toBe('/memories/mem4');
+
+	// THE GRID'S OWN SHAPE: full width, and a column floor that is
+	// exactly one third of the band minus the two 16px gaps -- a
+	// fourth column never fits, so the count tops out at three and
+	// the cards widen with the viewport.
+	const grid = document.body.querySelector<HTMLElement>('.memories__grid');
+	expect(grid?.className).toContain('grid-cols-[repeat(auto-fill,minmax(max(280px,calc((100%_-_32px)/3)),1fr))]');
+	expect(grid?.className).toContain('gap-4');
+	const section = document.body.querySelector<HTMLElement>('.memories');
+	expect(section?.className).toContain('w-full');
+	expect(section?.className).not.toContain('max-w-[1200px]');
+
+	// The cover is a 3:1 band: one frame fills it, two split it, and
+	// five fill the 3x2 strip in order -- never a 2x2 collage.
+	expect(own?.querySelector('.memory-card__cover')?.className).toContain('aspect-[3/1]');
+	expect(own?.querySelectorAll('.memory-card__frames > .memory-card__frame')).toHaveLength(4);
+	expect(own?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-3');
+	expect(shared?.querySelectorAll('.memory-card__frames > .memory-card__frame')).toHaveLength(3);
+
+	// The caption is ONE row: the title truncating on the left, the
+	// count and the badges sharing the right end.
+	expect(own?.querySelector('.memory-card__caption')?.className).toContain('items-center');
+	expect(own?.querySelector('.memory-card__title')?.className).toContain('truncate');
+	expect(own?.querySelector('.memory-card__title')?.className).toContain('text-[20px]');
+	expect(own?.querySelector('.memory-card__badges')?.className).toContain('whitespace-nowrap');
+
+	unmount(page);
+	flushSync();
+});
+
+test('the cover degrades by frame count: one fills, two split, six caps the strip', async () => {
+	wallState = [
+		summary('mem-bare', { title: 'Bare', coverAssetIds: [], updatedAt: '2026-11-09T10:00:00Z' }),
+		summary('mem-one', { title: 'One', coverAssetIds: ['c1'], updatedAt: '2026-11-08T10:00:00Z' }),
+		summary('mem-two', { title: 'Two', coverAssetIds: ['c1', 'c2'], updatedAt: '2026-11-07T10:00:00Z' }),
+		summary('mem-five', {
+			title: 'Five',
+			coverAssetIds: ['c1', 'c2', 'c3', 'c4', 'c5'],
+			updatedAt: '2026-11-06T10:00:00Z'
+		}),
+		summary('mem-six', {
+			title: 'Six',
+			coverAssetIds: ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'],
+			updatedAt: '2026-11-05T10:00:00Z'
+		})
+	];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	const frames = (title: string): Element[] => {
+		const card = cards().find((entry) => entry.querySelector('.memory-card__title')?.textContent === title);
+		return Array.from(card?.querySelectorAll('.memory-card__frames > .memory-card__frame') ?? []);
+	};
+	// A bare memory renders the empty accent band and requests no
+	// image at all.
+	expect(frames('Bare')).toHaveLength(0);
+	expect(cards()[0]?.querySelector('img')).toBeNull();
+	// One frame fills the band; two split it.
+	expect(frames('One')).toHaveLength(1);
+	expect(cards()[1]?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-1');
+	expect(frames('Two')).toHaveLength(2);
+	expect(cards()[2]?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-2');
+	// Fewer than six frames fill that many cells of the 3x2 strip;
+	// a seventh cover id is dropped (the strip is six frames).
+	expect(frames('Five')).toHaveLength(5);
+	expect(frames('Six')).toHaveLength(6);
 
 	unmount(page);
 	flushSync();
