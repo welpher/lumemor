@@ -342,18 +342,18 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	flushSync();
 });
 
-test('a memory id redirects to its own route: this page serves the containers alone', async () => {
+test('a memory id redirects to the wall overlay: this page serves the containers alone', async () => {
 	detailState = { ...detailState, type: 'memory', rootPath: undefined, sourceWritable: undefined };
 	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
 	const page = mountPage();
 	await settle();
 
-	// THE MEMORY HAND-OVER: the memory's face is its own route (the
-	// curation bar, the removal selection, the member's read-only
-	// view); the detail read that answers a memory bounces there and
-	// this page renders nothing for it -- no title, no wall (the
-	// bar's own skeleton alone stays while the route swaps).
-	expect(vi.mocked(goto)).toHaveBeenCalledWith('/memories/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071');
+	// THE MEMORY HAND-OVER: the memory's face is the wall's playback
+	// overlay (the reference set's own stage, opened over its wall);
+	// the detail read that answers a memory bounces there and this
+	// page renders nothing for it -- no title, no wall (the bar's own
+	// skeleton alone stays while the route swaps).
+	expect(vi.mocked(goto)).toHaveBeenCalledWith('/memories?memory=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071');
 	expect(document.body.querySelector('.album-bar__title')).toBeNull();
 	expect(document.body.querySelector('.tile')).toBeNull();
 

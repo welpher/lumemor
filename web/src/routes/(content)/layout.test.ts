@@ -164,12 +164,13 @@ test('a push navigation resets the scroll root; a popstate keeps it', () => {
 });
 
 test('the top bar hides while a detail route is active (the page owns its chrome)', () => {
-	// THE THREE DETAIL ROUTES SHARE ONE RULE: the album, the
-	// memory and the person detail each replace the shell's global
-	// topbar with their own contextual bar -- while the route is
-	// active the shell renders NO topbar (the main region fills the
-	// frame), and every other route keeps it.
-	for (const routeId of ['/(content)/albums/[id]', '/(content)/memories/[id]', '/(content)/people/[id]']) {
+	// THE DETAIL ROUTES SHARE ONE RULE: the album and person detail
+	// each replace the shell's global topbar with their own
+	// contextual bar -- while the route is active the shell renders NO
+	// topbar (the main region fills the frame), and every other route
+	// keeps it. The memory wall keeps the shell bar: a memory opens an
+	// overlay over its own page, not a route with its own chrome.
+	for (const routeId of ['/(content)/albums/[id]', '/(content)/people/[id]']) {
 		pageState.route.id = routeId;
 		const detail = mountLayout();
 		flushSync();
