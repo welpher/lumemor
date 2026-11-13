@@ -468,10 +468,11 @@
 		</section>
 
 		<!-- THE ALBUMS ROWS (the approved L3 face): each visible
-		     album holding this asset deep-links into its detail --
-		     the sync card's internal label never renders (the
-		     localized display name keyed by the type). The section
-		     stands only while albums hold the asset. -->
+		     album holding this asset deep-links into its detail, and
+		     a memory row into the wall's playback overlay -- the sync
+		     card's internal label never renders (the localized display
+		     name keyed by the type). The section stands only while
+		     albums hold the asset. -->
 		{#if detail.albums.length > 0}
 			<section class="info__section mt-4">
 				<h3
@@ -485,7 +486,7 @@
 							<a
 								class="info__album flex items-center gap-1.5 py-[7px] font-body font-medium text-[13px] leading-[1.4] text-accent no-underline hover:underline"
 								href={album.type === 'memory'
-									? `/memories/${encodeURIComponent(album.id)}`
+									? `/memories?memory=${encodeURIComponent(album.id)}`
 									: `/albums/${encodeURIComponent(album.id)}`}
 								data-album-id={album.id}
 							>
