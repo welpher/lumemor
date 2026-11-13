@@ -204,7 +204,7 @@ test('the tile anchors into the viewer while selection is inactive', () => {
 });
 
 test('a tile with no onselect renders no checkbox: pure navigation', () => {
-	// The album detail's wall: the callback's absence IS the
+	// The sync album's wall: the callback's absence IS the
 	// no-selection contract -- no check circle renders at all (not
 	// even the hover reveal), and the tile body stays the viewer
 	// anchor. The caller never wires a dead affordance.

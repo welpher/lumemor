@@ -64,7 +64,7 @@
 	// viewer. `aria-checked` and the keyboard semantics stay exactly
 	// as they were -- only the visuals moved. A caller that wires NO
 	// onselect callback gets NO check circle at all (the
-	// no-selection walls: the album detail, the trash grid).
+	// no-selection walls: the sync album, the trash grid).
 	import { decode } from 'blurhash';
 	import { _ } from 'svelte-i18n';
 	import type { TimelineItem } from '$lib/api/timeline';
@@ -86,7 +86,7 @@
 		selectable: boolean;
 		/**
 		 * The selection toggle. ABSENT = the surface offers no
-		 * selection at all (the album detail's wall, the trash grid):
+		 * selection at all (the sync album's wall, the trash grid):
 		 * NO check circle renders -- not even the hover reveal -- and
 		 * the tile body stays the pure viewer anchor. The callback's
 		 * presence is the capability, so no caller ever wires a dead
@@ -287,7 +287,7 @@
 
 	<!-- The selection checkbox: rendered ONLY on surfaces that wired
 	     a selection callback (the timeline, the curated walls) --
-	     absent on the no-selection walls (the album detail, the
+	     absent on the no-selection walls (the sync album, the
 	     trash grid), which never show a check at all. On the walls
 	     that carry it, the check is revealed on hover (the group on
 	     the tile, for pointer users) and whenever selection is

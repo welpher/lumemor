@@ -15,7 +15,7 @@ import type { TimelineItem } from '$lib/api/timeline';
 // FLOW: the selection
 // state, the select mode, the Escape exit and the batch bar are the
 // wall's own, gated by `onbatch`'s PRESENCE -- a wall with no runner
-// renders NO check affordance and NO bar at all (the album detail's
+// renders NO check affordance and NO bar at all (the sync album's
 // pure-navigation wall), while the walls that wire it keep the
 // hover-reveal entry and the choreography: a landed run clears the
 // selection (an armed mode persists), a failure keeps it and maps
@@ -109,7 +109,7 @@ test('the wall folds bare items into the month/day tree and packs rows', () => {
 });
 
 test('a wall without onbatch renders no check and no bar: the tiles are pure navigation', () => {
-	// The album detail's wall (restated on the onbatch gate): no
+	// The sync album's wall (restated on the onbatch gate): no
 	// runner wired, no selection possible -- NO hover checkbox
 	// renders at all, no bar ever rises, and the tile body stays the
 	// viewer anchor.

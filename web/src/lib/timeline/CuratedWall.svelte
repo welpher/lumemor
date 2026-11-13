@@ -18,7 +18,7 @@
 	// memory picker's opener is a passthrough:
 	// a page that offers the wall-selection entry wires it, a page
 	// that does not (the trash view owns no wall at all) never
-	// renders the affordance. The album detail owns its own no-selection
+	// renders the affordance. The sync album owns its own no-selection
 	// walk (no onbatch wired, pure navigation).
 	import { _ } from 'svelte-i18n';
 	import { untrack } from 'svelte';
