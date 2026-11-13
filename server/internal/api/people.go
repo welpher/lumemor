@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
@@ -126,8 +127,8 @@ func (s *server) peoplePageParams(w http.ResponseWriter, limit *int, cursor *str
 // ListPeople implements GET /api/v1/people: the caller's named
 // people -- the clusters carrying a label of the caller and at least
 // one face on a caller-visible asset, sorted by name
-// case-insensitively. Hidden people stay listed carrying isHidden:
-// the switch is a badge, not a filter.
+// case-insensitively. photoCount is the deduped visible asset count
+// (the card's number): photos, not faces.
 func (s *server) ListPeople(w http.ResponseWriter, r *http.Request) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -152,10 +153,9 @@ func (s *server) ListPeople(w http.ResponseWriter, r *http.Request) {
 		people = append(people, apigen.PersonSummary{
 			ClusterId:            uuid.UUID(row.ClusterID.Bytes),
 			Name:                 row.Name,
-			FaceCount:            int(row.FaceCount),
+			PhotoCount:           int(row.PhotoCount),
 			RepresentativeFaceId: cardFace,
 			Thumbnail:            faceThumbnailPath(cardFace),
-			IsHidden:             row.IsHidden,
 		})
 	}
 
@@ -191,7 +191,23 @@ func (s *server) ListUnnamedPeople(w http.ResponseWriter, r *http.Request, param
 		return
 	}
 
-	response := apigen.UnnamedClustersResponse{Items: make([]apigen.UnnamedClusterSummary, 0, len(rows))}
+	// The region's own count rides every page: the caller's unnamed
+	// carve-out is a whole-region number (the people list's entry
+	// badge and this page's bar count), so neither surface walks
+	// pages to count it. The two reads are independent statements
+	// over the same predicate; a concurrent write between them can
+	// only make the count disagree with the page by the row that
+	// moved -- the events converge both.
+	total, err := s.queries.CountUnnamedClusters(r.Context(), pgUUID(requester.userID))
+	if err != nil {
+		s.internalError(w, r, "count unnamed people", err)
+		return
+	}
+
+	response := apigen.UnnamedClustersResponse{
+		Items:      make([]apigen.UnnamedClusterSummary, 0, len(rows)),
+		TotalCount: int(total),
+	}
 	if len(rows) > limit {
 		rows = rows[:limit]
 		last := rows[limit-1]
@@ -238,7 +254,7 @@ func (s *server) GetPersonCluster(w http.ResponseWriter, r *http.Request, cluste
 		s.internalError(w, r, "count cluster faces", err)
 		return
 	}
-	if count == 0 {
+	if count.FaceCount == 0 {
 		s.writeError(w, http.StatusNotFound, apigen.PERSONNOTFOUND,
 			"no such person for this caller", nil)
 		return
@@ -271,15 +287,25 @@ func (s *server) GetPersonCluster(w http.ResponseWriter, r *http.Request, cluste
 	}
 
 	detail := apigen.ClusterDetail{
-		ClusterId: clusterId,
-		Label:     nil,
-		Faces:     make([]apigen.FaceDetail, 0, len(faces)),
+		ClusterId:  clusterId,
+		Label:      nil,
+		BirthDate:  nil,
+		PhotoCount: int(count.PhotoCount),
+		Faces:      make([]apigen.FaceDetail, 0, len(faces)),
 	}
 	if labelRow.LabelName.Valid {
-		detail.Label = &apigen.PersonLabel{
-			Name:     labelRow.LabelName.String,
-			IsHidden: labelRow.LabelHidden.Bool,
-		}
+		detail.Label = &apigen.PersonLabel{Name: labelRow.LabelName.String}
+	}
+	// The entity's own attributes ride every label state: an unnamed
+	// cluster carries its birth date and avatar too (they are the
+	// person's, not the caller's).
+	if labelRow.BirthDate.Valid {
+		birthDate := openapi_types.Date{Time: labelRow.BirthDate.Time.UTC()}
+		detail.BirthDate = &birthDate
+	}
+	if labelRow.AvatarFaceID.Valid {
+		avatarFace := uuid.UUID(labelRow.AvatarFaceID.Bytes)
+		detail.AvatarFaceId = &avatarFace
 	}
 	for _, row := range faces {
 		faceID := uuid.UUID(row.ID.Bytes)

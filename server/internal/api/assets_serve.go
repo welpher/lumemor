@@ -428,10 +428,14 @@ func (s *server) assetFacesForCaller(ctx context.Context, assetID, callerID pgty
 			Label:     nil,
 		}
 		if row.LabelName.Valid {
-			face.Label = &apigen.PersonLabel{
-				Name:     row.LabelName.String,
-				IsHidden: row.LabelHidden.Bool,
-			}
+			face.Label = &apigen.PersonLabel{Name: row.LabelName.String}
+		}
+		// The person entity's birth date rides every face: the chip
+		// computes the capture-time age from it (the same value for
+		// every account -- it is the person's, not the caller's).
+		if row.BirthDate.Valid {
+			birthDate := openapi_types.Date{Time: row.BirthDate.Time.UTC()}
+			face.BirthDate = &birthDate
 		}
 		faces = append(faces, face)
 	}

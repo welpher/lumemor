@@ -190,8 +190,8 @@ func TestRemoveDirectoryAlbum(t *testing.T) {
 	env.insertFace(t, faceSolo2, solo2, 0.9)
 	env.seedPersonCluster(t, clusterRehomed, faceSolo1, faceShared)
 	env.seedPersonCluster(t, clusterDissolved, faceSolo2)
-	env.labelPersonCluster(t, adminID, clusterDissolved, "Gone person", false)
-	env.labelPersonCluster(t, adminID, clusterRehomed, "Staying person", false)
+	env.labelPersonCluster(t, adminID, clusterDissolved, "Gone person")
+	env.labelPersonCluster(t, adminID, clusterRehomed, "Staying person")
 	env.exec(t, "INSERT INTO user_favorites (user_id, asset_id) VALUES ($1, $2), ($1, $3)",
 		pgUUID(adminID), pgUUID(solo1), pgUUID(sharedRef))
 	env.exec(t, `INSERT INTO tags (id, owner_id, name) VALUES ($1, $2, 'family')`, pgUUID(fixtureAlbumID("c3")), pgUUID(adminID))

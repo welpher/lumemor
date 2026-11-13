@@ -3,10 +3,9 @@
 // per-user-state discipline under load -- clusters are global, labels are private
 // per user, and every face count is honest for the calling user's
 // visible assets. Fixtures insert models, faces, clusters, labels
-// and assets directly in the database (the labeling and hiding write
-// endpoints arrive in a later task; the read side must be honest
-// about rows no API can produce yet, exactly like the timeline
-// fixtures before them).
+// and assets directly in the database (the write endpoints have
+// their own suite; the read side must be honest about rows no API can
+// produce yet, exactly like the timeline fixtures before them).
 package api
 
 import (
@@ -122,13 +121,14 @@ func (e *assetEnv) seedPersonCluster(t *testing.T, clusterID uuid.UUID, faceIDs 
 }
 
 // labelPersonCluster inserts the calling user's private label row.
-// The write endpoint arrives in a later task; the read-side fixtures
-// seed the table directly.
-func (e *assetEnv) labelPersonCluster(t *testing.T, userID, clusterID uuid.UUID, name string, isHidden bool) {
+// The read-side fixtures seed the table directly (the write endpoint
+// has its own tests); the name is the ONLY per-user state the people
+// domain stores.
+func (e *assetEnv) labelPersonCluster(t *testing.T, userID, clusterID uuid.UUID, name string) {
 	t.Helper()
 	if _, err := e.pool.Exec(context.Background(),
-		"INSERT INTO user_face_labels (user_id, cluster_id, name, is_hidden) VALUES ($1, $2, $3, $4)",
-		pgUUID(userID), pgUUID(clusterID), name, isHidden); err != nil {
+		"INSERT INTO user_face_labels (user_id, cluster_id, name) VALUES ($1, $2, $3)",
+		pgUUID(userID), pgUUID(clusterID), name); err != nil {
 		t.Fatalf("label cluster %s for %s: %v", clusterID, userID, err)
 	}
 }
@@ -333,6 +333,11 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 		if item.FaceCount != 3 {
 			t.Errorf("admin faceCount = %d, want 3 (the live faces on own assets only)", item.FaceCount)
 		}
+		// The region's count rides the page: the admin sees exactly
+		// the one cluster (the foreign one is invisible to them).
+		if page.TotalCount != 1 {
+			t.Errorf("admin unnamed totalCount = %d, want 1", page.TotalCount)
+		}
 		// The card face is the best caller-visible live face
 		// (the card-face rule): the strongest of the admin's three is fB
 		// (0.95), not the cluster's stored representative.
@@ -353,6 +358,9 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 		if gracePage.Items[1].FaceCount != 1 {
 			t.Errorf("grace faceCount = %d, want 1", gracePage.Items[1].FaceCount)
 		}
+		if gracePage.TotalCount != 2 {
+			t.Errorf("grace unnamed totalCount = %d, want 2 (both visible clusters)", gracePage.TotalCount)
+		}
 	})
 
 	t.Run("NamedListStaysEmptyWithoutOwnLabel", func(t *testing.T) {
@@ -371,6 +379,17 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 		}
 		if detail.Label != nil {
 			t.Errorf("label = %+v, want null before the caller labels the cluster", detail.Label)
+		}
+		// The photo count dedupes by asset: the admin's three visible
+		// faces sit on two assets (fA and fC share aA1).
+		if detail.PhotoCount != 2 {
+			t.Errorf("detail photoCount = %d, want 2 (three faces on two assets)", detail.PhotoCount)
+		}
+		if detail.BirthDate != nil {
+			t.Errorf("birthDate = %v, want null on a fresh cluster", detail.BirthDate)
+		}
+		if detail.AvatarFaceId != nil {
+			t.Errorf("avatarFaceId = %v, want null on a fresh cluster", detail.AvatarFaceId)
 		}
 		// The admin sees fB (0.95) then the 0.90 tie pair in face id
 		// order; the foreign face and the trashed/hidden-asset faces
@@ -434,7 +453,6 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 // TestPeopleB4LabelIsolation loads the per-user-state discipline: the caller's
 // label moves a cluster into their named region and out of their
 // unnamed region -- and does nothing to the other account's view.
-// Hidden people stay in the named list carrying the badge.
 func TestPeopleB4LabelIsolation(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -462,8 +480,8 @@ func TestPeopleB4LabelIsolation(t *testing.T) {
 	foreign := fixturePeopleClusterID("02")
 	env.seedPersonCluster(t, foreign, foreignFace)
 
-	env.labelPersonCluster(t, adminID, cluster, "Ada", false)
-	env.labelPersonCluster(t, adminID, foreign, "Invisible", false)
+	env.labelPersonCluster(t, adminID, cluster, "Ada")
+	env.labelPersonCluster(t, adminID, foreign, "Invisible")
 
 	t.Run("LabelMovesClusterIntoNamedRegion", func(t *testing.T) {
 		people := env.getPeopleList(t, env.cookie)
@@ -478,11 +496,8 @@ func TestPeopleB4LabelIsolation(t *testing.T) {
 		if person.Name != "Ada" {
 			t.Errorf("name = %q, want the caller's own label", person.Name)
 		}
-		if person.FaceCount != 1 {
-			t.Errorf("faceCount = %d, want 1", person.FaceCount)
-		}
-		if person.IsHidden {
-			t.Error("isHidden = true, want false for a plain label")
+		if person.PhotoCount != 1 {
+			t.Errorf("photoCount = %d, want 1 (one visible photo)", person.PhotoCount)
 		}
 	})
 
@@ -500,21 +515,27 @@ func TestPeopleB4LabelIsolation(t *testing.T) {
 		}
 	})
 
-	t.Run("HiddenStaysListedWithBadge", func(t *testing.T) {
-		env.exec(t, "UPDATE user_face_labels SET is_hidden = true WHERE user_id = $1 AND cluster_id = $2",
-			pgUUID(adminID), pgUUID(cluster))
-
-		people := env.getPeopleList(t, env.cookie)
-		if len(people) != 1 {
-			t.Fatalf("admin /people holds %d items after hiding, want 1 (hidden stays listed)", len(people))
+	t.Run("EntityAttributesRideTheUnnamedState", func(t *testing.T) {
+		// The person entity's attributes do not depend on a name: the
+		// cluster the admin labeled keeps them, and Grace's unnamed
+		// view of the SAME cluster reads them too (one value per
+		// person, not per caller).
+		if _, err := env.pool.Exec(context.Background(),
+			"UPDATE face_clusters SET birth_date = '1992-03-15' WHERE id = $1",
+			pgUUID(cluster)); err != nil {
+			t.Fatalf("seed the fixture birth date: %v", err)
 		}
-		if !people[0].IsHidden {
-			t.Errorf("isHidden = false, want true after the caller hid the person")
+		aDetail := env.getClusterDetail(t, env.cookie, cluster)
+		if aDetail.BirthDate == nil || aDetail.BirthDate.Format("2006-01-02") != "1992-03-15" {
+			t.Errorf("admin birthDate = %v, want 1992-03-15", aDetail.BirthDate)
 		}
-		// The hidden switch is the caller's private state: Grace's
-		// unnamed view is untouched.
-		gracePage := env.getUnnamedPage(t, graceCookie, "")
-		requireUnnamedOrder(t, gracePage.Items, foreign, cluster)
+		graceDetail := env.getClusterDetail(t, graceCookie, cluster)
+		if graceDetail.BirthDate == nil || graceDetail.BirthDate.Format("2006-01-02") != "1992-03-15" {
+			t.Errorf("grace birthDate = %v, want the same 1992-03-15 (the entity's own attribute)", graceDetail.BirthDate)
+		}
+		if graceDetail.Label != nil {
+			t.Errorf("grace label = %+v, want null (the admin's name stays private)", graceDetail.Label)
+		}
 	})
 }
 
@@ -546,7 +567,7 @@ func TestPeopleNamedOrdering(t *testing.T) {
 		env.insertOwnedAsset(t, assetID, adminID, time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
 		env.insertFace(t, faceID, assetID, 0.9)
 		env.seedPersonCluster(t, clusterID, faceID)
-		env.labelPersonCluster(t, adminID, clusterID, seed.name, false)
+		env.labelPersonCluster(t, adminID, clusterID, seed.name)
 	}
 
 	people := env.getPeopleList(t, env.cookie)
@@ -650,6 +671,11 @@ func TestPeopleUnnamedPagination(t *testing.T) {
 			}
 			seen[id] = true
 			walked = append(walked, id)
+		}
+		// Every page carries the whole region's count, whatever the
+		// page's own size: the count is not the page walk's answer.
+		if page.TotalCount != len(wantOrder) {
+			t.Fatalf("page %d totalCount = %d, want the whole region's %d", pages+1, page.TotalCount, len(wantOrder))
 		}
 		pages++
 		if page.NextCursor == nil {
