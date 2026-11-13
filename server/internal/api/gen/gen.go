@@ -1436,13 +1436,24 @@ type AlbumItemsRequest struct {
 }
 
 // AlbumOwnerRef The owner of an album shared to the caller: the honest
-// attribution a shared wall card renders.
+// attribution a shared wall card renders. The display name
+// leads; `email` is the fallback an empty name leaves (the
+// card never renders a blank attribution).
 type AlbumOwnerRef struct {
-	// Email The email address of the owning account.
+	// Email The email address of the owning account: the fallback
+	// the client renders when `name` is empty, and the
+	// disambiguator between two accounts that share a name.
 	Email openapi_types.Email `json:"email"`
 
 	// Id Identifier of the owning account.
 	Id openapi_types.UUID `json:"id"`
+
+	// Name The owning account's display name, exactly as stored.
+	// The empty string when the account set none -- the
+	// client then renders `email` instead. Never treated as a
+	// unique key: two accounts may share a name, and the
+	// email is what tells them apart.
+	Name string `json:"name"`
 }
 
 // AlbumPatch The partial edit of one album: every field is optional, at
@@ -3813,10 +3824,15 @@ type UserSelfResponse struct {
 }
 
 // UserSummary One account of the minimal member list: exactly the identity
-// fields a pick list renders -- no display name, no
-// timestamps, and never a password hash.
+// fields a pick list renders -- the display name (with the
+// email as the fallback for an account that set none), the
+// role and the disabled switch; no timestamps, and never a
+// password hash.
 type UserSummary struct {
-	// Email Login address.
+	// Email Login address: the identity's unique key, the fallback
+	// a pick list renders when the display name is empty, and
+	// the disambiguator between two accounts that share a
+	// name.
 	Email openapi_types.Email `json:"email"`
 
 	// Id UUIDv7 identifier.
@@ -3825,6 +3841,11 @@ type UserSummary struct {
 	// IsDisabled The disabled switch: a disabled account cannot sign in
 	// and its sessions carry no authority until re-enabled.
 	IsDisabled bool `json:"isDisabled"`
+
+	// Name The account's display name, exactly as stored. The
+	// empty string when the account set none -- the client
+	// then renders `email` instead.
+	Name string `json:"name"`
 
 	// Role Authorization role of an account: `admin` is granted by the
 	// first-run wizard or by another administrator, `user` is the

@@ -13,9 +13,15 @@ void main() {
       // TODO
     });
 
-    // Login address.
+    // Login address: the identity's unique key, the fallback a pick list renders when the display name is empty, and the disambiguator between two accounts that share a name. 
     // String email
     test('to test the property `email`', () async {
+      // TODO
+    });
+
+    // The account's display name, exactly as stored. The empty string when the account set none -- the client then renders `email` instead. 
+    // String name
+    test('to test the property `name`', () async {
       // TODO
     });
 
