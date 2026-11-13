@@ -85,6 +85,45 @@ test('the form renders labeled fields and the pairing placeholder notes', () => 
 	flushSync();
 });
 
+test('the submit is the full-width primary with its icon', () => {
+	const page = mountLogin();
+	flushSync();
+
+	// The source's form tail: the primary action spans the card (the
+	// sign-in form has one way forward, so it owns the row).
+	const submit = document.body.querySelector<HTMLButtonElement>('button[type="submit"]');
+	expect(submit?.className).toContain('w-full');
+	expect(submit?.className).toContain('bg-accent');
+	expect(submit?.querySelector('svg')).not.toBeNull();
+	expect(submit?.textContent?.trim()).toBe('Sign in');
+
+	unmount(page);
+	flushSync();
+});
+
+test("the setup note is the fresh instance's way in, and an initialized one never renders it", () => {
+	// A fresh instance: the sign-in form cannot work yet, so the note
+	// points at the wizard -- the same place the redirect lands on.
+	const fresh = mountLogin({ setupRequired: true, redirectTo: '/timeline' });
+	flushSync();
+	const note = document.body.querySelector<HTMLElement>('.login__setup-note');
+	expect(note).not.toBeNull();
+	expect(note?.textContent).toContain('No administrator account yet?');
+	const link = note?.querySelector<HTMLAnchorElement>('a[href="/setup"]');
+	expect(link?.textContent).toBe('Create the administrator');
+	unmount(fresh);
+	flushSync();
+
+	// An initialized instance: there is nothing to create, so the note
+	// (and its link) is not rendered at all.
+	const initialized = mountLogin();
+	flushSync();
+	expect(document.body.querySelector('.login__setup-note')).toBeNull();
+	expect(document.body.querySelector('a[href="/setup"]')).toBeNull();
+	unmount(initialized);
+	flushSync();
+});
+
 test('the expiry tag states the expired session above the form, not the unreachable face', () => {
 	const page = mountLogin({ setupRequired: false, redirectTo: '/timeline', expired: true });
 	flushSync();
