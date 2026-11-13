@@ -41,6 +41,8 @@ make ci-local        # the feature-tier merge gate: the full set, cold
 make web-check        # format:check + eslint + svelte-check 0/0 + the unit suite
 make docker-lint      # gofmt/vet/golangci in the container
 make docker-test      # the full server suite
+make api-lint         # the contract lints (spectral validates the examples
+                     # against the schema -- required fields must reach them)
 make api-check        # clean-tree regeneration: zero drift
 python3 scripts/check_i18n.py
 ```
