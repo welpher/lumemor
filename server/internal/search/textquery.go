@@ -142,7 +142,6 @@ func createTextHits(ctx context.Context, tx pgx.Tx, caller uuid.UUID, pattern, p
 		               JOIN user_face_labels l
 		                    ON l.cluster_id = f2.cluster_id AND l.user_id = $1
 		               WHERE f2.asset_id = a.id
-		                 AND l.is_hidden = false
 		                 AND f_unaccent(l.name) ILIKE $2
 		           ), 0)
 		       ) AS rank
@@ -181,7 +180,6 @@ func createTextHits(ctx context.Context, tx pgx.Tx, caller uuid.UUID, pattern, p
 		          JOIN user_face_labels l
 		               ON l.cluster_id = f2.cluster_id AND l.user_id = $1
 		          WHERE f2.asset_id = a.id
-		            AND l.is_hidden = false
 		            AND f_unaccent(l.name) ILIKE $2
 		      )
 		  )`, caller, pattern, plain)

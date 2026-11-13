@@ -290,7 +290,8 @@ test('every person event name the people pages react to is subscribed', () => {
 	for (const name of [
 		'person.labeled',
 		'person.unlabeled',
-		'person.hidden',
+		'person.birthdate_updated',
+		'person.avatar_updated',
 		'person.merged',
 		'person.face_moved',
 		'person.face_clustered',
@@ -306,29 +307,31 @@ test('person subscribers receive the parsed person events, one shape per name', 
 	const unsubscribe = subscribePersonEvents((event) => seen.push(event));
 
 	// The wire payloads are all-strings maps (the server publishes
-	// map[string]string) -- ids only, the label text and hidden
-	// switch are one account's private state and never ride the
-	// stream; the merged sources split on the comma.
+	// map[string]string) -- ids only: the label text and the birth
+	// date are state the subscribers refetch, never bus payload; the
+	// merged sources split on the comma.
 	const stream = MockEventSource.instances[0];
 	const userId = '0192f9a1-1a2b-3c4d-5e6f-7a8b9c0d1e2f';
 	stream?.emit('person.labeled', { clusterId: 'c1', userId }, 1);
 	stream?.emit('person.unlabeled', { clusterId: 'c1', userId }, 2);
-	stream?.emit('person.hidden', { clusterId: 'c1', userId }, 3);
+	stream?.emit('person.birthdate_updated', { clusterId: 'c1', userId }, 3);
 	stream?.emit('person.merged', { survivingClusterId: 't1', mergedClusterIds: 's1,s2', userId }, 4);
 	stream?.emit('person.face_moved', { faceId: 'f1', clusterId: 't1', userId }, 5);
 	stream?.emit('person.face_clustered', { faceId: 'f2', clusterId: 'n1', userId }, 6);
 	stream?.emit('person.face_detached', { faceId: 'f3', clusterId: 'c3', userId }, 7);
+	stream?.emit('person.avatar_updated', { clusterId: 'c1', userId }, 8);
 
 	expect(seen).toEqual([
 		{ id: 1, name: 'person.labeled', clusterId: 'c1', userId },
 		{ id: 2, name: 'person.unlabeled', clusterId: 'c1', userId },
-		{ id: 3, name: 'person.hidden', clusterId: 'c1', userId },
+		{ id: 3, name: 'person.birthdate_updated', clusterId: 'c1', userId },
 		{ id: 4, name: 'person.merged', survivingClusterId: 't1', mergedClusterIds: ['s1', 's2'], userId },
 		{ id: 5, name: 'person.face_moved', faceId: 'f1', clusterId: 't1', userId },
 		// The creation carries the NEW cluster's id; the detach the
 		// cluster the face LEFT.
 		{ id: 6, name: 'person.face_clustered', faceId: 'f2', clusterId: 'n1', userId },
-		{ id: 7, name: 'person.face_detached', faceId: 'f3', clusterId: 'c3', userId }
+		{ id: 7, name: 'person.face_detached', faceId: 'f3', clusterId: 'c3', userId },
+		{ id: 8, name: 'person.avatar_updated', clusterId: 'c1', userId }
 	]);
 	unsubscribe();
 });
@@ -346,7 +349,7 @@ test('malformed person blocks are ignored, not dispatched', () => {
 	// An acting user id that is not a string.
 	stream?.emit('person.labeled', { clusterId: 'c1', userId: 42 }, 3);
 	// A cluster id that is only whitespace.
-	stream?.emit('person.hidden', { clusterId: '', userId }, 4);
+	stream?.emit('person.birthdate_updated', { clusterId: '', userId }, 4);
 	// Merged sources that do not split into non-empty ids.
 	stream?.emit('person.merged', { survivingClusterId: 't1', mergedClusterIds: '', userId }, 5);
 	// A face move without a face id.
@@ -356,7 +359,7 @@ test('malformed person blocks are ignored, not dispatched', () => {
 	// A face detach whose vacated cluster id is missing.
 	stream?.emit('person.face_detached', { faceId: 'f3', userId: 'u1' }, 8);
 	// A missing acting user id.
-	stream?.emit('person.hidden', { clusterId: 'c1', isHidden: 'true' }, 9);
+	stream?.emit('person.avatar_updated', { clusterId: 'c1', faceId: 'f1' }, 9);
 	// A missing id line (lastEventId empty).
 	stream?.emit('person.labeled', { clusterId: 'c1', name: 'Ada', userId }, Number.NaN);
 

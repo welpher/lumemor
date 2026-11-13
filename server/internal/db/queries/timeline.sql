@@ -128,3 +128,36 @@ WHERE al.id = sqlc.arg('album_id')
   )
 ORDER BY a.taken_at DESC, a.id DESC
 LIMIT sqlc.arg('limit_count');
+
+-- name: ListPersonTimelineAssets :many
+-- The person detail's photo wall: one face cluster's own photos with
+-- the aggregate's is_favorite computation, ordering and keyset
+-- predicate. The cluster arm is an EXISTS semi-join over its faces,
+-- so an asset carrying two faces of the same person is one item --
+-- the wall is a photo wall, not a face wall -- and every member face
+-- is read through the same caller-visible live predicate the people
+-- surface applies (a cluster's assets all in other accounts' hands
+-- resolves to no rows: the empty list, indistinguishable from an
+-- unknown id, so cluster ids cannot be probed here either).
+SELECT sqlc.embed(a),
+       EXISTS (
+           SELECT 1 FROM user_favorites uf
+           WHERE uf.asset_id = a.id AND uf.user_id = sqlc.arg('user_id')
+       ) AS is_favorite
+FROM assets a
+WHERE a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND EXISTS (
+      SELECT 1
+      FROM faces f
+      WHERE f.asset_id = a.id
+        AND f.cluster_id = sqlc.arg('cluster_id')
+        AND caller_asset_visible(sqlc.arg('user_id'), a.id)
+  )
+  AND (
+      sqlc.narg('cursor_taken_at')::timestamptz IS NULL
+      OR (a.taken_at, a.id) < (sqlc.narg('cursor_taken_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
+  )
+ORDER BY a.taken_at DESC, a.id DESC
+LIMIT sqlc.arg('limit_count');

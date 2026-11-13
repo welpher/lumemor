@@ -163,19 +163,22 @@ test('a push navigation resets the scroll root; a popstate keeps it', () => {
 	flushSync();
 });
 
-test('the top bar hides while the album detail is active (the page owns its chrome)', () => {
-	// The album detail replaces the
-	// shell's global topbar with its own contextual bar -- while the
-	// route is active the shell renders NO topbar (the main region
-	// fills the frame), and every other route keeps it.
-	pageState.route.id = '/(content)/albums/[id]';
-	const album = mountLayout();
-	flushSync();
-	expect(document.body.querySelector('.shell-topbar')).toBeNull();
-	const albumMain = document.body.querySelector<HTMLElement>('main.shell-main');
-	expect(albumMain).not.toBeNull();
-	unmount(album);
-	flushSync();
+test('the top bar hides while a detail route is active (the page owns its chrome)', () => {
+	// THE THREE DETAIL ROUTES SHARE ONE RULE (§7.21): the album, the
+	// memory and the person detail each replace the shell's global
+	// topbar with their own contextual bar -- while the route is
+	// active the shell renders NO topbar (the main region fills the
+	// frame), and every other route keeps it.
+	for (const routeId of ['/(content)/albums/[id]', '/(content)/memories/[id]', '/(content)/people/[id]']) {
+		pageState.route.id = routeId;
+		const detail = mountLayout();
+		flushSync();
+		expect(document.body.querySelector('.shell-topbar')).toBeNull();
+		const detailMain = document.body.querySelector<HTMLElement>('main.shell-main');
+		expect(detailMain).not.toBeNull();
+		unmount(detail);
+		flushSync();
+	}
 
 	// Any other route: the topbar is back.
 	pageState.route.id = '/(content)/timeline';

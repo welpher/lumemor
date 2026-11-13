@@ -55,8 +55,8 @@ func collectFacets(ctx context.Context, tx pgx.Tx, caller uuid.UUID, filters Fil
 	return facets, nil
 }
 
-// facetPeople counts the caller's named, non-hidden people: one
-// entry per labeled face cluster with a face on the scoped domain.
+// facetPeople counts the caller's named people: one entry per
+// labeled face cluster with a face on the scoped domain.
 func facetPeople(ctx context.Context, tx pgx.Tx, caller uuid.UUID, filters Filters, textMode bool) ([]PersonFacet, error) {
 	scope := newScope(caller)
 	scope.addFilters(filters, dimensionPeople)
@@ -65,7 +65,7 @@ func facetPeople(ctx context.Context, tx pgx.Tx, caller uuid.UUID, filters Filte
 		FROM %s
 		JOIN faces f ON f.asset_id = a.id
 		JOIN user_face_labels l ON l.cluster_id = f.cluster_id AND l.user_id = $%d
-		WHERE %s AND l.is_hidden = false
+		WHERE %s
 		GROUP BY l.cluster_id, l.name
 		ORDER BY asset_count DESC, lower(l.name), l.cluster_id`,
 		domain(textMode), scope.callerArg, scope.where()), scope.args()...)

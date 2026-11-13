@@ -56,6 +56,7 @@
 	// glyph per row type). Unnamed faces keep their assign flow: the
 	// naming write is the drawer's own, never a navigation.
 	import { locale, _ } from 'svelte-i18n';
+	import { formatAge } from '$lib/people/age';
 	import Button from '$lib/components/Button.svelte';
 	import { type AssetAlbumRef, type AssetDetail, type AssetFaceSummary, type AssetPlaceRef } from '$lib/api/assets';
 	import { resolveErrorText } from '$lib/i18n/errors';
@@ -313,6 +314,19 @@
 			return face.label.name;
 		}
 		return face.clusterId !== null ? $_('viewer_faces_unnamed') : $_('viewer_faces_unclustered');
+	}
+
+	/**
+	 * The capture-time age of one named face (web-ia §7.17): the
+	 * person's birth date against THIS photo's takenAt. Absent when
+	 * the person carries no birth date, or the photo predates it --
+	 * the chip then renders its name alone (never a zero).
+	 */
+	function faceAge(face: AssetFaceSummary): string | null {
+		if (face.label === null) {
+			return null;
+		}
+		return formatAge(face.birthDate ?? null, detail.takenAt, $_);
 	}
 
 	/**
@@ -678,6 +692,12 @@
 										class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate"
 										>{faceLabel(face)}</span
 									>
+									{#if faceAge(face) !== null}
+										<span
+											class="info__face-age flex-none font-body font-normal text-[12px] leading-[1.4] text-text-soft tabular-nums"
+											>{faceAge(face)}</span
+										>
+									{/if}
 								</a>
 							{:else}
 								<button
@@ -698,6 +718,12 @@
 										class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate"
 										>{faceLabel(face)}</span
 									>
+									{#if faceAge(face) !== null}
+										<span
+											class="info__face-age flex-none font-body font-normal text-[12px] leading-[1.4] text-text-soft tabular-nums"
+											>{faceAge(face)}</span
+										>
+									{/if}
 								</button>
 							{/if}
 						</li>

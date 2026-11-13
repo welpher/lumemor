@@ -46,14 +46,16 @@ const detailBody = {
 			score: 0.95,
 			thumbnail: '/api/v1/faces/f1/thumbnail',
 			clusterId: 'c1',
-			label: { name: 'Ada', isHidden: false }
+			label: { name: 'Ada' },
+			birthDate: '1992-03-15'
 		},
 		{
 			id: 'f2',
 			score: 0.8,
 			thumbnail: '/api/v1/faces/f2/thumbnail',
 			clusterId: null,
-			label: null
+			label: null,
+			birthDate: null
 		}
 	],
 	albums: [],

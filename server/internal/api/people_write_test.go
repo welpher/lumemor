@@ -1,12 +1,14 @@
-// People surface write tests: the label, hidden, merge, face-move,
-// from-face creation and face-detach endpoints, with the pinned
-// semantics under load -- labels are per-caller upserts, duplicate
-// names are allowed, hiding rides on the label row, and every
-// structural cluster change re-points representatives and dissolves
-// vacated clusters (source labels die with them -- the honest
-// documented cost). Fixtures insert models, faces, clusters and
-// assets directly in the database and drive every write through the
-// API, exactly like the read-side tests before them.
+// People surface write tests: the label, birth date, avatar,
+// merge, face-move, from-face creation and face-detach endpoints,
+// with the pinned semantics under load -- labels are per-caller
+// upserts and deletes, duplicate names are allowed, the person
+// entity's attributes (birth date, avatar) are one value per cluster
+// for every account, and every structural cluster change re-points
+// representatives and dissolves vacated clusters (source labels die
+// with them -- the honest documented cost). Fixtures insert models,
+// faces, clusters and assets directly in the database and drive every
+// write through the API, exactly like the read-side tests before
+// them.
 package api
 
 import (
@@ -15,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -76,11 +79,18 @@ func (e *assetEnv) deletePersonLabel(t *testing.T, cookie *http.Cookie, clusterI
 	return e.writePeopleRaw(t, cookie, http.MethodDelete, "/api/v1/people/"+clusterID.String()+"/label", "")
 }
 
-// putPersonHidden fires PUT /people/{clusterId}/hidden with the raw
-// body.
-func (e *assetEnv) putPersonHidden(t *testing.T, cookie *http.Cookie, clusterID uuid.UUID, body string) *httptest.ResponseRecorder {
+// putPersonBirthdate fires PUT /people/{clusterId}/birthdate with
+// the raw body.
+func (e *assetEnv) putPersonBirthdate(t *testing.T, cookie *http.Cookie, clusterID uuid.UUID, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	return e.writePeopleRaw(t, cookie, http.MethodPut, "/api/v1/people/"+clusterID.String()+"/hidden", body)
+	return e.writePeopleRaw(t, cookie, http.MethodPut, "/api/v1/people/"+clusterID.String()+"/birthdate", body)
+}
+
+// putPersonAvatar fires PUT /people/{clusterId}/avatar with the raw
+// body.
+func (e *assetEnv) putPersonAvatar(t *testing.T, cookie *http.Cookie, clusterID uuid.UUID, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.writePeopleRaw(t, cookie, http.MethodPut, "/api/v1/people/"+clusterID.String()+"/avatar", body)
 }
 
 // postPeopleMerge fires POST /people/merge with the raw body.
@@ -253,19 +263,18 @@ func TestPeopleLabelWrite(t *testing.T) {
 		if state.Name != "Ada" {
 			t.Errorf("name = %q, want the trimmed %q", state.Name, "Ada")
 		}
-		if state.IsHidden {
-			t.Error("isHidden = true on the first label, want false")
-		}
 
 		people := env.getPeopleList(t, env.cookie)
 		if len(people) != 1 {
 			t.Fatalf("/people holds %d items, want the one named cluster", len(people))
 		}
-		if people[0].Name != "Ada" || uuid.UUID(people[0].ClusterId) != c1 || people[0].IsHidden {
-			t.Errorf("/people entry = %+v, want Ada on %s unhidden", people[0], c1)
+		if people[0].Name != "Ada" || uuid.UUID(people[0].ClusterId) != c1 {
+			t.Errorf("/people entry = %+v, want Ada on %s", people[0], c1)
 		}
-		if people[0].FaceCount != 2 {
-			t.Errorf("faceCount = %d, want 2", people[0].FaceCount)
+		// Two faces of the caller's cluster sit on ONE asset: the
+		// card counts photos, so the honest number is 1.
+		if people[0].PhotoCount != 1 {
+			t.Errorf("photoCount = %d, want 1 (two faces on one photo)", people[0].PhotoCount)
 		}
 
 		page := env.getUnnamedPage(t, env.cookie, "")
@@ -392,7 +401,8 @@ func TestPeopleLabelWrite(t *testing.T) {
 		}{
 			{http.MethodPut, "/api/v1/people/" + c1.String() + "/label", `{"name":"Ada"}`},
 			{http.MethodDelete, "/api/v1/people/" + c1.String() + "/label", ""},
-			{http.MethodPut, "/api/v1/people/" + c1.String() + "/hidden", `{"isHidden":true}`},
+			{http.MethodPut, "/api/v1/people/" + c1.String() + "/birthdate", `{"birthDate":"1992-03-15"}`},
+			{http.MethodPut, "/api/v1/people/" + c1.String() + "/avatar", `{"faceId":"` + fixtureWriteFaceID("01").String() + `"}`},
 			{http.MethodPost, "/api/v1/people/merge", `{"sourceClusterIds":["` + c1.String() + `","` + fixtureWriteClusterID("ff").String() + `"],"targetClusterId":"` + fixtureWriteClusterID("fe").String() + `"}`},
 			{http.MethodPost, "/api/v1/faces/" + fixtureWriteFaceID("01").String() + "/move", `{"targetClusterId":"` + fixtureWriteClusterID("fe").String() + `"}`},
 		} {
@@ -407,8 +417,9 @@ func TestPeopleLabelWrite(t *testing.T) {
 
 // TestPeopleLabelB4Isolation is the mandated isolation case:
 // labels are per-caller rows. A's naming never moves the cluster for
-// B; both accounts label the same cluster independently; B's hidden
-// switch never touches A's row.
+// B; both accounts label the same cluster independently; and the
+// person ENTITY's attributes are the opposite shape -- one value per
+// cluster, so B's write is what A reads.
 func TestPeopleLabelB4Isolation(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
@@ -479,21 +490,36 @@ func TestPeopleLabelB4Isolation(t *testing.T) {
 		}
 	})
 
-	t.Run("BHideDoesNotAffectA", func(t *testing.T) {
-		rec := env.putPersonHidden(t, graceCookie, shared, `{"isHidden":true}`)
+	t.Run("EntityAttributesAreGlobal", func(t *testing.T) {
+		// B writes the person's birth date: A reads the SAME value --
+		// the entity's attribute, not a per-user row (the model
+		// asymmetry: names private, entity attributes global).
+		rec := env.putPersonBirthdate(t, graceCookie, shared, `{"birthDate":"1992-03-15"}`)
 		if rec.Code != http.StatusOK {
-			t.Fatalf("B's PUT hidden status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+			t.Fatalf("B's PUT birthdate status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		// The same holds for the avatar pick: one face per person for
+		// the whole family, whatever account chose it.
+		rec = env.putPersonAvatar(t, graceCookie, shared, `{"faceId":"`+fB.String()+`"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("B's PUT avatar status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
 		}
 
-		// B's badge flips on B's row only; the person stays listed
-		// (badge semantics, not a filter).
-		bPeople := env.getPeopleList(t, graceCookie)
-		if len(bPeople) != 1 || !bPeople[0].IsHidden {
-			t.Errorf("B's /people = %+v, want Bob listed carrying isHidden true", bPeople)
+		aDetail := env.getClusterDetail(t, env.cookie, shared)
+		if aDetail.BirthDate == nil || aDetail.BirthDate.Format("2006-01-02") != "1992-03-15" {
+			t.Errorf("A's birthDate = %v, want B's 1992-03-15 (the entity's own value)", aDetail.BirthDate)
 		}
-		aPeople := env.getPeopleList(t, env.cookie)
-		if len(aPeople) != 1 || aPeople[0].IsHidden {
-			t.Errorf("A's /people = %+v, want Alice listed unhidden (B's switch is private)", aPeople)
+		if aDetail.AvatarFaceId == nil || uuid.UUID(*aDetail.AvatarFaceId) != fB {
+			t.Errorf("A's avatarFaceId = %v, want B's pick %s", aDetail.AvatarFaceId, fB)
+		}
+		// A's name is untouched by B's entity writes, and B's name is
+		// B's own: the two state classes never mix.
+		if aDetail.Label == nil || aDetail.Label.Name != "Alice" {
+			t.Errorf("A's label = %+v after B's entity writes, want Alice", aDetail.Label)
+		}
+		bDetail := env.getClusterDetail(t, graceCookie, shared)
+		if bDetail.Label == nil || bDetail.Label.Name != "Bob" {
+			t.Errorf("B's label = %+v, want Bob", bDetail.Label)
 		}
 	})
 
@@ -592,8 +618,10 @@ func TestPeopleMergeThreeStates(t *testing.T) {
 		if uuid.UUID(people[0].RepresentativeFaceId) != f3.id {
 			t.Errorf("representative = %s, want the merged set's best face %s (0.95)", people[0].RepresentativeFaceId, f3.id)
 		}
-		if people[0].FaceCount != 4 {
-			t.Errorf("faceCount = %d, want the merged 4", people[0].FaceCount)
+		// Four faces over three assets (one photo carries two of
+		// them): the card counts photos, so the merged person reads 3.
+		if people[0].PhotoCount != 3 {
+			t.Errorf("photoCount = %d, want the merged set's 3 photos", people[0].PhotoCount)
 		}
 	})
 
@@ -854,8 +882,8 @@ func TestPeopleFaceMove(t *testing.T) {
 		if uuid.UUID(people[0].RepresentativeFaceId) != g2.id {
 			t.Errorf("source representative = %s, want the surviving best member %s", people[0].RepresentativeFaceId, g2.id)
 		}
-		if people[0].FaceCount != 1 {
-			t.Errorf("source faceCount = %d, want 1", people[0].FaceCount)
+		if people[0].PhotoCount != 1 {
+			t.Errorf("source photoCount = %d, want 1", people[0].PhotoCount)
 		}
 	})
 
@@ -1018,103 +1046,358 @@ func TestPeopleFaceMove(t *testing.T) {
 	})
 }
 
-// TestPeopleHide walks the hidden switch: hiding rides on the caller's
-// label row, so an unlabeled cluster answers the pinned
-// person_hide_requires_label key, a labeled cluster toggles, and a
-// rename keeps the hidden state.
-func TestPeopleHide(t *testing.T) {
+// TestPeopleBirthdateWrite pins the person entity's birth date: a
+// normal date lands and reads back for every account, null clears it,
+// a body without the field is a client bug (never a silent clear), a
+// malformed date answers the field's 400, the anti-enumeration 404
+// covers unknown and invisible clusters alike, and concurrent writes
+// converge on one value without an error.
+func TestPeopleBirthdateWrite(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "birthdate-grace@example.com")
 	env.insertPeopleModel(t)
 
-	c1 := fixtureWriteClusterID("51")
-	env.seedWriteCluster(t, fixtureWriteAssetID("51"), adminID,
+	// The caller's cluster: one face on the caller's asset.
+	c1 := fixtureWriteClusterID("71")
+	env.seedWriteCluster(t, fixtureWriteAssetID("71"), adminID,
 		time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC), c1,
-		writeFaceSpec{fixtureWriteFaceID("51"), 0.90},
-		writeFaceSpec{fixtureWriteFaceID("52"), 0.80})
+		writeFaceSpec{fixtureWriteFaceID("71"), 0.90})
 
-	t.Run("HideUnlabeledClusterRejected", func(t *testing.T) {
-		rec := env.putPersonHidden(t, env.cookie, c1, `{"isHidden":true}`)
-		apiErr, details := requireValidationError(t, rec, "hide unlabeled cluster")
-		if got, _ := details["key"].(string); got != "person_hide_requires_label" {
-			t.Errorf("details.key = %v, want person_hide_requires_label (details %#v)", got, details)
+	// A cluster whose only face sits on Grace's asset: invisible to
+	// the admin, so its 404 is the anti-enumeration pair.
+	foreign := fixtureWriteClusterID("72")
+	env.seedWriteCluster(t, fixtureWriteAssetID("72"), graceID,
+		time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC), foreign,
+		writeFaceSpec{fixtureWriteFaceID("72"), 0.85})
+
+	// A cluster the two accounts share (a face on each account's own
+	// asset): the global-read arm needs one both can see.
+	sharedCluster := fixtureWriteClusterID("73")
+	adminFace := fixtureWriteFaceID("73")
+	graceFace := fixtureWriteFaceID("74")
+	env.insertOwnedAsset(t, fixtureWriteAssetID("73"), adminID,
+		time.Date(2026, 6, 3, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, fixtureWriteAssetID("74"), graceID,
+		time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertFace(t, adminFace, fixtureWriteAssetID("73"), 0.90)
+	env.insertFace(t, graceFace, fixtureWriteAssetID("74"), 0.88)
+	env.seedPersonCluster(t, sharedCluster, adminFace, graceFace)
+
+	t.Run("SetOnUnnamedCluster", func(t *testing.T) {
+		// The birth date does not depend on a name: the cluster is
+		// unnamed for the caller and the write still lands.
+		rec := env.putPersonBirthdate(t, env.cookie, c1, `{"birthDate":"1992-03-15"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PUT birthdate status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
 		}
-		if apiErr.Message == nil || !strings.Contains(*apiErr.Message, "label") {
-			t.Errorf("message = %v, want it to name the missing label", apiErr.Message)
+		var response apigen.PersonBirthdateResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode birthdate response %q: %v", rec.Body.String(), err)
+		}
+		if uuid.UUID(response.ClusterId) != c1 {
+			t.Errorf("clusterId = %s, want %s", response.ClusterId, c1)
+		}
+		if response.BirthDate == nil || response.BirthDate.Format("2006-01-02") != "1992-03-15" {
+			t.Errorf("birthDate = %v, want 1992-03-15", response.BirthDate)
 		}
 
-		// The unhide arm of an unlabeled cluster answers the same
-		// key: the label row is the missing piece either way.
-		rec = env.putPersonHidden(t, env.cookie, c1, `{"isHidden":false}`)
-		_, details = requireValidationError(t, rec, "unhide unlabeled cluster")
-		if got, _ := details["key"].(string); got != "person_hide_requires_label" {
-			t.Errorf("details.key = %v, want person_hide_requires_label (details %#v)", got, details)
+		detail := env.getClusterDetail(t, env.cookie, c1)
+		if detail.BirthDate == nil || detail.BirthDate.Format("2006-01-02") != "1992-03-15" {
+			t.Errorf("detail birthDate = %v, want 1992-03-15", detail.BirthDate)
+		}
+		if detail.Label != nil {
+			t.Errorf("detail label = %+v, want null (the date writes onto an unnamed cluster)", detail.Label)
+		}
+
+		// The event carries ids only: the date itself never rides the
+		// shared stream.
+		events := busEventsOf(t, env.bus, "person.birthdate_updated")
+		if len(events) != 1 {
+			t.Fatalf("person.birthdate_updated events = %d, want 1", len(events))
+		}
+		requirePayloadIDs(t, events[0], "person.birthdate_updated", map[string]string{
+			"clusterId": c1.String(),
+			"userId":    adminID.String(),
+		})
+	})
+
+	t.Run("ClearWithNull", func(t *testing.T) {
+		rec := env.putPersonBirthdate(t, env.cookie, c1, `{"birthDate":null}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("clear status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var response apigen.PersonBirthdateResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode clear response %q: %v", rec.Body.String(), err)
+		}
+		if response.BirthDate != nil {
+			t.Errorf("birthDate = %v after the clear, want null", response.BirthDate)
+		}
+		if detail := env.getClusterDetail(t, env.cookie, c1); detail.BirthDate != nil {
+			t.Errorf("detail birthDate = %v after the clear, want null", detail.BirthDate)
 		}
 	})
 
-	t.Run("HideLabeledClusterToggles", func(t *testing.T) {
-		rec := env.putPersonLabel(t, env.cookie, c1, `{"name":"Ada"}`)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("label: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
-		}
+	t.Run("BodyWithoutTheFieldRejected", func(t *testing.T) {
+		// A missing field is a bug, not a clear: the clear is an act.
+		requireValidationFields(t, env.putPersonBirthdate(t, env.cookie, c1, `{}`), "birthDate")
+		requireValidationError(t, env.putPersonBirthdate(t, env.cookie, c1, `not json`), "malformed birthdate body")
+	})
 
-		rec = env.putPersonHidden(t, env.cookie, c1, `{"isHidden":true}`)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("hide: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	t.Run("MalformedDateRejected", func(t *testing.T) {
+		for _, body := range []string{`{"birthDate":"15/03/1992"}`, `{"birthDate":""}`, `{"birthDate":123}`} {
+			requireValidationFields(t, env.putPersonBirthdate(t, env.cookie, c1, body), "birthDate")
 		}
-		if state := decodePersonLabel(t, rec); !state.IsHidden || state.Name != "Ada" {
-			t.Errorf("hide state = %+v, want Ada hidden", state)
+		// The rejected writes changed nothing.
+		if detail := env.getClusterDetail(t, env.cookie, c1); detail.BirthDate != nil {
+			t.Errorf("birthDate = %v after rejected writes, want the untouched null", detail.BirthDate)
 		}
-		people := env.getPeopleList(t, env.cookie)
-		if len(people) != 1 || !people[0].IsHidden {
-			t.Errorf("/people = %+v, want Ada listed carrying the badge", people)
-		}
+	})
 
-		rec = env.putPersonHidden(t, env.cookie, c1, `{"isHidden":false}`)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("unhide: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	t.Run("UnknownOrInvisibleClusterNotFound", func(t *testing.T) {
+		unknown := env.putPersonBirthdate(t, env.cookie, fixtureWriteClusterID("ff"), `{"birthDate":"1992-03-15"}`)
+		requirePersonNotFound(t, unknown, "birthdate unknown cluster")
+		invisible := env.putPersonBirthdate(t, env.cookie, foreign, `{"birthDate":"1992-03-15"}`)
+		requirePersonNotFound(t, invisible, "birthdate foreign-only cluster")
+		if unknown.Body.String() != invisible.Body.String() {
+			t.Errorf("404 bodies differ between unknown and foreign-only clusters: %q vs %q",
+				unknown.Body.String(), invisible.Body.String())
 		}
-		if state := decodePersonLabel(t, rec); state.IsHidden {
-			t.Errorf("unhide state = %+v, want isHidden false", state)
-		}
+	})
 
-		// The pinned event carries ids only: the switch value is the
-		// caller's private state and never rides the shared stream.
-		hiddenEvents := busEventsOf(t, env.bus, "person.hidden")
-		if len(hiddenEvents) != 2 {
-			t.Fatalf("person.hidden events = %d, want 2 (hide and unhide)", len(hiddenEvents))
+	t.Run("AnyAccountReadsTheSameValue", func(t *testing.T) {
+		// Grace sees the cluster through her own asset; the admin's
+		// write is what she reads (one birthday per person).
+		if rec := env.putPersonBirthdate(t, env.cookie, sharedCluster, `{"birthDate":"1990-12-01"}`); rec.Code != http.StatusOK {
+			t.Fatalf("admin write status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
 		}
-		for _, payload := range hiddenEvents {
-			if payload["isHidden"] != "" {
-				t.Errorf("person.hidden payload carries the private switch %q -- it must not leave the account", payload["isHidden"])
+		graceDetail := env.getClusterDetail(t, graceCookie, sharedCluster)
+		if graceDetail.BirthDate == nil || graceDetail.BirthDate.Format("2006-01-02") != "1990-12-01" {
+			t.Errorf("grace birthDate = %v, want the admin's 1990-12-01", graceDetail.BirthDate)
+		}
+	})
+
+	t.Run("ConcurrentWritesConverge", func(t *testing.T) {
+		// Concurrent writers race honestly: every request answers 200
+		// (the write is one column, no uniqueness to violate) and the
+		// last one wins -- the reads answer ONE of the written dates,
+		// never a half state.
+		dates := []string{"1985-01-02", "1986-02-03", "1987-03-04", "1988-04-05"}
+		results := make(chan *httptest.ResponseRecorder, len(dates))
+		var wg sync.WaitGroup
+		for _, date := range dates {
+			wg.Add(1)
+			go func(day string) {
+				defer wg.Done()
+				results <- env.putPersonBirthdate(t, env.cookie, c1, `{"birthDate":"`+day+`"}`)
+			}(date)
+		}
+		wg.Wait()
+		close(results)
+		for rec := range results {
+			if rec.Code != http.StatusOK {
+				t.Fatalf("concurrent write status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
 			}
 		}
-		if hiddenEvents[0]["clusterId"] != c1.String() || hiddenEvents[0]["userId"] != adminID.String() {
-			t.Errorf("hide payload ids = %v, want cluster %s by %s", hiddenEvents[0], c1, adminID)
+		detail := env.getClusterDetail(t, env.cookie, c1)
+		if detail.BirthDate == nil {
+			t.Fatal("birthDate = null after concurrent writes, want one of the written dates")
+		}
+		got := detail.BirthDate.Format("2006-01-02")
+		matched := false
+		for _, date := range dates {
+			if got == date {
+				matched = true
+			}
+		}
+		if !matched {
+			t.Errorf("birthDate = %q after concurrent writes, want one of %v", got, dates)
+		}
+	})
+}
+
+// TestPeopleAvatarWrite pins the person entity's avatar: the pick lands
+// on the cluster's own face and the card renders it even when it is not
+// the best-scoring member, every account reads the same pick, a face
+// outside the cluster or on an invisible asset answers the 404, and a
+// pick whose face later leaves the cluster degrades to the best visible
+// member instead of breaking.
+func TestPeopleAvatarWrite(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, _ := env.createSecondUser(t, "avatar-grace@example.com")
+	env.insertPeopleModel(t)
+
+	// The caller's cluster: two faces on two assets -- the strongest
+	// is the second one, so the avatar pick has something to override.
+	c1 := fixtureWriteClusterID("81")
+	weak := fixtureWriteFaceID("81")   // 0.70, on the pick's own asset
+	strong := fixtureWriteFaceID("82") // 0.95, the fallback card face
+	avA := fixtureWriteAssetID("81")
+	env.insertOwnedAsset(t, avA, adminID, time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertFace(t, weak, avA, 0.70)
+	avB := fixtureWriteAssetID("82")
+	env.insertOwnedAsset(t, avB, adminID, time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertFace(t, strong, avB, 0.95)
+	env.seedPersonCluster(t, c1, weak, strong)
+
+	// A second cluster of the caller and a cluster of Grace's: both
+	// supply faces the pick must refuse.
+	other := fixtureWriteClusterID("82")
+	otherFace := fixtureWriteFaceID("83")
+	env.seedWriteCluster(t, fixtureWriteAssetID("83"), adminID,
+		time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC), other,
+		writeFaceSpec{otherFace, 0.90})
+	foreign := fixtureWriteClusterID("83")
+	foreignFace := fixtureWriteFaceID("84")
+	env.seedWriteCluster(t, fixtureWriteAssetID("84"), graceID,
+		time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC), foreign,
+		writeFaceSpec{foreignFace, 0.80})
+
+	// Between the writes the caller's cluster carries a label, so the
+	// card checks run against the named listing; the unnamed tile
+	// reads the same pick.
+	if rec := env.putPersonLabel(t, env.cookie, c1, `{"name":"Ada"}`); rec.Code != http.StatusOK {
+		t.Fatalf("label: status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	t.Run("FallbackIsTheBestVisibleFace", func(t *testing.T) {
+		people := env.getPeopleList(t, env.cookie)
+		if len(people) != 1 {
+			t.Fatalf("/people = %+v, want exactly the labeled cluster", people)
+		}
+		if uuid.UUID(people[0].RepresentativeFaceId) != strong {
+			t.Errorf("card face = %s, want the best-scoring member %s before any pick",
+				people[0].RepresentativeFaceId, strong)
+		}
+		if detail := env.getClusterDetail(t, env.cookie, c1); detail.AvatarFaceId != nil {
+			t.Errorf("avatarFaceId = %v before any pick, want null", detail.AvatarFaceId)
 		}
 	})
 
-	t.Run("RenameKeepsHiddenState", func(t *testing.T) {
-		if rec := env.putPersonHidden(t, env.cookie, c1, `{"isHidden":true}`); rec.Code != http.StatusOK {
-			t.Fatalf("hide: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
-		}
-		rec := env.putPersonLabel(t, env.cookie, c1, `{"name":"Ada Lovelace"}`)
+	t.Run("PickOverridesTheBestMember", func(t *testing.T) {
+		rec := env.putPersonAvatar(t, env.cookie, c1, `{"faceId":"`+weak.String()+`"}`)
 		if rec.Code != http.StatusOK {
-			t.Fatalf("rename: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+			t.Fatalf("PUT avatar status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
 		}
-		if state := decodePersonLabel(t, rec); !state.IsHidden || state.Name != "Ada Lovelace" {
-			t.Errorf("state after rename = %+v, want the new name with the hidden switch intact", state)
+		var response apigen.PersonAvatarResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode avatar response %q: %v", rec.Body.String(), err)
+		}
+		if uuid.UUID(response.ClusterId) != c1 || uuid.UUID(response.AvatarFaceId) != weak {
+			t.Errorf("avatar response = %+v, want %s on %s", response, weak, c1)
+		}
+
+		people := env.getPeopleList(t, env.cookie)
+		if len(people) != 1 || uuid.UUID(people[0].RepresentativeFaceId) != weak {
+			t.Fatalf("/people card face = %+v, want the picked avatar %s", people, weak)
+		}
+		wantThumbnail := "/api/v1/faces/" + weak.String() + "/thumbnail"
+		if people[0].Thumbnail != wantThumbnail {
+			t.Errorf("card thumbnail = %q, want the picked face's crop %q", people[0].Thumbnail, wantThumbnail)
+		}
+		if detail := env.getClusterDetail(t, env.cookie, c1); detail.AvatarFaceId == nil || uuid.UUID(*detail.AvatarFaceId) != weak {
+			t.Errorf("detail avatarFaceId = %v, want %s", detail.AvatarFaceId, weak)
+		}
+
+		events := busEventsOf(t, env.bus, "person.avatar_updated")
+		if len(events) != 1 {
+			t.Fatalf("person.avatar_updated events = %d, want 1", len(events))
+		}
+		requirePayloadIDs(t, events[0], "person.avatar_updated", map[string]string{
+			"clusterId": c1.String(),
+			"userId":    adminID.String(),
+		})
+	})
+
+	t.Run("EveryAccountReadsTheSamePick", func(t *testing.T) {
+		// Grace reaches the cluster through the admin's label? No --
+		// through her own face? She has none here, so the pick is
+		// proven global on a cluster she CAN see: the unnamed region's
+		// tile renders the picked avatar too.
+		unnamed := env.getUnnamedPage(t, env.cookie, "")
+		found := false
+		for _, item := range unnamed.Items {
+			if uuid.UUID(item.ClusterId) == other {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("unnamed page = %v, want the unlabeled second cluster", unnamedClusterIDs(unnamed.Items))
+		}
+		rec := env.putPersonAvatar(t, env.cookie, other, `{"faceId":"`+otherFace.String()+`"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("unnamed-cluster avatar pick status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		page := env.getUnnamedPage(t, env.cookie, "")
+		for _, item := range page.Items {
+			if uuid.UUID(item.ClusterId) == other && uuid.UUID(item.RepresentativeFaceId) != otherFace {
+				t.Errorf("unnamed tile face = %s, want the picked avatar %s", item.RepresentativeFaceId, otherFace)
+			}
+		}
+		// Grace reads the admin-picked avatar of the shared cluster
+		// through the same global column: the detail is admin-only
+		// here, so the proof is the row itself.
+		var avatar uuid.UUID
+		row := env.pool.QueryRow(t.Context(),
+			"SELECT avatar_face_id FROM face_clusters WHERE id = $1", pgUUID(other))
+		if err := row.Scan(&avatar); err != nil {
+			t.Fatalf("read the stored avatar: %v", err)
+		}
+		if avatar != otherFace {
+			t.Errorf("stored avatar_face_id = %s, want %s", avatar, otherFace)
+		}
+	})
+
+	t.Run("FaceOutsideTheClusterRefused", func(t *testing.T) {
+		rec := env.putPersonAvatar(t, env.cookie, c1, `{"faceId":"`+otherFace.String()+`"}`)
+		requirePersonNotFound(t, rec, "avatar from another cluster")
+
+		// An invisible face: Grace's cluster is invisible to the
+		// admin, and so is its face -- both answer the same 404.
+		invisible := env.putPersonAvatar(t, env.cookie, foreign, `{"faceId":"`+foreignFace.String()+`"}`)
+		requirePersonNotFound(t, invisible, "avatar on an invisible cluster")
+		if rec.Body.String() != invisible.Body.String() {
+			t.Errorf("404 bodies differ between another cluster's face and an invisible cluster: %q vs %q",
+				rec.Body.String(), invisible.Body.String())
+		}
+
+		// Nothing moved.
+		if detail := env.getClusterDetail(t, env.cookie, c1); detail.AvatarFaceId == nil || uuid.UUID(*detail.AvatarFaceId) != weak {
+			t.Errorf("detail avatarFaceId = %v after the refusals, want the earlier pick %s", detail.AvatarFaceId, weak)
 		}
 	})
 
 	t.Run("MalformedBodyRejected", func(t *testing.T) {
-		rec := env.putPersonHidden(t, env.cookie, c1, `not json`)
-		_, _ = requireValidationError(t, rec, "malformed hidden body")
+		for _, body := range []string{`{}`, `{"faceId":"not-a-uuid"}`, `not json`} {
+			rec := env.putPersonAvatar(t, env.cookie, c1, body)
+			_, _ = requireValidationError(t, rec, "malformed avatar "+body)
+		}
 	})
 
-	t.Run("UnknownClusterNotFound", func(t *testing.T) {
-		rec := env.putPersonHidden(t, env.cookie, fixtureWriteClusterID("ff"), `{"isHidden":true}`)
-		requirePersonNotFound(t, rec, "hide unknown cluster")
+	t.Run("AvatarThatLeavesTheClusterFallsBack", func(t *testing.T) {
+		// The picked face moves to the other cluster: the pick stays
+		// stored but stops counting, and the card falls back to the
+		// best remaining visible member.
+		rec := env.postFaceMove(t, env.cookie, weak, `{"targetClusterId":"`+other.String()+`"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("face move status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		people := env.getPeopleList(t, env.cookie)
+		var card *apigen.PersonSummary
+		for i := range people {
+			if uuid.UUID(people[i].ClusterId) == c1 {
+				card = &people[i]
+			}
+		}
+		if card == nil {
+			t.Fatalf("/people = %+v, want the labeled cluster still listed", people)
+		}
+		if uuid.UUID(card.RepresentativeFaceId) != strong {
+			t.Errorf("card face = %s after the avatar left, want the fallback %s",
+				card.RepresentativeFaceId, strong)
+		}
 	})
 }
 
@@ -1221,7 +1504,7 @@ func TestPeopleFaceClusterCreate(t *testing.T) {
 		if len(people) != 1 || people[0].Name != "Kim" || uuid.UUID(people[0].ClusterId) != source {
 			t.Fatalf("/people = %+v, want exactly Kim on the surviving source", people)
 		}
-		if uuid.UUID(people[0].RepresentativeFaceId) != k1.id || people[0].FaceCount != 1 {
+		if uuid.UUID(people[0].RepresentativeFaceId) != k1.id || people[0].PhotoCount != 1 {
 			t.Errorf("source state = %+v, want representative %s with faceCount 1", people[0], k1.id)
 		}
 	})
@@ -1414,7 +1697,7 @@ func TestPeopleFaceDetach(t *testing.T) {
 		if len(people) != 1 || people[0].Name != "Dad" || uuid.UUID(people[0].ClusterId) != source {
 			t.Fatalf("/people = %+v, want exactly Dad on the surviving source", people)
 		}
-		if uuid.UUID(people[0].RepresentativeFaceId) != h1.id || people[0].FaceCount != 1 {
+		if uuid.UUID(people[0].RepresentativeFaceId) != h1.id || people[0].PhotoCount != 1 {
 			t.Errorf("source state = %+v, want representative %s with faceCount 1", people[0], h1.id)
 		}
 	})
