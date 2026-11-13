@@ -43,7 +43,7 @@
 //     selection surface anywhere (§7.20).
 //  4. The naming main path moved to the detail's unnamed variant:
 //     the card opens `/people/{id}?state=unnamed`, whose profile row
-//     reads 「Unnamed」 and whose naming entry lands the named state
+//     reads "Unnamed" and whose naming entry lands the named state
 //     in place. The named list gains the person with the PHOTO
 //     count; the unnamed region loses the card.
 //  5. The detail is THIS PERSON'S PHOTOS (§7.17): the sticky 53px
@@ -143,7 +143,7 @@ let samePersonClusterId = '';
 let samePersonRepFaceId = '';
 
 // The unnamed region's cluster cards are ENTRANCES (§7.20): one link
-// per cluster, its accessible name the 「Unnamed」 slot beside the
+// per cluster, its accessible name the "Unnamed" slot beside the
 // honest face count (the count is always plural -- the i18n message
 // has no singular form). Addressed by the representative face's crop
 // URL when the story needs one specific cluster's card.
@@ -331,7 +331,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page).toHaveTitle('Unnamed · lumemor');
 
 		// The unnamed variant: the shell's topbar is gone (the page
-		// owns its contextual bar), the profile row reads 「Unnamed」
+		// owns its contextual bar), the profile row reads "Unnamed"
 		// and the action set swaps the unname for the naming.
 		await expect(page.locator('.shell-topbar')).toHaveCount(0);
 		const bar = page.locator('.person-bar');
