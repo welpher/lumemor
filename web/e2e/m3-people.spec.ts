@@ -359,7 +359,9 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/people');
 		const card2 = page.locator('a.person-card').filter({ hasText: PERSON_A });
 		await expect(card2).toBeVisible();
-		await expect(card2).toContainText('2 photos');
+		// The count is icon + number; its accessible name states the
+		// unit (the card never spells "photos" as loose text).
+		await expect(card2.locator('.person-card__count')).toHaveAttribute('aria-label', '2 photos');
 		await page.goto('/people/unnamed');
 		await expect(page.getByRole('heading', { level: 1 })).toContainText('Unnamed · 1 group');
 		await expect(unnamedCardByFace(page, samePersonRepFaceId)).toHaveCount(0);
@@ -413,7 +415,9 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.wall .tile')).toHaveCount(0);
 
 		await page.goto('/people');
-		await expect(page.locator('a.person-card').filter({ hasText: PERSON_A })).toContainText('2 photos');
+		await expect(
+			page.locator('a.person-card').filter({ hasText: PERSON_A }).locator('.person-card__count')
+		).toHaveAttribute('aria-label', '2 photos');
 	});
 
 	test('scene 6: the birth date and the avatar picker write the person entity’s attributes', async ({ page }) => {
@@ -499,7 +503,9 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.person-wall .tile')).toHaveCount(4);
 		await page.goto('/people');
 		await expect(page.locator('a.person-card')).toHaveCount(1);
-		await expect(page.locator('a.person-card').filter({ hasText: PERSON_A })).toContainText('4 photos');
+		await expect(
+			page.locator('a.person-card').filter({ hasText: PERSON_A }).locator('.person-card__count')
+		).toHaveAttribute('aria-label', '4 photos');
 		await page.goto('/people/unnamed');
 		await expect(page.getByText('Face clusters appear here once faces are grouped.')).toBeVisible();
 	});

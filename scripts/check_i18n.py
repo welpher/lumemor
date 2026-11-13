@@ -216,11 +216,9 @@ NON_ERROR_KEYS = {
     "people_bar_count",
     "people_unnamed_title",
     "people_unnamed_count",
-    "people_unnamed_link",
     "people_unnamed_loading",
     "people_unnamed_empty",
     "people_unnamed_empty_title",
-    "people_name_dialog_title",
     "people_name_field_label",
     "people_name_submit",
     "people_name_invalid",
@@ -245,11 +243,7 @@ NON_ERROR_KEYS = {
     "people_merge_into_body",
     "people_picker_empty",
     "people_picker_no_people",
-    "people_move_dialog_title",
-    "people_move_body",
-    "people_move_target_label",
     "people_move_group_unnamed",
-    "people_move_submit",
     # The face-correction surfaces: the edit-people side panel, the
     # target-list picker (both dialogs share it), the detach
     # confirm, and the person detail's unname echo. The age keys
@@ -275,7 +269,6 @@ NON_ERROR_KEYS = {
     "person_age_year_months",
     "person_unname_done",
     "people_unname_action",
-    "people_detail_unnamed",
     "people_detail_faces_heading",
     "people_face_alt",
     "people_hidden_notice",
