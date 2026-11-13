@@ -60,8 +60,8 @@
 // through the login form in SEPARATE browser contexts -- the admin's
 // storage state first, then the member's own sign-in scene (the two
 // sessions never share a context) -- and the member's scenes assert
-// everything the audience grant gives: the wall's shared section,
-// the read-only detail, the timeline's inclusion of the shared items,
+// everything the audience grant gives: the wall's shared card (the
+// owner's name beside the read-only chip), the read-only detail, the timeline's inclusion of the shared items,
 // the viewer drawer's identity-aware read-only state, and the
 // creation guard's refusal matrix (the member's wall carries no
 // create affordance; their create-album attempt and their completion
@@ -131,7 +131,8 @@
 //     full-set PUT, the unchanged title writing nothing, the chip
 //     reseed).
 //  8. The member perspective: the member signs in through their own
-//     form, the wall's "Shared with you" section carries the album,
+//     form, the wall's one list carries the album's shared card
+//     (the owner's name, the read-only chip),
 //     the wall renders NO creation affordance (the guard's visual
 //     half), the member's create-album attempt and completion call
 //     both answer AUTH_FORBIDDEN (the refusal matrix's new arms),
@@ -228,8 +229,10 @@ const BASE_URL = 'http://localhost:8244';
 // provisions through the admin API in the suite's bootstrap. The
 // stack is always fresh, so the fixed identities are deterministic.
 const ADMIN_EMAIL = 'admin@m3c-e2e.invalid';
+const ADMIN_NAME = 'Mei Chen';
 const ADMIN_PASSWORD = 'correct-horse-battery';
 const MEMBER_EMAIL = 'grace@m3c-e2e.invalid';
+const MEMBER_NAME = 'Grace Hopper';
 const MEMBER_PASSWORD = 'correct-horse-battery';
 
 // The read-only source fixture (the stack arrangement above): the
@@ -323,7 +326,7 @@ test.beforeAll(async ({ playwright }) => {
 	// scenes then only exercise the web app's own surfaces.
 	const api = await playwright.request.newContext({ baseURL: BASE_URL });
 	const setup = await api.post('/api/v1/server/setup/admin', {
-		data: { name: 'M3c E2E', email: ADMIN_EMAIL, password: ADMIN_PASSWORD }
+		data: { name: ADMIN_NAME, email: ADMIN_EMAIL, password: ADMIN_PASSWORD }
 	});
 	expect(setup.status()).toBe(201);
 
@@ -333,7 +336,7 @@ test.beforeAll(async ({ playwright }) => {
 	expect(login.status()).toBe(200);
 
 	const member = await api.post('/api/v1/admin/users', {
-		data: { name: 'Grace Hopper', email: MEMBER_EMAIL, password: MEMBER_PASSWORD }
+		data: { name: MEMBER_NAME, email: MEMBER_EMAIL, password: MEMBER_PASSWORD }
 	});
 	expect(member.status()).toBe(201);
 	const memberBody = (await member.json()) as { id?: string };
@@ -653,9 +656,11 @@ test.describe('the administrator scenes', () => {
 		await expect(dialog.getByText('Only you')).toBeVisible();
 		await dialog.getByRole('button', { name: 'Add', exact: true }).click();
 		const picker = page.getByRole('listbox', { name: 'Candidate members' });
-		await expect(picker.getByRole('option', { name: MEMBER_EMAIL })).toBeVisible();
+		// The candidate row names the person (the identity rule: the
+		// display name leads, never the login address).
+		await expect(picker.getByRole('option', { name: MEMBER_NAME })).toBeVisible();
 		await picker.press('Enter');
-		await expect(dialog.locator('.audience-field__chip')).toContainText(MEMBER_EMAIL);
+		await expect(dialog.locator('.audience-field__chip')).toContainText(MEMBER_NAME);
 		await expect(picker).toHaveCount(0);
 		await expect(dialog.getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
 		await expect(dialog.getByText('No other account is available.')).toBeVisible();
@@ -683,7 +688,7 @@ test.describe('the administrator scenes', () => {
 		await expect(page.getByRole('dialog', { name: 'Album properties', exact: true })).toBeVisible();
 		await expect(
 			page.getByRole('dialog', { name: 'Album properties', exact: true }).locator('.audience-field__chip')
-		).toContainText(MEMBER_EMAIL);
+		).toContainText(MEMBER_NAME);
 		await expect(
 			page
 				.getByRole('dialog', { name: 'Album properties', exact: true })
@@ -714,13 +719,16 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 	await expect(page).toHaveURL(/\/timeline$/);
 
-	// The wall's "Shared with you" section carries the album with the
-	// owner attribution and the honest count.
+	// The wall is ONE list (no own/shared sections): the shared album's
+	// card carries the owner's NAME beside the read-only chip and the
+	// honest count -- the address never renders.
 	await page.goto('/albums');
 	const card = page.locator('a.album-card').filter({ hasText: ALBUM_TITLE });
-	await expect(page.getByRole('heading', { level: 2, name: 'Shared with you' })).toBeVisible();
+	await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
 	await expect(card).toBeVisible();
-	await expect(card).toContainText(`Shared by ${ADMIN_EMAIL}`);
+	await expect(card.locator('.album-card__badge--owner')).toHaveText(`Shared by ${ADMIN_NAME}`);
+	await expect(card.locator('.album-card__badge--owner')).not.toContainText(ADMIN_EMAIL);
+	await expect(card.locator('.album-card__badge--readonly')).toHaveText('Read-only');
 	await expect(card).toContainText('2 photos');
 
 	// The creation guard's visual half: mounting an existing
