@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { ambiguousLabels, displayNameOf, initialOf } from './identity';
 
-// The identity presentation rule (web-ia §7.30): the display name
+// The identity presentation rule: the display name
 // leads, an empty one falls back to the email, and two accounts under
 // one name get the email as their disambiguating title.
 

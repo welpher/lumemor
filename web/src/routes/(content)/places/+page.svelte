@@ -130,7 +130,9 @@
 	<title>{$_('nav_places')} · lumemor</title>
 </svelte:head>
 
-<section class="places max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<!-- The card grid's container ): full width + 16px margins --
+     a wider window adds columns, the cards' own size stays bounded. -->
+<section class="places px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
 	<!-- THE ONE ROW: the page title with the city count on the left,
 	     no action on the right (the view is the grid alone until the
 	     map's own decision lands), one divider under the row. The

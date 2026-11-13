@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The avatar picker of the person detail (web-ia §7.17): the
+	// The avatar picker of the person detail: the
 	// person's FACES are the candidates -- each face's crop, square,
 	// no file name and no source photo name (a name helps nobody
 	// recognize a face and only turns the grid into a table). The

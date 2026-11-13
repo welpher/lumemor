@@ -694,8 +694,12 @@
 	{:else if detail !== null}
 		<!-- The context block (the page's card-framed text: the
 		     notices and the shared error line) -- the
-		     WALL below is full-flow edge-to-edge like every wall. -->
-		<div class="album-detail__body max-w-[1200px] mx-auto px-2">
+		     WALL below is full-flow edge-to-edge like every wall
+		     (the wall is full width + 8px margins +
+		     the reserved 72px month-axis slot, so this column takes
+		     the same band and the page's own text never runs under
+		     the axis). -->
+		<div class="album-detail__body px-2 pe-[72px]">
 			{#if owner && detail.type === 'directory' && rescanRun !== null}
 				<!-- The rescan's live progress (the models download page's
 				     mechanism, keyed by the run identifier): the counts
@@ -766,7 +770,7 @@
 		     selection (the trash action alone); every other face
 		     passes no runner, so the tiles are pure navigation and no
 		     batch bar ever rises. -->
-		<section class="album-detail__wall px-2" aria-busy={$wall.status === 'loading'}>
+		<section class="album-detail__wall px-2 pe-[72px]" aria-busy={$wall.status === 'loading'}>
 			{#if wallFirstLoad}
 				<p class="album-detail__wall-status my-12 text-center text-text-soft animate-loading-in" role="status">
 					{$_('albums_detail_loading')}

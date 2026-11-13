@@ -5,7 +5,7 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 import type { UnnamedClusterSummary } from '$lib/api/people';
 import Page from './+page.svelte';
 
-// The unnamed region of the people surface (web-ia §7.18 / §7.20):
+// The unnamed region of the people surface:
 // the one-row bar (back + the title with the REGION's count, no
 // action at all), the cards as ENTRANCES -- anchors into the person
 // detail's unnamed variant, no check circles, no select mode, no
@@ -131,7 +131,7 @@ test('the bar carries the back control and the title with the region count, and 
 	expect(document.body.querySelector('.unnamed__title')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
 		'Unnamed · 2 groups'
 	);
-	// §7.20: no selection surface anywhere -- no select toggle, no
+	// No selection surface anywhere -- no select toggle, no
 	// merge action, no batch bar.
 	const barButtons = Array.from(document.body.querySelectorAll<HTMLElement>('.unnamed__toolbar button'));
 	expect(barButtons).toHaveLength(0);
