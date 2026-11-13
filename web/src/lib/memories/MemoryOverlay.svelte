@@ -861,46 +861,73 @@
 					</span>
 				</footer>
 			{:else if mode === 'grid'}
-				<!-- THE GRID: one thumbnail per member, square, the selection
-				     always armed (its check is part of the cell, not a hover
-				     reveal). The batch bar carries the removal. -->
+				<!-- THE GRID: one thumbnail per member, square. The owner's
+				     cells carry the always-armed selection (its check is part
+				     of the cell, not a hover reveal) and the batch bar carries
+				     the removal; a member's grid is the browse face -- the
+				     server refuses their membership writes. -->
 				<div class="memory-overlay__grid-wrap min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-24">
 					<div
 						class="memory-overlay__grid grid grid-cols-[repeat(auto-fill,minmax(min(150px,100%),1fr))] gap-2"
 					>
 						{#each items as item (item.id)}
 							{@const on = selection.has(item.id)}
-							<button
-								class="memory-overlay__cell group relative aspect-square overflow-hidden rounded-control bg-accent-soft cursor-pointer"
-								class:is-selected={on}
-								type="button"
-								aria-pressed={on}
-								aria-label={item.originalFilename}
-								onclick={() => toggleSelected(item.id)}
-							>
-								{#if item.isReady}
-									<img
-										class="absolute inset-0 h-full w-full object-cover"
-										src={tileUrl(item.id)}
-										alt=""
-										loading="lazy"
-										decoding="async"
-										draggable="false"
-									/>
-								{/if}
-								<span
-									class="memory-overlay__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex h-[26px] w-[26px] items-center justify-center rounded-full border border-cream-text/35 bg-night text-transparent"
-									class:is-on={on}
-									aria-hidden="true"
+							{#if owner}
+								<!-- The owner's cell: the selection is armed from the
+								     start, the check is part of the cell. -->
+								<button
+									class="memory-overlay__cell relative aspect-square overflow-hidden rounded-control bg-accent-soft cursor-pointer"
+									class:is-selected={on}
+									type="button"
+									aria-pressed={on}
+									aria-label={item.originalFilename}
+									onclick={() => toggleSelected(item.id)}
 								>
-									<Check size={14} />
-								</span>
-							</button>
+									{#if item.isReady}
+										<img
+											class="absolute inset-0 h-full w-full object-cover"
+											src={tileUrl(item.id)}
+											alt=""
+											loading="lazy"
+											decoding="async"
+											draggable="false"
+										/>
+									{/if}
+									<span
+										class="memory-overlay__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex h-[26px] w-[26px] items-center justify-center rounded-full border border-cream-text/35 bg-night text-transparent"
+										class:is-on={on}
+										aria-hidden="true"
+									>
+										<Check size={14} />
+									</span>
+								</button>
+							{:else}
+								<!-- A member's grid is a BROWSE face: the server
+								     refuses their every membership write (removal
+								     is the owner's curation), so the cell carries no
+								     check and no batch bar ever rises -- a dead
+								     affordance is never wired. The thumbnails still
+								     name themselves for a reader's aid. -->
+								<div
+									class="memory-overlay__cell relative aspect-square overflow-hidden rounded-control bg-accent-soft"
+								>
+									{#if item.isReady}
+										<img
+											class="absolute inset-0 h-full w-full object-cover"
+											src={tileUrl(item.id)}
+											alt={item.originalFilename}
+											loading="lazy"
+											decoding="async"
+											draggable="false"
+										/>
+									{/if}
+								</div>
+							{/if}
 						{/each}
 					</div>
 				</div>
 
-				{#if selectedIds.length > 0}
+				{#if owner && selectedIds.length > 0}
 					<!-- The batch bar: the count, the removal, the cancel. The
 					     removal ends the REFERENCES; the photos stay where they
 					     live, so the act never borrows the delete vocabulary. -->
