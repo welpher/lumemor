@@ -120,6 +120,7 @@ function faceSummary(id: string, overrides: Record<string, unknown> = {}): Recor
 		thumbnail: `/api/v1/faces/${id}/thumbnail`,
 		clusterId: `c-${id}`,
 		label: null,
+		birthDate: null,
 		...overrides
 	};
 }
@@ -129,10 +130,9 @@ function personTarget(clusterId: string, name: string): Record<string, unknown> 
 	return {
 		clusterId,
 		name,
-		faceCount: 12,
+		photoCount: 12,
 		representativeFaceId: `f-${clusterId}`,
-		thumbnail: `/api/v1/faces/f-${clusterId}/thumbnail`,
-		isHidden: false
+		thumbnail: `/api/v1/faces/f-${clusterId}/thumbnail`
 	};
 }
 
@@ -964,7 +964,7 @@ test('the layered Escape closes the assign dialog, then the drawer, then leaves'
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
 		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
-		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [] }))
+		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], totalCount: 0 }))
 	]);
 	await settle();
 
@@ -1377,7 +1377,7 @@ test('a zoomed Live Photo press keeps the motion layer inside the zoomed stage',
 
 test('the drawer renders one chip per face with the caller-visible label states', async () => {
 	const faces = [
-		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		faceSummary('f1', { label: { name: 'Ada' } }),
 		faceSummary('f2'),
 		faceSummary('f3', { clusterId: null })
 	];
@@ -1413,6 +1413,34 @@ test('the drawer renders one chip per face with the caller-visible label states'
 	flushSync();
 });
 
+test('a named chip carries the capture-time age when the person has a birth date', async () => {
+	// The detail's takenAt is 2026-11-01; the person was born
+	// 1992-03-15, so the photo catches them at 34 years 7 months (the
+	// person_age_year_months arm). The unnamed and not-grouped chips
+	// carry no age -- there is no person, hence no birth date.
+	const faces = [
+		faceSummary('f1', { label: { name: 'Ada' }, birthDate: '1992-03-15' }),
+		faceSummary('f2', { birthDate: '1992-03-15' }),
+		faceSummary('f3', { clusterId: null })
+	];
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces })))
+	]);
+	await settle();
+	openDrawer();
+
+	const chips = Array.from(document.body.querySelectorAll<HTMLElement>('.info__face'));
+	expect(chips).toHaveLength(3);
+	expect(chips[0]?.querySelector('.info__face-name')?.textContent).toBe('Ada');
+	expect(chips[0]?.querySelector('.info__face-age')?.textContent).toBe('34 years 7 months');
+	// An unlabeled face of a person with a birth date shows no age:
+	// the chip does not know whose it is.
+	expect(chips[1]?.querySelector('.info__face-age')).toBeNull();
+	expect(chips[2]?.querySelector('.info__face-age')).toBeNull();
+	unmount(app);
+	flushSync();
+});
+
 test("the drawer's browsable rows deep-link: albums, tags, camera, named faces, place", async () => {
 	// The approved L3 face: the rows that name a browsable context
 	// render as links (the icon-first rule's leading glyph rides the
@@ -1426,7 +1454,7 @@ test("the drawer's browsable rows deep-link: albums, tags, camera, named faces, 
 			{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'owner' }
 		],
 		place: { placeId: 2988507, name: 'Paris' },
-		faces: [faceSummary('f1', { label: { name: 'Ada', isHidden: false } })]
+		faces: [faceSummary('f1', { label: { name: 'Ada' } })]
 	});
 	const { app } = mountViewer('a2', [get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detail))]);
 	await settle();
@@ -1476,13 +1504,15 @@ test('the assign flow moves a face onto an existing person and the chip converge
 	// move lands it on Ada's cluster and the refetch carries the label.
 	let moved = false;
 	const facesNow = () => [
-		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
-		moved ? faceSummary('f2', { clusterId: 'c1', label: { name: 'Ada', isHidden: false } }) : faceSummary('f2')
+		faceSummary('f1', { label: { name: 'Ada' } }),
+		moved ? faceSummary('f2', { clusterId: 'c1', label: { name: 'Ada' } }) : faceSummary('f2')
 	];
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
 		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
-		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [unnamedTarget('c9', 4)] })),
+		get('/api/v1/people/unnamed?limit=60', () =>
+			jsonResponse(200, { items: [unnamedTarget('c9', 4)], totalCount: 1 })
+		),
 		post('/api/v1/faces/f2/move', () => {
 			moved = true;
 			return jsonResponse(200, { faceId: 'f2', clusterId: 'c1' });
@@ -1525,14 +1555,12 @@ test('a move on a not-yet-grouped face lands on the picked person', async () => 
 	// target's label.
 	let moved = false;
 	const facesNow = () => [
-		moved
-			? faceSummary('f3', { clusterId: 'c1', label: { name: 'Ada', isHidden: false } })
-			: faceSummary('f3', { clusterId: null })
+		moved ? faceSummary('f3', { clusterId: 'c1', label: { name: 'Ada' } }) : faceSummary('f3', { clusterId: null })
 	];
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
 		get('/api/v1/people', () => jsonResponse(200, [personTarget('c1', 'Ada')])),
-		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], nextCursor: null })),
+		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], nextCursor: null, totalCount: 0 })),
 		post('/api/v1/faces/f3/move', () => {
 			moved = true;
 			return jsonResponse(200, { faceId: 'f3', clusterId: 'c1' });
@@ -1566,7 +1594,7 @@ test('the assign dialog with no people at all says there are no people yet', asy
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces }))),
 		get('/api/v1/people', () => jsonResponse(200, [])),
-		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], nextCursor: null }))
+		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], nextCursor: null, totalCount: 0 }))
 	]);
 	await settle();
 	openDrawer();
@@ -1585,13 +1613,15 @@ test('the assign dialog with no people at all says there are no people yet', asy
 test('a named face chip deep-links into the person page; an unnamed chip names its cluster as a new person', async () => {
 	let named = false;
 	const facesNow = () => [
-		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
-		named ? faceSummary('f2', { label: { name: 'Grace', isHidden: false } }) : faceSummary('f2')
+		faceSummary('f1', { label: { name: 'Ada' } }),
+		named ? faceSummary('f2', { label: { name: 'Grace' } }) : faceSummary('f2')
 	];
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
 		get('/api/v1/people', () => jsonResponse(200, [])),
-		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [unnamedTarget('c9', 4)] })),
+		get('/api/v1/people/unnamed?limit=60', () =>
+			jsonResponse(200, { items: [unnamedTarget('c9', 4)], totalCount: 1 })
+		),
 		put('/api/v1/people/c-f2/label', () => {
 			named = true;
 			return jsonResponse(200, { clusterId: 'c-f2', name: 'Grace', isHidden: false });
@@ -1639,7 +1669,7 @@ test('a named face chip deep-links into the person page; an unnamed chip names i
 
 test('person events converge the chips through the refetch; unrelated events add no fetch', async () => {
 	let labeled = false;
-	const facesNow = () => [faceSummary('f2', labeled ? { label: { name: 'Ada', isHidden: false } } : {})];
+	const facesNow = () => [faceSummary('f2', labeled ? { label: { name: 'Ada' } } : {})];
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() })))
 	]);
@@ -1899,7 +1929,7 @@ function editRowButton(faceId: string, label: string): HTMLButtonElement {
 
 test("the People pencil opens the edit-people panel in the drawer's place; the photo stays", async () => {
 	const faces = [
-		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		faceSummary('f1', { label: { name: 'Ada' } }),
 		faceSummary('f2'),
 		faceSummary('f3', { clusterId: null })
 	];
@@ -1977,8 +2007,8 @@ test('the reassign stages locally, the check commits once, and the echo counts t
 	// moves it onto Mom's cluster and the refetch carries the label.
 	let moved = false;
 	const facesNow = () => [
-		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
-		moved ? faceSummary('f2', { clusterId: 'p2', label: { name: 'Mom', isHidden: false } }) : faceSummary('f2')
+		faceSummary('f1', { label: { name: 'Ada' } }),
+		moved ? faceSummary('f2', { clusterId: 'p2', label: { name: 'Mom' } }) : faceSummary('f2')
 	];
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
@@ -2061,7 +2091,7 @@ test('the create-from-face stages and the commit seeds the person; the detach wr
 	// whose dialog holds the create row.
 	let created = false;
 	const facesNow = () => [
-		faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		faceSummary('f1', { label: { name: 'Ada' } }),
 		created ? faceSummary('f3', { clusterId: 'n1' }) : faceSummary('f3', { clusterId: null })
 	];
 	const { app, fetchMock } = mountViewer('a2', [
@@ -2111,9 +2141,7 @@ test('the detach confirm names the person, the write is immediate, and the row l
 	// not-yet-grouped (the honest post-state the refetch carries).
 	let detached = false;
 	const facesNow = () => [
-		detached
-			? faceSummary('f1', { clusterId: null, label: null })
-			: faceSummary('f1', { label: { name: 'Ada', isHidden: false } }),
+		detached ? faceSummary('f1', { clusterId: null, label: null }) : faceSummary('f1', { label: { name: 'Ada' } }),
 		faceSummary('f2')
 	];
 	const { app, fetchMock } = mountViewer('a2', [
@@ -2160,9 +2188,7 @@ test('the detach drops the row\u2019s staged reassign', async () => {
 	// surprise move.
 	let detached = false;
 	const facesNow = () => [
-		detached
-			? faceSummary('f1', { clusterId: null, label: null })
-			: faceSummary('f1', { label: { name: 'Ada', isHidden: false } })
+		detached ? faceSummary('f1', { clusterId: null, label: null }) : faceSummary('f1', { label: { name: 'Ada' } })
 	];
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
@@ -2289,7 +2315,7 @@ test('the layered Escape falls from the pick dialog to the panel, then the drawe
 test('the face creation and detach events of other sessions converge the detail', async () => {
 	let detached = false;
 	const facesNow = () => [
-		faceSummary('f1', detached ? { clusterId: null, label: null } : { label: { name: 'Ada', isHidden: false } })
+		faceSummary('f1', detached ? { clusterId: null, label: null } : { label: { name: 'Ada' } })
 	];
 	const { app, fetchMock } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() })))

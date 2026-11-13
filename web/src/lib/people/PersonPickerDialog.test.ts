@@ -17,10 +17,9 @@ function person(clusterId: string, name: string): PersonSummary {
 	return {
 		clusterId,
 		name,
-		faceCount: 9,
+		photoCount: 9,
 		representativeFaceId: `f-${clusterId}`,
-		thumbnail: `/api/v1/faces/f-${clusterId}/thumbnail`,
-		isHidden: false
+		thumbnail: `/api/v1/faces/f-${clusterId}/thumbnail`
 	};
 }
 
@@ -125,7 +124,7 @@ function rowText(): string[] {
 	return rows().map((row) => (row.textContent ?? '').replace(/\s+/g, ' ').trim());
 }
 
-test('the dialog renders the people as avatar rows with their face counts', () => {
+test('the dialog renders the people as avatar rows with their photo counts', () => {
 	mounted.push(mountDialog());
 
 	expect(rowText()).toEqual(['Grace 9', 'Mom 9', 'Dad 9', 'Grandma 9']);
@@ -137,10 +136,10 @@ test('the dialog renders the people as avatar rows with their face counts', () =
 	// accessible name (the icon + number count language).
 	const counts = Array.from(document.body.querySelectorAll('[role="img"]'));
 	expect(counts.map((entry) => entry.getAttribute('aria-label'))).toEqual([
-		'9 faces',
-		'9 faces',
-		'9 faces',
-		'9 faces'
+		'9 photos',
+		'9 photos',
+		'9 photos',
+		'9 photos'
 	]);
 });
 
