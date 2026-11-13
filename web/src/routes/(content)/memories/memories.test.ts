@@ -264,6 +264,12 @@ test('the wall keeps the memory rows alone in ONE list, newest first', async () 
 		'Read-only'
 	);
 	expect(shared?.querySelector('.memory-card__badge--manual')).toBeNull();
+	// The caption carries NO stray owner line: the retired
+	// card-level attribution stayed deleted, the attribution renders
+	// exactly once (the badge), and no raw message placeholder leaks.
+	expect(shared?.querySelector('.memory-card__owner')).toBeNull();
+	expect(shared?.textContent).not.toContain('{name}');
+	expect(shared?.querySelectorAll('.memory-card__badge--owner')).toHaveLength(1);
 	// Cards link into the memory's own detail.
 	expect(own?.getAttribute('href')).toBe('/memories/mem1');
 	expect(shared?.getAttribute('href')).toBe('/memories/mem4');

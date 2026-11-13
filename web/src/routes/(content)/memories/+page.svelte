@@ -343,11 +343,6 @@
 			<span class="memory-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
 				>{memory.title}</span
 			>
-			{#if memory.owner !== undefined}
-				<span class="memory-card__owner font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
-					>{$_('albums_shared_by', { values: { email: memory.owner.email } })}</span
-				>
-			{/if}
 			<span
 				class="memory-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
 				>{$_('memories_photo_count', { values: { count: memory.itemCount } })}</span
