@@ -376,6 +376,38 @@ test('the grid face selects with one click and the batch bar counts the picks', 
 	flushSync();
 });
 
+test("a member's grid is a browse face: no check, no batch bar, no membership write", async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			routes({
+				[`/api/v1/albums/${MEMORY_ID}?limit=1`]: () =>
+					jsonResponse(200, ownerDetail({ callerRole: 'viewer', shares: undefined, inTimeline: true }))
+			})
+		)
+	);
+	const { app } = mountOverlay({ mode: 'grid', card: sharedCard });
+	await settle();
+
+	// The member still sees the memory's thumbnails (the browse face),
+	// but nothing on them offers a write the server refuses: the cell
+	// is not a control, no check renders, and clicking it raises no
+	// batch bar.
+	const cells = Array.from(document.body.querySelectorAll<HTMLElement>('.memory-overlay__cell'));
+	expect(cells).toHaveLength(3);
+	expect(cells.every((cell) => cell.tagName === 'DIV')).toBe(true);
+	expect(document.body.querySelector('.memory-overlay__check')).toBeNull();
+	expect(cells[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/p1/thumbnail?size=tile');
+	expect(cells[0]?.querySelector('img')?.getAttribute('alt')).toBe('IMG_0001.jpg');
+	cells[0]?.click();
+	flushSync();
+	expect(document.body.querySelector('[role="toolbar"]')).toBeNull();
+	expect(document.body.querySelector('.memory-overlay__remove')).toBeNull();
+
+	unmount(app);
+	flushSync();
+});
+
 test('the removal ends references: the DELETE carries the picks, then the toast and the fresh count', async () => {
 	let removed = false;
 	vi.stubGlobal(
@@ -537,6 +569,9 @@ test("the owner's bar carries the three arms; the member's the attribution and t
 	for (const label of ['Edit memory', 'Change cover', 'Delete memory']) {
 		expect(buttonByLabel(label)).toBeTruthy();
 	}
+	// The caller's own reference set never feeds their timeline, so
+	// the owner's bar holds no timeline switch at all.
+	expect(dialog().querySelector('.memory-overlay__exclusion')).toBeNull();
 	unmount(ownerMount.app);
 	flushSync();
 	document.body.textContent = '';
