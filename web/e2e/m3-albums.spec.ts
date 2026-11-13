@@ -353,10 +353,13 @@ test('scene 1: the administrator signs in and lands on the pinned My photos card
 	await expect(page).toHaveTitle('Albums · lumemor');
 
 	// The wall is never empty on a fresh account: the pinned default
-	// album leads the "Your albums" section with the localized
-	// display name (the stored internal title never renders) and the
-	// honest zero count, and the create action stays beside it -- the
-	// ADMINISTRATOR'S entry (an admin session alone renders it).
+	// album leads the wall with the localized display name (the
+	// stored internal title never renders) and the honest zero count,
+	// and the create action rides the page bar's right edge -- the
+	// ADMINISTRATOR'S entry (an admin session alone renders it). The
+	// bar's left side is the page's one title with its own count.
+	await expect(page.locator('.albums__title')).toHaveText('Albums · 1 album');
+	await expect(page.locator('.albums__toolbar')).toHaveClass(/border-b/);
 	const myPhotos = page.locator('a.album-card').filter({ hasText: 'My photos' });
 	await expect(myPhotos).toBeVisible();
 	await expect(myPhotos).toContainText('0 photos');

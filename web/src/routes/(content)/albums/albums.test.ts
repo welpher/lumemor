@@ -242,8 +242,16 @@ test('the wall sections the albums off the callerRole: own first, shared after',
 
 	const ownSection = document.body.querySelector('.albums__own-section');
 	const sharedSection = document.body.querySelector('.albums__shared-section');
-	expect(ownSection?.querySelector('.albums__section-title')?.textContent).toBe('Your albums');
-	expect(sharedSection?.querySelector('.albums__section-title')?.textContent).toBe('Shared with you');
+	// The page's one 20px title lives in the bar with its count; the
+	// own group carries no label of its own any more, and the shared
+	// group keeps the 16px group label (one step under the page
+	// title).
+	const bar = document.body.querySelector('.albums__toolbar');
+	expect(bar?.querySelector('.albums__title')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Albums · 5 albums');
+	expect(ownSection?.querySelector('.albums__section-title')).toBeNull();
+	const sharedTitle = sharedSection?.querySelector('.albums__section-title');
+	expect(sharedTitle?.textContent).toBe('Shared with you');
+	expect(sharedTitle?.className).toContain('text-[16px]');
 
 	const ownCards = Array.from(ownSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
 	const sharedCards = Array.from(sharedSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
