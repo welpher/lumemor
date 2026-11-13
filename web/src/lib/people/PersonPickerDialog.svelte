@@ -147,7 +147,7 @@
 					aria-hidden="true"
 				/>
 				<input
-					class="person-picker__filter w-full ps-9 pe-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text bg-page border border-border-strong rounded-control focus:border-accent"
+					class="person-picker__filter w-full ps-9 pe-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text bg-page border border-border-strong rounded-control"
 					type="search"
 					placeholder={$_('people_picker_filter')}
 					aria-label={$_('people_picker_filter')}

@@ -227,7 +227,7 @@
 					class="absolute start-3 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none"
 				/>
 				<input
-					class="topbar-search w-full ps-9 pe-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+					class="topbar-search w-full ps-9 pe-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 					type="search"
 					placeholder={$_('nav_search')}
 					aria-label={$_('nav_search')}

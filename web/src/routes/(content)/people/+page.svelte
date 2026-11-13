@@ -161,7 +161,7 @@
 					<Search size={16} aria-hidden="true" />
 				</span>
 				<input
-					class="w-full ps-9 pe-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+					class="w-full ps-9 pe-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 					type="search"
 					bind:value={filter}
 					placeholder={$_('people_filter_placeholder')}
@@ -216,7 +216,7 @@
 					     face, or the best the caller can see), the caller's own
 					     name, and the photo count as icon + number. -->
 					<a
-						class="person-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+						class="person-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
 						href="/people/{encodeURIComponent(person.clusterId)}"
 					>
 						<span class="person-card__crop relative block aspect-square bg-accent-soft" aria-hidden="true">

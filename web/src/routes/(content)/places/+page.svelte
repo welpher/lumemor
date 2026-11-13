@@ -200,7 +200,7 @@
 	     per-caller count below. The click deep-links into the
 	     filtered browse. -->
 	<a
-		class="place-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+		class="place-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
 		href="/search?placeIds={place.placeId}"
 	>
 		<span class="place-card__cover relative block aspect-[4/3] bg-accent-soft" aria-hidden="true">

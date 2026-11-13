@@ -175,7 +175,7 @@
 					for="add-tag-target">{$_('tags_add_pick_label')}</label
 				>
 				<select
-					class="add-tag__target w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+					class="add-tag__target w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 					id="add-tag-target"
 					bind:value={targetId}
 				>
