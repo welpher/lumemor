@@ -203,7 +203,7 @@
 	<title>Trash · lumemor</title>
 </svelte:head>
 
-<section class="trash max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<section class="trash px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
 	<!-- THE ONE ROW: the page title with the row count on the left,
 	     no action on the right (a row's actions live on the row),
 	     one divider under the row. The retention note is NOT an
