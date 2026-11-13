@@ -240,7 +240,7 @@ test('the wall renders ONE list: own and shared cards mixed, no group labels', a
 	const page = mountPage();
 	await settle();
 
-	// No sections, no group labels (web-ia §7.29's single list); the
+	// No sections, no group labels (the design's single list); the
 	// page's one 20px title lives in the bar with its count.
 	const bar = document.body.querySelector('.albums__toolbar');
 	expect(bar?.querySelector('.albums__title')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Albums · 5 albums');

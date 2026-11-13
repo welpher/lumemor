@@ -317,7 +317,7 @@
 	}
 
 	/**
-	 * The capture-time age of one named face (web-ia §7.17): the
+	 * The capture-time age of one named face: the
 	 * person's birth date against THIS photo's takenAt. Absent when
 	 * the person carries no birth date, or the photo predates it --
 	 * the chip then renders its name alone (never a zero).

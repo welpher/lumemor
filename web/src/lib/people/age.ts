@@ -1,5 +1,5 @@
 // The capture-time age of one person in one photo: the birth date's
-// whole purpose beside the birthday memories (web-ia §7.17 -- the
+// whole purpose beside the birthday memories (the
 // person profile row's date exists so a photo's chip can say how old
 // the person was when it was taken).
 //

@@ -43,7 +43,7 @@
 
 	let { children }: LayoutProps = $props();
 
-	// THE DETAIL ROUTES' OWN CHROME (web-ia §7.21): while an album,
+	// THE DETAIL ROUTES' OWN CHROME: while an album,
 	// memory or person detail route is active the shell's topbar
 	// HIDES -- the page pins its own contextual bar (back + the
 	// type's icon actions) in the topbar's place, and the drawer nav

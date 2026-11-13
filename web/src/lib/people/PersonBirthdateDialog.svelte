@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The birth date dialog of the person detail (web-ia §7.17): one
+	// The birth date dialog of the person detail: one
 	// date field, the honest note about what the value is for, and
 	// the save / clear pair. The date is the person ENTITY's
 	// attribute -- an unnamed cluster carries one too -- and one

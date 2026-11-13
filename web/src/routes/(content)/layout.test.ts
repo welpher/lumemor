@@ -164,7 +164,7 @@ test('a push navigation resets the scroll root; a popstate keeps it', () => {
 });
 
 test('the top bar hides while a detail route is active (the page owns its chrome)', () => {
-	// THE THREE DETAIL ROUTES SHARE ONE RULE (§7.21): the album, the
+	// THE THREE DETAIL ROUTES SHARE ONE RULE: the album, the
 	// memory and the person detail each replace the shell's global
 	// topbar with their own contextual bar -- while the route is
 	// active the shell renders NO topbar (the main region fills the

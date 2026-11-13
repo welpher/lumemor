@@ -1,13 +1,13 @@
 <script lang="ts">
 	// The album wall: ONE cover-card grid -- the caller's own cards (the
 	// pinned sync card of the default "My photos" album first) and the
-	// albums shared to them, mixed by the cards' own recency (web-ia
-	// §7.29's single list: no own/shared sections, no group labels) --
+	// albums shared to them, mixed by the cards' own recency (the
+	// single list: no own/shared sections, no group labels) --
 	// with the collage covers (the pinned cover full-bleed, otherwise
 	// the newest members: two split, three the 2+1 fall, four the
 	// quad) and one badge row under each count: a shared card carries
 	// its owner's attribution beside the read-only badge, an own card
-	// its shared / excluded state (web-ia §7.30: the attribution names
+	// its shared / excluded state (the attribution names
 	// the person, the email only falls back). THE MEMORY ROWS ARE NOT
 	// THIS WALL'S: the reference sets moved to their own route (the
 	// memories wall), so the grid filters the memory type out. Card
@@ -111,7 +111,7 @@
 	// The wall's ONE list: the album cards (the memory rows leave --
 	// the reference sets' home is the memories wall), the pinned sync
 	// card first and everything else by the card's own `updatedAt`
-	// descending (web-ia §7.29: own and shared mixed, most recently
+	// descending (own and shared mixed, most recently
 	// updated first; the sort is stable, so the server's arm order
 	// breaks equal timestamps).
 	const albumCards = $derived.by(() => {
@@ -317,7 +317,7 @@
 			</div>
 		{:else}
 			<!-- ONE grid: own and shared cards mixed by recency, no group
-			     labels (web-ia §7.29). -->
+			     labels. -->
 			<div class="albums__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
 				{#each albumCards as album (album.id)}
 					{@render card(album)}
@@ -344,7 +344,7 @@
 {#snippet card(album: AlbumSummary)}
 	<!-- One album card, three lines: the title, the count, and the badge
 	     row -- a shared card's attribution beside its read-only badge, an
-	     own card's shared / excluded state (web-ia §7.29 / §7.30). The
+	     own card's shared / excluded state. The
 	     badge row renders even when empty: the cards stay equal height. -->
 	<a
 		class="album-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
@@ -427,7 +427,7 @@
 				{:else if album.isShared}
 					<!-- The owner's own "someone else sees this" mark; the
 					     shared face above says the same thing in the
-					     reader's direction instead (web-ia §7.29). -->
+					     reader's direction instead. -->
 					<span
 						class="album-card__badge album-card__badge--shared inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
 					>

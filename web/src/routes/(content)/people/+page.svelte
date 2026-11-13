@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The named region of the people surface (web-ia §7.18's action
+	// The named region of the people surface (the design's action
 	// bar over a card grid): the one-row bar carries the title with
 	// the person count, the name filter and the unnamed region's
 	// entry (badged with the unnamed group count); the cards below
@@ -7,7 +7,7 @@
 	// PHOTO count -- photos, not faces, so the number the card shows
 	// is the number of photos clicking through will render.
 	//
-	// THE TWO STATES ONLY (§7.19): the people domain is named
+	// THE TWO STATES ONLY: the people domain is named
 	// (this page) or unnamed (`/people/unnamed`). Hiding a person
 	// retired whole -- there is no badge and no third region; a
 	// person leaves this list by removing the caller's name

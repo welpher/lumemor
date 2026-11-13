@@ -78,7 +78,7 @@
 	// fetch when the detail answers viewer (the owner is the
 	// memory's creator, an invariant; a failed probe leaves the
 	// badge alone, honestly). The identity arrives whole -- the name
-	// leads and the email is the fallback (web-ia §7.30).
+	// leads and the email is the fallback.
 	let ownerIdentity = $state<{ name: string; email: string } | null>(null);
 
 	// One write at a time across every action (the dialogs and the
