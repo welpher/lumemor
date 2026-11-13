@@ -1,7 +1,7 @@
 <script lang="ts">
 	// THE UNIFIED WALL: ONE rendering
 	// component every photo surface composes -- the timeline, the
-	// album detail (a pure-navigation wall, no selection), the
+	// sync album (a pure-navigation wall, no selection), the
 	// favorites and hidden wrappers, the search browse mode. The
 	// component takes bare ITEMS: the month/day fold, the row layout
 	// engine, the ResizeObserver re-pack, the PhotoTile tree and the
@@ -38,7 +38,7 @@
 	// the tiles' check affordance (the hover-reveal entry, the
 	// select-mode reveal, the mid-selection tile-toggle) and composes
 	// the bar; a wall with neither renders NO check at all -- the
-	// tiles are pure click-to-viewer navigation (the album detail's
+	// tiles are pure click-to-viewer navigation (the sync album's
 	// wall, the sync-album read-only pin). No page ever wires a dead
 	// affordance. `selectMode` is the one bindable: a page-level
 	// arming writes it; the wall owns the drops (Escape, the bar's

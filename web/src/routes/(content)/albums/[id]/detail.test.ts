@@ -20,8 +20,11 @@ import Page from './+page.svelte';
 // localized display name for the title -- a viewer the exclusion
 // toggle alone (the departure went with the revoke endpoint it
 // rode) -- over the wall that pages the album's own timeline,
-// curating a DELETE-ONLY selection exactly when the server-derived
-// `deletable` face holds (owner AND writable AND the switch). A
+// curating the role's action subset: a DELETE-ONLY selection exactly
+// when the server-derived `deletable` face holds (owner AND writable
+// AND the switch), a member's per-user favorite toggle alone (the
+// hide switch resolves the caller's own rows, so another account's
+// album has none to write). A
 // MEMORY id never renders here: the detail read that answers one
 // redirects to the memory's own route (its suite pins that face).
 // Every write adopts its own response or converges through the
@@ -387,7 +390,81 @@ test('a viewer sees read-only: the exclusion toggle alone, no write affordances'
 	// dialog, but the viewer holds no dialog; the member side is
 	// unchanged).
 	expect(() => buttonByLabel('Keep out of timeline')).not.toThrow();
+	// ... and the bar's action cluster holds EXACTLY that one
+	// button: the owner domain's entries are absent, not greyed.
+	const actions = document.body.querySelector<HTMLElement>('.album-detail__actions');
+	expect(actions?.querySelectorAll('button')).toHaveLength(1);
 	expect(tiles()).toHaveLength(2);
+	unmount(page);
+	flushSync();
+});
+
+test("a viewer's wall curates their own favorites: no trash, no hide on another account's photos", async () => {
+	detailState = {
+		...detailState,
+		callerRole: 'viewer',
+		shares: undefined,
+		inTimeline: true
+	};
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/assets/batch': (init?: RequestInit) => {
+				expect(init?.method).toBe('POST');
+				// The per-user arm alone: the favorite row is the
+				// caller's own state over a photo they can see.
+				expect(JSON.parse(String(init?.body))).toEqual({ action: 'favorite', ids: ['a1'] });
+				return jsonResponse(200, { affected: 1, missing: [] });
+			}
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The member's wall curates -- the check affordance renders --
+	// because a per-user write can land here.
+	const check = tiles()[0]?.querySelector<HTMLElement>('.tile__check');
+	expect(check).not.toBeNull();
+	check?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The bar's subset is the per-user favorite toggle plus the
+	// clear: the trash would delete the owner's files, and the hide
+	// switch writes the owner's own row (the batch resolves it
+	// against the caller's OWNED ids, so over a shared album it
+	// lands on nothing) -- neither renders, and nothing renders
+	// disabled.
+	const bar = document.body.querySelector<HTMLElement>('.batchbar');
+	expect(bar).not.toBeNull();
+	expect(bar?.textContent).toContain('1 selected');
+	for (const label of ['Trash', 'Hide', 'Unhide', 'Restore', 'Add tag', 'Add to memory']) {
+		expect(() => buttonByLabel(label, bar as ParentNode), label).toThrow();
+	}
+	expect(() => buttonByLabel('Favorite', bar as ParentNode)).not.toThrow();
+	expect(() => buttonByLabel('Clear selection', bar as ParentNode)).not.toThrow();
+	expect(bar?.querySelectorAll('button')).toHaveLength(2);
+
+	// The write: one batch POST, and the per-user flag flips on the
+	// tile at once (the silent arm -- no event follows it).
+	buttonByLabel('Favorite', bar as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/batch');
+	expect(posts).toHaveLength(1);
+	expect(tiles()[0]?.querySelector('.tile__badge--favorite')).not.toBeNull();
+	// The landed pass cleared the selection (the success arm): the
+	// bar is gone.
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+
+	// Re-selecting reads the flipped state: the same button now
+	// offers the unfavorite.
+	tiles()[0]
+		?.querySelector<HTMLElement>('.tile__check')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const again = document.body.querySelector<HTMLElement>('.batchbar');
+	expect(() => buttonByLabel('Unfavorite', again as ParentNode)).not.toThrow();
+	expect(() => buttonByLabel('Favorite', again as ParentNode)).toThrow();
 	unmount(page);
 	flushSync();
 });
@@ -1159,6 +1236,14 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 	);
 	// The toggle flipped: the action now offers the include.
 	expect(() => buttonByLabel('Keep in timeline')).not.toThrow();
+	// THE SELF-CONVERGENCE: the write publishes no event, so the
+	// page's own state is the response's -- nothing was refetched
+	// (a refetch of the stale fixture would have reverted the face)
+	// and no SSE echo arrived.
+	const detailReads = fetchMock.mock.calls.filter(([input]) =>
+		String(input).startsWith('/api/v1/albums/al1?limit=1')
+	);
+	expect(detailReads).toHaveLength(1);
 	unmount(page);
 	flushSync();
 });

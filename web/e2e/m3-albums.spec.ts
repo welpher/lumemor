@@ -136,9 +136,13 @@
 //     the wall renders NO creation affordance (the guard's visual
 //     half), the member's create-album attempt and completion call
 //     both answer AUTH_FORBIDDEN (the refusal matrix's new arms),
-//     the shared detail renders read-only (no owner affordance; the
-//     exclusion toggle is the member's own), and the member's
-//     timeline includes the shared items (the union's shared arm).
+//     the shared detail renders read-only (one action in the bar --
+//     the exclusion toggle, the member's own -- with no owner
+//     affordance beside it), the member's wall curates the per-user
+//     favorite alone (the check, the bar's two buttons, the silent
+//     write's flip), the toggle excludes the album from the member's
+//     own timeline and keeping it in brings the shared tiles back
+//     (the union's shared arm).
 //  9. The viewer's identity-aware drawer: a shared photo's info
 //     drawer renders the reads and the per-user favorite without any
 //     owner-only write affordance.
@@ -765,11 +769,58 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	for (const label of ['Properties', 'Rescan', 'Delete album', 'Remove album']) {
 		await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 	}
+	// The member view's action cluster holds EXACTLY one button --
+	// the caller's own timeline preference. Nothing the owner domain
+	// owns is rendered as a disabled control.
+	const cluster = page.locator('.album-detail__actions');
+	await expect(cluster.locator('button')).toHaveCount(1);
 	await expect(page.getByRole('button', { name: 'Keep out of timeline', exact: true })).toBeVisible();
 	await expect(page.locator('.tile')).toHaveCount(2);
 
-	// The member's timeline includes the shared items (the union's
-	// shared arm -- the member owns nothing of their own).
+	// The member's wall curates their own favorites -- and nothing
+	// else: the trash would delete the owner's files, and the hide
+	// switch writes the owner's row (the batch resolves it over the
+	// caller's own ids, so a shared album can never land it).
+	const check = page.locator('.tile__check').first();
+	await check.click();
+	const bar = page.getByRole('toolbar');
+	await expect(bar).toContainText('1 selected');
+	await expect(bar.getByRole('button', { name: 'Favorite', exact: true })).toBeVisible();
+	await expect(bar.getByRole('button', { name: 'Clear selection', exact: true })).toBeVisible();
+	await expect(bar.locator('button')).toHaveCount(2);
+	for (const label of ['Trash', 'Hide', 'Unhide', 'Restore']) {
+		await expect(bar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+	}
+
+	// The per-user write lands (the silent arm): the pass clears the
+	// selection, and the flipped flag reads back as the unfavorite.
+	await bar.getByRole('button', { name: 'Favorite', exact: true }).click();
+	await expect(page.locator('.batchbar')).toHaveCount(0);
+	await check.click();
+	await expect(bar.getByRole('button', { name: 'Unfavorite', exact: true })).toBeVisible();
+	// Toggling back restores the unflagged state the later scenes
+	// (and scene 9's favorite proof) expect.
+	await bar.getByRole('button', { name: 'Unfavorite', exact: true }).click();
+	await expect(page.locator('.batchbar')).toHaveCount(0);
+
+	// The one writable thing flips both ways, and the badge follows
+	// the response (the write publishes no event -- the page's own
+	// state is the answer).
+	await page.getByRole('button', { name: 'Keep out of timeline', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Keep in timeline', exact: true })).toBeVisible();
+	await expect(page.locator('.album-detail__badge--excluded')).toHaveText('Not in timeline');
+
+	// The exclusion reaches the caller's own aggregate timeline: the
+	// member owns nothing else, so the timeline settles empty.
+	await page.goto('/timeline');
+	await expect(page.locator('.timeline__empty')).toBeVisible();
+	await expect(page.locator('.tile')).toHaveCount(0);
+
+	// Keeping it in restores the shared items (the union's shared
+	// arm -- the member owns nothing of their own).
+	await page.goto(`/albums/${albumId}`);
+	await page.getByRole('button', { name: 'Keep in timeline', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Keep out of timeline', exact: true })).toBeVisible();
 	await page.goto('/timeline');
 	await expect(page.getByRole('link', { name: PHOTO_A_NAME, exact: true })).toBeVisible();
 	await expect(page.getByRole('link', { name: PHOTO_B_NAME, exact: true })).toBeVisible();

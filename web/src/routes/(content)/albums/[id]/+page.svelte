@@ -28,15 +28,19 @@
 	// the page root sets --wall-sticky-offset so those headers stick
 	// BELOW the bar instead of under it.
 	//
-	// THE NO-SELECTION WALL (restated on
-	// the selection flow's new gate): the album context
-	// renders the shared Wall with NO curation -- no onbatch runner
-	// is wired, so no hover checkbox renders and no batch bar
-	// exists; the tiles are pure click-to-viewer navigation. The
-	// wall's data walk (the keyset client over the album narrow, the
-	// SSE convergence, the sentinel, the wallItems publication) is
-	// the PAGE's own concern here, the same shape the timeline page
-	// owns for its walk.
+	// THE WALL'S CURATION IS THE ROLE'S (the selection flow's
+	// capability gate): the runner's presence is the capability, so
+	// only the faces that can write wire one -- the owner of a
+	// deletable directory album (the delete-only selection) and a
+	// member (their own per-user favorite marks). Every other face
+	// (the sync album, the owner's read-only source) passes none: no
+	// hover check renders and no batch bar exists, the tiles pure
+	// click-to-viewer navigation. Nothing is rendered as a disabled
+	// button -- an action a caller cannot take is absent. The wall's
+	// data walk (the keyset client over the album narrow, the SSE
+	// convergence, the sentinel, the wallItems publication) is the
+	// PAGE's own concern here, the same shape the timeline page owns
+	// for its walk.
 	//
 	// THE PINNED CHOICES (the albums-as-sources reshape, completed
 	// by the autonomy face, simplified by the lock's retirement):
@@ -55,16 +59,21 @@
 	//   "My photos" album) holds NOTHING: system-managed, read-only
 	//   -- the explicit empty arm below, zero write affordances, and
 	//   the server refuses every write face of the id anyway.
-	//   Read-only is VISUAL: a sharee never sees a write affordance,
-	//   the server keeps refusing them.
-	// - THE WALL'S DELETE AFFORDANCE: the owner of a
-	//   DELETABLE directory album (owner AND writable source AND
-	//   the deletability switch -- computed server-side as
-	//   `deletable`, pure data) curates a
-	//   delete-only selection: `onbatch` is wired with the trash
-	//   action alone, so the wall's own selection machinery (the
-	//   hover check, the batch bar) renders exactly then and never
-	//   otherwise. A member's wall stays pure navigation.
+	//   Read-only is VISUAL: the member view opens exactly one
+	//   writable thing -- the caller's own timeline preference --
+	//   and everything the owner domain owns (the properties, the
+	//   cover, the audience, the remove) is absent, never greyed.
+	// - THE WALL'S ACTION SUBSET: the owner of a DELETABLE directory
+	//   album (owner AND writable source AND the deletability switch
+	//   -- computed server-side as `deletable`, pure data) curates a
+	//   delete-only selection; a member curates the per-user
+	//   favorite toggle alone. The hide switch is the owner's own
+	//   row, and the batch resolves it against the caller's OWNED
+	//   ids -- over another account's album it resolves nothing --
+	//   so it never renders here: the bar offers what the write can
+	//   actually land. The per-user favorite is the arm that
+	//   resolves the caller's VISIBLE ids, so it lands for a member
+	//   like it does on the aggregate timeline.
 	// - Every write adopts its own response (the property patch
 	//   carries the wall card after the edit, the preference
 	//   carries the stored switch) or converges through the detail
@@ -163,8 +172,8 @@
 	// (album.items-changed bumps it and the walk restarts from page
 	// one), the SSE asset convergence, the sentinel and the
 	// wallItems publication. The wall's SELECTION exists exactly
-	// when this page wires the batch runner below (the `deletable`
-	// gate): every other face is pure navigation.
+	// when this page wires the batch runner below (the role's
+	// action subset): every other face is pure navigation.
 	const wall = untrack(() => createTimelineClient({ path: '/api/v1/assets/timeline', view: 'timeline', albumId }));
 	let wallResetKey = $state(0);
 
@@ -175,6 +184,24 @@
 	// owner AND writable source AND the switch, pure
 	// data -- decides whether this wall curates at all.
 	const deletable = $derived(owner && detail?.type === 'directory' && detail.deletable === true);
+
+	// The wall's action subset, per the caller's role (see the
+	// header's pins): the owner's deletable directory album trashes
+	// (the photos are theirs), a member toggles their own favorites
+	// (the per-user arm the batch resolves over the caller's visible
+	// ids). The arrays are constants so the bar's subset keeps a
+	// stable identity across re-renders.
+	const OWNER_WALL_ACTIONS: readonly BatchAction[] = ['trash'];
+	const MEMBER_WALL_ACTIONS: readonly BatchAction[] = ['favorite'];
+	const wallCuration = $derived.by<{ actions: readonly BatchAction[] } | undefined>(() => {
+		if (detail === null) {
+			return undefined;
+		}
+		if (detail.callerRole === 'owner') {
+			return deletable ? { actions: OWNER_WALL_ACTIONS } : undefined;
+		}
+		return { actions: MEMBER_WALL_ACTIONS };
+	});
 
 	// The wall's own states (the walk's honest faces, inlined from
 	// the curated wrapper this page used to compose).
@@ -441,12 +468,14 @@
 	}
 
 	// The wall's batch runner: the page's own client runs the
-	// delete-only batch the wall's bar offers -- the same
-	// view-aware optimistic convergence every curatable wall uses
-	// (the trashed tiles leave immediately, the SSE events of the
-	// landed batch confirm the removal, the album's own events
-	// converge the detail behind). The wall owns the busy, the
-	// mapped error and the selection choreography around it.
+	// action subset the wall's bar offers -- the owner's delete-only
+	// pass, or a member's per-user favorite toggle -- through the
+	// same view-aware optimistic convergence every curatable wall
+	// uses (a favorite flips its flag at once and stays silent with
+	// the per-user write, the trashed tiles leave immediately, and
+	// the SSE events of a landed pass confirm what the optimism
+	// already showed). The wall owns the busy, the mapped error and
+	// the selection choreography around it.
 	async function runWallBatch(
 		action: BatchAction,
 		ids: readonly string[]
@@ -605,16 +634,19 @@
 		     deletability), the rescan trigger and the remove (the
 		     un-ingest); the owner of the
 		     sync album (the default album) holds nothing --
-		     system-managed; a viewer the exclusion toggle alone (the
-		     departure went with the revoke endpoint it rode; the
-		     audience is owner-domain). A memory id never reaches this
-		     bar: the detail read that answers one redirects to the
-		     memory's own route before the arms render. -->
+		     system-managed; a viewer the exclusion toggle alone -- the
+		     ONE writable thing the member view holds (their own
+		     timeline preference; the audience is owner-domain, and
+		     the departure went with the revoke endpoint it rode). A
+		     memory id never reaches this bar: the detail read that
+		     answers one redirects to the memory's own route before
+		     the arms render. -->
 		<div class="album-detail__actions ml-auto flex items-center gap-1">
 			{#if detail !== null && owner && detail.type === 'directory'}
 				<IconButton
 					disabled={writeBusy}
 					aria-label={$_('albums_action_properties')}
+					title={$_('albums_action_properties')}
 					onclick={() => {
 						propertiesErrorKey = '';
 						propertiesOpen = true;
@@ -630,6 +662,7 @@
 					disabled={writeBusy ||
 						(rescanRun !== null && (rescanRun.state === 'queued' || rescanRun.state === 'running'))}
 					aria-label={$_('albums_rescan_action')}
+					title={$_('albums_rescan_action')}
 					onclick={() => void startRescan()}
 				>
 					<RefreshCw size={20} aria-hidden="true" />
@@ -643,6 +676,7 @@
 					variant="danger"
 					disabled={writeBusy}
 					aria-label={$_('albums_action_remove')}
+					title={$_('albums_action_remove')}
 					onclick={() => {
 						removeErrorKey = '';
 						removeOpen = true;
@@ -658,12 +692,19 @@
 				     refuses every write face of the id anyway; the wall
 				     below is the whole page. -->
 			{:else if detail !== null && !owner}
-				<!-- The read-only share's own write: the timeline
-				     exclusion (the caller's preference) alone. -->
+				<!-- The member view's ONE action: the timeline
+				     preference -- the caller's own switch, and the
+				     only writable thing a shared album gives them.
+				     The label and the glyph follow the state (in the
+				     timeline -> take it out; excluded -> keep it in).
+				     Nothing else renders here: no properties, no
+				     cover, no audience, no remove -- absent, never
+				     disabled. -->
 				{#if excludable}
 					<IconButton
 						disabled={writeBusy}
 						aria-label={excluded ? $_('albums_action_include') : $_('albums_action_exclude')}
+						title={excluded ? $_('albums_action_include') : $_('albums_action_exclude')}
 						onclick={() => void toggleExclusion()}
 					>
 						{#if excluded}
@@ -761,15 +802,16 @@
 			{/if}
 		</div>
 
-		<!-- THE WALL'S CAPABILITY GATE (the deletable face): the
+		<!-- THE WALL'S CAPABILITY GATE (the role's action subset): the
 		     page's own walk (the keyset client, the SSE convergence,
 		     the sentinel) around the shared Wall. The batch runner is
-		     wired exactly when the detail's derived `deletable` face
-		     holds -- the owner of a writable, deletion-enabled
-		     directory album curates a DELETE-ONLY
-		     selection (the trash action alone); every other face
-		     passes no runner, so the tiles are pure navigation and no
-		     batch bar ever rises. -->
+		     wired exactly when the role's subset holds -- the owner of
+		     a writable, deletion-enabled directory album curates a
+		     DELETE-ONLY selection, a member the per-user favorite
+		     toggle alone; every other face passes no runner, so the
+		     tiles are pure navigation and no batch bar ever rises.
+		     The subset is what the write can land: the bar renders no
+		     action the batch would refuse. -->
 		<section class="album-detail__wall px-2 pe-[72px]" aria-busy={$wall.status === 'loading'}>
 			{#if wallFirstLoad}
 				<p class="album-detail__wall-status my-12 text-center text-text-soft animate-loading-in" role="status">
@@ -793,7 +835,11 @@
 					>
 				</div>
 			{:else}
-				<Wall items={$wall.items} actions={['trash']} onbatch={deletable ? runWallBatch : undefined} />
+				<Wall
+					items={$wall.items}
+					actions={wallCuration?.actions}
+					onbatch={wallCuration !== undefined ? runWallBatch : undefined}
+				/>
 			{/if}
 
 			{#if $wall.status === 'error' && $wall.items.length > 0}
@@ -822,7 +868,12 @@
 	{/if}
 </section>
 
-{#if detail !== null}
+{#if detail !== null && owner && detail.type === 'directory'}
+	<!-- The owner faces mount for the owner's directory album alone:
+	     a member's view carries no properties dialog and no remove
+	     confirm at all (their entry buttons never render, and the
+	     dialogs are owner-domain surfaces, not a viewer's hidden
+	     pages). -->
 	<AlbumPropertiesDialog
 		bind:open={propertiesOpen}
 		titleKey="albums_properties_title"
@@ -841,27 +892,30 @@
 
 <!-- The remove confirm (the directory album's un-ingest): the
      pinned semantics in the body -- the album and its photo data
-     go, the source folder stays untouched. -->
-<Modal bind:open={removeOpen} title={$_('albums_remove_title')}>
-	<p class="album-detail__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
-		{$_('albums_remove_body')}
-	</p>
-	{#if removeErrorKey !== ''}
-		<p
-			class="album-detail__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
-			role="alert"
-		>
-			{errorText(removeErrorKey)}
+     go, the source folder stays untouched. Owner domain: mounted for
+     the owner's directory album alone, like the properties above. -->
+{#if detail !== null && owner && detail.type === 'directory'}
+	<Modal bind:open={removeOpen} title={$_('albums_remove_title')}>
+		<p class="album-detail__confirm-body font-body font-normal text-[15px] leading-[1.5] text-text">
+			{$_('albums_remove_body')}
 		</p>
-	{/if}
-	{#snippet footer()}
-		<Button variant="ghost" disabled={writeBusy} onclick={() => (removeOpen = false)}>
-			<X size={20} aria-hidden="true" />
-			{$_('common_cancel')}
-		</Button>
-		<Button variant="danger" disabled={writeBusy} onclick={() => void confirmRemove()}>
-			<Trash2 size={20} aria-hidden="true" />
-			{$_('albums_remove_confirm')}
-		</Button>
-	{/snippet}
-</Modal>
+		{#if removeErrorKey !== ''}
+			<p
+				class="album-detail__confirm-error mt-3 font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+				role="alert"
+			>
+				{errorText(removeErrorKey)}
+			</p>
+		{/if}
+		{#snippet footer()}
+			<Button variant="ghost" disabled={writeBusy} onclick={() => (removeOpen = false)}>
+				<X size={20} aria-hidden="true" />
+				{$_('common_cancel')}
+			</Button>
+			<Button variant="danger" disabled={writeBusy} onclick={() => void confirmRemove()}>
+				<Trash2 size={20} aria-hidden="true" />
+				{$_('albums_remove_confirm')}
+			</Button>
+		{/snippet}
+	</Modal>
+{/if}
