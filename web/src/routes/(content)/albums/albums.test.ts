@@ -86,7 +86,7 @@ const graceHighlights = summary('al4', {
 	coverAssetIds: ['g1', 'g2'],
 	itemCount: 17,
 	callerRole: 'viewer',
-	owner: { id: 'u2', email: 'grace@example.com' }
+	owner: { id: 'u2', name: 'Grace Hopper', email: 'grace@example.com' }
 });
 
 // The server's current answer; the convergence tests mutate it to
@@ -181,9 +181,9 @@ function modal(): HTMLElement | null {
 /** The instance's minimal member list (the audience picker's source). */
 const usersBody = {
 	users: [
-		{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false },
-		{ id: 'u2', email: 'grace@example.com', role: 'user', isDisabled: false },
-		{ id: 'u3', email: 'ivy@example.com', role: 'user', isDisabled: false }
+		{ id: 'u1', name: 'Ada Lovelace', email: 'ada@example.com', role: 'admin', isDisabled: false },
+		{ id: 'u2', name: 'Grace Hopper', email: 'grace@example.com', role: 'user', isDisabled: false },
+		{ id: 'u3', name: 'Ivy Lee', email: 'ivy@example.com', role: 'user', isDisabled: false }
 	]
 };
 
@@ -235,34 +235,115 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-test('the wall sections the albums off the callerRole: own first, shared after', async () => {
+test('the wall renders ONE list: own and shared cards mixed, no group labels', async () => {
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
 	const page = mountPage();
 	await settle();
 
-	const ownSection = document.body.querySelector('.albums__own-section');
-	const sharedSection = document.body.querySelector('.albums__shared-section');
-	// The page's one 20px title lives in the bar with its count; the
-	// own group carries no label of its own any more, and the shared
-	// group keeps the 16px group label (one step under the page
-	// title).
+	// No sections, no group labels (web-ia §7.29's single list); the
+	// page's one 20px title lives in the bar with its count.
 	const bar = document.body.querySelector('.albums__toolbar');
 	expect(bar?.querySelector('.albums__title')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Albums · 5 albums');
-	expect(ownSection?.querySelector('.albums__section-title')).toBeNull();
-	const sharedTitle = sharedSection?.querySelector('.albums__section-title');
-	expect(sharedTitle?.textContent).toBe('Shared with you');
-	expect(sharedTitle?.className).toContain('text-[16px]');
+	expect(document.body.querySelector('.albums__own-section')).toBeNull();
+	expect(document.body.querySelector('.albums__shared-section')).toBeNull();
+	expect(document.body.querySelector('.albums__section-title')).toBeNull();
 
-	const ownCards = Array.from(ownSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
-	const sharedCards = Array.from(sharedSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
-	expect(ownCards).toHaveLength(4);
-	expect(sharedCards).toHaveLength(1);
-	expect(sharedCards[0]?.querySelector('.album-card__title')?.textContent).toBe("Grace's highlights");
-	// The honest attribution of another account's album.
-	expect(sharedCards[0]?.querySelector('.album-card__owner')?.textContent).toBe('Shared by grace@example.com');
+	// One grid holds both roles: the sync card pinned first, then the
+	// cards in the server's order (their recency ties here).
+	expect(cards()).toHaveLength(5);
+	const sharedCard = cards()[4];
+	expect(sharedCard?.querySelector('.album-card__title')?.textContent).toBe("Grace's highlights");
+	// The attribution chip names the owner, and the read-only badge
+	// sits beside it on the same row.
+	expect(sharedCard?.querySelector('.album-card__badge--owner')?.textContent?.trim()).toBe('Shared by Grace Hopper');
+	expect(sharedCard?.querySelector('.album-card__badges .album-card__badge--readonly')?.textContent?.trim()).toBe(
+		'Read-only'
+	);
 	// Cards link into the album's detail.
-	expect(ownCards[1]?.getAttribute('href')).toBe('/albums/al1');
-	expect(sharedCards[0]?.getAttribute('href')).toBe('/albums/al4');
+	expect(cards()[1]?.getAttribute('href')).toBe('/albums/al1');
+	expect(sharedCard?.getAttribute('href')).toBe('/albums/al4');
+
+	unmount(page);
+	flushSync();
+});
+
+test('one list orders by the cards own recency with the sync card pinned first', async () => {
+	wallState = [
+		summary('al-old', { title: 'Old own', updatedAt: '2026-10-01T10:00:00Z' }),
+		summary('al-shared', {
+			title: 'Fresh shared',
+			updatedAt: '2026-11-10T10:00:00Z',
+			callerRole: 'viewer',
+			owner: { id: 'u2', name: 'Grace Hopper', email: 'grace@example.com' }
+		}),
+		myPhotos,
+		summary('al-new', { title: 'New own', updatedAt: '2026-11-05T10:00:00Z' })
+	];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	// The default album stays the wall's first card; the rest is one
+	// mixed list, most recently updated first (own and shared alike).
+	expect(cards().map((card) => card.querySelector('.album-card__title')?.textContent)).toEqual([
+		'My photos',
+		'Fresh shared',
+		'New own',
+		'Old own'
+	]);
+
+	unmount(page);
+	flushSync();
+});
+
+test('an owner who set no display name falls back to the email', async () => {
+	// The account's name is the empty string (the contract serves it as
+	// stored): the attribution renders the email -- a blank chip never
+	// renders.
+	wallState = [
+		summary('al-nameless', {
+			title: 'Nameless picks',
+			callerRole: 'viewer',
+			owner: { id: 'u9', name: '', email: 'nameless@example.com' }
+		})
+	];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	expect(cards()[0]?.querySelector('.album-card__badge--owner')?.textContent?.trim()).toBe(
+		'Shared by nameless@example.com'
+	);
+
+	unmount(page);
+	flushSync();
+});
+
+test('two owners under one name get the email as the chip title', async () => {
+	// The name is not a key: two accounts called "Mum" share albums
+	// with the caller, so each chip carries its owner's address as the
+	// hover title.
+	wallState = [
+		summary('al-mum-a', {
+			title: 'Mum one',
+			updatedAt: '2026-11-02T10:00:00Z',
+			callerRole: 'viewer',
+			owner: { id: 'u5', name: 'Mum', email: 'mum@example.com' }
+		}),
+		summary('al-mum-b', {
+			title: 'Mum two',
+			updatedAt: '2026-11-01T10:00:00Z',
+			callerRole: 'viewer',
+			owner: { id: 'u6', name: 'Mum', email: 'mum2@example.com' }
+		})
+	];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	const chips = Array.from(document.body.querySelectorAll<HTMLElement>('.album-card__badge--owner'));
+	expect(chips.map((chip) => chip.textContent?.trim())).toEqual(['Shared by Mum', 'Shared by Mum']);
+	expect(chips.map((chip) => chip.getAttribute('title'))).toEqual(['mum@example.com', 'mum2@example.com']);
 
 	unmount(page);
 	flushSync();
@@ -280,7 +361,7 @@ test('the memory rows leave the album wall: the reference sets live on their own
 			title: 'Sanya trip',
 			type: 'memory',
 			callerRole: 'viewer',
-			owner: { id: 'u2', email: 'grace@example.com' }
+			owner: { id: 'u2', name: 'Grace Hopper', email: 'grace@example.com' }
 		})
 	];
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
@@ -311,15 +392,14 @@ test('a wall holding only memories renders the empty state: their home is elsewh
 	flushSync();
 });
 
-test('the pinned sync card leads the own group with the localized display name', async () => {
+test('the pinned sync card leads the wall with the localized display name', async () => {
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
 	const page = mountPage();
 	await settle();
 
-	const ownSection = document.body.querySelector('.albums__own-section');
-	const ownCards = Array.from(ownSection?.querySelectorAll<HTMLElement>('.album-card') ?? []);
+	const ownCards = [cards()[0]];
 
-	// The first own card is the caller's sync album: the display
+	// The first card is the caller's sync album: the display
 	// name is the i18n key's, the stored internal title never
 	// renders.
 	expect(ownCards[0]?.querySelector('.album-card__title')?.textContent).toBe('My photos');
@@ -391,13 +471,16 @@ test('three covers fall to the 2+1 collage: two cells, then one spanning both', 
 	flushSync();
 });
 
-test('the badges ride the cards: shared, excluded', async () => {
+test('the badges ride the cards: shared, read-only, excluded', async () => {
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
 	const page = mountPage();
 	await settle();
 
+	// An own card carrying a share row: the owner's "someone else sees
+	// this" badge -- and no read-only chip (that is the member's face).
 	const roadTripCard = cards()[1];
 	expect(roadTripCard?.querySelector('.album-card__badge--shared')?.textContent?.trim()).toBe('Shared');
+	expect(roadTripCard?.querySelector('.album-card__badge--readonly')).toBeNull();
 	expect(roadTripCard?.textContent).toContain('128 photos');
 
 	// The exclusion badge rides the excludable cards only: the own
@@ -405,13 +488,23 @@ test('the badges ride the cards: shared, excluded', async () => {
 	const archiveCard = cards()[2];
 	expect(archiveCard?.querySelector('.album-card__badge--excluded')?.textContent?.trim()).toBe('Not in timeline');
 
+	// The shared card: no "shared" badge (the attribution says the same
+	// thing from the member's side), the read-only chip beside it.
 	const sharedCard = cards()[4];
+	expect(sharedCard?.querySelector('.album-card__badge--shared')).toBeNull();
+	expect(sharedCard?.querySelector('.album-card__badge--readonly')?.textContent?.trim()).toBe('Read-only');
 	expect(sharedCard?.querySelector('.album-card__badge--excluded')).toBeNull();
 	expect(sharedCard?.textContent).toContain('17 photos');
 
 	// A card with no preference row renders no badge (the true
 	// default): the exclusion badge rides the field alone.
 	expect(cards()[3]?.querySelector('.album-card__badge--excluded')).toBeNull();
+
+	// The badge row is always there -- an empty one keeps the cards
+	// equal height -- and the attribution never takes a line of its own.
+	for (const card of cards()) {
+		expect(card.querySelector('.album-card__badges')).not.toBeNull();
+	}
 
 	// The lock badge is retired: no card renders one, whatever the
 	// album's history.
@@ -658,15 +751,15 @@ test('the create dialog carries the picked audience into the POST', async () => 
 	// selectors find them.
 	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
 	expect(rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)).toEqual([
-		'grace@example.com',
-		'ivy@example.com'
+		'Grace Hopper',
+		'Ivy Lee'
 	]);
 	rows[1]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 	flushSync();
 
 	// The chip landed (the picker stays open); the
 	// caller is "only me" no more.
-	expect(dialog?.querySelector('.audience-field__chip')?.textContent).toContain('ivy@example.com');
+	expect(dialog?.querySelector('.audience-field__chip')?.textContent).toContain('Ivy Lee');
 	expect(dialog?.textContent).not.toContain('Only you');
 
 	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
