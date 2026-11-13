@@ -646,6 +646,7 @@
 				<IconButton
 					disabled={writeBusy}
 					aria-label={$_('albums_action_properties')}
+					title={$_('albums_action_properties')}
 					onclick={() => {
 						propertiesErrorKey = '';
 						propertiesOpen = true;
@@ -661,6 +662,7 @@
 					disabled={writeBusy ||
 						(rescanRun !== null && (rescanRun.state === 'queued' || rescanRun.state === 'running'))}
 					aria-label={$_('albums_rescan_action')}
+					title={$_('albums_rescan_action')}
 					onclick={() => void startRescan()}
 				>
 					<RefreshCw size={20} aria-hidden="true" />
@@ -674,6 +676,7 @@
 					variant="danger"
 					disabled={writeBusy}
 					aria-label={$_('albums_action_remove')}
+					title={$_('albums_action_remove')}
 					onclick={() => {
 						removeErrorKey = '';
 						removeOpen = true;
@@ -701,6 +704,7 @@
 					<IconButton
 						disabled={writeBusy}
 						aria-label={excluded ? $_('albums_action_include') : $_('albums_action_exclude')}
+						title={excluded ? $_('albums_action_include') : $_('albums_action_exclude')}
 						onclick={() => void toggleExclusion()}
 					>
 						{#if excluded}
