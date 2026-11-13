@@ -29,10 +29,11 @@
 	// browser over to the first-run wizard. /setup is a
 	// server-rendered page outside the SPA (the SPA has no /setup
 	// route on purpose), so this must be a full document navigation
-	// rather than the client-side router. The perpetually-disabled
-	// form stays mounted for the frame it takes to navigate, and its
-	// third note carries the same way in when a navigation is blocked
-	// (an embedded view, a private context).
+	// rather than the client-side router. The form stays mounted for
+	// the frame it takes to navigate -- it cannot succeed before the
+	// first administrator exists -- and its third note carries the
+	// same way in when a navigation is blocked (an embedded view, a
+	// private context).
 	$effect(() => {
 		if (data.setupRequired) {
 			window.location.replace('/setup');
