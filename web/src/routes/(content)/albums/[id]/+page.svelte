@@ -695,7 +695,7 @@
 		<!-- The context block (the page's card-framed text: the
 		     notices and the shared error line) -- the
 		     WALL below is full-flow edge-to-edge like every wall
-		     (web-ia §7.15: the wall is full width + 8px margins +
+		     (the wall is full width + 8px margins +
 		     the reserved 72px month-axis slot, so this column takes
 		     the same band and the page's own text never runs under
 		     the axis). -->

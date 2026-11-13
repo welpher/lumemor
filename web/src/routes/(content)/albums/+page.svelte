@@ -256,7 +256,9 @@
 	<title>{$_('albums_title')} · lumemor</title>
 </svelte:head>
 
-<section class="albums max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<!-- The card grid's container ): full width + 16px margins --
+     a wider window adds columns, the cards' own size stays bounded. -->
+<section class="albums px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
 	<!-- THE ONE ROW: the page title with its count on the left, the
 	     page-level action on the right, one divider under the row.
 	     The count is the title's own (it never takes a row of its

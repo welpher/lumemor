@@ -420,7 +420,7 @@
 	     chips, the honest count line. The box is a form so the
 	     keyboard's Enter commits the search. The head is chrome (the
 	     page's own 16px inset); the wall below is the surface that
-	     carries the 8px margin and the month-axis slot (web-ia §7.15). -->
+	     carries the 8px margin and the month-axis slot. -->
 	<div class="search__head px-4 pt-6">
 		<form class="search-form relative max-w-[640px]" role="search" onsubmit={submitQuery}>
 			<Search size={18} class="absolute start-3.5 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
@@ -446,7 +446,7 @@
 	<!-- The results: the two-mode wall, the states, the pager. The
 	     BROWSE wall is month-grouped and so carries the axis slot; the
 	     QUERY wall is the flat justified rank order with no axis, so it
-	     keeps the plain 8px margin (web-ia §7.15). -->
+	     keeps the plain 8px margin. -->
 	<div class="search__results {queryMode ? 'px-2' : 'px-2 pe-[72px]'} pt-3 pb-12">
 		{#if firstLoad}
 			<p class="search__status my-12 text-center text-text-soft animate-loading-in" role="status">
