@@ -33,6 +33,13 @@
 
 @import 'tailwindcss';
 
+/* The first-run wizard is a server-rendered page outside the SPA (a
+ * fresh instance has no JavaScript app to boot), but it wears this
+ * same stylesheet: the Go template's utility classes must be part of
+ * the compiled theme, so Tailwind scans the embedded page directory
+ * beside the Svelte sources. */
+@source '../../../../server/internal/api/static';
+
 /* The dark theme is the .dark class on <html> (flipping the semantic
  * variables below), not the OS media query — the variant wiring must
  * match that mechanism for any dark: utility. */
