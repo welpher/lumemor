@@ -404,15 +404,13 @@ test('scene 3: the member signs in and the memories wall carries the every-membe
 	// its own, and the settled empty wall counts zero honestly.
 	await expect(page.locator('.memories__title')).toHaveText('Memories · 0 memories');
 	await expect(page.locator('.memories__toolbar')).toHaveClass(/border-b/);
-	await expect(
-		page.getByText('No memories yet. Select photos on the wall and choose "Add to memory" to start your first one.')
-	).toBeVisible();
+	await expect(page.getByText('No memories yet')).toBeVisible();
 
 	// The every-member pin: the New memory button renders for a
 	// plain member -- a memory is personal curation, never a
 	// configuration act (the album wall's creation is the
 	// administrator's alone; this one is everyone's).
-	await expect(page.getByRole('button', { name: 'New memory', exact: true })).toBeVisible();
+	await expect(page.locator('.state-card').getByRole('button', { name: 'New memory', exact: true })).toBeVisible();
 
 	await context.storageState({ path: creatorStatePath });
 	await context.close();
@@ -1002,21 +1000,13 @@ test.describe('the closing scenes', () => {
 		// section is empty again (the fully-empty state's copy).
 		await expect(page).toHaveURL(/\/memories$/);
 		await expect(page.locator('a.memory-card')).toHaveCount(0);
-		await expect(
-			page.getByText(
-				'No memories yet. Select photos on the wall and choose "Add to memory" to start your first one.'
-			)
-		).toBeVisible();
+		await expect(page.getByText('No memories yet', { exact: true })).toBeVisible();
 
 		// The sharee's held wall loses the shared card LIVE (the
 		// audience died with the memory) and settles at its own
 		// fully-empty state.
 		await expect(shareeCard).toHaveCount(0, { timeout: 30_000 });
-		await expect(
-			shareePage.getByText(
-				'No memories yet. Select photos on the wall and choose "Add to memory" to start your first one.'
-			)
-		).toBeVisible();
+		await expect(shareePage.getByText('No memories yet', { exact: true })).toBeVisible();
 
 		// The photos stay: the creator's own pair is still exactly
 		// the timeline -- the library kept every row the memory

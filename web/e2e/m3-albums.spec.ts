@@ -371,7 +371,7 @@ test('scene 1: the administrator signs in and lands on the pinned My photos card
 	await expect(myPhotos).toBeVisible();
 	await expect(myPhotos).toContainText('0 photos');
 	await expect(page.locator('a.album-card')).toHaveCount(1);
-	await expect(page.getByText('No albums yet. Create one to gather photos around a moment.')).toBeHidden();
+	await expect(page.getByText('Gather a trip or an occasion into an album.')).toBeHidden();
 	await expect(page.getByRole('button', { name: 'New album', exact: true })).toBeVisible();
 
 	// Hand the admin session to every later admin scene: the storage
@@ -549,7 +549,7 @@ test.describe('the administrator scenes', () => {
 	test("scene 5: the rescan converges the album's membership with the source", async ({ page }) => {
 		await page.goto(`/albums/${albumId}`);
 		await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
-		await expect(page.getByText('This album has no photos yet.')).toBeVisible();
+		await expect(page.getByText('This album has no photos yet')).toBeVisible();
 
 		// The rescan trigger: the POST answers the run's identifier
 		// (202 -- the freshly created run).
@@ -777,6 +777,8 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	await expect(page.getByRole('button', { name: 'Keep out of timeline', exact: true })).toBeVisible();
 	await expect(page.locator('.tile')).toHaveCount(2);
 
+	await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
+
 	// The member's wall curates their own favorites -- and nothing
 	// else: the trash would delete the owner's files, and the hide
 	// switch writes the owner's row (the batch resolves it over the
@@ -813,7 +815,7 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	// The exclusion reaches the caller's own aggregate timeline: the
 	// member owns nothing else, so the timeline settles empty.
 	await page.goto('/timeline');
-	await expect(page.locator('.timeline__empty')).toBeVisible();
+	await expect(page.locator('.state-card')).toBeVisible();
 	await expect(page.locator('.tile')).toHaveCount(0);
 
 	// Keeping it in restores the shared items (the union's shared
@@ -962,7 +964,7 @@ test.describe('the writable source scenes', () => {
 	test("scene 11: the writable album's rescan converges and the deletability row renders", async ({ page }) => {
 		await page.goto(`/albums/${rwAlbumId}`);
 		await expect(page.locator('h1.album-bar__title')).toHaveText(RW_ALBUM_TITLE);
-		await expect(page.getByText('This album has no photos yet.')).toBeVisible();
+		await expect(page.getByText('This album has no photos yet')).toBeVisible();
 
 		// The rescan: the trigger POSTs the run and the aria-live
 		// progress line converges to complete through the job events
@@ -1133,9 +1135,7 @@ test.describe('the writable source scenes', () => {
 		// leaves the trash view and the view settles empty.
 		await page.getByRole('button', { name: 'Restore', exact: true }).click();
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toHaveCount(0);
-		await expect(
-			page.getByText('The trash is empty. Photos you delete appear here before they are removed for good.')
-		).toBeVisible();
+		await expect(page.getByText('The trash is empty', { exact: true })).toBeVisible();
 
 		// The album's fresh answer carries both photos again: the
 		// restored row rejoined the membership (the restore publishes
