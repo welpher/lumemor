@@ -1174,19 +1174,25 @@ test.describe('the removal scenes', () => {
 		// people-convergence witness. The unnamed region keeps the
 		// read-only pair's cluster alone.
 		await page.goto('/people/unnamed');
-		const unnamedCards = page.locator('button.cluster-card');
+		const unnamedCards = page.locator('a.cluster-card');
 		await expect(unnamedCards).toHaveCount(2);
 		const rwUnnamedCard = unnamedCards.filter({
 			has: page.locator(`img[src="/api/v1/faces/${rwRepFaceId}/thumbnail"]`)
 		});
 		await expect(rwUnnamedCard).toHaveCount(1);
+		// The card is an ENTRANCE into the person detail's unnamed
+		// variant, whose naming entry opens the dialog.
 		await rwUnnamedCard.click();
+		await expect(page.locator('.person-profile__name')).toHaveText('Unnamed');
+		await page.getByRole('button', { name: 'Name this person', exact: true }).first().click();
 		const naming = page.getByRole('dialog', { name: 'Name this person', exact: true });
 		await expect(naming).toBeVisible();
 		await naming.getByLabel('Name').fill('Field person');
 		await naming.getByRole('button', { name: 'Save name', exact: true }).click();
 		await expect(naming).toHaveCount(0);
-		await expect(unnamedCards).toHaveCount(1, { timeout: 30_000 });
+		await expect(page.locator('.person-profile__name')).toHaveText('Field person');
+		await page.goto('/people/unnamed');
+		await expect(page.locator('a.cluster-card')).toHaveCount(1, { timeout: 30_000 });
 
 		// The member's side of the grant: the wall's shared group
 		// carries the writable album, and the member's timeline (the
@@ -1315,7 +1321,9 @@ test.describe('the removal scenes', () => {
 		await expect(peoplePage.locator('a.person-card').filter({ hasText: 'Field person' })).toHaveCount(0, {
 			timeout: 30_000
 		});
-		await expect(peoplePage.getByText('No people yet. Photos with faces will show up here.')).toBeVisible();
+		// The empty state's title + body (the settled page splits them).
+		await expect(peoplePage.getByText('No people yet', { exact: true })).toBeVisible();
+		await expect(peoplePage.getByText('Photos with faces will show up here.')).toBeVisible();
 		await peoplePage.close();
 
 		// THE ZERO-CONTACT PIN, the host's own judgment: the source
@@ -1413,6 +1421,6 @@ test.describe('the removal scenes', () => {
 		// The unnamed region's own page: one cluster card, the
 		// read-only pair's.
 		await page.goto('/people/unnamed');
-		await expect(page.locator('button.cluster-card')).toHaveCount(1);
+		await expect(page.locator('a.cluster-card')).toHaveCount(1);
 	});
 });
