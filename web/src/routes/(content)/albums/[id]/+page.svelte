@@ -367,30 +367,55 @@
 			actionErrorKey = outcome.errorKey;
 			return;
 		}
-		rescanRun = { id: outcome.run.jobRunId, state: 'queued', total: 0, done: 0, failed: 0 };
+		// An instant scan can finish BEFORE this answer lands (the
+		// run's whole life is milliseconds on a warm stack and a small
+		// source): the handler below buffered its events by run id, so
+		// the line adopts the settled state instead of sitting at
+		// "queued" forever.
+		const tracked = outcome.run.jobRunId;
+		rescanRun = settledRuns.get(tracked) ?? { id: tracked, state: 'queued', total: 0, done: 0, failed: 0 };
+		if (settledRuns.has(tracked)) {
+			settledRuns.delete(tracked);
+		}
 	}
+
+	// The run events that arrived before the trigger's answer named
+	// their run: keyed by the run id, a bounded few (each trigger puts
+	// one here and the adoption above takes it back).
+	const settledRuns = new Map<string, RescanRun>();
 
 	// The SSE convergence of the run: progress events update the run
 	// in place (the events' counts are already numbers, the state
 	// already the run lifecycle's), the finish lands the final state.
 	// Only the run THIS page tracked applies -- another album's
-	// rescan (or any other job kind) never touches this line.
+	// rescan (or any other job kind) never touches this line -- and a
+	// run whose events beat the trigger's answer is buffered for it.
 	$effect(() => {
 		return subscribeJobEvents((event) => {
 			if (event.kind !== 'album_rescan') {
 				return;
 			}
-			const run = rescanRun;
-			if (run === null || run.id !== event.jobRunId) {
-				return;
-			}
-			rescanRun = {
-				...run,
+			const next: RescanRun = {
+				id: event.jobRunId,
+				state: event.state,
 				total: event.total,
 				done: event.done,
-				failed: event.failed,
-				state: event.state
+				failed: event.failed
 			};
+			const run = rescanRun;
+			if (run === null || run.id !== event.jobRunId) {
+				// Bound the buffer: only the runs racing this trigger
+				// matter, and a page lives with a handful of them.
+				if (settledRuns.size >= 8) {
+					const oldest = settledRuns.keys().next().value;
+					if (oldest !== undefined) {
+						settledRuns.delete(oldest);
+					}
+				}
+				settledRuns.set(event.jobRunId, next);
+				return;
+			}
+			rescanRun = next;
 		});
 	});
 
