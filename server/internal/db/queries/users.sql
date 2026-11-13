@@ -41,10 +41,13 @@ RETURNING id, name, email, role, is_disabled, created_at;
 -- any non-auth surface.
 
 -- name: ListInstanceUsersMinimal :many
--- The minimal member list: every account, email ascending. Any
+-- The minimal member list: every account, email ascending, each row
+-- carrying the identity a pick list renders -- the display name (the
+-- empty string when the account set none, in which case the list
+-- renders the email) beside the unique login address. Any
 -- authenticated account may read it (the family-instance posture);
--- the share dialog's pick list is the first consumer.
-SELECT id, email, role, is_disabled
+-- the audience picker is the first consumer.
+SELECT id, name, email, role, is_disabled
 FROM users
 ORDER BY email ASC;
 

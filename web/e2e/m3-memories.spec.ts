@@ -89,8 +89,8 @@
 //     chip, and the save writing the audience PUT alone (the
 //     unchanged title writes nothing).
 //  9. The sharee's read-only view: their own sign-in, the memories
-//     wall's shared section carrying the card (the owner
-//     attribution, the read-only badge, the honest count), and the
+//     wall's one list carrying the shared card (the owner's name,
+//     the read-only chip, the honest count), and the
 //     detail's member bar -- the attribution and the badge with NO
 //     action at all, the wall pure navigation (no check ever
 //     renders).
@@ -158,10 +158,13 @@ const BASE_URL = 'http://localhost:8244';
 // member the memory is shared to. The stack is always fresh, so the
 // fixed identities are deterministic.
 const ADMIN_EMAIL = 'admin@m3m-e2e.invalid';
+const ADMIN_NAME = 'Mei Chen';
 const ADMIN_PASSWORD = 'correct-horse-battery';
 const CREATOR_EMAIL = 'grace@m3m-e2e.invalid';
+const CREATOR_NAME = 'Grace Hopper';
 const CREATOR_PASSWORD = 'correct-horse-battery';
 const SHAREE_EMAIL = 'hedy@m3m-e2e.invalid';
+const SHAREE_NAME = 'Hedy Lamarr';
 const SHAREE_PASSWORD = 'correct-horse-battery';
 
 // The read-only source fixture (the m3 story family's arrangement):
@@ -223,7 +226,7 @@ test.beforeAll(async ({ playwright }) => {
 	// web app's own surfaces.
 	const api = await playwright.request.newContext({ baseURL: BASE_URL });
 	const setup = await api.post('/api/v1/server/setup/admin', {
-		data: { name: 'M3m E2E', email: ADMIN_EMAIL, password: ADMIN_PASSWORD }
+		data: { name: ADMIN_NAME, email: ADMIN_EMAIL, password: ADMIN_PASSWORD }
 	});
 	expect(setup.status()).toBe(201);
 
@@ -233,14 +236,14 @@ test.beforeAll(async ({ playwright }) => {
 	expect(login.status()).toBe(200);
 
 	const creator = await api.post('/api/v1/admin/users', {
-		data: { name: 'Grace Hopper', email: CREATOR_EMAIL, password: CREATOR_PASSWORD }
+		data: { name: CREATOR_NAME, email: CREATOR_EMAIL, password: CREATOR_PASSWORD }
 	});
 	expect(creator.status()).toBe(201);
 	creatorUserId = ((await creator.json()) as { id?: string }).id ?? '';
 	expect(creatorUserId).not.toBe('');
 
 	const sharee = await api.post('/api/v1/admin/users', {
-		data: { name: 'Hedy Lamarr', email: SHAREE_EMAIL, password: SHAREE_PASSWORD }
+		data: { name: SHAREE_NAME, email: SHAREE_EMAIL, password: SHAREE_PASSWORD }
 	});
 	expect(sharee.status()).toBe(201);
 	shareeUserId = ((await sharee.json()) as { id?: string }).id ?? '';
@@ -664,9 +667,11 @@ test.describe('the creator scenes', () => {
 		await expect(dialog.getByText('Only you')).toBeVisible();
 		await dialog.getByRole('button', { name: 'Add', exact: true }).click();
 		const picker = page.getByRole('listbox', { name: 'Candidate members' });
-		await expect(picker.getByRole('option', { name: SHAREE_EMAIL })).toBeVisible();
-		await picker.getByRole('option', { name: SHAREE_EMAIL }).click();
-		await expect(dialog.locator('.audience-field__chip')).toContainText(SHAREE_EMAIL);
+		// The rows name the people (the identity rule: the display
+		// name leads, never the login address).
+		await expect(picker.getByRole('option', { name: SHAREE_NAME })).toBeVisible();
+		await picker.getByRole('option', { name: SHAREE_NAME }).click();
+		await expect(dialog.locator('.audience-field__chip')).toContainText(SHAREE_NAME);
 		// The picker stays open (the instance's third account keeps
 		// the candidate pool alive); the layer's own Esc closes it
 		// alone -- the dialog behind it stays.
@@ -708,17 +713,18 @@ test('scene 9: the sharee signs in and the shared memory reads view-only', async
 	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 	await expect(page).toHaveURL(/\/timeline$/);
 
-	// The memories wall's shared section: the card with the owner
-	// attribution, the read-only badge and the honest count (the
-	// live members the memory's owner currently sees -- all three
-	// still pass the owner's sight).
+	// The memories wall is ONE list: the card carries the owner's NAME
+	// beside the read-only chip and the honest count (the live members
+	// the memory's owner currently sees -- all three still pass the
+	// owner's sight). The address never renders.
 	await page.goto('/memories');
-	await expect(page.getByRole('heading', { level: 2, name: 'Shared with me' })).toBeVisible();
+	await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
 	const card = page.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
 	await expect(card).toBeVisible();
 	await expect(card).toContainText('3 photos');
-	await expect(card).toContainText(`Shared by ${CREATOR_EMAIL}`);
-	await expect(card).toContainText('Read-only');
+	await expect(card.locator('.memory-card__badge--owner')).toHaveText(`Shared by ${CREATOR_NAME}`);
+	await expect(card.locator('.memory-card__badge--owner')).not.toContainText(CREATOR_EMAIL);
+	await expect(card.locator('.memory-card__badge--readonly')).toHaveText('Read-only');
 
 	// The detail: the member bar carries the owner attribution and
 	// the read-only badge with NO action at all, and the wall is
@@ -727,7 +733,7 @@ test('scene 9: the sharee signs in and the shared memory reads view-only', async
 	await expect(page).toHaveURL(new RegExp(`/memories/${memoryId}$`));
 	await expect(page.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
 	await expect(page.locator('.memory-bar__count')).toContainText('3 photos');
-	await expect(page.locator('.memory-bar__owner')).toContainText(`Shared by ${CREATOR_EMAIL}`);
+	await expect(page.locator('.memory-bar__owner')).toHaveText(`Shared by ${CREATOR_NAME}`);
 	await expect(page.locator('.memory-bar__badge')).toContainText('Read-only');
 	for (const label of [
 		'Edit memory',

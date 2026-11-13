@@ -1162,8 +1162,11 @@ type AlbumCreateRequest struct {
 // `coverAssetIds`, `itemCount` 0.
 type AlbumCreateResponse struct {
 	// CallerRole The caller's relation to this album: `owner` items belong
-	// to the own group, `viewer` items to the shared group. The
-	// web client sections the wall off this discriminator.
+	// to the caller's own group on the wire, `viewer` items to
+	// the shared group. The client renders ONE wall list and
+	// keys each card's face off this discriminator (the
+	// read-only mark is the member's, the shared state the
+	// owner's).
 	CallerRole AlbumCreateResponseCallerRole `json:"callerRole"`
 
 	// CoverAssetIds The collage source of the wall card: the pinned cover
@@ -1238,8 +1241,11 @@ type AlbumCreateResponse struct {
 }
 
 // AlbumCreateResponseCallerRole The caller's relation to this album: `owner` items belong
-// to the own group, `viewer` items to the shared group. The
-// web client sections the wall off this discriminator.
+// to the caller's own group on the wire, `viewer` items to
+// the shared group. The client renders ONE wall list and
+// keys each card's face off this discriminator (the
+// read-only mark is the member's, the shared state the
+// owner's).
 type AlbumCreateResponseCallerRole string
 
 // AlbumCreateResponseType The album's type. `memory` albums are reference sets
@@ -1436,13 +1442,24 @@ type AlbumItemsRequest struct {
 }
 
 // AlbumOwnerRef The owner of an album shared to the caller: the honest
-// attribution a shared wall card renders.
+// attribution a shared wall card renders. The display name
+// leads; `email` is the fallback an empty name leaves (the
+// card never renders a blank attribution).
 type AlbumOwnerRef struct {
-	// Email The email address of the owning account.
+	// Email The email address of the owning account: the fallback
+	// the client renders when `name` is empty, and the
+	// disambiguator between two accounts that share a name.
 	Email openapi_types.Email `json:"email"`
 
 	// Id Identifier of the owning account.
 	Id openapi_types.UUID `json:"id"`
+
+	// Name The owning account's display name, exactly as stored.
+	// The empty string when the account set none -- the
+	// client then renders `email` instead. Never treated as a
+	// unique key: two accounts may share a name, and the
+	// email is what tells them apart.
+	Name string `json:"name"`
 }
 
 // AlbumPatch The partial edit of one album: every field is optional, at
@@ -1549,13 +1566,18 @@ type AlbumShareEntry struct {
 
 // AlbumSummary One album card of the wall: the metadata, the live member
 // count and the collage source, plus the `callerRole`
-// discriminator the web client sections the wall by. Shared
+// discriminator the client keys each card's face by (a viewer
+// card carries the read-only mark; an own card its own shared
+// state). Shared
 // items carry `owner`, the honest attribution of another
 // account's album; own items omit it.
 type AlbumSummary struct {
 	// CallerRole The caller's relation to this album: `owner` items belong
-	// to the own group, `viewer` items to the shared group. The
-	// web client sections the wall off this discriminator.
+	// to the caller's own group on the wire, `viewer` items to
+	// the shared group. The client renders ONE wall list and
+	// keys each card's face off this discriminator (the
+	// read-only mark is the member's, the shared state the
+	// owner's).
 	CallerRole AlbumSummaryCallerRole `json:"callerRole"`
 
 	// CoverAssetIds The collage source of the wall card: the pinned cover
@@ -1613,8 +1635,11 @@ type AlbumSummary struct {
 }
 
 // AlbumSummaryCallerRole The caller's relation to this album: `owner` items belong
-// to the own group, `viewer` items to the shared group. The
-// web client sections the wall off this discriminator.
+// to the caller's own group on the wire, `viewer` items to
+// the shared group. The client renders ONE wall list and
+// keys each card's face off this discriminator (the
+// read-only mark is the member's, the shared state the
+// owner's).
 type AlbumSummaryCallerRole string
 
 // AlbumSummaryType The album's type. `memory` albums are reference sets
@@ -2492,8 +2517,11 @@ type MemoryCreateRequest struct {
 // creator's timeline).
 type MemoryCreateResponse struct {
 	// CallerRole The caller's relation to this album: `owner` items belong
-	// to the own group, `viewer` items to the shared group. The
-	// web client sections the wall off this discriminator.
+	// to the caller's own group on the wire, `viewer` items to
+	// the shared group. The client renders ONE wall list and
+	// keys each card's face off this discriminator (the
+	// read-only mark is the member's, the shared state the
+	// owner's).
 	CallerRole MemoryCreateResponseCallerRole `json:"callerRole"`
 
 	// CoverAssetIds The collage source of the wall card: the pinned cover
@@ -2557,8 +2585,11 @@ type MemoryCreateResponse struct {
 }
 
 // MemoryCreateResponseCallerRole The caller's relation to this album: `owner` items belong
-// to the own group, `viewer` items to the shared group. The
-// web client sections the wall off this discriminator.
+// to the caller's own group on the wire, `viewer` items to
+// the shared group. The client renders ONE wall list and
+// keys each card's face off this discriminator (the
+// read-only mark is the member's, the shared state the
+// owner's).
 type MemoryCreateResponseCallerRole string
 
 // MemoryCreateResponseType The album's type. `memory` albums are reference sets
@@ -3813,10 +3844,15 @@ type UserSelfResponse struct {
 }
 
 // UserSummary One account of the minimal member list: exactly the identity
-// fields a pick list renders -- no display name, no
-// timestamps, and never a password hash.
+// fields a pick list renders -- the display name (with the
+// email as the fallback for an account that set none), the
+// role and the disabled switch; no timestamps, and never a
+// password hash.
 type UserSummary struct {
-	// Email Login address.
+	// Email Login address: the identity's unique key, the fallback
+	// a pick list renders when the display name is empty, and
+	// the disambiguator between two accounts that share a
+	// name.
 	Email openapi_types.Email `json:"email"`
 
 	// Id UUIDv7 identifier.
@@ -3825,6 +3861,11 @@ type UserSummary struct {
 	// IsDisabled The disabled switch: a disabled account cannot sign in
 	// and its sessions carry no authority until re-enabled.
 	IsDisabled bool `json:"isDisabled"`
+
+	// Name The account's display name, exactly as stored. The
+	// empty string when the account set none -- the client
+	// then renders `email` instead.
+	Name string `json:"name"`
 
 	// Role Authorization role of an account: `admin` is granted by the
 	// first-run wizard or by another administrator, `user` is the

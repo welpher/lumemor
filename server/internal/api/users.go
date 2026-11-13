@@ -1,11 +1,14 @@
 // The instance's minimal member list: GET /users, the
-// share dialog's pick list. Any authenticated account may enumerate
-// the family's accounts -- the family-instance posture the contract
-// documents (the accounts of a shared photo home are not secret from
-// one another) -- and the entries carry exactly the identity fields
-// a pick list renders. This is deliberately NOT the admin management
-// face: no display names, no timestamps, no writes; the admin
-// surface keeps its own richer, role-guarded listing.
+// audience pickers' candidate list. Any authenticated account may
+// enumerate the family's accounts -- the family-instance posture the
+// contract documents (the accounts of a shared photo home are not
+// secret from one another) -- and the entries carry exactly the
+// identity fields a pick list renders: the display name (the
+// fallback the client takes when it is empty is the email), the
+// login address, the role and the disabled switch. This is
+// deliberately NOT the admin management face: no timestamps, no
+// writes; the admin surface keeps its own richer, role-guarded
+// listing.
 package api
 
 import (
@@ -38,6 +41,7 @@ func (s *server) ListInstanceUsers(w http.ResponseWriter, r *http.Request) {
 		response.Users = append(response.Users, apigen.UserSummary{
 			Id:         uuid.UUID(row.ID.Bytes),
 			Email:      oapitypes.Email(row.Email),
+			Name:       row.Name,
 			Role:       apigen.UserRole(row.Role),
 			IsDisabled: row.IsDisabled,
 		})

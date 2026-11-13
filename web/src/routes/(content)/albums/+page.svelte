@@ -1,16 +1,17 @@
 <script lang="ts">
-	// The album wall: the cover-card grid in its two
-	// sections -- the caller's own albums (the pinned sync card of
-	// the default "My photos" album first, then the
-	// directory albums in the server's own-group order) then the
-	// albums shared to them (with the honest owner attribution) --
-	// with the collage covers (the pinned cover full-bleed,
-	// otherwise the newest members: two split, three the 2+1 fall,
-	// four the quad), the shared / excluded badges, and the
-	// "New album" creation dialog. THE MEMORY ROWS ARE NOT THIS
-	// WALL'S: the reference sets moved to their own route (the
-	// memories wall), so both sections filter the memory type out.
-	// Card clicks open the album's
+	// The album wall: ONE cover-card grid -- the caller's own cards (the
+	// pinned sync card of the default "My photos" album first) and the
+	// albums shared to them, mixed by the cards' own recency (web-ia
+	// §7.29's single list: no own/shared sections, no group labels) --
+	// with the collage covers (the pinned cover full-bleed, otherwise
+	// the newest members: two split, three the 2+1 fall, four the
+	// quad) and one badge row under each count: a shared card carries
+	// its owner's attribution beside the read-only badge, an own card
+	// its shared / excluded state (web-ia §7.30: the attribution names
+	// the person, the email only falls back). THE MEMORY ROWS ARE NOT
+	// THIS WALL'S: the reference sets moved to their own route (the
+	// memories wall), so the grid filters the memory type out. Card
+	// clicks open the album's
 	// detail. The sync card's title is the system's internal label
 	// and never renders: `type === 'sync'` keys the localized
 	// display name (album_all_photos), the contract's client-side
@@ -36,6 +37,7 @@
 	import { subscribeAlbumEvents } from '$lib/events';
 	import { sessionRole } from '$lib/auth/session.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import { ambiguousLabels, displayNameOf } from '$lib/identity';
 	import Button from '$lib/components/Button.svelte';
 	import CreateAlbumDialog, { type CreateAlbumSwitches } from '$lib/albums/CreateAlbumDialog.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -106,22 +108,38 @@
 		}
 	}
 
-	// The sections ride the items' own `callerRole` discriminator:
-	// the server's concatenation is own-first, shared-after, and each
-	// group's order is the server's. The memory rows leave both
-	// groups -- the reference sets' home is the memories wall.
-	const ownAlbums = $derived(albums.filter((album) => album.callerRole === 'owner' && album.type !== 'memory'));
-	const sharedAlbums = $derived(albums.filter((album) => album.callerRole === 'viewer' && album.type !== 'memory'));
+	// The wall's ONE list: the album cards (the memory rows leave --
+	// the reference sets' home is the memories wall), the pinned sync
+	// card first and everything else by the card's own `updatedAt`
+	// descending (web-ia §7.29: own and shared mixed, most recently
+	// updated first; the sort is stable, so the server's arm order
+	// breaks equal timestamps).
+	const albumCards = $derived.by(() => {
+		const cards = albums.filter((album) => album.type !== 'memory');
+		const sync = cards.filter((album) => album.type === 'sync');
+		const rest = cards
+			.filter((album) => album.type !== 'sync')
+			.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+		return [...sync, ...rest];
+	});
+
+	// The attribution chips' disambiguator: a display name TWO accounts
+	// carry gets the email as its hover title (the name is not a key).
+	// The check rides the cards this wall renders -- only a name the
+	// reader can see twice is ambiguous here.
+	const ambiguousOwners = $derived(
+		ambiguousLabels(albumCards.flatMap((album) => (album.owner === undefined ? [] : [album.owner])))
+	);
 
 	const firstLoad = $derived(albums.length === 0 && status === 'loading');
 	// The honest empty: no ALBUM row at all (a caller whose wall holds
 	// only memories still sees the empty state here -- their
 	// reference sets live on the memories wall).
-	const settledEmpty = $derived(ownAlbums.length === 0 && sharedAlbums.length === 0 && status === 'ready');
+	const settledEmpty = $derived(albumCards.length === 0 && status === 'ready');
 
-	// The bar's count: the album CARDS this wall holds (both groups,
-	// memory rows excluded -- memories count on their own page).
-	const albumCount = $derived(ownAlbums.length + sharedAlbums.length);
+	// The bar's count: the album CARDS this wall holds (the memory rows
+	// excluded -- memories count on their own page).
+	const albumCount = $derived(albumCards.length);
 
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon); the
@@ -136,6 +154,19 @@
 	// guessing beyond the type).
 	function cardTitle(album: AlbumSummary): string {
 		return album.type === 'sync' ? $_('album_all_photos') : album.title;
+	}
+
+	// The shared card's attribution: the owner's display name, the email
+	// when the account set none (a blank chip never renders).
+	function ownerLabel(album: AlbumSummary): string {
+		return album.owner === undefined ? '' : displayNameOf(album.owner);
+	}
+
+	// The attribution chip's hover title: the owner's email when another
+	// account of this wall carries the same name -- the reader then has
+	// a way to tell them apart.
+	function ownerTitle(album: AlbumSummary): string | undefined {
+		return album.owner !== undefined && ambiguousOwners.has(ownerLabel(album)) ? album.owner.email : undefined;
 	}
 
 	// The cover layout class of one card: the pinned cover and the
@@ -272,7 +303,7 @@
 				</p>
 				<p class="text-text-soft">{$_('albums_empty')}</p>
 			</div>
-		{:else if status === 'error' && ownAlbums.length === 0 && sharedAlbums.length === 0}
+		{:else if status === 'error' && albumCards.length === 0}
 			<div
 				class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
 				role="alert"
@@ -283,30 +314,16 @@
 				>
 			</div>
 		{:else}
-			<section class="albums__own-section">
-				<div class="albums__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
-					{#each ownAlbums as album (album.id)}
-						{@render card(album)}
-					{/each}
-				</div>
-			</section>
-			{#if sharedAlbums.length > 0}
-				<section class="albums__shared-section">
-					<h2
-						class="albums__section-title mt-6 mb-3 font-display font-bold text-[16px] leading-[1.3] text-text"
-					>
-						{$_('albums_shared_section')}
-					</h2>
-					<div class="albums__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
-						{#each sharedAlbums as album (album.id)}
-							{@render card(album)}
-						{/each}
-					</div>
-				</section>
-			{/if}
+			<!-- ONE grid: own and shared cards mixed by recency, no group
+			     labels (web-ia §7.29). -->
+			<div class="albums__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
+				{#each albumCards as album (album.id)}
+					{@render card(album)}
+				{/each}
+			</div>
 		{/if}
 
-		{#if status === 'error' && (ownAlbums.length > 0 || sharedAlbums.length > 0)}
+		{#if status === 'error' && albumCards.length > 0}
 			<!-- A failed convergence while cards exist: the page stays, the
 		     next event retries; the box keeps the retry affordance. -->
 			<div
@@ -323,8 +340,10 @@
 </section>
 
 {#snippet card(album: AlbumSummary)}
-	<!-- One album card: the collage cover, the title with its badges,
-	     the count, and the owner attribution on the shared cards. -->
+	<!-- One album card, three lines: the title, the count, and the badge
+	     row -- a shared card's attribution beside its read-only badge, an
+	     own card's shared / excluded state (web-ia §7.29 / §7.30). The
+	     badge row renders even when empty: the cards stay equal height. -->
 	<a
 		class="album-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
 		href="/albums/{encodeURIComponent(album.id)}"
@@ -383,17 +402,30 @@
 			<span class="album-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
 				>{cardTitle(album)}</span
 			>
-			{#if album.owner !== undefined}
-				<span class="album-card__owner font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
-					>{$_('albums_shared_by', { values: { email: album.owner.email } })}</span
-				>
-			{/if}
-			<span class="album-card__meta flex items-center gap-1.5 mt-0.5">
-				<span
-					class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
-					>{$_('albums_photo_count', { values: { count: album.itemCount } })}</span
-				>
-				{#if album.isShared}
+			<span
+				class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
+				>{$_('albums_photo_count', { values: { count: album.itemCount } })}</span
+			>
+			<!-- The badge row: the attribution and the read-only mark ride
+			     one line, so a shared card says who and what it means
+			     without a fourth line. -->
+			<span class="album-card__badges mt-0.5 flex flex-wrap items-center gap-1.5">
+				{#if album.callerRole === 'viewer' && album.owner !== undefined}
+					<span
+						class="album-card__badge album-card__badge--owner inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+						title={ownerTitle(album)}
+					>
+						{$_('albums_shared_by', { values: { name: ownerLabel(album) } })}
+					</span>
+					<span
+						class="album-card__badge album-card__badge--readonly inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+					>
+						{$_('shared_readonly_badge')}
+					</span>
+				{:else if album.isShared}
+					<!-- The owner's own "someone else sees this" mark; the
+					     shared face above says the same thing in the
+					     reader's direction instead (web-ia §7.29). -->
 					<span
 						class="album-card__badge album-card__badge--shared inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
 					>

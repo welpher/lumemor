@@ -229,6 +229,10 @@ func TestAlbumWall(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
 	graceID, _ := env.createSecondUser(t, "wall-grace@example.com")
+	// Grace's display name is what the shared card's attribution
+	// leads with (the helper's rows name themselves after the
+	// address, so this makes the name and the email distinguishable).
+	env.exec(t, "UPDATE users SET name = $2 WHERE id = $1", pgUUID(graceID), "Grace Hopper")
 	ownSync := env.syncAlbumIDOf(t, adminID)
 
 	// The caller's own two albums. VA carries a share to Grace (the
@@ -381,16 +385,88 @@ func TestAlbumWall(t *testing.T) {
 	if len(sharedItem.CoverAssetIds) != 1 || uuid.UUID(sharedItem.CoverAssetIds[0]) != sharedAsset {
 		t.Errorf("wall[3].coverAssetIds = %v, want [%s]", sharedItem.CoverAssetIds, sharedAsset)
 	}
-	// The honest attribution of another account's album.
+	// The honest attribution of another account's album: the display
+	// name leads, the email stays the fallback and the disambiguator.
 	if sharedItem.Owner == nil {
 		t.Fatal("wall[3].owner = null, want the owner attribution of the shared item")
 	}
 	if uuid.UUID(sharedItem.Owner.Id) != graceID {
 		t.Errorf("wall[3].owner.id = %s, want %s", sharedItem.Owner.Id, graceID)
 	}
+	if sharedItem.Owner.Name != "Grace Hopper" {
+		t.Errorf("wall[3].owner.name = %q, want the owner's display name", sharedItem.Owner.Name)
+	}
 	if string(sharedItem.Owner.Email) != "wall-grace@example.com" {
 		t.Errorf("wall[3].owner.email = %q, want the owner's address", sharedItem.Owner.Email)
 	}
+}
+
+// TestAlbumWallEmptyOwnerName pins the fallback's store-side fact: an
+// account that set no display name still serializes the field -- the
+// empty string, not an omitted key -- so the client can tell "no name"
+// from "no attribution" and render the email.
+func TestAlbumWallEmptyOwnerName(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, _ := env.createSecondUser(t, "nameless-grace@example.com")
+	env.exec(t, "UPDATE users SET name = '' WHERE id = $1", pgUUID(graceID))
+
+	shared := fixtureWallAlbumID("11")
+	env.insertWallAlbum(t, shared, graceID, "memory", "Nameless picks", wallAlbumOpts{})
+	env.shareWallAlbum(t, shared, adminID, graceID, time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC))
+
+	wall := env.getAlbumWall(t, env.cookie)
+	var card *apigen.AlbumSummary
+	for i := range wall.Albums {
+		if uuid.UUID(wall.Albums[i].Id) == shared {
+			card = &wall.Albums[i]
+		}
+	}
+	if card == nil {
+		t.Fatalf("the shared album is missing from the wall: %v", wall.Albums)
+	}
+	if card.Owner == nil {
+		t.Fatal("the shared card carries no owner attribution")
+	}
+	if card.Owner.Name != "" {
+		t.Errorf("owner.name = %q, want the empty string (the account set none)", card.Owner.Name)
+	}
+	if string(card.Owner.Email) != "nameless-grace@example.com" {
+		t.Errorf("owner.email = %q, want the fallback address", card.Owner.Email)
+	}
+
+	// The raw JSON keeps the key with its empty value.
+	raw := env.getAlbumsRaw(t, env.cookie, "/api/v1/albums")
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(raw.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode raw wall body %q: %v", raw.Body.String(), err)
+	}
+	var cards []map[string]json.RawMessage
+	if err := json.Unmarshal(body["albums"], &cards); err != nil {
+		t.Fatalf("decode raw albums array: %v", err)
+	}
+	for _, entry := range cards {
+		var id string
+		if err := json.Unmarshal(entry["id"], &id); err != nil {
+			t.Fatalf("decode raw card id: %v", err)
+		}
+		if id != shared.String() {
+			continue
+		}
+		var owner map[string]json.RawMessage
+		if err := json.Unmarshal(entry["owner"], &owner); err != nil {
+			t.Fatalf("decode raw owner: %v", err)
+		}
+		name, present := owner["name"]
+		if !present {
+			t.Fatal("the shared card's raw owner carries no name key, want it present")
+		}
+		if string(name) != `""` {
+			t.Errorf("the shared card's raw owner name = %s, want the empty string", name)
+		}
+		return
+	}
+	t.Fatalf("the shared album %s is missing from the raw wall", shared)
 }
 
 // TestAlbumWallOrdering pins the wall's ordering keys: the pinned

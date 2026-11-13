@@ -163,13 +163,14 @@ func (q *Queries) GetUserSelf(ctx context.Context, id pgtype.UUID) (GetUserSelfR
 
 const listInstanceUsersMinimal = `-- name: ListInstanceUsersMinimal :many
 
-SELECT id, email, role, is_disabled
+SELECT id, name, email, role, is_disabled
 FROM users
 ORDER BY email ASC
 `
 
 type ListInstanceUsersMinimalRow struct {
 	ID         pgtype.UUID `json:"id"`
+	Name       string      `json:"name"`
 	Email      string      `json:"email"`
 	Role       UserRole    `json:"role"`
 	IsDisabled bool        `json:"is_disabled"`
@@ -179,9 +180,12 @@ type ListInstanceUsersMinimalRow struct {
 // list and the share-target lookup. Both select the safe identity
 // columns only -- a password hash never leaves the table through
 // any non-auth surface.
-// The minimal member list: every account, email ascending. Any
+// The minimal member list: every account, email ascending, each row
+// carrying the identity a pick list renders -- the display name (the
+// empty string when the account set none, in which case the list
+// renders the email) beside the unique login address. Any
 // authenticated account may read it (the family-instance posture);
-// the share dialog's pick list is the first consumer.
+// the audience picker is the first consumer.
 func (q *Queries) ListInstanceUsersMinimal(ctx context.Context) ([]ListInstanceUsersMinimalRow, error) {
 	rows, err := q.db.Query(ctx, listInstanceUsersMinimal)
 	if err != nil {
@@ -193,6 +197,7 @@ func (q *Queries) ListInstanceUsersMinimal(ctx context.Context) ([]ListInstanceU
 		var i ListInstanceUsersMinimalRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.Name,
 			&i.Email,
 			&i.Role,
 			&i.IsDisabled,
