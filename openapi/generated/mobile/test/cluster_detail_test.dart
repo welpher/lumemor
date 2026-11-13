@@ -19,6 +19,24 @@ void main() {
       // TODO
     });
 
+    // The person's birth date (the entity's own attribute, one value for every account), or null when unset. Rendered locale-aware by the client (`Intl.DateTimeFormat`'s numeric year/month/day -- never hand-assembled). 
+    // Date birthDate
+    test('to test the property `birthDate`', () async {
+      // TODO
+    });
+
+    // The face this person's avatar renders (the entity's own attribute), or null when none was picked -- the reads then fall back to the cluster's best caller-visible face. 
+    // String avatarFaceId
+    test('to test the property `avatarFaceId`', () async {
+      // TODO
+    });
+
+    // The number of DISTINCT live assets the cluster has a face on that the caller can see (photos, not faces). 
+    // int photoCount
+    test('to test the property `photoCount`', () async {
+      // TODO
+    });
+
     // The cluster's faces on assets visible to the caller, strongest score first with the face id as the tiebreak. Faces on other accounts' assets never appear. 
     // BuiltList<FaceDetail> faces
     test('to test the property `faces`', () async {

@@ -82,6 +82,8 @@ doc/PairingConsumeRequest.md
 doc/PairingTokenResponse.md
 doc/PasswordChangeRequest.md
 doc/PeopleApi.md
+doc/PersonAvatarResponse.md
+doc/PersonBirthdateResponse.md
 doc/PersonFacetCount.md
 doc/PersonLabel.md
 doc/PersonLabelResponse.md
@@ -98,7 +100,8 @@ doc/SearchResponse.md
 doc/ServerApi.md
 doc/ServerInfo.md
 doc/SessionInfo.md
-doc/SetPersonHiddenRequest.md
+doc/SetPersonAvatarRequest.md
+doc/SetPersonBirthdateRequest.md
 doc/StorageSettingsResponse.md
 doc/StorageSettingsUpdateRequest.md
 doc/TagAssetsRequest.md
@@ -222,6 +225,8 @@ lib/src/model/move_face_response.dart
 lib/src/model/pairing_consume_request.dart
 lib/src/model/pairing_token_response.dart
 lib/src/model/password_change_request.dart
+lib/src/model/person_avatar_response.dart
+lib/src/model/person_birthdate_response.dart
 lib/src/model/person_facet_count.dart
 lib/src/model/person_label.dart
 lib/src/model/person_label_response.dart
@@ -235,7 +240,8 @@ lib/src/model/search_facets.dart
 lib/src/model/search_response.dart
 lib/src/model/server_info.dart
 lib/src/model/session_info.dart
-lib/src/model/set_person_hidden_request.dart
+lib/src/model/set_person_avatar_request.dart
+lib/src/model/set_person_birthdate_request.dart
 lib/src/model/storage_settings_response.dart
 lib/src/model/storage_settings_update_request.dart
 lib/src/model/tag_assets_request.dart
@@ -344,6 +350,8 @@ test/pairing_consume_request_test.dart
 test/pairing_token_response_test.dart
 test/password_change_request_test.dart
 test/people_api_test.dart
+test/person_avatar_response_test.dart
+test/person_birthdate_response_test.dart
 test/person_facet_count_test.dart
 test/person_label_response_test.dart
 test/person_label_test.dart
@@ -360,7 +368,8 @@ test/search_response_test.dart
 test/server_api_test.dart
 test/server_info_test.dart
 test/session_info_test.dart
-test/set_person_hidden_request_test.dart
+test/set_person_avatar_request_test.dart
+test/set_person_birthdate_request_test.dart
 test/storage_settings_response_test.dart
 test/storage_settings_update_request_test.dart
 test/tag_assets_request_test.dart

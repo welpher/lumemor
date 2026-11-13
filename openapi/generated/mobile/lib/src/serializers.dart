@@ -88,6 +88,8 @@ import 'package:lumemor_api/src/model/move_face_response.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
 import 'package:lumemor_api/src/model/pairing_token_response.dart';
 import 'package:lumemor_api/src/model/password_change_request.dart';
+import 'package:lumemor_api/src/model/person_avatar_response.dart';
+import 'package:lumemor_api/src/model/person_birthdate_response.dart';
 import 'package:lumemor_api/src/model/person_facet_count.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
 import 'package:lumemor_api/src/model/person_label_response.dart';
@@ -101,7 +103,8 @@ import 'package:lumemor_api/src/model/search_facets.dart';
 import 'package:lumemor_api/src/model/search_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
-import 'package:lumemor_api/src/model/set_person_hidden_request.dart';
+import 'package:lumemor_api/src/model/set_person_avatar_request.dart';
+import 'package:lumemor_api/src/model/set_person_birthdate_request.dart';
 import 'package:lumemor_api/src/model/storage_settings_response.dart';
 import 'package:lumemor_api/src/model/storage_settings_update_request.dart';
 import 'package:lumemor_api/src/model/tag_assets_request.dart';
@@ -206,6 +209,8 @@ part 'serializers.g.dart';
   PairingConsumeRequest,
   PairingTokenResponse,
   PasswordChangeRequest,
+  PersonAvatarResponse,
+  PersonBirthdateResponse,
   PersonFacetCount,
   PersonLabel,
   PersonLabelResponse,
@@ -219,7 +224,8 @@ part 'serializers.g.dart';
   SearchResponse,
   ServerInfo,
   SessionInfo,
-  SetPersonHiddenRequest,
+  SetPersonAvatarRequest,
+  SetPersonBirthdateRequest,
   StorageSettingsResponse,
   StorageSettingsUpdateRequest,
   TagAssetsRequest,

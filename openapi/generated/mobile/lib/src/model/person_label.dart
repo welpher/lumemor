@@ -12,16 +12,11 @@ part 'person_label.g.dart';
 ///
 /// Properties:
 /// * [name] - The caller's name for the person.
-/// * [isHidden] - The caller's hidden switch. Hidden people stay listed in `GET /people` carrying this flag (badge semantics). 
 @BuiltValue()
 abstract class PersonLabel implements Built<PersonLabel, PersonLabelBuilder> {
   /// The caller's name for the person.
   @BuiltValueField(wireName: r'name')
   String get name;
-
-  /// The caller's hidden switch. Hidden people stay listed in `GET /people` carrying this flag (badge semantics). 
-  @BuiltValueField(wireName: r'isHidden')
-  bool get isHidden;
 
   PersonLabel._();
 
@@ -50,11 +45,6 @@ class _$PersonLabelSerializer implements PrimitiveSerializer<PersonLabel> {
     yield serializers.serialize(
       object.name,
       specifiedType: const FullType(String),
-    );
-    yield r'isHidden';
-    yield serializers.serialize(
-      object.isHidden,
-      specifiedType: const FullType(bool),
     );
   }
 
@@ -85,13 +75,6 @@ class _$PersonLabelSerializer implements PrimitiveSerializer<PersonLabel> {
             specifiedType: const FullType(String),
           ) as String;
           result.name = valueDes;
-          break;
-        case r'isHidden':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(bool),
-          ) as bool;
-          result.isHidden = valueDes;
           break;
         default:
           unhandled.add(key);

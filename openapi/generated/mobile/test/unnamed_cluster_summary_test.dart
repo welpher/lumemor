@@ -19,7 +19,7 @@ void main() {
       // TODO
     });
 
-    // The face the cluster tile renders: the cluster's strongest-scoring face on a caller-visible live asset (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, not the cluster's global representative, so a tile never crops out of an asset the caller cannot view. 
+    // The face the cluster tile renders: the person's chosen avatar face when it is a caller-visible live member of the cluster, otherwise the cluster's strongest-scoring caller-visible face (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, never a face on an asset the caller cannot view. 
     // String representativeFaceId
     test('to test the property `representativeFaceId`', () async {
       // TODO

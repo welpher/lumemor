@@ -10,6 +10,9 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **clusterId** | **String** | Identifier of the face cluster. | 
 **label** | [**PersonLabel**](PersonLabel.md) | The caller's label of the cluster, or null when the caller has not labeled it (the unnamed state). It is the calling user's label or no label at all: another account's label never shows here.  | 
+**birthDate** | [**Date**](Date.md) | The person's birth date (the entity's own attribute, one value for every account), or null when unset. Rendered locale-aware by the client (`Intl.DateTimeFormat`'s numeric year/month/day -- never hand-assembled).  | 
+**avatarFaceId** | **String** | The face this person's avatar renders (the entity's own attribute), or null when none was picked -- the reads then fall back to the cluster's best caller-visible face.  | 
+**photoCount** | **int** | The number of DISTINCT live assets the cluster has a face on that the caller can see (photos, not faces).  | 
 **faces** | [**BuiltList&lt;FaceDetail&gt;**](FaceDetail.md) | The cluster's faces on assets visible to the caller, strongest score first with the face id as the tiebreak. Faces on other accounts' assets never appear.  | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)

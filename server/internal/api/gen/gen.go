@@ -1887,13 +1887,23 @@ type AssetDetailKind string
 type AssetDetailTakenAtSource string
 
 // AssetFaceSummary One face of the asset detail's `faces` array: the crop's
-// identity, the detection score, the face's cluster and the
-// CALLER's label of that cluster. The label is per-user state:
-// another account's label of the same global cluster never
-// shows here. `clusterId` is null while the face waits for its
+// identity, the detection score, the face's cluster, the
+// CALLER's label of that cluster and the person entity's birth
+// date. The label is per-user state: another account's label of
+// the same global cluster never shows here; the birth date is
+// the entity's own attribute (one value for every account) and
+// exists so the chip can render the person's age WHEN THIS PHOTO
+// WAS TAKEN. `clusterId` is null while the face waits for its
 // first clustering assignment; such a face has no person yet and
 // every assignment write on it answers the people surface's 404.
 type AssetFaceSummary struct {
+	// BirthDate The person's birth date (the entity's own attribute), or
+	// null when unset or the face has no cluster. The client
+	// computes the capture-time age from it and the asset's
+	// `takenAt` -- the birth date's whole purpose beside the
+	// birthday memories.
+	BirthDate *openapi_types.Date `json:"birthDate"`
+
 	// ClusterId Identifier of the face's cluster, or null before the
 	// clustering assigned one (a face the recognition run has
 	// not grouped yet).
@@ -2146,9 +2156,21 @@ type CameraFacetCount struct {
 }
 
 // ClusterDetail One face cluster's detail as the calling user sees it: the
-// caller's own label state and the cluster's faces on
-// caller-visible assets, strongest score first.
+// caller's own label state, the person entity's global
+// attributes and the cluster's faces on caller-visible assets,
+// strongest score first.
 type ClusterDetail struct {
+	// AvatarFaceId The face this person's avatar renders (the entity's own
+	// attribute), or null when none was picked -- the reads
+	// then fall back to the cluster's best caller-visible face.
+	AvatarFaceId *openapi_types.UUID `json:"avatarFaceId"`
+
+	// BirthDate The person's birth date (the entity's own attribute, one
+	// value for every account), or null when unset. Rendered
+	// locale-aware by the client (`Intl.DateTimeFormat`'s
+	// numeric year/month/day -- never hand-assembled).
+	BirthDate *openapi_types.Date `json:"birthDate"`
+
 	// ClusterId Identifier of the face cluster.
 	ClusterId openapi_types.UUID `json:"clusterId"`
 
@@ -2162,6 +2184,10 @@ type ClusterDetail struct {
 	// calling user's label or no label at all: another
 	// account's label never shows here.
 	Label *PersonLabel `json:"label"`
+
+	// PhotoCount The number of DISTINCT live assets the cluster has a face
+	// on that the caller can see (photos, not faces).
+	PhotoCount int `json:"photoCount"`
 }
 
 // ClusterFaceResponse One committed from-face person creation: the seeding face
@@ -2796,6 +2822,26 @@ type PasswordChangeRequest struct {
 	Next string `json:"next"`
 }
 
+// PersonAvatarResponse One person's avatar face after the write.
+type PersonAvatarResponse struct {
+	// AvatarFaceId The stored avatar face.
+	AvatarFaceId openapi_types.UUID `json:"avatarFaceId"`
+
+	// ClusterId Identifier of the face cluster.
+	ClusterId openapi_types.UUID `json:"clusterId"`
+}
+
+// PersonBirthdateResponse One person's birth date after the write (the entity's own
+// attribute, shared by every account).
+type PersonBirthdateResponse struct {
+	// BirthDate The stored birth date, or null when the person carries
+	// none.
+	BirthDate *openapi_types.Date `json:"birthDate"`
+
+	// ClusterId Identifier of the face cluster.
+	ClusterId openapi_types.UUID `json:"clusterId"`
+}
+
 // PersonFacetCount One named person of the people facet.
 type PersonFacetCount struct {
 	// AssetCount The number of assets of the current filtered set (minus
@@ -2811,61 +2857,52 @@ type PersonFacetCount struct {
 
 // PersonLabel The calling user's private label of one face cluster.
 type PersonLabel struct {
-	// IsHidden The caller's hidden switch. Hidden people stay listed in
-	// `GET /people` carrying this flag (badge semantics).
-	IsHidden bool `json:"isHidden"`
-
 	// Name The caller's name for the person.
 	Name string `json:"name"`
 }
 
 // PersonLabelResponse The calling user's label state of one face cluster after a
-// label or hidden write: the caller's own row only
+// label write: the caller's own row only
 // (another account's label never shows here).
 type PersonLabelResponse struct {
 	// ClusterId Identifier of the face cluster.
 	ClusterId openapi_types.UUID `json:"clusterId"`
-
-	// IsHidden The caller's hidden switch for this person.
-	IsHidden bool `json:"isHidden"`
 
 	// Name The caller's (trimmed) name for the person.
 	Name string `json:"name"`
 }
 
 // PersonSummary One named person of the caller's people list: a global face
-// cluster carrying the caller's own label. The name and the
-// hidden switch are the caller's private label state --
-// another account labeling or hiding the same cluster never
-// changes this view.
+// cluster carrying the caller's own label. The name is the
+// caller's private label state -- another account labeling the
+// same cluster never changes this view. The person entity's
+// own attributes (the avatar) are shared: every account of the
+// family sees the same avatar face.
 type PersonSummary struct {
 	// ClusterId Identifier of the face cluster.
 	ClusterId openapi_types.UUID `json:"clusterId"`
 
-	// FaceCount The cluster's faces on assets visible to the caller --
-	// the honest per-caller count, not the global member count.
-	FaceCount int `json:"faceCount"`
-
-	// IsHidden The caller's hidden switch for this person. Hidden people
-	// stay listed carrying this flag (badge semantics); they
-	// are not filtered out.
-	IsHidden bool `json:"isHidden"`
-
 	// Name The caller's own label of the cluster.
 	Name string `json:"name"`
 
-	// RepresentativeFaceId The face the person card renders: the cluster's
-	// strongest-scoring face on a caller-visible live asset
-	// (score descending, the face id ascending as the
-	// tiebreak) -- the best face the CALLER can see, not the
-	// cluster's global representative, so a card never crops
-	// out of an asset the caller cannot view. The field is the
-	// thumbnail's face id.
+	// PhotoCount The number of DISTINCT live assets the cluster has a face
+	// on that the caller can see -- photos, not faces, so two
+	// faces of one person in one photo count once. Honest per
+	// caller, never the global count.
+	PhotoCount int `json:"photoCount"`
+
+	// RepresentativeFaceId The face the person card renders: the person's chosen
+	// avatar face when it is a caller-visible live member of
+	// the cluster, otherwise the cluster's strongest-scoring
+	// caller-visible face (score descending, the face id
+	// ascending as the tiebreak) -- the best face the CALLER
+	// can see, never a face on an asset the caller cannot
+	// view. The field is the thumbnail's face id.
 	RepresentativeFaceId openapi_types.UUID `json:"representativeFaceId"`
 
 	// Thumbnail URL of the card's face crop: the face crop endpoint
-	// `GET /api/v1/faces/{faceId}/thumbnail` with the
-	// caller-visible best face's id.
+	// `GET /api/v1/faces/{faceId}/thumbnail` with
+	// `representativeFaceId`.
 	//
 	//
 	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
@@ -3122,14 +3159,19 @@ type SessionInfo struct {
 // revoked explicitly.
 type SessionInfoKind string
 
-// SetPersonHiddenRequest The caller's hidden switch for one face cluster. The switch
-// rides on the caller's label row, so hiding requires the
-// caller to have named the cluster first
-// (`person_hide_requires_label` otherwise).
-type SetPersonHiddenRequest struct {
-	// IsHidden true hides the person for the caller (a badge on their
-	// people list, not a filter); false unhides.
-	IsHidden bool `json:"isHidden"`
+// SetPersonAvatarRequest The face one person's avatar renders: one of the cluster's
+// own faces, on an asset visible to the caller.
+type SetPersonAvatarRequest struct {
+	// FaceId Identifier of the face to render as the avatar.
+	FaceId openapi_types.UUID `json:"faceId"`
+}
+
+// SetPersonBirthdateRequest One person's birth date: a `YYYY-MM-DD` date, or null to
+// clear the stored value. The field is always present (a body
+// without it answers 400) so a clear is an explicit act.
+type SetPersonBirthdateRequest struct {
+	// BirthDate The person's birth date, or null to clear it.
+	BirthDate *openapi_types.Date `json:"birthDate"`
 }
 
 // StorageSettingsResponse The storage settings of `GET /admin/settings/storage` and the
@@ -3602,12 +3644,13 @@ type UnnamedClusterSummary struct {
 	// the honest per-caller count, not the global member count.
 	FaceCount int `json:"faceCount"`
 
-	// RepresentativeFaceId The face the cluster tile renders: the cluster's
-	// strongest-scoring face on a caller-visible live asset
-	// (score descending, the face id ascending as the
-	// tiebreak) -- the best face the CALLER can see, not the
-	// cluster's global representative, so a tile never crops
-	// out of an asset the caller cannot view.
+	// RepresentativeFaceId The face the cluster tile renders: the person's chosen
+	// avatar face when it is a caller-visible live member of
+	// the cluster, otherwise the cluster's strongest-scoring
+	// caller-visible face (score descending, the face id
+	// ascending as the tiebreak) -- the best face the CALLER
+	// can see, never a face on an asset the caller cannot
+	// view.
 	RepresentativeFaceId openapi_types.UUID `json:"representativeFaceId"`
 
 	// Thumbnail URL of the tile's face crop: the face crop endpoint
@@ -3629,6 +3672,12 @@ type UnnamedClustersResponse struct {
 	// `cursor` query parameter to fetch the next page. Absent
 	// exactly when this is the last page.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// TotalCount The caller's whole unnamed region: every cluster this
+	// listing would walk, independent of the page size and the
+	// cursor. The people list's unnamed entry badge and the
+	// unnamed page's own count both read it.
+	TotalCount int `json:"totalCount"`
 }
 
 // User A lumemor account.
@@ -3917,6 +3966,11 @@ type GetTimelineParams struct {
 	// answered with 200, values below 1 answer 400.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
+	// ClusterId Restrict the response to one face cluster's photos (the
+	// person detail's wall). Mutually exclusive with `albumId`;
+	// an unknown or invisible cluster answers the empty list.
+	ClusterId *openapi_types.UUID `form:"clusterId,omitempty" json:"clusterId,omitempty"`
+
 	// AlbumId Restrict the response to the timeline of this one album
 	// (an album the caller owns or that is shared to the caller)
 	// instead of the aggregate. An unknown or invisible album
@@ -4131,8 +4185,11 @@ type CreateMemoryJSONRequestBody = MemoryCreateRequest
 // MergePeopleJSONRequestBody defines body for MergePeople for application/json ContentType.
 type MergePeopleJSONRequestBody = MergePeopleRequest
 
-// SetPersonHiddenJSONRequestBody defines body for SetPersonHidden for application/json ContentType.
-type SetPersonHiddenJSONRequestBody = SetPersonHiddenRequest
+// SetPersonAvatarJSONRequestBody defines body for SetPersonAvatar for application/json ContentType.
+type SetPersonAvatarJSONRequestBody = SetPersonAvatarRequest
+
+// SetPersonBirthdateJSONRequestBody defines body for SetPersonBirthdate for application/json ContentType.
+type SetPersonBirthdateJSONRequestBody = SetPersonBirthdateRequest
 
 // LabelPersonJSONRequestBody defines body for LabelPerson for application/json ContentType.
 type LabelPersonJSONRequestBody = LabelPersonRequest
@@ -4328,9 +4385,12 @@ type ServerInterface interface {
 	// GetPersonCluster One face cluster's detail as the caller sees it.
 	// (GET /people/{clusterId})
 	GetPersonCluster(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
-	// SetPersonHidden Flip the caller's hidden switch of one face cluster.
-	// (PUT /people/{clusterId}/hidden)
-	SetPersonHidden(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
+	// SetPersonAvatar Pick the face one person's avatar renders.
+	// (PUT /people/{clusterId}/avatar)
+	SetPersonAvatar(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
+	// SetPersonBirthdate Set or clear one person's birth date.
+	// (PUT /people/{clusterId}/birthdate)
+	SetPersonBirthdate(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
 	// UnlabelPerson Remove the caller's label of one face cluster.
 	// (DELETE /people/{clusterId}/label)
 	UnlabelPerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
@@ -4733,9 +4793,15 @@ func (_ Unimplemented) GetPersonCluster(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// SetPersonHidden Flip the caller's hidden switch of one face cluster.
-// (PUT /people/{clusterId}/hidden)
-func (_ Unimplemented) SetPersonHidden(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
+// SetPersonAvatar Pick the face one person's avatar renders.
+// (PUT /people/{clusterId}/avatar)
+func (_ Unimplemented) SetPersonAvatar(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetPersonBirthdate Set or clear one person's birth date.
+// (PUT /people/{clusterId}/birthdate)
+func (_ Unimplemented) SetPersonBirthdate(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5652,6 +5718,19 @@ func (siw *ServerInterfaceWrapper) GetTimeline(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "clusterId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "clusterId", r.URL.Query(), &params.ClusterId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "clusterId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "clusterId", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "albumId" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "albumId", r.URL.Query(), &params.AlbumId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
@@ -6235,8 +6314,8 @@ func (siw *ServerInterfaceWrapper) GetPersonCluster(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
-// SetPersonHidden operation middleware
-func (siw *ServerInterfaceWrapper) SetPersonHidden(w http.ResponseWriter, r *http.Request) {
+// SetPersonAvatar operation middleware
+func (siw *ServerInterfaceWrapper) SetPersonAvatar(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
@@ -6251,7 +6330,33 @@ func (siw *ServerInterfaceWrapper) SetPersonHidden(w http.ResponseWriter, r *htt
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetPersonHidden(w, r, clusterId)
+		siw.Handler.SetPersonAvatar(w, r, clusterId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPersonBirthdate operation middleware
+func (siw *ServerInterfaceWrapper) SetPersonBirthdate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterId" -------------
+	var clusterId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterId", chi.URLParam(r, "clusterId"), &clusterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "clusterId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPersonBirthdate(w, r, clusterId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7055,7 +7160,10 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/people/{clusterId}/label", wrapper.LabelPerson)
 	})
 	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/people/{clusterId}/hidden", wrapper.SetPersonHidden)
+		r.Put(options.BaseURL+"/people/{clusterId}/birthdate", wrapper.SetPersonBirthdate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/people/{clusterId}/avatar", wrapper.SetPersonAvatar)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/people/merge", wrapper.MergePeople)
