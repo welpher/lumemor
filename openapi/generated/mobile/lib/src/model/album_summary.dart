@@ -10,7 +10,7 @@ import 'package:built_value/serializer.dart';
 
 part 'album_summary.g.dart';
 
-/// One album card of the wall: the metadata, the live member count and the collage source, plus the `callerRole` discriminator the web client sections the wall by. Shared items carry `owner`, the honest attribution of another account's album; own items omit it. 
+/// One album card of the wall: the metadata, the live member count and the collage source, plus the `callerRole` discriminator the client keys each card's face by (a viewer card carries the read-only mark; an own card its own shared state). Shared items carry `owner`, the honest attribution of another account's album; own items omit it. 
 ///
 /// Properties:
 /// * [id] - Identifier of the album.
@@ -20,7 +20,7 @@ part 'album_summary.g.dart';
 /// * [coverAssetIds] - The collage source of the wall card: the pinned cover asset as a single-element list when the owner set one, otherwise the album's most recent live member assets (up to four, `takenAt` descending, the asset id as the tiebreak). Empty for an album with no live members. 
 /// * [itemCount] - The album's live member count: trashed, hidden and Live Photo component rows never count (a hidden asset is invisible to the whole family). 
 /// * [updatedAt] - When the album row last changed (RFC 3339 UTC).
-/// * [callerRole] - The caller's relation to this album: `owner` items belong to the own group, `viewer` items to the shared group. The web client sections the wall off this discriminator. 
+/// * [callerRole] - The caller's relation to this album: `owner` items belong to the caller's own group on the wire, `viewer` items to the shared group. The client renders ONE wall list and keys each card's face off this discriminator (the read-only mark is the member's, the shared state the owner's). 
 /// * [owner] - The owner attribution of a shared item: the account that owns the album. Present exactly when `callerRole` is `viewer`; own items omit it (the owner is the caller). 
 /// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly on the excludable cards -- the own `directory` items and every shared item; the own `memory` items omit it (they never feed the caller's own timeline, so there is nothing to exclude), and the pinned `sync` card omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). 
 @BuiltValue(instantiable: false)
@@ -54,7 +54,7 @@ abstract class AlbumSummary  {
   @BuiltValueField(wireName: r'updatedAt')
   DateTime get updatedAt;
 
-  /// The caller's relation to this album: `owner` items belong to the own group, `viewer` items to the shared group. The web client sections the wall off this discriminator. 
+  /// The caller's relation to this album: `owner` items belong to the caller's own group on the wire, `viewer` items to the shared group. The client renders ONE wall list and keys each card's face off this discriminator (the read-only mark is the member's, the shared state the owner's). 
   @BuiltValueField(wireName: r'callerRole')
   AlbumSummaryCallerRoleEnum get callerRole;
   // enum callerRoleEnum {  owner,  viewer,  };
@@ -320,7 +320,7 @@ class AlbumSummaryTypeEnum extends EnumClass {
   static AlbumSummaryTypeEnum valueOf(String name) => _$albumSummaryTypeEnumValueOf(name);
 }
 
-/// The caller's relation to this album: `owner` items belong to the own group, `viewer` items to the shared group. The web client sections the wall off this discriminator. 
+/// The caller's relation to this album: `owner` items belong to the caller's own group on the wire, `viewer` items to the shared group. The client renders ONE wall list and keys each card's face off this discriminator (the read-only mark is the member's, the shared state the owner's). 
 class AlbumSummaryCallerRoleEnum extends EnumClass {
 
   @BuiltValueEnumConst(wireName: r'owner')

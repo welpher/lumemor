@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	/** One audience member the chips render: the id + the display email. */
+	/** One audience member the chips render: the id + the email the write joins on. */
 	export type AudienceMember = { userId: string; email: string };
 </script>
 
@@ -18,6 +18,16 @@
 	// action buttons (the icon-first rule's second face): the row's
 	// mousedown adds, the chip's remove mark is the only button
 	// among them.
+	//
+	// EVERY CHIP AND ROW NAMES ITS PERSON (web-ia §7.30): the display
+	// name leads, the avatar's initial comes from it, and an account
+	// that set none falls back to the email -- the pickers used to be
+	// a column of addresses. The member listing is also what resolves
+	// the SEEDED chips' names: a chip seeded from the detail's shares
+	// carries only an id and an email, so the label reads the listing
+	// (the email is the honest face while the listing is unknown) and
+	// a name two accounts share hangs the email on the chip as its
+	// title.
 	//
 	// THE CANDIDATES: the instance's minimal member list (the same
 	// users listing the share dialog consumed), minus the current
@@ -61,6 +71,7 @@
 	import { _ } from 'svelte-i18n';
 	import { tick } from 'svelte';
 	import { listUsers, type UserSummary } from '$lib/api/albums';
+	import { ambiguousLabels, displayNameOf, initialOf } from '$lib/identity';
 	import { anchored } from '$lib/components/anchored';
 	import UserRoundPlus from '@lucide/svelte/icons/user-round-plus';
 	import X from '@lucide/svelte/icons/x';
@@ -110,6 +121,30 @@
 	// empty on its own (granted accounts were never candidates); an
 	// unknown pool keeps the button enabled as the retry door.
 	const poolEmpty = $derived(probed && candidates.length === 0);
+
+	// The labels a known pool gives more than one account: a shared name
+	// hangs the email on those chips as the hover title (see §7.30 --
+	// the name is not a key).
+	const ambiguousNames = $derived(ambiguousLabels([...users]));
+
+	// The listing's stored name of one account ('' while the listing is
+	// unknown): the chips seeded from the detail's shares carry only ids
+	// and emails, so their names come from here.
+	function nameOf(userId: string): string {
+		return users.find((user) => user.id === userId)?.name ?? '';
+	}
+
+	// The label of one account: the display name, the email when the
+	// account set none (a blank chip never renders).
+	function labelOf(userId: string, email: string): string {
+		return displayNameOf({ name: nameOf(userId), email });
+	}
+
+	// The chip's hover title: the email a shared name needs to be told
+	// apart by (absent when the name is unique).
+	function titleOf(userId: string, email: string): string | undefined {
+		return ambiguousNames.has(labelOf(userId, email)) ? email : undefined;
+	}
 
 	// The mount probe: one listing fetch when the field mounts (the
 	// dialog opened), so the pool is known BEFORE the first open.
@@ -243,10 +278,9 @@
 		}
 	}
 
-	/** One account's avatar initial: the email local part's first rune. */
-	function initialOf(email: string): string {
-		const local = email.split('@')[0] ?? '';
-		return [...local][0]?.toUpperCase() ?? '?';
+	/** The initial of one account, off its display name (the email fallback). */
+	function initialOfMember(userId: string, email: string): string {
+		return initialOf({ name: nameOf(userId), email });
 	}
 </script>
 
@@ -267,15 +301,23 @@
 				>
 					<span
 						class="audience-field__chip-avatar w-5 h-5 rounded-full bg-accent text-white flex items-center justify-center text-[10px] leading-none font-bold shrink-0"
-						aria-hidden="true">{initialOf(member.email)}</span
+						aria-hidden="true">{initialOfMember(member.userId, member.email)}</span
 					>
-					<span class="audience-field__chip-name truncate">{member.email}</span>
+					<span class="audience-field__chip-name truncate" title={titleOf(member.userId, member.email)}
+						>{labelOf(member.userId, member.email)}</span
+					>
 					<!-- The chip's remove mark: the one action button among
-					     the state-selector shapes, icon-only and named. -->
+					     the state-selector shapes, icon-only and named. A
+					     name two accounts share takes the address here too,
+					     so the button's accessible name is never ambiguous. -->
 					<button
 						class="audience-field__chip-remove inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-transparent text-accent-soft-text border-none cursor-pointer hover:bg-[color-mix(in_srgb,var(--color-night)_12%,transparent)] disabled:opacity-55 disabled:cursor-not-allowed"
 						type="button"
-						aria-label={$_('albums_audience_remove', { values: { name: member.email } })}
+						aria-label={$_('albums_audience_remove', {
+							values: {
+								name: titleOf(member.userId, member.email) ?? labelOf(member.userId, member.email)
+							}
+						})}
 						disabled={busy}
 						onclick={() => remove(member.userId)}
 					>
@@ -372,9 +414,11 @@
 					>
 						<span
 							class="audience-field__row-avatar w-7 h-7 rounded-full bg-accent-soft text-accent-soft-text flex items-center justify-center text-[12px] leading-none font-bold shrink-0"
-							aria-hidden="true">{initialOf(candidate.email)}</span
+							aria-hidden="true">{initialOfMember(candidate.id, candidate.email)}</span
 						>
-						<span class="audience-field__row-name truncate">{candidate.email}</span>
+						<span class="audience-field__row-name truncate" title={titleOf(candidate.id, candidate.email)}
+							>{labelOf(candidate.id, candidate.email)}</span
+						>
 						{#if candidate.isDisabled}
 							<span
 								class="audience-field__row-note font-body font-normal text-[12px] leading-[1.4] {index ===

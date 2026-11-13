@@ -1,9 +1,11 @@
 <script lang="ts">
-	// The memory wall: the reference-set cards in their two sections
-	// -- the caller's own memories (the manual origin badge on every
-	// card) then the memories shared to them (the honest owner
-	// attribution and the read-only badge) -- with the same collage
-	// cover language the album cards carry. A memory card NEVER
+	// The memory wall: the reference-set cards in ONE list (web-ia §7.29's
+	// single list, carried to the memories page: no own/shared sections,
+	// no group labels, most recently updated first) -- the manual origin
+	// badge on an own card, the honest owner attribution beside the
+	// read-only badge on a shared one (§7.30: the attribution names the
+	// person, the email only falls back) -- with the same collage cover
+	// language the album cards carry. A memory card NEVER
 	// carries the timeline-exclusion badge: a memory never feeds its
 	// creator's timeline by construction (the exclusion is the
 	// memory's fixed semantics, not a signal worth a badge).
@@ -27,6 +29,7 @@
 	import { listAlbums, createMemory, type AlbumSummary, type AlbumAudienceSkip } from '$lib/api/albums';
 	import { subscribeAlbumEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import { ambiguousLabels, displayNameOf } from '$lib/identity';
 	import Button from '$lib/components/Button.svelte';
 	import CreateMemoryDialog from '$lib/memories/CreateMemoryDialog.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -90,11 +93,19 @@
 		}
 	}
 
-	// The sections ride the items' own `callerRole` discriminator:
-	// the server's concatenation is own-first, shared-after, and each
-	// group's order is the server's.
-	const ownMemories = $derived(memories.filter((memory) => memory.callerRole === 'owner'));
-	const sharedMemories = $derived(memories.filter((memory) => memory.callerRole === 'viewer'));
+	// The wall's ONE list, most recently updated first (web-ia §7.29:
+	// own and shared mixed, no group labels; the sort is stable, so the
+	// server's order breaks equal timestamps). A memory has no pinned
+	// sync card to lead it.
+	const memoryCards = $derived(
+		[...memories].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+	);
+
+	// The attribution chips' disambiguator: a display name TWO accounts
+	// carry gets the email as its hover title (the name is not a key).
+	const ambiguousOwners = $derived(
+		ambiguousLabels(memories.flatMap((memory) => (memory.owner === undefined ? [] : [memory.owner])))
+	);
 
 	const firstLoad = $derived(memories.length === 0 && status === 'loading');
 	const settledEmpty = $derived(memories.length === 0 && status === 'ready');
@@ -104,6 +115,18 @@
 	// reactive `$_` keeps the text locale-tracked.
 	function errorText(key: string): string {
 		return resolveErrorText($_, key);
+	}
+
+	// The shared card's attribution: the owner's display name, the email
+	// when the account set none (a blank chip never renders).
+	function ownerLabel(memory: AlbumSummary): string {
+		return memory.owner === undefined ? '' : displayNameOf(memory.owner);
+	}
+
+	// The attribution chip's hover title: the owner's email when another
+	// account of this wall carries the same name.
+	function ownerTitle(memory: AlbumSummary): string | undefined {
+		return memory.owner !== undefined && ambiguousOwners.has(ownerLabel(memory)) ? memory.owner.email : undefined;
 	}
 
 	// The cover layout class of one card: the pinned cover and the
@@ -231,40 +254,13 @@
 				>
 			</div>
 		{:else}
-			<section class="memories__own-section">
-				<h2 class="memories__section-title mb-3 font-display font-bold text-[16px] leading-[1.3] text-text">
-					{$_('memories_own_section')}
-				</h2>
-				{#if ownMemories.length === 0}
-					<!-- Own-empty with shared cards behind: the pointer line
-				     (the page-level empty card's copy), not a bare grid. -->
-					<p
-						class="memories__own-hint m-0 mb-3 font-body font-normal text-[14px] leading-[1.5] text-text-soft"
-					>
-						{$_('memories_empty')}
-					</p>
-				{:else}
-					<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
-						{#each ownMemories as memory (memory.id)}
-							{@render card(memory)}
-						{/each}
-					</div>
-				{/if}
-			</section>
-			{#if sharedMemories.length > 0}
-				<section class="memories__shared-section">
-					<h2
-						class="memories__section-title mt-6 mb-3 font-display font-bold text-[16px] leading-[1.3] text-text"
-					>
-						{$_('memories_shared_section')}
-					</h2>
-					<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
-						{#each sharedMemories as memory (memory.id)}
-							{@render card(memory)}
-						{/each}
-					</div>
-				</section>
-			{/if}
+			<!-- ONE grid: own and shared memories mixed by recency, no
+			     group labels (web-ia §7.29). -->
+			<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
+				{#each memoryCards as memory (memory.id)}
+					{@render card(memory)}
+				{/each}
+			</div>
 		{/if}
 
 		{#if status === 'error' && memories.length > 0}
@@ -284,10 +280,11 @@
 </section>
 
 {#snippet card(memory: AlbumSummary)}
-	<!-- One memory card: the collage cover, the title, the count, the
-	     manual origin badge on the own cards, the owner attribution
-	     and the read-only badge on the shared ones. No exclusion
-	     badge anywhere: a memory never feeds its creator's timeline. -->
+	<!-- One memory card: the collage cover, the title, the count, then the
+	     badge row -- the manual origin badge on an own card, the owner
+	     attribution beside the read-only badge on a shared one (web-ia
+	     §7.29 / §7.30). No exclusion badge anywhere: a memory never feeds
+	     its creator's timeline. -->
 	<a
 		class="memory-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
 		href="/memories/{encodeURIComponent(memory.id)}"
@@ -346,16 +343,11 @@
 			<span class="memory-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
 				>{memory.title}</span
 			>
-			{#if memory.owner !== undefined}
-				<span class="memory-card__owner font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
-					>{$_('albums_shared_by', { values: { email: memory.owner.email } })}</span
-				>
-			{/if}
-			<span class="memory-card__meta flex flex-wrap items-center gap-1.5 mt-0.5">
-				<span
-					class="memory-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
-					>{$_('memories_photo_count', { values: { count: memory.itemCount } })}</span
-				>
+			<span
+				class="memory-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
+				>{$_('memories_photo_count', { values: { count: memory.itemCount } })}</span
+			>
+			<span class="memory-card__badges mt-0.5 flex flex-wrap items-center gap-1.5">
 				{#if memory.callerRole === 'owner'}
 					<!-- The manual origin badge: the reference set the owner
 					     curated photo by photo. -->
@@ -365,13 +357,21 @@
 						{$_('memories_manual_badge')}
 					</span>
 				{:else}
-					<!-- The read-only badge: the sharee's honest state -- the
-					     audience is the owner's domain, the member's view
-					     never carries a write affordance. -->
+					<!-- The shared face: who shared it, then what it means for
+					     the member -- the attribution and the read-only mark
+					     ride one line (web-ia §7.29). -->
+					{#if memory.owner !== undefined}
+						<span
+							class="memory-card__badge memory-card__badge--owner inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+							title={ownerTitle(memory)}
+						>
+							{$_('albums_shared_by', { values: { name: ownerLabel(memory) } })}
+						</span>
+					{/if}
 					<span
 						class="memory-card__badge memory-card__badge--readonly inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
 					>
-						{$_('memories_shared_badge')}
+						{$_('shared_readonly_badge')}
 					</span>
 				{/if}
 			</span>

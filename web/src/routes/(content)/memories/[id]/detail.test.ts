@@ -341,7 +341,7 @@ test('a viewer sees read-only: the attribution, the badge, no checks at all', as
 		itemCount: 2,
 		updatedAt: '2026-11-05T10:15:00Z',
 		callerRole: 'viewer',
-		owner: { id: 'u2', email: 'grace@example.com' }
+		owner: { id: 'u2', name: 'Grace Hopper', email: 'grace@example.com' }
 	};
 	vi.stubGlobal(
 		'fetch',
@@ -357,7 +357,7 @@ test('a viewer sees read-only: the attribution, the badge, no checks at all', as
 	}
 	// The member's arm: the honest owner attribution and the
 	// read-only badge.
-	expect(document.body.querySelector('.memory-bar__owner')?.textContent).toBe('Shared by grace@example.com');
+	expect(document.body.querySelector('.memory-bar__owner')?.textContent).toBe('Shared by Grace Hopper');
 	expect(document.body.querySelector('.memory-bar__badge')?.textContent?.trim()).toBe('Read-only');
 
 	// THE NO-SELECTION WALL: the member's tiles are pure navigation

@@ -1075,9 +1075,9 @@ export interface paths {
         /**
          * The caller's album wall.
          * @description The album wall of the calling user: every album that deserves
-         *     a wall card, in two groups concatenated into one array -- the
-         *     web client renders its sections off the `callerRole`
-         *     discriminator each item carries.
+         *     a wall card, in one array whose three arms are concatenated --
+         *     the client renders ONE list and keys each card's face off the
+         *     `callerRole` discriminator the item carries.
          *
          *     The caller's sync album is pinned FIRST, before the own
          *     group: the one card of type `sync`, the caller's own core
@@ -1090,7 +1090,9 @@ export interface paths {
          *     an `album_shares` row, the caller's most recently granted
          *     share first (the album id descending as the tiebreak).
          *     Shared items carry `owner` -- the honest attribution of
-         *     another account's album: the owner's id and email.
+         *     another account's album: the owner's id, email and display
+         *     name (the card renders the name, the email its fallback and
+         *     its disambiguator).
          *
          *     A sync album of ANOTHER account never appears, in either
          *     group: the shared arm carries `memory` and `directory`
@@ -2795,12 +2797,15 @@ export interface paths {
          *     to grant) is the list's first consumer.
          *
          *     The entries carry exactly the identity a pick list renders:
-         *     `id`, `email`, `role` and `isDisabled` -- no display name,
-         *     no timestamps, and a password hash never appears in any
-         *     response. The disabled switch rides the entry so callers
-         *     can present accounts that cannot sign in for what they are
-         *     (granting to one still answers 400 through the share
-         *     endpoint's own target rule).
+         *     `id`, `email`, `name`, `role` and `isDisabled` -- no
+         *     timestamps, and a password hash never appears in any
+         *     response. The display name leads there (the pick list says
+         *     "Mum", not her login address); `email` stays the fallback
+         *     an empty name leaves and the disambiguator between two
+         *     accounts that share a name. The disabled switch rides the
+         *     entry so callers can present accounts that cannot sign in
+         *     for what they are (granting to one still answers 400
+         *     through the share endpoint's own target rule).
          *
          *     The list is small by construction (a family instance holds
          *     a handful of accounts) and grows only through the admin
@@ -5973,7 +5978,9 @@ export interface components {
         /**
          * @description One album card of the wall: the metadata, the live member
          *     count and the collage source, plus the `callerRole`
-         *     discriminator the web client sections the wall by. Shared
+         *     discriminator the client keys each card's face by (a viewer
+         *     card carries the read-only mark; an own card its own shared
+         *     state). Shared
          *     items carry `owner`, the honest attribution of another
          *     account's album; own items omit it.
          */
@@ -6025,8 +6032,11 @@ export interface components {
             updatedAt: string;
             /**
              * @description The caller's relation to this album: `owner` items belong
-             *     to the own group, `viewer` items to the shared group. The
-             *     web client sections the wall off this discriminator.
+             *     to the caller's own group on the wire, `viewer` items to
+             *     the shared group. The client renders ONE wall list and
+             *     keys each card's face off this discriminator (the
+             *     read-only mark is the member's, the shared state the
+             *     owner's).
              * @enum {string}
              */
             callerRole: "owner" | "viewer";
@@ -6051,7 +6061,9 @@ export interface components {
         };
         /**
          * @description The owner of an album shared to the caller: the honest
-         *     attribution a shared wall card renders.
+         *     attribution a shared wall card renders. The display name
+         *     leads; `email` is the fallback an empty name leaves (the
+         *     card never renders a blank attribution).
          */
         AlbumOwnerRef: {
             /**
@@ -6061,9 +6073,19 @@ export interface components {
             id: string;
             /**
              * Format: email
-             * @description The email address of the owning account.
+             * @description The email address of the owning account: the fallback
+             *     the client renders when `name` is empty, and the
+             *     disambiguator between two accounts that share a name.
              */
             email: string;
+            /**
+             * @description The owning account's display name, exactly as stored.
+             *     The empty string when the account set none -- the
+             *     client then renders `email` instead. Never treated as a
+             *     unique key: two accounts may share a name, and the
+             *     email is what tells them apart.
+             */
+            name: string;
         };
         /**
          * @description One album's detail as the calling user sees it: the metadata,
@@ -6608,8 +6630,10 @@ export interface components {
         };
         /**
          * @description One account of the minimal member list: exactly the identity
-         *     fields a pick list renders -- no display name, no
-         *     timestamps, and never a password hash.
+         *     fields a pick list renders -- the display name (with the
+         *     email as the fallback for an account that set none), the
+         *     role and the disabled switch; no timestamps, and never a
+         *     password hash.
          */
         UserSummary: {
             /**
@@ -6619,9 +6643,18 @@ export interface components {
             id: string;
             /**
              * Format: email
-             * @description Login address.
+             * @description Login address: the identity's unique key, the fallback
+             *     a pick list renders when the display name is empty, and
+             *     the disambiguator between two accounts that share a
+             *     name.
              */
             email: string;
+            /**
+             * @description The account's display name, exactly as stored. The
+             *     empty string when the account set none -- the client
+             *     then renders `email` instead.
+             */
+            name: string;
             role: components["schemas"]["UserRole"];
             /**
              * @description The disabled switch: a disabled account cannot sign in

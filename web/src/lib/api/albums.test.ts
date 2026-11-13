@@ -624,8 +624,11 @@ test('listUsers reads the minimal member list', async () => {
 		'/api/v1/users': () =>
 			jsonResponse(200, {
 				users: [
-					{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false },
-					{ id: 'u2', email: 'grace@example.com', role: 'user', isDisabled: true }
+					{ id: 'u1', name: 'Ada Lovelace', email: 'ada@example.com', role: 'admin', isDisabled: false },
+					// The display name is required and may be empty: the
+					// client serves the stored value, the fallback is its
+					// own render-time rule.
+					{ id: 'u2', name: '', email: 'grace@example.com', role: 'user', isDisabled: true }
 				]
 			})
 	});
@@ -635,8 +638,24 @@ test('listUsers reads the minimal member list', async () => {
 	expect(outcome.ok).toBe(true);
 	if (outcome.ok) {
 		expect(outcome.users).toHaveLength(2);
+		expect(outcome.users[0]?.name).toBe('Ada Lovelace');
+		expect(outcome.users[1]?.name).toBe('');
 		expect(outcome.users[1]?.isDisabled).toBe(true);
 	}
+});
+
+test('listUsers refuses a member entry without its display name', async () => {
+	// The field is required on the wire: an answer missing it is not a
+	// member list this client can render honestly.
+	const fetchMock = stubFetch({
+		'/api/v1/users': () =>
+			jsonResponse(200, {
+				users: [{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false }]
+			})
+	});
+	vi.stubGlobal('fetch', fetchMock);
+
+	expect(await listUsers()).toEqual({ ok: false, errorKey: 'internal' });
 });
 
 test('setAlbumTimelinePreference PUTs the switch and answers the stored state', async () => {

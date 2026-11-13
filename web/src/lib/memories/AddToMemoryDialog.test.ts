@@ -46,7 +46,7 @@ const familyArchive = memory('al1', { title: 'Family archive', type: 'directory'
 const sanya = memory('mem3', {
 	title: 'Sanya trip',
 	callerRole: 'viewer',
-	owner: { id: 'u2', email: 'grace@example.com' }
+	owner: { id: 'u2', name: 'Grace Hopper', email: 'grace@example.com' }
 });
 
 let wallState: AlbumSummary[] = [myPhotos, springFestival, paris, familyArchive, sanya];

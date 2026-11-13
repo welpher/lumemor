@@ -133,10 +133,11 @@ const albumItems = [item('a1', '2026-11-02T10:00:00Z'), item('a2', '2026-10-13T1
 
 const usersBody = {
 	users: [
-		{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false },
-		{ id: 'u2', email: 'grace@example.com', role: 'user', isDisabled: false },
-		{ id: 'u3', email: 'ivy@example.com', role: 'user', isDisabled: false },
-		{ id: 'u4', email: 'hopper@example.com', role: 'user', isDisabled: true }
+		{ id: 'u1', name: 'Ada Lovelace', email: 'ada@example.com', role: 'admin', isDisabled: false },
+		{ id: 'u2', name: 'Grace Hopper', email: 'grace@example.com', role: 'user', isDisabled: false },
+		{ id: 'u3', name: 'Ivy Lee', email: 'ivy@example.com', role: 'user', isDisabled: false },
+		// The account set no display name: its row keeps the email.
+		{ id: 'u4', name: '', email: 'hopper@example.com', role: 'user', isDisabled: true }
 	]
 };
 
@@ -586,9 +587,12 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	flushSync();
 	const dialog = modal();
 
-	// The chips seed from the current grants.
+	// The chips seed from the current grants: the shares carry ids and
+	// emails only, so the field's own member listing is what names
+	// them (the email is the honest face until it lands).
+	await settle();
 	const chipNames = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []);
-	expect(chipNames.map((chip) => chip.textContent)).toEqual(['grace@example.com']);
+	expect(chipNames.map((chip) => chip.textContent)).toEqual(['Grace Hopper']);
 
 	// The picker: the other accounts (the caller and the grant
 	// excluded -- hopper renders with the honest disabled note).
@@ -599,7 +603,7 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	await settle();
 	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row') ?? []);
 	expect(rows.map((row) => row.querySelector('.audience-field__row-name')?.textContent)).toEqual([
-		'ivy@example.com',
+		'Ivy Lee',
 		'hopper@example.com'
 	]);
 	expect(rows[1]?.textContent).toContain('cannot sign in');
@@ -612,7 +616,7 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	listbox?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 	flushSync();
 	const chipNamesAfter = Array.from(dialog?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []);
-	expect(chipNamesAfter.map((chip) => chip.textContent)).toEqual(['grace@example.com', 'ivy@example.com']);
+	expect(chipNamesAfter.map((chip) => chip.textContent)).toEqual(['Grace Hopper', 'Ivy Lee']);
 
 	// Esc closes the picker alone -- the dialog stays. (The portaled
 	// layer leaves the document with the close; the dialog's own DOM
@@ -636,7 +640,7 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	buttonByLabel('Properties').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	const chipNamesConverged = Array.from(modal()?.querySelectorAll<HTMLElement>('.audience-field__chip-name') ?? []);
-	expect(chipNamesConverged.map((chip) => chip.textContent)).toEqual(['grace@example.com', 'ivy@example.com']);
+	expect(chipNamesConverged.map((chip) => chip.textContent)).toEqual(['Grace Hopper', 'Ivy Lee']);
 	unmount(page);
 	flushSync();
 });
