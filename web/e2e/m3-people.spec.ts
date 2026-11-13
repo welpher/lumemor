@@ -26,11 +26,12 @@
 // the same-person co-clustering and the cross-person separation the
 // acceptance script's database asserts prove at the embedding level.
 //
-// THE SCENES (the M3b people surface, in order):
+// THE SCENES (the E12 people domain -- three pages, two states, in
+// order):
 //
 //  1. Signing in through the form lands on the deep-linked people
-//     page, whose empty state carries the honest copy and the
-//     unnamed region's entry.
+//     page: the one-row bar (title + count, the name filter, the
+//     badged unnamed entry) over the honest empty state.
 //  2. The library bootstrap, all through the API (the M2 story's
 //     seeding pattern): the model group's download run is driven to
 //     succeeded, the four fixtures upload, and the unnamed listing
@@ -38,29 +39,42 @@
 //     through the cluster details so the story knows which unnamed
 //     card is which person.
 //  3. The unnamed region renders both clusters as cards with their
-//     face counts.
-//  4. The naming main path: clicking the same-person cluster's card
-//     opens the naming dialog; the PUT lands and the card leaves the
-//     region immediately; the named region gains the person.
-//  5. The detail navigation: the person card opens the cluster
-//     detail with the faces grid and the asset context.
-//  6. The merge flow: the other cluster is named through the same
-//     dialog, its detail's "Merge into…" (the shared person picker)
-//     folds it into the first person and LANDS on the survivor's own
-//     page; the named region shows the survivor with the merged face
+//     face counts -- as ENTRANCES: links into the person detail, no
+//     selection surface anywhere (§7.20).
+//  4. The naming main path moved to the detail's unnamed variant:
+//     the card opens `/people/{id}?state=unnamed`, whose profile row
+//     reads 「Unnamed」 and whose naming entry lands the named state
+//     in place. The named list gains the person with the PHOTO
+//     count; the unnamed region loses the card.
+//  5. The detail is THIS PERSON'S PHOTOS (§7.17): the sticky 53px
+//     context bar (no shell topbar), the profile row (name, photo
+//     count, birth-date entry) and the shared wall. The photo hide
+//     flows through the wall's batch bar and back (the hidden page's
+//     unhide restores the tile and the count).
+//  6. The person entity's attributes: the birth date renders
+//     locale-aware through Intl (machine value in <time>), and the
+//     avatar picker (faces only, no file names, no governance) lands
+//     the pick on the profile row and the list card alike.
+//  7. The merge flow: the other cluster is named through its own
+//     unnamed variant, its detail's "Merge into…" (the shared person
+//     picker) folds it into the first person and LANDS on the
+//     survivor's own page; the survivor carries the merged wall and
 //     count while the merged-away person is gone.
-//  7. The viewer's face chips: a face card
-//     of the detail deep-links into the asset viewer, whose info
-//     drawer carries the person's name on the face's chip.
-//  8. The edit-people panel: the drawer's People pencil opens the
+//  8. The viewer: a WALL TILE deep-links into the asset viewer, whose
+//     info drawer carries the person's name on the face's chip and
+//     the capture-time AGE the birth date exists for.
+//  9. The edit-people panel: the drawer's People pencil opens the
 //     per-face panel; "Create a new person from this face" stages,
 //     the one-shot commit writes and echoes the count toast, and the
-//     seeded cluster lands unnamed (named through the region's dialog
-//     so the next scene has a second target).
-//  9. The panel's reassign (the picker's local filter narrows, the
+//     seeded cluster lands unnamed (named through its detail's
+//     variant so the next scene has a second target).
+// 10. The panel's reassign (the picker's local filter narrows, the
 //     pick stages, the commit writes once) and the detach (the
 //     confirm names the person, the row goes back among the not
-//     grouped yet); the person page's unname carries its toast echo.
+//     grouped yet); the person detail's unname carries its toast
+//     echo, the entity's birth date survives it, the person lands in
+//     the unnamed region, and the acceptance script's final beat
+//     names them again.
 //
 // THE STATE HANDOFF: the scenes are serial (one stack, one story --
 // see playwright.config.ts) and share the browser session: scene 1
@@ -128,19 +142,13 @@ const authStatePath = `${specDir}/.auth/m3b-state.json`;
 let samePersonClusterId = '';
 let samePersonRepFaceId = '';
 
-// The unnamed region's cluster cards (the page renders one button per
-// cluster whose accessible name is the honest face count; the count
-// line is always plural -- the i18n message has no singular form).
-// Addressed by the representative face's crop URL when the story
-// needs one specific cluster's card.
-function clusterCard(page: Page, count: number) {
-	return page.getByRole('button', { name: `${count} faces`, exact: true });
-}
-
-function clusterCardByFace(page: Page, faceId: string) {
-	return page
-		.locator('button.cluster-card')
-		.filter({ has: page.locator(`img[src="/api/v1/faces/${faceId}/thumbnail"]`) });
+// The unnamed region's cluster cards are ENTRANCES (§7.20): one link
+// per cluster, its accessible name the 「Unnamed」 slot beside the
+// honest face count (the count is always plural -- the i18n message
+// has no singular form). Addressed by the representative face's crop
+// URL when the story needs one specific cluster's card.
+function unnamedCardByFace(page: Page, faceId: string) {
+	return page.locator('a.cluster-card').filter({ has: page.locator(`img[src="/api/v1/faces/${faceId}/thumbnail"]`) });
 }
 
 test.beforeAll(async ({ playwright }) => {
@@ -166,11 +174,15 @@ test('scene 1: signing in through the form lands on the empty people page', asyn
 	await expect(page).toHaveURL(/\/people$/);
 	await expect(page).toHaveTitle('People · lumemor');
 
-	// The empty state carries the honest copy and the unnamed
-	// region's entry (the naming main path lives there).
-	await expect(page.getByRole('heading', { level: 1, name: 'People', exact: true })).toBeVisible();
-	await expect(page.getByText('No people yet. Photos with faces will show up here.')).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Unnamed', exact: true })).toBeVisible();
+	// The one-row bar (§7.18): the title with the count, the name
+	// filter and the unnamed entry (badged with the region's count --
+	// zero, so the badge is absent but the entry stands).
+	await expect(page.getByRole('heading', { level: 1 })).toContainText('People · 0 people');
+	await expect(page.getByPlaceholder('Filter by name')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Unnamed · 0 groups', exact: true })).toBeVisible();
+	// The empty state carries the honest copy.
+	await expect(page.getByText('No people yet')).toBeVisible();
+	await expect(page.getByText('Photos with faces will show up here.')).toBeVisible();
 
 	// Hand the session to every later scene: the storage state rides
 	// the login cookie (the fresh contexts replay it).
@@ -287,89 +299,190 @@ test.describe('the signed-in scenes', () => {
 		samePersonRepFaceId = samePerson.representativeFaceId;
 	});
 
-	test('scene 3: the unnamed region shows both clusters', async ({ page }) => {
+	test('scene 3: the unnamed region shows both clusters as entrances', async ({ page }) => {
 		await page.goto('/people/unnamed');
 		await expect(page).toHaveTitle('Unnamed · lumemor');
 
-		// Both clusters render as cards with their honest face
-		// counts: one pair per person, and the same-person cluster's
-		// card is the one whose crop is its representative face.
-		await expect(clusterCard(page, 2)).toHaveCount(2);
-		await expect(clusterCardByFace(page, samePersonRepFaceId)).toBeVisible();
+		// The one-row bar (§7.18): back, the title and the REGION's
+		// count -- no action, no select switch (the cards are
+		// entrances, never a selection surface).
+		await expect(page.getByRole('link', { name: 'Back to people', exact: true })).toBeVisible();
+		await expect(page.getByRole('heading', { level: 1 })).toContainText('Unnamed · 2 groups');
+		await expect(page.locator('.unnamed__toolbar button')).toHaveCount(0);
+
+		// Both clusters render as cards carrying their honest face
+		// counts, and the same-person cluster's card is the one whose
+		// crop is its representative face.
+		await expect(page.getByRole('link', { name: /2 faces/ })).toHaveCount(2);
+		await expect(unnamedCardByFace(page, samePersonRepFaceId)).toBeVisible();
+		// Nothing selectable: no check circle exists anywhere.
+		await expect(page.locator('.cluster-card__check')).toHaveCount(0);
 	});
 
-	test('scene 4: the naming dialog moves a cluster into the named region', async ({ page }) => {
+	test('scene 4: the unnamed card opens the detail, where the naming lands', async ({ page }) => {
 		await page.goto('/people/unnamed');
-		const samePersonCard = clusterCardByFace(page, samePersonRepFaceId);
-		await expect(samePersonCard).toBeVisible();
+		const card = unnamedCardByFace(page, samePersonRepFaceId);
+		await expect(card).toBeVisible();
 
-		// Clicking the card opens the naming dialog (the main path).
-		await samePersonCard.click();
+		// The card is an ENTRANCE into the same detail page the named
+		// cards open (the unnamed variant).
+		await card.click();
+		await expect(page).toHaveURL(new RegExp(`/people/${samePersonClusterId}\\?state=unnamed$`));
+		await expect(page).toHaveTitle('Unnamed · lumemor');
+
+		// The unnamed variant: the shell's topbar is gone (the page
+		// owns its contextual bar), the profile row reads 「Unnamed」
+		// and the action set swaps the unname for the naming.
+		await expect(page.locator('.shell-topbar')).toHaveCount(0);
+		const bar = page.locator('.person-bar');
+		await expect(bar).toBeVisible();
+		await expect(page.locator('.person-profile__name')).toHaveText('Unnamed');
+		await expect(page.getByRole('button', { name: 'Change avatar', exact: true })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Merge into…', exact: true })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Remove name', exact: true })).toHaveCount(0);
+
+		// The naming entry opens the dialog; the PUT lands and the
+		// profile row adopts the response -- the named state arrives in
+		// place (no navigation).
+		await page.getByRole('button', { name: 'Name this person', exact: true }).first().click();
 		const dialog = page.getByRole('dialog', { name: 'Name this person', exact: true });
 		await expect(dialog).toBeVisible();
 		await dialog.getByLabel('Name').fill(PERSON_A);
 		await dialog.getByRole('button', { name: 'Save name', exact: true }).click();
-
-		// The PUT lands and the card leaves the region immediately
-		// (the response is the fresh label state); the different
-		// person's card stays.
 		await expect(dialog).toHaveCount(0);
-		await expect(samePersonCard).toHaveCount(0);
-		await expect(page.locator('button.cluster-card')).toHaveCount(1);
+		await expect(page.locator('.person-profile__name')).toHaveText(PERSON_A);
+		await expect(page.getByRole('button', { name: 'Remove name', exact: true })).toBeVisible();
 
-		// The named region gained the person with the honest count.
+		// The named region gained the person with the honest PHOTO
+		// count (photos, not faces: the pair is two photos), and the
+		// unnamed region lost the card.
 		await page.goto('/people');
-		const card = page.locator('a.person-card').filter({ hasText: PERSON_A });
-		await expect(card).toBeVisible();
-		await expect(card).toContainText('2 faces');
+		const card2 = page.locator('a.person-card').filter({ hasText: PERSON_A });
+		await expect(card2).toBeVisible();
+		await expect(card2).toContainText('2 photos');
+		await page.goto('/people/unnamed');
+		await expect(page.getByRole('heading', { level: 1 })).toContainText('Unnamed · 1 group');
+		await expect(unnamedCardByFace(page, samePersonRepFaceId)).toHaveCount(0);
 	});
 
-	test('scene 5: the person card opens the cluster detail', async ({ page }) => {
+	test('scene 5: the detail is this person’s photo wall, with the photo hide flowing through it', async ({
+		page
+	}) => {
 		await page.goto('/people');
 		await page.locator('a.person-card').filter({ hasText: PERSON_A }).click();
 		await expect(page).toHaveURL(new RegExp(`/people/${samePersonClusterId}$`));
 
-		// The detail carries the name, the faces heading and the two
-		// faces of the same-person pair, each with its asset context
-		// (the file name) and the link into the viewer.
-		await expect(page.getByRole('heading', { level: 1, name: PERSON_A, exact: true })).toBeVisible();
-		await expect(page.getByRole('heading', { level: 2, name: 'Faces', exact: true })).toBeVisible();
-		await expect(page.locator('.face-card')).toHaveCount(2);
-		await expect(page.getByText(PHOTO_A1_NAME)).toBeVisible();
-		await expect(page.getByText(PHOTO_A2_NAME)).toBeVisible();
-		await expect(page.getByRole('link', { name: `Face in ${PHOTO_A1_NAME}`, exact: true })).toBeVisible();
-		await expect(page.getByRole('link', { name: 'People', exact: true })).toBeVisible();
+		// THE CONTEXT BAR (§7.21): sticky, 53px, back + the icon
+		// actions; the shell's own chrome does not render here.
+		await expect(page.locator('.shell-topbar')).toHaveCount(0);
+		const bar = page.locator('.person-bar');
+		await expect(bar).toBeVisible();
+		expect(await bar.evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBe(53);
+		await expect(page.getByRole('link', { name: 'Back to people', exact: true })).toBeVisible();
+
+		// THE PROFILE ROW: the name (with its rename pencil), the photo
+		// count and the birth-date entry.
+		await expect(page.locator('.person-profile__name')).toHaveText(PERSON_A);
+		await expect(page.locator('.person-profile__rename')).toHaveAttribute('aria-label', 'Rename');
+		await expect(page.locator('.person-profile__count')).toHaveText('2');
+		await expect(page.locator('.person-profile__birthdate')).toHaveText('Add birth date');
+
+		// THE WALL: this person's two photos, the shared wall's tiles.
+		await expect(page.locator('.person-wall .tile')).toHaveCount(2);
+
+		// THE PHOTO HIDE (the only hide left in the people domain --
+		// the batch bar's): select the first photo, hide it through the
+		// bar, and the wall + the profile count converge.
+		const tile = page.locator('.person-wall .tile').first();
+		await tile.hover();
+		await tile.locator('.tile__check').click();
+		const batchBar = page.locator('.batchbar');
+		await expect(batchBar).toBeVisible();
+		await batchBar.getByRole('button', { name: 'Hide', exact: true }).click();
+		await expect(page.locator('.person-wall .tile')).toHaveCount(1);
+		await expect(page.locator('.person-profile__count')).toHaveText('1');
+
+		// The hidden photo is restorable from the hidden page and comes
+		// back to this wall (the restored event's convergence).
+		await page.goto('/hidden');
+		await expect(page.locator('.wall .tile')).toHaveCount(1);
+		const hiddenTile = page.locator('.wall .tile').first();
+		await hiddenTile.hover();
+		await hiddenTile.locator('.tile__check').click();
+		await page.locator('.batchbar').getByRole('button', { name: 'Unhide', exact: true }).click();
+		await expect(page.locator('.wall .tile')).toHaveCount(0);
+
+		await page.goto('/people');
+		await expect(page.locator('a.person-card').filter({ hasText: PERSON_A })).toContainText('2 photos');
 	});
 
-	test('scene 6: the merge folds the other person into the first', async ({ page }) => {
-		// Name the different person's cluster through the same
-		// dialog path.
+	test('scene 6: the birth date and the avatar picker write the person entity’s attributes', async ({ page }) => {
+		await page.goto('/people');
+		await page.locator('a.person-card').filter({ hasText: PERSON_A }).click();
+		await expect(page.locator('.person-wall .tile')).toHaveCount(2);
+
+		// THE BIRTH DATE: the profile row's entry opens the dialog; the
+		// date renders locale-aware through Intl with the machine value
+		// in <time>.
+		await page.locator('.person-profile__birthdate').click();
+		const birthDialog = page.getByRole('dialog', { name: 'Birth date', exact: true });
+		await expect(birthDialog).toBeVisible();
+		await birthDialog.locator('input[type="date"]').fill('1992-03-15');
+		await birthDialog.getByRole('button', { name: 'Save', exact: true }).click();
+		await expect(birthDialog).toHaveCount(0);
+		const birthLine = page.locator('.person-profile__birthdate');
+		await expect(birthLine).toContainText('Born 3/15/1992');
+		await expect(birthLine.locator('time')).toHaveAttribute('datetime', '1992-03-15');
+
+		// THE AVATAR PICKER: the person's faces only -- the crops, no
+		// file names and no governance.
+		await page.getByRole('button', { name: 'Change avatar', exact: true }).click();
+		const avatarDialog = page.getByRole('dialog', { name: 'Change avatar', exact: true });
+		await expect(avatarDialog).toBeVisible();
+		await expect(avatarDialog).toContainText("Pick one of this person's faces as their avatar.");
+		const options = avatarDialog.locator('.avatar-option');
+		await expect(options).toHaveCount(2);
+		await expect(avatarDialog).not.toContainText(PHOTO_A1_NAME);
+		await expect(avatarDialog.locator('.avatar-option__badge')).toHaveCount(0);
+
+		// The pick lands: the profile row's crop becomes the picked
+		// face's.
+		const picked = options.nth(1);
+		const pickedCrop = await picked.locator('img').getAttribute('src');
+		await picked.click();
+		await avatarDialog.getByRole('button', { name: 'Set avatar', exact: true }).click();
+		await expect(avatarDialog).toHaveCount(0);
+		await expect(page.locator('.person-profile__avatar img')).toHaveAttribute('src', pickedCrop!);
+
+		// The named list's card crop follows the stored pick (the
+		// avatar is the entity's, not the caller's).
+		await page.goto('/people');
+		await expect(page.locator('a.person-card').filter({ hasText: PERSON_A }).locator('img')).toHaveAttribute(
+			'src',
+			pickedCrop!
+		);
+	});
+
+	test('scene 7: the merge folds the other person into this one', async ({ page }) => {
+		// Name the different person's cluster through its own unnamed
+		// detail (the same entrance path).
 		await page.goto('/people/unnamed');
-		const remaining = page.locator('button.cluster-card').first();
+		const remaining = page.locator('a.cluster-card').first();
 		await expect(remaining).toBeVisible();
 		await remaining.click();
+		await expect(page.locator('.person-profile__name')).toHaveText('Unnamed');
+		await page.getByRole('button', { name: 'Name this person', exact: true }).first().click();
 		const naming = page.getByRole('dialog', { name: 'Name this person', exact: true });
 		await expect(naming).toBeVisible();
 		await naming.getByLabel('Name').fill(PERSON_B);
 		await naming.getByRole('button', { name: 'Save name', exact: true }).click();
 		await expect(naming).toHaveCount(0);
+		await expect(page.locator('.person-profile__name')).toHaveText(PERSON_B);
 
-		// The region settles empty (every visible cluster is named).
-		await expect(
-			page.getByText('Nothing to name yet. Face clusters appear here once faces are grouped.')
-		).toBeVisible();
-
-		// Both people are listed; the merged-away person's detail
-		// carries the merge-into action.
-		await page.goto('/people');
-		await expect(page.locator('a.person-card')).toHaveCount(2);
-		await page.locator('a.person-card').filter({ hasText: PERSON_B }).click();
-		await expect(page.getByRole('heading', { level: 1, name: PERSON_B, exact: true })).toBeVisible();
+		// The merge face: the shared person picker (this cluster is the
+		// single source), the honest cost in the body, and the landing
+		// on the SURVIVING person's page after the fold.
 		await page.getByRole('button', { name: 'Merge into…', exact: true }).click();
-
-		// The merge face is the shared person picker: the honest cost
-		// stays, the row picks with one click, and the submit is the
-		// action's own name.
 		const dialog = page.getByRole('dialog', { name: 'Merge into…', exact: true });
 		await expect(dialog).toBeVisible();
 		await expect(dialog).toContainText('This person merges into the one you pick.');
@@ -377,49 +490,45 @@ test.describe('the signed-in scenes', () => {
 		await dialog.getByRole('radio', { name: PERSON_A }).click();
 		await dialog.getByRole('button', { name: 'Merge into…', exact: true }).click();
 
-		// The merge lands on the SURVIVOR's own page (the landing is
-		// the feedback -- no toast): the survivor carries the merged
-		// face count (2 + 2), the merged-away person is gone from the
-		// list, and the unnamed region stays empty.
+		// The survivor's page carries the merged wall (4 photos) and
+		// the merged count; the merged-away person is gone from the
+		// list and the unnamed region stays empty.
 		await expect(page).toHaveURL(new RegExp(`/people/${samePersonClusterId}$`));
-		await expect(page.getByRole('heading', { level: 1, name: PERSON_A, exact: true })).toBeVisible();
-		await expect(page.locator('.face-card')).toHaveCount(4);
+		await expect(page.locator('.person-profile__name')).toHaveText(PERSON_A);
+		await expect(page.locator('.person-profile__count')).toHaveText('4');
+		await expect(page.locator('.person-wall .tile')).toHaveCount(4);
 		await page.goto('/people');
-		const survivor = page.locator('a.person-card').filter({ hasText: PERSON_A });
-		await expect(survivor).toBeVisible();
-		await expect(survivor).toContainText('4 faces');
 		await expect(page.locator('a.person-card')).toHaveCount(1);
+		await expect(page.locator('a.person-card').filter({ hasText: PERSON_A })).toContainText('4 photos');
 		await page.goto('/people/unnamed');
-		await expect(
-			page.getByText('Nothing to name yet. Face clusters appear here once faces are grouped.')
-		).toBeVisible();
+		await expect(page.getByText('Face clusters appear here once faces are grouped.')).toBeVisible();
 	});
 
-	test('scene 7: the viewer carries the person on the face chips', async ({ page }) => {
-		// A face card of the survivor's detail deep-links into the
-		// asset viewer.
+	test('scene 8: a wall tile opens the viewer, whose chip carries the person and the age', async ({ page }) => {
+		// The wall's tile IS the way into the photo (the faces grid is
+		// gone): its link names the photo.
 		await page.goto('/people');
 		await page.locator('a.person-card').filter({ hasText: PERSON_A }).click();
-		await page.getByRole('link', { name: `Face in ${PHOTO_A1_NAME}`, exact: true }).click();
+		await page.locator('.person-wall .tile__link').first().click();
 		await expect(page).toHaveURL(new RegExp(`/a/[0-9a-f-]{36}$`));
-		await expect(page.getByText(PHOTO_A1_NAME)).toBeVisible();
 
-		// The info drawer's People section carries the person's name
-		// on the face's chip (the caller's own label of the face's
-		// cluster -- the merged person, every face of the merged set).
+		// The info drawer's People section carries the person's name on
+		// the face's chip, and -- because the entity now has a birth
+		// date -- the age WHEN THIS PHOTO WAS TAKEN (the birth date's
+		// whole purpose besides birthday memories).
 		await page.getByRole('button', { name: 'Photo information' }).click();
 		const drawer = page.getByRole('complementary', { name: 'Photo information' });
 		await expect(drawer).toBeVisible();
 		await expect(drawer.locator('.info__face-name')).toHaveText(PERSON_A);
+		await expect(drawer.locator('.info__face-age')).toContainText('years');
 	});
 
-	test('scene 8: the edit-people panel creates a person from a face', async ({ page }) => {
+	test('scene 9: the edit-people panel creates a person from a face', async ({ page }) => {
 		// The scene's own route (the spec's convention: every scene
-		// navigates explicitly): the first photo's viewer with its
-		// info drawer open, exactly where scene 7 left the story.
+		// navigates explicitly): the viewer with its info drawer open.
 		await page.goto('/people');
 		await page.locator('a.person-card').filter({ hasText: PERSON_A }).click();
-		await page.getByRole('link', { name: `Face in ${PHOTO_A1_NAME}`, exact: true }).click();
+		await page.locator('.person-wall .tile__link').first().click();
 		await expect(page).toHaveURL(new RegExp(`/a/[0-9a-f-]{36}$`));
 		await page.getByRole('button', { name: 'Photo information' }).click();
 		await expect(page.getByRole('complementary', { name: 'Photo information' })).toBeVisible();
@@ -433,19 +542,18 @@ test.describe('the signed-in scenes', () => {
 		await expect(panel).toContainText(
 			'Every face in this photo is here. A face matched to the wrong person can be reassigned to someone else, or removed from the person it sits on.'
 		);
+		// The row carries the age beside the name (the same entity
+		// attribute the chip reads).
+		await expect(panel.locator('.faces-panel__age').first()).toContainText('years');
 
-		// The photo's one face (the merged person's) carries both row
-		// actions; the reassign pencil opens the choose-person picker.
+		// The face's row actions: the reassign pencil opens the
+		// choose-person picker, whose creation row STAGES a new person.
 		await panel.getByRole('button', { name: 'Reassign this face', exact: true }).click();
 		const picker = page.getByRole('dialog', { name: 'Choose person', exact: true });
 		await expect(picker).toBeVisible();
 		await expect(picker).toContainText(
 			'Who does this face belong to? Pick an existing person, or create a new person from this face.'
 		);
-
-		// The creation row (below the list, outside the scroll box)
-		// STAGES the edit: the pending dot marks the row, nothing is
-		// written yet.
 		await picker.getByRole('button', { name: 'Create a new person from this face', exact: true }).click();
 		await expect(picker).toHaveCount(0);
 		await expect(panel.locator('li[data-staged="true"]')).toHaveCount(1);
@@ -458,11 +566,12 @@ test.describe('the signed-in scenes', () => {
 		await expect(panel).toHaveCount(0);
 
 		// The seeded cluster lands in the unnamed region with the one
-		// face; naming it through the region's dialog gives the story
+		// face; naming it through its detail's variant gives the story
 		// a second named person for the reassign scene.
 		await page.goto('/people/unnamed');
-		await expect(page.locator('button.cluster-card')).toHaveCount(1);
-		await page.locator('button.cluster-card').first().click();
+		await expect(page.locator('a.cluster-card')).toHaveCount(1);
+		await page.locator('a.cluster-card').first().click();
+		await page.getByRole('button', { name: 'Name this person', exact: true }).first().click();
 		const naming = page.getByRole('dialog', { name: 'Name this person', exact: true });
 		await expect(naming).toBeVisible();
 		await naming.getByLabel('Name').fill(PERSON_C);
@@ -472,12 +581,13 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('a.person-card')).toHaveCount(2);
 	});
 
-	test('scene 9: the panel reassigns, detaches, and the unname echoes', async ({ page }) => {
-		// The second photo of the pair (still the first person's
-		// face): the reassign stages a move to the newly named person.
+	test('scene 10: the panel reassigns, detaches, and the unname returns the person to unnamed', async ({ page }) => {
+		// The second photo of the pair (still the first person's face):
+		// the reassign stages a move to the newly named person.
 		await page.goto('/people');
 		await page.locator('a.person-card').filter({ hasText: PERSON_A }).click();
-		await page.getByRole('link', { name: `Face in ${PHOTO_A2_NAME}`, exact: true }).click();
+		// The wall's second tile is the pair's other photo.
+		await page.locator('.person-wall .tile__link').first().click();
 		await expect(page).toHaveURL(new RegExp(`/a/[0-9a-f-]{36}$`));
 		await page.getByRole('button', { name: 'Photo information' }).click();
 		await expect(page.getByRole('complementary', { name: 'Photo information' })).toBeVisible();
@@ -485,15 +595,12 @@ test.describe('the signed-in scenes', () => {
 		const panel = page.getByRole('complementary', { name: 'Edit people' });
 		await expect(panel).toBeVisible();
 
-		// The reassign first (a CLUSTERED face moves between people):
-		// the picker's local filter narrows the two named people to
-		// the one typed, the pick stages, and the one-shot commit
-		// writes once and CLOSES the panel with the count echo.
+		// The reassign (a CLUSTERED face moves between people): the
+		// picker's local filter narrows the two named people to the one
+		// typed, the pick stages, and the one-shot commit writes once
+		// and CLOSES the panel with the count echo.
 		await panel.getByRole('button', { name: 'Reassign this face', exact: true }).click();
 		const picker = page.getByRole('dialog', { name: 'Choose person', exact: true });
-		// The face's own person is never a target (Ada's face's picker
-		// lists Kay alone); the local filter's miss lands the in-box
-		// empty state, and the hit narrows back to the one row.
 		await expect(picker.getByRole('radio')).toHaveCount(1);
 		await picker.getByLabel('Filter by name').fill('Ad');
 		await expect(picker.getByRole('radio')).toHaveCount(0);
@@ -508,11 +615,9 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.toasts')).toContainText('Made 1 change.');
 		await expect(panel).toHaveCount(0);
 
-		// The drawer stays (the panel returns to the info panel's
-		// slot): the pencil RE-OPENS the edit-people panel, and the
-		// now-reassigned face's detach is the immediate write -- the
-		// confirm names the person, the row goes back among the not
-		// grouped yet, and the echo lands.
+		// The detach is the immediate write: the confirm names the
+		// person, the row goes back among the not grouped yet, and the
+		// echo lands.
 		await page.getByRole('button', { name: 'Edit people', exact: true }).click();
 		const reopen = page.getByRole('complementary', { name: 'Edit people' });
 		await expect(reopen).toBeVisible();
@@ -520,45 +625,39 @@ test.describe('the signed-in scenes', () => {
 		await reopen.getByRole('button', { name: 'Remove this face', exact: true }).click();
 		const detach = page.getByRole('dialog', { name: 'Remove this face', exact: true });
 		await expect(detach).toBeVisible();
-		await expect(detach).toContainText(
-			's face goes back to not grouped yet — the photo itself is unaffected, and it can be assigned again later.'
-		);
 		await detach.getByRole('button', { name: 'Remove', exact: true }).click();
 		await expect(detach).toHaveCount(0);
 		await expect(page.locator('.toasts')).toContainText('Face removed; it is back among the not grouped yet.');
 		await expect(reopen.locator('.faces-panel__name').first()).toContainText('Not grouped yet');
 
-		// The clusterless row's reassign is the same staged flow and
-		// it LANDS: a face the clustering has not grouped yet may
-		// join an existing person (there is no source cluster to
-		// maintain), so the move the panel stages is accepted and
-		// the row converges to the picked person.
-		await reopen.getByRole('button', { name: 'Reassign this face', exact: true }).click();
-		const rehome = page.getByRole('dialog', { name: 'Choose person', exact: true });
-		await expect(rehome).toBeVisible();
-		await rehome.getByRole('radio', { name: PERSON_C }).click();
-		await rehome.getByRole('button', { name: 'Assign', exact: true }).click();
-		await expect(rehome).toHaveCount(0);
-		await expect(reopen.locator('li[data-staged="true"]')).toHaveCount(1);
-		await reopen.getByRole('button', { name: 'Finish editing', exact: true }).click();
-		await expect(page.locator('.toasts')).toContainText('Made 1 change.');
-		await expect(reopen).toHaveCount(0);
-
-		// The landing is the feedback: the re-opened panel's row
-		// carries the picked person, the group restored.
-		await page.getByRole('button', { name: 'Edit people', exact: true }).click();
-		const landed = page.getByRole('complementary', { name: 'Edit people' });
-		await expect(landed).toBeVisible();
-		await expect(landed.locator('.faces-panel__name').first()).toContainText(PERSON_C);
-
-		// The first person's unname is immediate and carries the toast
-		// echo (the named list keeps the second person alone).
+		// THE UNNAME (§7.19): the person detail's action is immediate
+		// and carries the toast echo; the person leaves the named list
+		// and lands in the unnamed region as one more group.
 		await page.goto('/people');
 		await page.locator('a.person-card').filter({ hasText: PERSON_A }).click();
 		await page.getByRole('button', { name: 'Remove name', exact: true }).click();
 		await expect(page.locator('.toasts')).toContainText('Name removed; this person is unnamed again.');
+		// The same page lands the unnamed variant in place.
+		await expect(page.locator('.person-profile__name')).toHaveText('Unnamed');
+		// The birth date is the ENTITY's: the unnamed variant still
+		// carries it (it never depended on the name).
+		await expect(page.locator('.person-profile__birthdate')).toContainText('Born 3/15/1992');
+
 		await page.goto('/people');
 		await expect(page.locator('a.person-card')).toHaveCount(1);
 		await expect(page.locator('a.person-card').filter({ hasText: PERSON_C })).toBeVisible();
+		await page.goto('/people/unnamed');
+		await expect(page.getByRole('heading', { level: 1 })).toContainText('Unnamed · 1 group');
+
+		// The final beat of the owner's acceptance script: name the
+		// person again from the unnamed variant.
+		await page.locator('a.cluster-card').first().click();
+		await page.getByRole('button', { name: 'Name this person', exact: true }).first().click();
+		const rename = page.getByRole('dialog', { name: 'Name this person', exact: true });
+		await expect(rename).toBeVisible();
+		await rename.getByLabel('Name').fill(PERSON_A);
+		await rename.getByRole('button', { name: 'Save name', exact: true }).click();
+		await expect(rename).toHaveCount(0);
+		await expect(page.locator('.person-profile__name')).toHaveText(PERSON_A);
 	});
 });
