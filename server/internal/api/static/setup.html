@@ -5,148 +5,129 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>lumemor setup</title>
-<style>
-:root {
-  color-scheme: light dark;
-  --bg: #f4f4f2;
-  --card: #ffffff;
-  --fg: #23282f;
-  --muted: #667085;
-  --line: #d9dee7;
-  --accent: #2f6fed;
-  --accent-ink: #ffffff;
-  --danger: #b42318;
-  --ok: #157347;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14161b;
-    --card: #1d2027;
-    --fg: #e7eaf0;
-    --muted: #98a1b0;
-    --line: #323845;
-    --accent: #7fa5f5;
-    --accent-ink: #101525;
-    --danger: #f19a90;
-    --ok: #7cd3a5;
+<link rel="icon" href="data:,">
+<!-- The product's own compiled stylesheet (theme tokens, base layer and
+     the utilities this page uses): the wizard wears the same skin as the
+     app instead of carrying a second palette. The Go server emits the
+     stable name; the theme's content-hashed asset sits behind it. -->
+<link rel="stylesheet" href="/setup.css">
+<script>
+  // The same pre-paint theme rule the app shell carries (see its
+  // app.html): the stored manual preference first, the system
+  // preference otherwise, applied before the card paints so a dark
+  // household never sees a flash of the light surface.
+  try {
+    var stored = localStorage.getItem('lumemor:theme');
+    var dark =
+      stored === 'dark' ||
+      ((stored === null || stored === 'system') &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (dark) {
+      document.documentElement.classList.add('dark');
+    }
+  } catch (error) {
+    /* storage or matchMedia unavailable: stay on the light theme */
   }
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: var(--bg);
-  color: var(--fg);
-  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-}
-main {
-  width: 100%;
-  max-width: 380px;
-  padding: 32px 28px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-}
-.brand {
-  margin: 0 0 6px;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-h1 { margin: 0 0 6px; font-size: 22px; line-height: 1.35; }
-.intro { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
-label { display: block; margin: 18px 0 4px; font-size: 14px; font-weight: 600; }
-input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--fg);
-  font: inherit;
-}
-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.hint { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-button {
-  width: 100%;
-  margin-top: 24px;
-  padding: 11px 12px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button:disabled { opacity: 0.6; cursor: default; }
-.status {
-  margin: 16px 0 0;
-  padding: 10px 12px;
-  border: 1px solid;
-  border-radius: 8px;
-  font-size: 14px;
-  white-space: pre-line;
-}
-.status-error { color: var(--danger); border-color: var(--danger); }
-.status-ok { color: var(--ok); border-color: var(--ok); }
-</style>
+</script>
 </head>
 <body>
-<main>
-  <p class="brand">lumemor</p>
-  <h1 id="heading">Create the administrator account</h1>
-  <p id="intro" class="intro">Create the first administrator account to finish setting up your photo library.</p>
+<main class="setup flex min-h-dvh flex-col items-center gap-3 pt-[12vh] px-4 pb-12">
+  <div class="setup__card w-[min(400px,100%)]">
+    <!-- THE FORM FACE: the brand wordmark, the title, one sentence and the
+         four fields. The card stays put through every refusal (a taken
+         instance renders its danger row above the button; a mismatched
+         confirmation renders its row under the field), so the reader never
+         loses what they typed. -->
+    <div class="setup__panel card bg-card border border-border rounded-card shadow-card p-5" id="panel-form">
+      <p class="setup__brand m-0 mb-1.5 font-body font-bold text-[12px] leading-[1.4] tracking-[0.12em] uppercase text-accent">lumemor</p>
+      <h1 class="setup__title font-display font-bold text-[26px] leading-[1.3] text-text mb-2" id="heading">Create the administrator account</h1>
+      <p class="setup__intro font-body font-normal text-[15px] leading-[1.5] text-text-soft mb-4" id="intro">Create the first administrator account to finish setting up your photo library.</p>
 
-  <form id="form">
-    <label for="name" id="label-name">Display name (optional)</label>
-    <input id="name" name="name" type="text" autocomplete="nickname" maxlength="100">
+      <form class="setup__form flex flex-col gap-3" id="form">
+        <div class="setup__field flex flex-col gap-1.5">
+          <label class="field__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="setup-name" id="label-name">Display name <span class="font-body font-normal text-text-faint">(optional)</span></label>
+          <input class="w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control" id="setup-name" name="name" type="text" autocomplete="nickname" maxlength="100" placeholder="What your family calls you">
+          <p class="field__hint m-0 font-body font-normal text-[13px] leading-[1.4] text-text-faint" id="hint-name">Leave it empty and the first part of your email stands in.</p>
+        </div>
 
-    <label for="email" id="label-email">Email</label>
-    <input id="email" name="email" type="email" autocomplete="email" required>
+        <div class="setup__field flex flex-col gap-1.5">
+          <label class="field__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="setup-email" id="label-email">Email</label>
+          <input class="w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control" id="setup-email" name="email" type="email" autocomplete="email" required>
+        </div>
 
-    <label for="password" id="label-password">Password</label>
-    <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
-    <p class="hint" id="hint">At least 8 characters.</p>
+        <div class="setup__field flex flex-col gap-1.5">
+          <label class="field__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="setup-password" id="label-password">Password</label>
+          <input class="w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control" id="setup-password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
+          <p class="field__hint m-0 font-body font-normal text-[13px] leading-[1.4] text-text-faint" id="hint-password">At least 8 characters.</p>
+        </div>
 
-    <p class="status status-error" id="error" role="alert" hidden></p>
+        <div class="setup__field flex flex-col gap-1.5">
+          <label class="field__label font-body font-semibold text-[14px] leading-[1.4] text-text" for="setup-confirm" id="label-confirm">Confirm password</label>
+          <input class="w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control" id="setup-confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
+          <p class="field__error m-0 font-body font-normal text-[13px] leading-[1.4] text-danger-text hidden" id="mismatch" role="alert">The two passwords do not match.</p>
+        </div>
 
-    <button type="submit" id="submit">Create administrator</button>
-  </form>
+        <!-- The refused-creation row: one danger line above the button, and
+             the way out beside it. The setup API's own answer (already
+             completed) and the boot probe share this slot. -->
+        <p class="setup__error m-0 font-body font-normal text-[13px] leading-[1.5] text-danger-text hidden" id="error" role="alert">
+          <span id="error-text"></span>
+          <a class="ms-1 font-semibold text-accent no-underline hover:underline hidden" id="error-login" href="/login">Go to sign in</a>
+        </p>
 
-  <p class="status status-ok" id="done" role="status" tabindex="-1" hidden></p>
+        <button class="btn inline-flex items-center justify-center gap-2 px-4 py-2 font-body font-semibold text-[15px] leading-[1.2] rounded-control border cursor-pointer transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard bg-accent text-accent-on border-transparent hover:bg-accent-strong disabled:opacity-55 disabled:cursor-not-allowed" type="submit" id="submit">Create administrator</button>
+      </form>
+
+      <p class="setup__note m-0 mt-4 pt-3 border-t border-border font-body font-normal text-[12px] leading-[1.5] text-text-faint" id="note">This page appears only while the instance has no administrator — afterwards it becomes the sign-in page.</p>
+    </div>
+
+    <!-- THE CREATED FACE: one card swap, never a page swap. The button is
+         the only navigation (the account exists; the sign-in form is next). -->
+    <div class="setup__panel card bg-card border border-border rounded-card shadow-card p-5 text-center hidden" id="panel-created" tabindex="-1">
+      <span class="setup__check inline-flex items-center justify-center w-11 h-11 rounded-full bg-accent-soft text-accent-soft-text" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <h1 class="setup__done-title mt-3 mb-1 font-display font-bold text-[22px] leading-[1.3] text-text" id="done-title">Administrator created</h1>
+      <p class="setup__done-body m-0 mb-4 font-body font-normal text-[14px] leading-[1.5] text-text-soft" id="done-body">Initial setup is complete. Next, upload your first photos, or pair your phone.</p>
+      <a class="btn inline-flex items-center justify-center gap-2 px-4 py-2 font-body font-semibold text-[15px] leading-[1.2] rounded-control border cursor-pointer bg-accent text-accent-on border-transparent no-underline hover:bg-accent-strong" href="/login?redirectTo=/" id="done-action">Enter your photo library</a>
+    </div>
+  </div>
 </main>
 
 <script>
 "use strict";
 (function () {
-  // This page is a stopgap until the SvelteKit web app ships, so it
-  // keeps a tiny inline dictionary instead of the i18n JSON files; the
-  // markup above carries the English strings as a no-script fallback
-  // and this script re-renders them for the chosen locale.
+  // This page is the pre-SPA first-run surface, so it carries its own
+  // small dictionary instead of the app's i18n runtime; the markup
+  // above holds the English strings as the no-script face and this
+  // script re-renders them for the chosen locale. The page's own
+  // behavior is the only JavaScript here: the boot probe (which face
+  // an initialized instance shows), the confirmation check, the
+  // submit, and the card swap.
   var STRINGS = {
     en: {
       lang: "en",
       title: "lumemor first-run setup",
       heading: "Create the administrator account",
       intro: "Create the first administrator account to finish setting up your photo library.",
-      labelName: "Display name (optional)",
+      labelName: "Display name <span class=\"font-body font-normal text-text-faint\">(optional)</span>",
+      placeholderName: "What your family calls you",
+      hintName: "Leave it empty and the first part of your email stands in.",
       labelEmail: "Email",
       labelPassword: "Password",
-      hint: "At least 8 characters.",
+      hintPassword: "At least 8 characters.",
+      labelConfirm: "Confirm password",
+      mismatch: "The two passwords do not match.",
       submit: "Create administrator",
       submitting: "Creating administrator…",
-      done: "Administrator created. First-run setup is complete.",
+      note: "This page appears only while the instance has no administrator — afterwards it becomes the sign-in page.",
+      doneTitle: "Administrator created",
+      doneBody: "Initial setup is complete. Next, upload your first photos, or pair your phone.",
+      doneAction: "Enter your photo library",
+      goLogin: "Go to sign in",
       fieldsPrefix: "Check the following: ",
       fieldsJoin: ", ",
-      fields: { name: "display name", email: "email", password: "password" },
+      fields: { name: "display name", email: "email", password: "password", confirm: "password confirmation" },
       errors: {
         setup_already_completed: "Setup is already complete: an administrator account exists.",
         validation_failed: "Please check the highlighted fields and try again.",
@@ -158,16 +139,24 @@ button:disabled { opacity: 0.6; cursor: default; }
       title: "lumemor 初始设置",
       heading: "创建管理员账户",
       intro: "创建第一个管理员账户，完成照片库的初始设置。",
-      labelName: "显示名称（可选）",
+      labelName: "显示名称 <span class=\"font-body font-normal text-text-faint\">（可选）</span>",
+      placeholderName: "家里怎么称呼你",
+      hintName: "不填就用邮箱前缀代替。",
       labelEmail: "邮箱",
       labelPassword: "密码",
-      hint: "至少 8 个字符。",
+      hintPassword: "至少 8 个字符。",
+      labelConfirm: "确认密码",
+      mismatch: "两次输入的密码不一致。",
       submit: "创建管理员",
       submitting: "正在创建管理员…",
-      done: "管理员已创建。初始设置已完成。",
+      note: "这个页面只在还没有管理员时出现——创建完成后，它会变成登录页。",
+      doneTitle: "管理员已创建",
+      doneBody: "初始设置已完成。接下来可以上传第一批照片，或先把手机配上对。",
+      doneAction: "进入照片库",
+      goLogin: "去登录",
       fieldsPrefix: "请检查以下字段：",
       fieldsJoin: "、",
-      fields: { name: "显示名称", email: "邮箱", password: "密码" },
+      fields: { name: "显示名称", email: "邮箱", password: "密码", confirm: "确认密码" },
       errors: {
         setup_already_completed: "初始设置已完成：管理员账户已存在。",
         validation_failed: "请检查标记的字段后重试。",
@@ -187,14 +176,25 @@ button:disabled { opacity: 0.6; cursor: default; }
     labelName: document.getElementById("label-name"),
     labelEmail: document.getElementById("label-email"),
     labelPassword: document.getElementById("label-password"),
-    hint: document.getElementById("hint"),
+    labelConfirm: document.getElementById("label-confirm"),
+    hintName: document.getElementById("hint-name"),
+    hintPassword: document.getElementById("hint-password"),
+    mismatch: document.getElementById("mismatch"),
+    note: document.getElementById("note"),
+    doneTitle: document.getElementById("done-title"),
+    doneBody: document.getElementById("done-body"),
+    doneAction: document.getElementById("done-action"),
+    errorLogin: document.getElementById("error-login"),
     form: document.getElementById("form"),
-    name: document.getElementById("name"),
-    email: document.getElementById("email"),
-    password: document.getElementById("password"),
+    panelForm: document.getElementById("panel-form"),
+    panelCreated: document.getElementById("panel-created"),
+    name: document.getElementById("setup-name"),
+    email: document.getElementById("setup-email"),
+    password: document.getElementById("setup-password"),
+    confirm: document.getElementById("setup-confirm"),
     error: document.getElementById("error"),
-    submit: document.getElementById("submit"),
-    done: document.getElementById("done")
+    errorText: document.getElementById("error-text"),
+    submit: document.getElementById("submit")
   };
 
   function applyStrings() {
@@ -202,10 +202,21 @@ button:disabled { opacity: 0.6; cursor: default; }
     document.title = t.title;
     els.heading.textContent = t.heading;
     els.intro.textContent = t.intro;
-    els.labelName.textContent = t.labelName;
+    // The name label's "optional" suffix is part of the label line, so
+    // its markup (the faint suffix) is the dictionary's own.
+    els.labelName.innerHTML = t.labelName;
     els.labelEmail.textContent = t.labelEmail;
     els.labelPassword.textContent = t.labelPassword;
-    els.hint.textContent = t.hint;
+    els.labelConfirm.textContent = t.labelConfirm;
+    els.name.placeholder = t.placeholderName;
+    els.hintName.textContent = t.hintName;
+    els.hintPassword.textContent = t.hintPassword;
+    els.mismatch.textContent = t.mismatch;
+    els.note.textContent = t.note;
+    els.doneTitle.textContent = t.doneTitle;
+    els.doneBody.textContent = t.doneBody;
+    els.doneAction.textContent = t.doneAction;
+    els.errorLogin.textContent = t.goLogin;
     els.submit.textContent = t.submit;
   }
 
@@ -216,7 +227,15 @@ button:disabled { opacity: 0.6; cursor: default; }
     els.submit.textContent = busy ? t.submitting : t.submit;
   }
 
-  function showError(code, fields) {
+  function showMismatch(show) {
+    els.mismatch.classList.toggle("hidden", !show);
+    els.confirm.setAttribute("aria-invalid", show ? "true" : "false");
+    if (show) {
+      els.confirm.focus();
+    }
+  }
+
+  function showError(code, fields, withLogin) {
     var text = t.errors[code] || t.errors.fallback;
     if (code === "validation_failed" && fields && fields.length > 0) {
       var names = fields.map(function (field) {
@@ -224,31 +243,34 @@ button:disabled { opacity: 0.6; cursor: default; }
       });
       text += "\n" + t.fieldsPrefix + names.join(t.fieldsJoin);
     }
-    els.error.textContent = text;
-    els.error.hidden = false;
+    els.errorText.textContent = text;
+    els.errorLogin.classList.toggle("hidden", !withLogin);
+    els.error.classList.remove("hidden");
   }
 
-  function showDone() {
-    els.form.hidden = true;
-    els.error.hidden = true;
-    els.done.textContent = t.done;
-    els.done.hidden = false;
-    els.done.focus();
-    // Land the fresh administrator back in the app: the login page
-    // with the model management page as the post-login target -- the
-    // v1 form of the wizard's model download step (the models page's
-    // empty state is the download CTA). The root also leads there,
-    // but the explicit target keeps the deep link from being eaten
-    // by the root-versus-timeline redirect. The short pause keeps
-    // the completion message readable before the navigation swaps
-    // the document.
-    setTimeout(function () { window.location.assign("/login?redirectTo=/admin/models"); }, 1500);
+  function hideError() {
+    els.error.classList.add("hidden");
+    els.errorText.textContent = "";
+    els.errorLogin.classList.add("hidden");
+  }
+
+  function showCreated() {
+    els.panelForm.classList.add("hidden");
+    els.panelCreated.classList.remove("hidden");
+    els.panelCreated.focus();
   }
 
   async function submit(event) {
     event.preventDefault();
+    hideError();
+    // The confirmation is this page's own check: the server only ever
+    // sees the one password, so a typo would otherwise lock the
+    // creator out of the instance they just made.
+    if (els.password.value !== els.confirm.value) {
+      showMismatch(true);
+      return;
+    }
     setBusy(true);
-    els.error.hidden = true;
 
     var payload = {
       email: els.email.value.trim(),
@@ -269,7 +291,7 @@ button:disabled { opacity: 0.6; cursor: default; }
       // front of the API) still carries the created account, so the
       // success path keys on res.ok rather than the exact status.
       if (res.ok) {
-        showDone();
+        showCreated();
         return;
       }
       // Failed requests answer with the shared error envelope; a body
@@ -285,17 +307,49 @@ button:disabled { opacity: 0.6; cursor: default; }
       if (data && data.details && Array.isArray(data.details.fields)) {
         fields = data.details.fields;
       }
-      showError(data && typeof data.code === "string" ? data.code.toLowerCase() : "", fields);
+      var code = data && typeof data.code === "string" ? data.code.toLowerCase() : "";
+      // Already completed: the way forward is the sign-in form, so the
+      // row carries its link (the other refusals do not).
+      showError(code, fields, code === "setup_already_completed");
       setBusy(false);
     } catch (err) {
       // fetch rejects on network errors; the envelope never applies.
-      showError("", null);
+      showError("", null, false);
       setBusy(false);
     }
   }
 
+  // The boot probe: an initialized instance keeps the form in place and
+  // shows the completed row above the button (the same face a refused
+  // submit renders), so a revisit never looks like a fresh install.
+  async function probe() {
+    try {
+      var res = await fetch("/api/v1/server/info");
+      if (!res.ok) {
+        return;
+      }
+      var info = await res.json();
+      if (info && info.initialized === true) {
+        showError("setup_already_completed", null, true);
+      }
+    } catch (err) {
+      // Offline or a failed probe: the form still stands.
+    }
+  }
+
+  // A mismatched confirmation is an inline error, so it clears the
+  // moment the reader keeps typing (either field).
+  function clearMismatch() {
+    if (!els.mismatch.classList.contains("hidden")) {
+      showMismatch(false);
+    }
+  }
+
   els.form.addEventListener("submit", submit);
+  els.password.addEventListener("input", clearMismatch);
+  els.confirm.addEventListener("input", clearMismatch);
   applyStrings();
+  probe();
 })();
 </script>
 </body>
