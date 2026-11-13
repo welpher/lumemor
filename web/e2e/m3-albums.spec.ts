@@ -353,10 +353,13 @@ test('scene 1: the administrator signs in and lands on the pinned My photos card
 	await expect(page).toHaveTitle('Albums · lumemor');
 
 	// The wall is never empty on a fresh account: the pinned default
-	// album leads the "Your albums" section with the localized
-	// display name (the stored internal title never renders) and the
-	// honest zero count, and the create action stays beside it -- the
-	// ADMINISTRATOR'S entry (an admin session alone renders it).
+	// album leads the wall with the localized display name (the
+	// stored internal title never renders) and the honest zero count,
+	// and the create action rides the page bar's right edge -- the
+	// ADMINISTRATOR'S entry (an admin session alone renders it). The
+	// bar's left side is the page's one title with its own count.
+	await expect(page.locator('.albums__title')).toHaveText('Albums · 1 album');
+	await expect(page.locator('.albums__toolbar')).toHaveClass(/border-b/);
 	const myPhotos = page.locator('a.album-card').filter({ hasText: 'My photos' });
 	await expect(myPhotos).toBeVisible();
 	await expect(myPhotos).toContainText('0 photos');
@@ -1060,7 +1063,9 @@ test.describe('the writable source scenes', () => {
 		// The trash view carries the row with its retention countdown
 		// -- the moved file waits there for the expiry or the restore.
 		await page.goto('/trash');
-		await expect(page.getByRole('heading', { level: 1, name: 'Trash', exact: true })).toBeVisible();
+		// The page's one row: the trash title with its count (the
+		// count belongs to the title, never a row of its own).
+		await expect(page.getByRole('heading', { level: 1, name: /^Trash · 1 photo$/ })).toBeVisible();
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
 		await expect(page.getByText(/^(Expiring soon|\d+ days? left)$/)).toBeVisible();
 

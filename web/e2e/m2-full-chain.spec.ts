@@ -443,13 +443,29 @@ test.describe('the signed-in scenes', () => {
 		// The navigation drawer's Hidden entry opens the hidden view
 		// (the timeline's toolbar link is gone -- the drawer
 		// owns the entry, beside favorites and trash): the tile lives
-		// there now. The populated view renders the wall itself (month
-		// groups, no page heading), so the document title is the
-		// view's identity.
+		// there now.
 		await navigateViaDrawer(page, 'Hidden');
 		await expect(page).toHaveURL(/\/hidden$/);
 		await expect(page).toHaveTitle('Hidden · lumemor');
+		// The converged page bar: the title with its count on the
+		// left, the selection switch at the far right -- one row with
+		// one divider under it.
+		await expect(page.locator('.wall-page__title')).toHaveText('Hidden · 1 photo');
+		await expect(page.locator('.wall-page__toolbar')).toHaveClass(/border-b/);
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
+
+		// The switch is a REAL selection state: pressed on it marks the
+		// wall and reveals every check, pressed off it clears the
+		// selection and the batch bar leaves the surface.
+		const selectSwitch = page.locator('.wall-page__actions button');
+		await expect(selectSwitch).toHaveAttribute('aria-pressed', 'false');
+		await selectSwitch.click();
+		await expect(selectSwitch).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.locator('.wall__groups')).toHaveClass(/is-selecting/);
+		await selectSwitch.click();
+		await expect(selectSwitch).toHaveAttribute('aria-pressed', 'false');
+		await expect(page.locator('.wall__groups')).not.toHaveClass(/is-selecting/);
+		await expect(page.locator('.batchbar')).toHaveCount(0);
 
 		// Unhide from the hidden view's own batch bar: the tile leaves,
 		// the view settles empty.
@@ -490,7 +506,7 @@ test.describe('the signed-in scenes', () => {
 		// The trash page's recovery card carries the permanent delete.
 		await navigateViaDrawer(page, 'Trash');
 		await expect(page).toHaveURL(/\/trash$/);
-		await expect(page.getByRole('heading', { level: 1, name: 'Trash', exact: true })).toBeVisible();
+		await expect(page.getByRole('heading', { level: 1, name: /^Trash · \d+ photos?$/ })).toBeVisible();
 		await page.getByRole('button', { name: 'Delete permanently', exact: true }).click();
 
 		// The confirm dialog names the asset and requires the explicit
@@ -533,7 +549,7 @@ test.describe('the signed-in scenes', () => {
 		// default retention is 30 days).
 		await navigateViaDrawer(page, 'Trash');
 		await expect(page).toHaveURL(/\/trash$/);
-		await expect(page.getByRole('heading', { level: 1, name: 'Trash', exact: true })).toBeVisible();
+		await expect(page.getByRole('heading', { level: 1, name: /^Trash · \d+ photos?$/ })).toBeVisible();
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
 		await expect(page.getByText(/^(Expiring soon|\d+ days? left)$/)).toBeVisible();
 

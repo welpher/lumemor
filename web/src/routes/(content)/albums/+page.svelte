@@ -119,6 +119,10 @@
 	// reference sets live on the memories wall).
 	const settledEmpty = $derived(ownAlbums.length === 0 && sharedAlbums.length === 0 && status === 'ready');
 
+	// The bar's count: the album CARDS this wall holds (both groups,
+	// memory rows excluded -- memories count on their own page).
+	const albumCount = $derived(ownAlbums.length + sharedAlbums.length);
+
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon); the
 	// reactive `$_` keeps the text locale-tracked.
@@ -221,83 +225,101 @@
 	<title>{$_('albums_title')} · lumemor</title>
 </svelte:head>
 
-<section class="albums max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
-	<!-- The one toolbar of the wall: the directory-album creation, the
-	     primary action -- THE ADMIN'S ALONE (mounting an
-	     existing photo directory is configuration, a member never
-	     sees the affordance). -->
-	{#if adminSession}
-		<div class="albums__toolbar flex justify-end items-center mb-3">
-			<Button
-				onclick={() => {
-					createErrorKey = '';
-					createSkipped = null;
-					createWritable = null;
-					createOpen = true;
-				}}><Plus size={20} aria-hidden="true" />{$_('albums_new')}</Button
-			>
-		</div>
-	{/if}
-
-	{#if firstLoad}
-		<p class="albums__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-			{$_('albums_loading')}
-		</p>
-	{:else if settledEmpty}
-		<div
-			class="albums__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-		>
-			<h1 class="text-[22px] mb-2">{$_('albums_title')}</h1>
-			<p class="text-text-soft">{$_('albums_empty')}</p>
-		</div>
-	{:else if status === 'error' && ownAlbums.length === 0 && sharedAlbums.length === 0}
-		<div
-			class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-			>
-		</div>
-	{:else}
-		<section class="albums__own-section">
-			<h1 class="albums__section-title mt-2 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">
-				{$_('albums_own_section')}
-			</h1>
-			<div class="albums__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
-				{#each ownAlbums as album (album.id)}
-					{@render card(album)}
-				{/each}
+<section class="albums max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+	<!-- THE ONE ROW: the page title with its count on the left, the
+	     page-level action on the right, one divider under the row.
+	     The count is the title's own (it never takes a row of its
+	     own), and it renders only on a settled answer -- a loading
+	     face counts nothing. The creation is the ADMIN'S ALONE
+	     (mounting an existing photo directory is configuration, a
+	     member never sees the affordance). -->
+	<div class="albums__toolbar flex items-center gap-3 pb-4 border-b border-border">
+		<h1 class="albums__title m-0 font-display font-bold text-[20px] leading-[1.3] text-text">
+			{$_('albums_title')}
+			{#if status === 'ready'}
+				<span
+					class="albums__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft tabular-nums"
+				>
+					· {$_('albums_bar_count', { values: { count: albumCount } })}
+				</span>
+			{/if}
+		</h1>
+		{#if adminSession}
+			<div class="albums__actions ml-auto flex items-center gap-2">
+				<Button
+					onclick={() => {
+						createErrorKey = '';
+						createSkipped = null;
+						createWritable = null;
+						createOpen = true;
+					}}><Plus size={20} aria-hidden="true" />{$_('albums_new')}</Button
+				>
 			</div>
-		</section>
-		{#if sharedAlbums.length > 0}
-			<section class="albums__shared-section">
-				<h2 class="albums__section-title mt-6 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">
-					{$_('albums_shared_section')}
-				</h2>
+		{/if}
+	</div>
+
+	<div class="albums__content pt-4">
+		{#if firstLoad}
+			<p class="albums__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+				{$_('albums_loading')}
+			</p>
+		{:else if settledEmpty}
+			<div
+				class="albums__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+			>
+				<p class="albums__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
+					{$_('albums_title')}
+				</p>
+				<p class="text-text-soft">{$_('albums_empty')}</p>
+			</div>
+		{:else if status === 'error' && ownAlbums.length === 0 && sharedAlbums.length === 0}
+			<div
+				class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
+				<p>{errorText(errorKey)}</p>
+				<Button variant="primary" onclick={() => void runLoad(false)}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{:else}
+			<section class="albums__own-section">
 				<div class="albums__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
-					{#each sharedAlbums as album (album.id)}
+					{#each ownAlbums as album (album.id)}
 						{@render card(album)}
 					{/each}
 				</div>
 			</section>
+			{#if sharedAlbums.length > 0}
+				<section class="albums__shared-section">
+					<h2
+						class="albums__section-title mt-6 mb-3 font-display font-bold text-[16px] leading-[1.3] text-text"
+					>
+						{$_('albums_shared_section')}
+					</h2>
+					<div class="albums__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
+						{#each sharedAlbums as album (album.id)}
+							{@render card(album)}
+						{/each}
+					</div>
+				</section>
+			{/if}
 		{/if}
-	{/if}
 
-	{#if status === 'error' && (ownAlbums.length > 0 || sharedAlbums.length > 0)}
-		<!-- A failed convergence while cards exist: the page stays, the
+		{#if status === 'error' && (ownAlbums.length > 0 || sharedAlbums.length > 0)}
+			<!-- A failed convergence while cards exist: the page stays, the
 		     next event retries; the box keeps the retry affordance. -->
-		<div
-			class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			<div
+				class="albums__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
 			>
-		</div>
-	{/if}
+				<p>{errorText(errorKey)}</p>
+				<Button variant="primary" onclick={() => void runLoad(false)}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{/if}
+	</div>
 </section>
 
 {#snippet card(album: AlbumSummary)}
