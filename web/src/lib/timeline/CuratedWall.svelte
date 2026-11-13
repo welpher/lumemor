@@ -3,7 +3,7 @@
 	// compose: the page-level concerns of a membership
 	// view -- the pagination client (driven with the view's
 	// membership semantics), the SSE convergence, the sentinel walk,
-	// the touch-friendly select-mode toggle, the wallItems
+	// the page action bar with its selection switch, the wallItems
 	// publication the asset viewer navigates -- assembled around the
 	// shared Wall. The RENDERING is the one Wall component every
 	// photo surface composes, and so is the SELECTION FLOW: the month axis, the selection
@@ -11,8 +11,11 @@
 	// the wall here exactly as they do on the timeline. This wrapper
 	// tells the wall its endpoint, its view, its strings and its
 	// action subset, runs the batch writes the wall awaits (through
-	// `onbatch`), and owns the toolbar whose toggle writes the wall's
-	// bound select mode. The memory picker's opener is a passthrough:
+	// `onbatch`), and owns the page bar: the title with its count on
+	// the left, the selection switch at the far right. That switch is
+	// the wall's bound select mode, and the wall keeps the state
+	// machine's other half (disarming clears the selection). The
+	// memory picker's opener is a passthrough:
 	// a page that offers the wall-selection entry wires it, a page
 	// that does not (the trash view owns no wall at all) never
 	// renders the affordance. The album detail owns its own no-selection
@@ -27,7 +30,6 @@
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
-	import Check from '@lucide/svelte/icons/check';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
@@ -36,8 +38,10 @@
 		path: string;
 		/** Which membership view the client serves (see WallView). */
 		view: WallView;
-		/** The i18n key of the view's name (the empty state's heading). */
+		/** The i18n key of the view's name (the page bar's title). */
 		titleKey?: string;
+		/** The i18n key of the page bar's count segment. */
+		countKey: string;
 		/** The i18n key of the view's loading line. */
 		loadingKey: string;
 		/** The i18n key of the view's empty state text. */
@@ -52,7 +56,7 @@
 		onaddmemory?: (ids: readonly string[], done: () => void) => void;
 	};
 
-	let { path, view, titleKey = '', loadingKey, emptyKey, actions, onaddmemory }: Props = $props();
+	let { path, view, titleKey = '', countKey, loadingKey, emptyKey, actions, onaddmemory }: Props = $props();
 
 	// The client is constructed ONCE per wall: a route's endpoint and
 	// view never change while its wall is mounted (a route change
@@ -139,75 +143,95 @@
 	});
 </script>
 
-<section class="wall px-2" aria-busy={$wall.status === 'loading'}>
-	{#if $wall.items.length > 0}
-		<div class="wall__toolbar flex justify-end mb-2">
-			<!-- The touch-friendly select-mode entry (icon-only, the
-			     icon-first rule; the check affordance on the tiles is
-			     the pointer/keyboard entry): the toggle writes the
-			     wall's bound select mode, the wall owns the drops. -->
-			<IconButton
-				aria-pressed={selectMode}
-				aria-label={selectMode ? $_('action_done') : $_('action_select')}
-				onclick={() => (selectMode = !selectMode)}
-			>
-				{#if selectMode}
-					<Check size={20} aria-hidden="true" />
-				{:else}
+<section class="wall-page" aria-busy={$wall.status === 'loading'}>
+	<!-- THE ONE ROW (the page action bar): the page title with its
+	     count on the left, the selection switch at the far right
+	     (icon-only, the page's own action), one divider under the
+	     row. The count renders only on a settled answer. The switch
+	     is the REAL state machine: it arms the wall's select mode
+	     (every check revealed), and disarming it drops the selection
+	     (the batch bar goes with it) -- the wall owns both
+	     directions through the binding. -->
+	<div class="wall-page__toolbar flex items-center gap-3 px-4 pt-4 pb-4 border-b border-border">
+		<h1 class="wall-page__title m-0 font-display font-bold text-[20px] leading-[1.3] text-text">
+			{titleKey !== '' ? $_(titleKey) : ''}
+			{#if $wall.status === 'ready'}
+				<span
+					class="wall-page__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft tabular-nums"
+				>
+					· {$_(countKey, { values: { count: $wall.items.length } })}
+				</span>
+			{/if}
+		</h1>
+		{#if $wall.items.length > 0}
+			<div class="wall-page__actions ml-auto flex items-center gap-2">
+				<IconButton
+					class="aria-pressed:bg-accent-soft aria-pressed:text-accent-soft-text"
+					aria-pressed={selectMode}
+					aria-label={$_('action_select')}
+					title={$_('action_select')}
+					onclick={() => (selectMode = !selectMode)}
+				>
 					<ListChecks size={20} aria-hidden="true" />
-				{/if}
-			</IconButton>
-		</div>
-	{/if}
+				</IconButton>
+			</div>
+		{/if}
+	</div>
 
-	{#if firstLoad}
-		<p class="wall__status my-12 text-center text-text-soft animate-loading-in" role="status">{$_(loadingKey)}</p>
-	{:else if settledEmpty}
-		<div
-			class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-		>
-			<h1 class="text-[22px] mb-2">{titleKey !== '' ? $_(titleKey) : ''}</h1>
-			<p class="text-text-soft">{$_(emptyKey)}</p>
-		</div>
-	{:else if $wall.status === 'error' && $wall.items.length === 0}
-		<div
-			class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText($wall.errorKey)}</p>
-			<Button variant="primary" onclick={() => void wall.loadMore()}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+	<div class="wall-page__content px-2 pt-4">
+		{#if firstLoad}
+			<p class="wall__status my-12 text-center text-text-soft animate-loading-in" role="status">
+				{$_(loadingKey)}
+			</p>
+		{:else if settledEmpty}
+			<div
+				class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
 			>
-		</div>
-	{:else}
-		<!-- The unified wall (rendering AND selection): this wrapper
-		     owns the walk and the toolbar around it; the groups, the
-		     sticky headers, the packed rows, the selection state and
-		     the batch bar are the one wall component every curatable
-		     view renders. The action subset and the batch runner are
-		     this view's own. -->
-		<Wall items={$wall.items} bind:selectMode {actions} onbatch={runBatch} {onaddmemory} />
-	{/if}
-
-	{#if $wall.status === 'error' && $wall.items.length > 0}
-		<div
-			class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText($wall.errorKey)}</p>
-			<Button variant="primary" onclick={() => void wall.loadMore()}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				<p class="wall__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
+					{titleKey !== '' ? $_(titleKey) : ''}
+				</p>
+				<p class="text-text-soft">{$_(emptyKey)}</p>
+			</div>
+		{:else if $wall.status === 'error' && $wall.items.length === 0}
+			<div
+				class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
 			>
-		</div>
-	{/if}
+				<p>{errorText($wall.errorKey)}</p>
+				<Button variant="primary" onclick={() => void wall.loadMore()}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{:else}
+			<!-- The unified wall (rendering AND selection): this wrapper
+			     owns the walk and the bar above it; the groups, the
+			     sticky headers, the packed rows, the selection state and
+			     the batch bar are the one wall component every curatable
+			     view renders. The action subset and the batch runner are
+			     this view's own. -->
+			<Wall items={$wall.items} bind:selectMode {actions} onbatch={runBatch} {onaddmemory} />
+		{/if}
 
-	{#if !observerAvailable && $wall.hasMore && $wall.status === 'ready'}
-		<div class="wall__pager flex justify-center my-5">
-			<Button variant="ghost" onclick={() => void wall.loadMore()}
-				><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button
+		{#if $wall.status === 'error' && $wall.items.length > 0}
+			<div
+				class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
 			>
-		</div>
-	{/if}
+				<p>{errorText($wall.errorKey)}</p>
+				<Button variant="primary" onclick={() => void wall.loadMore()}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{/if}
 
-	<div class="wall__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
+		{#if !observerAvailable && $wall.hasMore && $wall.status === 'ready'}
+			<div class="wall__pager flex justify-center my-5">
+				<Button variant="ghost" onclick={() => void wall.loadMore()}
+					><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button
+				>
+			</div>
+		{/if}
+
+		<div class="wall__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
+	</div>
 </section>

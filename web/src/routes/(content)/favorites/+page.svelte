@@ -36,6 +36,7 @@
 	path="/api/v1/assets/favorites"
 	view="favorites"
 	titleKey="nav_favorites"
+	countKey="favorites_bar_count"
 	loadingKey="favorites_loading"
 	emptyKey="favorites_empty"
 	actions={['favorite']}
