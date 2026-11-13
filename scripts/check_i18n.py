@@ -183,7 +183,7 @@ NON_ERROR_KEYS = {
     "memories_shared_section",
     "memories_photo_count",
     "memories_manual_badge",
-    "memories_shared_badge",
+    "shared_readonly_badge",
     "memories_new",
     "memories_loading",
     "memories_empty",
