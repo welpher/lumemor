@@ -33,6 +33,13 @@
 
 @import 'tailwindcss';
 
+/* The first-run wizard is a server-rendered page outside the SPA (a
+ * fresh instance has no JavaScript app to boot), but it wears this
+ * same stylesheet: the Go template's utility classes must be part of
+ * the compiled theme, so Tailwind scans the embedded page directory
+ * beside the Svelte sources. */
+@source '../../../../server/internal/api/static';
+
 /* The dark theme is the .dark class on <html> (flipping the semantic
  * variables below), not the OS media query — the variant wiring must
  * match that mechanism for any dark: utility. */
@@ -393,10 +400,42 @@ html.dark {
 		opacity: 1;
 	}
 
+	/* A search field is just a text field we style ourselves: without
+	 * this the platform paints its own inner frame inside ours (the
+	 * double edge on every search box), so the resting state is one
+	 * border under every browser theme. */
+	input[type='search'] {
+		appearance: none;
+	}
+
+	input[type='search']::-webkit-search-decoration,
+	input[type='search']::-webkit-search-cancel-button {
+		appearance: none;
+	}
+
 	/* A clearly visible keyboard focus everywhere. */
 	:focus-visible {
 		outline: 2px solid var(--color-accent);
 		outline-offset: 2px;
+	}
+
+	/* Fields carry the focus ring ON their border (the offset tucks the
+	 * outline over the field's own edge, so focus reads as one edge,
+	 * not an edge inside a ring); buttons and links keep the 2px gap --
+	 * they have no border for the ring to sit on. */
+	input:focus-visible,
+	select:focus-visible,
+	textarea:focus-visible {
+		outline-offset: -1px;
+	}
+
+	/* The count idiom's optical alignment: a 14px glyph centred on a
+	 * 13px line box lands half a pixel below the digits' optical
+	 * centre, which reads as "not aligned" at card size. The glyph
+	 * rides the digits instead. Scoped to the labeled count wrapper
+	 * (role="img"), whose only SVG child is that glyph. */
+	[role='img'] > svg {
+		transform: translateY(-0.5px);
 	}
 
 	/* The hairline default: every `border`-style utility paints the

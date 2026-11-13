@@ -58,7 +58,7 @@
 			>{$_('person_birthdate_dialog_title')}</label
 		>
 		<input
-			class="w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control focus:border-accent"
+			class="w-full px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control"
 			id="person-birth-date"
 			type="date"
 			bind:value={draft}

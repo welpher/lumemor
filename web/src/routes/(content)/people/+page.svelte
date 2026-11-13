@@ -27,9 +27,9 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import Search from '@lucide/svelte/icons/search';
 	import ScanFace from '@lucide/svelte/icons/scan-face';
-	import ImageIcon from '@lucide/svelte/icons/image';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -139,7 +139,7 @@
 	<title>{$_('nav_people')} · lumemor</title>
 </svelte:head>
 
-<section class="people max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<section class="people px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
 	<!-- THE ONE ROW: the title with its count on the left, the page
 	     filter and the unnamed entry on the right, one divider under
 	     the row. The count renders only on a settled answer -- a
@@ -161,7 +161,7 @@
 					<Search size={16} aria-hidden="true" />
 				</span>
 				<input
-					class="w-full ps-9 pe-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard focus:border-accent"
+					class="w-full ps-9 pe-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 					type="search"
 					bind:value={filter}
 					placeholder={$_('people_filter_placeholder')}
@@ -216,7 +216,7 @@
 					     face, or the best the caller can see), the caller's own
 					     name, and the photo count as icon + number. -->
 					<a
-						class="person-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+						class="person-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
 						href="/people/{encodeURIComponent(person.clusterId)}"
 					>
 						<span class="person-card__crop relative block aspect-square bg-accent-soft" aria-hidden="true">
@@ -234,14 +234,11 @@
 								class="person-card__name min-w-0 font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
 								>{person.name}</span
 							>
-							<span
-								class="person-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft tabular-nums whitespace-nowrap inline-flex items-center gap-1"
-								role="img"
-								aria-label={$_('people_photo_count', { values: { count: person.photoCount } })}
-								title={$_('people_photo_count', { values: { count: person.photoCount } })}
-							>
-								<ImageIcon size={14} aria-hidden="true" />{person.photoCount}
-							</span>
+							<CountLabel
+								class="person-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+								count={person.photoCount}
+								label={$_('people_photo_count', { values: { count: person.photoCount } })}
+							/>
 						</span>
 					</a>
 				{/each}

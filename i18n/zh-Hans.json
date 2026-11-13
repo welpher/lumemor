@@ -15,6 +15,8 @@
   "login_password": "密码",
   "login_submit": "登录",
   "login_expired_notice": "登录已过期，请重新登录。",
+  "login_setup_note": "还没有管理员账户？",
+  "login_setup_note_link": "创建管理员",
   "login_retry_in": "可以在 {seconds} 秒后重试。",
   "login_pairing_qr_note": "扫码配对手机将随移动端应用到来。",
   "login_pairing_url_note": "也可以在移动端应用中输入本服务器的地址登录。",
@@ -546,5 +548,6 @@
   "unreachable_title": "打不开这个页面",
   "unreachable_body": "它可能已被删除，或你没有访问权限。",
   "unreachable_action": "回到时间线",
-  "unreachable_footnote": "地址可能不完整，或分享已被撤销。"
+  "unreachable_footnote": "地址可能不完整，或分享已被撤销。",
+  "trash_remaining_days_label": "{name}，{count, plural, =0 {即将清除} other {剩余 # 天}}"
 }

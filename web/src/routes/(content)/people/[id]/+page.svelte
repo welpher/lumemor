@@ -67,6 +67,7 @@
 	import StateCard from '$lib/components/StateCard.svelte';
 	import UnreachableCard from '$lib/components/UnreachableCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import PersonNameDialog from '$lib/people/PersonNameDialog.svelte';
 	import PersonAvatarDialog from '$lib/people/PersonAvatarDialog.svelte';
@@ -524,14 +525,11 @@
 				<p
 					class="person-profile__meta m-0 inline-flex flex-wrap items-center gap-1.5 font-body font-normal text-[13px] leading-[1.4] text-text-soft"
 				>
-					<span
-						class="person-profile__count inline-flex items-center gap-1 tabular-nums"
-						role="img"
-						aria-label={$_('people_photo_count', { values: { count: detail.photoCount } })}
-						title={$_('people_photo_count', { values: { count: detail.photoCount } })}
-					>
-						<ImageIcon size={14} aria-hidden="true" />{detail.photoCount}
-					</span>
+					<CountLabel
+						class="person-profile__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+						count={detail.photoCount}
+						label={$_('people_photo_count', { values: { count: detail.photoCount } })}
+					/>
 					<span class="text-text-faint" aria-hidden="true">·</span>
 					<!-- The birth date: the stored value renders as the
 					     locale-aware line with the machine value in <time>;

@@ -33,6 +33,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import CreateMemoryDialog from '$lib/memories/CreateMemoryDialog.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 
@@ -279,7 +280,7 @@
 	     attribution rules). No exclusion badge anywhere: a memory never feeds
 	     its creator's timeline. -->
 	<a
-		class="memory-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+		class="memory-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
 		href="/memories/{encodeURIComponent(memory.id)}"
 	>
 		<span
@@ -336,10 +337,11 @@
 			<span class="memory-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
 				>{memory.title}</span
 			>
-			<span
-				class="memory-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
-				>{$_('memories_photo_count', { values: { count: memory.itemCount } })}</span
-			>
+			<CountLabel
+				class="memory-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+				count={memory.itemCount}
+				label={$_('memories_photo_count', { values: { count: memory.itemCount } })}
+			/>
 			<span class="memory-card__badges mt-0.5 flex flex-wrap items-center gap-1.5">
 				{#if memory.callerRole === 'owner'}
 					<!-- The manual origin badge: the reference set the owner

@@ -18,6 +18,7 @@
 // the server; no URL is assembled here.
 
 import { apiFetch } from '$lib/auth/api';
+import { isUuidShaped } from '$lib/api/ids';
 import type { components } from '../../../../openapi/generated/web/api';
 
 /** One named person of the caller's list, exactly the contract's shape. */
@@ -351,6 +352,14 @@ export async function fetchPersonCluster(
 	clusterId: string,
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<ClusterResult> {
+	// A path id that is not UUID-shaped names no cluster: the server
+	// answers 400 VALIDATION_FAILED before any lookup, so the
+	// retryable face would invite a retry of a mistyped address. The
+	// dead-end face answers without a request instead (nothing can be
+	// revealed, and a retry cannot change the answer).
+	if (!isUuidShaped(clusterId)) {
+		return { ok: false, errorKey: 'person_not_found', unreachable: true };
+	}
 	let response: Response;
 	try {
 		response = await apiFetch(`/api/v1/people/${encodeURIComponent(clusterId)}`, undefined, fetcher);

@@ -165,7 +165,10 @@ test('the picker lists the caller own memories alone and picks on a row click', 
 	// thumb, the title and the honest count.
 	expect(rows()).toHaveLength(2);
 	expect(rows()[0]?.textContent).toContain('Spring Festival 2026');
-	expect(rows()[0]?.textContent).toContain('12 photos');
+	// The count is the glyph + the number; the wording is the row's own
+	// accessible name.
+	expect(rows()[0]?.querySelector('.count')?.textContent?.trim()).toBe('12');
+	expect(rows()[0]?.querySelector('.count')?.getAttribute('aria-label')).toBe('12 photos');
 	expect(rows()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=tile');
 
 	rows()[0]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));

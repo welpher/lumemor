@@ -21,7 +21,7 @@ import Page from './+page.svelte';
 // timeline page's pattern.
 
 const { pageState, handlers, assetHandlers } = vi.hoisted(() => ({
-	pageState: { params: { id: 'c1' } as { id: string } },
+	pageState: { params: { id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073' } as { id: string } },
 	handlers: [] as Array<(event: unknown) => void>,
 	assetHandlers: [] as Array<(event: unknown) => void>
 }));
@@ -97,7 +97,7 @@ const wallItems = [item('a1', '2026-10-13T12:30:00Z'), item('a2', '2026-10-12T08
 // The server's current answer; the convergence tests mutate it to
 // stand for the server's post-event truth.
 let detailState: ClusterDetail = {
-	clusterId: 'c1',
+	clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073',
 	label: { name: 'Ada' },
 	birthDate: null,
 	avatarFaceId: null,
@@ -117,8 +117,8 @@ type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 
 function detailRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
-		'/api/v1/people/c1': () => jsonResponse(200, detailState),
-		'/api/v1/assets/timeline?clusterId=c1&limit=100': () =>
+		'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073': () => jsonResponse(200, detailState),
+		'/api/v1/assets/timeline?clusterId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073&limit=100': () =>
 			jsonResponse(200, { items: wallItems, nextCursor: null }),
 		'/api/v1/people': () =>
 			jsonResponse(200, [
@@ -210,10 +210,10 @@ beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
 	assetHandlers.length = 0;
-	pageState.params.id = 'c1';
+	pageState.params.id = '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073';
 	vi.clearAllMocks();
 	detailState = {
-		clusterId: 'c1',
+		clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073',
 		label: { name: 'Ada' },
 		birthDate: null,
 		avatarFaceId: null,
@@ -329,7 +329,8 @@ test('the birth date line renders through Intl with the machine value in <time>'
 test('renaming PUTs the label and the profile row adopts the response', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/label': () => jsonResponse(200, { clusterId: 'c1', name: 'Ada Lovelace' })
+			'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/label': () =>
+				jsonResponse(200, { clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073', name: 'Ada Lovelace' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -343,7 +344,9 @@ test('renaming PUTs the label and the profile row adopts the response', async ()
 	buttonByText('Save name', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/label');
+	const puts = fetchMock.mock.calls.filter(
+		([input]) => String(input) === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/label'
+	);
 	expect(puts).toHaveLength(1);
 	expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({ name: 'Ada Lovelace' });
 	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Ada Lovelace');
@@ -356,7 +359,8 @@ test('naming an unnamed cluster lands the named state in place', async () => {
 	detailState = { ...detailState, label: null };
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/label': () => jsonResponse(200, { clusterId: 'c1', name: 'Ada' })
+			'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/label': () =>
+				jsonResponse(200, { clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073', name: 'Ada' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -380,7 +384,8 @@ test('naming an unnamed cluster lands the named state in place', async () => {
 test('the avatar picker shows faces only, badges the stored pick and PUTs the choice', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/avatar': () => jsonResponse(200, { clusterId: 'c1', avatarFaceId: 'f2' })
+			'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/avatar': () =>
+				jsonResponse(200, { clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073', avatarFaceId: 'f2' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -409,7 +414,9 @@ test('the avatar picker shows faces only, badges the stored pick and PUTs the ch
 	buttonByText('Set avatar', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/avatar');
+	const puts = fetchMock.mock.calls.filter(
+		([input]) => String(input) === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/avatar'
+	);
 	expect(puts).toHaveLength(1);
 	expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({ faceId: 'f2' });
 	// The profile row's crop follows the stored pick (the avatar is
@@ -442,7 +449,8 @@ test('the avatar picker badges the stored pick on open', async () => {
 test('the birth date dialog PUTs the picked date and the profile row shows it', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/birthdate': () => jsonResponse(200, { clusterId: 'c1', birthDate: '1992-03-15' })
+			'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/birthdate': () =>
+				jsonResponse(200, { clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073', birthDate: '1992-03-15' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -464,7 +472,9 @@ test('the birth date dialog PUTs the picked date and the profile row shows it', 
 	buttonByText('Save', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/birthdate');
+	const puts = fetchMock.mock.calls.filter(
+		([input]) => String(input) === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/birthdate'
+	);
 	expect(puts).toHaveLength(1);
 	expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({ birthDate: '1992-03-15' });
 	const line = document.body.querySelector('.person-profile__birthdate');
@@ -478,7 +488,8 @@ test('the birth date clear PUTs the explicit null', async () => {
 	detailState = { ...detailState, birthDate: '1992-03-15' };
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/birthdate': () => jsonResponse(200, { clusterId: 'c1', birthDate: null })
+			'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/birthdate': () =>
+				jsonResponse(200, { clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073', birthDate: null })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -493,7 +504,9 @@ test('the birth date clear PUTs the explicit null', async () => {
 	buttonByText('Clear', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/birthdate');
+	const puts = fetchMock.mock.calls.filter(
+		([input]) => String(input) === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/birthdate'
+	);
 	expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({ birthDate: null });
 	expect(document.body.querySelector('.person-profile__birthdate')?.textContent?.trim()).toBe('Add birth date');
 	unmount(page);
@@ -503,7 +516,11 @@ test('the birth date clear PUTs the explicit null', async () => {
 test('merge-into POSTs the merge and lands on the surviving person page', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/merge': () => jsonResponse(200, { survivingClusterId: 'p1', mergedClusterIds: ['c1'] })
+			'/api/v1/people/merge': () =>
+				jsonResponse(200, {
+					survivingClusterId: 'p1',
+					mergedClusterIds: ['0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073']
+				})
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -526,7 +543,7 @@ test('merge-into POSTs the merge and lands on the surviving person page', async 
 	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/merge');
 	expect(posts).toHaveLength(1);
 	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({
-		sourceClusterIds: ['c1'],
+		sourceClusterIds: ['0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073'],
 		targetClusterId: 'p1'
 	});
 	expect(vi.mocked(goto)).toHaveBeenCalledWith('/people/p1');
@@ -538,10 +555,10 @@ test('merge-into POSTs the merge and lands on the surviving person page', async 
 test('the unname write is immediate: the toast echo and the unnamed variant in place', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/label': (init?: RequestInit) =>
+			'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/label': (init?: RequestInit) =>
 				init?.method === 'DELETE'
 					? new Response(null, { status: 204 })
-					: jsonResponse(200, { clusterId: 'c1', name: 'Ada' })
+					: jsonResponse(200, { clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073', name: 'Ada' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -552,7 +569,8 @@ test('the unname write is immediate: the toast echo and the unnamed variant in p
 	await settle();
 
 	const deletes = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/people/c1/label' && init?.method === 'DELETE'
+		([input, init]) =>
+			String(input) === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073/label' && init?.method === 'DELETE'
 	);
 	expect(deletes).toHaveLength(1);
 	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
@@ -568,7 +586,7 @@ test('an unknown or invisible cluster renders the one unreachable face', async (
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
-			'/api/v1/people/c1': () =>
+			'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073': () =>
 				jsonResponse(404, { code: 'PERSON_NOT_FOUND', message: 'no such person for this caller' })
 		})
 	);
@@ -591,7 +609,12 @@ test('an unknown or invisible cluster renders the one unreachable face', async (
 });
 
 test('a transient cluster failure stays the retryable error', async () => {
-	vi.stubGlobal('fetch', stubFetch({ '/api/v1/people/c1': () => jsonResponse(500, { code: 'INTERNAL' }) }));
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073': () => jsonResponse(500, { code: 'INTERNAL' })
+		})
+	);
 	const page = mountPage();
 	await settle();
 
@@ -609,8 +632,9 @@ test("an empty photo wall leaves the person's profile row standing", async () =>
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
-			'/api/v1/people/c1': () => jsonResponse(200, detailState),
-			'/api/v1/assets/timeline?clusterId=c1&limit=100': () => jsonResponse(200, { items: [] })
+			'/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073': () => jsonResponse(200, detailState),
+			'/api/v1/assets/timeline?clusterId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073&limit=100': () =>
+				jsonResponse(200, { items: [] })
 		})
 	);
 	const page = mountPage();
@@ -636,7 +660,12 @@ test('a foreign label event changes nothing the server does not change (server t
 
 	// Another account labeled THIS cluster; the refetched truth (the
 	// caller's own label state) is still none.
-	firePersonEvent({ id: 1, name: 'person.labeled', clusterId: 'c1', userId: 'someone-else' });
+	firePersonEvent({
+		id: 1,
+		name: 'person.labeled',
+		clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073',
+		userId: 'someone-else'
+	});
 	await settle();
 	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Unnamed');
 	unmount(page);
@@ -648,19 +677,34 @@ test('SSE person.avatar_updated and person.birthdate_updated converge this clust
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
-	const initial = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length;
+	const initial = fetchMock.mock.calls.filter(
+		([input]) => String(input) === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073'
+	).length;
 
 	// Another person's entity write: nothing here moves.
 	firePersonEvent({ id: 1, name: 'person.birthdate_updated', clusterId: 'c9', userId: 'u1' });
 	await settle();
-	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length).toBe(initial);
+	expect(
+		fetchMock.mock.calls.filter(
+			([input]) => String(input) === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073'
+		).length
+	).toBe(initial);
 
 	// This person's: the detail converges (the profile row is the
 	// server's).
 	detailState = { ...detailState, birthDate: '1990-01-02' };
-	firePersonEvent({ id: 2, name: 'person.birthdate_updated', clusterId: 'c1', userId: 'u1' });
+	firePersonEvent({
+		id: 2,
+		name: 'person.birthdate_updated',
+		clusterId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073',
+		userId: 'u1'
+	});
 	await settle();
-	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length).toBe(initial + 1);
+	expect(
+		fetchMock.mock.calls.filter(
+			([input]) => String(input) === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073'
+		).length
+	).toBe(initial + 1);
 	expect(document.body.querySelector('.person-profile__birthdate time')?.getAttribute('datetime')).toBe('1990-01-02');
 	unmount(page);
 	flushSync();
@@ -670,7 +714,7 @@ test('SSE person.merged dissolving this cluster renders the error state', async 
 	let dissolved = false;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		const url = String(input);
-		if (url === '/api/v1/people/c1') {
+		if (url === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073') {
 			if (dissolved) {
 				return jsonResponse(404, { code: 'PERSON_NOT_FOUND', message: 'no such person' });
 			}
@@ -691,7 +735,7 @@ test('SSE person.merged dissolving this cluster renders the error state', async 
 		id: 2,
 		name: 'person.merged',
 		survivingClusterId: 'p1',
-		mergedClusterIds: ['c1'],
+		mergedClusterIds: ['0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073'],
 		userId: 'u1'
 	});
 	await settle();

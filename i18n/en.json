@@ -15,6 +15,8 @@
   "login_password": "Password",
   "login_submit": "Sign in",
   "login_expired_notice": "Your session has expired. Please sign in again.",
+  "login_setup_note": "No administrator account yet?",
+  "login_setup_note_link": "Create the administrator",
   "login_retry_in": "You can try again in {seconds} seconds.",
   "login_pairing_qr_note": "Pairing a phone by scanning a QR code arrives with the mobile app.",
   "login_pairing_url_note": "You can also sign in on the mobile app by entering this server's address.",
@@ -546,5 +548,6 @@
   "unreachable_title": "This page will not open",
   "unreachable_body": "It may have been deleted, or you may not have access to it.",
   "unreachable_action": "Back to the timeline",
-  "unreachable_footnote": "The address may be incomplete, or the share may have been withdrawn."
+  "unreachable_footnote": "The address may be incomplete, or the share may have been withdrawn.",
+  "trash_remaining_days_label": "{name}, {count, plural, =0 {expiring soon} one {# day left} other {# days left}}"
 }

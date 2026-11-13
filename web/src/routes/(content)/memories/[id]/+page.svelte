@@ -55,6 +55,7 @@
 	import StateCard from '$lib/components/StateCard.svelte';
 	import UnreachableCard from '$lib/components/UnreachableCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import AlbumPropertiesDialog from '$lib/albums/AlbumPropertiesDialog.svelte';
 	import CoverPickerDialog from '$lib/albums/CoverPickerDialog.svelte';
@@ -412,10 +413,11 @@
 			>
 				{detail.title}
 			</h1>
-			<span
-				class="memory-bar__count hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
-				>{$_('memories_photo_count', { values: { count: detail.itemCount } })}</span
-			>
+			<CountLabel
+				class="memory-bar__count hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+				count={detail.itemCount}
+				label={$_('memories_photo_count', { values: { count: detail.itemCount } })}
+			/>
 		{/if}
 
 		<div class="memory-bar__actions ml-auto flex items-center gap-1">

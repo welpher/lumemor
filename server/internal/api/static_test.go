@@ -18,11 +18,12 @@ func newStaticRouter(initialized bool) http.Handler {
 	})
 }
 
-// TestSetupPage pins the embedded wizard page: a HTML document with a
-// title, labels for every input, served without touching the database.
-// The completion handoff carries the model management page as the
-// post-login target (the v1 form of the wizard's model download
-// step), which the login page's redirectTo round-trip lands on.
+// TestSetupPage pins the embedded wizard page: a HTML document with the
+// four fields (display name, email, password, and the confirmation whose
+// mismatch slot is the page's own), the created face the submit swaps in
+// (no page swap), and the product stylesheet the page wears instead of a
+// second palette. The completion button is the only navigation, and it
+// hands the fresh administrator to the sign-in form.
 func TestSetupPage(t *testing.T) {
 	router := newStaticRouter(false)
 	rec := httptest.NewRecorder()
@@ -35,13 +36,44 @@ func TestSetupPage(t *testing.T) {
 	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "text/html") {
 		t.Errorf("GET /setup content-type = %q, want it to contain %q", got, "text/html")
 	}
-	for _, want := range []string{"setup", "<title>", "<label"} {
+	for _, want := range []string{
+		"<title>",
+		`href="/setup.css"`,
+		`id="setup-name"`,
+		`id="setup-email"`,
+		`id="setup-password"`,
+		`id="setup-confirm"`,
+		`id="mismatch"`,
+		`id="panel-created"`,
+		`id="error-login"`,
+	} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Errorf("GET /setup body does not contain %q", want)
 		}
 	}
-	if !strings.Contains(rec.Body.String(), `"/login?redirectTo=/admin/models"`) {
-		t.Error(`GET /setup body does not carry the wizard completion handoff "/login?redirectTo=/admin/models"`)
+	if !strings.Contains(rec.Body.String(), `"/login?redirectTo=/"`) {
+		t.Error(`GET /setup body does not carry the completion handoff "/login?redirectTo=/"`)
+	}
+}
+
+// TestSetupStylesheet pins the wizard's shared skin: the page links one
+// stable stylesheet name, and the server serves the compiled theme's
+// bytes behind it (the web build emits the stable name; the hashed
+// asset it imports is the app's own stylesheet).
+func TestSetupStylesheet(t *testing.T) {
+	router := newStaticRouter(false)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/setup.css", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /setup.css status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "text/css") {
+		t.Errorf("GET /setup.css content-type = %q, want it to contain %q", got, "text/css")
+	}
+	if !strings.Contains(rec.Body.String(), "/_app/immutable/assets/") {
+		t.Error("GET /setup.css does not import the app's compiled stylesheet")
 	}
 }
 

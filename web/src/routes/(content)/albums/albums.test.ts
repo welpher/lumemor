@@ -405,8 +405,12 @@ test('the pinned sync card leads the wall with the localized display name', asyn
 	expect(ownCards[0]?.querySelector('.album-card__title')?.textContent).toBe('My photos');
 	expect(ownCards[0]?.textContent).not.toContain('Sync');
 	expect(ownCards[0]?.getAttribute('href')).toBe('/albums/sync1');
-	// The honest count and the derived cover, same as any album.
-	expect(ownCards[0]?.textContent).toContain('1,204 photos');
+	// The honest count and the derived cover, same as any album: the
+	// count renders the glyph and the grouped number, the wording on
+	// the accessible name.
+	const syncCount = ownCards[0]?.querySelector('.album-card__count');
+	expect(syncCount?.textContent?.trim()).toBe('1,204');
+	expect(syncCount?.getAttribute('aria-label')).toBe('1,204 photos');
 	const syncCoverImgs = Array.from(ownCards[0]?.querySelectorAll('img') ?? []).map(
 		(img) => img.getAttribute('src') ?? ''
 	);
@@ -481,7 +485,7 @@ test('the badges ride the cards: shared, read-only, excluded', async () => {
 	const roadTripCard = cards()[1];
 	expect(roadTripCard?.querySelector('.album-card__badge--shared')?.textContent?.trim()).toBe('Shared');
 	expect(roadTripCard?.querySelector('.album-card__badge--readonly')).toBeNull();
-	expect(roadTripCard?.textContent).toContain('128 photos');
+	expect(roadTripCard?.querySelector('.album-card__count')?.getAttribute('aria-label')).toBe('128 photos');
 
 	// The exclusion badge rides the excludable cards only: the own
 	// directory item here, and every shared item.
@@ -494,7 +498,7 @@ test('the badges ride the cards: shared, read-only, excluded', async () => {
 	expect(sharedCard?.querySelector('.album-card__badge--shared')).toBeNull();
 	expect(sharedCard?.querySelector('.album-card__badge--readonly')?.textContent?.trim()).toBe('Read-only');
 	expect(sharedCard?.querySelector('.album-card__badge--excluded')).toBeNull();
-	expect(sharedCard?.textContent).toContain('17 photos');
+	expect(sharedCard?.querySelector('.album-card__count')?.getAttribute('aria-label')).toBe('17 photos');
 
 	// A card with no preference row renders no badge (the true
 	// default): the exclusion badge rides the field alone.
