@@ -16,20 +16,28 @@ the body (when needed) carries the reasoning. All-English (the iron rule).
    lines, every deviation with its reasoning).
 3. ONE independent review per branch (findings with file:line, verdict,
    merge recommendation); fix loop if required.
-4. PR → **`make ci-local` green** (the machine tier, cold, on this
-   machine — the per-merge gate) + the per-PR CI thread (openapi,
+4. PR → the machine gate **by tier** + the per-PR CI thread (openapi,
    i18n, web — the outside-in check) → **merge commit** (not squash —
-   the block's commits are the history) → dogfood rebuild. The two
-   heavy workflows (server, e2e) run on demand and on a monthly
-   schedule, not per-PR: `ci-local` covers their content cold, and the
+   the block's commits are the history) → dogfood rebuild. **Feature
+   tiers** (contract changes, server semantics, cross-surface work,
+   new surfaces) run `make ci-local` — the full cold reproduction;
+   **mechanical tiers** (visual sweeps, format/comment/docs/config,
+   i18n-only) run the fast four (`web-check` + `docker-lint` +
+   `api-check` + `check_i18n`) — the cold containers guard inputs
+   (the lockfile, the server code, the contract) those diffs never
+   touch. The tier call rides the plan's own review-tier pin; a
+   mechanical block whose diff surprises into those inputs is
+   reclassified and re-gated. The two heavy workflows (server, e2e)
+   run on demand and on a monthly schedule, not per-PR; the
    acceptance tier keeps its own fresh-lifetime discipline.
 
 ## The gate checklist (quote output lines in reports)
 
 ```
-make ci-local        # the merge-time machine tier: the full set, cold
+make ci-local        # the feature-tier merge gate: the full set, cold
                      # (ephemeral web container, cache-less server
                      # container, codegen drift twice, locales)
+                     # mechanical tiers run the fast four below
 make web-check        # format:check + eslint + svelte-check 0/0 + the unit suite
 make docker-lint      # gofmt/vet/golangci in the container
 make docker-test      # the full server suite
