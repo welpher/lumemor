@@ -732,3 +732,118 @@ test('a ?memory= deep link opens the playback overlay over the wall', async () =
 	unmount(page);
 	flushSync();
 });
+
+/** The memory walk's item fixtures (the overlay's stage and grid). */
+function walkItems(ids: readonly string[]): unknown {
+	return {
+		items: ids.map((id, index) => ({
+			id,
+			takenAt: `2026-09-${String(10 - index).padStart(2, '0')}T12:00:00Z`,
+			originalFilename: `IMG_000${index + 1}.jpg`,
+			ownerId: 'u1',
+			kind: 'image',
+			fileSize: 1000,
+			mimeType: 'image/jpeg',
+			checksum: 'c',
+			createdAt: '2026-09-10T12:00:00Z',
+			takenAtSource: 'exif',
+			isTrashed: false,
+			isFavorite: false,
+			isReady: true,
+			width: 4000,
+			height: 3000,
+			durationMs: null,
+			blurhash: 'UHL6aAof00WBWB00ayWB00',
+			livePhotoVideoId: null
+		}))
+	};
+}
+
+test('a mode=grid deep link opens the overlay on its management face', async () => {
+	const id = '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071';
+	wallState = [summary(id, { title: 'Grid link memory', coverAssetIds: ['g1'], itemCount: 2 })];
+	pageState.url = new URL(`http://localhost/memories?memory=${id}&mode=grid`);
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			wallRoutes({
+				[`/api/v1/albums/${id}?limit=1`]: () =>
+					jsonResponse(200, {
+						id,
+						title: 'Grid link memory',
+						type: 'memory',
+						coverAssetId: null,
+						callerRole: 'owner',
+						itemCount: 2,
+						items: [],
+						shares: []
+					}),
+				[`/api/v1/assets/timeline?albumId=${id}&limit=100`]: () => jsonResponse(200, walkItems(['g1', 'g2']))
+			})
+		)
+	);
+	const page = mountPage();
+	await settle();
+	await settle();
+
+	// The face is the address's: the grid's cells render, the stage
+	// does not, and the switch reads the grid as pressed.
+	const overlay = document.body.querySelector<HTMLElement>('.memory-overlay__panel');
+	expect(overlay?.getAttribute('data-mode')).toBe('grid');
+	expect(document.body.querySelectorAll('.memory-overlay__cell')).toHaveLength(2);
+	expect(document.body.querySelector('.memory-overlay__frame')).toBeNull();
+	expect(buttonByText('Grid', overlay ?? document.body).getAttribute('aria-pressed')).toBe('true');
+
+	// The face switch is a state of the SAME entry: the address keeps
+	// the memory and drops the mode (a replace, not a new history
+	// step -- the overlay never owns two addresses).
+	buttonByText('Play', overlay ?? document.body).click();
+	flushSync();
+	expect(String(replaceStateMock.mock.lastCall?.[0])).toBe(`http://localhost/memories?memory=${id}`);
+
+	unmount(page);
+	flushSync();
+});
+
+test('a deep link closes by replacing its address, never by stepping history back', async () => {
+	const id = '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071';
+	wallState = [summary(id, { title: 'Link memory', coverAssetIds: ['g1'], itemCount: 1 })];
+	pageState.url = new URL(`http://localhost/memories?memory=${id}`);
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			wallRoutes({
+				[`/api/v1/albums/${id}?limit=1`]: () =>
+					jsonResponse(200, {
+						id,
+						title: 'Link memory',
+						type: 'memory',
+						coverAssetId: null,
+						callerRole: 'owner',
+						itemCount: 1,
+						items: [],
+						shares: []
+					}),
+				[`/api/v1/assets/timeline?albumId=${id}&limit=100`]: () => jsonResponse(200, walkItems(['g1']))
+			})
+		)
+	);
+	const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+	const page = mountPage();
+	await settle();
+	await settle();
+
+	// The deep link has no in-app history behind it: Escape replaces
+	// the address with the bare wall, so the reader never lands on
+	// some other site's page through Back. (The pushed entry -- the
+	// card click -- closes through its own history step instead; the
+	// browser's Back is that same step, so the e2e story walks it.)
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+	flushSync();
+	expect(backSpy).not.toHaveBeenCalled();
+	expect(String(replaceStateMock.mock.lastCall?.[0])).toBe('http://localhost/memories');
+
+	unmount(page);
+	backSpy.mockRestore();
+	flushSync();
+});
