@@ -144,11 +144,12 @@ async function navigateViaDrawer(page: Page, linkName: string): Promise<void> {
 		.click();
 }
 
-/** Upload files through the top-bar picker (the real Upload button). */
+/** Upload files through the top-bar picker (the real Upload button;
+ *  the bar's own, since a page body may carry the same affordance). */
 async function uploadThroughPicker(page: Page, ...files: string[]): Promise<void> {
 	const [chooser] = await Promise.all([
 		page.waitForEvent('filechooser'),
-		page.getByRole('button', { name: 'Upload', exact: true }).click()
+		page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true }).click()
 	]);
 	await chooser.setFiles(files);
 }
@@ -205,8 +206,11 @@ test('scene 2: signing in through the form lands on the deep-linked timeline', a
 	// The post-login target round-trips: the deep link from scene 1
 	// is honored, and the fresh instance's timeline is empty.
 	await expect(page).toHaveURL(/\/timeline$/);
-	await expect(page.getByRole('heading', { level: 1, name: 'Timeline', exact: true })).toBeVisible();
-	await expect(page.getByText('Your timeline is empty. Photos you upload appear here.')).toBeVisible();
+	// The empty wall is the one state card: a 16px line, no second
+	// page heading above it (the shell's own bar is the page's head).
+	await expect(page.locator('.state-card')).toBeVisible();
+	await expect(page.getByText('No photos yet', { exact: true })).toBeVisible();
+	await expect(page.locator('.state-card').getByRole('heading')).toHaveCount(0);
 
 	// Hand the session to every later scene: the storage state rides
 	// the login cookie (the fresh contexts replay it).
@@ -223,7 +227,15 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/timeline');
 		await expect(tile(page, PHOTO_A_NAME)).toHaveCount(0);
 
-		await uploadThroughPicker(page, photoA);
+		// The empty wall's own way in: the no-data card's Upload starts
+		// the same queue the top bar does (the timeline carries no page
+		// bar, so the card is its one title-and-action surface).
+		await expect(page.locator('.state-card')).toBeVisible();
+		const [chooser] = await Promise.all([
+			page.waitForEvent('filechooser'),
+			page.locator('.state-card').getByRole('button', { name: 'Upload', exact: true }).click()
+		]);
+		await chooser.setFiles([photoA]);
 
 		// The queue row settles only on the SSE asset.ready event (the
 		// pipeline's metadata and thumbnail jobs must drain first) -- the
@@ -472,9 +484,7 @@ test.describe('the signed-in scenes', () => {
 		await tileCheckbox(page, PHOTO_A_NAME).click();
 		await batchBar(page).getByRole('button', { name: 'Unhide', exact: true }).click();
 		await expect(tile(page, PHOTO_A_NAME)).toHaveCount(0);
-		await expect(
-			page.getByText('Nothing is hidden. Photos you hide stay out of the timeline and appear here.')
-		).toBeVisible();
+		await expect(page.getByText('Nothing hidden')).toBeVisible();
 
 		// Back on the timeline (through the drawer's navigation), the
 		// unhidden tile is back with the other two.
@@ -519,9 +529,7 @@ test.describe('the signed-in scenes', () => {
 		// The row is gone for good: the trash settles empty and the
 		// survivors remain on the timeline.
 		await expect(tile(page, PHOTO_B_NAME)).toHaveCount(0);
-		await expect(
-			page.getByText('The trash is empty. Photos you delete appear here before they are removed for good.')
-		).toBeVisible();
+		await expect(page.getByText('The trash is empty', { exact: true })).toBeVisible();
 		await navigateViaDrawer(page, 'Timeline');
 		await expect(page).toHaveURL(/\/timeline$/);
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
@@ -557,9 +565,7 @@ test.describe('the signed-in scenes', () => {
 		// empty.
 		await page.getByRole('button', { name: 'Restore', exact: true }).click();
 		await expect(tile(page, PHOTO_A_NAME)).toHaveCount(0);
-		await expect(
-			page.getByText('The trash is empty. Photos you delete appear here before they are removed for good.')
-		).toBeVisible();
+		await expect(page.getByText('The trash is empty', { exact: true })).toBeVisible();
 
 		// The restored tile is back on the timeline.
 		await navigateViaDrawer(page, 'Timeline');
