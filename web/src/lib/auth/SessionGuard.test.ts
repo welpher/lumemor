@@ -42,6 +42,39 @@ test('the watcher navigates to login when a guarded route goes unauthenticated m
 	await tick();
 
 	expect(goto).toHaveBeenCalledTimes(1);
+	expect(goto).toHaveBeenCalledWith('/login?redirectTo=%2Ftimeline&expired=1');
+	unmount(guard);
+	flushSync();
+});
+
+test('the mid-session expiry carries the expiry tag on the login redirect', async () => {
+	// The 401 is an expiry, not a sign-out: the login page states it
+	// (and a sign-out path never adds the tag below).
+	await login('ada@example.test', 'correct horse');
+
+	const guard = mount(SessionGuard, { target: document.body, props: { currentPath: '/albums/x' } });
+	flushSync();
+
+	const { forceLogout, sessionExpired } = await import('./session.svelte');
+	forceLogout();
+	await tick();
+
+	expect(sessionExpired()).toBe(true);
+	expect(goto).toHaveBeenCalledWith('/login?redirectTo=%2Falbums%2Fx&expired=1');
+	unmount(guard);
+	flushSync();
+});
+
+test('a sign-out is not an expiry: the redirect carries no tag', async () => {
+	await login('ada@example.test', 'correct horse');
+	const guard = mount(SessionGuard, { target: document.body, props: { currentPath: '/timeline' } });
+	flushSync();
+
+	const { logout, sessionExpired } = await import('./session.svelte');
+	await logout();
+	await tick();
+
+	expect(sessionExpired()).toBe(false);
 	expect(goto).toHaveBeenCalledWith('/login?redirectTo=%2Ftimeline');
 	unmount(guard);
 	flushSync();
@@ -57,7 +90,7 @@ test('the watcher navigates with the path and query of the current route', async
 	forceLogout();
 	await tick();
 
-	expect(goto).toHaveBeenCalledWith('/login?redirectTo=%2Fa%2F42%3Ftab%3Dexif');
+	expect(goto).toHaveBeenCalledWith('/login?redirectTo=%2Fa%2F42%3Ftab%3Dexif&expired=1');
 	unmount(guard);
 	flushSync();
 });

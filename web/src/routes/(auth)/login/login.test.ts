@@ -12,7 +12,7 @@ import Login from './+page.svelte';
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 import { goto } from '$app/navigation';
 
-type LoginData = { setupRequired: boolean; redirectTo: string };
+type LoginData = { setupRequired: boolean; redirectTo: string; expired?: boolean };
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
 	return new Response(JSON.stringify(body), {
@@ -22,7 +22,10 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
 }
 
 function mountLogin(data: LoginData = { setupRequired: false, redirectTo: '/timeline' }) {
-	return mount(Login, { target: document.body, props: { data, params: {} } });
+	return mount(Login, {
+		target: document.body,
+		props: { data: { expired: false, ...data }, params: {} }
+	});
 }
 
 function fillField(selector: string, value: string): void {
@@ -78,6 +81,31 @@ test('the form renders labeled fields and the pairing placeholder notes', () => 
 	// Placeholder notes for the mobile pairing entry (QR + manual URL hint).
 	expect(text).toContain('Pairing a phone by scanning a QR code arrives with the mobile app.');
 	expect(text).toContain("You can also sign in on the mobile app by entering this server's address.");
+	unmount(page);
+	flushSync();
+});
+
+test('the expiry tag states the expired session above the form, not the unreachable face', () => {
+	const page = mountLogin({ setupRequired: false, redirectTo: '/timeline', expired: true });
+	flushSync();
+
+	const notice = document.body.querySelector<HTMLElement>('.login__expired');
+	expect(notice?.getAttribute('role')).toBe('status');
+	expect(notice?.textContent).toContain('Your session has expired. Please sign in again.');
+	// The form is right below: an expiry is a re-authentication, never
+	// a dead end (and the login page carries no unreachable card).
+	expect(document.body.querySelector('form')).not.toBeNull();
+	expect(document.body.querySelector('.unreachable-card')).toBeNull();
+
+	unmount(page);
+	flushSync();
+});
+
+test('a plain sign-in shows no expiry notice', () => {
+	const page = mountLogin();
+	flushSync();
+	expect(document.body.querySelector('.login__expired')).toBeNull();
+	expect(document.body.textContent).not.toContain('Your session has expired.');
 	unmount(page);
 	flushSync();
 });
