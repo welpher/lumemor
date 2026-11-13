@@ -393,10 +393,33 @@ html.dark {
 		opacity: 1;
 	}
 
+	/* A search field is just a text field we style ourselves: without
+	 * this the platform paints its own inner frame inside ours (the
+	 * double edge on every search box), so the resting state is one
+	 * border under every browser theme. */
+	input[type='search'] {
+		appearance: none;
+	}
+
+	input[type='search']::-webkit-search-decoration,
+	input[type='search']::-webkit-search-cancel-button {
+		appearance: none;
+	}
+
 	/* A clearly visible keyboard focus everywhere. */
 	:focus-visible {
 		outline: 2px solid var(--color-accent);
 		outline-offset: 2px;
+	}
+
+	/* Fields carry the focus ring ON their border (the offset tucks the
+	 * outline over the field's own edge, so focus reads as one edge,
+	 * not an edge inside a ring); buttons and links keep the 2px gap --
+	 * they have no border for the ring to sit on. */
+	input:focus-visible,
+	select:focus-visible,
+	textarea:focus-visible {
+		outline-offset: -1px;
 	}
 
 	/* The count idiom's optical alignment: a 14px glyph centred on a

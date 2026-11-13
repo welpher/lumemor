@@ -280,7 +280,7 @@
 	     attribution rules). No exclusion badge anywhere: a memory never feeds
 	     its creator's timeline. -->
 	<a
-		class="memory-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+		class="memory-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
 		href="/memories/{encodeURIComponent(memory.id)}"
 	>
 		<span

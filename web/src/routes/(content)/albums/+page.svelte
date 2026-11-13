@@ -348,7 +348,7 @@
 	     own card's shared / excluded state. The
 	     badge row renders even when empty: the cards stay equal height. -->
 	<a
-		class="album-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+		class="album-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
 		href="/albums/{encodeURIComponent(album.id)}"
 	>
 		<span

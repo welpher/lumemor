@@ -23,7 +23,7 @@
 	<input
 		class="field__input {className} px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border rounded-control transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard {error ===
 		''
-			? 'border-border-strong focus:border-accent'
+			? 'border-border-strong'
 			: 'border-danger'}"
 		{id}
 		bind:value

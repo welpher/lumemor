@@ -239,7 +239,7 @@
 					     No check circle, no pressed state: the card is an
 					     entrance. -->
 					<a
-						class="cluster-card relative flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+						class="cluster-card relative flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
 						href="/people/{encodeURIComponent(cluster.clusterId)}?state=unnamed"
 					>
 						<span class="cluster-card__crop relative block aspect-square bg-accent-soft" aria-hidden="true">

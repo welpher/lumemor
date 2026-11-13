@@ -430,7 +430,7 @@
 			</h3>
 			{#if editing}
 				<textarea
-					class="info__editor w-full mb-2 px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-page border border-border-strong rounded-control resize-y focus:border-accent"
+					class="info__editor w-full mb-2 px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-page border border-border-strong rounded-control resize-y"
 					bind:value={draft}
 					aria-label={$_('viewer_description_label')}
 					rows="4"
