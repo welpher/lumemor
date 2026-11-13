@@ -234,6 +234,7 @@ NON_ERROR_KEYS = {
     "person_avatar_action",
     "person_avatar_dialog_body",
     "person_avatar_set",
+    "person_avatar_option",
     "person_avatar_badge",
     "person_wall_empty_title",
     "person_wall_empty",

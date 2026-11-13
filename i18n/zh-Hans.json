@@ -530,5 +530,6 @@
   "people_empty_title": "还没有人物",
   "people_unnamed_empty_title": "暂无可命名的人脸",
   "person_wall_empty_title": "这个人的照片还没有出现",
-  "person_wall_empty": "包含此人的人脸照片会归到这里。"
+  "person_wall_empty": "包含此人的人脸照片会归到这里。",
+  "person_avatar_option": "用这张脸作为头像"
 }
