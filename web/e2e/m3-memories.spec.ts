@@ -496,7 +496,10 @@ test.describe('the creator scenes', () => {
 
 	test('scene 5: the every-member creation lands the memory through the dialog', async ({ page }) => {
 		await page.goto('/memories');
-		await page.getByRole('button', { name: 'New memory', exact: true }).click();
+		// The page bar's entry, not the empty state's own CTA: an empty
+		// wall offers the creation twice, and the toolbar's is the entry
+		// this scene pins.
+		await page.locator('.memories__actions').getByRole('button', { name: 'New memory', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: 'New memory', exact: true });
 		await expect(dialog).toBeVisible();
 
