@@ -211,7 +211,7 @@ test('fetchAlbumDetail reads the directory album source row and the deletion fac
 				jsonResponse(200, { ...directoryDetail, sourceWritable: 'maybe' })
 		})
 	);
-	expect(await fetchAlbumDetail(ownCard.id)).toEqual({ ok: false, errorKey: 'internal' });
+	expect(await fetchAlbumDetail(ownCard.id)).toEqual({ ok: false, errorKey: 'internal', unreachable: false });
 });
 
 test('fetchAlbumDetail maps the single-shape 404', async () => {
@@ -223,7 +223,9 @@ test('fetchAlbumDetail maps the single-shape 404', async () => {
 		})
 	);
 	const outcome = await fetchAlbumDetail(ownCard.id);
-	expect(outcome).toEqual({ ok: false, errorKey: 'album_not_found' });
+	// The 404 is the dead end: the page folds it into the one
+	// unreachable face rather than the retryable error state.
+	expect(outcome).toEqual({ ok: false, errorKey: 'album_not_found', unreachable: true });
 });
 
 test('createAlbum POSTs the title, source path and audience, and answers the report with the probe fact', async () => {

@@ -53,6 +53,7 @@
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
+	import UnreachableCard from '$lib/components/UnreachableCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import AlbumPropertiesDialog from '$lib/albums/AlbumPropertiesDialog.svelte';
@@ -72,6 +73,13 @@
 	let status = $state<DetailStatus>('idle');
 	/** The error-code i18n key of the last failed load ('' when none). */
 	let errorKey = $state('');
+	/**
+	 * The dead end: the detail read answered the contract's
+	 * byte-identical 404 (a deleted memory, another account's, a
+	 * withdrawn share) or a 403. The page renders the one
+	 * unreachable face then; nothing on it names the memory.
+	 */
+	let unreachable = $state(false);
 
 	// The member's attribution: the detail read carries no owner face
 	// (the contract keeps the owner on the wall cards alone), so the
@@ -140,6 +148,7 @@
 		detail = null;
 		status = 'error';
 		errorKey = outcome.errorKey;
+		unreachable = outcome.unreachable;
 	}
 
 	/** Read the viewer's owner attribution off the matching wall card. */
@@ -176,6 +185,7 @@
 		status = 'loading';
 		detail = null;
 		errorKey = '';
+		unreachable = false;
 		void (async () => {
 			const outcome = await fetchAlbumDetail(id);
 			if (fetchCurrent) {
@@ -462,6 +472,8 @@
 
 	{#if status === 'loading'}
 		<LoadingLine label={$_('memories_loading')} />
+	{:else if status === 'error' && unreachable}
+		<UnreachableCard />
 	{:else if status === 'error'}
 		<StateCard
 			tone="error"

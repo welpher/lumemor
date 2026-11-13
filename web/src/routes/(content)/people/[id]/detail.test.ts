@@ -564,7 +564,7 @@ test('the unname write is immediate: the toast echo and the unnamed variant in p
 	flushSync();
 });
 
-test('an unknown or invisible cluster renders the person-not-found error', async () => {
+test('an unknown or invisible cluster renders the one unreachable face', async () => {
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
@@ -575,13 +575,29 @@ test('an unknown or invisible cluster renders the person-not-found error', async
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.state-card--error');
-	expect(failure?.getAttribute('role')).toBe('alert');
-	expect(failure?.textContent).toContain('This person does not exist or is not visible to you.');
-	// The bar stays (the way back is always there), the wall never
-	// mounts.
+	const card = document.body.querySelector('.unreachable-card');
+	expect(card?.textContent).toContain('This page will not open');
+	expect(card?.querySelector('a')?.getAttribute('href')).toBe('/timeline');
+	expect(document.body.querySelector('.state-card--error')).toBeNull();
+	// The bar stays (the way back is always there) and carries
+	// nothing else; the profile row -- the person's own face -- never
+	// mounts, because it would say whether the cluster exists.
 	expect(document.body.querySelector('.person-bar')).not.toBeNull();
+	expect(document.body.querySelector('.person-bar__actions')?.children).toHaveLength(0);
+	expect(document.body.querySelector('.person-profile')).toBeNull();
 	expect(document.body.querySelector('.person-wall')).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test('a transient cluster failure stays the retryable error', async () => {
+	vi.stubGlobal('fetch', stubFetch({ '/api/v1/people/c1': () => jsonResponse(500, { code: 'INTERNAL' }) }));
+	const page = mountPage();
+	await settle();
+
+	expect(document.body.querySelector('.state-card--error')?.getAttribute('role')).toBe('alert');
+	expect(document.body.querySelector('.unreachable-card')).toBeNull();
+	expect(document.body.querySelector('.state-card--error')?.textContent).toContain('Try again');
 	unmount(page);
 	flushSync();
 });
@@ -680,9 +696,8 @@ test('SSE person.merged dissolving this cluster renders the error state', async 
 	});
 	await settle();
 
-	expect(document.body.querySelector('.state-card--error')?.textContent).toContain(
-		'This person does not exist or is not visible to you.'
-	);
+	expect(document.body.querySelector('.unreachable-card')?.textContent).toContain('This page will not open');
+	expect(document.body.querySelector('.person-profile')).toBeNull();
 	expect(document.body.querySelector('.person-wall')).toBeNull();
 	unmount(page);
 	flushSync();
