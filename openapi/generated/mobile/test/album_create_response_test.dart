@@ -49,7 +49,7 @@ void main() {
       // TODO
     });
 
-    // The caller's relation to this album: `owner` items belong to the own group, `viewer` items to the shared group. The web client sections the wall off this discriminator. 
+    // The caller's relation to this album: `owner` items belong to the caller's own group on the wire, `viewer` items to the shared group. The client renders ONE wall list and keys each card's face off this discriminator (the read-only mark is the member's, the shared state the owner's). 
     // String callerRole
     test('to test the property `callerRole`', () async {
       // TODO

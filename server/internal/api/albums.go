@@ -1,7 +1,8 @@
 // The album surface reads:
 // the wall behind GET /albums (the caller's pinned sync card first,
 // then the own group, then the shared group -- one concatenated
-// array the web client sections off the callerRole discriminator)
+// array whose callerRole discriminator keys each card's face on the
+// single wall list the client renders)
 // and one album's detail behind GET /albums/{albumId} (metadata
 // plus one keyset page of the live items). The caller's OWN sync
 // album surfaces through BOTH faces, read-only: it is the default
