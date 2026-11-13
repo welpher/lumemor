@@ -3,20 +3,28 @@
 // do not live inside it, they are pointed at, and the memory's whole
 // life is curation: photo by photo in, photo by photo out, an
 // audience beside it. The story walks the page family the concept
-// owns (the memories wall, the memory's own detail route, the wall
-// selection's picker) and the semantics that make it a memory rather
-// than an album: EVERY member creates (personal curation, never a
-// configuration act), the photos a member gathers may include the
-// ones others shared to them (the re-share ground -- a row lands
-// only for a photo the creator CURRENTLY sees, and the shared views
-// re-check that sight on every read, so a revoked photo leaves the
-// audience's view with no snapshot residue), the memory NEVER feeds
-// its creator's timeline (it is not a feed -- the photos appear
-// there exactly once each, through their own arms), a directory
-// album refuses the same curation (its membership is its scan's
-// verdict -- the container/reference-set divide), and the memory's
-// delete takes only its own rows (the references and the audience
-// die, the photos stay).
+// owns (the memories wall, the wall's playback overlay with its two
+// faces, the wall selection's picker) and the semantics that make it
+// a memory rather than an album: EVERY member creates (personal
+// curation, never a configuration act), the photos a member gathers
+// may include the ones others shared to them (the re-share ground --
+// a row lands only for a photo the creator CURRENTLY sees, and the
+// shared views re-check that sight on every read, so a revoked photo
+// leaves the audience's view with no snapshot residue), the memory
+// NEVER feeds its creator's timeline (it is not a feed -- the photos
+// appear there exactly once each, through their own arms), a
+// directory album refuses the same curation (its membership is its
+// scan's verdict -- the container/reference-set divide), and the
+// memory's delete takes only its own rows (the references and the
+// audience die, the photos stay).
+//
+// THE PLAYBACK OVERLAY: the memory detail route is retired -- a card
+// click opens an opaque night stage over the wall (`?memory=<id>`,
+// `&mode=grid` for the management face), the photos are something to
+// put on rather than a page to browse. The owner's grid curates
+// (multi-select, remove); a member's grid is a browse face because
+// the server refuses their membership writes, and their one writable
+// arm is their own timeline switch.
 //
 // THE STACK ARRANGEMENT (the honest reuse path, the m3-albums
 // arrangement): the stack is fresh (its database volume was removed
@@ -69,7 +77,10 @@
 //     switches), the POST carrying exactly the dialog's shape, the
 //     all-landed creation closing directly, and the SSE echo
 //     converging the wall: the card with the honest zero count and
-//     the manual origin badge.
+//     the manual origin badge -- and the wall's own grid shape, its
+//     column count swept across the widths (one, two, three, and
+//     three at every width above -- never four) with no horizontal
+//     overflow anywhere.
 //  6. The wall-selection entry: the timeline's selection (two own
 //     photos and the shared one -- the re-share ground's add arm),
 //     the batch bar's sparkles action, the picker (the captured-ids
@@ -83,50 +94,60 @@
 //     same sparkles entry, and the picker's pick answers
 //     {added 0, skipped 1} with the skip-note honesty line -- the
 //     row never lands, the memory's count is unchanged.
-//  8. The audience share: the memory detail's edit dialog (the
-//     title field and the audience chips alone -- no source row, no
-//     autonomy toggles), the candidate picker adding the sharee's
-//     chip, and the save writing the audience PUT alone (the
-//     unchanged title writes nothing).
+//  8. The audience share: the memory's playback overlay (opened by
+//     its deep link), the bar's Edit memory arm, the dialog's title
+//     field and audience chips alone (no source row, no autonomy
+//     toggles), the candidate picker adding the sharee's chip, and
+//     the save writing the audience PUT alone (the unchanged title
+//     writes nothing).
 //  9. The sharee's read-only view: their own sign-in, the memories
 //     wall's one list carrying the shared card (the owner's name,
-//     the read-only chip, the honest count), and the
-//     detail's member bar -- the attribution and the badge with NO
-//     action at all, the wall pure navigation (no check ever
-//     renders).
+//     the read-only chip, the honest count), the card click opening
+//     the overlay (the address names the memory, never a retired
+//     route), the member bar's attribution and badge with NO
+//     curation arm -- and its ONE writable arm, the caller's own
+//     timeline switch: the exclusion empties the sharee's aggregated
+//     timeline (the memory's photos leave the feed without leaving
+//     the memory) and the re-include restores it. The grid is a
+//     BROWSE face for the member (no check, no batch bar).
 // 10. The source revocation cascade: the sharee's memories wall
 //     held open (the shared card, its count and its collage), the
 //     creator's own wall and timeline held open, and the
 //     administrator emptying the source album's audience -- the
 //     grant's death drops the re-shared photo from the sharee's
 //     card LIVE (the album event converges the open wall, no
-//     reload), the sharee's fresh detail visit answers the grounded
-//     count beside a wall that agrees (the walk drops the revoked
-//     photo too -- the page never contradicts itself), the
-//     creator's own card keeps the plain live membership (the row
-//     stays; the set is the owner's to tidy), and the creator's
-//     timeline loses the shared pair (the memory's row does not
-//     hold a photo there -- it is not a feed).
+//     reload), the sharee's fresh overlay visit in grid mode
+//     answers the grounded count beside a wall that agrees (the walk
+//     drops the revoked photo too -- the page never contradicts
+//     itself), the creator's own card keeps the plain live
+//     membership (the row stays; the set is the owner's to tidy),
+//     and the creator's timeline loses the shared pair (the memory's
+//     row does not hold a photo there -- it is not a feed).
 // 11. The timeline exclusion, the fresh view: the creator's
 //     aggregated timeline holds exactly their own pair, each photo
 //     exactly once -- the memory's three rows inject nothing, and
 //     the revoked photo's row never kept it on the feed.
-// 12. The removal: the memory detail's owner bar (the edit, cover
-//     and delete arms; no rescan, no un-ingest -- a memory owns no
-//     source), the wall curating the REMOVE-ONLY subset (the danger
-//     minus action alone), the dead-source row selected and removed
-//     (the DELETE's honest report, the tile leaving through the
-//     membership event, the count dropping) -- and the photo itself
-//     stays (the library row lives on, read by its owner).
+// 12. The removal: the overlay's owner bar (the edit, cover and
+//     delete arms; no rescan, no un-ingest -- a memory owns no
+//     source), the grid face curating the REMOVE-ONLY subset (the
+//     danger minus action alone), the dead-source cell selected and
+//     removed (the DELETE's honest report, the cell leaving through
+//     the membership event, the count dropping) -- and the photo
+//     itself stays (the library row lives on, read by its owner).
 // 13. The hand-over: the albums wall never carries the memory (its
-//     home is the memories wall), and a memory id visited on the
-//     album detail route lands on the memory's own route.
+//     home is the memories wall), a memory id visited on the album
+//     detail route lands on the memory's overlay, and the retired
+//     detail address walks into the one dead-end face (the route is
+//     gone; nothing links there).
 // 14. The delete: the confirm stating the light cascade (the
 //     references and the audience die, the photos stay), the DELETE
-//     leaving for the memories wall, the sharee's held wall losing
-//     the shared card live (the audience died with the memory), the
-//     creator's own photos still on the timeline (the library keeps
-//     them), and the memory answering the single-shape 404 after.
+//     closing the overlay for the memories wall, the sharee's held
+//     wall losing the shared card live (the audience died with the
+//     memory), the creator's own photos still on the timeline (the
+//     library keeps them), and the memory answering the single-shape
+//     404 after -- the dead share's deep link landing on the
+//     overlay's in-view dead end (no title, no count) and the
+//     retired route on the page-level one.
 //
 // THE STATE HANDOFF: the scenes are serial (one stack, one story --
 // see playwright.config.ts). Scene 1 signs the administrator in and
@@ -523,22 +544,50 @@ test.describe('the creator scenes', () => {
 		// problems alone).
 		const response = await post.response();
 		expect(response?.status()).toBe(201);
-		const createBody = (await response?.json()) as { skipped?: string[] };
+		const createBody = (await response?.json()) as { id?: string; skipped?: string[] };
 		expect(createBody.skipped).toEqual([]);
 		await expect(dialog).toHaveCount(0);
 
 		// The SSE album.created echo converges the wall: the card
 		// lands with the honest zero count and the manual origin
 		// badge.
-		const card = page.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
+		const card = page.locator('button.memory-card').filter({ hasText: MEMORY_TITLE });
 		await expect(card).toBeVisible();
 		await expect(card.locator('.memory-card__count')).toHaveAttribute('aria-label', '0 photos');
 		await expect(card).toContainText('Manual');
 
 		// The created memory's id, for the later scenes' deep links
-		// and requests.
-		memoryId = (await card.getAttribute('href'))?.replace('/memories/', '') ?? '';
+		// and requests (the card is a control now, not a link).
+		memoryId = createBody.id ?? '';
 		expect(memoryId).not.toBe('');
+
+		// THE WALL'S OWN GRID SHAPE (the memory page's difference in
+		// kind from the albums wall): one, two, then three columns,
+		// and three at every width above -- never four -- with the
+		// cards widening instead, and no horizontal overflow at any
+		// stop (the one-pixel allowance is the rounding rule).
+		const grid = page.locator('.memories__grid');
+		const stops: Array<{ width: number; columns: number }> = [
+			{ width: 480, columns: 1 },
+			{ width: 768, columns: 2 },
+			{ width: 1024, columns: 3 },
+			{ width: 1280, columns: 3 },
+			{ width: 1440, columns: 3 },
+			{ width: 1920, columns: 3 },
+			{ width: 2560, columns: 3 }
+		];
+		for (const stop of stops) {
+			await page.setViewportSize({ width: stop.width, height: 900 });
+			const columns = await grid.evaluate(
+				(element) => getComputedStyle(element).gridTemplateColumns.split(' ').length
+			);
+			expect(columns, `columns at ${stop.width}px`).toBe(stop.columns);
+			const overflow = await page.evaluate(
+				() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+			);
+			expect(overflow, `horizontal overflow at ${stop.width}px`).toBeLessThanOrEqual(1);
+		}
+		await page.setViewportSize({ width: 1280, height: 720 });
 	});
 
 	test('scene 6: the wall-selection entry adds the selected photos through the picker', async ({ page }) => {
@@ -648,7 +697,13 @@ test.describe('the creator scenes', () => {
 	});
 
 	test('scene 8: the edit dialog grants the audience through the full-set PUT', async ({ page }) => {
-		await page.goto(`/memories/${memoryId}`);
+		// The overlay is the memory's whole face now: the deep link
+		// opens it over the wall, and the bar's Edit memory arm is the
+		// scene's entry.
+		await page.goto(`/memories?memory=${memoryId}`);
+		const overlay = page.getByRole('dialog', { name: 'Memory playback', exact: true });
+		await expect(overlay).toBeVisible();
+		await expect(overlay.locator('.memory-overlay__title')).toHaveText(MEMORY_TITLE);
 		await page.getByRole('button', { name: 'Edit memory', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: 'Edit memory', exact: true });
 		await expect(dialog).toBeVisible();
@@ -720,34 +775,80 @@ test('scene 9: the sharee signs in and the shared memory reads view-only', async
 	// owner's sight). The address never renders.
 	await page.goto('/memories');
 	await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
-	const card = page.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
+	const card = page.locator('button.memory-card').filter({ hasText: MEMORY_TITLE });
 	await expect(card).toBeVisible();
 	await expect(card.locator('.memory-card__count')).toHaveAttribute('aria-label', '3 photos');
 	await expect(card.locator('.memory-card__badge--owner')).toHaveText(`Shared by ${CREATOR_NAME}`);
 	await expect(card.locator('.memory-card__badge--owner')).not.toContainText(CREATOR_EMAIL);
 	await expect(card.locator('.memory-card__badge--readonly')).toHaveText('Read-only');
 
-	// The detail: the member bar carries the owner attribution and
-	// the read-only badge with NO action at all, and the wall is
-	// pure navigation -- no check ever renders.
+	// The card click opens the playback overlay OVER the wall (the
+	// detail route is retired): the address carries the memory as a
+	// state of the list.
 	await card.click();
-	await expect(page).toHaveURL(new RegExp(`/memories/${memoryId}$`));
-	await expect(page.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
-	await expect(page.locator('.memory-bar__count')).toHaveAttribute('aria-label', '3 photos');
-	await expect(page.locator('.memory-bar__owner')).toHaveText(`Shared by ${CREATOR_NAME}`);
-	await expect(page.locator('.memory-bar__badge')).toContainText('Read-only');
-	for (const label of [
-		'Edit memory',
-		'Change cover',
-		'Delete memory',
-		'Rescan',
-		'Remove album',
-		'Keep out of timeline'
-	]) {
-		await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+	await expect(page).toHaveURL(new RegExp(`/memories\\?memory=${memoryId}$`));
+	const overlay = page.getByRole('dialog', { name: 'Memory playback', exact: true });
+	await expect(overlay).toBeVisible();
+	await expect(overlay.locator('.memory-overlay__title')).toHaveText(MEMORY_TITLE);
+	await expect(overlay.locator('.memory-overlay__count')).toHaveAttribute('aria-label', '3 photos');
+	await expect(overlay.locator('.memory-overlay__owner')).toHaveText(`Shared by ${CREATOR_NAME}`);
+	await expect(overlay.locator('.memory-overlay__badge')).toContainText('Read-only');
+
+	// The member bar carries no curation arm -- the server refuses
+	// the member's every other write, so none is offered.
+	for (const label of ['Edit memory', 'Change cover', 'Delete memory', 'Rescan', 'Remove album']) {
+		await expect(overlay.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 	}
+
+	// The play face: the first photo, the honest position.
+	await expect(overlay.locator('.memory-overlay__index')).toHaveText('1 / 3');
+	await expect(overlay.locator('.memory-overlay__frame img')).toHaveCount(1);
+
+	// The grid is a BROWSE face for the member (their membership
+	// writes are refused): the thumbnails render, no check ever does,
+	// and a click raises no batch bar.
+	const modes = overlay.locator('.memory-overlay__modes');
+	await modes.getByRole('button', { name: 'Grid', exact: true }).click();
+	await expect(page).toHaveURL(new RegExp(`/memories\\?memory=${memoryId}&mode=grid$`));
+	await expect(overlay.locator('.memory-overlay__cell')).toHaveCount(3);
+	await expect(overlay.locator('.memory-overlay__check')).toHaveCount(0);
+	await expect(overlay.getByRole('checkbox')).toHaveCount(0);
+	await overlay.locator('.memory-overlay__cell').first().click();
+	await expect(overlay.getByRole('toolbar')).toHaveCount(0);
+
+	// The one writable arm a shared memory gives the caller: their
+	// OWN timeline switch. In the timeline the bar offers the
+	// exclusion; the write is self-affecting (no event), so the
+	// fresh timeline is the witness.
+	await modes.getByRole('button', { name: 'Play', exact: true }).click();
+	await expect(page).toHaveURL(new RegExp(`/memories\\?memory=${memoryId}$`));
+	await page.goto('/timeline');
 	await expect(page.locator('.tile')).toHaveCount(3);
-	await expect(page.getByRole('checkbox')).toHaveCount(0);
+	await page.goto(`/memories?memory=${memoryId}`);
+	await expect(overlay).toBeVisible();
+	const exclusionPut = page.waitForRequest(
+		(request) =>
+			request.method() === 'PUT' && request.url().endsWith(`/api/v1/albums/${memoryId}/timeline-preference`)
+	);
+	await overlay.getByRole('button', { name: 'Keep out of timeline', exact: true }).click();
+	const put = await exclusionPut;
+	expect(put.postDataJSON()).toEqual({ inTimeline: false });
+	expect((await put.response())?.status()).toBe(200);
+	await expect(overlay.getByRole('button', { name: 'Keep in timeline', exact: true })).toBeVisible();
+
+	// The exclusion's reach: the memory's photos leave the caller's
+	// aggregated timeline -- the reference set stays whole, only the
+	// feed loses it.
+	await page.goto('/timeline');
+	await expect(page.locator('.tile')).toHaveCount(0);
+	await expect(page.getByText('No photos yet', { exact: true })).toBeVisible();
+
+	// The swift way back in (the switch reads the state it stores).
+	await page.goto(`/memories?memory=${memoryId}`);
+	await overlay.getByRole('button', { name: 'Keep in timeline', exact: true }).click();
+	await expect(overlay.getByRole('button', { name: 'Keep out of timeline', exact: true })).toBeVisible();
+	await page.goto('/timeline');
+	await expect(page.locator('.tile')).toHaveCount(3);
 
 	await context.storageState({ path: shareeStatePath });
 	await context.close();
@@ -772,14 +873,14 @@ test.describe('the closing scenes', () => {
 		});
 		const shareePage = await shareeContext.newPage();
 		await shareePage.goto('/memories');
-		const shareeCard = shareePage.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
+		const shareeCard = shareePage.locator('button.memory-card').filter({ hasText: MEMORY_TITLE });
 		await expect(shareeCard).toBeVisible();
 		await expect(shareeCard.locator('.memory-card__count')).toHaveAttribute('aria-label', '3 photos');
 		await expect(shareeCard.locator('img')).toHaveCount(3);
 
 		const creatorList = await page.context().newPage();
 		await creatorList.goto('/memories');
-		const ownCard = creatorList.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
+		const ownCard = creatorList.locator('button.memory-card').filter({ hasText: MEMORY_TITLE });
 		await expect(ownCard).toBeVisible();
 		await expect(ownCard.locator('.memory-card__count')).toHaveAttribute('aria-label', '3 photos');
 
@@ -810,21 +911,21 @@ test.describe('the closing scenes', () => {
 		await expect(shareeCard.locator('.memory-card__count')).toHaveAttribute('aria-label', '2 photos');
 		await expect(shareeCard.locator('img')).toHaveCount(2);
 
-		// The sharee's detail wall, the FRESH visit: the count and
-		// the tiles agree -- the walk (the timeline endpoint's album
-		// narrow) drops the revoked photo too, so the memory's own
-		// face never renders a grounded count beside the revoked
-		// photo's tile. (A held detail page would not converge here:
-		// its event filter keys on the memory's own id while the
-		// revocation's event names the source album, so the fresh
-		// visit -- the recompute-on-read kind -- is the honest
-		// witness.)
+		// The sharee's fresh overlay visit, in the grid face: the count
+		// and the cells agree -- the walk (the timeline endpoint's album
+		// narrow) drops the revoked photo too, so the memory's own face
+		// never renders a grounded count beside the revoked photo's
+		// cell. (A held overlay would not converge here: its event
+		// filter keys on the memory's own id while the revocation's
+		// event names the source album, so the fresh visit -- the
+		// recompute-on-read kind -- is the honest witness.)
 		const shareeDetail = await shareeContext.newPage();
-		await shareeDetail.goto(`/memories/${memoryId}`);
-		await expect(shareeDetail.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
-		await expect(shareeDetail.locator('.memory-bar__count')).toHaveAttribute('aria-label', '2 photos');
-		await expect(shareeDetail.locator('.tile')).toHaveCount(2);
-		await expect(shareeDetail.getByRole('link', { name: VIA_SHARE_A_NAME, exact: true })).toHaveCount(0);
+		await shareeDetail.goto(`/memories?memory=${memoryId}&mode=grid`);
+		const shareeOverlay = shareeDetail.getByRole('dialog', { name: 'Memory playback', exact: true });
+		await expect(shareeOverlay.locator('.memory-overlay__title')).toHaveText(MEMORY_TITLE);
+		await expect(shareeOverlay.locator('.memory-overlay__count')).toHaveAttribute('aria-label', '2 photos');
+		await expect(shareeOverlay.locator('.memory-overlay__cell')).toHaveCount(2);
+		await expect(shareeOverlay.locator(`.memory-overlay__cell img[alt="${VIA_SHARE_A_NAME}"]`)).toHaveCount(0);
 		await shareeDetail.close();
 
 		// The creator's own card keeps the plain live membership:
@@ -878,30 +979,36 @@ test.describe('the closing scenes', () => {
 	});
 
 	test('scene 12: the removal curates the remove-only subset and the photo stays', async ({ page, browser }) => {
-		await page.goto(`/memories/${memoryId}`);
+		// The overlay's deep link, opened straight into its management
+		// face (the same address a review or the viewer's album row
+		// uses).
+		await page.goto(`/memories?memory=${memoryId}&mode=grid`);
+		const overlay = page.getByRole('dialog', { name: 'Memory playback', exact: true });
+		await expect(overlay).toBeVisible();
 
 		// The owner's bar: the edit, cover and delete arms alone --
 		// no rescan and no un-ingest anywhere (a memory owns no
 		// source to walk and no files to purge).
-		await expect(page.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
-		await expect(page.locator('.memory-bar__count')).toHaveAttribute('aria-label', '3 photos');
+		await expect(overlay.locator('.memory-overlay__title')).toHaveText(MEMORY_TITLE);
+		await expect(overlay.locator('.memory-overlay__count')).toHaveAttribute('aria-label', '3 photos');
 		for (const label of ['Edit memory', 'Change cover', 'Delete memory']) {
-			await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+			await expect(overlay.getByRole('button', { name: label, exact: true })).toBeVisible();
 		}
 		for (const label of ['Rescan', 'Remove album', 'Add to memory']) {
-			await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+			await expect(overlay.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 		}
 
-		// The owner's wall keeps the dead-source row (the plain live
-		// membership): the tile is still here to select and tidy.
-		await expect(page.locator('.tile')).toHaveCount(3);
-		await expect(page.getByRole('link', { name: VIA_SHARE_A_NAME, exact: true })).toBeVisible();
+		// The owner's grid keeps the dead-source cell (the plain live
+		// membership): it is still here to select and tidy.
+		const cells = overlay.locator('button.memory-overlay__cell');
+		await expect(cells).toHaveCount(3);
+		await expect(overlay.locator(`.memory-overlay__cell[aria-label="${VIA_SHARE_A_NAME}"]`)).toBeVisible();
 
 		// The selection rises the REMOVE-ONLY subset: the danger
 		// minus action alone -- no favorite, no hide, no trash, no
 		// tag, no sparkles.
-		await page.getByRole('checkbox', { name: `Select: ${VIA_SHARE_A_NAME}`, exact: true }).click();
-		const bar = page.getByRole('toolbar', { name: '1 selected' });
+		await overlay.locator(`.memory-overlay__cell[aria-label="${VIA_SHARE_A_NAME}"]`).click();
+		const bar = overlay.getByRole('toolbar', { name: '1 selected' });
 		await expect(bar).toBeVisible();
 		await expect(bar.getByRole('button', { name: 'Remove from memory', exact: true })).toBeVisible();
 		for (const label of [
@@ -928,11 +1035,11 @@ test.describe('the closing scenes', () => {
 		expect(removeResponse?.status()).toBe(200);
 		expect(await removeResponse?.json()).toEqual({ removed: 1, skipped: 0 });
 
-		// The membership event converges the held page: the tile
+		// The membership event converges the held overlay: the cell
 		// leaves, the bar's count drops, the selection clears.
-		await expect(page.getByRole('link', { name: VIA_SHARE_A_NAME, exact: true })).toHaveCount(0);
-		await expect(page.locator('.tile')).toHaveCount(2);
-		await expect(page.locator('.memory-bar__count')).toHaveAttribute('aria-label', '2 photos');
+		await expect(overlay.locator(`.memory-overlay__cell[aria-label="${VIA_SHARE_A_NAME}"]`)).toHaveCount(0);
+		await expect(cells).toHaveCount(2);
+		await expect(overlay.locator('.memory-overlay__count')).toHaveAttribute('aria-label', '2 photos');
 		await expect(bar).toHaveCount(0);
 
 		// The photo itself stays: the library row lives on, its
@@ -959,12 +1066,22 @@ test.describe('the closing scenes', () => {
 		await expect(page.locator('a.album-card')).toHaveCount(1);
 
 		// The deep link: the album detail's read answers the memory
-		// type and the page hands the route over to the memory's own
-		// face -- one face per concept.
+		// type and the page hands the address over to the wall's
+		// playback overlay -- one face per concept.
 		await page.goto(`/albums/${memoryId}`);
-		await expect(page).toHaveURL(new RegExp(`/memories/${memoryId}$`));
-		await expect(page.locator('h1.memory-bar__title')).toHaveText(MEMORY_TITLE);
-		await expect(page.locator('.memory-bar__count')).toHaveAttribute('aria-label', '2 photos');
+		await expect(page).toHaveURL(new RegExp(`/memories\\?memory=${memoryId}$`));
+		const overlay = page.getByRole('dialog', { name: 'Memory playback', exact: true });
+		await expect(overlay.locator('.memory-overlay__title')).toHaveText(MEMORY_TITLE);
+		await expect(overlay.locator('.memory-overlay__count')).toHaveAttribute('aria-label', '2 photos');
+
+		// The retired detail address: the route is GONE -- the
+		// catch-all's one dead-end face answers it, with nothing
+		// resource-shaped and no trace of the old page's chrome.
+		await page.goto(`/memories/${memoryId}`);
+		await expect(page.locator('.unreachable-card')).toBeVisible();
+		await expect(page.locator('.unreachable-card')).not.toContainText(MEMORY_TITLE);
+		await expect(page.locator('.memory-overlay')).toHaveCount(0);
+		await expect(page.locator('.memory-bar__title')).toHaveCount(0);
 	});
 
 	test('scene 14: the delete takes the references and the audience, never the photos', async ({ page, browser }) => {
@@ -977,14 +1094,16 @@ test.describe('the closing scenes', () => {
 		});
 		const shareePage = await shareeContext.newPage();
 		await shareePage.goto('/memories');
-		const shareeCard = shareePage.locator('a.memory-card').filter({ hasText: MEMORY_TITLE });
+		const shareeCard = shareePage.locator('button.memory-card').filter({ hasText: MEMORY_TITLE });
 		await expect(shareeCard).toBeVisible();
 		await expect(shareeCard.locator('.memory-card__count')).toHaveAttribute('aria-label', '2 photos');
 
 		// The delete: the confirm states the light cascade -- the
 		// memory's references and its audience die, the photos
 		// themselves stay.
-		await page.goto(`/memories/${memoryId}`);
+		await page.goto(`/memories?memory=${memoryId}`);
+		const overlay = page.getByRole('dialog', { name: 'Memory playback', exact: true });
+		await expect(overlay).toBeVisible();
 		await page.getByRole('button', { name: 'Delete memory', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: 'Delete this memory?', exact: true });
 		await expect(dialog).toBeVisible();
@@ -999,10 +1118,11 @@ test.describe('the closing scenes', () => {
 		const answer = await deleteAnswered;
 		expect(answer.status()).toBe(204);
 
-		// Success leaves for the memories wall: the creator's own
-		// section is empty again (the fully-empty state's copy).
+		// Success closes the overlay for the wall: the creator's own
+		// list is empty again (the fully-empty state's copy).
+		await expect(overlay).toHaveCount(0);
 		await expect(page).toHaveURL(/\/memories$/);
-		await expect(page.locator('a.memory-card')).toHaveCount(0);
+		await expect(page.locator('button.memory-card')).toHaveCount(0);
 		await expect(page.getByText('No memories yet', { exact: true })).toBeVisible();
 
 		// The sharee's held wall loses the shared card LIVE (the
@@ -1027,17 +1147,35 @@ test.describe('the closing scenes', () => {
 		expect(shareeGone.status()).toBe(404);
 
 		// The dead share's DEEP LINK: the address the sharee held
-		// (yesterday's shared memory, today gone) renders the one
-		// unreachable card -- no title, no count, no name -- the same
-		// face an address the app never had gets.
+		// (yesterday's shared memory, today gone) opens the wall's
+		// overlay only for the wall to refuse it -- the same in-view
+		// dead end every unknown, foreign or withdrawn id answers: no
+		// title, no count, no cover, the bar's way back alone.
 		const deadLink = await shareeContext.newPage();
-		await deadLink.goto(`/memories/${memoryId}`);
-		await expect(deadLink.locator('.unreachable-card')).toBeVisible();
-		await expect(deadLink.locator('.unreachable-card')).not.toContainText(MEMORY_TITLE);
-		await expect(deadLink.locator('.memory-bar__title')).toHaveCount(0);
-		await expect(deadLink.locator('.memory-bar__count')).toHaveCount(0);
-		await expect(deadLink.getByRole('link', { name: 'Back to the timeline' })).toBeVisible();
+		await deadLink.goto(`/memories?memory=${memoryId}`);
+		const deadOverlay = deadLink.getByRole('dialog', { name: 'Memory playback', exact: true });
+		await expect(deadOverlay.locator('.unreachable-card')).toBeVisible();
+		await expect(deadOverlay.locator('.unreachable-card')).not.toContainText(MEMORY_TITLE);
+		await expect(deadOverlay.locator('.memory-overlay__title')).toHaveCount(0);
+		await expect(deadOverlay.locator('.memory-overlay__count')).toHaveCount(0);
+		await expect(deadOverlay.locator('.memory-overlay__frame')).toHaveCount(0);
+		await expect(deadOverlay.getByRole('button', { name: 'Back to memories', exact: true })).toBeVisible();
+		// The overlay's own way back leaves the address clean (the
+		// wall, with no memory parameter).
+		await deadOverlay.getByRole('button', { name: 'Back to memories', exact: true }).click();
+		await expect(deadLink).toHaveURL(/\/memories$/);
+		await expect(deadLink.getByText('No memories yet', { exact: true })).toBeVisible();
 		await deadLink.close();
+
+		// The RETIRED route address answers the page-level dead end
+		// (the route is gone -- nothing special-cases it, so the
+		// anti-enumeration face answers like any unknown address).
+		const retired = await shareeContext.newPage();
+		await retired.goto(`/memories/${memoryId}`);
+		await expect(retired.locator('.unreachable-card')).toBeVisible();
+		await expect(retired.locator('.unreachable-card')).not.toContainText(MEMORY_TITLE);
+		await expect(retired.locator('.memory-overlay')).toHaveCount(0);
+		await retired.close();
 		await shareeContext.close();
 	});
 });
