@@ -8,20 +8,25 @@ import 'package:built_value/serializer.dart';
 
 part 'album_owner_ref.g.dart';
 
-/// The owner of an album shared to the caller: the honest attribution a shared wall card renders. 
+/// The owner of an album shared to the caller: the honest attribution a shared wall card renders. The display name leads; `email` is the fallback an empty name leaves (the card never renders a blank attribution). 
 ///
 /// Properties:
 /// * [id] - Identifier of the owning account.
-/// * [email] - The email address of the owning account.
+/// * [email] - The email address of the owning account: the fallback the client renders when `name` is empty, and the disambiguator between two accounts that share a name. 
+/// * [name] - The owning account's display name, exactly as stored. The empty string when the account set none -- the client then renders `email` instead. Never treated as a unique key: two accounts may share a name, and the email is what tells them apart. 
 @BuiltValue()
 abstract class AlbumOwnerRef implements Built<AlbumOwnerRef, AlbumOwnerRefBuilder> {
   /// Identifier of the owning account.
   @BuiltValueField(wireName: r'id')
   String get id;
 
-  /// The email address of the owning account.
+  /// The email address of the owning account: the fallback the client renders when `name` is empty, and the disambiguator between two accounts that share a name. 
   @BuiltValueField(wireName: r'email')
   String get email;
+
+  /// The owning account's display name, exactly as stored. The empty string when the account set none -- the client then renders `email` instead. Never treated as a unique key: two accounts may share a name, and the email is what tells them apart. 
+  @BuiltValueField(wireName: r'name')
+  String get name;
 
   AlbumOwnerRef._();
 
@@ -54,6 +59,11 @@ class _$AlbumOwnerRefSerializer implements PrimitiveSerializer<AlbumOwnerRef> {
     yield r'email';
     yield serializers.serialize(
       object.email,
+      specifiedType: const FullType(String),
+    );
+    yield r'name';
+    yield serializers.serialize(
+      object.name,
       specifiedType: const FullType(String),
     );
   }
@@ -92,6 +102,13 @@ class _$AlbumOwnerRefSerializer implements PrimitiveSerializer<AlbumOwnerRef> {
             specifiedType: const FullType(String),
           ) as String;
           result.email = valueDes;
+          break;
+        case r'name':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.name = valueDes;
           break;
         default:
           unhandled.add(key);
