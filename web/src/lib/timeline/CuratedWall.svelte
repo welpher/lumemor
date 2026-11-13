@@ -178,7 +178,7 @@
 		{/if}
 	</div>
 
-	<!-- The wall's reserved month-axis slot (web-ia §7.15: the wall is
+	<!-- The wall's reserved month-axis slot (the wall is
 	     full width + 8px margins + the 72px axis strip): the photos and
 	     this wrapper's own states center in the width LEFT of the axis,
 	     never under it. The page bar above keeps the page's own

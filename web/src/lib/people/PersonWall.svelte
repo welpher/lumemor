@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The person detail's photo wall (web-ia §7.17): THIS PERSON'S
+	// The person detail's photo wall: THIS PERSON'S
 	// photos over the shared Wall -- month groups, the 72px axis
 	// gutter, the sticky month bands under the page's context bar,
 	// and the selection with its batch bar (favorite / hide /
@@ -18,7 +18,7 @@
 	// are curatable by anyone who can see them (the same actions the
 	// timeline offers over a selection), and the wall's own hover
 	// check is the selection entry -- the context bar carries no
-	// selection switch (§7.21's person bar holds the person actions
+	// selection switch (the person bar holds the person actions
 	// alone).
 	import { _ } from 'svelte-i18n';
 	import { untrack } from 'svelte';

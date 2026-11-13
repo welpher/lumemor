@@ -1,10 +1,10 @@
 <script lang="ts">
-	// The unnamed region of the people surface (web-ia §7.18's action
-	// bar, §7.20's card-as-entrance): the caller's unlabeled face
+	// The unnamed region of the people surface (the design's action
+	// bar, the card-as-entrance): the caller's unlabeled face
 	// clusters as a keyset-paginated card grid, largest first, with
 	// the region's whole count in the bar.
 	//
-	// THE CARDS ARE ENTRANCES, NOT A SELECTION SURFACE (§7.20): no
+	// THE CARDS ARE ENTRANCES, NOT A SELECTION SURFACE: no
 	// check circles, no armed select mode, no batch bar, no batch
 	// merge. A card opens the SAME person detail the named region
 	// opens -- `/people/{clusterId}` -- in its unnamed variant
@@ -195,7 +195,7 @@
 </svelte:head>
 
 <section class="unnamed max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
-	<!-- THE ONE ROW (§7.18): the back control, the title with the
+	<!-- THE ONE ROW: the back control, the title with the
 	     region's count -- and no action at all: the cards are the
 	     entrances, not a selection surface. -->
 	<div class="unnamed__toolbar flex items-center gap-3 pb-4 border-b border-border">

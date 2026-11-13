@@ -1,18 +1,18 @@
 <script lang="ts">
-	// The person detail (web-ia §7.17, §7.19, §7.20, §7.21): ONE page
+	// The person detail: ONE page
 	// for both states, because the people domain has exactly two --
 	// named (this cluster carries the caller's label) and unnamed (it
 	// does not). The page's body is THIS PERSON'S PHOTOS over the
 	// shared wall; the person's identity lives in the profile row,
 	// never in the context bar.
 	//
-	// THE CONTEXT BAR (§7.21, the same skeleton as the album and
+	// THE CONTEXT BAR (the same skeleton as the album and
 	// memory details): sticky, 53px tall, back + the icon action
 	// cluster on the right, and the shell's own topbar and drawer do
 	// not render while this route is active (the content shell's
 	// route rule). The three detail pages now agree.
 	//
-	// THE PROFILE ROW (§7.17): the 72px round avatar, the name at
+	// THE PROFILE ROW: the 72px round avatar, the name at
 	// 22px display with the rename pencil beside it, and the meta
 	// line -- the photo count (icon + number) and the birth date
 	// ("Born {date}", the empty state being the add affordance). The
@@ -24,7 +24,7 @@
 	// THE ACTIONS: avatar picker / unname / merge-into for a named
 	// person; avatar picker / merge-into / name for an unnamed one
 	// (no unname -- there is no name to remove). Hiding retired with
-	// §7.19: no hide action exists anywhere on this page.
+	// No hide action exists anywhere on this page.
 	//
 	// THE PINNED CHOICES:
 	// - The label write adopts its response (the PUT body IS the
@@ -385,7 +385,7 @@
      contextual bar: the bar is py-2 (16) around an h-9 row (36) plus
      its 1px border -- 53px. -->
 <section class="person-detail w-full" style:--wall-sticky-offset="53px">
-	<!-- THE CONTEXTUAL BAR (§7.21): back + the person's icon actions.
+	<!-- THE CONTEXTUAL BAR: back + the person's icon actions.
 	     The shell's own topbar and drawer hide while this route is
 	     active (the content shell's route rule); the name, the photo
 	     count and the birth date live in the profile row below. -->

@@ -143,7 +143,7 @@ test('the bar carries the title, the count, the filter and the badged unnamed en
 	const page = mountPage();
 	await settle();
 
-	// The one row (§7.18): the title with the count, the filter on the
+	// The one row: the title with the count, the filter on the
 	// right, the unnamed entry last.
 	const title = document.body.querySelector('.people__title');
 	expect(title?.textContent?.replace(/\s+/g, ' ').trim()).toBe('People · 3 people');
