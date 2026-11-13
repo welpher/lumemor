@@ -1624,7 +1624,7 @@ test('a named face chip deep-links into the person page; an unnamed chip names i
 		),
 		put('/api/v1/people/c-f2/label', () => {
 			named = true;
-			return jsonResponse(200, { clusterId: 'c-f2', name: 'Grace', isHidden: false });
+			return jsonResponse(200, { clusterId: 'c-f2', name: 'Grace' });
 		})
 	]);
 	await settle();

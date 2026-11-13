@@ -3,7 +3,7 @@
 	// person's FACES are the candidates -- each face's crop, square,
 	// no file name and no source photo name (a name helps nobody
 	// recognize a face and only turns the grid into a table). The
-	// current avatar carries the「头像」badge; the footer's two
+	// current avatar carries the "Avatar" badge; the footer's two
 	// buttons are the only chrome.
 	//
 	// THIS IS NOT FACE GOVERNANCE: the picker chooses which face
@@ -51,8 +51,16 @@
 		}
 	});
 
+	// The visibility gate: the page passes the STORED pick verbatim,
+	// and a stored pick the caller cannot see never renders a row --
+	// so the dialog opens with nothing pressed and the submit stays
+	// armed only for a pick the caller could actually write (the
+	// server would refuse an invisible face; the button never offers
+	// that write).
+	const pickIsVisible = $derived(faces.some((face) => face.id === picked));
+
 	function submit(): void {
-		if (picked === null) {
+		if (picked === null || !pickIsVisible) {
 			return;
 		}
 		onsubmit(picked);
@@ -111,7 +119,7 @@
 			<X size={20} aria-hidden="true" />
 			{$_('common_cancel')}
 		</Button>
-		<Button disabled={busy || picked === null} onclick={submit}>
+		<Button disabled={busy || picked === null || !pickIsVisible} onclick={submit}>
 			<Check size={20} aria-hidden="true" />
 			{$_('person_avatar_set')}
 		</Button>

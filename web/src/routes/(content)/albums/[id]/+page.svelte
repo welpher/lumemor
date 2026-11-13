@@ -380,8 +380,8 @@
 	}
 
 	// The run events that arrived before the trigger's answer named
-	// their run: keyed by the run id, a bounded few (each trigger puts
-	// one here and the adoption above takes it back).
+	// their run: keyed by the run id, a bounded few (the event handler
+	// puts one here and the trigger's answer takes it back).
 	const settledRuns = new Map<string, RescanRun>();
 
 	// The SSE convergence of the run: progress events update the run

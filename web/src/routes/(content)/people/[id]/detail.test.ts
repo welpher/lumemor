@@ -289,7 +289,7 @@ test('the named detail renders the context bar, the profile row and the photo wa
 	flushSync();
 });
 
-test('the unnamed variant renders 「Unnamed」 with the naming entry and no unname', async () => {
+test('the unnamed variant renders "Unnamed" with the naming entry and no unname', async () => {
 	detailState = { ...detailState, label: null };
 	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
 	const page = mountPage();
