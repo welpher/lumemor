@@ -524,6 +524,8 @@ type FaceCluster struct {
 	RepresentativeFaceID pgtype.UUID        `json:"representative_face_id"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	BirthDate            pgtype.Date        `json:"birth_date"`
+	AvatarFaceID         pgtype.UUID        `json:"avatar_face_id"`
 }
 
 type InstanceSetting struct {
@@ -647,7 +649,6 @@ type UserFaceLabel struct {
 	UserID    pgtype.UUID        `json:"user_id"`
 	ClusterID pgtype.UUID        `json:"cluster_id"`
 	Name      string             `json:"name"`
-	IsHidden  bool               `json:"is_hidden"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }

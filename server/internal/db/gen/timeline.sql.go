@@ -131,6 +131,111 @@ func (q *Queries) ListAlbumTimelineAssets(ctx context.Context, arg ListAlbumTime
 	return items, nil
 }
 
+const listPersonTimelineAssets = `-- name: ListPersonTimelineAssets :many
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime,
+       EXISTS (
+           SELECT 1 FROM user_favorites uf
+           WHERE uf.asset_id = a.id AND uf.user_id = $1
+       ) AS is_favorite
+FROM assets a
+WHERE a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND EXISTS (
+      SELECT 1
+      FROM faces f
+      WHERE f.asset_id = a.id
+        AND f.cluster_id = $2
+        AND caller_asset_visible($1, a.id)
+  )
+  AND (
+      $3::timestamptz IS NULL
+      OR (a.taken_at, a.id) < ($3::timestamptz, $4::uuid)
+  )
+ORDER BY a.taken_at DESC, a.id DESC
+LIMIT $5
+`
+
+type ListPersonTimelineAssetsParams struct {
+	UserID        pgtype.UUID        `json:"user_id"`
+	ClusterID     pgtype.UUID        `json:"cluster_id"`
+	CursorTakenAt pgtype.Timestamptz `json:"cursor_taken_at"`
+	CursorID      pgtype.UUID        `json:"cursor_id"`
+	LimitCount    int32              `json:"limit_count"`
+}
+
+type ListPersonTimelineAssetsRow struct {
+	Asset      Asset `json:"asset"`
+	IsFavorite bool  `json:"is_favorite"`
+}
+
+// The person detail's photo wall: one face cluster's own photos with
+// the aggregate's is_favorite computation, ordering and keyset
+// predicate. The cluster arm is an EXISTS semi-join over its faces,
+// so an asset carrying two faces of the same person is one item --
+// the wall is a photo wall, not a face wall -- and every member face
+// is read through the same caller-visible live predicate the people
+// surface applies (a cluster's assets all in other accounts' hands
+// resolves to no rows: the empty list, indistinguishable from an
+// unknown id, so cluster ids cannot be probed here either).
+func (q *Queries) ListPersonTimelineAssets(ctx context.Context, arg ListPersonTimelineAssetsParams) ([]ListPersonTimelineAssetsRow, error) {
+	rows, err := q.db.Query(ctx, listPersonTimelineAssets,
+		arg.UserID,
+		arg.ClusterID,
+		arg.CursorTakenAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPersonTimelineAssetsRow
+	for rows.Next() {
+		var i ListPersonTimelineAssetsRow
+		if err := rows.Scan(
+			&i.Asset.ID,
+			&i.Asset.OwnerID,
+			&i.Asset.StorageKind,
+			&i.Asset.FilePath,
+			&i.Asset.Checksum,
+			&i.Asset.OriginalFilename,
+			&i.Asset.FileSize,
+			&i.Asset.MimeType,
+			&i.Asset.MediaKind,
+			&i.Asset.LivePhotoVideoID,
+			&i.Asset.IsComponent,
+			&i.Asset.Width,
+			&i.Asset.Height,
+			&i.Asset.DurationMs,
+			&i.Asset.TakenAt,
+			&i.Asset.TakenAtSource,
+			&i.Asset.PlaceID,
+			&i.Asset.Blurhash,
+			&i.Asset.Phash,
+			&i.Asset.IsHidden,
+			&i.Asset.Description,
+			&i.Asset.DeletedAt,
+			&i.Asset.OriginalPath,
+			&i.Asset.TrashPath,
+			&i.Asset.CreatedAt,
+			&i.Asset.UpdatedAt,
+			&i.Asset.DeviceAssetID,
+			&i.Asset.PendingJobs,
+			&i.Asset.ReadyAt,
+			&i.Asset.FileMtime,
+			&i.IsFavorite,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTimelineAssets = `-- name: ListTimelineAssets :many
 
 SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime,

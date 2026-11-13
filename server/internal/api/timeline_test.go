@@ -672,3 +672,108 @@ func TestTimelinePagination(t *testing.T) {
 		}
 	})
 }
+
+// TestTimelinePersonScope pins the person detail's wall data: the
+// clusterId narrow answers one face cluster's own photos -- the
+// deduped live assets carrying a member face, in the timeline's
+// ordering with the caller's own favourite flags -- and nothing else:
+// an invisible cluster reads as the empty list (no existence leak), a
+// trashed or hidden asset's face never counts, and the two narrows
+// refuse to combine.
+func TestTimelinePersonScope(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "person-scope-grace@example.com")
+	env.insertPeopleModel(t)
+
+	// The admin's four assets: two live, one trashed, one hidden.
+	// takenAt ascends with the suffix, so the walk reads newest first.
+	a1 := fixturePeopleAssetID("91")
+	a2 := fixturePeopleAssetID("92")
+	aTrash := fixturePeopleAssetID("93")
+	aHidden := fixturePeopleAssetID("94")
+	env.insertOwnedAsset(t, a1, adminID, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, a2, adminID, time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, aTrash, adminID, time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC), timelineAssetOpts{deleted: true})
+	env.insertOwnedAsset(t, aHidden, adminID, time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC), timelineAssetOpts{isHidden: true})
+
+	// The cluster: two faces on a1 (the wall dedupes by asset), one
+	// on a2, and one each on the trashed and hidden assets.
+	f1 := fixturePeopleFaceID("91")
+	f2 := fixturePeopleFaceID("92")
+	f3 := fixturePeopleFaceID("93")
+	f4 := fixturePeopleFaceID("94")
+	f5 := fixturePeopleFaceID("95")
+	env.insertFace(t, f1, a1, 0.90)
+	env.insertFace(t, f2, a1, 0.80)
+	env.insertFace(t, f3, a2, 0.95)
+	env.insertFace(t, f4, aTrash, 0.99)
+	env.insertFace(t, f5, aHidden, 0.98)
+	cluster := fixturePeopleClusterID("91")
+	env.seedPersonCluster(t, cluster, f1, f2, f3, f4, f5)
+
+	// A second cluster whose only face sits on Grace's asset: the
+	// admin's walk of it is the empty list.
+	foreign := fixturePeopleClusterID("92")
+	foreignFace := fixturePeopleFaceID("96")
+	env.insertOwnedAsset(t, fixturePeopleAssetID("95"), graceID,
+		time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertFace(t, foreignFace, fixturePeopleAssetID("95"), 0.90)
+	env.seedPersonCluster(t, foreign, foreignFace)
+
+	// The admin favourites a1: the per-user flag rides the person's
+	// walk exactly like the aggregate's.
+	if _, err := env.pool.Exec(t.Context(),
+		"INSERT INTO user_favorites (user_id, asset_id) VALUES ($1, $2)",
+		pgUUID(adminID), pgUUID(a1)); err != nil {
+		t.Fatalf("seed the favourite row: %v", err)
+	}
+
+	t.Run("PersonWalkIsDedupedAndLive", func(t *testing.T) {
+		page := env.getTimeline(t, env.cookie, "clusterId="+cluster.String())
+		// Newest first: a2 (one face), then a1 (two faces, ONE item);
+		// the trashed and hidden assets' faces never surface.
+		requireTimelineIDs(t, page.Items, a2, a1)
+		if !page.Items[1].IsFavorite {
+			t.Error("a1 isFavorite = false, want the caller's own favourite flag")
+		}
+		if page.Items[0].IsFavorite {
+			t.Error("a2 isFavorite = true, want false")
+		}
+	})
+
+	t.Run("InvisibleOrUnknownClusterIsEmpty", func(t *testing.T) {
+		for _, id := range []uuid.UUID{foreign, fixturePeopleClusterID("ff")} {
+			page := env.getTimeline(t, env.cookie, "clusterId="+id.String())
+			requireTimelineIDs(t, page.Items)
+			if page.NextCursor != nil {
+				t.Errorf("cluster %s: nextCursor set on the empty walk, want absent", id)
+			}
+		}
+		// Grace reads her own cluster; the admin's stays empty for her.
+		page := env.getTimeline(t, graceCookie, "clusterId="+foreign.String())
+		requireTimelineIDs(t, page.Items, fixturePeopleAssetID("95"))
+	})
+
+	t.Run("BothNarrowsRejected", func(t *testing.T) {
+		album := env.syncAlbumIDOf(t, adminID)
+		rec := env.getTimelineRaw(t, env.cookie, "albumId="+album.String()+"&clusterId="+cluster.String())
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d (body %q)", rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+		apiErr, fields := decodeError(t, rec)
+		if apiErr.Code != apigen.VALIDATIONFAILED {
+			t.Errorf("code = %q, want %q", apiErr.Code, apigen.VALIDATIONFAILED)
+		}
+		if !contains(fields, "clusterId") || !contains(fields, "albumId") {
+			t.Errorf("details.fields = %v, want both narrows named", fields)
+		}
+	})
+
+	t.Run("GarbageClusterIDIsRejected", func(t *testing.T) {
+		rec := env.getTimelineRaw(t, env.cookie, "clusterId=not-a-uuid")
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d (body %q)", rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+	})
+}

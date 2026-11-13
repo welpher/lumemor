@@ -457,7 +457,7 @@ func TestSearchTextPath(t *testing.T) {
 	cluster := searchClusterID("01")
 	env.insertFace(t, face, multi, 0.9)
 	env.seedPersonCluster(t, cluster, face)
-	env.labelPersonCluster(t, owner, cluster, "海边的人", false)
+	env.labelPersonCluster(t, owner, cluster, "海边的人")
 
 	t.Run("SyncAlbumTitleIsNotATextSource", func(t *testing.T) {
 		// Every fixture asset lands in the owner's auto-created "Sync"
@@ -989,20 +989,13 @@ func TestSearchFiltersAndFacets(t *testing.T) {
 	t.Run("PersonFilterAndFacet", func(t *testing.T) {
 		// A labeled face on paris2024: the person filter narrows to
 		// it, the people facet lists the caller's label with the
-		// count of the set without the person filter. A hidden label
-		// never lists.
+		// count of the set without the person filter.
 		env.insertPeopleModel(t)
 		face := searchFaceID("31")
 		cluster := searchClusterID("31")
 		env.insertFace(t, face, paris2024, 0.9)
 		env.seedPersonCluster(t, cluster, face)
-		env.labelPersonCluster(t, owner, cluster, "Mom", false)
-
-		hiddenFace := searchFaceID("32")
-		hiddenCluster := searchClusterID("32")
-		env.insertFace(t, hiddenFace, paris2023, 0.9)
-		env.seedPersonCluster(t, hiddenCluster, hiddenFace)
-		env.labelPersonCluster(t, owner, hiddenCluster, "Hidden", true)
+		env.labelPersonCluster(t, owner, cluster, "Mom")
 
 		page := env.getSearch(t, env.cookie, "personIds="+cluster.String())
 		if got := searchItemsIDs(page); len(got) != 1 || got[0] != paris2024 {

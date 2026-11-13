@@ -288,10 +288,10 @@ func TestGetAssetDetailFaces(t *testing.T) {
 	env.seedPersonCluster(t, cluster1, fStrong, fTieLow)
 	env.seedPersonCluster(t, cluster2, fTieHigh)
 	// fLoose stays clusterless: the recognition run has not assigned it.
-	env.labelPersonCluster(t, adminID, cluster1, "Ada", false)
+	env.labelPersonCluster(t, adminID, cluster1, "Ada")
 	// Grace's own label of the same global cluster: private to her
 	// -- the admin's detail must keep showing the admin's label.
-	env.labelPersonCluster(t, graceID, cluster1, "Grace Ada", true)
+	env.labelPersonCluster(t, graceID, cluster1, "Grace Ada")
 
 	t.Run("FacesAreCallerScopedAndOrdered", func(t *testing.T) {
 		rec := env.serveGet(t, "/api/v1/assets/"+withFaces.Id.String(), env.cookie, nil)
@@ -324,8 +324,8 @@ func TestGetAssetDetailFaces(t *testing.T) {
 		if strong.ClusterId == nil || uuid.UUID(*strong.ClusterId) != cluster1 {
 			t.Errorf("faces[0].clusterId = %v, want the labeled cluster %s", strong.ClusterId, cluster1)
 		}
-		if strong.Label == nil || strong.Label.Name != "Ada" || strong.Label.IsHidden {
-			t.Errorf("faces[0].label = %+v, want the CALLER's {Ada, false} (Grace's label never shows)",
+		if strong.Label == nil || strong.Label.Name != "Ada" {
+			t.Errorf("faces[0].label = %+v, want the CALLER's name Ada (Grace's label never shows)",
 				strong.Label)
 		}
 		if want := "/api/v1/faces/" + fStrong.String() + "/thumbnail"; strong.Thumbnail != want {
