@@ -34,9 +34,12 @@
 // retired with the grant/revoke pair -- the audience write reports
 // its skips in the RESPONSE body, never as a 400.)
 //
-// The wall's two groups arrive concatenated (the pinned sync card
-// first, then the own group, shared after); the page sections them
-// off each item's `callerRole`. The media URLs (every `thumbnail`
+// The wall arrives concatenated (the pinned sync card first, then the
+// own group, shared after) with each item's `callerRole` discriminator
+// beside it; the wall renders ONE list, which is why the page sorts the
+// cards by their own `updatedAt` and lets the role key each card's face
+// (a viewer card carries the read-only badge; an own card its shared
+// state). The media URLs (every `thumbnail`
 // field) arrive as strings from the server; no URL is assembled
 // here. A `type: 'sync'` card is the caller's own default album:
 // its `title` is the system's internal label and the UI renders the
@@ -240,7 +243,12 @@ function summaryFrom(body: unknown): AlbumSummary | null {
 	}
 	if (candidate.owner !== undefined) {
 		const owner = candidate.owner as Partial<AlbumSummary['owner']> | undefined;
-		if (owner === undefined || typeof owner.id !== 'string' || typeof owner.email !== 'string') {
+		if (
+			owner === undefined ||
+			typeof owner.id !== 'string' ||
+			typeof owner.email !== 'string' ||
+			typeof owner.name !== 'string'
+		) {
 			return null;
 		}
 	}
@@ -436,6 +444,11 @@ function userSummaryFrom(body: unknown): UserSummary | null {
 	if (typeof candidate.id !== 'string' || typeof candidate.email !== 'string') {
 		return null;
 	}
+	// The display name is required on the wire and may be empty: the
+	// pickers' fallback reads the value, never the field's presence.
+	if (typeof candidate.name !== 'string') {
+		return null;
+	}
 	if (candidate.role !== 'admin' && candidate.role !== 'user') {
 		return null;
 	}
@@ -448,8 +461,9 @@ function userSummaryFrom(body: unknown): UserSummary | null {
 /**
  * GET /api/v1/albums: the caller's wall, the pinned sync card (the
  * default "My photos" album) followed by the own group and the
- * shared group in one array. The page sections them off each
- * item's `callerRole` (the server's ordering owns each group).
+ * shared group in one array. The wall renders one list: the page
+ * keys each card's face off `callerRole` and orders the cards by
+ * their own `updatedAt` (the sync card stays pinned first).
  */
 export async function listAlbums(fetcher: typeof fetch = globalThis.fetch): Promise<AlbumListResult> {
 	let response: Response;
