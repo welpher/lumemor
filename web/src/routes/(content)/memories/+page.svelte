@@ -175,91 +175,112 @@
 	<title>{$_('memories_title')} · lumemor</title>
 </svelte:head>
 
-<section class="memories max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
-	<!-- The one toolbar of the wall: the memory creation, the primary
-	     action -- EVERY MEMBER'S (a memory is personal curation, not
-	     configuration; the server holds no role gate on the write). -->
-	<div class="memories__toolbar flex justify-end items-center mb-3">
-		<Button
-			onclick={() => {
-				createErrorKey = '';
-				createSkipped = null;
-				createOpen = true;
-			}}><Plus size={20} aria-hidden="true" />{$_('memories_new')}</Button
-		>
+<section class="memories max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+	<!-- THE ONE ROW: the page title with its count on the left, the
+	     creation on the right, one divider under the row (the count
+	     never takes a row of its own, and the loading face counts
+	     nothing). The creation is EVERY MEMBER'S (a memory is
+	     personal curation, not configuration; the server holds no
+	     role gate on the write). -->
+	<div class="memories__toolbar flex items-center gap-3 pb-4 border-b border-border">
+		<h1 class="memories__title m-0 font-display font-bold text-[20px] leading-[1.3] text-text">
+			{$_('memories_title')}
+			{#if status === 'ready'}
+				<span
+					class="memories__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft tabular-nums"
+				>
+					· {$_('memories_bar_count', { values: { count: memories.length } })}
+				</span>
+			{/if}
+		</h1>
+		<div class="memories__actions ml-auto flex items-center gap-2">
+			<Button
+				onclick={() => {
+					createErrorKey = '';
+					createSkipped = null;
+					createOpen = true;
+				}}><Plus size={20} aria-hidden="true" />{$_('memories_new')}</Button
+			>
+		</div>
 	</div>
 
-	{#if firstLoad}
-		<p class="memories__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-			{$_('memories_loading')}
-		</p>
-	{:else if settledEmpty}
-		<div
-			class="memories__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-		>
-			<h1 class="text-[22px] mb-2">{$_('memories_own_section')}</h1>
-			<!-- The empty copy points at the wall-selection entry: the
-			     first memory begins from the photos, not from here. -->
-			<p class="text-text-soft">{$_('memories_empty')}</p>
-		</div>
-	{:else if status === 'error' && memories.length === 0}
-		<div
-			class="memories__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+	<div class="memories__content pt-4">
+		{#if firstLoad}
+			<p class="memories__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+				{$_('memories_loading')}
+			</p>
+		{:else if settledEmpty}
+			<div
+				class="memories__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
 			>
-		</div>
-	{:else}
-		<section class="memories__own-section">
-			<h1 class="memories__section-title mt-2 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">
-				{$_('memories_own_section')}
-			</h1>
-			{#if ownMemories.length === 0}
-				<!-- Own-empty with shared cards behind: the pointer line
-				     (the page-level empty card's copy), not a bare grid. -->
-				<p class="memories__own-hint m-0 mb-3 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
-					{$_('memories_empty')}
+				<p class="memories__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
+					{$_('memories_own_section')}
 				</p>
-			{:else}
-				<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
-					{#each ownMemories as memory (memory.id)}
-						{@render card(memory)}
-					{/each}
-				</div>
-			{/if}
-		</section>
-		{#if sharedMemories.length > 0}
-			<section class="memories__shared-section">
-				<h2
-					class="memories__section-title mt-6 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text"
-				>
-					{$_('memories_shared_section')}
-				</h2>
-				<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
-					{#each sharedMemories as memory (memory.id)}
-						{@render card(memory)}
-					{/each}
-				</div>
-			</section>
-		{/if}
-	{/if}
-
-	{#if status === 'error' && memories.length > 0}
-		<!-- A failed convergence while cards exist: the page stays, the
-		     next event retries; the box keeps the retry affordance. -->
-		<div
-			class="memories__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				<!-- The empty copy points at the wall-selection entry: the
+			     first memory begins from the photos, not from here. -->
+				<p class="text-text-soft">{$_('memories_empty')}</p>
+			</div>
+		{:else if status === 'error' && memories.length === 0}
+			<div
+				class="memories__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
 			>
-		</div>
-	{/if}
+				<p>{errorText(errorKey)}</p>
+				<Button variant="primary" onclick={() => void runLoad(false)}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{:else}
+			<section class="memories__own-section">
+				<h2 class="memories__section-title mb-3 font-display font-bold text-[16px] leading-[1.3] text-text">
+					{$_('memories_own_section')}
+				</h2>
+				{#if ownMemories.length === 0}
+					<!-- Own-empty with shared cards behind: the pointer line
+				     (the page-level empty card's copy), not a bare grid. -->
+					<p
+						class="memories__own-hint m-0 mb-3 font-body font-normal text-[14px] leading-[1.5] text-text-soft"
+					>
+						{$_('memories_empty')}
+					</p>
+				{:else}
+					<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
+						{#each ownMemories as memory (memory.id)}
+							{@render card(memory)}
+						{/each}
+					</div>
+				{/if}
+			</section>
+			{#if sharedMemories.length > 0}
+				<section class="memories__shared-section">
+					<h2
+						class="memories__section-title mt-6 mb-3 font-display font-bold text-[16px] leading-[1.3] text-text"
+					>
+						{$_('memories_shared_section')}
+					</h2>
+					<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
+						{#each sharedMemories as memory (memory.id)}
+							{@render card(memory)}
+						{/each}
+					</div>
+				</section>
+			{/if}
+		{/if}
+
+		{#if status === 'error' && memories.length > 0}
+			<!-- A failed convergence while cards exist: the page stays, the
+		     next event retries; the box keeps the retry affordance. -->
+			<div
+				class="memories__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
+				<p>{errorText(errorKey)}</p>
+				<Button variant="primary" onclick={() => void runLoad(false)}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{/if}
+	</div>
 </section>
 
 {#snippet card(memory: AlbumSummary)}
