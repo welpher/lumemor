@@ -663,6 +663,23 @@ test('SSE person.merged dissolving this cluster renders the error state', async 
 	flushSync();
 });
 
+test('an asset hide (asset.updated) converges the profile row count too', async () => {
+	const fetchMock = stubFetch(detailRoutes());
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+	expect(document.body.querySelector('.person-profile__count')?.textContent?.trim()).toBe('2');
+
+	// The batch hide's own event: the wall drops the tile, the profile
+	// row's count follows the server.
+	detailState = { ...detailState, photoCount: 1 };
+	fireAssetEvent({ id: 6, name: 'asset.updated', assetId: 'a1' });
+	await settle();
+	expect(document.body.querySelector('.person-profile__count')?.textContent?.trim()).toBe('1');
+	unmount(page);
+	flushSync();
+});
+
 test('an asset trash converges the profile row count (the photo left the person)', async () => {
 	const fetchMock = stubFetch(detailRoutes());
 	vi.stubGlobal('fetch', fetchMock);
