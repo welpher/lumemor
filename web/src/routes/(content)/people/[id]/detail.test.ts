@@ -7,7 +7,7 @@ import type { ClusterDetail } from '$lib/api/people';
 import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
 
-// The person detail (web-ia §7.17/§7.21): the sticky context bar
+// The person detail: the sticky context bar
 // (back + the person's icon actions), the profile row (the 72px
 // avatar, the name with its pencil, the photo count and the birth
 // date), the photo WALL under it (the shared component over the
@@ -245,7 +245,7 @@ test('the named detail renders the context bar, the profile row and the photo wa
 	const page = mountPage();
 	await settle();
 
-	// THE CONTEXT BAR (§7.21): back + the person's icon actions, the
+	// THE CONTEXT BAR: back + the person's icon actions, the
 	// bar itself sticky at the pinned rung.
 	const bar = document.body.querySelector('.person-bar');
 	expect(bar?.className).toContain('sticky');
@@ -259,7 +259,7 @@ test('the named detail renders the context bar, the profile row and the photo wa
 	).toBe('53px');
 
 	// THE ACTIONS: avatar / unname (named) / merge-into -- and NO hide
-	// action anywhere (§7.19's retirement).
+	// action anywhere (the retirement).
 	expect(() => buttonByLabel('Change avatar')).not.toThrow();
 	expect(() => buttonByLabel('Remove name')).not.toThrow();
 	expect(() => buttonByLabel('Merge into…')).not.toThrow();

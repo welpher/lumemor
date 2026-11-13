@@ -1,9 +1,9 @@
 <script lang="ts">
-	// The memory wall: the reference-set cards in ONE list (web-ia §7.29's
+	// The memory wall: the reference-set cards in ONE list (the design's
 	// single list, carried to the memories page: no own/shared sections,
 	// no group labels, most recently updated first) -- the manual origin
 	// badge on an own card, the honest owner attribution beside the
-	// read-only badge on a shared one (§7.30: the attribution names the
+	// read-only badge on a shared one (the attribution names the
 	// person, the email only falls back) -- with the same collage cover
 	// language the album cards carry. A memory card NEVER
 	// carries the timeline-exclusion badge: a memory never feeds its
@@ -93,7 +93,7 @@
 		}
 	}
 
-	// The wall's ONE list, most recently updated first (web-ia §7.29:
+	// The wall's ONE list, most recently updated first (the design:
 	// own and shared mixed, no group labels; the sort is stable, so the
 	// server's order breaks equal timestamps). A memory has no pinned
 	// sync card to lead it.
@@ -255,7 +255,7 @@
 			</div>
 		{:else}
 			<!-- ONE grid: own and shared memories mixed by recency, no
-			     group labels (web-ia §7.29). -->
+			     group labels. -->
 			<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
 				{#each memoryCards as memory (memory.id)}
 					{@render card(memory)}
@@ -282,8 +282,8 @@
 {#snippet card(memory: AlbumSummary)}
 	<!-- One memory card: the collage cover, the title, the count, then the
 	     badge row -- the manual origin badge on an own card, the owner
-	     attribution beside the read-only badge on a shared one (web-ia
-	     §7.29 / §7.30). No exclusion badge anywhere: a memory never feeds
+	     attribution beside the read-only badge on a shared one (the
+	     attribution rules). No exclusion badge anywhere: a memory never feeds
 	     its creator's timeline. -->
 	<a
 		class="memory-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
@@ -359,7 +359,7 @@
 				{:else}
 					<!-- The shared face: who shared it, then what it means for
 					     the member -- the attribution and the read-only mark
-					     ride one line (web-ia §7.29). -->
+					     ride one line. -->
 					{#if memory.owner !== undefined}
 						<span
 							class="memory-card__badge memory-card__badge--owner inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"

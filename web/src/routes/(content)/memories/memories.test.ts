@@ -6,10 +6,10 @@ import type { AlbumSummary } from '$lib/api/albums';
 import Page from './+page.svelte';
 
 // The memory wall: ONE list of reference-set cards (no own/shared
-// sections, no group labels -- web-ia §7.29's single list) -- the
+// sections, no group labels -- the design's single list) -- the
 // caller's own memories (the manual origin badge on every card) mixed
 // with the memories shared to them (the honest owner attribution
-// beside the read-only badge, §7.30's names-first rule). The "New
+// beside the read-only badge, the names-first rule). The "New
 // memory" creation is EVERY
 // MEMBER'S (a memory is personal curation, the opposite gate of the
 // album wall's administrator-only creation), the create dialog is

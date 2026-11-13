@@ -1,4 +1,4 @@
-// The identity presentation rule (web-ia §7.30): "who is this" renders
+// The identity presentation rule: "who is this" renders
 // the account's display name, and an account that set none falls back to
 // the email -- a blank attribution never renders. The email is the
 // identity's unique key, so it keeps its own places (sign-in, devices,

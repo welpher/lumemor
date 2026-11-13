@@ -19,7 +19,7 @@
 	// mousedown adds, the chip's remove mark is the only button
 	// among them.
 	//
-	// EVERY CHIP AND ROW NAMES ITS PERSON (web-ia §7.30): the display
+	// EVERY CHIP AND ROW NAMES ITS PERSON: the display
 	// name leads, the avatar's initial comes from it, and an account
 	// that set none falls back to the email -- the pickers used to be
 	// a column of addresses. The member listing is also what resolves
@@ -123,7 +123,7 @@
 	const poolEmpty = $derived(probed && candidates.length === 0);
 
 	// The labels a known pool gives more than one account: a shared name
-	// hangs the email on those chips as the hover title (see §7.30 --
+	// hangs the email on those chips as the hover title (the
 	// the name is not a key).
 	const ambiguousNames = $derived(ambiguousLabels([...users]));
 
