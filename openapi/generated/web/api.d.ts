@@ -1075,9 +1075,9 @@ export interface paths {
         /**
          * The caller's album wall.
          * @description The album wall of the calling user: every album that deserves
-         *     a wall card, in two groups concatenated into one array -- the
-         *     web client renders its sections off the `callerRole`
-         *     discriminator each item carries.
+         *     a wall card, in one array whose three arms are concatenated --
+         *     the client renders ONE list and keys each card's face off the
+         *     `callerRole` discriminator the item carries.
          *
          *     The caller's sync album is pinned FIRST, before the own
          *     group: the one card of type `sync`, the caller's own core
@@ -1090,7 +1090,9 @@ export interface paths {
          *     an `album_shares` row, the caller's most recently granted
          *     share first (the album id descending as the tiebreak).
          *     Shared items carry `owner` -- the honest attribution of
-         *     another account's album: the owner's id and email.
+         *     another account's album: the owner's id, email and display
+         *     name (the card renders the name, the email its fallback and
+         *     its disambiguator).
          *
          *     A sync album of ANOTHER account never appears, in either
          *     group: the shared arm carries `memory` and `directory`
@@ -5976,7 +5978,9 @@ export interface components {
         /**
          * @description One album card of the wall: the metadata, the live member
          *     count and the collage source, plus the `callerRole`
-         *     discriminator the web client sections the wall by. Shared
+         *     discriminator the client keys each card's face by (a viewer
+         *     card carries the read-only mark; an own card its own shared
+         *     state). Shared
          *     items carry `owner`, the honest attribution of another
          *     account's album; own items omit it.
          */
@@ -6028,8 +6032,11 @@ export interface components {
             updatedAt: string;
             /**
              * @description The caller's relation to this album: `owner` items belong
-             *     to the own group, `viewer` items to the shared group. The
-             *     web client sections the wall off this discriminator.
+             *     to the caller's own group on the wire, `viewer` items to
+             *     the shared group. The client renders ONE wall list and
+             *     keys each card's face off this discriminator (the
+             *     read-only mark is the member's, the shared state the
+             *     owner's).
              * @enum {string}
              */
             callerRole: "owner" | "viewer";

@@ -1162,8 +1162,11 @@ type AlbumCreateRequest struct {
 // `coverAssetIds`, `itemCount` 0.
 type AlbumCreateResponse struct {
 	// CallerRole The caller's relation to this album: `owner` items belong
-	// to the own group, `viewer` items to the shared group. The
-	// web client sections the wall off this discriminator.
+	// to the caller's own group on the wire, `viewer` items to
+	// the shared group. The client renders ONE wall list and
+	// keys each card's face off this discriminator (the
+	// read-only mark is the member's, the shared state the
+	// owner's).
 	CallerRole AlbumCreateResponseCallerRole `json:"callerRole"`
 
 	// CoverAssetIds The collage source of the wall card: the pinned cover
@@ -1238,8 +1241,11 @@ type AlbumCreateResponse struct {
 }
 
 // AlbumCreateResponseCallerRole The caller's relation to this album: `owner` items belong
-// to the own group, `viewer` items to the shared group. The
-// web client sections the wall off this discriminator.
+// to the caller's own group on the wire, `viewer` items to
+// the shared group. The client renders ONE wall list and
+// keys each card's face off this discriminator (the
+// read-only mark is the member's, the shared state the
+// owner's).
 type AlbumCreateResponseCallerRole string
 
 // AlbumCreateResponseType The album's type. `memory` albums are reference sets
@@ -1560,13 +1566,18 @@ type AlbumShareEntry struct {
 
 // AlbumSummary One album card of the wall: the metadata, the live member
 // count and the collage source, plus the `callerRole`
-// discriminator the web client sections the wall by. Shared
+// discriminator the client keys each card's face by (a viewer
+// card carries the read-only mark; an own card its own shared
+// state). Shared
 // items carry `owner`, the honest attribution of another
 // account's album; own items omit it.
 type AlbumSummary struct {
 	// CallerRole The caller's relation to this album: `owner` items belong
-	// to the own group, `viewer` items to the shared group. The
-	// web client sections the wall off this discriminator.
+	// to the caller's own group on the wire, `viewer` items to
+	// the shared group. The client renders ONE wall list and
+	// keys each card's face off this discriminator (the
+	// read-only mark is the member's, the shared state the
+	// owner's).
 	CallerRole AlbumSummaryCallerRole `json:"callerRole"`
 
 	// CoverAssetIds The collage source of the wall card: the pinned cover
@@ -1624,8 +1635,11 @@ type AlbumSummary struct {
 }
 
 // AlbumSummaryCallerRole The caller's relation to this album: `owner` items belong
-// to the own group, `viewer` items to the shared group. The
-// web client sections the wall off this discriminator.
+// to the caller's own group on the wire, `viewer` items to
+// the shared group. The client renders ONE wall list and
+// keys each card's face off this discriminator (the
+// read-only mark is the member's, the shared state the
+// owner's).
 type AlbumSummaryCallerRole string
 
 // AlbumSummaryType The album's type. `memory` albums are reference sets
@@ -2503,8 +2517,11 @@ type MemoryCreateRequest struct {
 // creator's timeline).
 type MemoryCreateResponse struct {
 	// CallerRole The caller's relation to this album: `owner` items belong
-	// to the own group, `viewer` items to the shared group. The
-	// web client sections the wall off this discriminator.
+	// to the caller's own group on the wire, `viewer` items to
+	// the shared group. The client renders ONE wall list and
+	// keys each card's face off this discriminator (the
+	// read-only mark is the member's, the shared state the
+	// owner's).
 	CallerRole MemoryCreateResponseCallerRole `json:"callerRole"`
 
 	// CoverAssetIds The collage source of the wall card: the pinned cover
@@ -2568,8 +2585,11 @@ type MemoryCreateResponse struct {
 }
 
 // MemoryCreateResponseCallerRole The caller's relation to this album: `owner` items belong
-// to the own group, `viewer` items to the shared group. The
-// web client sections the wall off this discriminator.
+// to the caller's own group on the wire, `viewer` items to
+// the shared group. The client renders ONE wall list and
+// keys each card's face off this discriminator (the
+// read-only mark is the member's, the shared state the
+// owner's).
 type MemoryCreateResponseCallerRole string
 
 // MemoryCreateResponseType The album's type. `memory` albums are reference sets
