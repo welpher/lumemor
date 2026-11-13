@@ -52,6 +52,9 @@
 	import Wall from '$lib/timeline/Wall.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import UnreachableCard from '$lib/components/UnreachableCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import AlbumPropertiesDialog from '$lib/albums/AlbumPropertiesDialog.svelte';
 	import CoverPickerDialog from '$lib/albums/CoverPickerDialog.svelte';
@@ -61,7 +64,6 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 
 	const memoryId = $derived(page.params.id ?? '');
 
@@ -71,6 +73,13 @@
 	let status = $state<DetailStatus>('idle');
 	/** The error-code i18n key of the last failed load ('' when none). */
 	let errorKey = $state('');
+	/**
+	 * The dead end: the detail read answered the contract's
+	 * byte-identical 404 (a deleted memory, another account's, a
+	 * withdrawn share) or a 403. The page renders the one
+	 * unreachable face then; nothing on it names the memory.
+	 */
+	let unreachable = $state(false);
 
 	// The member's attribution: the detail read carries no owner face
 	// (the contract keeps the owner on the wall cards alone), so the
@@ -139,6 +148,7 @@
 		detail = null;
 		status = 'error';
 		errorKey = outcome.errorKey;
+		unreachable = outcome.unreachable;
 	}
 
 	/** Read the viewer's owner attribution off the matching wall card. */
@@ -175,6 +185,7 @@
 		status = 'loading';
 		detail = null;
 		errorKey = '';
+		unreachable = false;
 		void (async () => {
 			const outcome = await fetchAlbumDetail(id);
 			if (fetchCurrent) {
@@ -460,19 +471,16 @@
 	</header>
 
 	{#if status === 'loading'}
-		<p class="memory-detail__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-			{$_('memories_loading')}
-		</p>
+		<LoadingLine label={$_('memories_loading')} />
+	{:else if status === 'error' && unreachable}
+		<UnreachableCard />
 	{:else if status === 'error'}
-		<div
-			class="memory-detail__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void convergeDetail()}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-			>
-		</div>
+		<StateCard
+			tone="error"
+			body={errorText(errorKey)}
+			actionLabel={$_('action_retry')}
+			onaction={() => void convergeDetail()}
+		/>
 	{:else if detail !== null}
 		<!-- THE WALL (the month-grouped walk over the album narrow):
 		     the owner's wall curates the REMOVE-ONLY selection (the
@@ -481,40 +489,27 @@
 		     are pure navigation and no batch bar ever rises. -->
 		<section class="memory-detail__wall px-2" aria-busy={$wall.status === 'loading'}>
 			{#if wallFirstLoad}
-				<p class="memory-detail__wall-status my-12 text-center text-text-soft animate-loading-in" role="status">
-					{$_('memories_loading')}
-				</p>
+				<LoadingLine label={$_('memories_loading')} />
 			{:else if wallSettledEmpty}
-				<div
-					class="memory-detail__wall-empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-				>
-					<h2 class="text-[22px] mb-2">{detail.title}</h2>
-					<p class="text-text-soft">{$_('memories_detail_empty')}</p>
-				</div>
+				<StateCard title={$_('memories_detail_empty_title')} body={$_('memories_detail_empty_body')} />
 			{:else if $wall.status === 'error' && $wall.items.length === 0}
-				<div
-					class="memory-detail__wall-failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-					role="alert"
-				>
-					<p>{errorText($wall.errorKey)}</p>
-					<Button variant="primary" onclick={() => void wall.loadMore()}
-						><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-					>
-				</div>
+				<StateCard
+					tone="error"
+					body={errorText($wall.errorKey)}
+					actionLabel={$_('action_retry')}
+					onaction={() => void wall.loadMore()}
+				/>
 			{:else}
 				<Wall items={$wall.items} actions={[]} onremovememory={owner ? runRemoveFromMemory : undefined} />
 			{/if}
 
 			{#if $wall.status === 'error' && $wall.items.length > 0}
-				<div
-					class="memory-detail__wall-failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-					role="alert"
-				>
-					<p>{errorText($wall.errorKey)}</p>
-					<Button variant="primary" onclick={() => void wall.loadMore()}
-						><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-					>
-				</div>
+				<StateCard
+					tone="error"
+					body={errorText($wall.errorKey)}
+					actionLabel={$_('action_retry')}
+					onaction={() => void wall.loadMore()}
+				/>
 			{/if}
 
 			{#if !observerAvailable && $wall.hasMore && $wall.status === 'ready'}

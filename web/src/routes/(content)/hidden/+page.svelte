@@ -38,7 +38,8 @@
 	titleKey="hidden_title"
 	countKey="hidden_bar_count"
 	loadingKey="hidden_loading"
-	emptyKey="hidden_empty"
+	emptyTitleKey="hidden_empty_title"
+	emptyBodyKey="hidden_empty_body"
 	actions={['unhide']}
 	onaddmemory={openMemoryDialog}
 />

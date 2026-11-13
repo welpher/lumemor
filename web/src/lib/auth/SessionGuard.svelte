@@ -9,7 +9,7 @@
 	// produces exactly one navigation -- no dead UI, no retry loop.
 	import { goto } from '$app/navigation';
 	import { isGuardedPath, loginRedirectTarget } from '$lib/auth/guard';
-	import { sessionStatus } from '$lib/auth/session.svelte';
+	import { sessionExpired, sessionStatus } from '$lib/auth/session.svelte';
 
 	type Props = {
 		/** Current path + query, reactive from the caller's page state. */
@@ -20,7 +20,10 @@
 
 	$effect(() => {
 		if (sessionStatus() === 'unauthenticated' && isGuardedPath(currentPath)) {
-			goto(loginRedirectTarget(currentPath));
+			// A mid-session 401 carries the expiry tag, so the login
+			// page can say the session ended rather than just ask for
+			// credentials again.
+			goto(loginRedirectTarget(currentPath, sessionExpired()));
 		}
 	});
 </script>

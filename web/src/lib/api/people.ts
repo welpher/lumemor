@@ -62,8 +62,13 @@ export type UnnamedPage = { items: UnnamedClusterSummary[]; nextCursor: string |
 /** The unnamed page fetch's outcome. */
 export type UnnamedPageResult = { ok: true; page: UnnamedPage } | { ok: false; errorKey: string };
 
-/** The cluster detail's outcome. */
-export type ClusterResult = { ok: true; detail: ClusterDetail } | { ok: false; errorKey: string };
+/**
+ * The cluster detail's outcome. `unreachable` marks the dead-end
+ * answers (404 and 403) -- the detail page renders the one
+ * unreachable face for them and the retryable error state for
+ * everything else.
+ */
+export type ClusterResult = { ok: true; detail: ClusterDetail } | { ok: false; errorKey: string; unreachable: boolean };
 
 /** The label write's outcome (the response IS the fresh label state). */
 export type LabelResult = { ok: true; label: PersonLabelResponse } | { ok: false; errorKey: string };
@@ -350,14 +355,18 @@ export async function fetchPersonCluster(
 	try {
 		response = await apiFetch(`/api/v1/people/${encodeURIComponent(clusterId)}`, undefined, fetcher);
 	} catch {
-		return { ok: false, errorKey: 'internal' };
+		return { ok: false, errorKey: 'internal', unreachable: false };
 	}
 	if (!response.ok) {
-		return { ok: false, errorKey: await errorKeyFrom(response) };
+		return {
+			ok: false,
+			errorKey: await errorKeyFrom(response),
+			unreachable: response.status === 404 || response.status === 403
+		};
 	}
 	const detail = detailFrom(await bodyOf(response));
 	if (detail === null || detail.clusterId !== clusterId) {
-		return { ok: false, errorKey: 'internal' };
+		return { ok: false, errorKey: 'internal', unreachable: false };
 	}
 	return { ok: true, detail };
 }

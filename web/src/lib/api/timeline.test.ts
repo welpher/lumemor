@@ -1073,6 +1073,45 @@ describe('curated view membership (favorites and hidden walls)', () => {
 		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a3']);
 	});
 
+	test('the favorites wall never enrolls an id its pages did not deliver (no phantom rows)', async () => {
+		// The settled empty wall: the server's own answer is
+		// `{"items": []}`. A live asset event for a photo the caller
+		// can see but has not favorited must not paint a row -- the
+		// detail cannot say whether it is a favorite, and the page
+		// already answered.
+		const favorites = viewClient('favorites', (url) => {
+			if (url === '/api/v1/assets/favorites?limit=100') {
+				return page([]);
+			}
+			if (url === '/api/v1/assets/n1') {
+				return detailOf(item('n1', '2026-11-03T08:00:00Z'));
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await favorites.loadMore();
+		expect(get(favorites).items).toEqual([]);
+		expect(get(favorites).status).toBe('ready');
+		expect(get(favorites).hasMore).toBe(false);
+
+		await favorites.applyEvent({ id: 1, name: 'asset.ready', assetId: 'n1', kind: 'image' });
+		expect(get(favorites).items).toEqual([]);
+
+		// A non-empty wall holds the same rule: a NEWER asset the page
+		// never delivered stays out of the window.
+		const loaded = viewClient('favorites', (url) => {
+			if (url === '/api/v1/assets/favorites?limit=100') {
+				return page(pageOneItems.map((i) => item(i.id, i.takenAt, { isFavorite: true })));
+			}
+			if (url === '/api/v1/assets/n2') {
+				return detailOf(item('n2', '2026-12-24T09:00:00Z'));
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		await loaded.loadMore();
+		await loaded.applyEvent({ id: 2, name: 'asset.updated', assetId: 'n2', kind: 'image' });
+		expect(get(loaded).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+
 	test('a failed unfavorite on the favorites wall rolls the rows back', async () => {
 		const favorites = viewClient('favorites', (url) => {
 			if (url === '/api/v1/assets/batch') {

@@ -387,19 +387,22 @@ test('the create button renders for a plain member: every member curates memorie
 	flushSync();
 });
 
-test('the empty state points at the wall-selection entry', async () => {
+test('the empty state offers the way in and points at the wall entry', async () => {
 	wallState = [myPhotos, familyArchive];
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
 	const page = mountPage();
 	await settle();
 
-	const empty = document.body.querySelector('.memories__empty');
-	expect(empty?.querySelector('.memories__empty-title')?.textContent).toBe('My memories');
+	const empty = document.body.querySelector('.state-card');
+	expect(empty?.querySelector('.state-card__title')?.textContent).toBe('No memories yet');
 	// The empty card's title is a 16px line, never a second page
 	// heading: the page's one title sits in the bar above.
 	expect(empty?.querySelector('h1')).toBeNull();
-	expect(empty?.textContent).toContain('No memories yet. Select photos on the wall and choose');
-	expect(empty?.textContent).toContain('Add to memory');
+	expect(empty?.textContent).toContain('Gather a moment into a memory');
+	// The one action is the creation; the copy carries the wall's
+	// own entry, so the card never states a second route.
+	expect(empty?.querySelectorAll('button')).toHaveLength(1);
+	expect(empty?.querySelector('button')?.textContent).toBe('New memory');
 
 	unmount(page);
 	flushSync();
@@ -534,14 +537,14 @@ test('a failed initial load raises the error box with a working retry', async ()
 	const page = mountPage();
 	await settle();
 
-	expect(document.body.querySelector('.memories__failure')).not.toBeNull();
-	expect(document.body.querySelector('.memories__failure')?.textContent).toContain('Something went wrong');
+	expect(document.body.querySelector('.state-card--error')).not.toBeNull();
+	expect(document.body.querySelector('.state-card--error')?.textContent).toContain('Something went wrong');
 
 	failing = false;
 	buttonByText('Try again').click();
 	await settle();
 
-	expect(document.body.querySelector('.memories__failure')).toBeNull();
+	expect(document.body.querySelector('.state-card--error')).toBeNull();
 	expect(cards()).toHaveLength(4);
 
 	unmount(page);

@@ -5,6 +5,8 @@ import IconButton from './IconButton.svelte';
 import Card from './Card.svelte';
 import Input from './Input.svelte';
 import Modal from './Modal.svelte';
+import StateCard from './StateCard.svelte';
+import LoadingLine from './LoadingLine.svelte';
 import { initI18n } from '../i18n';
 
 // createRawSnippet is the supported way to hand a snippet to mount()
@@ -185,5 +187,94 @@ test('the focus trap keeps Tab inside the panel and pulls a strayed focus back',
 	expect(panel?.contains(document.activeElement)).toBe(true);
 
 	unmount(modal);
+	flushSync();
+});
+
+test('the empty card is one 420px box with a 16px title, never an h1, and one action at most', () => {
+	let clicked = 0;
+	const card = mount(StateCard, {
+		target: document.body,
+		props: {
+			title: 'No photos yet',
+			body: 'Upload your first photo.',
+			actionLabel: 'Upload',
+			onaction: () => {
+				clicked += 1;
+			}
+		}
+	});
+	flushSync();
+	const element = document.body.querySelector<HTMLElement>('.state-card');
+	expect(element).not.toBeNull();
+	expect(element?.className).toContain('max-w-[420px]');
+	expect(element?.className).toContain('bg-card');
+	expect(element?.className).toContain('rounded-card');
+	expect(element?.className).toContain('shadow-card');
+	// The page's own title lives in its bar: the card carries a
+	// 16px line, and a second heading never renders.
+	expect(element?.querySelector('h1')).toBeNull();
+	expect(element?.querySelector('h2')).toBeNull();
+	const title = element?.querySelector<HTMLElement>('.state-card__title');
+	expect(title?.className).toContain('text-[16px]');
+	expect(title?.textContent).toBe('No photos yet');
+	// One action, and the card's own class names prove the click
+	// reaches the handler.
+	const buttons = element?.querySelectorAll('button');
+	expect(buttons).toHaveLength(1);
+	buttons?.[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	expect(clicked).toBe(1);
+	unmount(card);
+	flushSync();
+});
+
+test('the empty card without an action renders no button (the no-results variant)', () => {
+	const card = mount(StateCard, {
+		target: document.body,
+		props: { title: 'No matching photos', body: 'Try a different keyword.' }
+	});
+	flushSync();
+	const element = document.body.querySelector<HTMLElement>('.state-card');
+	expect(element?.querySelector('button')).toBeNull();
+	expect(element?.textContent).toContain('Try a different keyword.');
+	unmount(card);
+	flushSync();
+});
+
+test('the error card is the danger box with role alert and its retry', () => {
+	let retried = 0;
+	const card = mount(StateCard, {
+		target: document.body,
+		props: {
+			tone: 'error',
+			body: 'Something went wrong.',
+			actionLabel: 'Try again',
+			onaction: () => {
+				retried += 1;
+			}
+		}
+	});
+	flushSync();
+	const element = document.body.querySelector<HTMLElement>('.state-card--error');
+	expect(element?.getAttribute('role')).toBe('alert');
+	expect(element?.className).toContain('border-danger');
+	expect(element?.querySelector('.state-card__title')).toBeNull();
+	expect(element?.textContent).toContain('Something went wrong.');
+	const retry = element?.querySelector('button');
+	expect(retry?.textContent).toContain('Try again');
+	retry?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	expect(retried).toBe(1);
+	unmount(card);
+	flushSync();
+});
+
+test('the loading line is one status line: no spinner, no skeleton', () => {
+	const line = mount(LoadingLine, { target: document.body, props: { label: 'Loading your timeline…' } });
+	flushSync();
+	const element = document.body.querySelector<HTMLElement>('.state-loading');
+	expect(element?.getAttribute('role')).toBe('status');
+	expect(element?.textContent?.trim()).toBe('Loading your timeline…');
+	expect(element?.querySelector('svg')).toBeNull();
+	expect(element?.querySelector('[class*="skeleton"]')).toBeNull();
+	unmount(line);
 	flushSync();
 });

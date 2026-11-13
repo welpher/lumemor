@@ -384,8 +384,8 @@ test('a wall holding only memories renders the empty state: their home is elsewh
 	await settle();
 
 	expect(cards()).toHaveLength(0);
-	expect(document.body.querySelector('.albums__empty')?.textContent).toContain(
-		'No albums yet. Create one to gather photos around a moment.'
+	expect(document.body.querySelector('.state-card')?.textContent).toContain(
+		'Gather a trip or an occasion into an album.'
 	);
 
 	unmount(page);
@@ -524,8 +524,8 @@ test("an empty wall renders the empty state; the create affordance is the admin'
 	const page = mountPage();
 	await settle();
 
-	expect(document.body.querySelector('.albums__empty')?.textContent).toContain(
-		'No albums yet. Create one to gather photos around a moment.'
+	expect(document.body.querySelector('.state-card')?.textContent).toContain(
+		'Gather a trip or an occasion into an album.'
 	);
 	expect(cards()).toHaveLength(0);
 	expect(buttonByText('New album')).toBeTruthy();
@@ -560,7 +560,7 @@ test('a failed load shows the error box with a working retry', async () => {
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.albums__failure');
+	const failure = document.body.querySelector('.state-card--error');
 	expect(failure?.getAttribute('role')).toBe('alert');
 	expect(failure?.textContent).toContain('Something went wrong.');
 
@@ -581,7 +581,7 @@ test('a dead session renders the session message, never credential text', async 
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.albums__failure');
+	const failure = document.body.querySelector('.state-card--error');
 	expect(failure?.textContent).toContain('Your session has ended.');
 	expect(failure?.textContent).not.toContain('Incorrect email or password');
 	unmount(page);

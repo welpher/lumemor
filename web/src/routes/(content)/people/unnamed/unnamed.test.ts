@@ -170,7 +170,7 @@ test('the empty region carries the honest copy under the bar', async () => {
 	const page = mountPage();
 	await settle();
 
-	const empty = document.body.querySelector('.unnamed__empty');
+	const empty = document.body.querySelector('.state-card');
 	expect(empty?.textContent).toContain('Nothing to name yet');
 	expect(empty?.textContent).toContain('Face clusters appear here once faces are grouped.');
 	expect(cards()).toHaveLength(0);
@@ -186,10 +186,10 @@ test('a failed load renders the error box with the retry affordance', async () =
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.unnamed__failure');
+	const failure = document.body.querySelector('.state-card--error');
 	expect(failure?.getAttribute('role')).toBe('alert');
 	expect(failure?.textContent).toContain('Something went wrong.');
-	expect(document.body.querySelector('.unnamed__failure button')).not.toBeNull();
+	expect(document.body.querySelector('.state-card--error button')).not.toBeNull();
 	unmount(page);
 	flushSync();
 });

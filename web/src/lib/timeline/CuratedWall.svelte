@@ -29,8 +29,9 @@
 	import Wall from '$lib/timeline/Wall.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	type Props = {
@@ -44,8 +45,10 @@
 		countKey: string;
 		/** The i18n key of the view's loading line. */
 		loadingKey: string;
-		/** The i18n key of the view's empty state text. */
-		emptyKey: string;
+		/** The i18n key of the empty card's title. */
+		emptyTitleKey: string;
+		/** The i18n key of the empty card's line. */
+		emptyBodyKey: string;
 		/** Which batch actions the wall's bar offers (see BatchBar). */
 		actions: readonly BatchAction[];
 		/**
@@ -56,7 +59,17 @@
 		onaddmemory?: (ids: readonly string[], done: () => void) => void;
 	};
 
-	let { path, view, titleKey = '', countKey, loadingKey, emptyKey, actions, onaddmemory }: Props = $props();
+	let {
+		path,
+		view,
+		titleKey = '',
+		countKey,
+		loadingKey,
+		emptyTitleKey,
+		emptyBodyKey,
+		actions,
+		onaddmemory
+	}: Props = $props();
 
 	// The client is constructed ONCE per wall: a route's endpoint and
 	// view never change while its wall is mounted (a route change
@@ -185,28 +198,16 @@
 	     full-width inset -- the bar is chrome, not wall. -->
 	<div class="wall-page__content px-2 pe-[72px] pt-4">
 		{#if firstLoad}
-			<p class="wall__status my-12 text-center text-text-soft animate-loading-in" role="status">
-				{$_(loadingKey)}
-			</p>
+			<LoadingLine label={$_(loadingKey)} />
 		{:else if settledEmpty}
-			<div
-				class="wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-			>
-				<p class="wall__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
-					{titleKey !== '' ? $_(titleKey) : ''}
-				</p>
-				<p class="text-text-soft">{$_(emptyKey)}</p>
-			</div>
+			<StateCard title={$_(emptyTitleKey)} body={$_(emptyBodyKey)} />
 		{:else if $wall.status === 'error' && $wall.items.length === 0}
-			<div
-				class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText($wall.errorKey)}</p>
-				<Button variant="primary" onclick={() => void wall.loadMore()}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText($wall.errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void wall.loadMore()}
+			/>
 		{:else}
 			<!-- The unified wall (rendering AND selection): this wrapper
 			     owns the walk and the bar above it; the groups, the
@@ -218,15 +219,12 @@
 		{/if}
 
 		{#if $wall.status === 'error' && $wall.items.length > 0}
-			<div
-				class="wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText($wall.errorKey)}</p>
-				<Button variant="primary" onclick={() => void wall.loadMore()}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText($wall.errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void wall.loadMore()}
+			/>
 		{/if}
 
 		{#if !observerAvailable && $wall.hasMore && $wall.status === 'ready'}

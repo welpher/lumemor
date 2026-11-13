@@ -29,6 +29,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import FilePlus from '@lucide/svelte/icons/file-plus';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
 	// The hint-level front end of the server's upload whitelist:
 	// dropped files whose extension is unknown are parked failed
@@ -88,6 +89,21 @@
 	// The retry affordance of a failed row (the queue module
 	// re-validates the hint-level whitelist, so a hint-rejected row
 	// reports its rejection but never re-attempts the wire).
+
+	// The panel's collapse: the header stays as the queue's ledger
+	// (its title and the in-flight count), the rows fold away. The
+	// fold is manual -- a completed row waits for it -- and a NEW row
+	// re-opens the panel, so a fresh drop is never uploaded behind a
+	// folded header.
+	let collapsed = $state(false);
+	let seenCount = 0;
+	$effect(() => {
+		const count = items.length;
+		if (count > seenCount) {
+			collapsed = false;
+		}
+		seenCount = count;
+	});
 
 	let resolving = $state(false);
 	const conflictError = $derived(uploadQueueConflictErrorKey());
@@ -164,23 +180,33 @@
 					>{$_('upload_active_count', { values: { count: activeCount } })}</span
 				>
 			{/if}
+			<button
+				class="overlay__collapse ml-auto inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+				type="button"
+				aria-expanded={!collapsed}
+				aria-label={collapsed ? $_('upload_expand') : $_('upload_collapse')}
+				onclick={() => (collapsed = !collapsed)}
+			>
+				<ChevronDown size={16} aria-hidden="true" class={collapsed ? 'rotate-180' : ''} />
+			</button>
 		</header>
-		<ul class="overlay__rows flex flex-col gap-2 overflow-y-auto [scrollbar-gutter:stable] list-none">
-			{#each items as item (item.id)}
-				<li
-					class="row row--{item.state} grid grid-cols-[1fr_auto] [grid-template-areas:'main_close''bar_close''error_close''actions_close'] items-center gap-x-2 p-2 border border-border rounded-control"
-				>
-					<div class="row__main flex flex-col min-w-0 [grid-area:main]">
-						<span
-							class="row__name font-body font-semibold text-[13px] leading-[1.4] text-text truncate"
-							title={item.fileName}>{item.fileName}</span
-						>
-						<span class="row__state font-body font-normal text-[11px] leading-[1.4] text-text-soft"
-							>{stateLabel(item)}</span
-						>
-					</div>
-					{#if item.state === 'uploading' || item.state === 'processing'}
-						<!-- The determinate bar of an uploading row carries its
+		{#if !collapsed}
+			<ul class="overlay__rows flex flex-col gap-2 overflow-y-auto [scrollbar-gutter:stable] list-none">
+				{#each items as item (item.id)}
+					<li
+						class="row row--{item.state} grid grid-cols-[1fr_auto] [grid-template-areas:'main_close''bar_close''error_close''actions_close'] items-center gap-x-2 p-2 border border-border rounded-control"
+					>
+						<div class="row__main flex flex-col min-w-0 [grid-area:main]">
+							<span
+								class="row__name font-body font-semibold text-[13px] leading-[1.4] text-text truncate"
+								title={item.fileName}>{item.fileName}</span
+							>
+							<span class="row__state font-body font-normal text-[11px] leading-[1.4] text-text-soft"
+								>{stateLabel(item)}</span
+							>
+						</div>
+						{#if item.state === 'uploading' || item.state === 'processing'}
+							<!-- The determinate bar of an uploading row carries its
 						     live percentage; the processing row's bar is
 						     indeterminate, so it names its own state and
 						     reports no value (an aria-valuenow of a settled
@@ -191,72 +217,73 @@
 						     spinner class) the loading line's 400ms -- an
 						     upload that errors or converges inside the
 						     window never flashes a bar. -->
-						{@const indeterminate = item.state === 'processing'}
-						<div
-							class="row__bar [grid-area:bar] mt-1.5 h-1 rounded-[2px] bg-border overflow-hidden"
-							class:row__bar--indeterminate={indeterminate}
-							class:animate-progress-in={!indeterminate}
-							class:animate-loading-in={indeterminate}
-							role="progressbar"
-							aria-label={stateLabel(item)}
-							aria-valuemin={indeterminate ? undefined : 0}
-							aria-valuemax={indeterminate ? undefined : 100}
-							aria-valuenow={indeterminate ? undefined : Math.round(item.progress * 100)}
-						>
+							{@const indeterminate = item.state === 'processing'}
 							<div
-								class="row__bar-fill h-full bg-accent transition-[width] duration-(--motion-fast) ease-standard"
-								style={`width:${Math.round(item.progress * 100)}%`}
-							></div>
+								class="row__bar [grid-area:bar] mt-1.5 h-1 rounded-[2px] bg-border overflow-hidden"
+								class:row__bar--indeterminate={indeterminate}
+								class:animate-progress-in={!indeterminate}
+								class:animate-loading-in={indeterminate}
+								role="progressbar"
+								aria-label={stateLabel(item)}
+								aria-valuemin={indeterminate ? undefined : 0}
+								aria-valuemax={indeterminate ? undefined : 100}
+								aria-valuenow={indeterminate ? undefined : Math.round(item.progress * 100)}
+							>
+								<div
+									class="row__bar-fill h-full bg-accent transition-[width] duration-(--motion-fast) ease-standard"
+									style={`width:${Math.round(item.progress * 100)}%`}
+								></div>
+							</div>
+						{/if}
+						{#if item.state === 'failed' && item.errorKey !== ''}
+							<p
+								class="row__error [grid-area:error] mt-1.5 font-body font-normal text-[12px] leading-[1.45] text-danger-text"
+								role="alert"
+							>
+								{errorText(item.errorKey)}
+							</p>
+						{/if}
+						<div class="row__actions [grid-area:actions] flex items-center gap-1.5 mt-1.5">
+							{#if item.state === 'failed' && uploadFormatSupported(item.fileName)}
+								<button
+									class="row__action inline-flex items-center gap-1 py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
+									type="button"
+									onclick={() => retryUpload(item.id)}
+								>
+									<RotateCcw size={14} aria-hidden="true" />
+									{$_('action_retry')}
+								</button>
+							{/if}
+							{#if item.state === 'conflict'}
+								<button
+									class="row__action inline-flex items-center gap-1 py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
+									type="button"
+									onclick={() => openUploadConflict(item.id)}
+								>
+									<FilePlus size={14} aria-hidden="true" />
+									{$_('upload_resolve_conflict')}
+								</button>
+							{/if}
+							<button
+								class="row__close [grid-area:close] inline-flex items-center justify-center w-[26px] h-[26px] rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+								type="button"
+								aria-label={$_('upload_dismiss')}
+								onclick={() => dismissUpload(item.id)}
+							>
+								<svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
+									<path
+										d="M6 6l12 12M18 6L6 18"
+										stroke="currentColor"
+										stroke-width="1.75"
+										stroke-linecap="round"
+									/>
+								</svg>
+							</button>
 						</div>
-					{/if}
-					{#if item.state === 'failed' && item.errorKey !== ''}
-						<p
-							class="row__error [grid-area:error] mt-1.5 font-body font-normal text-[12px] leading-[1.45] text-danger-text"
-							role="alert"
-						>
-							{errorText(item.errorKey)}
-						</p>
-					{/if}
-					<div class="row__actions [grid-area:actions] flex items-center gap-1.5 mt-1.5">
-						{#if item.state === 'failed' && uploadFormatSupported(item.fileName)}
-							<button
-								class="row__action inline-flex items-center gap-1 py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
-								type="button"
-								onclick={() => retryUpload(item.id)}
-							>
-								<RotateCcw size={14} aria-hidden="true" />
-								{$_('action_retry')}
-							</button>
-						{/if}
-						{#if item.state === 'conflict'}
-							<button
-								class="row__action inline-flex items-center gap-1 py-[3px] px-2 border border-border-strong rounded-control bg-transparent font-body font-semibold text-[12px] leading-[1.4] text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
-								type="button"
-								onclick={() => openUploadConflict(item.id)}
-							>
-								<FilePlus size={14} aria-hidden="true" />
-								{$_('upload_resolve_conflict')}
-							</button>
-						{/if}
-						<button
-							class="row__close [grid-area:close] inline-flex items-center justify-center w-[26px] h-[26px] rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
-							type="button"
-							aria-label={$_('upload_dismiss')}
-							onclick={() => dismissUpload(item.id)}
-						>
-							<svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
-								<path
-									d="M6 6l12 12M18 6L6 18"
-									stroke="currentColor"
-									stroke-width="1.75"
-									stroke-linecap="round"
-								/>
-							</svg>
-						</button>
-					</div>
-				</li>
-			{/each}
-		</ul>
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	</section>
 {/if}
 

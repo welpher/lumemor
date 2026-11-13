@@ -55,10 +55,12 @@
 	import { subscribeAlbumEvents, subscribeAssetEvents } from '$lib/events';
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import { enqueueUploadFiles, UPLOAD_ACCEPT } from '$lib/upload/queue.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import AddToMemoryDialog from '$lib/memories/AddToMemoryDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	const timeline = createTimelineClient();
@@ -195,6 +197,26 @@
 		memoryDone = undefined;
 	}
 
+	// The empty wall's upload action: the page's own picker (the
+	// shell's button owns its input too), so the no-data card can
+	// start the very flow the top bar starts. Picked files join the
+	// shared queue and the overlay rises.
+	let emptyPicker = $state<HTMLInputElement>();
+
+	function pickFirstPhotos(): void {
+		emptyPicker?.click();
+	}
+
+	function handleEmptyPicked(): void {
+		const files = emptyPicker?.files;
+		if (files !== null && files !== undefined && files.length > 0) {
+			enqueueUploadFiles(files);
+		}
+		if (emptyPicker !== undefined) {
+			emptyPicker.value = '';
+		}
+	}
+
 	// The month axis, the selection flow and the batch bar (the
 	// jump, the active stop, the drag, the checks, the Esc exit, the
 	// busy/error choreography, the bar itself) all moved INTO the
@@ -278,27 +300,33 @@
 	     revealed on every tile, the first click enters the
 	     selection). -->
 
+		<!-- The empty wall's own picker: the top bar's upload flow,
+		     reachable from the no-data card. -->
+		<input
+			bind:this={emptyPicker}
+			class="hidden"
+			type="file"
+			multiple
+			accept={UPLOAD_ACCEPT}
+			onchange={handleEmptyPicked}
+		/>
+
 		{#if firstLoad}
-			<p class="timeline__status my-12 text-center text-text-soft animate-loading-in" role="status">
-				{$_('timeline_loading')}
-			</p>
+			<LoadingLine label={$_('timeline_loading')} />
 		{:else if settledEmpty}
-			<div
-				class="timeline__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-			>
-				<h1 class="text-[22px] mb-2">{$_('nav_timeline')}</h1>
-				<p class="text-text-soft">{$_('timeline_empty')}</p>
-			</div>
+			<StateCard
+				title={$_('timeline_empty_title')}
+				body={$_('timeline_empty_body')}
+				actionLabel={$_('action_upload')}
+				onaction={pickFirstPhotos}
+			/>
 		{:else if $timeline.status === 'error' && $timeline.items.length === 0}
-			<div
-				class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText($timeline.errorKey)}</p>
-				<Button variant="primary" onclick={() => void timeline.loadMore()}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText($timeline.errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void timeline.loadMore()}
+			/>
 		{:else}
 			<!-- The unified wall (its month axis AND its selection flow are
 		     the wall's own organs): the page
@@ -311,15 +339,12 @@
 		{/if}
 
 		{#if $timeline.status === 'error' && $timeline.items.length > 0}
-			<div
-				class="timeline__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText($timeline.errorKey)}</p>
-				<Button variant="primary" onclick={() => void timeline.loadMore()}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText($timeline.errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void timeline.loadMore()}
+			/>
 		{/if}
 
 		{#if !observerAvailable && $timeline.hasMore && $timeline.status === 'ready'}
