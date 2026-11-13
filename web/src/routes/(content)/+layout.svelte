@@ -43,15 +43,18 @@
 
 	let { children }: LayoutProps = $props();
 
-	// THE DETAIL ROUTES' OWN CHROME: while an album or memory detail
-	// route is active the shell's topbar HIDES -- the page pins its
-	// own contextual bar (back + title + the type's icon actions) in
-	// the topbar's place, and the drawer nav stays reachable through
-	// that bar's back affordance. Every other route keeps the shell
+	// THE DETAIL ROUTES' OWN CHROME (web-ia §7.21): while an album,
+	// memory or person detail route is active the shell's topbar
+	// HIDES -- the page pins its own contextual bar (back + the
+	// type's icon actions) in the topbar's place, and the drawer nav
+	// stays reachable through that bar's back affordance. The three
+	// detail pages share one rule. Every other route keeps the shell
 	// bar (the frame's h-dvh skeleton simply grows <main> by the
 	// bar's height while it is hidden).
 	const contextDetailActive = $derived(
-		page.route.id === '/(content)/albums/[id]' || page.route.id === '/(content)/memories/[id]'
+		page.route.id === '/(content)/albums/[id]' ||
+			page.route.id === '/(content)/memories/[id]' ||
+			page.route.id === '/(content)/people/[id]'
 	);
 
 	let drawerOpen = $state(false);
