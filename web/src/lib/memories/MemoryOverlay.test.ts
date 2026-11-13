@@ -47,7 +47,6 @@ vi.mock('$lib/events', () => ({
 }));
 
 const MEMORY_ID = '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071';
-const OWNER_ID = 'u1';
 
 const itemDefaults = {
 	ownerId: '0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60',
@@ -69,7 +68,7 @@ const itemDefaults = {
 };
 
 function item(id: string, filename: string, takenAt: string): TimelineItem {
-	return { id, takenAt, originalFilename: filename, ...itemDefaults } as TimelineItem;
+	return { ...itemDefaults, id, originalFilename: filename, takenAt } as TimelineItem;
 }
 
 const walkItems = [
@@ -634,6 +633,46 @@ test('the delete confirm states the light cascade and closes the overlay on succ
 	await settle();
 
 	expect(onclose).toHaveBeenCalledTimes(1);
+
+	unmount(app);
+	flushSync();
+});
+
+test("a shared memory's bar carries the caller's own timeline switch and flips on the response", async () => {
+	let inTimeline = true;
+	const seen: Array<{ url: string; body: unknown }> = [];
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			routes({
+				[`/api/v1/albums/${MEMORY_ID}?limit=1`]: () =>
+					jsonResponse(200, ownerDetail({ callerRole: 'viewer', shares: undefined, inTimeline })),
+				[`/api/v1/albums/${MEMORY_ID}/timeline-preference`]: (init?: RequestInit) => {
+					expect(init?.method).toBe('PUT');
+					const body = JSON.parse(String(init?.body)) as { inTimeline: boolean };
+					seen.push({ url: `/api/v1/albums/${MEMORY_ID}/timeline-preference`, body });
+					inTimeline = body.inTimeline;
+					return jsonResponse(200, { albumId: MEMORY_ID, inTimeline });
+				}
+			})
+		)
+	);
+	const { app } = mountOverlay({ card: sharedCard });
+	await settle();
+
+	// In the timeline: the action offers the exclusion (the glyph's
+	// state-following label, the shared album's own wording).
+	const exclude = buttonByLabel('Keep out of timeline');
+	exclude.click();
+	await settle();
+
+	// The write is the caller's own preference (no event published);
+	// the page flips from the response's stored switch.
+	expect(seen).toEqual([{ url: `/api/v1/albums/${MEMORY_ID}/timeline-preference`, body: { inTimeline: false } }]);
+	const include = buttonByLabel('Keep in timeline');
+	include.click();
+	await settle();
+	expect(seen[1]?.body).toEqual({ inTimeline: true });
 
 	unmount(app);
 	flushSync();
