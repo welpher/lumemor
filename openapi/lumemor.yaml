@@ -3016,6 +3016,7 @@ paths:
                         callerRole: viewer
                         owner:
                           id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                          name: Grace Hopper
                           email: grace@example.com
                 empty:
                   summary: A pre-wiring account -- no sync album, no own albums, no shares.
@@ -7591,10 +7592,12 @@ paths:
                   value:
                     users:
                       - id: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                        name: ''
                         email: ada@example.com
                         role: admin
                         isDisabled: false
                       - id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+                        name: Grace Hopper
                         email: grace@example.com
                         role: user
                         isDisabled: false
