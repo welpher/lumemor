@@ -1022,6 +1022,19 @@ test.describe('the closing scenes', () => {
 		expect(gone.status()).toBe(404);
 		const shareeGone = await shareeContext.request.get(`/api/v1/albums/${memoryId}`);
 		expect(shareeGone.status()).toBe(404);
+
+		// The dead share's DEEP LINK: the address the sharee held
+		// (yesterday's shared memory, today gone) renders the one
+		// unreachable card -- no title, no count, no name -- the same
+		// face an address the app never had gets.
+		const deadLink = await shareeContext.newPage();
+		await deadLink.goto(`/memories/${memoryId}`);
+		await expect(deadLink.locator('.unreachable-card')).toBeVisible();
+		await expect(deadLink.locator('.unreachable-card')).not.toContainText(MEMORY_TITLE);
+		await expect(deadLink.locator('.memory-bar__title')).toHaveCount(0);
+		await expect(deadLink.locator('.memory-bar__count')).toHaveCount(0);
+		await expect(deadLink.getByRole('link', { name: 'Back to the timeline' })).toBeVisible();
+		await deadLink.close();
 		await shareeContext.close();
 	});
 });
