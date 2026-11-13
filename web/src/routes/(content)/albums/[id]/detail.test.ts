@@ -38,8 +38,8 @@ import Page from './+page.svelte';
 
 const { pageState, albumHandlers, assetHandlers, jobHandlers } = vi.hoisted(() => ({
 	pageState: {
-		params: { id: 'al1' } as { id: string },
-		url: new URL('http://localhost/albums/al1')
+		params: { id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071' } as { id: string },
+		url: new URL('http://localhost/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071')
 	},
 	albumHandlers: [] as Array<(event: unknown) => void>,
 	assetHandlers: [] as Array<(event: unknown) => void>,
@@ -84,7 +84,7 @@ import { goto } from '$app/navigation';
 
 function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 	return {
-		id: 'al1',
+		id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 		title: 'Road trip 2026',
 		type: 'directory',
 		isShared: false,
@@ -97,7 +97,7 @@ function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 }
 
 let detailState: AlbumDetail = {
-	id: 'al1',
+	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 	title: 'Road trip 2026',
 	type: 'directory',
 	coverAssetId: null,
@@ -156,8 +156,9 @@ type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 
 function detailRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
-		'/api/v1/albums/al1?limit=1': () => jsonResponse(200, detailState),
-		'/api/v1/assets/timeline?albumId=al1&limit=100': () => jsonResponse(200, { items: albumItems }),
+		'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1': () => jsonResponse(200, detailState),
+		'/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071&limit=100': () =>
+			jsonResponse(200, { items: albumItems }),
 		'/api/v1/users': () => jsonResponse(200, usersBody),
 		...overrides
 	};
@@ -244,7 +245,7 @@ beforeEach(async () => {
 	jobHandlers.length = 0;
 	vi.clearAllMocks();
 	detailState = {
-		id: 'al1',
+		id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 		title: 'Road trip 2026',
 		type: 'directory',
 		coverAssetId: null,
@@ -333,7 +334,7 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	expect(document.body.textContent).not.toContain('Select');
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=view');
 	const wallCalls = fetchMock.mock.calls.filter(([input]) =>
-		String(input).startsWith('/api/v1/assets/timeline?albumId=al1')
+		String(input).startsWith('/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071')
 	);
 	expect(wallCalls).toHaveLength(1);
 
@@ -352,7 +353,7 @@ test('a memory id redirects to its own route: this page serves the containers al
 	// view); the detail read that answers a memory bounces there and
 	// this page renders nothing for it -- no title, no wall (the
 	// bar's own skeleton alone stays while the route swaps).
-	expect(vi.mocked(goto)).toHaveBeenCalledWith('/memories/al1');
+	expect(vi.mocked(goto)).toHaveBeenCalledWith('/memories/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071');
 	expect(document.body.querySelector('.album-bar__title')).toBeNull();
 	expect(document.body.querySelector('.tile')).toBeNull();
 
@@ -579,7 +580,7 @@ test('the properties dialog edits the title and PATCHes it alone', async () => {
 	let titleSaved = false;
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071': (init?: RequestInit) => {
 				expect(init?.method).toBe('PATCH');
 				const body = JSON.parse(String(init?.body));
 				// The description field died whole (the 2026-11-08
@@ -592,7 +593,7 @@ test('the properties dialog edits the title and PATCHes it alone', async () => {
 					summary({ title: 'Road trip 2026 -- rerun', updatedAt: '2026-11-05T11:02:00Z' })
 				);
 			},
-			'/api/v1/albums/al1?limit=1': () =>
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1': () =>
 				titleSaved
 					? jsonResponse(200, { ...detailState, title: 'Road trip 2026 -- rerun' })
 					: jsonResponse(200, detailState)
@@ -611,7 +612,8 @@ test('the properties dialog edits the title and PATCHes it alone', async () => {
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH'
+		([input, init]) =>
+			String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071' && init?.method === 'PATCH'
 	);
 	expect(patches).toHaveLength(1);
 	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('Road trip 2026 -- rerun');
@@ -628,13 +630,13 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	let audienceSaved = false;
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1/audience': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/audience': (init?: RequestInit) => {
 				expect(init?.method).toBe('PUT');
 				const body = JSON.parse(String(init?.body));
 				expect(body).toEqual({ audience: ['u2', 'u3'] });
 				audienceSaved = true;
 				return jsonResponse(200, {
-					albumId: 'al1',
+					albumId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 					audience: [
 						{ userId: 'u2', email: 'grace@example.com', grantedAt: '2026-11-05T09:30:00Z' },
 						{ userId: 'u3', email: 'ivy@example.com', grantedAt: '2026-11-05T12:00:00Z' }
@@ -644,7 +646,7 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 					skipped: []
 				});
 			},
-			'/api/v1/albums/al1?limit=1': () => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1': () => {
 				if (audienceSaved) {
 					return jsonResponse(200, {
 						...detailState,
@@ -711,7 +713,8 @@ test('the properties dialog edits the audience: the full-set PUT and the converg
 	await settle();
 
 	const puts = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/albums/al1/audience' && init?.method === 'PUT'
+		([input, init]) =>
+			String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/audience' && init?.method === 'PUT'
 	);
 	expect(puts).toHaveLength(1);
 	expect(modal()).toBeNull();
@@ -730,7 +733,7 @@ test('a failed audience write keeps the dialog with the mapped error', async () 
 	await bootDetailSession('u1', 'admin');
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1/audience': () =>
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/audience': () =>
 				jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'view-only share' })
 		})
 	);
@@ -771,8 +774,8 @@ test('a no-change save writes nothing at all', async () => {
 
 	const writes = fetchMock.mock.calls.filter(
 		([input, init]) =>
-			(String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH') ||
-			(String(input) === '/api/v1/albums/al1/audience' && init?.method === 'PUT')
+			(String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071' && init?.method === 'PATCH') ||
+			(String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/audience' && init?.method === 'PUT')
 	);
 	expect(writes).toHaveLength(0);
 	expect(modal()).toBeNull();
@@ -815,12 +818,12 @@ test('the deletability row renders for a writable source and PATCHes the switch'
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071': (init?: RequestInit) => {
 				expect(JSON.parse(String(init?.body))).toEqual({ allowAppDeletion: false });
 				deletabilitySaved = true;
 				return jsonResponse(200, summary({ type: 'directory' }));
 			},
-			'/api/v1/albums/al1?limit=1': () =>
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1': () =>
 				deletabilitySaved
 					? jsonResponse(200, { ...detailState, allowAppDeletion: false, deletable: false })
 					: jsonResponse(200, detailState)
@@ -843,7 +846,8 @@ test('the deletability row renders for a writable source and PATCHes the switch'
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH'
+		([input, init]) =>
+			String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071' && init?.method === 'PATCH'
 	);
 	expect(patches).toHaveLength(1);
 	expect(modal()).toBeNull();
@@ -901,12 +905,12 @@ test("the dialog's exclusion row writes the caller's own preference on save", as
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1/timeline-preference': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/timeline-preference': (init?: RequestInit) => {
 				expect(JSON.parse(String(init?.body))).toEqual({ inTimeline: false });
 				preferenceSaved = true;
-				return jsonResponse(200, { albumId: 'al1', inTimeline: false });
+				return jsonResponse(200, { albumId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071', inTimeline: false });
 			},
-			'/api/v1/albums/al1?limit=1': () =>
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1': () =>
 				preferenceSaved
 					? jsonResponse(200, { ...detailState, inTimeline: false })
 					: jsonResponse(200, detailState)
@@ -927,7 +931,9 @@ test("the dialog's exclusion row writes the caller's own preference on save", as
 	buttonByText('Save changes', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/albums/al1/timeline-preference');
+	const puts = fetchMock.mock.calls.filter(
+		([input]) => String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/timeline-preference'
+	);
 	expect(puts).toHaveLength(1);
 	// The badge and notice follow the converged preference.
 	expect(document.body.querySelector('.album-detail__badge--excluded')?.textContent?.trim()).toBe('Not in timeline');
@@ -954,13 +960,13 @@ test('the retired lock leaves no trace: no lock row, no frozen fields, one plain
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071': (init?: RequestInit) => {
 				// The save writes the property diff in ONE patch.
 				expect(JSON.parse(String(init?.body))).toEqual({ title: 'Family archive 2026' });
 				titleSaved = true;
 				return jsonResponse(200, summary({ type: 'directory', title: 'Family archive 2026' }));
 			},
-			'/api/v1/albums/al1?limit=1': () =>
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1': () =>
 				titleSaved
 					? jsonResponse(200, { ...detailState, title: 'Family archive 2026' })
 					: jsonResponse(200, detailState)
@@ -985,7 +991,8 @@ test('the retired lock leaves no trace: no lock row, no frozen fields, one plain
 	await settle();
 
 	const patches = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'PATCH'
+		([input, init]) =>
+			String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071' && init?.method === 'PATCH'
 	);
 	expect(patches).toHaveLength(1);
 	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('Family archive 2026');
@@ -1004,8 +1011,9 @@ test('the rescan trigger POSTs and the job events drive the progress line', asyn
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/assets/timeline?albumId=al1&limit=100': () => jsonResponse(200, { items: [] }),
-			'/api/v1/albums/al1/rescan': (init?: RequestInit) => {
+			'/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071&limit=100': () =>
+				jsonResponse(200, { items: [] }),
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/rescan': (init?: RequestInit) => {
 				expect(init?.method).toBe('POST');
 				return jsonResponse(202, { jobRunId: 'run-1' });
 			}
@@ -1022,7 +1030,8 @@ test('the rescan trigger POSTs and the job events drive the progress line', asyn
 	await settle();
 
 	const posts = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/albums/al1/rescan' && init?.method === 'POST'
+		([input, init]) =>
+			String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/rescan' && init?.method === 'POST'
 	);
 	expect(posts).toHaveLength(1);
 
@@ -1112,8 +1121,9 @@ test('a run that finishes before the trigger answers still lands its final state
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/assets/timeline?albumId=al1&limit=100': () => jsonResponse(200, { items: [] }),
-			'/api/v1/albums/al1/rescan': () => {
+			'/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071&limit=100': () =>
+				jsonResponse(200, { items: [] }),
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/rescan': () => {
 				// The run's finish lands while the POST is in flight.
 				fireJobEvent({
 					id: 1,
@@ -1153,7 +1163,8 @@ test('a failed rescan trigger surfaces the mapped error on the shared line', asy
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1/rescan': () => jsonResponse(500, { code: 'INTERNAL', message: 'boom' })
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/rescan': () =>
+				jsonResponse(500, { code: 'INTERNAL', message: 'boom' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -1183,7 +1194,7 @@ test('removing the directory album states the semantics and leaves for the wall'
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071': (init?: RequestInit) => {
 				expect(init?.method).toBe('DELETE');
 				return new Response(null, { status: 204 });
 			}
@@ -1206,7 +1217,8 @@ test('removing the directory album states the semantics and leaves for the wall'
 	await settle();
 
 	const removes = fetchMock.mock.calls.filter(
-		([input, init]) => String(input) === '/api/v1/albums/al1' && init?.method === 'DELETE'
+		([input, init]) =>
+			String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071' && init?.method === 'DELETE'
 	);
 	expect(removes).toHaveLength(1);
 	expect(vi.mocked(goto)).toHaveBeenCalledWith('/albums');
@@ -1218,10 +1230,10 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 	detailState = { ...detailState, callerRole: 'viewer', shares: undefined, inTimeline: true };
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/albums/al1/timeline-preference': (init?: RequestInit) => {
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/timeline-preference': (init?: RequestInit) => {
 				expect(init?.method).toBe('PUT');
 				expect(JSON.parse(String(init?.body))).toEqual({ inTimeline: false });
-				return jsonResponse(200, { albumId: 'al1', inTimeline: false });
+				return jsonResponse(200, { albumId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071', inTimeline: false });
 			}
 		})
 	);
@@ -1232,7 +1244,9 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 	buttonByLabel('Keep out of timeline').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/albums/al1/timeline-preference');
+	const puts = fetchMock.mock.calls.filter(
+		([input]) => String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071/timeline-preference'
+	);
 	expect(puts).toHaveLength(1);
 	expect(document.body.querySelector('.album-detail__badge--excluded')?.textContent?.trim()).toBe('Not in timeline');
 	expect(document.body.querySelector('.album-detail__excluded-notice')?.textContent).toContain(
@@ -1245,7 +1259,7 @@ test('the exclusion toggle PUTs the preference and the badge and notice follow',
 	// (a refetch of the stale fixture would have reverted the face)
 	// and no SSE echo arrived.
 	const detailReads = fetchMock.mock.calls.filter(([input]) =>
-		String(input).startsWith('/api/v1/albums/al1?limit=1')
+		String(input).startsWith('/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1')
 	);
 	expect(detailReads).toHaveLength(1);
 	unmount(page);
@@ -1259,7 +1273,7 @@ test('an unknown or invisible album renders the one unreachable face', async () 
 	// title, no count, no cover, and no retry (a dead end does not
 	// heal on a second try).
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-		if (String(input) === '/api/v1/albums/al1?limit=1') {
+		if (String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1') {
 			return jsonResponse(404, { code: 'ALBUM_NOT_FOUND', message: 'no such album' });
 		}
 		if (String(input).startsWith('/api/v1/assets/timeline')) {
@@ -1294,7 +1308,7 @@ test('an unknown or invisible album renders the one unreachable face', async () 
 test('a transient detail failure stays the retryable error, not the dead end', async () => {
 	let failing = true;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-		if (String(input) === '/api/v1/albums/al1?limit=1') {
+		if (String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1') {
 			if (failing) {
 				return jsonResponse(500, { code: 'INTERNAL', message: 'boom' });
 			}
@@ -1327,15 +1341,17 @@ test('SSE album.updated converges the metadata through the refetch', async () =>
 	const page = mountPage();
 	await settle();
 	const initial = fetchMock.mock.calls.filter(([input]) =>
-		String(input).startsWith('/api/v1/albums/al1?limit=1')
+		String(input).startsWith('/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1')
 	).length;
 
 	detailState = { ...detailState, title: 'Road trip 2026 -- rerun' };
-	fireAlbumEvent({ id: 2, name: 'album.updated', albumId: 'al1', userId: 'u1' });
+	fireAlbumEvent({ id: 2, name: 'album.updated', albumId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071', userId: 'u1' });
 	await settle();
 
 	expect(
-		fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/albums/al1?limit=1')).length
+		fetchMock.mock.calls.filter(([input]) =>
+			String(input).startsWith('/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1')
+		).length
 	).toBe(initial + 1);
 	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('Road trip 2026 -- rerun');
 	unmount(page);
@@ -1348,14 +1364,21 @@ test('SSE album.items-changed restarts the items walk', async () => {
 	const page = mountPage();
 	await settle();
 	const initial = fetchMock.mock.calls.filter(([input]) =>
-		String(input).startsWith('/api/v1/assets/timeline?albumId=al1')
+		String(input).startsWith('/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071')
 	).length;
 
-	fireAlbumEvent({ id: 3, name: 'album.items-changed', albumId: 'al1', userId: 'u1' });
+	fireAlbumEvent({
+		id: 3,
+		name: 'album.items-changed',
+		albumId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
+		userId: 'u1'
+	});
 	await settle();
 
 	expect(
-		fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/v1/assets/timeline?albumId=al1')).length
+		fetchMock.mock.calls.filter(([input]) =>
+			String(input).startsWith('/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071')
+		).length
 	).toBe(initial + 1);
 	unmount(page);
 	flushSync();
@@ -1364,7 +1387,7 @@ test('SSE album.items-changed restarts the items walk', async () => {
 test('SSE album.deleted renders the unreachable face', async () => {
 	let deleted = false;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-		if (String(input) === '/api/v1/albums/al1?limit=1') {
+		if (String(input) === '/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1') {
 			if (deleted) {
 				return jsonResponse(404, { code: 'ALBUM_NOT_FOUND', message: 'no such album' });
 			}
@@ -1381,7 +1404,7 @@ test('SSE album.deleted renders the unreachable face', async () => {
 	expect(tiles()).toHaveLength(2);
 
 	deleted = true;
-	fireAlbumEvent({ id: 4, name: 'album.deleted', albumId: 'al1', userId: 'u1' });
+	fireAlbumEvent({ id: 4, name: 'album.deleted', albumId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071', userId: 'u1' });
 	await settle();
 
 	// The album vanished under the page: the same unreachable face,
