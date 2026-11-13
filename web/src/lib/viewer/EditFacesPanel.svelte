@@ -23,6 +23,7 @@
 	// dot). The page owns the staging record and every network
 	// call; this panel owns presentation alone.
 	import { _ } from 'svelte-i18n';
+	import { formatAge } from '$lib/people/age';
 	import { type AssetDetail, type AssetFaceSummary } from '$lib/api/assets';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -67,6 +68,19 @@
 			return face.label.name;
 		}
 		return face.clusterId !== null ? $_('viewer_faces_unnamed') : $_('viewer_faces_unclustered');
+	}
+
+	/**
+	 * The capture-time age of one named row (the information panel's
+	 * own read): the person's birth date against this photo's takenAt.
+	 * A staged edit's label replaces the name, never the age of the
+	 * row's CURRENT person (the write has not landed).
+	 */
+	function faceAge(face: AssetFaceSummary): string | null {
+		if (face.label === null) {
+			return null;
+		}
+		return formatAge(face.birthDate ?? null, detail.takenAt, $_);
 	}
 
 	/**
@@ -168,6 +182,12 @@
 						>
 							{stage ?? faceLabel(face)}
 						</span>
+						{#if stage === undefined && faceAge(face) !== null}
+							<span
+								class="faces-panel__age flex-none font-body font-normal text-[12px] leading-[1.4] text-text-soft tabular-nums"
+								>{faceAge(face)}</span
+							>
+						{/if}
 					</span>
 					<button
 						class="faces-panel__reassign inline-flex items-center justify-center w-8 h-8 shrink-0 rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text disabled:cursor-not-allowed disabled:opacity-55"
