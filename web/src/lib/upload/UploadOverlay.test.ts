@@ -136,6 +136,35 @@ test('an empty queue renders nothing', async () => {
 	});
 });
 
+test('the panel folds to its header and unfolds again (the rows wait for the fold)', async () => {
+	box.items = [item({ id: 'r-done', state: 'done', progress: 1 })];
+	await withOverlay(() => {
+		flushSync();
+		const head = document.body.querySelector('.overlay__head');
+		expect(document.body.querySelectorAll('ul.overlay__rows > li')).toHaveLength(1);
+		const fold = head?.querySelector<HTMLButtonElement>('.overlay__collapse');
+		expect(fold?.getAttribute('aria-expanded')).toBe('true');
+
+		// The fold: the header stays (title + count), the rows go.
+		fold?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		flushSync();
+		expect(document.body.querySelector('ul.overlay__rows')).toBeNull();
+		expect(document.body.querySelector('.overlay__title')?.textContent?.trim()).toBe(
+			translate('upload_queue_title')
+		);
+		expect(document.body.querySelector('.overlay__collapse')?.getAttribute('aria-expanded')).toBe('false');
+
+		// Unfold: the completed row is still there (it waits for the
+		// manual fold), and the panel never took the focus.
+		document.body
+			.querySelector<HTMLButtonElement>('.overlay__collapse')
+			?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		flushSync();
+		expect(document.body.querySelectorAll('ul.overlay__rows > li')).toHaveLength(1);
+		expect(document.activeElement).toBe(document.body);
+	});
+});
+
 test('rows render their state label, bar, failure text and affordances', async () => {
 	box.items = [
 		item({ id: 'r-up', progress: 0.4 }),

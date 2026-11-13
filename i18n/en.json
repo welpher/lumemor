@@ -106,6 +106,8 @@
   "upload_state_failed": "Failed",
   "upload_active_count": "{count, plural, one {# in flight} other {# in flight}}",
   "upload_dismiss": "Remove from list",
+  "upload_collapse": "Collapse uploads",
+  "upload_expand": "Expand uploads",
   "upload_resolve_conflict": "Decide",
   "upload_drop_hint": "Drop files to upload",
   "upload_conflict_title": "Duplicate in trash",
