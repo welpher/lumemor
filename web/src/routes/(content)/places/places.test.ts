@@ -124,10 +124,12 @@ test('the grid renders the city cards with the honest counts and the deep links'
 	expect(second?.querySelector('.place-card__region')?.textContent).toBe('France');
 	expect(second?.querySelectorAll('img')).toHaveLength(2);
 
-	// The page head's summary line and the map placeholder's honest
-	// copy.
-	expect(document.body.querySelector('.places__sub')?.textContent).toContain('2 cities');
-	expect(document.body.querySelector('.places__sub')?.textContent).toContain('59 photos');
+	// The page bar's count segment (the title lives beside it) and the
+	// map placeholder's honest copy.
+	expect(document.body.querySelector('.places__title')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+		'Places · 2 cities'
+	);
+	expect(document.body.querySelector('.places__sub')).toBeNull();
 	expect(document.body.querySelector('.places__map')?.textContent).toContain(
 		'The map view arrives with a self-hosted tile decision'
 	);

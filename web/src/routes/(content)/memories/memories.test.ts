@@ -305,7 +305,10 @@ test('the empty state points at the wall-selection entry', async () => {
 	await settle();
 
 	const empty = document.body.querySelector('.memories__empty');
-	expect(empty?.querySelector('h1')?.textContent).toBe('My memories');
+	expect(empty?.querySelector('.memories__empty-title')?.textContent).toBe('My memories');
+	// The empty card's title is a 16px line, never a second page
+	// heading: the page's one title sits in the bar above.
+	expect(empty?.querySelector('h1')).toBeNull();
 	expect(empty?.textContent).toContain('No memories yet. Select photos on the wall and choose');
 	expect(empty?.textContent).toContain('Add to memory');
 

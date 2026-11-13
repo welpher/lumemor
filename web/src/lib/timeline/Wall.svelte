@@ -42,7 +42,11 @@
 	// wall, the sync-album read-only pin). No page ever wires a dead
 	// affordance. `selectMode` is the one bindable: a page-level
 	// arming writes it; the wall owns the drops (Escape, the bar's
-	// clear). The membership removal runs with the batch
+	// clear) and mirrors the armed state on its root as
+	// `is-selecting`. Disarming the bound mode (the page bar's
+	// switch pressed off) CLEARS the selection -- the switch and the
+	// checks are one state machine, and the batch bar never outlives
+	// it. The membership removal runs with the batch
 	// choreography -- the wall awaits it, the success arm clears the
 	// selection, a failure keeps it and surfaces the mapped error.
 	//
@@ -392,6 +396,17 @@
 		selectMode = false;
 	}
 
+	// THE DISARM'S OTHER HALF: a page-level switch (the action bar's
+	// select toggle) writes the bound mode, and turning it OFF ends
+	// the selection too -- the switch is one state machine, never a
+	// skin over a hidden set. An armed mode that arrives with an
+	// empty set stays a no-op, so the initial write costs nothing.
+	$effect(() => {
+		if (!selectMode) {
+			selection.clear();
+		}
+	});
+
 	// The Escape exit (the pages' own keydown handlers for this went
 	// with the move): a live selection or an armed select mode drops
 	// -- the same full exit the bar's clear action runs.
@@ -470,7 +485,7 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<div class="wall__groups" bind:this={wall}>
+<div class="wall__groups" class:is-selecting={selectMode} bind:this={wall}>
 	{#each packed as month (month.key)}
 		<!-- Both sticky headers ride above the rows; the section's
 		     scroll margin leaves room for them under the axis's jumps

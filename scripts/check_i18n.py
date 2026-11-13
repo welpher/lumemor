@@ -166,9 +166,22 @@ NON_ERROR_KEYS = {
     # directory-only refusal key carried in a VALIDATION_FAILED
     # details.
     "album_deletable_not_directory",
+    # The content pages' action-bar count segment: one key per
+    # surface (`<surface>_bar_count`), the count the bar renders
+    # after the page title. The separator between them is visual,
+    # never copy.
+    "albums_bar_count",
+    "memories_bar_count",
+    "places_bar_count",
+    "trash_bar_count",
+    "favorites_bar_count",
+    "hidden_bar_count",
+    "people_bar_count",
+    "unnamed_bar_count",
     # Memories surface UI strings: the reference-set wall, its
     # creation dialog and its detail faces.
     "memories_title",
+    "memories_bar_count",
     "memories_own_section",
     "memories_shared_section",
     "memories_photo_count",
@@ -199,8 +212,10 @@ NON_ERROR_KEYS = {
     "people_loading",
     "people_empty",
     "people_face_count",
+    "people_bar_count",
     "people_hidden_badge",
     "people_unnamed_title",
+    "unnamed_bar_count",
     "people_unnamed_link",
     "people_unnamed_loading",
     "people_unnamed_empty",
@@ -345,6 +360,7 @@ NON_ERROR_KEYS = {
     "viewer_assign_note",
     # Trash, favorites, hidden and admin user management UI strings
     "trash_note",
+    "trash_bar_count",
     "trash_loading",
     "trash_empty",
     "trash_remaining_days",
@@ -353,8 +369,10 @@ NON_ERROR_KEYS = {
     "trash_delete_body",
     "trash_delete_confirm",
     "favorites_loading",
+    "favorites_bar_count",
     "favorites_empty",
     "hidden_title",
+    "hidden_bar_count",
     "hidden_loading",
     "hidden_empty",
     "tool_back_to_content",
@@ -465,6 +483,7 @@ NON_ERROR_KEYS = {
     # edit dialogs' path completion and audience pickers, the
     # rescan's progress lines.
     "albums_title",
+    "albums_bar_count",
     "albums_back",
     "album_all_photos",
     "albums_loading",
@@ -554,6 +573,7 @@ NON_ERROR_KEYS = {
     "search_empty_body",
     "places_loading",
     "places_head_sub",
+    "places_bar_count",
     "places_photo_count",
     "places_map_placeholder",
     "places_empty_title",
