@@ -46,10 +46,24 @@ export type SessionEntry = {
 let status = $state<SessionStatus>('unknown');
 let entries = $state<SessionEntry[]>([]);
 let identity = $state<SessionIdentity | null>(null);
+// WHY the store last went unauthenticated: a mid-session 401 is an
+// expiry (the login page says so), a sign-out and a boot without a
+// session are not. The runtime guard reads it to tag its redirect.
+let expired = $state(false);
 
 /** The resolved session state; 'unknown' only before the boot probe. */
 export function sessionStatus(): SessionStatus {
 	return status;
+}
+
+/**
+ * Whether the session ended by expiry (a 401 while authenticated)
+ * rather than by a sign-out or a boot without one. The login page's
+ * notice hangs on this; it clears on a successful sign-in and on an
+ * explicit sign-out.
+ */
+export function sessionExpired(): boolean {
+	return expired;
 }
 
 /** The caller's active sessions across devices; empty when signed out. */
@@ -125,6 +139,7 @@ export async function probeSession(fetcher: typeof fetch = globalThis.fetch): Pr
 	} catch {
 		// Offline or unreachable: the app boots signed out.
 	}
+	expired = false;
 	markUnauthenticated();
 }
 
@@ -154,6 +169,7 @@ export async function login(email: string, password: string): Promise<LoginOutco
 		return { ok: false, errorKey: 'internal', retryAfterSeconds: null };
 	}
 	if (response.ok) {
+		expired = false;
 		status = 'authenticated';
 		try {
 			const body: unknown = await response.json();
@@ -187,6 +203,7 @@ export async function logout(): Promise<void> {
 	} catch {
 		// Same reasoning: the local state goes regardless.
 	}
+	expired = false;
 	markUnauthenticated();
 }
 
@@ -198,5 +215,6 @@ export async function logout(): Promise<void> {
  * navigation.
  */
 export function forceLogout(): void {
+	expired = true;
 	markUnauthenticated();
 }

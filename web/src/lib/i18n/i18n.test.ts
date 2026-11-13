@@ -74,7 +74,7 @@ test('a locale switch updates <html lang> and the rendered text', async () => {
 	await tick();
 	const app = mount(Login, {
 		target: document.body,
-		props: { data: { setupRequired: false, redirectTo: '/timeline' }, params: {} }
+		props: { data: { setupRequired: false, redirectTo: '/timeline', expired: false }, params: {} }
 	});
 	flushSync();
 	expect(document.body.textContent).toContain('Sign in');

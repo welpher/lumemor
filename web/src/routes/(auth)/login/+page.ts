@@ -40,7 +40,12 @@ export const load: PageLoad = async ({ url, fetch, parent }) => {
 
 	return {
 		setupRequired,
-		redirectTo: _safeRedirectTarget(url.searchParams.get('redirectTo'))
+		redirectTo: _safeRedirectTarget(url.searchParams.get('redirectTo')),
+		// A mid-session 401 lands here tagged (see loginRedirectTarget):
+		// the page states the expiry above the form. A plain sign-in --
+		// a sign-out, a first visit, an expired tag's absence -- shows
+		// no notice.
+		expired: url.searchParams.get('expired') === '1'
 	};
 };
 
