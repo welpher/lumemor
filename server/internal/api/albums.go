@@ -214,11 +214,14 @@ func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 			timelinePrefField(row.Album.Type, row.CallerRole, row.InTimeline))
 		// The owner attribution rides only on shared items: an own
 		// card's owner is the caller, and the query leaves the pair
-		// NULL for exactly those rows.
+		// NULL for exactly those rows. The name leads the card (the
+		// empty string is an account that set none -- the client
+		// renders the email then), so both fields travel.
 		if row.OwnerUserID.Valid {
 			summary.Owner = &apigen.AlbumOwnerRef{
 				Id:    uuid.UUID(row.OwnerUserID.Bytes),
 				Email: oapitypes.Email(row.OwnerEmail.String),
+				Name:  row.OwnerName.String,
 			}
 		}
 		albums = append(albums, summary)

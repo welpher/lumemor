@@ -998,6 +998,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, a
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
+       NULL::text AS owner_name,
        -- The sync card's is_shared holds the same honest EXISTS the
        -- own arm computes: no share row can name a sync album (the
        -- sharing face refuses them), so the answer is false -- but
@@ -1029,6 +1030,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, a
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
+       NULL::text AS owner_name,
        EXISTS (
            SELECT 1 FROM album_shares s WHERE s.album_id = al.id
        ) AS is_shared,
@@ -1056,6 +1058,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, a
        'viewer'::text AS caller_role,
        u.id AS owner_user_id,
        u.email AS owner_email,
+       u.name AS owner_name,
        -- The shared arm's is_shared holds true by construction: the
        -- caller's own share row is the reason this row exists.
        true AS is_shared,
@@ -1093,6 +1096,7 @@ type ListWallAlbumsForCallerRow struct {
 	CallerRole  string             `json:"caller_role"`
 	OwnerUserID pgtype.UUID        `json:"owner_user_id"`
 	OwnerEmail  pgtype.Text        `json:"owner_email"`
+	OwnerName   pgtype.Text        `json:"owner_name"`
 	IsShared    bool               `json:"is_shared"`
 	ItemCount   int64              `json:"item_count"`
 	InTimeline  pgtype.Bool        `json:"in_timeline"`
@@ -1112,6 +1116,9 @@ type ListWallAlbumsForCallerRow struct {
 // directory albums, updated_at descending) UNION ALL the shared
 // group (the albums shared to the caller, the caller's grant time
 // descending), each group breaking ties on the album id descending.
+// The shared arm joins the owner's identity: id, email and display
+// name -- the card renders the name and falls back to the email
+// when the name is empty, so both columns ride the row.
 // The arm_rank column is the group discriminator the ORDER BY pins
 // -- sync first (the pin is structural: no own album's updated_at
 // outranks it), own second, shared last -- and the per-arm sort key
@@ -1155,6 +1162,7 @@ func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUI
 			&i.CallerRole,
 			&i.OwnerUserID,
 			&i.OwnerEmail,
+			&i.OwnerName,
 			&i.IsShared,
 			&i.ItemCount,
 			&i.InTimeline,
