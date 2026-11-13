@@ -575,13 +575,38 @@ test('an unknown or invisible cluster renders the person-not-found error', async
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.person-detail__failure');
+	const failure = document.body.querySelector('.state-card--error');
 	expect(failure?.getAttribute('role')).toBe('alert');
 	expect(failure?.textContent).toContain('This person does not exist or is not visible to you.');
 	// The bar stays (the way back is always there), the wall never
 	// mounts.
 	expect(document.body.querySelector('.person-bar')).not.toBeNull();
 	expect(document.body.querySelector('.person-wall')).toBeNull();
+	unmount(page);
+	flushSync();
+});
+
+test("an empty photo wall leaves the person's profile row standing", async () => {
+	// The wall's empty face is the content state: it replaces the
+	// WALL, never the person. The profile row (avatar, name, birth
+	// date) is the object's own face and stays under the bar.
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/people/c1': () => jsonResponse(200, detailState),
+			'/api/v1/assets/timeline?clusterId=c1&limit=100': () => jsonResponse(200, { items: [] })
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	expect(document.body.querySelector('.state-card')?.textContent).toContain("This person's photos are not here yet");
+	expect(document.body.querySelector('.person-profile')).not.toBeNull();
+	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Ada');
+	expect(document.body.querySelector('.person-profile__count')?.textContent?.trim()).toBe('2');
+	// The empty wall is the card alone: no tile, no month axis.
+	expect(document.body.querySelectorAll('.tile')).toHaveLength(0);
+	expect(document.body.querySelector('.scrubber')).toBeNull();
 	unmount(page);
 	flushSync();
 });
@@ -655,7 +680,7 @@ test('SSE person.merged dissolving this cluster renders the error state', async 
 	});
 	await settle();
 
-	expect(document.body.querySelector('.person-detail__failure')?.textContent).toContain(
+	expect(document.body.querySelector('.state-card--error')?.textContent).toContain(
 		'This person does not exist or is not visible to you.'
 	);
 	expect(document.body.querySelector('.person-wall')).toBeNull();

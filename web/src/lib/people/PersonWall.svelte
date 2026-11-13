@@ -28,7 +28,8 @@
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
 	import Wall from '$lib/timeline/Wall.svelte';
 	import Button from '$lib/components/Button.svelte';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	type Props = {
@@ -107,42 +108,27 @@
 
 <section class="person-wall px-2 pe-[72px]" aria-busy={$wall.status === 'loading'}>
 	{#if firstLoad}
-		<p class="person-wall__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-			{$_('people_loading')}
-		</p>
+		<LoadingLine label={$_('people_loading')} />
 	{:else if settledEmpty}
-		<div
-			class="person-wall__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-		>
-			<p class="person-wall__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
-				{$_('person_wall_empty_title')}
-			</p>
-			<p class="m-0 text-text-soft">{$_('person_wall_empty')}</p>
-		</div>
+		<StateCard title={$_('person_wall_empty_title')} body={$_('person_wall_empty')} />
 	{:else if $wall.status === 'error' && $wall.items.length === 0}
-		<div
-			class="person-wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText($wall.errorKey)}</p>
-			<Button variant="primary" onclick={() => void wall.loadMore()}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-			>
-		</div>
+		<StateCard
+			tone="error"
+			body={errorText($wall.errorKey)}
+			actionLabel={$_('action_retry')}
+			onaction={() => void wall.loadMore()}
+		/>
 	{:else}
 		<Wall items={$wall.items} actions={['favorite', 'hide', 'trash']} onbatch={runBatch} />
 	{/if}
 
 	{#if $wall.status === 'error' && $wall.items.length > 0}
-		<div
-			class="person-wall__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText($wall.errorKey)}</p>
-			<Button variant="primary" onclick={() => void wall.loadMore()}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-			>
-		</div>
+		<StateCard
+			tone="error"
+			body={errorText($wall.errorKey)}
+			actionLabel={$_('action_retry')}
+			onaction={() => void wall.loadMore()}
+		/>
 	{/if}
 
 	{#if !observerAvailable && $wall.hasMore && $wall.status === 'ready'}

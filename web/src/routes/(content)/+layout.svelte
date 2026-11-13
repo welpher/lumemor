@@ -26,12 +26,12 @@
 	import { _ } from 'svelte-i18n';
 	import { page } from '$app/state';
 	import { afterNavigate, goto } from '$app/navigation';
+	import { enqueueUploadFiles, UPLOAD_ACCEPT } from '$lib/upload/queue.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Drawer from '$lib/components/Drawer.svelte';
 	import UploadOverlay from '$lib/upload/UploadOverlay.svelte';
 	import OfflineStrip from '$lib/events/OfflineStrip.svelte';
 	import ShortcutsDialog from '$lib/components/ShortcutsDialog.svelte';
-	import { enqueueUploadFiles } from '$lib/upload/queue.svelte';
 	import { logout } from '$lib/auth/session.svelte';
 	import Menu from '@lucide/svelte/icons/menu';
 	import Search from '@lucide/svelte/icons/search';
@@ -68,24 +68,6 @@
 	// its input live side by side, and picked files join the same
 	// singleton queue as the drop zone's.
 	let picker = $state<HTMLInputElement>();
-
-	// The picker's accept mirrors the hint-level upload whitelist
-	// (format set v1; the server stays authoritative).
-	const PICKER_ACCEPT = [
-		'.jpg',
-		'.jpeg',
-		'.png',
-		'.gif',
-		'.webp',
-		'.tif',
-		'.tiff',
-		'.heic',
-		'.avif',
-		'.mp4',
-		'.mov',
-		'.webm',
-		'.mkv'
-	].join(',');
 
 	// The frame's scroll reset AND its focus: SvelteKit's navigation
 	// focus management resets focus to the BODY before the
@@ -260,7 +242,7 @@
 					class="topbar-picker hidden"
 					type="file"
 					multiple
-					accept={PICKER_ACCEPT}
+					accept={UPLOAD_ACCEPT}
 					onchange={handlePicked}
 				/>
 				<!-- The icon-first rule: the primary flow carries its icon

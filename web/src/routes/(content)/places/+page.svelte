@@ -27,9 +27,9 @@
 	import { listPlaces, type PlaceSummary } from '$lib/api/places';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
-	import Button from '$lib/components/Button.svelte';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import MapPin from '@lucide/svelte/icons/map-pin';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import { untrack } from 'svelte';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -153,28 +153,16 @@
 
 	<div class="places__content pt-4">
 		{#if firstLoad}
-			<p class="places__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-				{$_('places_loading')}
-			</p>
+			<LoadingLine label={$_('places_loading')} />
 		{:else if settledEmpty}
-			<div
-				class="places__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-			>
-				<p class="places__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
-					{$_('places_empty_title')}
-				</p>
-				<p class="text-text-soft">{$_('places_empty_body')}</p>
-			</div>
+			<StateCard title={$_('places_empty_title')} body={$_('places_empty_body')} />
 		{:else if status === 'error' && places.length === 0}
-			<div
-				class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText(errorKey)}</p>
-				<Button variant="primary" onclick={() => void runLoad(false)}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText(errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void runLoad(false)}
+			/>
 		{:else}
 			<div class="places__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3.5">
 				{#each places as place (place.placeId)}
@@ -186,15 +174,12 @@
 		{#if status === 'error' && places.length > 0}
 			<!-- A failed convergence while cards exist: the page stays,
 		     the next event retries; the box keeps the retry affordance. -->
-			<div
-				class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText(errorKey)}</p>
-				<Button variant="primary" onclick={() => void runLoad(false)}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText(errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void runLoad(false)}
+			/>
 		{/if}
 
 		<!-- The map placeholder's honest copy: the tile source is a

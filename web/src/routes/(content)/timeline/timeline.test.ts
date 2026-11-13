@@ -260,7 +260,7 @@ test('an empty timeline renders the empty state, no tiles, no scrubber', async (
 	const page = mountPage();
 	await settle();
 
-	expect(document.body.querySelector('.timeline__empty')?.textContent).toContain('Your timeline is empty.');
+	expect(document.body.querySelector('.state-card')?.textContent).toContain('No photos yet');
 	expect(tiles()).toHaveLength(0);
 	expect(document.body.querySelector('.scrubber')).toBeNull();
 	unmount(page);
@@ -279,7 +279,7 @@ test('a failed first load shows the error box with a working retry', async () =>
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.timeline__failure');
+	const failure = document.body.querySelector('.state-card--error');
 	expect(failure?.getAttribute('role')).toBe('alert');
 	expect(failure?.textContent).toContain('Something went wrong.');
 	expect(failure?.textContent).toContain('Try again');
@@ -303,7 +303,7 @@ test('an unknown error code renders the generic message, never raw code jargon',
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.timeline__failure');
+	const failure = document.body.querySelector('.state-card--error');
 	expect(failure?.textContent).toContain('Something went wrong.');
 	expect(failure?.textContent).not.toContain('proxy_teapot');
 	unmount(page);
@@ -320,7 +320,7 @@ test('a dead session renders the session message, never credential text', async 
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.timeline__failure');
+	const failure = document.body.querySelector('.state-card--error');
 	expect(failure?.textContent).toContain('Your session has ended.');
 	expect(failure?.textContent).not.toContain('Incorrect email or password');
 	unmount(page);

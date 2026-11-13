@@ -218,7 +218,7 @@ test('the empty region carries the honest copy and the unnamed entry', async () 
 	const page = mountPage();
 	await settle();
 
-	const empty = document.body.querySelector('.people__empty');
+	const empty = document.body.querySelector('.state-card');
 	expect(empty?.textContent).toContain('No people yet');
 	expect(empty?.textContent).toContain('Photos with faces will show up here.');
 	expect(document.body.querySelector('.people__unnamed-badge')?.textContent).toBe('2');
@@ -234,10 +234,10 @@ test('a failed load renders the error box with the retry affordance', async () =
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.people__failure');
+	const failure = document.body.querySelector('.state-card--error');
 	expect(failure?.getAttribute('role')).toBe('alert');
 	expect(failure?.textContent).toContain('Something went wrong.');
-	expect(document.body.querySelector('.people__failure button')).not.toBeNull();
+	expect(document.body.querySelector('.state-card--error button')).not.toBeNull();
 	unmount(page);
 	flushSync();
 });
