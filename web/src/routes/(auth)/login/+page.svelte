@@ -29,8 +29,10 @@
 	// browser over to the first-run wizard. /setup is a
 	// server-rendered page outside the SPA (the SPA has no /setup
 	// route on purpose), so this must be a full document navigation
-	// rather than the client-side router. The form stays hidden
-	// while the navigation is in flight.
+	// rather than the client-side router. The perpetually-disabled
+	// form stays mounted for the frame it takes to navigate, and its
+	// third note carries the same way in when a navigation is blocked
+	// (an embedded view, a private context).
 	$effect(() => {
 		if (data.setupRequired) {
 			window.location.replace('/setup');
@@ -86,83 +88,93 @@
 	<title>{$_('login_title')} · lumemor</title>
 </svelte:head>
 
-{#if !data.setupRequired}
-	<main class="login flex flex-col items-center gap-3 pt-[12vh] px-4 pb-12">
-		{#if data.expired}
-			<!-- The expiry notice: the session ended mid-flight (a 401
+<main class="login flex flex-col items-center gap-3 pt-[12vh] px-4 pb-12">
+	{#if data.expired}
+		<!-- The expiry notice: the session ended mid-flight (a 401
 			     while signed in), which is not the same as never having
 			     signed in -- and not the unreachable face either: the
 			     way forward is right below. -->
-			<div
-				class="login__expired w-[min(400px,100%)] box-content rounded-control border border-notice bg-notice px-4 py-2.5 text-navy-900"
-				role="status"
-			>
-				<p class="m-0 font-body font-semibold text-[13px] leading-[1.4]">
-					{$_('login_expired_notice')}
-				</p>
-			</div>
-		{/if}
-		<!-- The wrapper owns the width: the Card's own element belongs to
+		<div
+			class="login__expired w-[min(400px,100%)] box-content rounded-control border border-notice bg-notice px-4 py-2.5 text-navy-900"
+			role="status"
+		>
+			<p class="m-0 font-body font-semibold text-[13px] leading-[1.4]">
+				{$_('login_expired_notice')}
+			</p>
+		</div>
+	{/if}
+	<!-- The wrapper owns the width: the Card's own element belongs to
 		     another component, so styling it from here is scoped out. -->
-		<div class="login__card w-[min(400px,100%)]">
-			<Card>
-				<h1 class="login__title mb-1 font-display font-bold text-[26px] text-text">{$_('login_title')}</h1>
-				<p class="login__description mb-5 font-body font-normal text-[15px] leading-[1.5] text-text-soft">
-					{$_('login_description')}
-				</p>
-				<form class="login__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
-					<Input
-						id="login-email"
-						label={$_('login_email')}
-						type="email"
-						autocomplete="username"
-						bind:value={email}
-					/>
-					<Input
-						id="login-password"
-						label={$_('login_password')}
-						type="password"
-						autocomplete="current-password"
-						bind:value={password}
-					/>
-					{#if errorKey !== ''}
-						<p
-							class="login__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
-							role="alert"
-						>
-							{errorText(errorKey)}
-						</p>
-					{/if}
-					{#if retryAfterSeconds !== null && countdownRemaining > 0}
-						<!-- The hint's lifetime is retryAfterSeconds (the response's
+	<div class="login__card w-[min(400px,100%)]">
+		<Card>
+			<h1 class="login__title mb-1 font-display font-bold text-[26px] text-text">{$_('login_title')}</h1>
+			<p class="login__description mb-5 font-body font-normal text-[15px] leading-[1.5] text-text-soft">
+				{$_('login_description')}
+			</p>
+			<form class="login__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
+				<Input
+					id="login-email"
+					label={$_('login_email')}
+					type="email"
+					autocomplete="username"
+					bind:value={email}
+				/>
+				<Input
+					id="login-password"
+					label={$_('login_password')}
+					type="password"
+					autocomplete="current-password"
+					bind:value={password}
+				/>
+				{#if errorKey !== ''}
+					<p
+						class="login__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+						role="alert"
+					>
+						{errorText(errorKey)}
+					</p>
+				{/if}
+				{#if retryAfterSeconds !== null && countdownRemaining > 0}
+					<!-- The hint's lifetime is retryAfterSeconds (the response's
 						     authoritative rate-limit state): a resubmit nulls it, so a
 						     credential-failure outcome can never leave a frozen
 						     countdown next to its own message. -->
-						<p
-							class="login__hint font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums"
-						>
-							{$_('login_retry_in', { values: { seconds: countdownRemaining } })}
-						</p>
-					{/if}
-					<div class="login__actions flex justify-end mt-1">
-						<Button type="submit" disabled={submitting}
-							><LogIn size={20} aria-hidden="true" />{$_('login_submit')}</Button
-						>
-					</div>
-				</form>
-			</Card>
-		</div>
-		<!-- Placeholder notes for the mobile pairing entry; the QR flow
+					<p class="login__hint font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums">
+						{$_('login_retry_in', { values: { seconds: countdownRemaining } })}
+					</p>
+				{/if}
+				<Button class="login__submit mt-1 w-full" type="submit" disabled={submitting}>
+					<LogIn size={20} aria-hidden="true" />{$_('login_submit')}
+				</Button>
+			</form>
+		</Card>
+	</div>
+	<!-- Placeholder notes for the mobile pairing entry; the QR flow
 		     is a later milestone's scope. -->
+	<p
+		class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center"
+	>
+		{$_('login_pairing_qr_note')}
+	</p>
+	<p
+		class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center"
+	>
+		{$_('login_pairing_url_note')}
+	</p>
+	{#if data.setupRequired}
+		<!-- A fresh instance's way in: the sign-in form cannot work before
+			     the first administrator exists, so the note points at the
+			     wizard (the redirect above lands there directly; the link is
+			     the reachable face when a navigation is blocked). An
+			     initialized instance never renders it -- there is nothing to
+			     create then. -->
 		<p
-			class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center"
+			class="login__note login__setup-note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center"
 		>
-			{$_('login_pairing_qr_note')}
+			{$_('login_setup_note')}
+			<a class="ms-1 font-semibold text-accent no-underline hover:underline" href="/setup"
+				>{$_('login_setup_note_link')}</a
+			>
 		</p>
-		<p
-			class="login__note max-w-[min(400px,100%)] font-body font-normal text-[13px] leading-[1.5] text-text-faint text-center"
-		>
-			{$_('login_pairing_url_note')}
-		</p>
-	</main>
-{/if}
+	{/if}
+</main>

@@ -104,6 +104,8 @@ NON_ERROR_KEYS = {
     "login_submit",
     "login_retry_in",
     "login_expired_notice",
+    "login_setup_note",
+    "login_setup_note_link",
     "login_pairing_qr_note",
     "login_pairing_url_note",
     "action_sign_out",
