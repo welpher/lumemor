@@ -396,6 +396,11 @@ test('scene 3: the member signs in and the memories wall carries the every-membe
 	// photos, not from this page.
 	await page.goto('/memories');
 	await expect(page).toHaveTitle('Memories · lumemor');
+	// The page bar's one row: the title with its count on the left,
+	// the creation at the right -- the count never takes a line of
+	// its own, and the settled empty wall counts zero honestly.
+	await expect(page.locator('.memories__title')).toHaveText('Memories · 0 memories');
+	await expect(page.locator('.memories__toolbar')).toHaveClass(/border-b/);
 	await expect(
 		page.getByText('No memories yet. Select photos on the wall and choose "Add to memory" to start your first one.')
 	).toBeVisible();
