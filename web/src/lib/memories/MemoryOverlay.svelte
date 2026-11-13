@@ -889,7 +889,7 @@
 									/>
 								{/if}
 								<span
-									class="memory-overlay__check absolute top-1.5 left-1.5 z-10 inline-flex h-[26px] w-[26px] items-center justify-center rounded-full border border-cream-text/35 bg-night text-transparent"
+									class="memory-overlay__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex h-[26px] w-[26px] items-center justify-center rounded-full border border-cream-text/35 bg-night text-transparent"
 									class:is-on={on}
 									aria-hidden="true"
 								>
