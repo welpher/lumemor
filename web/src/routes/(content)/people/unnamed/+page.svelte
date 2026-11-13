@@ -195,7 +195,7 @@
 	<title>{$_('people_unnamed_title')} · lumemor</title>
 </svelte:head>
 
-<section class="unnamed max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<section class="unnamed px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
 	<!-- THE ONE ROW: the back control, the title with the
 	     region's count -- and no action at all: the cards are the
 	     entrances, not a selection surface. -->

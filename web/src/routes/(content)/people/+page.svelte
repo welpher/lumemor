@@ -139,7 +139,7 @@
 	<title>{$_('nav_people')} · lumemor</title>
 </svelte:head>
 
-<section class="people max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<section class="people px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
 	<!-- THE ONE ROW: the title with its count on the left, the page
 	     filter and the unnamed entry on the right, one divider under
 	     the row. The count renders only on a settled answer -- a
