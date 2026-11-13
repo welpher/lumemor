@@ -5,10 +5,12 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 import type { AlbumSummary } from '$lib/api/albums';
 import Page from './+page.svelte';
 
-// The memory wall: the reference-set cards in their two sections --
-// the caller's own memories (the manual origin badge on every card)
-// -- then the memories shared to them (the honest owner attribution
-// and the read-only badge). The "New memory" creation is EVERY
+// The memory wall: ONE list of reference-set cards (no own/shared
+// sections, no group labels -- web-ia §7.29's single list) -- the
+// caller's own memories (the manual origin badge on every card) mixed
+// with the memories shared to them (the honest owner attribution
+// beside the read-only badge, §7.30's names-first rule). The "New
+// memory" creation is EVERY
 // MEMBER'S (a memory is personal curation, the opposite gate of the
 // album wall's administrator-only creation), the create dialog is
 // the title + the audience alone (no path, no switches -- a memory
@@ -75,7 +77,7 @@ const sanya = summary('mem4', {
 	coverAssetIds: ['s1', 's2', 's3'],
 	itemCount: 12,
 	callerRole: 'viewer',
-	owner: { id: 'u2', email: 'grace@example.com' }
+	owner: { id: 'u2', name: 'Grace Hopper', email: 'grace@example.com' }
 });
 // The album wall's own rows: the memory wall filters them out (the
 // memories moved to their own route; the albums page owns the
@@ -175,9 +177,9 @@ function modal(): HTMLElement | null {
 /** The instance's minimal member list (the audience picker's source). */
 const usersBody = {
 	users: [
-		{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false },
-		{ id: 'u2', email: 'grace@example.com', role: 'user', isDisabled: false },
-		{ id: 'u3', email: 'ivy@example.com', role: 'user', isDisabled: false }
+		{ id: 'u1', name: 'Ada Lovelace', email: 'ada@example.com', role: 'admin', isDisabled: false },
+		{ id: 'u2', name: 'Grace Hopper', email: 'grace@example.com', role: 'user', isDisabled: false },
+		{ id: 'u3', name: 'Ivy Lee', email: 'ivy@example.com', role: 'user', isDisabled: false }
 	]
 };
 
@@ -229,38 +231,119 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-test('the wall keeps the memory rows alone and sections them off the callerRole', async () => {
+test('the wall keeps the memory rows alone in ONE list, newest first', async () => {
 	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
 	const page = mountPage();
 	await settle();
 
-	const ownSection = document.body.querySelector('.memories__own-section');
-	const sharedSection = document.body.querySelector('.memories__shared-section');
-	expect(ownSection?.querySelector('.memories__section-title')?.textContent).toBe('My memories');
-	expect(sharedSection?.querySelector('.memories__section-title')?.textContent).toBe('Shared with me');
+	// No sections, no group labels: the single list the spec pins.
+	expect(document.body.querySelector('.memories__own-section')).toBeNull();
+	expect(document.body.querySelector('.memories__shared-section')).toBeNull();
+	expect(document.body.querySelector('.memories__section-title')).toBeNull();
 
 	// The album wall's rows (the sync card, the directory album) are
-	// NOT this page's: the memory wall answers memory rows alone.
+	// NOT this page's: the memory wall answers memory rows alone, in
+	// one grid ordered by the cards' own recency.
 	expect(cards()).toHaveLength(4);
+	expect(cards().map((card) => card.querySelector('.memory-card__title')?.textContent)).toEqual([
+		'Spring Festival 2026',
+		'Paris trip',
+		'Weekend park',
+		'Sanya trip'
+	]);
 
-	const ownCards = Array.from(ownSection?.querySelectorAll<HTMLElement>('.memory-card') ?? []);
-	const sharedCards = Array.from(sharedSection?.querySelectorAll<HTMLElement>('.memory-card') ?? []);
-	expect(ownCards).toHaveLength(3);
-	expect(sharedCards).toHaveLength(1);
-
-	// The own cards: the title, the count, the manual origin badge.
-	expect(ownCards[0]?.querySelector('.memory-card__title')?.textContent).toBe('Spring Festival 2026');
-	expect(ownCards[0]?.textContent).toContain('12 photos');
-	expect(ownCards[0]?.querySelector('.memory-card__badge--manual')?.textContent?.trim()).toBe('Manual');
-	expect(ownCards[0]?.querySelector('.memory-card__badge--readonly')).toBeNull();
-	// The shared card: the honest owner attribution, the read-only
-	// badge, no manual badge.
-	expect(sharedCards[0]?.querySelector('.memory-card__owner')?.textContent).toBe('Shared by grace@example.com');
-	expect(sharedCards[0]?.querySelector('.memory-card__badge--readonly')?.textContent?.trim()).toBe('Read-only');
-	expect(sharedCards[0]?.querySelector('.memory-card__badge--manual')).toBeNull();
+	const [own, , , shared] = cards();
+	// An own card: the title, the count, the manual origin badge.
+	expect(own?.textContent).toContain('12 photos');
+	expect(own?.querySelector('.memory-card__badge--manual')?.textContent?.trim()).toBe('Manual');
+	expect(own?.querySelector('.memory-card__badge--readonly')).toBeNull();
+	// The shared card: the attribution chip names the owner, the
+	// read-only badge sits beside it on the same row, no manual badge.
+	expect(shared?.querySelector('.memory-card__badge--owner')?.textContent?.trim()).toBe('Shared by Grace Hopper');
+	expect(shared?.querySelector('.memory-card__badges .memory-card__badge--readonly')?.textContent?.trim()).toBe(
+		'Read-only'
+	);
+	expect(shared?.querySelector('.memory-card__badge--manual')).toBeNull();
 	// Cards link into the memory's own detail.
-	expect(ownCards[0]?.getAttribute('href')).toBe('/memories/mem1');
-	expect(sharedCards[0]?.getAttribute('href')).toBe('/memories/mem4');
+	expect(own?.getAttribute('href')).toBe('/memories/mem1');
+	expect(shared?.getAttribute('href')).toBe('/memories/mem4');
+
+	unmount(page);
+	flushSync();
+});
+
+test('one list orders by the cards own recency, own and shared mixed', async () => {
+	wallState = [
+		summary('mem-old', { title: 'Old own', updatedAt: '2026-10-01T10:00:00Z' }),
+		summary('mem-shared', {
+			title: 'Fresh shared',
+			updatedAt: '2026-11-10T10:00:00Z',
+			callerRole: 'viewer',
+			owner: { id: 'u2', name: 'Grace Hopper', email: 'grace@example.com' }
+		}),
+		summary('mem-new', { title: 'New own', updatedAt: '2026-11-05T10:00:00Z' })
+	];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	expect(cards().map((card) => card.querySelector('.memory-card__title')?.textContent)).toEqual([
+		'Fresh shared',
+		'New own',
+		'Old own'
+	]);
+
+	unmount(page);
+	flushSync();
+});
+
+test('an owner who set no display name falls back to the email', async () => {
+	// The account's name is the empty string (the contract serves it as
+	// stored): the chip renders the email -- a blank attribution never
+	// renders.
+	wallState = [
+		summary('mem-nameless', {
+			title: 'Nameless picks',
+			callerRole: 'viewer',
+			owner: { id: 'u9', name: '', email: 'nameless@example.com' }
+		})
+	];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	expect(document.body.querySelector('.memory-card__badge--owner')?.textContent?.trim()).toBe(
+		'Shared by nameless@example.com'
+	);
+
+	unmount(page);
+	flushSync();
+});
+
+test('two owners under one name get the email as the chip title', async () => {
+	// The name is not a key: the wall shows two accounts called "Mum",
+	// so each chip carries its owner's address as the hover title.
+	wallState = [
+		summary('mem-mum-a', {
+			title: 'Mum one',
+			updatedAt: '2026-11-02T10:00:00Z',
+			callerRole: 'viewer',
+			owner: { id: 'u5', name: 'Mum', email: 'mum@example.com' }
+		}),
+		summary('mem-mum-b', {
+			title: 'Mum two',
+			updatedAt: '2026-11-01T10:00:00Z',
+			callerRole: 'viewer',
+			owner: { id: 'u6', name: 'Mum', email: 'mum2@example.com' }
+		})
+	];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	const chips = Array.from(document.body.querySelectorAll<HTMLElement>('.memory-card__badge--owner'));
+	expect(chips.map((chip) => chip.textContent?.trim())).toEqual(['Shared by Mum', 'Shared by Mum']);
+	expect(chips.map((chip) => chip.getAttribute('title'))).toEqual(['mum@example.com', 'mum2@example.com']);
 
 	unmount(page);
 	flushSync();
