@@ -4,25 +4,26 @@ import { initI18n } from '$lib/i18n';
 import { sessionStatus } from '$lib/auth/session.svelte';
 import { clearToasts, toasts } from '$lib/components/toast.svelte';
 import type { ClusterDetail } from '$lib/api/people';
+import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
 
-// The cluster detail of the people surface: the label state (named
-// header vs the unnamed header with its naming CTA), the face grid
-// with the asset context and the links into the asset viewer, the
-// rename (PUT label, the response adopted), the hidden toggle (PUT
-// hidden; an unlabeled cluster surfaces the honest
-// person_hide_requires_label message and keeps the naming nudge),
-// merge-into (POST merge, then away to /people), the single-face move
-// (POST /faces/{id}/move, then the refetched face list), the 404
-// error state, and the SSE convergence (person.face_moved /
-// person.merged refetch the detail when they touch this cluster).
-// $app/state and $app/navigation are mocked because the real router
-// needs a running SvelteKit app; the events module is mocked with a
-// captured handler registry, the timeline page's pattern.
+// The person detail (web-ia §7.17/§7.21): the sticky context bar
+// (back + the person's icon actions), the profile row (the 72px
+// avatar, the name with its pencil, the photo count and the birth
+// date), the photo WALL under it (the shared component over the
+// timeline endpoint's cluster narrow), the avatar picker (faces only,
+// the stored pick badged), the birth date dialog, the unname with its
+// toast echo, the merge-into fold, and the unnamed variant (the name
+// slot renders the localized unnamed title and the action set swaps
+// the unname for the naming). $app/state and $app/navigation are
+// mocked because the real router needs a running SvelteKit app; the
+// events module is mocked with a captured handler registry, the
+// timeline page's pattern.
 
-const { pageState, handlers } = vi.hoisted(() => ({
+const { pageState, handlers, assetHandlers } = vi.hoisted(() => ({
 	pageState: { params: { id: 'c1' } as { id: string } },
-	handlers: [] as Array<(event: unknown) => void>
+	handlers: [] as Array<(event: unknown) => void>,
+	assetHandlers: [] as Array<(event: unknown) => void>
 }));
 
 vi.mock('$app/state', () => ({ page: pageState }));
@@ -36,6 +37,15 @@ vi.mock('$lib/events', () => ({
 			const index = handlers.indexOf(listener);
 			if (index !== -1) {
 				handlers.splice(index, 1);
+			}
+		};
+	},
+	subscribeAssetEvents: (listener: (event: unknown) => void) => {
+		assetHandlers.push(listener);
+		return () => {
+			const index = assetHandlers.indexOf(listener);
+			if (index !== -1) {
+				assetHandlers.splice(index, 1);
 			}
 		};
 	}
@@ -58,11 +68,40 @@ const adaFaces = [
 	face('f2', 'a2', 'IMG_1235.jpg', '2026-10-12T08:00:00Z')
 ];
 
+/** One wall item of the person's photos (the timeline shape). */
+function item(id: string, takenAt: string): TimelineItem {
+	return {
+		id,
+		ownerId: '0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60',
+		kind: 'image',
+		originalFilename: 'IMG_1234.jpg',
+		fileSize: 4821933,
+		mimeType: 'image/jpeg',
+		checksum: '9f86d081884c7d65a2feaa0c55ad015',
+		createdAt: '2026-10-29T09:12:00Z',
+		takenAt,
+		takenAtSource: 'exif',
+		isTrashed: false,
+		isFavorite: false,
+		isReady: true,
+		width: 4032,
+		height: 3024,
+		durationMs: null,
+		blurhash: 'UHL6aAof00WBWB00ayWB00',
+		livePhotoVideoId: null
+	};
+}
+
+const wallItems = [item('a1', '2026-10-13T12:30:00Z'), item('a2', '2026-10-12T08:00:00Z')];
+
 // The server's current answer; the convergence tests mutate it to
 // stand for the server's post-event truth.
 let detailState: ClusterDetail = {
 	clusterId: 'c1',
-	label: { name: 'Ada', isHidden: false },
+	label: { name: 'Ada' },
+	birthDate: null,
+	avatarFaceId: null,
+	photoCount: 2,
 	faces: adaFaces
 };
 
@@ -79,28 +118,18 @@ type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 function detailRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
 		'/api/v1/people/c1': () => jsonResponse(200, detailState),
+		'/api/v1/assets/timeline?clusterId=c1&limit=100': () =>
+			jsonResponse(200, { items: wallItems, nextCursor: null }),
 		'/api/v1/people': () =>
 			jsonResponse(200, [
 				{
 					clusterId: 'p1',
 					name: 'Grace',
-					faceCount: 9,
+					photoCount: 9,
 					representativeFaceId: 'f-p1',
-					thumbnail: '/api/v1/faces/f-p1/thumbnail',
-					isHidden: false
+					thumbnail: '/api/v1/faces/f-p1/thumbnail'
 				}
 			]),
-		'/api/v1/people/unnamed?limit=60': () =>
-			jsonResponse(200, {
-				items: [
-					{
-						clusterId: 'u1',
-						faceCount: 3,
-						representativeFaceId: 'f-u1',
-						thumbnail: '/api/v1/faces/f-u1/thumbnail'
-					}
-				]
-			}),
 		...overrides
 	};
 }
@@ -117,10 +146,14 @@ function stubFetch(route: FetchRoute): ReturnType<typeof vi.fn> {
 }
 
 async function settle(): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	await new Promise<void>((resolve) => {
-		requestAnimationFrame(() => resolve());
-	}).catch(() => undefined);
+	// The chains a mount runs (detail fetch -> the wall's page fetch ->
+	// the adoptions) span several task turns, and the adoptions write
+	// into Svelte's scheduler queue: a few timer rounds plus one forced
+	// flush make the DOM agree with the settled state.
+	for (let round = 0; round < 4; round += 1) {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	}
+	flushSync();
 }
 
 function mountPage(): ReturnType<typeof mount> {
@@ -129,8 +162,16 @@ function mountPage(): ReturnType<typeof mount> {
 	return page;
 }
 
-function faceCards(): HTMLElement[] {
-	return Array.from(document.body.querySelectorAll<HTMLElement>('.face-card'));
+function modal(): HTMLElement | null {
+	return document.body.querySelector<HTMLElement>('.modal__panel');
+}
+
+function buttonByLabel(label: string): HTMLButtonElement {
+	const found = document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+	if (found === null) {
+		throw new Error(`missing button labelled ${label}`);
+	}
+	return found;
 }
 
 function buttonByText(text: string, scope: ParentNode = document.body): HTMLButtonElement {
@@ -142,10 +183,6 @@ function buttonByText(text: string, scope: ParentNode = document.body): HTMLButt
 	return found;
 }
 
-function modal(): HTMLElement | null {
-	return document.body.querySelector<HTMLElement>('.modal__panel');
-}
-
 function fillField(scope: ParentNode, value: string): void {
 	const field = scope.querySelector<HTMLInputElement>('input');
 	if (field === null) {
@@ -155,15 +192,6 @@ function fillField(scope: ParentNode, value: string): void {
 	field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-function chooseOption(scope: ParentNode, value: string): void {
-	const select = scope.querySelector<HTMLSelectElement>('select');
-	if (select === null) {
-		throw new Error('missing dialog select');
-	}
-	select.value = value;
-	select.dispatchEvent(new Event('change', { bubbles: true }));
-}
-
 /** Fire one parsed person event to every live subscriber. */
 function firePersonEvent(event: Record<string, unknown>): void {
 	for (const handler of [...handlers]) {
@@ -171,13 +199,25 @@ function firePersonEvent(event: Record<string, unknown>): void {
 	}
 }
 
+/** Fire one parsed asset event to every live subscriber. */
+function fireAssetEvent(event: Record<string, unknown>): void {
+	for (const handler of [...assetHandlers]) {
+		handler(event);
+	}
+}
+
 beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
+	assetHandlers.length = 0;
+	pageState.params.id = 'c1';
 	vi.clearAllMocks();
 	detailState = {
 		clusterId: 'c1',
-		label: { name: 'Ada', isHidden: false },
+		label: { name: 'Ada' },
+		birthDate: null,
+		avatarFaceId: null,
+		photoCount: 2,
 		faces: adaFaces
 	};
 	// Boot the session store unauthenticated (the interceptor stays
@@ -189,8 +229,7 @@ beforeEach(async () => {
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
-	// The toast organ is shared module state: every case starts empty
-	// (the echo assertions read exactly their own flow's toasts).
+	// The toast organ is shared module state: every case starts empty.
 	clearToasts();
 });
 
@@ -199,53 +238,105 @@ afterEach(() => {
 	clearToasts();
 });
 
-test('the labeled detail renders the name, the faces and their asset context', async () => {
-	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
+test('the named detail renders the context bar, the profile row and the photo wall', async () => {
+	const stub = stubFetch(detailRoutes());
+	vi.stubGlobal('fetch', stub);
+	const fetchMockURLs = () => stub.mock.calls.map(([input]) => String(input));
 	const page = mountPage();
 	await settle();
 
-	expect(document.body.querySelector('.person-detail__title')?.textContent).toBe('Ada');
+	// THE CONTEXT BAR (§7.21): back + the person's icon actions, the
+	// bar itself sticky at the pinned rung.
+	const bar = document.body.querySelector('.person-bar');
+	expect(bar?.className).toContain('sticky');
+	expect(bar?.className).toContain('border-b');
+	const back = document.body.querySelector<HTMLAnchorElement>('.person-bar__back');
+	expect(back?.getAttribute('href')).toBe('/people');
+	expect(back?.getAttribute('aria-label')).toBe('Back to people');
+	// The page root pins the wall's sticky offset to the bar's height.
+	expect(
+		document.body.querySelector<HTMLElement>('.person-detail')?.style.getPropertyValue('--wall-sticky-offset')
+	).toBe('53px');
+
+	// THE ACTIONS: avatar / unname (named) / merge-into -- and NO hide
+	// action anywhere (§7.19's retirement).
+	expect(() => buttonByLabel('Change avatar')).not.toThrow();
+	expect(() => buttonByLabel('Remove name')).not.toThrow();
+	expect(() => buttonByLabel('Merge into…')).not.toThrow();
+	expect(() => buttonByLabel('Hide')).toThrow();
+	expect(() => buttonByLabel('Unhide')).toThrow();
 	expect(document.body.querySelector('.person-detail__badge')).toBeNull();
-	expect(faceCards()).toHaveLength(2);
 
-	const first = faceCards()[0];
-	expect(first?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/faces/f1/thumbnail');
-	// The face links into the asset viewer at its asset.
-	expect(first?.querySelector('a.face-card__link')?.getAttribute('href')).toBe('/a/a1');
-	expect(first?.textContent).toContain('IMG_1234.jpg');
-	expect(first?.textContent).toContain('Oct 13, 2026');
-	expect(faceCards()[1]?.querySelector('a.face-card__link')?.getAttribute('href')).toBe('/a/a2');
+	// THE PROFILE ROW: the avatar (the best visible face -- no pick
+	// yet), the name with its pencil, the photo count and the birth
+	// date's add affordance.
+	expect(document.body.querySelector('.person-profile__avatar img')?.getAttribute('src')).toBe(
+		'/api/v1/faces/f1/thumbnail'
+	);
+	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Ada');
+	expect(document.body.querySelector('.person-profile__rename')?.getAttribute('aria-label')).toBe('Rename');
+	const count = document.body.querySelector('.person-profile__count');
+	expect(count?.textContent?.trim()).toBe('2');
+	expect(count?.getAttribute('aria-label')).toBe('2 photos');
+	expect(document.body.querySelector('.person-profile__birthdate')?.textContent?.trim()).toBe('Add birth date');
 
-	// The back link returns to the named region.
-	expect(document.body.querySelector('.person-detail__back')?.getAttribute('href')).toBe('/people');
+	console.log('CALLS', fetchMockURLs());
+	// THE WALL: the shared component over this person's photos (the
+	// month group and the tiles render).
+	expect(document.body.querySelector('.person-wall .wall__groups')).not.toBeNull();
+	expect(document.body.querySelectorAll('.person-wall .tile').length).toBe(2);
 	unmount(page);
 	flushSync();
 });
 
-test('the unnamed detail renders the unnamed header and the naming CTA', async () => {
-	detailState = { clusterId: 'c1', label: null, faces: adaFaces };
+test('the unnamed variant renders 「Unnamed」 with the naming entry and no unname', async () => {
+	detailState = { ...detailState, label: null };
 	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
 	const page = mountPage();
 	await settle();
 
-	expect(document.body.querySelector('.person-detail__title')?.textContent).toBe('Unnamed person');
-	expect(buttonByText('Name this person')).toBeTruthy();
+	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Unnamed');
+	// The bar's action set swaps the unname for the naming; the
+	// profile row's pencil reads as the same naming entry.
+	expect(() => buttonByLabel('Name this person')).not.toThrow();
+	expect(() => buttonByLabel('Remove name')).toThrow();
+	expect(document.body.querySelector('.person-profile__rename')?.getAttribute('aria-label')).toBe('Name this person');
+	// The profile row still offers the birth date: the entity's
+	// attribute does not depend on the name.
+	expect(() => buttonByText('Add birth date')).not.toThrow();
+	// The page's title follows the state.
+	expect(document.title).toBe('Unnamed · lumemor');
 	unmount(page);
 	flushSync();
 });
 
-test('renaming PUTs the label and the header adopts the response', async () => {
+test('the birth date line renders through Intl with the machine value in <time>', async () => {
+	detailState = { ...detailState, birthDate: '1992-03-15' };
+	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
+	const page = mountPage();
+	await settle();
+
+	const line = document.body.querySelector('.person-profile__birthdate');
+	const time = line?.querySelector('time');
+	expect(time?.getAttribute('datetime')).toBe('1992-03-15');
+	// The rendered text is the locale's numeric form -- never a
+	// hand-assembled date.
+	expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Born 3/15/1992');
+	unmount(page);
+	flushSync();
+});
+
+test('renaming PUTs the label and the profile row adopts the response', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/label': () =>
-				jsonResponse(200, { clusterId: 'c1', name: 'Ada Lovelace', isHidden: false })
+			'/api/v1/people/c1/label': () => jsonResponse(200, { clusterId: 'c1', name: 'Ada Lovelace' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Rename').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
 	fillField(dialog as ParentNode, 'Ada Lovelace');
@@ -255,70 +346,161 @@ test('renaming PUTs the label and the header adopts the response', async () => {
 	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/label');
 	expect(puts).toHaveLength(1);
 	expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({ name: 'Ada Lovelace' });
-	expect(document.body.querySelector('.person-detail__title')?.textContent).toBe('Ada Lovelace');
+	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Ada Lovelace');
 	expect(modal()).toBeNull();
 	unmount(page);
 	flushSync();
 });
 
-test('hiding a named person PUTs the switch and the badge and notice follow', async () => {
+test('naming an unnamed cluster lands the named state in place', async () => {
+	detailState = { ...detailState, label: null };
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/hidden': () => jsonResponse(200, { clusterId: 'c1', name: 'Ada', isHidden: true })
+			'/api/v1/people/c1/label': () => jsonResponse(200, { clusterId: 'c1', name: 'Ada' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Hide').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Name this person').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	expect(dialog?.getAttribute('aria-label')).toBe('Name this person');
+	fillField(dialog as ParentNode, 'Ada');
+	buttonByText('Save name', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/hidden');
+	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Ada');
+	expect(() => buttonByLabel('Remove name')).not.toThrow();
+	unmount(page);
+	flushSync();
+});
+
+test('the avatar picker shows faces only, badges the stored pick and PUTs the choice', async () => {
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/people/c1/avatar': () => jsonResponse(200, { clusterId: 'c1', avatarFaceId: 'f2' })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Change avatar').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	expect(dialog?.getAttribute('aria-label')).toBe('Change avatar');
+	expect(dialog?.textContent).toContain("Pick one of this person's faces as their avatar.");
+
+	// The candidates are the person's FACES: the crops, no file name
+	// and no source photo name anywhere in the grid.
+	const options = Array.from((dialog as ParentNode).querySelectorAll<HTMLButtonElement>('.avatar-option'));
+	expect(options).toHaveLength(2);
+	expect(options[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/faces/f1/thumbnail');
+	expect(dialog?.textContent).not.toContain('IMG_1234.jpg');
+	// No pick is stored yet: no badge stands, and the footer's submit
+	// waits for a pick.
+	expect(dialog?.querySelector('.avatar-option__badge')).toBeNull();
+
+	options[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(options[1]?.getAttribute('aria-pressed')).toBe('true');
+	buttonByText('Set avatar', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/avatar');
 	expect(puts).toHaveLength(1);
-	expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({ isHidden: true });
-	expect(document.body.querySelector('.person-detail__badge')?.textContent).toBe('Hidden');
-	expect(document.body.querySelector('.person-detail__notice')?.textContent).toContain(
-		'They stay in your people list'
+	expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({ faceId: 'f2' });
+	// The profile row's crop follows the stored pick (the avatar is
+	// the entity's attribute, adopted from the response).
+	expect(document.body.querySelector('.person-profile__avatar img')?.getAttribute('src')).toBe(
+		'/api/v1/faces/f2/thumbnail'
 	);
-	// The toggle flipped: the action now offers the unhide.
-	expect(() => buttonByText('Unhide')).toBeTruthy();
+	expect(modal()).toBeNull();
 	unmount(page);
 	flushSync();
 });
 
-test('hiding an unlabeled person surfaces the requires-label error and keeps the naming nudge', async () => {
-	detailState = { clusterId: 'c1', label: null, faces: adaFaces };
+test('the avatar picker badges the stored pick on open', async () => {
+	detailState = { ...detailState, avatarFaceId: 'f2' };
+	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Change avatar').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	const badges = Array.from((dialog as ParentNode).querySelectorAll<HTMLElement>('.avatar-option__badge'));
+	expect(badges).toHaveLength(1);
+	expect(badges[0]?.textContent?.trim()).toBe('Avatar');
+	expect(badges[0]?.closest('button')?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/faces/f2/thumbnail');
+	unmount(page);
+	flushSync();
+});
+
+test('the birth date dialog PUTs the picked date and the profile row shows it', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
-			'/api/v1/people/c1/hidden': () =>
-				jsonResponse(400, {
-					code: 'VALIDATION_FAILED',
-					message: 'the person carries no label to hide',
-					details: { key: 'person_hide_requires_label' }
-				})
+			'/api/v1/people/c1/birthdate': () => jsonResponse(200, { clusterId: 'c1', birthDate: '1992-03-15' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Hide').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByText('Add birth date').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	expect(dialog?.getAttribute('aria-label')).toBe('Birth date');
+	expect(dialog?.textContent).toContain("The birth date works out this person's age when a photo was taken.");
+	// Unset: no clear arm stands (there is nothing to clear).
+	expect(dialog?.textContent).not.toContain('Clear');
+	const field = dialog?.querySelector<HTMLInputElement>('input[type="date"]');
+	expect(field).not.toBeNull();
+	field!.value = '1992-03-15';
+	field!.dispatchEvent(new Event('input', { bubbles: true }));
+	flushSync();
+	buttonByText('Save', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	const error = document.body.querySelector('.person-detail__hide-error');
-	expect(error?.getAttribute('role')).toBe('alert');
-	expect(error?.textContent).toBe('Name this person before hiding them.');
-	// The honest nudge: the naming CTA stays the way out.
-	expect(buttonByText('Name this person')).toBeTruthy();
-	// No label write ever fired.
-	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/label');
-	expect(puts).toHaveLength(0);
+	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/birthdate');
+	expect(puts).toHaveLength(1);
+	expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({ birthDate: '1992-03-15' });
+	const line = document.body.querySelector('.person-profile__birthdate');
+	expect(line?.querySelector('time')?.getAttribute('datetime')).toBe('1992-03-15');
+	expect(modal()).toBeNull();
 	unmount(page);
 	flushSync();
 });
 
-test("merge-into POSTs the merge and lands on the surviving person's page", async () => {
+test('the birth date clear PUTs the explicit null', async () => {
+	detailState = { ...detailState, birthDate: '1992-03-15' };
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/people/c1/birthdate': () => jsonResponse(200, { clusterId: 'c1', birthDate: null })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	document.body
+		.querySelector<HTMLButtonElement>('.person-profile__birthdate')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const dialog = modal();
+	buttonByText('Clear', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const puts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1/birthdate');
+	expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({ birthDate: null });
+	expect(document.body.querySelector('.person-profile__birthdate')?.textContent?.trim()).toBe('Add birth date');
+	unmount(page);
+	flushSync();
+});
+
+test('merge-into POSTs the merge and lands on the surviving person page', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
 			'/api/v1/people/merge': () => jsonResponse(200, { survivingClusterId: 'p1', mergedClusterIds: ['c1'] })
@@ -328,28 +510,15 @@ test("merge-into POSTs the merge and lands on the surviving person's page", asyn
 	const page = mountPage();
 	await settle();
 
-	buttonByText('Merge into…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Merge into…').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	// The merge face: the filterable person target list (this cluster
-	// never its own target), the honest cost in the body.
 	const dialog = modal();
 	expect(dialog?.getAttribute('aria-label')).toBe('Merge into…');
 	expect(dialog?.textContent).toContain('This cluster disappears and its name is lost.');
 	expect(dialog?.textContent).toContain('Existing people');
-	// The target list carries Grace's row (the face count beside the
-	// name) -- the local filter narrows to her.
 	const rows = Array.from((dialog as ParentNode).querySelectorAll<HTMLButtonElement>('.person-picker__row'));
 	expect(rows.map((row) => (row.textContent ?? '').replace(/\s+/g, ' ').trim())).toEqual(['Grace 9']);
-	const filter = (dialog as ParentNode).querySelector<HTMLInputElement>('.person-picker__filter');
-	if (filter === null) {
-		throw new Error('missing merge filter');
-	}
-	filter.value = 'grace';
-	filter.dispatchEvent(new Event('input', { bubbles: true }));
-	flushSync();
-	expect(Array.from((dialog as ParentNode).querySelectorAll('.person-picker__row'))).toHaveLength(1);
-	// No toast rides the merge: the landing is the feedback.
 	rows[0]!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	buttonByText('Merge into…', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
@@ -360,123 +529,37 @@ test("merge-into POSTs the merge and lands on the surviving person's page", asyn
 		sourceClusterIds: ['c1'],
 		targetClusterId: 'p1'
 	});
-	// The navigation lands on the SURVIVING cluster's person page (the
-	// response's own answer names the destination).
 	expect(vi.mocked(goto)).toHaveBeenCalledWith('/people/p1');
 	expect(toasts()).toHaveLength(0);
 	unmount(page);
 	flushSync();
 });
 
-test('the unname write is immediate: no confirm, the toast echo, the unnamed state', async () => {
-	// The label route answers both arms: the DELETE releases the
-	// label (204), anything else is the rename's PUT shape.
+test('the unname write is immediate: the toast echo and the unnamed variant in place', async () => {
 	const fetchMock = stubFetch(
 		detailRoutes({
 			'/api/v1/people/c1/label': (init?: RequestInit) =>
 				init?.method === 'DELETE'
 					? new Response(null, { status: 204 })
-					: jsonResponse(200, { clusterId: 'c1', name: 'Ada', isHidden: false })
+					: jsonResponse(200, { clusterId: 'c1', name: 'Ada' })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
 
-	// The unname affordance: icon-only, the labeled state's own row
-	// (an unnamed cluster has nothing to unname).
-	const unname = document.body.querySelector<HTMLButtonElement>('[aria-label="Remove name"]');
-	expect(unname).not.toBeNull();
-	unname!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	buttonByLabel('Remove name').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	await settle();
 
-	// The DELETE ran once, immediately -- no dialog ever stood between
-	// the click and the write (naming is reversible).
 	const deletes = fetchMock.mock.calls.filter(
 		([input, init]) => String(input) === '/api/v1/people/c1/label' && init?.method === 'DELETE'
 	);
 	expect(deletes).toHaveLength(1);
 	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-
-	// The echo landed and the header adopted the unnamed state (the
-	// naming CTA is the way back).
 	expect(toasts().map((entry) => entry.text)).toEqual(['Name removed; this person is unnamed again.']);
-	expect(document.body.querySelector('.person-detail__title')?.textContent?.trim()).toBe('Unnamed person');
-	expect(() => buttonByText('Name this person')).not.toThrow();
-	expect(document.body.querySelector('[aria-label="Remove name"]')).toBeNull();
-	unmount(page);
-	flushSync();
-});
-
-test('moving a face POSTs the move and the face list refetches', async () => {
-	// The server's post-move truth: the moved face is gone from the
-	// cluster when the page's convergence refetch lands.
-	const afterMove: ClusterDetail = {
-		clusterId: 'c1',
-		label: { name: 'Ada', isHidden: false },
-		faces: [adaFaces[1] as ClusterDetail['faces'][number]]
-	};
-	let moved = false;
-	const fetchMock = stubFetch(
-		detailRoutes({
-			'/api/v1/people/c1': () => jsonResponse(200, moved ? afterMove : detailState),
-			'/api/v1/faces/f1/move': () => {
-				moved = true;
-				return jsonResponse(200, { faceId: 'f1', clusterId: 'p1' });
-			}
-		})
-	);
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-	expect(faceCards()).toHaveLength(2);
-
-	faceCards()[0]
-		?.querySelector<HTMLButtonElement>('.face-card__move')
-		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-
-	const dialog = modal();
-	expect(dialog?.getAttribute('aria-label')).toBe('Move face');
-	expect(dialog?.textContent).toContain('Pick the person this face joins.');
-	chooseOption(dialog as ParentNode, 'p1');
-	buttonByText('Move', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-
-	const posts = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/faces/f1/move');
-	expect(posts).toHaveLength(1);
-	expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ targetClusterId: 'p1' });
-	// The refetched detail dropped the moved face.
-	expect(faceCards()).toHaveLength(1);
-	expect(faceCards()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/faces/f2/thumbnail');
-	expect(modal()).toBeNull();
-	unmount(page);
-	flushSync();
-});
-
-test('the move picker with no other people says there are no people yet', async () => {
-	// This dialog carries no filter: its empty state is the honest
-	// no-people line, never the filtered list's no-match copy.
-	vi.stubGlobal(
-		'fetch',
-		stubFetch(
-			detailRoutes({
-				'/api/v1/people': () => jsonResponse(200, []),
-				'/api/v1/people/unnamed?limit=60': () => jsonResponse(200, { items: [], nextCursor: null })
-			})
-		)
-	);
-	const page = mountPage();
-	await settle();
-	faceCards()[0]
-		?.querySelector<HTMLButtonElement>('.face-card__move')
-		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-
-	const dialog = modal();
-	const empty = dialog?.querySelector('.cluster-picker__empty');
-	expect(empty?.textContent?.trim()).toBe('No people yet.');
-	expect(dialog?.textContent).not.toContain('No people match.');
+	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Unnamed');
+	expect(() => buttonByLabel('Name this person')).not.toThrow();
+	expect(() => buttonByLabel('Remove name')).toThrow();
 	unmount(page);
 	flushSync();
 });
@@ -495,56 +578,49 @@ test('an unknown or invisible cluster renders the person-not-found error', async
 	const failure = document.body.querySelector('.person-detail__failure');
 	expect(failure?.getAttribute('role')).toBe('alert');
 	expect(failure?.textContent).toContain('This person does not exist or is not visible to you.');
-	expect(faceCards()).toHaveLength(0);
+	// The bar stays (the way back is always there), the wall never
+	// mounts.
+	expect(document.body.querySelector('.person-bar')).not.toBeNull();
+	expect(document.body.querySelector('.person-wall')).toBeNull();
 	unmount(page);
 	flushSync();
 });
 
 test('a foreign label event changes nothing the server does not change (server truth only)', async () => {
-	detailState = { clusterId: 'c1', label: null, faces: adaFaces };
-	const fetchMock = stubFetch(detailRoutes());
-	vi.stubGlobal('fetch', fetchMock);
+	detailState = { ...detailState, label: null };
+	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
 	const page = mountPage();
 	await settle();
-	expect(document.body.querySelector('.person-detail__title')?.textContent).toBe('Unnamed person');
+	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Unnamed');
 
 	// Another account labeled THIS cluster; the refetched truth (the
-	// caller's own label state) is still none, and the page invents
-	// no name.
-	firePersonEvent({ id: 1, name: 'person.labeled', clusterId: 'c1', label: 'Ada', userId: 'someone-else' });
+	// caller's own label state) is still none.
+	firePersonEvent({ id: 1, name: 'person.labeled', clusterId: 'c1', userId: 'someone-else' });
 	await settle();
-
-	expect(document.body.querySelector('.person-detail__title')?.textContent).toBe('Unnamed person');
-	expect(document.body.querySelector('.person-detail__title')?.textContent).not.toContain('Ada');
+	expect(document.body.querySelector('.person-profile__name')?.textContent?.trim()).toBe('Unnamed');
 	unmount(page);
 	flushSync();
 });
 
-test('SSE person.face_moved refetches when the move touches this cluster', async () => {
+test('SSE person.avatar_updated and person.birthdate_updated converge this cluster only', async () => {
 	const fetchMock = stubFetch(detailRoutes());
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
-	expect(faceCards()).toHaveLength(2);
 	const initial = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length;
 
-	// A face of another cluster moving between two other clusters
-	// does not concern this page.
-	firePersonEvent({ id: 1, name: 'person.face_moved', faceId: 'f9', clusterId: 'cX', userId: 'u1' });
+	// Another person's entity write: nothing here moves.
+	firePersonEvent({ id: 1, name: 'person.birthdate_updated', clusterId: 'c9', userId: 'u1' });
 	await settle();
 	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length).toBe(initial);
 
-	// Our face left for another cluster: the refetch decides.
-	detailState = {
-		clusterId: 'c1',
-		label: { name: 'Ada', isHidden: false },
-		faces: [adaFaces[1] as ClusterDetail['faces'][number]]
-	};
-	firePersonEvent({ id: 2, name: 'person.face_moved', faceId: 'f1', clusterId: 'p1', userId: 'u1' });
+	// This person's: the detail converges (the profile row is the
+	// server's).
+	detailState = { ...detailState, birthDate: '1990-01-02' };
+	firePersonEvent({ id: 2, name: 'person.birthdate_updated', clusterId: 'c1', userId: 'u1' });
 	await settle();
-
 	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/people/c1').length).toBe(initial + 1);
-	expect(faceCards()).toHaveLength(1);
+	expect(document.body.querySelector('.person-profile__birthdate time')?.getAttribute('datetime')).toBe('1990-01-02');
 	unmount(page);
 	flushSync();
 });
@@ -552,18 +628,22 @@ test('SSE person.face_moved refetches when the move touches this cluster', async
 test('SSE person.merged dissolving this cluster renders the error state', async () => {
 	let dissolved = false;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-		if (String(input) === '/api/v1/people/c1') {
+		const url = String(input);
+		if (url === '/api/v1/people/c1') {
 			if (dissolved) {
 				return jsonResponse(404, { code: 'PERSON_NOT_FOUND', message: 'no such person' });
 			}
 			return jsonResponse(200, detailState);
 		}
-		throw new Error(`unexpected fetch ${String(input)}`);
+		if (url.startsWith('/api/v1/assets/timeline')) {
+			return jsonResponse(200, { items: wallItems, nextCursor: null });
+		}
+		throw new Error(`unexpected fetch ${url}`);
 	});
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
-	expect(faceCards()).toHaveLength(2);
+	expect(document.body.querySelector('.person-wall')).not.toBeNull();
 
 	dissolved = true;
 	firePersonEvent({
@@ -578,18 +658,35 @@ test('SSE person.merged dissolving this cluster renders the error state', async 
 	expect(document.body.querySelector('.person-detail__failure')?.textContent).toContain(
 		'This person does not exist or is not visible to you.'
 	);
-	expect(faceCards()).toHaveLength(0);
+	expect(document.body.querySelector('.person-wall')).toBeNull();
 	unmount(page);
 	flushSync();
 });
 
-test('leaving the page unsubscribes from the event stream', async () => {
+test('an asset trash converges the profile row count (the photo left the person)', async () => {
+	const fetchMock = stubFetch(detailRoutes());
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+	expect(document.body.querySelector('.person-profile__count')?.textContent?.trim()).toBe('2');
+
+	detailState = { ...detailState, photoCount: 1 };
+	fireAssetEvent({ id: 7, name: 'asset.trashed', assetId: 'a1' });
+	await settle();
+	expect(document.body.querySelector('.person-profile__count')?.textContent?.trim()).toBe('1');
+	unmount(page);
+	flushSync();
+});
+
+test('leaving the page unsubscribes from both streams', async () => {
 	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
 	const page = mountPage();
 	await settle();
 	expect(handlers).toHaveLength(1);
+	expect(assetHandlers.length).toBeGreaterThan(0);
 
 	unmount(page);
 	flushSync();
 	expect(handlers).toHaveLength(0);
+	expect(assetHandlers).toHaveLength(0);
 });

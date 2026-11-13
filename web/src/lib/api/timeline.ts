@@ -71,6 +71,14 @@
 // wall wholesale. The album page's own wallResetKey convergence
 // restarts the walk when an album.items-changed event lands for the
 // album.
+//
+// THE PERSON WALL: the person detail drives the same client through
+// the `clusterId` option -- the endpoint's person narrow answers one
+// face cluster's own photos (deduped by asset) in the same shape, so
+// the person's wall is the shared wall. Its membership gate matches
+// the album narrow's: an asset event for an id no page delivered is
+// not this person's photo, and the person's own events restart the
+// walk from the page.
 
 import { get, writable } from 'svelte/store';
 import { apiFetch, errorEnvelope } from '$lib/auth/api';
@@ -145,6 +153,13 @@ export type TimelineClientOptions = {
 	 * detail's grid reuses the wall over the album's own items).
 	 */
 	albumId?: string;
+	/**
+	 * The face cluster whose photos this wall walks: the endpoint's
+	 * `clusterId` narrow (the person detail's wall). Mutually
+	 * exclusive with `albumId` at the endpoint; a client never
+	 * passes both.
+	 */
+	clusterId?: string;
 };
 
 /** The contract's default page size. */
@@ -162,6 +177,12 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	const path = options.path ?? '/api/v1/assets/timeline';
 	const view = options.view ?? 'timeline';
 	const albumId = options.albumId;
+	const clusterId = options.clusterId;
+	// A narrowed wall (an album's own items, a person's photos): the
+	// pages ARE the membership, so event-driven inserts beyond the
+	// delivered ids never apply (the aggregate's feed gate does not
+	// run here either).
+	const narrowed = albumId !== undefined || clusterId !== undefined;
 
 	const store = writable<TimelineState>({
 		items: [],
@@ -282,10 +303,12 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 				return null;
 			}
 		}
-		if (cursor !== undefined && typeof cursor !== 'string') {
+		// The cursor is absent on the last page; a null pointer is the
+		// same statement (the contract's `nextCursor` is optional).
+		if (cursor !== undefined && cursor !== null && typeof cursor !== 'string') {
 			return null;
 		}
-		return { items: items as TimelineItem[], nextCursor: cursor ?? null };
+		return { items: items as TimelineItem[], nextCursor: typeof cursor === 'string' ? cursor : null };
 	}
 
 	/** Structurally validate a detail body; null when it is not a detail. */
@@ -485,7 +508,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		// for their rows. The curated views keep the detail's own
 		// rule: their membership is the caller's per-user rows, never
 		// the album feed.
-		if (albumId === undefined && view !== 'favorites' && view !== 'hidden' && !knownIds.has(assetId)) {
+		if (!narrowed && view !== 'favorites' && view !== 'hidden' && !knownIds.has(assetId)) {
 			const face = detail.albums ?? [];
 			// The map arms (a directory album at either role, a shared
 			// reference set) need the caller's pref facts; the sync arm
@@ -565,8 +588,8 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	 * insert nothing while the sync stream's uploads still land).
 	 */
 	async function convergeFromDetail(assetId: string, eventId: number): Promise<void> {
-		if (albumId !== undefined && !knownIds.has(assetId)) {
-			// Not a member of THIS album: nothing to converge.
+		if (narrowed && !knownIds.has(assetId)) {
+			// Not a member of THIS narrow's set: nothing to converge.
 			return;
 		}
 		const prior = convergeClaim.get(assetId) ?? -1;
@@ -629,7 +652,12 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		store.update((state) => ({ ...state, status: 'loading', errorKey: '' }));
 		const run = generation;
 
-		const narrow = albumId === undefined ? '' : `albumId=${encodeURIComponent(albumId)}&`;
+		const narrow =
+			albumId !== undefined
+				? `albumId=${encodeURIComponent(albumId)}&`
+				: clusterId !== undefined
+					? `clusterId=${encodeURIComponent(clusterId)}&`
+					: '';
 		const query = `${narrow}limit=${limit}${nextCursor === null ? '' : `&cursor=${encodeURIComponent(nextCursor)}`}`;
 		let response: Response;
 		try {

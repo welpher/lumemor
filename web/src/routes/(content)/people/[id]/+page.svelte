@@ -1,39 +1,50 @@
 <script lang="ts">
-	// The cluster detail of the people surface: the
-	// caller's label state over the cluster's caller-visible faces,
-	// strongest first. The unnamed state (label null) renders the
-	// unnamed header and the naming CTA; a label renders the name
-	// with the rename, unname, hidden-toggle and merge-into actions.
+	// The person detail (web-ia §7.17, §7.19, §7.20, §7.21): ONE page
+	// for both states, because the people domain has exactly two --
+	// named (this cluster carries the caller's label) and unnamed (it
+	// does not). The page's body is THIS PERSON'S PHOTOS over the
+	// shared wall; the person's identity lives in the profile row,
+	// never in the context bar.
+	//
+	// THE CONTEXT BAR (§7.21, the same skeleton as the album and
+	// memory details): sticky, 53px tall, back + the icon action
+	// cluster on the right, and the shell's own topbar and drawer do
+	// not render while this route is active (the content shell's
+	// route rule). The three detail pages now agree.
+	//
+	// THE PROFILE ROW (§7.17): the 72px round avatar, the name at
+	// 22px display with the rename pencil beside it, and the meta
+	// line -- the photo count (icon + number) and the birth date
+	// ("Born {date}", the empty state being the add affordance). The
+	// unnamed variant renders the localized unnamed slot (the
+	// people_unnamed_title copy) with the naming entry beside it; the
+	// profile row still offers the birth date (the entity's attribute
+	// does not depend on the name).
+	//
+	// THE ACTIONS: avatar picker / unname / merge-into for a named
+	// person; avatar picker / merge-into / name for an unnamed one
+	// (no unname -- there is no name to remove). Hiding retired with
+	// §7.19: no hide action exists anywhere on this page.
 	//
 	// THE PINNED CHOICES:
-	//
-	// - The label and hidden writes adopt their RESPONSES (the PUT
-	//   body's answer IS the fresh label state -- a rename keeps the
-	//   hidden switch), no refetch; the SSE self-events converge
-	//   anyway.
-	// - The unname write is immediate and unceremonious: naming is
-	//   reversible (rename restores it), so no confirm stands between
-	//   the click and the write -- the toast echo carries the
-	//   feedback, and the label adoption lands the unnamed state.
-	// - Hiding rides on the label row: an unlabeled cluster answers
-	//   400 with the message key `person_hide_requires_label`, which
-	//   surfaces as the honest message line right beside the naming
-	//   CTA -- the nudge to name first, never a silent failure.
+	// - The label write adopts its response (the PUT body IS the
+	//   fresh label state): no refetch on rename or name.
+	// - The unname is immediate and unceremonious (naming is
+	//   reversible): the toast echo carries the feedback and the
+	//   label adoption lands the UNNAMED variant in place -- the
+	//   cluster is now in the caller's unnamed region.
+	// - The birth date and the avatar adopt their responses; the
+	//   profile row's own change (the date line, the crop) is the
+	//   feedback.
 	// - The merge-into fold posts THIS cluster as the single source
-	//   and lands on the SURVIVING person's page (the response's own
-	//   answer decides the destination): the landing is the feedback
-	//   -- this cluster (and its name) dies with the merge, the
-	//   target's page is where the person continues, so no toast
-	//   stands beside the navigation.
-	// - The single-face move posts /faces/{id}/move and converges
-	//   through a refetch: the moved face left, the counts and the
-	//   ordering are the server's to recompute.
+	//   and lands on the SURVIVING person's page: the landing is the
+	//   feedback.
 	// - SSE: the person events that touch THIS cluster (a label or
-	//   hidden change on it, a merge that dissolves or survives as
-	//   it, a face write that joins it, leaves it or releases one of
-	//   its faces) refetch the detail; the refetched answer owns the
-	//   truth -- a foreign label event changes nothing here (labels
-	//   are private per user).
+	//   entity write on it, a merge that dissolves or survives as it,
+	//   a face write that joins or leaves it) refetch the detail; the
+	//   asset events that change the photo set (trash, delete,
+	//   restore) converge the profile row's count. The refetched
+	//   answer owns the truth.
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { _ } from 'svelte-i18n';
@@ -42,29 +53,30 @@
 	import {
 		fetchPersonCluster,
 		labelPerson,
-		listUnnamedPeople,
 		listPeople,
 		mergePeople,
-		moveFace,
-		setPersonHidden,
+		setPersonAvatar,
+		setPersonBirthdate,
 		unlabelPerson,
 		type ClusterDetail,
-		type PersonSummary,
-		type UnnamedClusterSummary
+		type PersonSummary
 	} from '$lib/api/people';
-	import { subscribePersonEvents, type PersonEvent } from '$lib/events';
+	import { subscribeAssetEvents, subscribePersonEvents, type PersonEvent } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { toast } from '$lib/components/toast.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
 	import PersonNameDialog from '$lib/people/PersonNameDialog.svelte';
-	import ClusterPickerDialog from '$lib/people/ClusterPickerDialog.svelte';
+	import PersonAvatarDialog from '$lib/people/PersonAvatarDialog.svelte';
+	import PersonBirthdateDialog from '$lib/people/PersonBirthdateDialog.svelte';
 	import PersonPickerDialog from '$lib/people/PersonPickerDialog.svelte';
+	import PersonWall from '$lib/people/PersonWall.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import PenLine from '@lucide/svelte/icons/pen-line';
-	import EyeOff from '@lucide/svelte/icons/eye-off';
-	import Eye from '@lucide/svelte/icons/eye';
 	import GitMerge from '@lucide/svelte/icons/git-merge';
 	import UserX from '@lucide/svelte/icons/user-x';
+	import ImageIcon from '@lucide/svelte/icons/image';
 
 	const clusterId = $derived(page.params.id ?? '');
 
@@ -76,16 +88,20 @@
 	let errorKey = $state('');
 
 	// One write at a time across every action (the dialogs and the
-	// header toggles share the flag).
+	// bar toggles share the flag).
 	let writeBusy = $state(false);
 
 	// The naming / rename dialog.
 	let nameDialogOpen = $state(false);
 	let nameErrorKey = $state('');
 
-	// The hidden toggle's honest failure (the requires-label message
-	// and its kin) -- the header owns the line.
-	let hideErrorKey = $state('');
+	// The avatar picker dialog.
+	let avatarDialogOpen = $state(false);
+	let avatarErrorKey = $state('');
+
+	// The birth date dialog.
+	let birthdateDialogOpen = $state(false);
+	let birthdateErrorKey = $state('');
 
 	// The merge-into dialog: the existing people (minus this cluster)
 	// as the target list, fetched on open.
@@ -95,20 +111,11 @@
 	let mergeIntoLoading = $state(false);
 
 	// The unname write's honest failure (a dead session, a vanished
-	// cluster) -- the header owns the line beside the actions.
+	// cluster) -- the bar owns the line.
 	let unnameErrorKey = $state('');
 
-	// The single-face move dialog: the face being moved (null while
-	// closed), with the named people and the unnamed region's first
-	// page (minus this cluster) as the target list, fetched on open.
-	let moveFaceId = $state<string | null>(null);
-	let moveErrorKey = $state('');
-	let movePeople = $state<PersonSummary[]>([]);
-	let moveUnnamed = $state<UnnamedClusterSummary[]>([]);
-	let moveLoading = $state(false);
-
 	const firstLoad = $derived(detail === null && status === 'loading');
-	const hidden = $derived(detail?.label?.isHidden ?? false);
+	const unnamed = $derived(detail?.label === null);
 
 	// The fetch and the SSE subscription are keyed on the route id;
 	// a superseded run (the id changed, or the route left, while the
@@ -145,16 +152,16 @@
 	}
 
 	// Whether one person event concerns this cluster: the label and
-	// hidden writes on it, a merge that dissolves it (this cluster
+	// entity writes on it, a merge that dissolves it (this cluster
 	// was a source) or survives it (it absorbed the sources), a face
-	// write that joins it, leaves it, or releases a face of this
-	// cluster's own.
+	// write that joins it or leaves it.
 	function touchesThisCluster(event: PersonEvent): boolean {
 		const id = untrack(() => clusterId);
 		switch (event.name) {
 			case 'person.labeled':
 			case 'person.unlabeled':
-			case 'person.hidden':
+			case 'person.birthdate_updated':
+			case 'person.avatar_updated':
 				return event.clusterId === id;
 			case 'person.merged':
 				return event.survivingClusterId === id || event.mergedClusterIds.includes(id);
@@ -186,15 +193,24 @@
 				void convergeDetail();
 			}
 		});
+		// The photo set changed under the profile row (a batch hide or
+		// trash, a purge, a restore): the count is the server's, so the
+		// detail converges. Uploads and mere edits change no count.
+		const unsubscribeAssets = subscribeAssetEvents((event) => {
+			if (event.name === 'asset.trashed' || event.name === 'asset.deleted' || event.name === 'asset.restored') {
+				void convergeDetail();
+			}
+		});
 		return () => {
 			fetchCurrent = false;
 			unsubscribe();
+			unsubscribeAssets();
 		};
 	});
 
 	// The naming / rename write: the response IS the fresh label
-	// state, so the header adopts it (a rename keeps the hidden
-	// switch -- the response carries it).
+	// state, so the page adopts it (naming an unnamed cluster lands
+	// the named variant in place).
 	async function submitName(name: string): Promise<void> {
 		if (writeBusy || detail === null) {
 			return;
@@ -207,61 +223,14 @@
 			nameErrorKey = outcome.errorKey;
 			return;
 		}
-		detail = {
-			...detail,
-			label: { name: outcome.label.name, isHidden: outcome.label.isHidden }
-		};
+		detail = { ...detail, label: { name: outcome.label.name } };
 		nameDialogOpen = false;
 	}
 
-	// The hidden toggle: the response is the label state after the
-	// flip (badge and notice follow it). An unlabeled cluster answers
-	// the message key the line renders honestly -- the naming CTA
-	// beside it is the way out.
-	async function toggleHidden(): Promise<void> {
-		if (writeBusy || detail === null) {
-			return;
-		}
-		writeBusy = true;
-		hideErrorKey = '';
-		const outcome = await setPersonHidden(clusterId, !hidden);
-		writeBusy = false;
-		if (!outcome.ok) {
-			hideErrorKey = outcome.errorKey;
-			return;
-		}
-		detail = {
-			...detail,
-			label: { name: outcome.label.name, isHidden: outcome.label.isHidden }
-		};
-	}
-
-	// The merge-into fold: this cluster is the single source, so it
-	// dissolves (with its name -- the honest cost); the target's
-	// label persists. Success lands on the SURVIVING person's page --
-	// the response's own answer names the destination, and the
-	// landing itself is the feedback (no toast beside it).
-	async function runMergeInto(targetId: string): Promise<void> {
-		if (writeBusy) {
-			return;
-		}
-		writeBusy = true;
-		mergeIntoErrorKey = '';
-		const outcome = await mergePeople([clusterId], targetId);
-		writeBusy = false;
-		if (!outcome.ok) {
-			mergeIntoErrorKey = outcome.errorKey;
-			return;
-		}
-		mergeIntoOpen = false;
-		void goto(`/people/${encodeURIComponent(outcome.merge.survivingClusterId)}`);
-	}
-
-	// The unname write: immediate, no confirm (naming is reversible --
-	// a rename restores it; the ceremony would only guard a
-	// reversible act). The toast echo carries the feedback and the
-	// label adoption lands the unnamed state; the SSE self-event
-	// converges the same answer.
+	// The unname write: immediate, no confirm (naming is reversible).
+	// The toast echo carries the feedback and the label adoption lands
+	// the unnamed variant; the SSE self-event converges the same
+	// answer.
 	async function runUnname(): Promise<void> {
 		if (writeBusy || detail === null || detail.label === null) {
 			return;
@@ -278,24 +247,59 @@
 		toast($_('person_unname_done'), 'success');
 	}
 
-	// The single-face move: the face joins the picked cluster; the
-	// face list converges through the refetch (the moved face left,
-	// the counts are the server's).
-	async function runMove(targetId: string): Promise<void> {
-		if (writeBusy || moveFaceId === null) {
+	// The avatar pick: the response names the stored face, which the
+	// profile row renders immediately.
+	async function submitAvatar(faceId: string): Promise<void> {
+		if (writeBusy || detail === null) {
 			return;
 		}
 		writeBusy = true;
-		moveErrorKey = '';
-		const faceId = moveFaceId;
-		const outcome = await moveFace(faceId, targetId);
+		avatarErrorKey = '';
+		const outcome = await setPersonAvatar(clusterId, faceId);
 		writeBusy = false;
 		if (!outcome.ok) {
-			moveErrorKey = outcome.errorKey;
+			avatarErrorKey = outcome.errorKey;
 			return;
 		}
-		moveFaceId = null;
-		void convergeDetail();
+		detail = { ...detail, avatarFaceId: outcome.avatar.avatarFaceId };
+		avatarDialogOpen = false;
+	}
+
+	// The birth date write: the response carries the stored value
+	// (null after a clear), and the profile row renders it.
+	async function submitBirthdate(birthDate: string | null): Promise<void> {
+		if (writeBusy || detail === null) {
+			return;
+		}
+		writeBusy = true;
+		birthdateErrorKey = '';
+		const outcome = await setPersonBirthdate(clusterId, birthDate);
+		writeBusy = false;
+		if (!outcome.ok) {
+			birthdateErrorKey = outcome.errorKey;
+			return;
+		}
+		detail = { ...detail, birthDate: outcome.birthdate.birthDate };
+		birthdateDialogOpen = false;
+	}
+
+	// The merge-into fold: this cluster is the single source, so it
+	// dissolves (with its name -- the honest cost); the target's
+	// label persists. Success lands on the SURVIVING person's page.
+	async function runMergeInto(targetId: string): Promise<void> {
+		if (writeBusy) {
+			return;
+		}
+		writeBusy = true;
+		mergeIntoErrorKey = '';
+		const outcome = await mergePeople([clusterId], targetId);
+		writeBusy = false;
+		if (!outcome.ok) {
+			mergeIntoErrorKey = outcome.errorKey;
+			return;
+		}
+		mergeIntoOpen = false;
+		void goto(`/people/${encodeURIComponent(outcome.merge.survivingClusterId)}`);
 	}
 
 	// Fetch the merge-into target list on open: the caller's named
@@ -320,36 +324,38 @@
 		})();
 	});
 
-	// Fetch the move target list on open: the named people and the
-	// unnamed region's first page, this cluster excluded (moving onto
-	// the face's own cluster is an accepted no-op -- never offered).
-	$effect(() => {
-		if (moveFaceId === null) {
-			return;
-		}
-		movePeople = [];
-		moveUnnamed = [];
-		moveErrorKey = '';
-		moveLoading = true;
-		void (async () => {
-			const [peopleOutcome, unnamedOutcome] = await Promise.all([listPeople(), listUnnamedPeople(null)]);
-			if (moveFaceId === null) {
-				return;
-			}
-			moveLoading = false;
-			if (peopleOutcome.ok) {
-				movePeople = peopleOutcome.people;
-			}
-			if (unnamedOutcome.ok) {
-				moveUnnamed = unnamedOutcome.page.items;
-			}
-		})();
-	});
-
-	/** Locale-aware capture date of one face's asset. */
-	function dateLabel(takenAt: string): string {
-		return new Intl.DateTimeFormat($locale ?? 'en', { dateStyle: 'medium' }).format(new Date(takenAt));
+	/** The person's ceil of the date parts, in LOCAL time (a UTC parse
+	 * would shift the day for half the world; the wire is a calendar
+	 * date, not an instant). */
+	function birthDateValue(date: string): Date {
+		const [year, month, day] = date.split('-').map(Number);
+		return new Date(year, month - 1, day);
 	}
+
+	// The locale-aware date: numeric year/month/day through
+	// Intl.DateTimeFormat -- NEVER hand-assembled (zh-Hans reads
+	// 1992/3/15, en-US 3/15/1992) -- with the wire value riding the
+	// <time datetime> beside it.
+	const birthDateLabel = $derived(
+		detail?.birthDate === null || detail?.birthDate === undefined
+			? ''
+			: new Intl.DateTimeFormat($locale ?? 'en', {
+					year: 'numeric',
+					month: 'numeric',
+					day: 'numeric'
+				}).format(birthDateValue(detail.birthDate))
+	);
+
+	// The avatar face: the stored pick when it is one of the caller's
+	// visible faces, otherwise the best visible member (the detail's
+	// faces arrive strongest first, so the first row IS the fallback).
+	const avatarFace = $derived.by(() => {
+		if (detail === null) {
+			return null;
+		}
+		const picked = detail.faces.find((face) => face.id === detail?.avatarFaceId);
+		return picked ?? detail.faces[0] ?? null;
+	});
 
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon); the
@@ -359,49 +365,86 @@
 	}
 
 	const mergeIntoTargets = $derived(mergeIntoPeople.filter((entry) => entry.clusterId !== clusterId));
-	const moveGroups = $derived([
-		{
-			label: $_('people_merge_group_people'),
-			options: movePeople
-				.filter((entry) => entry.clusterId !== clusterId)
-				.map((entry) => ({ id: entry.clusterId, label: entry.name }))
-		},
-		{
-			label: $_('people_move_group_unnamed'),
-			options: moveUnnamed
-				.filter((cluster) => cluster.clusterId !== clusterId)
-				.map((cluster) => ({
-					id: cluster.clusterId,
-					label: $_('people_merge_cluster_option', { values: { count: cluster.faceCount } })
-				}))
-		}
-	]);
-
-	const titleText = $derived(detail?.label?.name ?? $_('people_detail_unnamed'));
+	const titleText = $derived(detail?.label?.name ?? $_('people_unnamed_title'));
 </script>
 
 <svelte:head>
 	<title>{titleText} · lumemor</title>
 </svelte:head>
 
-<section class="person-detail max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
-	<div class="person-detail__top flex items-center gap-2 mb-1">
+<!-- The page root pins the wall's sticky month headers below the
+     contextual bar: the bar is py-2 (16) around an h-9 row (36) plus
+     its 1px border -- 53px. -->
+<section class="person-detail w-full" style:--wall-sticky-offset="53px">
+	<!-- THE CONTEXTUAL BAR (§7.21): back + the person's icon actions.
+	     The shell's own topbar and drawer hide while this route is
+	     active (the content shell's route rule); the name, the photo
+	     count and the birth date live in the profile row below. -->
+	<header
+		class="person-bar sticky top-0 z-(--z-sticky-bar) flex items-center gap-2 px-4 py-2 bg-card border-b border-border"
+	>
 		<a
-			class="person-detail__back inline-flex items-center px-2.5 py-1.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft no-underline rounded-control transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
+			class="person-bar__back inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-control bg-transparent text-text-soft no-underline cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
 			href="/people"
+			aria-label={$_('people_back')}
 		>
-			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-				<path
-					d="M14.5 6.5L8 12l6.5 5.5"
-					stroke="currentColor"
-					stroke-width="1.75"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				/>
-			</svg>
-			{$_('nav_people')}</a
-		>
-	</div>
+			<ChevronLeft size={20} aria-hidden="true" />
+		</a>
+		<div class="person-bar__actions ml-auto flex items-center gap-1">
+			{#if detail !== null}
+				<IconButton
+					disabled={writeBusy}
+					aria-label={$_('person_avatar_action')}
+					title={$_('person_avatar_action')}
+					onclick={() => {
+						avatarErrorKey = '';
+						avatarDialogOpen = true;
+					}}
+				>
+					<ImageIcon size={20} aria-hidden="true" />
+				</IconButton>
+				{#if unnamed}
+					<!-- The unnamed variant's primary action is the naming
+					     (the same dialog the profile row's pencil opens);
+					     there is no name to remove. -->
+					<IconButton
+						disabled={writeBusy}
+						aria-label={$_('people_detail_name_cta')}
+						title={$_('people_detail_name_cta')}
+						onclick={() => {
+							nameErrorKey = '';
+							nameDialogOpen = true;
+						}}
+					>
+						<PenLine size={20} aria-hidden="true" />
+					</IconButton>
+				{:else}
+					<!-- The unname: naming is reversible (a rename restores
+					     it), so no confirm stands between the click and the
+					     write; the toast is the echo. -->
+					<IconButton
+						disabled={writeBusy}
+						aria-label={$_('person_unname_action')}
+						title={$_('person_unname_action')}
+						onclick={() => void runUnname()}
+					>
+						<UserX size={20} aria-hidden="true" />
+					</IconButton>
+				{/if}
+				<IconButton
+					disabled={writeBusy}
+					aria-label={$_('people_merge_into_action')}
+					title={$_('people_merge_into_action')}
+					onclick={() => {
+						mergeIntoErrorKey = '';
+						mergeIntoOpen = true;
+					}}
+				>
+					<GitMerge size={20} aria-hidden="true" />
+				</IconButton>
+			{/if}
+		</div>
+	</header>
 
 	{#if firstLoad}
 		<p class="person-detail__status my-12 text-center text-text-soft animate-loading-in" role="status">
@@ -418,171 +461,130 @@
 			>
 		</div>
 	{:else if detail !== null}
-		<header class="person-detail__header flex flex-wrap items-center gap-3 mb-3">
-			<h1 class="person-detail__title m-0 font-display font-bold text-[24px] leading-[1.3] text-text">
-				{titleText}
-			</h1>
-			{#if hidden}
-				<span
-					class="person-detail__badge inline-flex items-center px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
-					>{$_('people_hidden_badge')}</span
-				>
-			{/if}
-			<!-- The actions: naming (or renaming), the unname, the hidden
-			     toggle and the merge-into fold. -->
-			<div class="person-detail__actions ml-auto flex flex-wrap items-center gap-2">
-				{#if detail.label === null}
-					<Button
-						onclick={() => {
-							nameErrorKey = '';
-							nameDialogOpen = true;
-						}}><PenLine size={20} aria-hidden="true" />{$_('people_detail_name_cta')}</Button
-					>
-				{:else}
-					<Button
-						variant="ghost"
-						onclick={() => {
-							nameErrorKey = '';
-							nameDialogOpen = true;
-						}}><PenLine size={20} aria-hidden="true" />{$_('people_rename_action')}</Button
-					>
-					<!-- The unname: an icon-only ghost affordance -- naming
-					     is reversible (a rename restores it), so no confirm
-					     stands between the click and the write; the toast
-					     is the echo. -->
-					<Button
-						variant="ghost"
-						disabled={writeBusy}
-						aria-label={$_('people_unname_action')}
-						title={$_('people_unname_action')}
-						onclick={() => void runUnname()}
-					>
-						<UserX size={20} aria-hidden="true" />
-					</Button>
-				{/if}
-				<Button variant="ghost" disabled={writeBusy} onclick={() => void toggleHidden()}>
-					{#if hidden}
-						<Eye size={20} aria-hidden="true" />
-					{:else}
-						<EyeOff size={20} aria-hidden="true" />
-					{/if}
-					{hidden ? $_('action_unhide') : $_('action_hide')}
-				</Button>
-				<Button
-					variant="ghost"
-					onclick={() => {
-						mergeIntoErrorKey = '';
-						mergeIntoOpen = true;
-					}}><GitMerge size={20} aria-hidden="true" />{$_('people_merge_into_action')}</Button
-				>
-			</div>
-		</header>
-		{#if hidden}
-			<!-- Badge semantics, not a filter: the hidden person stays in
-			     the caller's list, flagged. -->
-			<p class="person-detail__notice my-0 mb-4 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
-				{$_('people_hidden_notice')}
-			</p>
-		{/if}
-		{#if hideErrorKey !== ''}
-			<!-- The hidden toggle's honest failure: hiding rides on the
-			     label row, so an unlabeled cluster answers the
-			     requires-label message -- and the naming CTA above is the
-			     way out. -->
-			<p
-				class="person-detail__hide-error my-0 mb-4 font-body font-medium text-[14px] leading-[1.5] text-danger-text"
-				role="alert"
+		<!-- THE PROFILE ROW: the avatar, the name (with its pencil),
+		     and the meta line -- the photo count and the birth date. -->
+		<div class="person-profile flex items-center gap-4 px-4 py-4">
+			<span
+				class="person-profile__avatar relative block w-[72px] h-[72px] shrink-0 overflow-hidden rounded-full bg-accent-soft"
+				aria-hidden="true"
 			>
-				{errorText(hideErrorKey)}
-			</p>
-		{/if}
+				{#if avatarFace !== null}
+					<img
+						class="absolute inset-0 w-full h-full object-cover"
+						src={avatarFace.thumbnail}
+						alt=""
+						loading="lazy"
+						decoding="async"
+						draggable="false"
+					/>
+				{/if}
+			</span>
+			<div class="flex min-w-0 flex-col gap-1">
+				<div class="flex items-center gap-2">
+					<h1
+						class="person-profile__name m-0 min-w-0 truncate font-display font-bold text-[22px] leading-[1.3] text-text"
+						data-person-name
+					>
+						{titleText}
+					</h1>
+					<button
+						class="person-profile__rename inline-flex items-center justify-center w-7 h-7 shrink-0 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+						type="button"
+						aria-label={unnamed ? $_('people_detail_name_cta') : $_('people_rename_action')}
+						title={unnamed ? $_('people_detail_name_cta') : $_('people_rename_action')}
+						onclick={() => {
+							nameErrorKey = '';
+							nameDialogOpen = true;
+						}}
+					>
+						<PenLine size={16} aria-hidden="true" />
+					</button>
+				</div>
+				<p
+					class="person-profile__meta m-0 inline-flex flex-wrap items-center gap-1.5 font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+				>
+					<span
+						class="person-profile__count inline-flex items-center gap-1 tabular-nums"
+						role="img"
+						aria-label={$_('people_photo_count', { values: { count: detail.photoCount } })}
+						title={$_('people_photo_count', { values: { count: detail.photoCount } })}
+					>
+						<ImageIcon size={14} aria-hidden="true" />{detail.photoCount}
+					</span>
+					<span class="text-text-faint" aria-hidden="true">·</span>
+					<!-- The birth date: the stored value renders as the
+					     locale-aware line with the machine value in <time>;
+					     unset, the same slot is the add affordance. Both
+					     open the dialog. -->
+					<button
+						class="person-profile__birthdate inline-flex items-center gap-1 rounded-control bg-transparent text-text-soft cursor-pointer transition-[color] duration-(--motion-fast) ease-standard hover:text-accent"
+						type="button"
+						onclick={() => {
+							birthdateErrorKey = '';
+							birthdateDialogOpen = true;
+						}}
+					>
+						{#if detail.birthDate !== null}
+							<time datetime={detail.birthDate}
+								>{$_('person_birthdate', { values: { date: birthDateLabel } })}</time
+							>
+						{:else}
+							{$_('person_birthdate_add')}
+						{/if}
+					</button>
+				</p>
+			</div>
+		</div>
+
 		{#if unnameErrorKey !== ''}
 			<!-- The unname write's honest failure (a dead session, a
-			     cluster another session dissolved mid-flight): the line
-			     sits under the action that failed it. -->
+			     cluster another session dissolved mid-flight). -->
 			<p
-				class="person-detail__unname-error my-0 mb-4 font-body font-medium text-[14px] leading-[1.5] text-danger-text"
+				class="person-detail__unname-error mx-4 my-0 mb-3 font-body font-medium text-[14px] leading-[1.5] text-danger-text"
 				role="alert"
 			>
 				{errorText(unnameErrorKey)}
 			</p>
 		{/if}
 
-		<h2 class="person-detail__faces mt-4 mb-3 font-display font-bold text-[20px] leading-[1.3] text-text">
-			{$_('people_detail_faces_heading')}
-		</h2>
-		<div class="person-detail__grid grid grid-cols-[repeat(auto-fill,minmax(min(200px,100%),1fr))] gap-3">
-			{#each detail.faces as face (face.id)}
-				<!-- One face: the crop links into the asset viewer at the
-				     face's asset (the route-level viewer), the context
-				     carries the file name and the capture date, and the
-				     move button opens the single-face move dialog. -->
-				<div
-					class="face-card group relative flex flex-col overflow-hidden rounded-card bg-card border border-border"
-				>
-					<a
-						class="face-card__link relative block aspect-square bg-accent-soft"
-						href="/a/{encodeURIComponent(face.assetId)}"
-						aria-label={$_('people_face_alt', { values: { file: face.asset.originalFilename } })}
-					>
-						<img
-							class="absolute inset-0 w-full h-full object-cover"
-							src={face.thumbnail}
-							alt=""
-							loading="lazy"
-							decoding="async"
-							draggable="false"
-						/>
-					</a>
-					<div class="face-card__meta flex items-center justify-between gap-2 px-3 py-2">
-						<div class="face-card__context min-w-0">
-							<p
-								class="face-card__file m-0 font-body font-semibold text-[14px] leading-[1.4] text-text truncate"
-							>
-								{face.asset.originalFilename}
-							</p>
-							<p
-								class="face-card__date m-0 font-body font-normal text-[13px] leading-[1.4] text-text-soft"
-							>
-								{dateLabel(face.asset.takenAt)}
-							</p>
-						</div>
-						<button
-							class="face-card__move inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
-							type="button"
-							aria-label={$_('people_face_move_action')}
-							title={$_('people_face_move_action')}
-							onclick={() => {
-								moveErrorKey = '';
-								moveFaceId = face.id;
-							}}
-						>
-							<svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-								<path
-									d="M4 12h13M12.5 6.5L18 12l-5.5 5.5"
-									stroke="currentColor"
-									stroke-width="1.75"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-								<path d="M20 4.5v15" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
-							</svg>
-						</button>
-					</div>
-				</div>
-			{/each}
-		</div>
+		<!-- THE PHOTO WALL: this person's photos over the shared wall.
+		     Keyed on the cluster id so another person's page always
+		     walks its own photos. -->
+		{#key clusterId}
+			<PersonWall {clusterId} />
+		{/key}
 	{/if}
 </section>
 
 <PersonNameDialog
 	bind:open={nameDialogOpen}
-	titleKey="people_name_dialog_title"
+	titleKey={unnamed ? 'people_detail_name_cta' : 'people_rename_action'}
 	submitKey="people_name_submit"
 	initialName={detail?.label?.name ?? ''}
 	busy={writeBusy}
 	errorKey={nameErrorKey}
 	onsubmit={(name) => void submitName(name)}
+/>
+
+<!-- The avatar picker: the person's faces are the candidates (no
+     file names, no governance), the stored pick badged. -->
+<PersonAvatarDialog
+	bind:open={avatarDialogOpen}
+	faces={detail?.faces ?? []}
+	currentFaceId={detail?.avatarFaceId ?? null}
+	busy={writeBusy}
+	errorKey={avatarErrorKey}
+	onsubmit={(faceId) => void submitAvatar(faceId)}
+/>
+
+<!-- The birth date dialog: the entity's own attribute, settable before
+     the cluster is named. -->
+<PersonBirthdateDialog
+	bind:open={birthdateDialogOpen}
+	initialDate={detail?.birthDate ?? null}
+	busy={writeBusy}
+	errorKey={birthdateErrorKey}
+	onsubmit={(birthDate) => void submitBirthdate(birthDate)}
 />
 
 <!-- The merge face: the filterable person target list (this cluster
@@ -599,19 +601,4 @@
 	loading={mergeIntoLoading}
 	errorKey={mergeIntoErrorKey}
 	onsubmit={(targetId) => void runMergeInto(targetId)}
-/>
-
-<ClusterPickerDialog
-	open={moveFaceId !== null}
-	titleKey="people_move_dialog_title"
-	bodyKey="people_move_body"
-	targetLabelKey="people_move_target_label"
-	submitKey="people_move_submit"
-	emptyKey="people_picker_no_people"
-	groups={moveGroups}
-	loading={moveLoading}
-	busy={writeBusy}
-	errorKey={moveErrorKey}
-	onclose={() => (moveFaceId = null)}
-	onsubmit={(targetId) => void runMove(targetId)}
 />
