@@ -30,6 +30,10 @@ One page so you can add a feature without spelunking.
   `PathCompletion.svelte`, `AudienceField.svelte`.
 - `src/lib/components/` — the primitives (`Button`, `Modal`, `Drawer`,
   `IconButton`, the `anchored` portal action).
+- `src/lib/identity.ts` — the identity presentation rule shared by the
+  walls, the attribution lines and the audience pickers: the display
+  name first, the email as the fallback and the duplicate-name
+  disambiguator.
 - `src/lib/viewer/` — `Viewer.svelte` (the route-level viewer),
   `InfoDrawer.svelte` (the read-only info panel).
 - `src/lib/auth/` — the session store (`session.svelte.ts`), pairing.
