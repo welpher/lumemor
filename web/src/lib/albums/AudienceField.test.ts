@@ -29,10 +29,12 @@ function jsonResponse(status: number, body: unknown): Response {
 
 const usersBody = {
 	users: [
-		{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false },
-		{ id: 'u2', email: 'grace@example.com', role: 'user', isDisabled: false },
-		{ id: 'u3', email: 'ivy@example.com', role: 'user', isDisabled: false },
-		{ id: 'u4', email: 'hopper@example.com', role: 'user', isDisabled: true }
+		{ id: 'u1', name: 'Ada Lovelace', email: 'ada@example.com', role: 'admin', isDisabled: false },
+		{ id: 'u2', name: 'Grace Hopper', email: 'grace@example.com', role: 'user', isDisabled: false },
+		// A disabled account that set no display name: the row falls
+		// back to the email.
+		{ id: 'u3', name: 'Ivy Lee', email: 'ivy@example.com', role: 'user', isDisabled: false },
+		{ id: 'u4', name: '', email: 'hopper@example.com', role: 'user', isDisabled: true }
 	]
 };
 
@@ -114,7 +116,7 @@ test('opening the picker fetches the member list and offers the other accounts',
 	// mount probe plus the per-open fetch: two listings, the
 	// per-open discipline of the old share dialog.
 	expect(fetchMock).toHaveBeenCalledTimes(2);
-	expect(rowNames()).toEqual(['grace@example.com', 'ivy@example.com', 'hopper@example.com']);
+	expect(rowNames()).toEqual(['Grace Hopper', 'Ivy Lee', 'hopper@example.com']);
 	// The keys footer rides the rows.
 	expect(document.body.querySelector('.audience-field__keys')?.textContent).toContain('Enter Add');
 });
@@ -140,7 +142,7 @@ test('the keyboard: Enter adds the highlighted candidate, Esc closes the picker 
 		Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__chip-name')).map(
 			(chip) => chip.textContent
 		)
-	).toEqual(['grace@example.com']);
+	).toEqual(['Grace Hopper']);
 	expect(document.body.querySelector('#audience-field-picker')).not.toBeNull();
 
 	// ↓ moves the highlight; Enter adds the second candidate (the
@@ -154,7 +156,7 @@ test('the keyboard: Enter adds the highlighted candidate, Esc closes the picker 
 		Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__chip-name')).map(
 			(chip) => chip.textContent
 		)
-	).toEqual(['grace@example.com', 'hopper@example.com']);
+	).toEqual(['Grace Hopper', 'hopper@example.com']);
 
 	// Esc closes the picker alone -- the chips stay.
 	listbox?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -164,7 +166,7 @@ test('the keyboard: Enter adds the highlighted candidate, Esc closes the picker 
 		Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__chip-name')).map(
 			(chip) => chip.textContent
 		)
-	).toEqual(['grace@example.com', 'hopper@example.com']);
+	).toEqual(['Grace Hopper', 'hopper@example.com']);
 });
 
 test('a row adds on mousedown and the added account leaves the candidates', async () => {
@@ -184,11 +186,11 @@ test('a row adds on mousedown and the added account leaves the candidates', asyn
 		Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__chip-name')).map(
 			(chip) => chip.textContent
 		)
-	).toEqual(['ivy@example.com']);
-	expect(rowNames()).toEqual(['grace@example.com', 'hopper@example.com']);
+	).toEqual(['Ivy Lee']);
+	expect(rowNames()).toEqual(['Grace Hopper', 'hopper@example.com']);
 });
 
-test('the chip avatar renders the email local part initial; the remove mark drops the member', async () => {
+test('the chip avatar and remove mark name the person; the remove mark drops the member', async () => {
 	const fetchMock = vi.fn(async () => jsonResponse(200, usersBody));
 	vi.stubGlobal('fetch', fetchMock);
 	mountField({ selfId: 'u1' });
@@ -204,7 +206,7 @@ test('the chip avatar renders the email local part initial; the remove mark drop
 	expect(chip?.querySelector('.audience-field__chip-avatar')?.textContent).toBe('G');
 	// The remove mark: icon-only, named by its aria-label.
 	const remove = chip?.querySelector<HTMLButtonElement>('.audience-field__chip-remove');
-	expect(remove?.getAttribute('aria-label')).toBe('Remove grace@example.com');
+	expect(remove?.getAttribute('aria-label')).toBe('Remove Grace Hopper');
 	remove?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 
@@ -221,6 +223,7 @@ test('the disabled account renders its honest note and stays pickable', async ()
 	await settle();
 
 	const rows = document.body.querySelectorAll<HTMLElement>('[role="option"]');
+	// The account set no display name: the row renders its email.
 	expect(rows[2]?.textContent).toContain('hopper@example.com');
 	expect(rows[2]?.textContent).toContain('cannot sign in');
 	// Still pickable: the server's skip report is the authority.
@@ -261,7 +264,7 @@ test('the member-list failure renders inside the picker; the toggle retries', as
 	await settle();
 
 	expect(fetchMock).toHaveBeenCalledTimes(3);
-	expect(rowNames()).toEqual(['grace@example.com', 'ivy@example.com', 'hopper@example.com']);
+	expect(rowNames()).toEqual(['Grace Hopper', 'Ivy Lee', 'hopper@example.com']);
 });
 
 test('the multi-add drain collapses the picker and disables the add affordance', async () => {
@@ -305,7 +308,7 @@ test('the multi-add drain collapses the picker and disables the add affordance',
 test('a single-account instance permanently disables the add affordance (the probed pool is the caller alone)', async () => {
 	const fetchMock = vi.fn(async () =>
 		jsonResponse(200, {
-			users: [{ id: 'u1', email: 'ada@example.com', role: 'admin', isDisabled: false }]
+			users: [{ id: 'u1', name: 'Ada Lovelace', email: 'ada@example.com', role: 'admin', isDisabled: false }]
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -342,4 +345,74 @@ test('a busy write disables the affordances', async () => {
 	mountField({ selfId: 'u1', busy: true });
 
 	expect(addButton().disabled).toBe(true);
+});
+
+test('the seeded chips name their accounts off the listing; an unknown account keeps its email', async () => {
+	// The properties dialog seeds the chips from the detail's shares --
+	// ids and emails only -- so the listing is what names them; an
+	// account the listing does not carry keeps its email (the honest
+	// face of a name nobody knows).
+	const fetchMock = vi.fn(async () => jsonResponse(200, usersBody));
+	vi.stubGlobal('fetch', fetchMock);
+	mounted = mount(AudienceField, {
+		target: document.body,
+		props: {
+			members: [
+				{ userId: 'u2', email: 'grace@example.com' },
+				{ userId: 'u9', email: 'stranger@example.com' }
+			],
+			selfId: 'u1'
+		}
+	});
+	flushSync();
+	await settle();
+
+	expect(
+		Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__chip-name')).map(
+			(chip) => chip.textContent
+		)
+	).toEqual(['Grace Hopper', 'stranger@example.com']);
+	// The initials follow the same labels.
+	expect(
+		Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__chip-avatar')).map(
+			(avatar) => avatar.textContent
+		)
+	).toEqual(['G', 'S']);
+});
+
+test('two accounts under one name carry the email as the chip title', async () => {
+	// The name is not a key: the pool holds two accounts called "Mum",
+	// so their chips and rows hang the address on the label.
+	const fetchMock = vi.fn(async () =>
+		jsonResponse(200, {
+			users: [
+				{ id: 'u1', name: 'Ada Lovelace', email: 'ada@example.com', role: 'admin', isDisabled: false },
+				{ id: 'u5', name: 'Mum', email: 'mum@example.com', role: 'user', isDisabled: false },
+				{ id: 'u6', name: 'Mum', email: 'mum2@example.com', role: 'user', isDisabled: false }
+			]
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountField({ selfId: 'u1' });
+
+	addButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const rows = Array.from(document.body.querySelectorAll<HTMLElement>('.audience-field__row-name'));
+	expect(rows.map((row) => row.textContent)).toEqual(['Mum', 'Mum']);
+	expect(rows.map((row) => row.getAttribute('title'))).toEqual(['mum@example.com', 'mum2@example.com']);
+
+	// The chip the first row lands carries the same title.
+	document.body
+		.querySelectorAll<HTMLElement>('[role="option"]')[0]
+		?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+	flushSync();
+	const chipName = document.body.querySelector<HTMLElement>('.audience-field__chip-name');
+	expect(chipName?.textContent).toBe('Mum');
+	expect(chipName?.getAttribute('title')).toBe('mum@example.com');
+	// The remove mark's accessible name takes the address too -- two
+	// "Remove Mum" buttons would be indistinguishable.
+	expect(document.body.querySelector('.audience-field__chip-remove')?.getAttribute('aria-label')).toBe(
+		'Remove mum@example.com'
+	);
 });
