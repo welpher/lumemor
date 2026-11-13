@@ -296,7 +296,9 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	// evaluation): the header carries the title alone, never a
 	// description paragraph.
 	expect(document.body.querySelector('.album-detail__description')).toBeNull();
-	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
+	const count = document.body.querySelector('.album-detail__count');
+	expect(count?.textContent?.trim()).toBe('2');
+	expect(count?.getAttribute('aria-label')).toBe('2 photos');
 
 	// The owner of a directory album holds the write set: the
 	// properties (the dialog opener) and the remove (the un-ingest
@@ -544,7 +546,9 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 
 	expect(document.body.querySelector('.album-bar__title')?.textContent).toBe('My photos');
 	expect(document.body.textContent).not.toContain('Sync');
-	expect(document.body.querySelector('.album-detail__count')?.textContent).toBe('2 photos');
+	const syncCount = document.body.querySelector('.album-detail__count');
+	expect(syncCount?.textContent?.trim()).toBe('2');
+	expect(syncCount?.getAttribute('aria-label')).toBe('2 photos');
 	// The item grid works like any album's: the tiles come from the
 	// album-narrowed timeline page.
 	expect(tiles()).toHaveLength(2);

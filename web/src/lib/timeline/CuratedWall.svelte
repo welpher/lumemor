@@ -31,6 +31,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
@@ -169,11 +170,11 @@
 		<h1 class="wall-page__title m-0 font-display font-bold text-[20px] leading-[1.3] text-text">
 			{titleKey !== '' ? $_(titleKey) : ''}
 			{#if $wall.status === 'ready'}
-				<span
-					class="wall-page__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft tabular-nums"
-				>
-					· {$_(countKey, { values: { count: $wall.items.length } })}
-				</span>
+				<CountLabel
+					class="wall-page__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft"
+					count={$wall.items.length}
+					label={$_(countKey, { values: { count: $wall.items.length } })}
+				/>
 			{/if}
 		</h1>
 		{#if $wall.items.length > 0}

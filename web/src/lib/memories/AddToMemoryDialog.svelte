@@ -40,6 +40,7 @@
 	import { _ } from 'svelte-i18n';
 	import Modal from '$lib/components/Modal.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import { addAlbumItems, createMemory, listAlbums, type AlbumSummary } from '$lib/api/albums';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -281,12 +282,13 @@
 							{/if}
 						</span>
 						<span class="min-w-0 flex-1 truncate">{memory.title}</span>
-						<span
+						<CountLabel
 							class="flex-none font-normal text-[12px] leading-[1.4] {addedIds.includes(memory.id)
 								? ''
-								: 'text-text-faint'} tabular-nums"
-							>{$_('memories_photo_count', { values: { count: memory.itemCount } })}</span
-						>
+								: 'text-text-faint'}"
+							count={memory.itemCount}
+							label={$_('memories_photo_count', { values: { count: memory.itemCount } })}
+						/>
 						{#if addedIds.includes(memory.id)}
 							<!-- The accent added state: the row's write landed; the
 							     row is inert (a re-add would be the all-skipped

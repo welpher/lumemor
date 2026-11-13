@@ -27,6 +27,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import PhotoTile from '$lib/timeline/PhotoTile.svelte';
@@ -212,11 +213,11 @@
 		<h1 class="trash__title m-0 font-display font-bold text-[20px] leading-[1.3] text-text">
 			{$_('nav_trash')}
 			{#if status === 'ready'}
-				<span
-					class="trash__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft tabular-nums"
-				>
-					· {$_('trash_bar_count', { values: { count: items.length } })}
-				</span>
+				<CountLabel
+					class="trash__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft"
+					count={items.length}
+					label={$_('trash_bar_count', { values: { count: items.length } })}
+				/>
 			{/if}
 		</h1>
 	</div>

@@ -41,6 +41,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import CreateAlbumDialog, { type CreateAlbumSwitches } from '$lib/albums/CreateAlbumDialog.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 
@@ -404,10 +405,11 @@
 			<span class="album-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
 				>{cardTitle(album)}</span
 			>
-			<span
-				class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft whitespace-nowrap tabular-nums"
-				>{$_('albums_photo_count', { values: { count: album.itemCount } })}</span
-			>
+			<CountLabel
+				class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+				count={album.itemCount}
+				label={$_('albums_photo_count', { values: { count: album.itemCount } })}
+			/>
 			<!-- The badge row: the attribution and the read-only mark ride
 			     one line, so a shared card says who and what it means
 			     without a fourth line. -->

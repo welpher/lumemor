@@ -27,8 +27,8 @@
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-	import ScanFace from '@lucide/svelte/icons/scan-face';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -257,14 +257,12 @@
 								class="cluster-card__name min-w-0 font-body font-semibold text-[14px] leading-[1.4] text-text truncate"
 								>{$_('people_unnamed_title')}</span
 							>
-							<span
-								class="cluster-card__count ml-auto inline-flex items-center gap-1 font-body font-normal text-[13px] leading-[1.4] text-text-soft tabular-nums whitespace-nowrap"
-								role="img"
-								aria-label={$_('people_face_count', { values: { count: cluster.faceCount } })}
-								title={$_('people_face_count', { values: { count: cluster.faceCount } })}
-							>
-								<ScanFace size={14} aria-hidden="true" />{cluster.faceCount}
-							</span>
+							<CountLabel
+								class="cluster-card__count ml-auto font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+								count={cluster.faceCount}
+								kind="faces"
+								label={$_('people_face_count', { values: { count: cluster.faceCount } })}
+							/>
 						</span>
 					</a>
 				{/each}
