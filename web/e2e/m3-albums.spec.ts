@@ -369,7 +369,7 @@ test('scene 1: the administrator signs in and lands on the pinned My photos card
 	await expect(page.locator('.albums__toolbar')).toHaveClass(/border-b/);
 	const myPhotos = page.locator('a.album-card').filter({ hasText: 'My photos' });
 	await expect(myPhotos).toBeVisible();
-	await expect(myPhotos).toContainText('0 photos');
+	await expect(myPhotos.locator('.album-card__count')).toHaveAttribute('aria-label', '0 photos');
 	await expect(page.locator('a.album-card')).toHaveCount(1);
 	await expect(page.getByText('Gather a trip or an occasion into an album.')).toBeHidden();
 	await expect(page.getByRole('button', { name: 'New album', exact: true })).toBeVisible();
@@ -549,7 +549,7 @@ test.describe('the administrator scenes', () => {
 		// source, it does not scan it.
 		const card = page.locator('a.album-card').filter({ hasText: ALBUM_TITLE });
 		await expect(card).toBeVisible();
-		await expect(card).toContainText('0 photos');
+		await expect(card.locator('.album-card__count')).toHaveAttribute('aria-label', '0 photos');
 
 		// The created album's id, for the later scenes' deep links.
 		albumId = (await card.getAttribute('href'))?.replace('/albums/', '') ?? '';
@@ -582,7 +582,7 @@ test.describe('the administrator scenes', () => {
 
 		// The membership is honest: the bar's count and the wall's
 		// tiles converge onto the two fixture photos.
-		await expect(page.locator('.album-bar .album-detail__count')).toContainText('2 photos', {
+		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '2 photos', {
 			timeout: 120_000
 		});
 		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 120_000 });
@@ -743,7 +743,7 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	await expect(card.locator('.album-card__badge--owner')).toHaveText(`Shared by ${ADMIN_NAME}`);
 	await expect(card.locator('.album-card__badge--owner')).not.toContainText(ADMIN_EMAIL);
 	await expect(card.locator('.album-card__badge--readonly')).toHaveText('Read-only');
-	await expect(card).toContainText('2 photos');
+	await expect(card.locator('.album-card__count')).toHaveAttribute('aria-label', '2 photos');
 
 	// The creation guard's visual half: mounting an existing
 	// photo directory is a configuration act, so the member's wall
@@ -984,7 +984,7 @@ test.describe('the writable source scenes', () => {
 		// The card lands with the honest zero count.
 		const card = page.locator('a.album-card').filter({ hasText: RW_ALBUM_TITLE });
 		await expect(card).toBeVisible();
-		await expect(card).toContainText('0 photos');
+		await expect(card.locator('.album-card__count')).toHaveAttribute('aria-label', '0 photos');
 
 		// The writable album's id, for the later scenes' deep links.
 		rwAlbumId = (await card.getAttribute('href'))?.replace('/albums/', '') ?? '';
@@ -1138,7 +1138,7 @@ test.describe('the writable source scenes', () => {
 		// signal) restarts the walk AND refetches the detail, so the
 		// bar's count drops with the wall's tile -- the server's own
 		// answer confirms it.
-		await expect(page.locator('.album-bar .album-detail__count')).toContainText('1 photo');
+		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '1 photo');
 		await expect
 			.poll(
 				async () => {
@@ -1156,7 +1156,7 @@ test.describe('the writable source scenes', () => {
 		await page.goto('/trash');
 		// The page's one row: the trash title with its count (the
 		// count belongs to the title, never a row of its own).
-		await expect(page.getByRole('heading', { level: 1, name: /^Trash · 1 photo$/ })).toBeVisible();
+		await expect(page.getByRole('heading', { level: 1, name: /^Trash 1 photo$/ })).toBeVisible();
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
 		await expect(page.getByText(/^(Expiring soon|\d+ days? left)$/)).toBeVisible();
 
@@ -1176,7 +1176,7 @@ test.describe('the writable source scenes', () => {
 		await page.goto(`/albums/${rwAlbumId}`);
 		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 60_000 });
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
-		await expect(page.locator('.album-bar .album-detail__count')).toContainText('2 photos');
+		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '2 photos');
 	});
 });
 
@@ -1299,7 +1299,7 @@ test.describe('the removal scenes', () => {
 		await memberPage.goto('/albums');
 		const memberCard = memberPage.locator('a.album-card').filter({ hasText: RW_ALBUM_TITLE });
 		await expect(memberCard).toBeVisible();
-		await expect(memberCard).toContainText('2 photos');
+		await expect(memberCard.locator('.album-card__count')).toHaveAttribute('aria-label', '2 photos');
 		await memberPage.goto('/timeline');
 		await expect(memberPage.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
 		await expect(memberPage.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toBeVisible();

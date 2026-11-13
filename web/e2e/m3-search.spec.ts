@@ -311,7 +311,9 @@ test.describe('the signed-in scenes', () => {
 		await expect(card).toHaveCount(1);
 		await expect(card.locator('.place-card__name')).toHaveText('Beijing');
 		await expect(card.locator('.place-card__region')).toHaveText('China');
-		await expect(card.locator('.place-card__count')).toHaveText('1 photo');
+		// The count is the glyph and the number; the wording is its
+		// accessible name.
+		await expect(card.locator('.place-card__count')).toHaveAttribute('aria-label', '1 photo');
 
 		// The map placeholder's honest copy (the tile decision is a
 		// later update; the city grouping comes first).
