@@ -82,9 +82,6 @@
 	const firstLoad = $derived(places.length === 0 && status === 'loading');
 	const settledEmpty = $derived(places.length === 0 && status === 'ready');
 
-	/** The head's summary line: the cities and the photos counted honestly. */
-	const totalPhotos = $derived(places.reduce((total, place) => total + place.assetCount, 0));
-
 	// The shared unknown-code fallback (see $lib/i18n/errors): an
 	// unknown error code has no i18n key, and svelte-i18n would echo
 	// the key itself -- such codes render the generic message. The
@@ -133,66 +130,80 @@
 	<title>{$_('nav_places')} · lumemor</title>
 </svelte:head>
 
-<section class="places max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
-	<!-- The page head: the section's title and the honest summary. -->
-	<div class="places__head flex items-baseline gap-3 mb-4">
-		<h1 class="places__title m-0 font-display font-bold text-[24px] leading-[1.3] text-text">{$_('nav_places')}</h1>
-		<span class="places__sub text-[13px] leading-[1.4] text-text-faint tabular-nums"
-			>{$_('places_head_sub', { values: { cities: places.length, photos: totalPhotos } })}</span
-		>
+<section class="places max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+	<!-- THE ONE ROW: the page title with the city count on the left,
+	     no action on the right (the view is the grid alone until the
+	     map's own decision lands), one divider under the row. The
+	     count follows the CARDS (one card IS one city), never the
+	     photos behind them. -->
+	<div class="places__toolbar flex items-center gap-3 pb-4 border-b border-border">
+		<h1 class="places__title m-0 font-display font-bold text-[20px] leading-[1.3] text-text">
+			{$_('nav_places')}
+			{#if status === 'ready'}
+				<span
+					class="places__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft tabular-nums"
+				>
+					· {$_('places_bar_count', { values: { count: places.length } })}
+				</span>
+			{/if}
+		</h1>
 	</div>
 
-	{#if firstLoad}
-		<p class="places__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-			{$_('places_loading')}
-		</p>
-	{:else if settledEmpty}
-		<div
-			class="places__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-		>
-			<h2 class="text-[22px] mb-2">{$_('places_empty_title')}</h2>
-			<p class="text-text-soft">{$_('places_empty_body')}</p>
-		</div>
-	{:else if status === 'error' && places.length === 0}
-		<div
-			class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+	<div class="places__content pt-4">
+		{#if firstLoad}
+			<p class="places__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+				{$_('places_loading')}
+			</p>
+		{:else if settledEmpty}
+			<div
+				class="places__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
 			>
-		</div>
-	{:else}
-		<div class="places__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3.5">
-			{#each places as place (place.placeId)}
-				{@render card(place)}
-			{/each}
-		</div>
-	{/if}
+				<p class="places__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
+					{$_('places_empty_title')}
+				</p>
+				<p class="text-text-soft">{$_('places_empty_body')}</p>
+			</div>
+		{:else if status === 'error' && places.length === 0}
+			<div
+				class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
+				<p>{errorText(errorKey)}</p>
+				<Button variant="primary" onclick={() => void runLoad(false)}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{:else}
+			<div class="places__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3.5">
+				{#each places as place (place.placeId)}
+					{@render card(place)}
+				{/each}
+			</div>
+		{/if}
 
-	{#if status === 'error' && places.length > 0}
-		<!-- A failed convergence while cards exist: the page stays,
+		{#if status === 'error' && places.length > 0}
+			<!-- A failed convergence while cards exist: the page stays,
 		     the next event retries; the box keeps the retry affordance. -->
-		<div
-			class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void runLoad(false)}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+			<div
+				class="places__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
 			>
-		</div>
-	{/if}
+				<p>{errorText(errorKey)}</p>
+				<Button variant="primary" onclick={() => void runLoad(false)}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{/if}
 
-	<!-- The map placeholder's honest copy: the tile source is a
+		<!-- The map placeholder's honest copy: the tile source is a
 	     self-hosting decision of a later update; the city grouping
 	     comes first. -->
-	<p
-		class="places__map m-0 mt-5 py-5 px-6 text-center font-body font-normal text-[13px] leading-[1.5] text-text-faint border border-dashed border-border-strong rounded-card"
-	>
-		{$_('places_map_placeholder')}
-	</p>
+		<p
+			class="places__map m-0 mt-5 py-5 px-6 text-center font-body font-normal text-[13px] leading-[1.5] text-text-faint border border-dashed border-border-strong rounded-card"
+		>
+			{$_('places_map_placeholder')}
+		</p>
+	</div>
 </section>
 
 {#snippet card(place: PlaceSummary)}
