@@ -407,12 +407,12 @@ test.describe('the signed-in scenes', () => {
 		// The hidden photo is restorable from the hidden page and comes
 		// back to this wall (the restored event's convergence).
 		await page.goto('/hidden');
-		await expect(page.locator('.wall .tile')).toHaveCount(1);
-		const hiddenTile = page.locator('.wall .tile').first();
+		await expect(page.locator('.wall-page .tile')).toHaveCount(1);
+		const hiddenTile = page.locator('.wall-page .tile').first();
 		await hiddenTile.hover();
 		await hiddenTile.locator('.tile__check').click();
 		await page.locator('.batchbar').getByRole('button', { name: 'Unhide', exact: true }).click();
-		await expect(page.locator('.wall .tile')).toHaveCount(0);
+		await expect(page.locator('.wall-page .tile')).toHaveCount(0);
 
 		await page.goto('/people');
 		await expect(

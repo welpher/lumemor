@@ -194,11 +194,20 @@
 			}
 		});
 		// The photo set changed under the profile row (a batch hide or
-		// trash, a purge, a restore): the count is the server's, so the
-		// detail converges. Uploads and mere edits change no count.
+		// unhide -- both publish asset.updated --, a trash, a purge, a
+		// restore): the count is the server's, so the detail converges.
+		// A mere metadata edit also rides asset.updated, and its cost is
+		// one cheap read per event (the wall converges the tile anyway).
 		const unsubscribeAssets = subscribeAssetEvents((event) => {
-			if (event.name === 'asset.trashed' || event.name === 'asset.deleted' || event.name === 'asset.restored') {
-				void convergeDetail();
+			switch (event.name) {
+				case 'asset.updated':
+				case 'asset.trashed':
+				case 'asset.deleted':
+				case 'asset.restored':
+					void convergeDetail();
+					break;
+				default:
+					break;
 			}
 		});
 		return () => {
