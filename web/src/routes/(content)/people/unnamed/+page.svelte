@@ -25,9 +25,10 @@
 	import { subscribeFaceEvents, subscribePersonEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ScanFace from '@lucide/svelte/icons/scan-face';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -220,28 +221,16 @@
 
 	<div class="unnamed__content pt-4">
 		{#if firstLoad}
-			<p class="unnamed__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-				{$_('people_unnamed_loading')}
-			</p>
+			<LoadingLine label={$_('people_unnamed_loading')} />
 		{:else if settledEmpty}
-			<div
-				class="unnamed__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-			>
-				<p class="unnamed__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
-					{$_('people_unnamed_empty_title')}
-				</p>
-				<p class="m-0 text-text-soft">{$_('people_unnamed_empty')}</p>
-			</div>
+			<StateCard title={$_('people_unnamed_empty_title')} body={$_('people_unnamed_empty')} />
 		{:else if status === 'error' && items.length === 0}
-			<div
-				class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText(errorKey)}</p>
-				<Button variant="primary" onclick={() => void loadMore()}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText(errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void loadMore()}
+			/>
 		{:else}
 			<div class="unnamed__grid grid grid-cols-[repeat(auto-fill,minmax(min(160px,100%),1fr))] gap-3">
 				{#each items as cluster (cluster.clusterId)}
@@ -285,15 +274,12 @@
 		{#if status === 'error' && items.length > 0}
 			<!-- A failed follow-up page while cards exist: the page stays,
 			     the retry re-runs the same cursor (an idempotent position). -->
-			<div
-				class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText(errorKey)}</p>
-				<Button variant="primary" onclick={() => void loadMore()}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText(errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void loadMore()}
+			/>
 		{/if}
 
 		{#if !observerAvailable && hasMore && status === 'ready'}

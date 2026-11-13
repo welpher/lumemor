@@ -64,14 +64,14 @@
 	import { subscribeAssetEvents, subscribePersonEvents, type PersonEvent } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { toast } from '$lib/components/toast.svelte';
-	import Button from '$lib/components/Button.svelte';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import PersonNameDialog from '$lib/people/PersonNameDialog.svelte';
 	import PersonAvatarDialog from '$lib/people/PersonAvatarDialog.svelte';
 	import PersonBirthdateDialog from '$lib/people/PersonBirthdateDialog.svelte';
 	import PersonPickerDialog from '$lib/people/PersonPickerDialog.svelte';
 	import PersonWall from '$lib/people/PersonWall.svelte';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import GitMerge from '@lucide/svelte/icons/git-merge';
@@ -456,19 +456,14 @@
 	</header>
 
 	{#if firstLoad}
-		<p class="person-detail__status my-12 text-center text-text-soft animate-loading-in" role="status">
-			{$_('people_loading')}
-		</p>
+		<LoadingLine label={$_('people_loading')} />
 	{:else if status === 'error'}
-		<div
-			class="person-detail__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void convergeDetail()}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-			>
-		</div>
+		<StateCard
+			tone="error"
+			body={errorText(errorKey)}
+			actionLabel={$_('action_retry')}
+			onaction={() => void convergeDetail()}
+		/>
 	{:else if detail !== null}
 		<!-- THE PROFILE ROW: the avatar, the name (with its pencil),
 		     and the meta line -- the photo count and the birth date. -->

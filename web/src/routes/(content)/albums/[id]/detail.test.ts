@@ -1266,7 +1266,7 @@ test('an unknown or invisible album renders the not-found error with a retry', a
 	const page = mountPage();
 	await settle();
 
-	const failure = document.body.querySelector('.album-detail__failure');
+	const failure = document.body.querySelector('.state-card--error');
 	expect(failure?.getAttribute('role')).toBe('alert');
 	expect(failure?.textContent).toContain('This album does not exist or is not visible to you.');
 	// The wall stays gated behind the metadata: no tiles, no empty
@@ -1345,7 +1345,7 @@ test('SSE album.deleted renders the not-found error state', async () => {
 	fireAlbumEvent({ id: 4, name: 'album.deleted', albumId: 'al1', userId: 'u1' });
 	await settle();
 
-	expect(document.body.querySelector('.album-detail__failure')?.textContent).toContain(
+	expect(document.body.querySelector('.state-card--error')?.textContent).toContain(
 		'This album does not exist or is not visible to you.'
 	);
 	expect(tiles()).toHaveLength(0);

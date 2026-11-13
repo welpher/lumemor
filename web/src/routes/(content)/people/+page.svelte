@@ -25,8 +25,8 @@
 	import { listPeople, listUnnamedPeople, type PersonSummary } from '$lib/api/people';
 	import { subscribeAssetEvents, subscribePersonEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
-	import Button from '$lib/components/Button.svelte';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import Search from '@lucide/svelte/icons/search';
 	import ScanFace from '@lucide/svelte/icons/scan-face';
 	import ImageIcon from '@lucide/svelte/icons/image';
@@ -190,28 +190,16 @@
 
 	<div class="people__content pt-4">
 		{#if firstLoad}
-			<p class="people__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-				{$_('people_loading')}
-			</p>
+			<LoadingLine label={$_('people_loading')} />
 		{:else if settledEmpty}
-			<div
-				class="people__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-			>
-				<p class="people__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
-					{$_('people_empty_title')}
-				</p>
-				<p class="m-0 text-text-soft">{$_('people_empty')}</p>
-			</div>
+			<StateCard title={$_('people_empty_title')} body={$_('people_empty')} />
 		{:else if status === 'error' && people.length === 0}
-			<div
-				class="people__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText(errorKey)}</p>
-				<Button variant="primary" onclick={() => void runLoad(false)}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText(errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void runLoad(false)}
+			/>
 		{:else if shown.length === 0}
 			<!-- The filter matched nothing: the grid empties, the copy
 			     says why (the server's list is untouched). -->
@@ -263,15 +251,12 @@
 		{#if status === 'error' && people.length > 0}
 			<!-- A failed convergence while cards exist: the page stays,
 			     the next event retries; the box keeps the retry affordance. -->
-			<div
-				class="people__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText(errorKey)}</p>
-				<Button variant="primary" onclick={() => void runLoad(false)}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText(errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void runLoad(false)}
+			/>
 		{/if}
 	</div>
 </section>

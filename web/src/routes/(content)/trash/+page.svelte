@@ -25,6 +25,8 @@
 	//   reuses the viewer client's deleteAsset.
 	import { _ } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import PhotoTile from '$lib/timeline/PhotoTile.svelte';
@@ -225,25 +227,11 @@
 		</p>
 
 		{#if firstLoad}
-			<p class="trash__status my-12 text-center text-text-soft animate-loading-in" role="status">
-				{$_('trash_loading')}
-			</p>
+			<LoadingLine label={$_('trash_loading')} />
 		{:else if settledEmpty}
-			<div
-				class="trash__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-			>
-				<p class="text-text-soft">{$_('trash_empty')}</p>
-			</div>
+			<StateCard title={$_('trash_empty_title')} body={$_('trash_empty_body')} />
 		{:else if status === 'error'}
-			<div
-				class="trash__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText(errorKey)}</p>
-				<Button variant="primary" onclick={retry}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard tone="error" body={errorText(errorKey)} actionLabel={$_('action_retry')} onaction={retry} />
 		{:else}
 			<div class="trash__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3">
 				{#each items as entry (entry.id)}

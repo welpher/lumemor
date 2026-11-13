@@ -164,9 +164,9 @@ test('an empty grouping renders the empty state', async () => {
 	await settle();
 
 	expect(cards()).toHaveLength(0);
-	const empty = document.body.querySelector('.places__empty');
+	const empty = document.body.querySelector('.state-card');
 	expect(empty?.textContent).toContain('No places yet');
-	expect(empty?.textContent).toContain('Photos whose GPS resolves to a city');
+	expect(empty?.textContent).toContain('Photos land here by city once their location resolves.');
 	// The map placeholder stays honest even with nothing to show.
 	expect(document.body.querySelector('.places__map')).not.toBeNull();
 

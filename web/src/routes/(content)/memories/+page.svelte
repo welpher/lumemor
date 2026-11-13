@@ -31,8 +31,9 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { ambiguousLabels, displayNameOf } from '$lib/identity';
 	import Button from '$lib/components/Button.svelte';
+	import StateCard from '$lib/components/StateCard.svelte';
+	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import CreateMemoryDialog from '$lib/memories/CreateMemoryDialog.svelte';
-	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Plus from '@lucide/svelte/icons/plus';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -229,30 +230,25 @@
 
 	<div class="memories__content pt-4">
 		{#if firstLoad}
-			<p class="memories__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-				{$_('memories_loading')}
-			</p>
+			<LoadingLine label={$_('memories_loading')} />
 		{:else if settledEmpty}
-			<div
-				class="memories__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-			>
-				<p class="memories__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
-					{$_('memories_own_section')}
-				</p>
-				<!-- The empty copy points at the wall-selection entry: the
-			     first memory begins from the photos, not from here. -->
-				<p class="text-text-soft">{$_('memories_empty')}</p>
-			</div>
+			<StateCard
+				title={$_('memories_empty_title')}
+				body={$_('memories_empty_body')}
+				actionLabel={$_('memories_new')}
+				onaction={() => {
+					createErrorKey = '';
+					createSkipped = null;
+					createOpen = true;
+				}}
+			/>
 		{:else if status === 'error' && memories.length === 0}
-			<div
-				class="memories__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText(errorKey)}</p>
-				<Button variant="primary" onclick={() => void runLoad(false)}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText(errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void runLoad(false)}
+			/>
 		{:else}
 			<!-- ONE grid: own and shared memories mixed by recency, no
 			     group labels. -->
@@ -266,15 +262,12 @@
 		{#if status === 'error' && memories.length > 0}
 			<!-- A failed convergence while cards exist: the page stays, the
 		     next event retries; the box keeps the retry affordance. -->
-			<div
-				class="memories__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-				role="alert"
-			>
-				<p>{errorText(errorKey)}</p>
-				<Button variant="primary" onclick={() => void runLoad(false)}
-					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-				>
-			</div>
+			<StateCard
+				tone="error"
+				body={errorText(errorKey)}
+				actionLabel={$_('action_retry')}
+				onaction={() => void runLoad(false)}
+			/>
 		{/if}
 	</div>
 </section>
