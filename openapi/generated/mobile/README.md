@@ -146,7 +146,8 @@ Class | Method | HTTP request | Description
 [*PeopleApi*](doc/PeopleApi.md) | [**listUnnamedPeople**](doc/PeopleApi.md#listunnamedpeople) | **GET** /people/unnamed | The caller&#39;s unnamed face clusters, one keyset page at a time.
 [*PeopleApi*](doc/PeopleApi.md) | [**mergePeople**](doc/PeopleApi.md#mergepeople) | **POST** /people/merge | Fold 1-50 face clusters into one surviving cluster.
 [*PeopleApi*](doc/PeopleApi.md) | [**moveFace**](doc/PeopleApi.md#moveface) | **POST** /faces/{faceId}/move | Move one face onto an existing face cluster.
-[*PeopleApi*](doc/PeopleApi.md) | [**setPersonHidden**](doc/PeopleApi.md#setpersonhidden) | **PUT** /people/{clusterId}/hidden | Flip the caller&#39;s hidden switch of one face cluster.
+[*PeopleApi*](doc/PeopleApi.md) | [**setPersonAvatar**](doc/PeopleApi.md#setpersonavatar) | **PUT** /people/{clusterId}/avatar | Pick the face one person&#39;s avatar renders.
+[*PeopleApi*](doc/PeopleApi.md) | [**setPersonBirthdate**](doc/PeopleApi.md#setpersonbirthdate) | **PUT** /people/{clusterId}/birthdate | Set or clear one person&#39;s birth date.
 [*PeopleApi*](doc/PeopleApi.md) | [**unlabelPerson**](doc/PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
 [*PlacesApi*](doc/PlacesApi.md) | [**listPlaces**](doc/PlacesApi.md#listplaces) | **GET** /places | The caller&#39;s city grouping.
 [*SearchApi*](doc/SearchApi.md) | [**searchAssets**](doc/SearchApi.md#searchassets) | **GET** /search | The unified search, one text box, two merged paths, filter facets.
@@ -242,6 +243,8 @@ Class | Method | HTTP request | Description
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
  - [PairingTokenResponse](doc/PairingTokenResponse.md)
  - [PasswordChangeRequest](doc/PasswordChangeRequest.md)
+ - [PersonAvatarResponse](doc/PersonAvatarResponse.md)
+ - [PersonBirthdateResponse](doc/PersonBirthdateResponse.md)
  - [PersonFacetCount](doc/PersonFacetCount.md)
  - [PersonLabel](doc/PersonLabel.md)
  - [PersonLabelResponse](doc/PersonLabelResponse.md)
@@ -255,7 +258,8 @@ Class | Method | HTTP request | Description
  - [SearchResponse](doc/SearchResponse.md)
  - [ServerInfo](doc/ServerInfo.md)
  - [SessionInfo](doc/SessionInfo.md)
- - [SetPersonHiddenRequest](doc/SetPersonHiddenRequest.md)
+ - [SetPersonAvatarRequest](doc/SetPersonAvatarRequest.md)
+ - [SetPersonBirthdateRequest](doc/SetPersonBirthdateRequest.md)
  - [StorageSettingsResponse](doc/StorageSettingsResponse.md)
  - [StorageSettingsUpdateRequest](doc/StorageSettingsUpdateRequest.md)
  - [TagAssetsRequest](doc/TagAssetsRequest.md)

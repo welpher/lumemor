@@ -20,6 +20,7 @@ function face(id: string, overrides: Record<string, unknown> = {}): AssetFaceSum
 		thumbnail: `/api/v1/faces/${id}/thumbnail`,
 		clusterId: `c-${id}`,
 		label: null,
+		birthDate: null,
 		...overrides
 	} as AssetFaceSummary;
 }

@@ -292,8 +292,14 @@
 		switch (event.name) {
 			case 'person.labeled':
 			case 'person.unlabeled':
-			case 'person.hidden':
 				return faces.some((face) => face.clusterId === event.clusterId);
+			// The entity's attributes (birth date, avatar) change no
+			// chip on this page -- they are the person detail's
+			// chrome -- so the asset detail does not converge on
+			// them.
+			case 'person.birthdate_updated':
+			case 'person.avatar_updated':
+				return false;
 			case 'person.merged':
 				return faces.some(
 					(face) =>

@@ -196,23 +196,25 @@ export interface paths {
          *     - `face.clustered`
          *     - `job.started`, `job.progress`, `job.finished`
          *     - `pairing.token_created`
-         *     - `person.labeled`, `person.unlabeled`, `person.hidden`,
+         *     - `person.labeled`, `person.unlabeled`,
+         *       `person.birthdate_updated`, `person.avatar_updated`,
          *       `person.merged`, `person.face_moved`,
          *       `person.face_clustered`, `person.face_detached`
          *     - `session.started`, `session.revoked`
          *     - `server.settings-changed`
          *
          *     The `person.*` events report the people surface's label,
-         *     hidden, merge and face-write writes. Every payload carries ONLY
-         *     the acting user's `userId` beside the cluster (or face) id:
-         *     the label text and the hidden switch are one account's
-         *     private state and never ride the shared stream. A
-         *     subscriber filters by the ids it renders, never by another
-         *     account's change. `person.merged` carries the dissolved
-         *     source cluster ids comma-joined as `mergedClusterIds`,
-         *     `person.face_moved` carries the face's new `clusterId`,
-         *     `person.face_clustered` the newly created cluster's id, and
-         *     `person.face_detached` the cluster the face left.
+         *     entity-attribute (birth date, avatar), merge and face-write
+         *     writes. Every payload carries ONLY the acting user's `userId`
+         *     beside the cluster (or face) id: the label text and the
+         *     birth date are state the subscribers refetch, never bus
+         *     payload. A subscriber filters by the ids it renders, never by
+         *     another account's change. `person.merged` carries the
+         *     dissolved source cluster ids comma-joined as
+         *     `mergedClusterIds`, `person.face_moved` carries the face's
+         *     new `clusterId`, `person.face_clustered` the newly created
+         *     cluster's id, and `person.face_detached` the cluster the face
+         *     left.
          *
          *     The `album.*` events report the album write surface: the
          *     directory album's and the memory's creation
@@ -448,6 +450,17 @@ export interface paths {
          *     caller); an album that does not exist or is not visible
          *     answers the empty list, not an error, so album ids cannot be
          *     probed for existence through this endpoint.
+         *
+         *     `clusterId` narrows the response to one face cluster's own
+         *     photos -- the person detail's photo wall: the distinct live
+         *     assets carrying at least one of the cluster's faces that the
+         *     caller can see, in the same ordering and per-user favourite
+         *     flags, deduplicated by asset (two faces of the person in one
+         *     photo are one item). The two narrows are mutually exclusive:
+         *     a request carrying both answers 400 `VALIDATION_FAILED`. A
+         *     cluster that does not exist or is not visible to the caller
+         *     answers the empty list, not an error -- the same
+         *     anti-enumeration shape as `albumId`.
          */
         get: operations["getTimeline"];
         put?: never;
@@ -1898,16 +1911,20 @@ export interface paths {
          *     The per-user-state semantics of the people domain: face clusters are
          *     GLOBAL structures of the instance (the same person's faces
          *     land in one cluster whatever account uploaded the photos),
-         *     while names and the hidden switch are PRIVATE per user --
-         *     two accounts label the same cluster independently and
-         *     neither sees the other's label. `faceCount` is honest per
-         *     caller: it counts only the cluster's faces on caller-visible
-         *     assets, so the same cluster can show different counts to
-         *     different accounts.
+         *     while names are PRIVATE per user -- two accounts label the
+         *     same cluster independently and neither sees the other's
+         *     label. The people domain has exactly two states: named (this
+         *     list) and unnamed (`GET /people/unnamed`). There is no third
+         *     state: hiding a person retired whole (the per-user switch,
+         *     its badge and its events are gone; removing the caller's
+         *     name -- `DELETE /people/{clusterId}/label` -- is the way a
+         *     person leaves this list).
          *
-         *     Hidden people STAY in this list carrying `isHidden` true:
-         *     the switch is a badge for the web UI, not a filter -- the
-         *     caller labeled the person and keeps seeing them, flagged.
+         *     `photoCount` is honest per caller: the number of DISTINCT
+         *     live assets the cluster has a face on that the caller can
+         *     see, so the same cluster can show different counts to
+         *     different accounts. It counts photos, not faces -- two faces
+         *     of one person in one photo are one photo.
          *
          *     The list is sorted by name, case-insensitively, with the
          *     cluster id as the tiebreak.
@@ -1951,6 +1968,11 @@ export interface paths {
          *     when another page exists; the first page omits the `cursor`
          *     parameter.
          *
+         *     `totalCount` is the caller's whole unnamed region -- every
+         *     cluster this listing would walk -- so a page never has to be
+         *     walked to its end to count the region (the people list's
+         *     unnamed entry badge and this page's own bar count read it).
+         *
          *     `limit` bounds the page size: absent means the default of
          *     60; a value below 1 or over 200 answers 400
          *     `VALIDATION_FAILED`.
@@ -1974,14 +1996,25 @@ export interface paths {
         /**
          * One face cluster's detail as the caller sees it.
          * @description The detail view of one face cluster: the caller's own label
-         *     state and the cluster's faces on assets visible to the
-         *     caller, strongest score first with the face id as the
-         *     tiebreak.
+         *     state, the person entity's global attributes and the
+         *     cluster's faces on assets visible to the caller, strongest
+         *     score first with the face id as the tiebreak.
          *
          *     `label` is null when the caller has not labeled the cluster
          *     (the unnamed state). It is the CALLING user's label or no
          *     label at all: another account's label never shows here
          *     (clusters are global, labels are private per user).
+         *
+         *     `birthDate` and `avatarFaceId` are the PERSON ENTITY's
+         *     attributes, not the caller's: one birthday per person, every
+         *     account reading the same value (a family agrees on the
+         *     person's birthday), and one avatar face per cluster whatever
+         *     account picked it. Both are independent of naming -- an
+         *     unnamed cluster carries them too.
+         *
+         *     `photoCount` is the count the detail bar renders: the
+         *     number of DISTINCT live assets the cluster has a face on
+         *     that the caller can see (photos, not faces).
          *
          *     404 has a double meaning by design: the cluster id is
          *     unknown, or the cluster exists but none of its faces sits on
@@ -2034,11 +2067,12 @@ export interface paths {
          *     (two grandparents named Grace), so a de-duplication hint is
          *     a web-UI suggestion, never a server rule.
          *
-         *     Re-labeling an already labeled cluster renames it in place:
-         *     the hidden switch keeps its state (a rename is not an
-         *     unhide). The label is the caller's private state -- another
-         *     account labeling the same cluster writes its own row and
-         *     neither sees the other's.
+         *     Re-labeling an already labeled cluster renames it in place.
+         *     The label is the caller's private state -- another account
+         *     labeling the same cluster writes its own row and neither
+         *     sees the other's -- and it is the ONLY private state of the
+         *     people domain: the person entity's birthday and avatar ride
+         *     the cluster's own columns, shared by every account.
          *
          *     The write publishes `person.labeled` on the activity stream
          *     with the acting user's id in the payload.
@@ -2069,7 +2103,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/people/{clusterId}/hidden": {
+    "/people/{clusterId}/birthdate": {
         parameters: {
             query?: never;
             header?: never;
@@ -2078,29 +2112,77 @@ export interface paths {
         };
         get?: never;
         /**
-         * Flip the caller's hidden switch of one face cluster.
-         * @description Sets the hidden switch on the calling user's label row of one
-         *     cluster. The switch rides on the label row (`user_face_labels`
-         *     carries `name NOT NULL`), so hiding requires the caller to
-         *     have named the cluster first: hiding an UNLABELED cluster
-         *     answers 400 `VALIDATION_FAILED` whose `details` carry the
-         *     message key `person_hide_requires_label` -- the web UI offers
-         *     the naming dialog instead.
+         * Set or clear one person's birth date.
+         * @description Writes the PERSON ENTITY's birth date: one value per cluster,
+         *     read by every account (`GET /people/{clusterId}` serves it to
+         *     all of them). It is not the caller's private state -- a
+         *     family agrees on the person's birthday -- and it is
+         *     independent of naming: an unnamed cluster carries a birth
+         *     date too, and `person_birthdate` (the profile row) renders it
+         *     as soon as it is set.
          *
-         *     Hidden people STAY in the caller's `GET /people` list
-         *     carrying `isHidden` true (badge semantics, not a filter).
-         *     The switch is the caller's private state: hiding a cluster
-         *     never touches another account's label row.
+         *     The use of the value is honest: the person's age at the time
+         *     each photo was taken, and the birthday memories the product
+         *     will build later. Nothing else reads it.
          *
-         *     The cluster must be visible to the caller -- an unknown or
-         *     invisible cluster id answers the same byte-identical 404
-         *     `PERSON_NOT_FOUND` as every people read (anti-enumeration).
+         *     Any logged-in user who can see the cluster may write it (at
+         *     least one of the cluster's faces sits on an asset visible to
+         *     them); an unknown or invisible cluster id answers the same
+         *     byte-identical 404 `PERSON_NOT_FOUND` as every people read
+         *     (anti-enumeration -- cluster ids cannot be probed).
          *
-         *     The write publishes `person.hidden` on the activity stream
-         *     in both directions (the payload carries the new `isHidden`
-         *     value beside the acting user's id).
+         *     `birthDate` is the wire's `date` form (`YYYY-MM-DD`): a null
+         *     clears the value. A malformed date answers 400
+         *     `VALIDATION_FAILED` naming the `birthDate` field.
+         *
+         *     The write publishes `person.birthdate_updated` on the
+         *     activity stream with the acting user's id in the payload (the
+         *     person entity's attributes are shared state, so every open
+         *     view of the person converges).
          */
-        put: operations["setPersonHidden"];
+        put: operations["setPersonBirthdate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/{clusterId}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Pick the face one person's avatar renders.
+         * @description Writes the PERSON ENTITY's avatar face: the cluster's chosen
+         *     face, read by every account (the person card on
+         *     `GET /people` and the detail's profile row both render it).
+         *     Like the birth date it is not the caller's private state, and
+         *     it does not depend on naming -- an unnamed cluster carries an
+         *     avatar too.
+         *
+         *     The face must belong to the cluster and sit on an asset
+         *     visible to the caller (the avatar picker offers exactly the
+         *     cluster's caller-visible faces); anything else -- a face of
+         *     another cluster, an invisible face, an unknown cluster --
+         *     answers the same byte-identical 404 `PERSON_NOT_FOUND` as
+         *     every people write (anti-enumeration).
+         *
+         *     The pick is advisory to the clustering, never a structural
+         *     write: the representative face the clustering maintains for
+         *     merges and face moves is untouched, and a face that later
+         *     leaves the cluster (a move, a detach, a purged asset) simply
+         *     stops counting -- the read falls back to the cluster's
+         *     best-scoring caller-visible face.
+         *
+         *     The write publishes `person.avatar_updated` on the activity
+         *     stream with the acting user's id in the payload.
+         */
+        put: operations["setPersonAvatar"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4625,10 +4707,13 @@ export interface components {
         };
         /**
          * @description One face of the asset detail's `faces` array: the crop's
-         *     identity, the detection score, the face's cluster and the
-         *     CALLER's label of that cluster. The label is per-user state:
-         *     another account's label of the same global cluster never
-         *     shows here. `clusterId` is null while the face waits for its
+         *     identity, the detection score, the face's cluster, the
+         *     CALLER's label of that cluster and the person entity's birth
+         *     date. The label is per-user state: another account's label of
+         *     the same global cluster never shows here; the birth date is
+         *     the entity's own attribute (one value for every account) and
+         *     exists so the chip can render the person's age WHEN THIS PHOTO
+         *     WAS TAKEN. `clusterId` is null while the face waits for its
          *     first clustering assignment; such a face has no person yet and
          *     every assignment write on it answers the people surface's 404.
          */
@@ -4665,6 +4750,14 @@ export interface components {
              *     label.
              */
             label: components["schemas"]["PersonLabel"] | null;
+            /**
+             * @description The person's birth date (the entity's own attribute), or
+             *     null when unset or the face has no cluster. The client
+             *     computes the capture-time age from it and the asset's
+             *     `takenAt` -- the birth date's whole purpose beside the
+             *     birthday memories.
+             */
+            birthDate: string | null;
         };
         /**
          * @description One entry of the asset detail's `tags` array: the caller's
@@ -5161,10 +5254,11 @@ export interface components {
         };
         /**
          * @description One named person of the caller's people list: a global face
-         *     cluster carrying the caller's own label. The name and the
-         *     hidden switch are the caller's private label state --
-         *     another account labeling or hiding the same cluster never
-         *     changes this view.
+         *     cluster carrying the caller's own label. The name is the
+         *     caller's private label state -- another account labeling the
+         *     same cluster never changes this view. The person entity's
+         *     own attributes (the avatar) are shared: every account of the
+         *     family sees the same avatar face.
          */
         PersonSummary: {
             /**
@@ -5175,34 +5269,30 @@ export interface components {
             /** @description The caller's own label of the cluster. */
             name: string;
             /**
-             * @description The cluster's faces on assets visible to the caller --
-             *     the honest per-caller count, not the global member count.
+             * @description The number of DISTINCT live assets the cluster has a face
+             *     on that the caller can see -- photos, not faces, so two
+             *     faces of one person in one photo count once. Honest per
+             *     caller, never the global count.
              */
-            faceCount: number;
+            photoCount: number;
             /**
              * Format: uuid
-             * @description The face the person card renders: the cluster's
-             *     strongest-scoring face on a caller-visible live asset
-             *     (score descending, the face id ascending as the
-             *     tiebreak) -- the best face the CALLER can see, not the
-             *     cluster's global representative, so a card never crops
-             *     out of an asset the caller cannot view. The field is the
-             *     thumbnail's face id.
+             * @description The face the person card renders: the person's chosen
+             *     avatar face when it is a caller-visible live member of
+             *     the cluster, otherwise the cluster's strongest-scoring
+             *     caller-visible face (score descending, the face id
+             *     ascending as the tiebreak) -- the best face the CALLER
+             *     can see, never a face on an asset the caller cannot
+             *     view. The field is the thumbnail's face id.
              */
             representativeFaceId: string;
             /**
              * @description URL of the card's face crop: the face crop endpoint
-             *     `GET /api/v1/faces/{faceId}/thumbnail` with the
-             *     caller-visible best face's id.
+             *     `GET /api/v1/faces/{faceId}/thumbnail` with
+             *     `representativeFaceId`.
              * @example /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
              */
             thumbnail: string;
-            /**
-             * @description The caller's hidden switch for this person. Hidden people
-             *     stay listed carrying this flag (badge semantics); they
-             *     are not filtered out.
-             */
-            isHidden: boolean;
         };
         /**
          * @description One unnamed face cluster of the caller's unnamed region: a
@@ -5224,12 +5314,13 @@ export interface components {
             faceCount: number;
             /**
              * Format: uuid
-             * @description The face the cluster tile renders: the cluster's
-             *     strongest-scoring face on a caller-visible live asset
-             *     (score descending, the face id ascending as the
-             *     tiebreak) -- the best face the CALLER can see, not the
-             *     cluster's global representative, so a tile never crops
-             *     out of an asset the caller cannot view.
+             * @description The face the cluster tile renders: the person's chosen
+             *     avatar face when it is a caller-visible live member of
+             *     the cluster, otherwise the cluster's strongest-scoring
+             *     caller-visible face (score descending, the face id
+             *     ascending as the tiebreak) -- the best face the CALLER
+             *     can see, never a face on an asset the caller cannot
+             *     view.
              */
             representativeFaceId: string;
             /**
@@ -5253,11 +5344,19 @@ export interface components {
              *     exactly when this is the last page.
              */
             nextCursor?: string;
+            /**
+             * @description The caller's whole unnamed region: every cluster this
+             *     listing would walk, independent of the page size and the
+             *     cursor. The people list's unnamed entry badge and the
+             *     unnamed page's own count both read it.
+             */
+            totalCount: number;
         };
         /**
          * @description One face cluster's detail as the calling user sees it: the
-         *     caller's own label state and the cluster's faces on
-         *     caller-visible assets, strongest score first.
+         *     caller's own label state, the person entity's global
+         *     attributes and the cluster's faces on caller-visible assets,
+         *     strongest score first.
          */
         ClusterDetail: {
             /**
@@ -5273,6 +5372,24 @@ export interface components {
              */
             label: components["schemas"]["PersonLabel"] | null;
             /**
+             * @description The person's birth date (the entity's own attribute, one
+             *     value for every account), or null when unset. Rendered
+             *     locale-aware by the client (`Intl.DateTimeFormat`'s
+             *     numeric year/month/day -- never hand-assembled).
+             */
+            birthDate: string | null;
+            /**
+             * @description The face this person's avatar renders (the entity's own
+             *     attribute), or null when none was picked -- the reads
+             *     then fall back to the cluster's best caller-visible face.
+             */
+            avatarFaceId: string | null;
+            /**
+             * @description The number of DISTINCT live assets the cluster has a face
+             *     on that the caller can see (photos, not faces).
+             */
+            photoCount: number;
+            /**
              * @description The cluster's faces on assets visible to the caller,
              *     strongest score first with the face id as the tiebreak.
              *     Faces on other accounts' assets never appear.
@@ -5283,11 +5400,6 @@ export interface components {
         PersonLabel: {
             /** @description The caller's name for the person. */
             name: string;
-            /**
-             * @description The caller's hidden switch. Hidden people stay listed in
-             *     `GET /people` carrying this flag (badge semantics).
-             */
-            isHidden: boolean;
         };
         /**
          * @description One face of the cluster on an asset visible to the caller:
@@ -5345,22 +5457,57 @@ export interface components {
             name: string;
         };
         /**
-         * @description The caller's hidden switch for one face cluster. The switch
-         *     rides on the caller's label row, so hiding requires the
-         *     caller to have named the cluster first
-         *     (`person_hide_requires_label` otherwise).
+         * @description One person's birth date: a `YYYY-MM-DD` date, or null to
+         *     clear the stored value. The field is always present (a body
+         *     without it answers 400) so a clear is an explicit act.
          */
-        SetPersonHiddenRequest: {
+        SetPersonBirthdateRequest: {
+            /** @description The person's birth date, or null to clear it. */
+            birthDate: string | null;
+        };
+        /**
+         * @description One person's birth date after the write (the entity's own
+         *     attribute, shared by every account).
+         */
+        PersonBirthdateResponse: {
             /**
-             * @description true hides the person for the caller (a badge on their
-             *     people list, not a filter); false unhides.
-             * @example true
+             * Format: uuid
+             * @description Identifier of the face cluster.
              */
-            isHidden: boolean;
+            clusterId: string;
+            /**
+             * @description The stored birth date, or null when the person carries
+             *     none.
+             */
+            birthDate: string | null;
+        };
+        /**
+         * @description The face one person's avatar renders: one of the cluster's
+         *     own faces, on an asset visible to the caller.
+         */
+        SetPersonAvatarRequest: {
+            /**
+             * Format: uuid
+             * @description Identifier of the face to render as the avatar.
+             */
+            faceId: string;
+        };
+        /** @description One person's avatar face after the write. */
+        PersonAvatarResponse: {
+            /**
+             * Format: uuid
+             * @description Identifier of the face cluster.
+             */
+            clusterId: string;
+            /**
+             * Format: uuid
+             * @description The stored avatar face.
+             */
+            avatarFaceId: string;
         };
         /**
          * @description The calling user's label state of one face cluster after a
-         *     label or hidden write: the caller's own row only
+         *     label write: the caller's own row only
          *     (another account's label never shows here).
          */
         PersonLabelResponse: {
@@ -5371,8 +5518,6 @@ export interface components {
             clusterId: string;
             /** @description The caller's (trimmed) name for the person. */
             name: string;
-            /** @description The caller's hidden switch for this person. */
-            isHidden: boolean;
         };
         /**
          * @description One merge: 1-50 source clusters folded into one target
@@ -7147,6 +7292,12 @@ export interface operations {
                  */
                 limit?: number;
                 /**
+                 * @description Restrict the response to one face cluster's photos (the
+                 *     person detail's wall). Mutually exclusive with `albumId`;
+                 *     an unknown or invisible cluster answers the empty list.
+                 */
+                clusterId?: string;
+                /**
                  * @description Restrict the response to the timeline of this one album
                  *     (an album the caller owns or that is shared to the caller)
                  *     instead of the aggregate. An unknown or invisible album
@@ -7178,8 +7329,10 @@ export interface operations {
                 };
             };
             /**
-             * @description The pagination parameters are invalid: `cursor` is not a
-             *     value this endpoint produced, or `limit` is below 1.
+             * @description The parameters are invalid: `cursor` is not a value this
+             *     endpoint produced, `limit` is below 1, or the request
+             *     carries both `albumId` and `clusterId` (the narrows are
+             *     mutually exclusive).
              */
             400: {
                 headers: {
@@ -9443,7 +9596,7 @@ export interface operations {
         responses: {
             /**
              * @description The caller's label state of the cluster after the write:
-             *     the trimmed name and the current hidden switch.
+             *     the trimmed name.
              */
             200: {
                 headers: {
@@ -9561,7 +9714,7 @@ export interface operations {
             };
         };
     };
-    setPersonHidden: {
+    setPersonBirthdate: {
         parameters: {
             query?: never;
             header?: never;
@@ -9573,25 +9726,25 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetPersonHiddenRequest"];
+                "application/json": components["schemas"]["SetPersonBirthdateRequest"];
             };
         };
         responses: {
-            /** @description The caller's label state of the cluster after the flip. */
+            /**
+             * @description The person's birth date after the write (null when the
+             *     request cleared it).
+             */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PersonLabelResponse"];
+                    "application/json": components["schemas"]["PersonBirthdateResponse"];
                 };
             };
             /**
-             * @description The body is not valid JSON or lacks `isHidden` -- or the
-             *     caller has not labeled the cluster: hiding rides on the
-             *     label row, so an unlabeled cluster answers
-             *     `VALIDATION_FAILED` with the message key
-             *     `person_hide_requires_label` in `details.key`.
+             * @description The body is not valid JSON, or `birthDate` is neither a
+             *     `YYYY-MM-DD` date nor null.
              */
             400: {
                 headers: {
@@ -9618,6 +9771,79 @@ export interface operations {
              *     the cluster exists but none of its faces sits on an
              *     asset visible to the caller -- indistinguishable by
              *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setPersonAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face cluster. */
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPersonAvatarRequest"];
+            };
+        };
+        responses: {
+            /** @description The person's avatar face after the write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonAvatarResponse"];
+                };
+            };
+            /**
+             * @description The body is not valid JSON, or `faceId` is missing or not
+             *     a UUID.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such person face for this caller: the cluster is
+             *     unknown or invisible, or the face does not belong to it
+             *     -- indistinguishable by design.
              */
             404: {
                 headers: {

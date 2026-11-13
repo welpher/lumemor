@@ -1012,6 +1012,53 @@ test('the rescan trigger POSTs and the job events drive the progress line', asyn
 	flushSync();
 });
 
+test('a run that finishes before the trigger answers still lands its final state', async () => {
+	// The race the warm stack makes routine: the scan's whole life is
+	// milliseconds, so its job events arrive BEFORE the trigger's
+	// response names the run. The handler buffers them by run id and
+	// the trigger adopts the settled state -- the line never sits at
+	// "queued" for a run that already finished.
+	detailState = {
+		...detailState,
+		type: 'directory',
+		rootPath: '/Volumes/Photos/family',
+		itemCount: 0,
+		inTimeline: true
+	};
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/assets/timeline?albumId=al1&limit=100': () => jsonResponse(200, { items: [] }),
+			'/api/v1/albums/al1/rescan': () => {
+				// The run's finish lands while the POST is in flight.
+				fireJobEvent({
+					id: 1,
+					name: 'job.finished',
+					jobRunId: 'run-fast',
+					kind: 'album_rescan',
+					total: 4,
+					done: 4,
+					failed: 0,
+					state: 'succeeded'
+				});
+				return jsonResponse(202, { jobRunId: 'run-fast' });
+			}
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Rescan').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	const progress = document.body.querySelector<HTMLElement>('[data-testid="album-rescan-progress"]');
+	expect(progress?.textContent).toContain('Rescan complete.');
+	// A settled run re-enables the trigger.
+	expect(buttonByLabel('Rescan').disabled).toBe(false);
+	unmount(page);
+	flushSync();
+});
+
 test('a failed rescan trigger surfaces the mapped error on the shared line', async () => {
 	detailState = {
 		...detailState,

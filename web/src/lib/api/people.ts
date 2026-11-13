@@ -1,20 +1,18 @@
 // The people surface's data client: the three reads of the people
 // domain (the named list, the unnamed region's keyset pages, the
-// cluster detail) and the seven writes (label upsert, label delete,
-// the hidden switch, the structural merge, the single-face move, the
-// from-face person creation, the single-face detach), each behind
-// the repo-wide error-code convention -- every failure outcome
-// carries the error code's i18n key (the envelope code lowercased,
-// 'internal' for a network failure or an unparseable body,
-// 'session_expired' for a 401).
+// cluster detail) and the eight writes (label upsert, label delete,
+// the person entity's birth date and avatar, the structural merge,
+// the single-face move, the from-face person creation, the
+// single-face detach), each behind the repo-wide error-code
+// convention -- every failure outcome carries the error code's i18n
+// key (the envelope code lowercased, 'internal' for a network
+// failure or an unparseable body, 'session_expired' for a 401).
 //
-// THE ONE MESSAGE-KEY EXCEPTION: the hidden switch rides on the
-// caller's label row, so hiding an UNLABELED cluster answers 400
-// VALIDATION_FAILED whose `details` carry the message key
-// `person_hide_requires_label` (not an error code of its own). The
-// hidden-write helper surfaces that key as the failure's errorKey --
-// the key exists in the i18n table, so the honest message renders
-// through the same resolveErrorText path every code takes.
+// THE MODEL ASYMMETRY the shapes carry: `label` is the caller's own
+// row (private per user), while `birthDate` and `avatarFaceId` are
+// the person ENTITY's attributes (one value per cluster, every
+// account reading the same). `photoCount` counts PHOTOS -- distinct
+// visible assets -- never faces.
 //
 // The media URLs (every `thumbnail` field) arrive as strings from
 // the server; no URL is assembled here.
@@ -37,8 +35,14 @@ export type PersonLabel = components['schemas']['PersonLabel'];
 /** One face of a cluster's detail. */
 export type FaceDetail = components['schemas']['FaceDetail'];
 
-/** The label/hidden write's response. */
+/** The label write's response. */
 export type PersonLabelResponse = components['schemas']['PersonLabelResponse'];
+
+/** The birth date write's response. */
+export type PersonBirthdateResponse = components['schemas']['PersonBirthdateResponse'];
+
+/** The avatar write's response. */
+export type PersonAvatarResponse = components['schemas']['PersonAvatarResponse'];
 
 /** The merge's response. */
 export type MergePeopleResponse = components['schemas']['MergePeopleResponse'];
@@ -52,8 +56,8 @@ export type ClusterFaceResponse = components['schemas']['ClusterFaceResponse'];
 /** The named list's outcome. */
 export type PeopleListResult = { ok: true; people: PersonSummary[] } | { ok: false; errorKey: string };
 
-/** One keyset page of the unnamed region. */
-export type UnnamedPage = { items: UnnamedClusterSummary[]; nextCursor: string | null };
+/** One keyset page of the unnamed region, with the region's whole count. */
+export type UnnamedPage = { items: UnnamedClusterSummary[]; nextCursor: string | null; totalCount: number };
 
 /** The unnamed page fetch's outcome. */
 export type UnnamedPageResult = { ok: true; page: UnnamedPage } | { ok: false; errorKey: string };
@@ -70,6 +74,12 @@ export type MutationResult = { ok: true } | { ok: false; errorKey: string };
 /** The merge's outcome. */
 export type MergeResult = { ok: true; merge: MergePeopleResponse } | { ok: false; errorKey: string };
 
+/** The birth date write's outcome (the response is the stored value). */
+export type BirthdateResult = { ok: true; birthdate: PersonBirthdateResponse } | { ok: false; errorKey: string };
+
+/** The avatar write's outcome (the response is the stored pick). */
+export type AvatarResult = { ok: true; avatar: PersonAvatarResponse } | { ok: false; errorKey: string };
+
 /** The face move's outcome. */
 export type MoveResult = { ok: true; move: MoveFaceResponse } | { ok: false; errorKey: string };
 
@@ -79,12 +89,7 @@ export type ClusterFaceResult = { ok: true; cluster: ClusterFaceResponse } | { o
 /** The contract's default page size of the unnamed region. */
 export const UNNAMED_PAGE_LIMIT = 60;
 
-/**
- * Map one failed response onto the error-code i18n key, carrying the
- * hidden switch's message key when the envelope's `details` hold it
- * (the one VALIDATION_FAILED whose honest rendering is a message,
- * not the generic validation text).
- */
+/** Map one failed response onto the error-code i18n key. */
 async function errorKeyFrom(response: Response): Promise<string> {
 	if (response.status === 401) {
 		// A dead session shows the session message, never
@@ -101,15 +106,9 @@ async function errorKeyFrom(response: Response): Promise<string> {
 	if (body === null || typeof body !== 'object') {
 		return 'internal';
 	}
-	const { code, details } = body as { code?: unknown; details?: unknown };
+	const { code } = body as { code?: unknown };
 	if (typeof code !== 'string' || code === '') {
 		return 'internal';
-	}
-	if (code === 'VALIDATION_FAILED' && details !== null && typeof details === 'object') {
-		const key = (details as { key?: unknown }).key;
-		if (key === 'person_hide_requires_label') {
-			return 'person_hide_requires_label';
-		}
 	}
 	return code.toLowerCase();
 }
@@ -137,10 +136,11 @@ function personFrom(body: unknown): PersonSummary | null {
 	) {
 		return null;
 	}
-	if (typeof candidate.faceCount !== 'number' || !Number.isInteger(candidate.faceCount) || candidate.faceCount < 0) {
-		return null;
-	}
-	if (candidate.isHidden !== true && candidate.isHidden !== false) {
+	if (
+		typeof candidate.photoCount !== 'number' ||
+		!Number.isInteger(candidate.photoCount) ||
+		candidate.photoCount < 0
+	) {
 		return null;
 	}
 	return body as PersonSummary;
@@ -170,7 +170,15 @@ function unnamedPageFrom(body: unknown): UnnamedPage | null {
 	if (body === null || typeof body !== 'object') {
 		return null;
 	}
-	const { items, nextCursor: cursor } = body as { items?: unknown; nextCursor?: unknown };
+	const {
+		items,
+		nextCursor: cursor,
+		totalCount
+	} = body as {
+		items?: unknown;
+		nextCursor?: unknown;
+		totalCount?: unknown;
+	};
 	if (!Array.isArray(items)) {
 		return null;
 	}
@@ -179,10 +187,19 @@ function unnamedPageFrom(body: unknown): UnnamedPage | null {
 			return null;
 		}
 	}
-	if (cursor !== undefined && typeof cursor !== 'string') {
+	// The cursor is absent on the last page; a null pointer is the
+	// same statement (the contract's `nextCursor` is optional).
+	if (cursor !== undefined && cursor !== null && typeof cursor !== 'string') {
 		return null;
 	}
-	return { items: items as UnnamedClusterSummary[], nextCursor: cursor ?? null };
+	if (typeof totalCount !== 'number' || !Number.isInteger(totalCount) || totalCount < 0) {
+		return null;
+	}
+	return {
+		items: items as UnnamedClusterSummary[],
+		nextCursor: typeof cursor === 'string' ? cursor : null,
+		totalCount
+	};
 }
 
 /** Structurally validate one face detail; null when it is not one. */
@@ -217,13 +234,28 @@ function detailFrom(body: unknown): ClusterDetail | null {
 	if (typeof candidate.clusterId !== 'string' || !Array.isArray(candidate.faces)) {
 		return null;
 	}
+	if (
+		typeof candidate.photoCount !== 'number' ||
+		!Number.isInteger(candidate.photoCount) ||
+		candidate.photoCount < 0
+	) {
+		return null;
+	}
+	// The entity's attributes are nullable but always present: an
+	// absent key is a broken body, a null is the honest unset state.
+	if (candidate.birthDate !== null && typeof candidate.birthDate !== 'string') {
+		return null;
+	}
+	if (candidate.avatarFaceId !== null && typeof candidate.avatarFaceId !== 'string') {
+		return null;
+	}
+	if (candidate.birthDate === undefined || candidate.avatarFaceId === undefined) {
+		return null;
+	}
 	const label = candidate.label;
 	if (label !== null && label !== undefined) {
 		const labelCandidate = label as Partial<PersonLabel>;
 		if (typeof labelCandidate.name !== 'string') {
-			return null;
-		}
-		if (labelCandidate.isHidden !== true && labelCandidate.isHidden !== false) {
 			return null;
 		}
 	}
@@ -244,15 +276,12 @@ function labelResponseFrom(body: unknown): PersonLabelResponse | null {
 	if (typeof candidate.clusterId !== 'string' || typeof candidate.name !== 'string') {
 		return null;
 	}
-	if (candidate.isHidden !== true && candidate.isHidden !== false) {
-		return null;
-	}
 	return body as PersonLabelResponse;
 }
 
 /**
  * GET /api/v1/people: the caller's named people, name-sorted by the
- * server. Hidden people stay listed carrying `isHidden` true.
+ * server. `photoCount` is the deduped visible photo count.
  */
 export async function listPeople(fetcher: typeof fetch = globalThis.fetch): Promise<PeopleListResult> {
 	let response: Response;
@@ -283,7 +312,9 @@ export async function listPeople(fetcher: typeof fetch = globalThis.fetch): Prom
  * GET /api/v1/people/unnamed: one keyset page of the caller's
  * unnamed clusters, largest face count first. `cursor` is null on
  * the first page and the previous response's `nextCursor` after it
- * (an opaque server string, never assembled here).
+ * (an opaque server string, never assembled here). `totalCount` is
+ * the whole region's size -- every page carries it, so no surface
+ * walks pages to count the region.
  */
 export async function listUnnamedPeople(
 	cursor: string | null,
@@ -334,9 +365,9 @@ export async function fetchPersonCluster(
 /**
  * PUT /api/v1/people/{clusterId}/label: upsert the caller's label.
  * The response is the caller's label state after the write (the
- * trimmed name and the surviving hidden switch), so the caller
- * adopts it as the fresh state -- no refetch. A rename keeps the
- * hidden switch; duplicate names are allowed (no NAME_TAKEN).
+ * trimmed name), so the caller adopts it as the fresh state -- no
+ * refetch. Duplicate names are allowed (no NAME_TAKEN), and the
+ * person entity's attributes are untouched by a rename.
  */
 export async function labelPerson(
 	clusterId: string,
@@ -393,25 +424,24 @@ export async function unlabelPerson(
 }
 
 /**
- * PUT /api/v1/people/{clusterId}/hidden: flip the caller's hidden
- * switch. The response is the label state after the flip. Hiding an
- * UNLABELED cluster answers 400 whose details carry the message key
- * `person_hide_requires_label` -- surfaced as that errorKey so the
- * page renders the honest message and offers the naming dialog.
+ * PUT /api/v1/people/{clusterId}/birthdate: write the person ENTITY's
+ * birth date -- one value per cluster, read by every account. `null`
+ * clears it (an explicit act, the wire's `YYYY-MM-DD` dates are the
+ * contract's `date` form). The response is the stored value.
  */
-export async function setPersonHidden(
+export async function setPersonBirthdate(
 	clusterId: string,
-	isHidden: boolean,
+	birthDate: string | null,
 	fetcher: typeof fetch = globalThis.fetch
-): Promise<LabelResult> {
+): Promise<BirthdateResult> {
 	let response: Response;
 	try {
 		response = await apiFetch(
-			`/api/v1/people/${encodeURIComponent(clusterId)}/hidden`,
+			`/api/v1/people/${encodeURIComponent(clusterId)}/birthdate`,
 			{
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ isHidden })
+				body: JSON.stringify({ birthDate })
 			},
 			fetcher
 		);
@@ -421,11 +451,62 @@ export async function setPersonHidden(
 	if (!response.ok) {
 		return { ok: false, errorKey: await errorKeyFrom(response) };
 	}
-	const label = labelResponseFrom(await bodyOf(response));
-	if (label === null || label.clusterId !== clusterId) {
+	const body = await bodyOf(response);
+	if (body === null || typeof body !== 'object') {
 		return { ok: false, errorKey: 'internal' };
 	}
-	return { ok: true, label };
+	const candidate = body as Partial<PersonBirthdateResponse>;
+	if (typeof candidate.clusterId !== 'string' || candidate.clusterId !== clusterId) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (candidate.birthDate !== null && typeof candidate.birthDate !== 'string') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, birthdate: body as PersonBirthdateResponse };
+}
+
+/**
+ * PUT /api/v1/people/{clusterId}/avatar: pick the face this person's
+ * avatar renders -- one pick per cluster, read by every account. The
+ * face must be one of the cluster's own, on an asset the caller can
+ * see; anything else answers the people surface's 404. The response
+ * is the stored pick.
+ */
+export async function setPersonAvatar(
+	clusterId: string,
+	faceId: string,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<AvatarResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`/api/v1/people/${encodeURIComponent(clusterId)}/avatar`,
+			{
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ faceId })
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const body = await bodyOf(response);
+	if (body === null || typeof body !== 'object') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const candidate = body as Partial<PersonAvatarResponse>;
+	if (
+		typeof candidate.clusterId !== 'string' ||
+		candidate.clusterId !== clusterId ||
+		typeof candidate.avatarFaceId !== 'string'
+	) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, avatar: body as PersonAvatarResponse };
 }
 
 /**

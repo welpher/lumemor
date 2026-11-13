@@ -19,11 +19,5 @@ void main() {
       // TODO
     });
 
-    // The caller's hidden switch for this person.
-    // bool isHidden
-    test('to test the property `isHidden`', () async {
-      // TODO
-    });
-
   });
 }

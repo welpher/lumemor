@@ -471,10 +471,11 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// bounded-JSON cost class as the timeline.
 				r.Get("/search", wrapper.SearchAssets)
 				// The people surface writes: the caller's
-				// label and hidden switches, the cluster
-				// merge, the single face move, the
-				// from-face person creation and the
-				// single-face detach. All are bounded row
+				// label, the person entity's birth date
+				// and avatar, the cluster merge, the
+				// single face move, the from-face person
+				// creation and the single-face detach.
+				// All are bounded row
 				// reads and writes (the merge touches at
 				// most 50 source clusters, the face writes
 				// exactly one row plus the vacated
@@ -484,7 +485,8 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// different method and path shape).
 				r.Put("/people/{clusterId}/label", wrapper.LabelPerson)
 				r.Delete("/people/{clusterId}/label", wrapper.UnlabelPerson)
-				r.Put("/people/{clusterId}/hidden", wrapper.SetPersonHidden)
+				r.Put("/people/{clusterId}/birthdate", wrapper.SetPersonBirthdate)
+				r.Put("/people/{clusterId}/avatar", wrapper.SetPersonAvatar)
 				r.Post("/people/merge", wrapper.MergePeople)
 				r.Post("/faces/{faceId}/move", wrapper.MoveFace)
 				// The from-face creation and the detach:

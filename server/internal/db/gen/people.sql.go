@@ -12,7 +12,8 @@ import (
 )
 
 const countClusterFaces = `-- name: CountClusterFaces :one
-SELECT count(*) AS face_count
+SELECT count(*) AS face_count,
+       count(DISTINCT a.id) AS photo_count
 FROM faces f
 JOIN assets a ON a.id = f.asset_id
 WHERE f.cluster_id = $1
@@ -27,17 +28,56 @@ type CountClusterFacesParams struct {
 	UserID    pgtype.UUID `json:"user_id"`
 }
 
-// The cluster's face count over caller-visible assets ONLY. A count
-// of zero covers both "unknown cluster" and "every face sits on
-// another account's assets or a share the caller lost" -- the double
-// meaning the detail endpoint answers with one indistinguishable
-// 404. This gate also fronts the label writes (a sharee names the
-// people they see; the label row stays the caller's own).
-func (q *Queries) CountClusterFaces(ctx context.Context, arg CountClusterFacesParams) (int64, error) {
+type CountClusterFacesRow struct {
+	FaceCount  int64 `json:"face_count"`
+	PhotoCount int64 `json:"photo_count"`
+}
+
+// The cluster's membership over caller-visible assets ONLY: the face
+// count (how many detected faces of this person the caller can see)
+// and the photo count (how many DISTINCT assets carry one). A face
+// count of zero covers both "unknown cluster" and "every face sits
+// on another account's assets or a share the caller lost" -- the
+// double meaning the detail endpoint answers with one
+// indistinguishable 404. This gate also fronts every people write (a
+// sharee names and dates the people they see; the writes stay the
+// caller's own).
+func (q *Queries) CountClusterFaces(ctx context.Context, arg CountClusterFacesParams) (CountClusterFacesRow, error) {
 	row := q.db.QueryRow(ctx, countClusterFaces, arg.ClusterID, arg.UserID)
-	var face_count int64
-	err := row.Scan(&face_count)
-	return face_count, err
+	var i CountClusterFacesRow
+	err := row.Scan(&i.FaceCount, &i.PhotoCount)
+	return i, err
+}
+
+const countUnnamedClusters = `-- name: CountUnnamedClusters :one
+SELECT count(*) AS cluster_count
+FROM face_clusters fc
+WHERE EXISTS (
+    SELECT 1
+    FROM faces f
+    JOIN assets a ON a.id = f.asset_id
+    WHERE f.cluster_id = fc.id
+      AND a.deleted_at IS NULL
+      AND a.is_hidden = false
+      AND a.is_component = false
+      AND caller_asset_visible($1, a.id)
+)
+AND NOT EXISTS (
+    SELECT 1 FROM user_face_labels l
+    WHERE l.user_id = $1 AND l.cluster_id = fc.id
+)
+`
+
+// The caller's whole unnamed region in one number: the same
+// predicate ListUnnamedClusters walks (a caller-visible face, no
+// label row of the caller), without the page window. It answers the
+// unnamed listing's own count and the people list's entry badge --
+// neither has to walk pages to count the region.
+func (q *Queries) CountUnnamedClusters(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnnamedClusters, userID)
+	var cluster_count int64
+	err := row.Scan(&cluster_count)
+	return cluster_count, err
 }
 
 const countVisibleClusters = `-- name: CountVisibleClusters :one
@@ -126,10 +166,41 @@ func (q *Queries) DissolveVacatedClustersByID(ctx context.Context, clusterIds []
 	return err
 }
 
+const getClusterAvatarFaceForCaller = `-- name: GetClusterAvatarFaceForCaller :one
+SELECT f.id
+FROM faces f
+JOIN assets a ON a.id = f.asset_id
+WHERE f.id = $1
+  AND f.cluster_id = $2
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND caller_asset_visible($3, a.id)
+`
+
+type GetClusterAvatarFaceForCallerParams struct {
+	FaceID    pgtype.UUID `json:"face_id"`
+	ClusterID pgtype.UUID `json:"cluster_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+}
+
+// The avatar pick's face-side gate in one read: the face belongs to
+// THIS cluster and sits on a caller-visible live asset. A miss
+// covers an unknown face, a face of another cluster and a face on an
+// asset the caller cannot see alike -- the same 404 the people
+// surface answers everywhere (anti-enumeration).
+func (q *Queries) GetClusterAvatarFaceForCaller(ctx context.Context, arg GetClusterAvatarFaceForCallerParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getClusterAvatarFaceForCaller, arg.FaceID, arg.ClusterID, arg.UserID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getClusterForCaller = `-- name: GetClusterForCaller :one
 SELECT fc.id AS cluster_id,
        l.name AS label_name,
-       l.is_hidden AS label_hidden
+       fc.birth_date,
+       fc.avatar_face_id
 FROM face_clusters fc
 LEFT JOIN user_face_labels l ON l.cluster_id = fc.id AND l.user_id = $1
 WHERE fc.id = $2
@@ -141,19 +212,26 @@ type GetClusterForCallerParams struct {
 }
 
 type GetClusterForCallerRow struct {
-	ClusterID   pgtype.UUID `json:"cluster_id"`
-	LabelName   pgtype.Text `json:"label_name"`
-	LabelHidden pgtype.Bool `json:"label_hidden"`
+	ClusterID    pgtype.UUID `json:"cluster_id"`
+	LabelName    pgtype.Text `json:"label_name"`
+	BirthDate    pgtype.Date `json:"birth_date"`
+	AvatarFaceID pgtype.UUID `json:"avatar_face_id"`
 }
 
-// One cluster's label state for the caller: the caller's own label
-// via the LEFT JOIN (null columns = the unnamed state), whatever any
-// other account labeled. Visibility is not this query's concern --
-// the count gate runs first.
+// One cluster's state for the caller: the caller's own label via the
+// LEFT JOIN (null name = the unnamed state) beside the person
+// entity's OWN attributes (the birth date and the picked avatar),
+// whatever any other account labeled or picked. Visibility is not
+// this query's concern -- the count gate runs first.
 func (q *Queries) GetClusterForCaller(ctx context.Context, arg GetClusterForCallerParams) (GetClusterForCallerRow, error) {
 	row := q.db.QueryRow(ctx, getClusterForCaller, arg.UserID, arg.ClusterID)
 	var i GetClusterForCallerRow
-	err := row.Scan(&i.ClusterID, &i.LabelName, &i.LabelHidden)
+	err := row.Scan(
+		&i.ClusterID,
+		&i.LabelName,
+		&i.BirthDate,
+		&i.AvatarFaceID,
+	)
 	return i, err
 }
 
@@ -256,10 +334,11 @@ SELECT f.id,
        f.score,
        f.cluster_id,
        l.name AS label_name,
-       l.is_hidden AS label_hidden
+       fc.birth_date
 FROM faces f
 LEFT JOIN user_face_labels l
        ON l.cluster_id = f.cluster_id AND l.user_id = $1
+LEFT JOIN face_clusters fc ON fc.id = f.cluster_id
 WHERE f.asset_id = $2
 ORDER BY f.score DESC, f.id
 `
@@ -270,11 +349,11 @@ type ListAssetFacesForCallerParams struct {
 }
 
 type ListAssetFacesForCallerRow struct {
-	ID          pgtype.UUID `json:"id"`
-	Score       float32     `json:"score"`
-	ClusterID   pgtype.UUID `json:"cluster_id"`
-	LabelName   pgtype.Text `json:"label_name"`
-	LabelHidden pgtype.Bool `json:"label_hidden"`
+	ID        pgtype.UUID `json:"id"`
+	Score     float32     `json:"score"`
+	ClusterID pgtype.UUID `json:"cluster_id"`
+	LabelName pgtype.Text `json:"label_name"`
+	BirthDate pgtype.Date `json:"birth_date"`
 }
 
 // The asset detail's faces: every face of one asset
@@ -288,8 +367,12 @@ type ListAssetFacesForCallerRow struct {
 // hidden asset's detail answers 200 and its faces ride along. The
 // cluster_id crosses as NULL for a face the clustering has not
 // assigned yet (label null with it -- nothing to label); the caller's
-// unnamed clusters read as null label columns. Ordered score
-// descending, the face id ascending as the tiebreak.
+// unnamed clusters read as null label columns. The cluster's
+// birth_date rides beside the label because it is the ENTITY's own
+// attribute (one value per person, every account reading the same):
+// the chip computes the capture-time age from it and the asset's
+// taken_at. Ordered score descending, the face id ascending as the
+// tiebreak.
 func (q *Queries) ListAssetFacesForCaller(ctx context.Context, arg ListAssetFacesForCallerParams) ([]ListAssetFacesForCallerRow, error) {
 	rows, err := q.db.Query(ctx, listAssetFacesForCaller, arg.UserID, arg.AssetID)
 	if err != nil {
@@ -304,7 +387,7 @@ func (q *Queries) ListAssetFacesForCaller(ctx context.Context, arg ListAssetFace
 			&i.Score,
 			&i.ClusterID,
 			&i.LabelName,
-			&i.LabelHidden,
+			&i.BirthDate,
 		); err != nil {
 			return nil, err
 		}
@@ -378,7 +461,7 @@ const listLabeledPeople = `-- name: ListLabeledPeople :many
 
 SELECT fc.id AS cluster_id,
        l.name,
-       l.is_hidden,
+       count(DISTINCT a.id) AS photo_count,
        (
            SELECT f2.id
            FROM faces f2
@@ -388,10 +471,9 @@ SELECT fc.id AS cluster_id,
              AND a2.is_hidden = false
              AND a2.is_component = false
              AND caller_asset_visible($1, a2.id)
-           ORDER BY f2.score DESC, f2.id
+           ORDER BY (f2.id = fc.avatar_face_id) DESC, f2.score DESC, f2.id
            LIMIT 1
-       ) AS best_face_id,
-       count(*) AS face_count
+       ) AS best_face_id
 FROM face_clusters fc
 JOIN user_face_labels l ON l.cluster_id = fc.id AND l.user_id = $1
 JOIN faces f ON f.cluster_id = fc.id
@@ -400,28 +482,36 @@ WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
   AND caller_asset_visible($1, a.id)
-GROUP BY fc.id, l.name, l.is_hidden
+GROUP BY fc.id, l.name
 ORDER BY lower(l.name), fc.id
 `
 
 type ListLabeledPeopleRow struct {
 	ClusterID  pgtype.UUID `json:"cluster_id"`
 	Name       string      `json:"name"`
-	IsHidden   bool        `json:"is_hidden"`
+	PhotoCount int64       `json:"photo_count"`
 	BestFaceID pgtype.UUID `json:"best_face_id"`
-	FaceCount  int64       `json:"face_count"`
 }
 
 // People surface queries: the read side of the named
 // region, the unnamed region's keyset pages and the cluster detail.
 //
 // The per-user-state semantics run through every query: face clusters are GLOBAL
-// rows (face_clusters / faces), while names and the hidden switch are
-// PRIVATE per user (user_face_labels, keyed (user_id, cluster_id) --
-// never an instance-level name). A caller's view of a cluster is
-// therefore computed, not stored: which region the cluster sits in,
-// its label state and its face count all come from the caller's own
-// rows joined onto the global structure.
+// rows (face_clusters / faces), and so are the person entity's
+// attributes (birth_date, avatar_face_id -- one birthday and one
+// avatar per person for the whole family), while the NAME is PRIVATE
+// per user (user_face_labels, keyed (user_id, cluster_id) -- never an
+// instance-level name). A caller's view of a cluster is therefore
+// computed, not stored: which region the cluster sits in, its label
+// state and its counts all come from the caller's own rows joined
+// onto the global structure.
+//
+// The people domain has exactly two regions -- named (a label row of
+// the caller) and unnamed (no label row of the caller). Hiding a
+// person retired whole with the model decision (2026-11-11): the
+// is_hidden column, its badge and its events are gone; the write
+// that ends a name (`DeleteUserFaceLabel`) is the only way a person
+// leaves the named region.
 //
 // Caller visibility is the album union: an asset is
 // visible to the caller when caller_asset_visible says so -- the
@@ -447,12 +537,22 @@ type ListLabeledPeopleRow struct {
 // The named region: clusters that carry a label row OF THE CALLER
 // (the inner join) and contain at least one face on a caller-visible
 // asset (the faces join drops the rest -- a label on an invisible
-// cluster lists nowhere). Hidden people stay listed carrying their
-// is_hidden flag: the switch is a badge, not a filter. Ordered by
-// name case-insensitively, cluster id as the tiebreak. The card face
-// is the cluster's best caller-visible live member (the correlated
-// pick: score DESC, face id ASC), which the listing cluster proves
-// exists -- the join below already found a visible face.
+// cluster lists nowhere). Ordered by name case-insensitively,
+// cluster id as the tiebreak.
+//
+// Two counts live here and they are different questions: photo_count
+// is the DISTINCT live assets carrying a member face (the card's
+// honest number -- a person in one photo is one photo however many
+// times they appear in it), while face_count is the membership size
+// (unused by the named cards, kept because the same CTE-style join
+// answers the unnamed region's count).
+//
+// The card face is the person's CHOSEN avatar when that face is a
+// caller-visible live member of this cluster, otherwise the cluster's
+// best caller-visible live member (the ordering puts the avatar
+// first): an avatar picked on an asset the caller cannot see never
+// renders a dead crop, and a face that later left the cluster stops
+// counting -- the pick degrades to the fallback instead of breaking.
 func (q *Queries) ListLabeledPeople(ctx context.Context, userID pgtype.UUID) ([]ListLabeledPeopleRow, error) {
 	rows, err := q.db.Query(ctx, listLabeledPeople, userID)
 	if err != nil {
@@ -465,9 +565,8 @@ func (q *Queries) ListLabeledPeople(ctx context.Context, userID pgtype.UUID) ([]
 		if err := rows.Scan(
 			&i.ClusterID,
 			&i.Name,
-			&i.IsHidden,
+			&i.PhotoCount,
 			&i.BestFaceID,
-			&i.FaceCount,
 		); err != nil {
 			return nil, err
 		}
@@ -492,7 +591,7 @@ FROM (
                  AND a2.is_hidden = false
                  AND a2.is_component = false
                  AND caller_asset_visible($1, a2.id)
-               ORDER BY f2.score DESC, f2.id
+               ORDER BY (f2.id = fc.avatar_face_id) DESC, f2.score DESC, f2.id
                LIMIT 1
            ) AS best_face_id,
            count(*) AS face_count
@@ -677,33 +776,45 @@ func (q *Queries) SeedFaceCluster(ctx context.Context, arg SeedFaceClusterParams
 	return err
 }
 
-const setUserFaceLabelHidden = `-- name: SetUserFaceLabelHidden :one
-UPDATE user_face_labels
-SET is_hidden = $1, updated_at = now()
-WHERE user_id = $2 AND cluster_id = $3
-RETURNING name, is_hidden
+const setClusterAvatarFace = `-- name: SetClusterAvatarFace :exec
+UPDATE face_clusters
+SET avatar_face_id = $1, updated_at = now()
+WHERE id = $2
 `
 
-type SetUserFaceLabelHiddenParams struct {
-	IsHidden  bool        `json:"is_hidden"`
-	UserID    pgtype.UUID `json:"user_id"`
+type SetClusterAvatarFaceParams struct {
+	AvatarFaceID pgtype.UUID `json:"avatar_face_id"`
+	ClusterID    pgtype.UUID `json:"cluster_id"`
+}
+
+// The avatar pick's write: one cluster column, shared by every
+// account. It is advisory to the clustering -- representative_face_id
+// (the structural maintenance's own pointer) stays untouched, and a
+// pick whose face later leaves the cluster simply stops counting at
+// read time (the reads fall back to the best visible member).
+func (q *Queries) SetClusterAvatarFace(ctx context.Context, arg SetClusterAvatarFaceParams) error {
+	_, err := q.db.Exec(ctx, setClusterAvatarFace, arg.AvatarFaceID, arg.ClusterID)
+	return err
+}
+
+const setClusterBirthDate = `-- name: SetClusterBirthDate :exec
+UPDATE face_clusters
+SET birth_date = $1::date, updated_at = now()
+WHERE id = $2
+`
+
+type SetClusterBirthDateParams struct {
+	BirthDate pgtype.Date `json:"birth_date"`
 	ClusterID pgtype.UUID `json:"cluster_id"`
 }
 
-type SetUserFaceLabelHiddenRow struct {
-	Name     string `json:"name"`
-	IsHidden bool   `json:"is_hidden"`
-}
-
-// Flips the hidden switch on the caller's label row. The label row
-// IS the hidden state's home (name NOT NULL), so zero rows here
-// mean the caller has not named the cluster yet -- the
-// person_hide_requires_label case the handler maps to a 400.
-func (q *Queries) SetUserFaceLabelHidden(ctx context.Context, arg SetUserFaceLabelHiddenParams) (SetUserFaceLabelHiddenRow, error) {
-	row := q.db.QueryRow(ctx, setUserFaceLabelHidden, arg.IsHidden, arg.UserID, arg.ClusterID)
-	var i SetUserFaceLabelHiddenRow
-	err := row.Scan(&i.Name, &i.IsHidden)
-	return i, err
+// The birth date write: one cluster column, shared by every account
+// (the person entity's attribute). A NULL clears the value -- the
+// clear is as explicit as the set, and both answer the same
+// response shape.
+func (q *Queries) SetClusterBirthDate(ctx context.Context, arg SetClusterBirthDateParams) error {
+	_, err := q.db.Exec(ctx, setClusterBirthDate, arg.BirthDate, arg.ClusterID)
+	return err
 }
 
 const upsertUserFaceLabel = `-- name: UpsertUserFaceLabel :one
@@ -712,7 +823,7 @@ INSERT INTO user_face_labels (user_id, cluster_id, name)
 VALUES ($1, $2, $3)
 ON CONFLICT (user_id, cluster_id)
 DO UPDATE SET name = EXCLUDED.name, updated_at = now()
-RETURNING name, is_hidden
+RETURNING name
 `
 
 type UpsertUserFaceLabelParams struct {
@@ -721,16 +832,14 @@ type UpsertUserFaceLabelParams struct {
 	Name      string      `json:"name"`
 }
 
-type UpsertUserFaceLabelRow struct {
-	Name     string `json:"name"`
-	IsHidden bool   `json:"is_hidden"`
-}
-
-// The write side. The label and hidden writes are
-// per-caller upserts on the (user_id, cluster_id) pair -- the
-// per-user-state discipline's writes: they never read or touch another account's
-// row. The structural writes (merge, face move, from-face creation,
-// detach) stick to the
+// The write side. The label writes are per-caller upserts and
+// deletes on the (user_id, cluster_id) pair -- the per-user-state
+// discipline's writes: they never read or touch another account's
+// row. The person entity's writes (the birth date, the avatar pick)
+// are plain cluster-column updates: they are shared state by design
+// (one birthday, one avatar per person), so they touch no per-user
+// row at all. The structural writes (merge, face move, from-face
+// creation, detach) stick to the
 // cluster-maintenance discipline for every
 // faces.cluster_id change: the member moves land inside ONE
 // transaction together with the representative maintenance and the
@@ -738,13 +847,13 @@ type UpsertUserFaceLabelRow struct {
 // the row), never as bare member moves that would strand a stale
 // representative or an empty cluster.
 // The caller's label write: an insert for a first naming, a rename
-// for a repeat (the upsert arm updates ONLY the name, so the hidden
-// switch keeps its state -- a rename is not an unhide). The row is
-// the caller's own: the (user_id, cluster_id) primary key scopes
-// every read to it.
-func (q *Queries) UpsertUserFaceLabel(ctx context.Context, arg UpsertUserFaceLabelParams) (UpsertUserFaceLabelRow, error) {
+// for a repeat. The row is the caller's own: the (user_id,
+// cluster_id) primary key scopes every read to it; the person
+// entity's own attributes live on the cluster row and stay untouched
+// here.
+func (q *Queries) UpsertUserFaceLabel(ctx context.Context, arg UpsertUserFaceLabelParams) (string, error) {
 	row := q.db.QueryRow(ctx, upsertUserFaceLabel, arg.UserID, arg.ClusterID, arg.Name)
-	var i UpsertUserFaceLabelRow
-	err := row.Scan(&i.Name, &i.IsHidden)
-	return i, err
+	var name string
+	err := row.Scan(&name)
+	return name, err
 }

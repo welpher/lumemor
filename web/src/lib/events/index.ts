@@ -93,11 +93,11 @@ export type JobEventListener = (event: JobEvent) => void;
 export type JobRunState = 'queued' | 'running' | 'succeeded' | 'failed';
 
 /**
- * The people surface's person.* events: the label, hidden, merge,
- * face-move, face-creation and face-detach writes. Every payload
- * carries the acting user's id beside the cluster (or face) id
- * ONLY: the label text and the hidden switch are one account's
- * private state, so they never ride the shared stream -- a
+ * The people surface's person.* events: the label, entity-attribute
+ * (birth date, avatar), merge, face-move, face-creation and
+ * face-detach writes. Every payload carries the acting user's id
+ * beside the cluster (or face) id ONLY: the label text and the birth
+ * date are state the subscribers refetch, never bus payload -- a
  * subscriber filters by the ids it renders, never by another
  * account's change, and the SERVER's answer decides what actually
  * moved.
@@ -112,7 +112,8 @@ export type JobRunState = 'queued' | 'running' | 'succeeded' | 'failed';
 export type PersonEventName =
 	| 'person.labeled'
 	| 'person.unlabeled'
-	| 'person.hidden'
+	| 'person.birthdate_updated'
+	| 'person.avatar_updated'
 	| 'person.merged'
 	| 'person.face_moved'
 	| 'person.face_clustered'
@@ -134,7 +135,13 @@ export type PersonEvent =
 	  }
 	| {
 			id: number;
-			name: 'person.hidden';
+			name: 'person.birthdate_updated';
+			clusterId: string;
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.avatar_updated';
 			clusterId: string;
 			userId: string;
 	  }
@@ -239,7 +246,8 @@ const JOB_RUN_STATES: readonly JobRunState[] = ['queued', 'running', 'succeeded'
 const PERSON_EVENT_NAMES: readonly PersonEventName[] = [
 	'person.labeled',
 	'person.unlabeled',
-	'person.hidden',
+	'person.birthdate_updated',
+	'person.avatar_updated',
 	'person.merged',
 	'person.face_moved',
 	'person.face_clustered',
@@ -404,7 +412,8 @@ function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonE
 			}
 			return { id: base.id, name, clusterId, userId };
 		}
-		case 'person.hidden': {
+		case 'person.birthdate_updated':
+		case 'person.avatar_updated': {
 			if (typeof clusterId !== 'string' || clusterId === '') {
 				return null;
 			}

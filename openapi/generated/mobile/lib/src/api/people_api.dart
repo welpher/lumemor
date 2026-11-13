@@ -19,9 +19,12 @@ import 'package:lumemor_api/src/model/merge_people_request.dart';
 import 'package:lumemor_api/src/model/merge_people_response.dart';
 import 'package:lumemor_api/src/model/move_face_request.dart';
 import 'package:lumemor_api/src/model/move_face_response.dart';
+import 'package:lumemor_api/src/model/person_avatar_response.dart';
+import 'package:lumemor_api/src/model/person_birthdate_response.dart';
 import 'package:lumemor_api/src/model/person_label_response.dart';
 import 'package:lumemor_api/src/model/person_summary.dart';
-import 'package:lumemor_api/src/model/set_person_hidden_request.dart';
+import 'package:lumemor_api/src/model/set_person_avatar_request.dart';
+import 'package:lumemor_api/src/model/set_person_birthdate_request.dart';
 import 'package:lumemor_api/src/model/unnamed_clusters_response.dart';
 
 class PeopleApi {
@@ -261,7 +264,7 @@ class PeopleApi {
   }
 
   /// One face cluster&#39;s detail as the caller sees it.
-  /// The detail view of one face cluster: the caller&#39;s own label state and the cluster&#39;s faces on assets visible to the caller, strongest score first with the face id as the tiebreak.  &#x60;label&#x60; is null when the caller has not labeled the cluster (the unnamed state). It is the CALLING user&#39;s label or no label at all: another account&#39;s label never shows here (clusters are global, labels are private per user).  404 has a double meaning by design: the cluster id is unknown, or the cluster exists but none of its faces sits on an asset visible to the caller (the cluster&#39;s assets all belong to other accounts and none is shared to them). Both answer the same &#x60;PERSON_NOT_FOUND&#x60;, byte for byte, so cluster ids cannot be probed for existence -- the same anti-enumeration shape as &#x60;ASSET_NOT_FOUND&#x60;.  Every &#x60;thumbnail&#x60; points at the face crop endpoint &#x60;GET /api/v1/faces/{faceId}/thumbnail&#x60;, which serves the face&#39;s bounding-box crop of the asset&#39;s view-size derivative. 
+  /// The detail view of one face cluster: the caller&#39;s own label state, the person entity&#39;s global attributes and the cluster&#39;s faces on assets visible to the caller, strongest score first with the face id as the tiebreak.  &#x60;label&#x60; is null when the caller has not labeled the cluster (the unnamed state). It is the CALLING user&#39;s label or no label at all: another account&#39;s label never shows here (clusters are global, labels are private per user).  &#x60;birthDate&#x60; and &#x60;avatarFaceId&#x60; are the PERSON ENTITY&#39;s attributes, not the caller&#39;s: one birthday per person, every account reading the same value (a family agrees on the person&#39;s birthday), and one avatar face per cluster whatever account picked it. Both are independent of naming -- an unnamed cluster carries them too.  &#x60;photoCount&#x60; is the count the detail bar renders: the number of DISTINCT live assets the cluster has a face on that the caller can see (photos, not faces).  404 has a double meaning by design: the cluster id is unknown, or the cluster exists but none of its faces sits on an asset visible to the caller (the cluster&#39;s assets all belong to other accounts and none is shared to them). Both answer the same &#x60;PERSON_NOT_FOUND&#x60;, byte for byte, so cluster ids cannot be probed for existence -- the same anti-enumeration shape as &#x60;ASSET_NOT_FOUND&#x60;.  Every &#x60;thumbnail&#x60; points at the face crop endpoint &#x60;GET /api/v1/faces/{faceId}/thumbnail&#x60;, which serves the face&#39;s bounding-box crop of the asset&#39;s view-size derivative. 
   ///
   /// Parameters:
   /// * [clusterId] - Identifier of the face cluster.
@@ -347,7 +350,7 @@ class PeopleApi {
   }
 
   /// Name one face cluster (the caller&#39;s private label).
-  /// Upserts the calling user&#39;s label of one face cluster: the &#x60;user_face_labels&#x60; row keyed (userId, clusterId) -- the per-user write. The cluster must be visible to the caller (at least one of its faces sits on an asset visible to them -- their own, or one shared to them through an album, so a sharee names the people they see); an unknown or invisible cluster id answers the same byte-identical 404 &#x60;PERSON_NOT_FOUND&#x60; as every people read (anti-enumeration -- cluster ids cannot be probed).  The name is trimmed and must span 1-64 characters; anything else answers 400 &#x60;VALIDATION_FAILED&#x60; naming the &#x60;name&#x60; field.  Duplicate names are ALLOWED, server-side and on purpose: no &#x60;NAME_TAKEN&#x60; error exists. Families have real duplicates (two grandparents named Grace), so a de-duplication hint is a web-UI suggestion, never a server rule.  Re-labeling an already labeled cluster renames it in place: the hidden switch keeps its state (a rename is not an unhide). The label is the caller&#39;s private state -- another account labeling the same cluster writes its own row and neither sees the other&#39;s.  The write publishes &#x60;person.labeled&#x60; on the activity stream with the acting user&#39;s id in the payload. 
+  /// Upserts the calling user&#39;s label of one face cluster: the &#x60;user_face_labels&#x60; row keyed (userId, clusterId) -- the per-user write. The cluster must be visible to the caller (at least one of its faces sits on an asset visible to them -- their own, or one shared to them through an album, so a sharee names the people they see); an unknown or invisible cluster id answers the same byte-identical 404 &#x60;PERSON_NOT_FOUND&#x60; as every people read (anti-enumeration -- cluster ids cannot be probed).  The name is trimmed and must span 1-64 characters; anything else answers 400 &#x60;VALIDATION_FAILED&#x60; naming the &#x60;name&#x60; field.  Duplicate names are ALLOWED, server-side and on purpose: no &#x60;NAME_TAKEN&#x60; error exists. Families have real duplicates (two grandparents named Grace), so a de-duplication hint is a web-UI suggestion, never a server rule.  Re-labeling an already labeled cluster renames it in place. The label is the caller&#39;s private state -- another account labeling the same cluster writes its own row and neither sees the other&#39;s -- and it is the ONLY private state of the people domain: the person entity&#39;s birthday and avatar ride the cluster&#39;s own columns, shared by every account.  The write publishes &#x60;person.labeled&#x60; on the activity stream with the acting user&#39;s id in the payload. 
   ///
   /// Parameters:
   /// * [clusterId] - Identifier of the face cluster.
@@ -455,7 +458,7 @@ class PeopleApi {
   }
 
   /// The caller&#39;s named people.
-  /// The named region of the people surface: every face cluster the caller sees that carries one of the caller&#39;s own labels. A cluster is listed here when both hold:  - it contains at least one face on an asset visible to the   caller (an asset the caller can see that is live -- not   trashed, not hidden, no Live Photo component row: their   own, or one shared to them through an album), and - the caller has labeled it with a &#x60;user_face_labels&#x60; row of   their own.  The per-user-state semantics of the people domain: face clusters are GLOBAL structures of the instance (the same person&#39;s faces land in one cluster whatever account uploaded the photos), while names and the hidden switch are PRIVATE per user -- two accounts label the same cluster independently and neither sees the other&#39;s label. &#x60;faceCount&#x60; is honest per caller: it counts only the cluster&#39;s faces on caller-visible assets, so the same cluster can show different counts to different accounts.  Hidden people STAY in this list carrying &#x60;isHidden&#x60; true: the switch is a badge for the web UI, not a filter -- the caller labeled the person and keeps seeing them, flagged.  The list is sorted by name, case-insensitively, with the cluster id as the tiebreak. 
+  /// The named region of the people surface: every face cluster the caller sees that carries one of the caller&#39;s own labels. A cluster is listed here when both hold:  - it contains at least one face on an asset visible to the   caller (an asset the caller can see that is live -- not   trashed, not hidden, no Live Photo component row: their   own, or one shared to them through an album), and - the caller has labeled it with a &#x60;user_face_labels&#x60; row of   their own.  The per-user-state semantics of the people domain: face clusters are GLOBAL structures of the instance (the same person&#39;s faces land in one cluster whatever account uploaded the photos), while names are PRIVATE per user -- two accounts label the same cluster independently and neither sees the other&#39;s label. The people domain has exactly two states: named (this list) and unnamed (&#x60;GET /people/unnamed&#x60;). There is no third state: hiding a person retired whole (the per-user switch, its badge and its events are gone; removing the caller&#39;s name -- &#x60;DELETE /people/{clusterId}/label&#x60; -- is the way a person leaves this list).  &#x60;photoCount&#x60; is honest per caller: the number of DISTINCT live assets the cluster has a face on that the caller can see, so the same cluster can show different counts to different accounts. It counts photos, not faces -- two faces of one person in one photo are one photo.  The list is sorted by name, case-insensitively, with the cluster id as the tiebreak. 
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -539,7 +542,7 @@ class PeopleApi {
   }
 
   /// The caller&#39;s unnamed face clusters, one keyset page at a time.
-  /// The unnamed region of the people surface: every face cluster that contains at least one face on an asset visible to the caller (an asset the caller can see that is live -- not trashed, not hidden, no Live Photo component row: their own, or one shared to them through an album) and carries NO &#x60;user_face_labels&#x60; row of the caller. The moment the caller labels a cluster it moves to &#x60;GET /people&#x60; and out of this list; another account&#39;s label never moves it for this caller (clusters are global, labels are private per user).  Pages are keyset-paginated with an opaque cursor over the ordering &#x60;faceCount&#x60; descending, &#x60;clusterId&#x60; descending as the tiebreak. The continuation key is the (faceCount, clusterId) pair of a page&#39;s last row -- the same row-value predicate pattern the timeline endpoint applies to its (takenAt, id) pair, which keeps pages stable while clusters gain or lose faces. The response carries &#x60;nextCursor&#x60; exactly when another page exists; the first page omits the &#x60;cursor&#x60; parameter.  &#x60;limit&#x60; bounds the page size: absent means the default of 60; a value below 1 or over 200 answers 400 &#x60;VALIDATION_FAILED&#x60;. 
+  /// The unnamed region of the people surface: every face cluster that contains at least one face on an asset visible to the caller (an asset the caller can see that is live -- not trashed, not hidden, no Live Photo component row: their own, or one shared to them through an album) and carries NO &#x60;user_face_labels&#x60; row of the caller. The moment the caller labels a cluster it moves to &#x60;GET /people&#x60; and out of this list; another account&#39;s label never moves it for this caller (clusters are global, labels are private per user).  Pages are keyset-paginated with an opaque cursor over the ordering &#x60;faceCount&#x60; descending, &#x60;clusterId&#x60; descending as the tiebreak. The continuation key is the (faceCount, clusterId) pair of a page&#39;s last row -- the same row-value predicate pattern the timeline endpoint applies to its (takenAt, id) pair, which keeps pages stable while clusters gain or lose faces. The response carries &#x60;nextCursor&#x60; exactly when another page exists; the first page omits the &#x60;cursor&#x60; parameter.  &#x60;totalCount&#x60; is the caller&#39;s whole unnamed region -- every cluster this listing would walk -- so a page never has to be walked to its end to count the region (the people list&#39;s unnamed entry badge and this page&#39;s own bar count read it).  &#x60;limit&#x60; bounds the page size: absent means the default of 60; a value below 1 or over 200 answers 400 &#x60;VALIDATION_FAILED&#x60;. 
   ///
   /// Parameters:
   /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
@@ -846,12 +849,12 @@ class PeopleApi {
     );
   }
 
-  /// Flip the caller&#39;s hidden switch of one face cluster.
-  /// Sets the hidden switch on the calling user&#39;s label row of one cluster. The switch rides on the label row (&#x60;user_face_labels&#x60; carries &#x60;name NOT NULL&#x60;), so hiding requires the caller to have named the cluster first: hiding an UNLABELED cluster answers 400 &#x60;VALIDATION_FAILED&#x60; whose &#x60;details&#x60; carry the message key &#x60;person_hide_requires_label&#x60; -- the web UI offers the naming dialog instead.  Hidden people STAY in the caller&#39;s &#x60;GET /people&#x60; list carrying &#x60;isHidden&#x60; true (badge semantics, not a filter). The switch is the caller&#39;s private state: hiding a cluster never touches another account&#39;s label row.  The cluster must be visible to the caller -- an unknown or invisible cluster id answers the same byte-identical 404 &#x60;PERSON_NOT_FOUND&#x60; as every people read (anti-enumeration).  The write publishes &#x60;person.hidden&#x60; on the activity stream in both directions (the payload carries the new &#x60;isHidden&#x60; value beside the acting user&#39;s id). 
+  /// Pick the face one person&#39;s avatar renders.
+  /// Writes the PERSON ENTITY&#39;s avatar face: the cluster&#39;s chosen face, read by every account (the person card on &#x60;GET /people&#x60; and the detail&#39;s profile row both render it). Like the birth date it is not the caller&#39;s private state, and it does not depend on naming -- an unnamed cluster carries an avatar too.  The face must belong to the cluster and sit on an asset visible to the caller (the avatar picker offers exactly the cluster&#39;s caller-visible faces); anything else -- a face of another cluster, an invisible face, an unknown cluster -- answers the same byte-identical 404 &#x60;PERSON_NOT_FOUND&#x60; as every people write (anti-enumeration).  The pick is advisory to the clustering, never a structural write: the representative face the clustering maintains for merges and face moves is untouched, and a face that later leaves the cluster (a move, a detach, a purged asset) simply stops counting -- the read falls back to the cluster&#39;s best-scoring caller-visible face.  The write publishes &#x60;person.avatar_updated&#x60; on the activity stream with the acting user&#39;s id in the payload. 
   ///
   /// Parameters:
   /// * [clusterId] - Identifier of the face cluster.
-  /// * [setPersonHiddenRequest] 
+  /// * [setPersonAvatarRequest] 
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -859,11 +862,11 @@ class PeopleApi {
   /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
   /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
   ///
-  /// Returns a [Future] containing a [Response] with a [PersonLabelResponse] as data
+  /// Returns a [Future] containing a [Response] with a [PersonAvatarResponse] as data
   /// Throws [DioException] if API call or serialization fails
-  Future<Response<PersonLabelResponse>> setPersonHidden({ 
+  Future<Response<PersonAvatarResponse>> setPersonAvatar({ 
     required String clusterId,
-    required SetPersonHiddenRequest setPersonHiddenRequest,
+    required SetPersonAvatarRequest setPersonAvatarRequest,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -871,7 +874,7 @@ class PeopleApi {
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
   }) async {
-    final _path = r'/people/{clusterId}/hidden'.replaceAll('{' r'clusterId' '}', encodeQueryParameter(_serializers, clusterId, const FullType(String)).toString());
+    final _path = r'/people/{clusterId}/avatar'.replaceAll('{' r'clusterId' '}', encodeQueryParameter(_serializers, clusterId, const FullType(String)).toString());
     final _options = Options(
       method: r'PUT',
       headers: <String, dynamic>{
@@ -899,8 +902,8 @@ class PeopleApi {
     dynamic _bodyData;
 
     try {
-      const _type = FullType(SetPersonHiddenRequest);
-      _bodyData = _serializers.serialize(setPersonHiddenRequest, specifiedType: _type);
+      const _type = FullType(SetPersonAvatarRequest);
+      _bodyData = _serializers.serialize(setPersonAvatarRequest, specifiedType: _type);
 
     } catch(error, stackTrace) {
       throw DioException(
@@ -923,14 +926,14 @@ class PeopleApi {
       onReceiveProgress: onReceiveProgress,
     );
 
-    PersonLabelResponse? _responseData;
+    PersonAvatarResponse? _responseData;
 
     try {
       final rawResponse = _response.data;
       _responseData = rawResponse == null ? null : _serializers.deserialize(
         rawResponse,
-        specifiedType: const FullType(PersonLabelResponse),
-      ) as PersonLabelResponse;
+        specifiedType: const FullType(PersonAvatarResponse),
+      ) as PersonAvatarResponse;
 
     } catch (error, stackTrace) {
       throw DioException(
@@ -942,7 +945,115 @@ class PeopleApi {
       );
     }
 
-    return Response<PersonLabelResponse>(
+    return Response<PersonAvatarResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Set or clear one person&#39;s birth date.
+  /// Writes the PERSON ENTITY&#39;s birth date: one value per cluster, read by every account (&#x60;GET /people/{clusterId}&#x60; serves it to all of them). It is not the caller&#39;s private state -- a family agrees on the person&#39;s birthday -- and it is independent of naming: an unnamed cluster carries a birth date too, and &#x60;person_birthdate&#x60; (the profile row) renders it as soon as it is set.  The use of the value is honest: the person&#39;s age at the time each photo was taken, and the birthday memories the product will build later. Nothing else reads it.  Any logged-in user who can see the cluster may write it (at least one of the cluster&#39;s faces sits on an asset visible to them); an unknown or invisible cluster id answers the same byte-identical 404 &#x60;PERSON_NOT_FOUND&#x60; as every people read (anti-enumeration -- cluster ids cannot be probed).  &#x60;birthDate&#x60; is the wire&#39;s &#x60;date&#x60; form (&#x60;YYYY-MM-DD&#x60;): a null clears the value. A malformed date answers 400 &#x60;VALIDATION_FAILED&#x60; naming the &#x60;birthDate&#x60; field.  The write publishes &#x60;person.birthdate_updated&#x60; on the activity stream with the acting user&#39;s id in the payload (the person entity&#39;s attributes are shared state, so every open view of the person converges). 
+  ///
+  /// Parameters:
+  /// * [clusterId] - Identifier of the face cluster.
+  /// * [setPersonBirthdateRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [PersonBirthdateResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<PersonBirthdateResponse>> setPersonBirthdate({ 
+    required String clusterId,
+    required SetPersonBirthdateRequest setPersonBirthdateRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/people/{clusterId}/birthdate'.replaceAll('{' r'clusterId' '}', encodeQueryParameter(_serializers, clusterId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'PUT',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(SetPersonBirthdateRequest);
+      _bodyData = _serializers.serialize(setPersonBirthdateRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    PersonBirthdateResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(PersonBirthdateResponse),
+      ) as PersonBirthdateResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<PersonBirthdateResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

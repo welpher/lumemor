@@ -130,8 +130,8 @@ func TestSharedVisibilityPeople(t *testing.T) {
 		if len(people) != 1 || uuid.UUID(people[0].ClusterId) != cluster || people[0].Name != "Grandma" {
 			t.Fatalf("grace named people = %v, want exactly the labeled shared cluster", people)
 		}
-		if people[0].FaceCount != 2 {
-			t.Errorf("grace labeled faceCount = %d, want 2", people[0].FaceCount)
+		if people[0].PhotoCount != 2 {
+			t.Errorf("grace labeled photoCount = %d, want 2", people[0].PhotoCount)
 		}
 		// The admin's view is untouched: the cluster stays unnamed
 		// for them, no label leaked across accounts.
@@ -170,8 +170,8 @@ func TestSharedVisibilityPeople(t *testing.T) {
 		if len(people) != 1 || uuid.UUID(people[0].ClusterId) != cluster {
 			t.Fatalf("grace named people after retraction = %v, want the labeled cluster (fallen back to her own face)", people)
 		}
-		if people[0].FaceCount != 1 { // fg1 alone
-			t.Errorf("grace labeled faceCount after retraction = %d, want 1", people[0].FaceCount)
+		if people[0].PhotoCount != 1 { // fg1 alone
+			t.Errorf("grace labeled photoCount after retraction = %d, want 1", people[0].PhotoCount)
 		}
 		rec := env.getPeopleRaw(t, graceCookie, "/api/v1/people/"+sharedOnly.String())
 		requireAssetStatus(t, rec, http.StatusNotFound, apigen.PERSONNOTFOUND)
@@ -250,8 +250,8 @@ func TestPersonCardBestVisibleFace(t *testing.T) {
 	})
 
 	t.Run("NamedCardUsesBestVisibleFace", func(t *testing.T) {
-		env.labelPersonCluster(t, adminID, cluster, "Ada", false)
-		env.labelPersonCluster(t, graceID, cluster, "Grace", false)
+		env.labelPersonCluster(t, adminID, cluster, "Ada")
+		env.labelPersonCluster(t, graceID, cluster, "Grace")
 
 		adminPeople := env.getPeopleList(t, env.cookie)
 		if len(adminPeople) != 1 {

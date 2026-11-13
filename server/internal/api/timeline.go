@@ -80,11 +80,19 @@ func decodeTimelineCursor(value string) (timelineCursor, error) {
 
 // GetTimeline implements GET /api/v1/assets/timeline: one keyset page
 // of the caller's aggregated timeline, or -- with albumId -- of that
-// album's own timeline.
+// album's own timeline, or -- with clusterId -- of that person's
+// photos (the detail's wall). The two narrows are mutually exclusive:
+// a request carrying both names no single view, so it is a client
+// bug the 400 reports.
 func (s *server) GetTimeline(w http.ResponseWriter, r *http.Request, params apigen.GetTimelineParams) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
 		s.rejectUnauthenticated(w)
+		return
+	}
+
+	if params.AlbumId != nil && params.ClusterId != nil {
+		s.writeValidationError(w, "albumId and clusterId are mutually exclusive", []string{"clusterId", "albumId"})
 		return
 	}
 
@@ -104,7 +112,23 @@ func (s *server) GetTimeline(w http.ResponseWriter, r *http.Request, params apig
 	// NOT an error path: it resolves to no rows -- the empty list,
 	// indistinguishable from an unknown id -- never to a 404.
 	var response apigen.TimelineResponse
-	if params.AlbumId != nil {
+	if params.ClusterId != nil {
+		// The person's own photos: an invisible cluster resolves to
+		// no rows, the same empty-list answer the album narrow gives
+		// (never a 404 -- cluster ids cannot be probed here).
+		rows, err := s.queries.ListPersonTimelineAssets(r.Context(), dbgen.ListPersonTimelineAssetsParams{
+			ClusterID:     pgUUID(uuid.UUID(*params.ClusterId)),
+			UserID:        pgUUID(requester.userID),
+			CursorTakenAt: cursor.takenAt,
+			CursorID:      cursor.id,
+			LimitCount:    fetch,
+		})
+		if err != nil {
+			s.internalError(w, r, "load person timeline", err)
+			return
+		}
+		response = timelinePage(rows, limit, personAssetFields)
+	} else if params.AlbumId != nil {
 		rows, err := s.queries.ListAlbumTimelineAssets(r.Context(), dbgen.ListAlbumTimelineAssetsParams{
 			AlbumID:       pgUUID(uuid.UUID(*params.AlbumId)),
 			UserID:        pgUUID(requester.userID),
@@ -157,15 +181,19 @@ func timelinePage[T any](rows []T, limit int, fields func(T) (dbgen.Asset, bool)
 	return response
 }
 
-// The field extractors of the four timeline-shaped queries (the
-// aggregate, the album, the favorites view, the hidden view): each
-// folds its generated row type onto the (asset, isFavorite) pair the
-// shared page renderer consumes.
+// The field extractors of the five timeline-shaped queries (the
+// aggregate, the album, the person, the favorites view, the hidden
+// view): each folds its generated row type onto the (asset,
+// isFavorite) pair the shared page renderer consumes.
 func timelineAssetFields(row dbgen.ListTimelineAssetsRow) (dbgen.Asset, bool) {
 	return row.Asset, row.IsFavorite
 }
 
 func albumAssetFields(row dbgen.ListAlbumTimelineAssetsRow) (dbgen.Asset, bool) {
+	return row.Asset, row.IsFavorite
+}
+
+func personAssetFields(row dbgen.ListPersonTimelineAssetsRow) (dbgen.Asset, bool) {
 	return row.Asset, row.IsFavorite
 }
 

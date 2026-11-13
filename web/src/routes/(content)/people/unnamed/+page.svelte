@@ -1,51 +1,40 @@
 <script lang="ts">
-	// The unnamed region of the people surface: the
-	// caller's unlabeled face clusters as a keyset-paginated card
-	// grid (crop + honest face count), largest count first per the
-	// server's ordering. This region carries the two organizing paths
-	// of the people domain:
+	// The unnamed region of the people surface (web-ia §7.18's action
+	// bar, §7.20's card-as-entrance): the caller's unlabeled face
+	// clusters as a keyset-paginated card grid, largest first, with
+	// the region's whole count in the bar.
 	//
-	// - THE NAMING MAIN PATH: clicking a card opens the naming
-	//   dialog; the PUT label's response is the fresh label state, and
-	//   the card leaves the region immediately (the optimistic half) --
-	//   the SSE person.labeled self-event converges the rest.
-	// - THE BATCH ORGANIZE PATH: the select mode turns the grid into
-	//   a merge surface; the merge dialog picks the target (one of the
-	//   selected -- named inline first when the caller wants the
-	//   merged person called something -- or any existing person) and
-	//   the POST merge's response names the dissolved sources, which
-	//   vanish here. A source's name dies with it (the contract's
-	//   honest cost); the target's label persists.
+	// THE CARDS ARE ENTRANCES, NOT A SELECTION SURFACE (§7.20): no
+	// check circles, no armed select mode, no batch bar, no batch
+	// merge. A card opens the SAME person detail the named region
+	// opens -- `/people/{clusterId}` -- in its unnamed variant
+	// (the name slot reads the localized unnamed title and the primary
+	// action names the person). The old "select clusters → merge them"
+	// path retired with this block; the merge lives on the detail's
+	// merge-into action.
 	//
 	// SSE CONVERGENCE: every person.* event and every face.clustered
 	// event converges through ONE replay refetch, collapsed
 	// single-flight. The replay re-walks the keyset pages from the
 	// first until the loaded window's depth is covered (or the region
 	// ends), so a scrolled page neither truncates nor misses the
-	// fresh cluster a recognition run announced. The refetched SERVER
-	// answer decides membership -- labels are private per user,
-	// so another account's write moves nothing the server does not
-	// move.
+	// fresh cluster a recognition run announced.
 	import { _ } from 'svelte-i18n';
 	import { untrack } from 'svelte';
-	import { SvelteSet } from 'svelte/reactivity';
-	import { labelPerson, listUnnamedPeople, mergePeople, type UnnamedClusterSummary } from '$lib/api/people';
+	import { listUnnamedPeople, type UnnamedClusterSummary } from '$lib/api/people';
 	import { subscribeFaceEvents, subscribePersonEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import Button from '$lib/components/Button.svelte';
-	import IconButton from '$lib/components/IconButton.svelte';
-	import ListChecks from '@lucide/svelte/icons/list-checks';
-	import Check from '@lucide/svelte/icons/check';
-	import GitMerge from '@lucide/svelte/icons/git-merge';
-	import X from '@lucide/svelte/icons/x';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import ScanFace from '@lucide/svelte/icons/scan-face';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
-	import PersonNameDialog from '$lib/people/PersonNameDialog.svelte';
-	import MergeDialog from '$lib/people/MergeDialog.svelte';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 	let items = $state<UnnamedClusterSummary[]>([]);
+	/** The caller's whole unnamed region (the bar's count). */
+	let totalCount = $state(0);
 	let status = $state<ListStatus>('idle');
 	/** False once the last page arrived (no `nextCursor`). */
 	let hasMore = $state(true);
@@ -55,23 +44,6 @@
 	// first page); never assembled here, only passed back.
 	let nextCursor: string | null = null;
 
-	// The selection is a reactive id set: card clicks toggle it (the
-	// select mode or an active selection turns cards into toggles),
-	// Esc and the bar's clear drop it.
-	const selection = new SvelteSet<string>();
-	let selectMode = $state(false);
-
-	// The naming dialog's write state.
-	let nameDialogOpen = $state(false);
-	let nameTargetId = $state('');
-	let nameBusy = $state(false);
-	let nameErrorKey = $state('');
-
-	// The merge dialog's write state.
-	let mergeOpen = $state(false);
-	let mergeBusy = $state(false);
-	let mergeErrorKey = $state('');
-
 	// IntersectionObserver exists in every browser jsdom is not; the
 	// manual load-more button is the fallback surface (and the error
 	// retry lives there too, because an observer that never
@@ -79,8 +51,6 @@
 	const observerAvailable = typeof IntersectionObserver === 'function';
 	let sentinel: HTMLElement | undefined = $state();
 
-	const selectable = $derived(selectMode || selection.size > 0);
-	const selectedClusters = $derived(items.filter((cluster) => selection.has(cluster.clusterId)));
 	const firstLoad = $derived(items.length === 0 && status === 'loading');
 	const settledEmpty = $derived(items.length === 0 && status === 'ready' && !hasMore);
 
@@ -106,6 +76,7 @@
 		const seen = new Set(items.map((cluster) => cluster.clusterId));
 		const appended = outcome.page.items.filter((cluster) => !seen.has(cluster.clusterId));
 		items = [...items, ...appended];
+		totalCount = outcome.page.totalCount;
 		nextCursor = outcome.page.nextCursor;
 		hasMore = nextCursor !== null;
 		status = 'ready';
@@ -135,6 +106,7 @@
 			const seen = new Set<string>();
 			let collected: UnnamedClusterSummary[] = [];
 			let cursor: string | null = null;
+			let regionTotal = 0;
 			while (true) {
 				const outcome = await listUnnamedPeople(cursor);
 				if (!outcome.ok) {
@@ -146,6 +118,7 @@
 						collected.push(cluster);
 					}
 				}
+				regionTotal = outcome.page.totalCount;
 				cursor = outcome.page.nextCursor;
 				// The live window's depth, re-read every lap: a
 				// loadMore that appends mid-replay must be covered by
@@ -155,6 +128,7 @@
 				}
 			}
 			items = collected;
+			totalCount = regionTotal;
 			nextCursor = cursor;
 			hasMore = cursor !== null;
 			if (status === 'error') {
@@ -167,107 +141,6 @@
 				convergeQueued = false;
 				void runConverge();
 			}
-		}
-	}
-
-	function openNaming(cluster: UnnamedClusterSummary): void {
-		nameTargetId = cluster.clusterId;
-		nameErrorKey = '';
-		nameDialogOpen = true;
-	}
-
-	/**
-	 * The naming write: the PUT response IS the fresh label state, so
-	 * the card leaves the region immediately; the SSE person.labeled
-	 * self-event converges the region's counts and ordering through
-	 * the replay.
-	 */
-	async function submitName(name: string): Promise<void> {
-		if (nameBusy) {
-			return;
-		}
-		nameBusy = true;
-		nameErrorKey = '';
-		const outcome = await labelPerson(nameTargetId, name);
-		nameBusy = false;
-		if (!outcome.ok) {
-			nameErrorKey = outcome.errorKey;
-			return;
-		}
-		items = items.filter((cluster) => cluster.clusterId !== nameTargetId);
-		selection.delete(nameTargetId);
-		nameDialogOpen = false;
-	}
-
-	/**
-	 * The batch merge: the inline naming (a selected target) PUTs
-	 * first, then the POST merge folds the other selected clusters
-	 * into the target. The response's mergedClusterIds name the
-	 * dissolved sources, which vanish; a target named inline left the
-	 * region with its label; an unnamed survivor keeps its card with
-	 * the merged count (the representative crop converges with the
-	 * SSE person.merged replay -- the strongest member may be a
-	 * newcomer).
-	 */
-	async function runMerge(target: { clusterId: string; inlineName?: string }): Promise<void> {
-		if (mergeBusy) {
-			return;
-		}
-		const sources = [...selection].filter((id) => id !== target.clusterId);
-		mergeBusy = true;
-		mergeErrorKey = '';
-		if (target.inlineName !== undefined) {
-			const labeled = await labelPerson(target.clusterId, target.inlineName);
-			if (!labeled.ok) {
-				mergeBusy = false;
-				mergeErrorKey = labeled.errorKey;
-				return;
-			}
-		}
-		const outcome = await mergePeople(sources, target.clusterId);
-		mergeBusy = false;
-		if (!outcome.ok) {
-			mergeErrorKey = outcome.errorKey;
-			return;
-		}
-		const dissolved = new Set(outcome.merge.mergedClusterIds);
-		let updated = items.filter((cluster) => !dissolved.has(cluster.clusterId));
-		if (target.inlineName !== undefined) {
-			updated = updated.filter((cluster) => cluster.clusterId !== target.clusterId);
-		} else {
-			const gained = sources.reduce(
-				(sum, id) => sum + (items.find((cluster) => cluster.clusterId === id)?.faceCount ?? 0),
-				0
-			);
-			updated = updated.map((cluster) =>
-				cluster.clusterId === target.clusterId ? { ...cluster, faceCount: cluster.faceCount + gained } : cluster
-			);
-		}
-		items = updated;
-		selection.clear();
-		mergeOpen = false;
-	}
-
-	function handleCardClick(cluster: UnnamedClusterSummary): void {
-		if (selectable) {
-			if (selection.has(cluster.clusterId)) {
-				selection.delete(cluster.clusterId);
-			} else {
-				selection.add(cluster.clusterId);
-			}
-			return;
-		}
-		openNaming(cluster);
-	}
-
-	function exitSelection(): void {
-		selection.clear();
-		selectMode = false;
-	}
-
-	function handleWindowKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape' && (selection.size > 0 || selectMode)) {
-			exitSelection();
 		}
 	}
 
@@ -317,201 +190,120 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} />
-
 <svelte:head>
 	<title>{$_('people_unnamed_title')} · lumemor</title>
 </svelte:head>
 
-<section class="unnamed max-w-[1200px] mx-auto p-6" aria-busy={status === 'loading'}>
-	<!-- The toolbar: the way back to the named region, and the
-	     selection-mode toggle once clusters exist. -->
-	<div class="unnamed__toolbar flex justify-end items-center gap-3 mb-2">
+<section class="unnamed max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+	<!-- THE ONE ROW (§7.18): the back control, the title with the
+	     region's count -- and no action at all: the cards are the
+	     entrances, not a selection surface. -->
+	<div class="unnamed__toolbar flex items-center gap-3 pb-4 border-b border-border">
 		<a
-			class="unnamed__people-link mr-auto px-2.5 py-1.5 font-body font-semibold text-[14px] leading-[1.4] text-text-soft no-underline rounded-control transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
-			href="/people">{$_('nav_people')}</a
+			class="unnamed__back inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-control bg-transparent text-text-soft no-underline cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+			href="/people"
+			aria-label={$_('people_back')}
 		>
-		{#if items.length > 0}
-			<!-- The select-mode toggle is icon-only (the icon-first rule),
-			     named by its aria-label. -->
-			<IconButton
-				aria-pressed={selectMode}
-				aria-label={selectMode ? $_('action_done') : $_('action_select')}
-				title={selectMode ? $_('action_done') : $_('action_select')}
-				onclick={() => (selectMode = !selectMode)}
-			>
-				{#if selectMode}
-					<Check size={20} aria-hidden="true" />
-				{:else}
-					<ListChecks size={20} aria-hidden="true" />
-				{/if}
-			</IconButton>
-		{/if}
-	</div>
-
-	{#if firstLoad}
-		<p class="unnamed__loading my-12 text-center text-text-soft animate-loading-in" role="status">
-			{$_('people_unnamed_loading')}
-		</p>
-	{:else if settledEmpty}
-		<div
-			class="unnamed__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
-		>
-			<h1 class="text-[22px] mb-2">{$_('people_unnamed_title')}</h1>
-			<p class="text-text-soft">{$_('people_unnamed_empty')}</p>
-		</div>
-	{:else if status === 'error' && items.length === 0}
-		<div
-			class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void loadMore()}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-			>
-		</div>
-	{:else}
-		<div class="unnamed__grid grid grid-cols-[repeat(auto-fill,minmax(min(180px,100%),1fr))] gap-3">
-			{#each items as cluster (cluster.clusterId)}
-				<!-- The cluster card: a button, because the naming dialog is
-				     the main path; the select mode turns the same button
-				     into the selection toggle (the timeline tile's
-				     interaction model). -->
-				<button
-					class="cluster-card relative flex flex-col overflow-hidden rounded-card bg-card border text-left cursor-pointer transition-[border-color] duration-(--motion-fast) ease-standard focus-visible:border-accent {selection.has(
-						cluster.clusterId
-					)
-						? 'border-accent'
-						: 'border-border'}"
-					class:cluster-card--selected={selection.has(cluster.clusterId)}
-					type="button"
-					aria-pressed={selectable ? selection.has(cluster.clusterId) : undefined}
-					onclick={() => handleCardClick(cluster)}
+			<ChevronLeft size={20} aria-hidden="true" />
+		</a>
+		<h1 class="unnamed__title m-0 font-display font-bold text-[20px] leading-[1.3] text-text">
+			{$_('people_unnamed_title')}
+			{#if status === 'ready'}
+				<span
+					class="unnamed__title-count font-body font-normal text-[15px] leading-[1.4] text-text-soft tabular-nums"
 				>
-					<span class="cluster-card__crop relative block aspect-square bg-accent-soft" aria-hidden="true">
-						<img
-							class="absolute inset-0 w-full h-full object-cover"
-							src={cluster.thumbnail}
-							alt=""
-							loading="lazy"
-							decoding="async"
-							draggable="false"
-						/>
-						{#if selectable}
-							<!-- The selection mark: a visual state of the card
-							     button itself (no nested interactive element),
-							     the timeline checkbox's look. The branches are
-							     EXCLUSIVE: Tailwind's stylesheet order decides
-							     same-property conflicts, so an additive
-							     conditional would lose to the resting classes. -->
-							<span
-								class="cluster-card__check absolute top-1.5 left-1.5 z-(--z-tile-check) inline-flex items-center justify-center w-[26px] h-[26px] p-0 border rounded-full {selection.has(
-									cluster.clusterId
-								)
-									? 'border-accent bg-accent text-accent-on'
-									: 'border-cream-text/35 bg-night text-transparent'}"
-								aria-hidden="true"
-							>
-								<svg viewBox="0 0 24 24" width="14" height="14" fill="none">
-									<path
-										d="M5 12.5l4.5 4.5L19 7.5"
-										stroke="currentColor"
-										stroke-width="2.5"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-							</span>
-						{/if}
-					</span>
-					<span
-						class="cluster-card__count block px-3 py-2 font-body font-normal text-[14px] leading-[1.4] text-text-soft tabular-nums"
-						>{$_('people_face_count', { values: { count: cluster.faceCount } })}</span
-					>
-				</button>
-			{/each}
-		</div>
-	{/if}
-
-	{#if status === 'error' && items.length > 0}
-		<!-- A failed follow-up page while cards exist: the page stays,
-		     the retry re-runs the same cursor (an idempotent position). -->
-		<div
-			class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
-			role="alert"
-		>
-			<p>{errorText(errorKey)}</p>
-			<Button variant="primary" onclick={() => void loadMore()}
-				><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
-			>
-		</div>
-	{/if}
-
-	{#if !observerAvailable && hasMore && status === 'ready'}
-		<div class="unnamed__pager flex justify-center my-5">
-			<Button variant="ghost" onclick={() => void loadMore()}
-				><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button
-			>
-		</div>
-	{/if}
-
-	<div class="unnamed__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
-</section>
-
-{#if selection.size > 0}
-	<!-- The floating merge bar: the batch organize entry, the batch
-	     bar's look. The bar keeps its two-cluster floor (the batch
-	     shape needs sources beside the target; the one-source
-	     pairwise fold is the cluster detail's "merge into" path), so
-	     a lone selection keeps the button disabled. -->
-	<div
-		class="mergebar fixed left-1/2 bottom-5 z-(--z-toolbar) box-content flex flex-wrap items-center justify-center gap-2 max-w-[min(92vw,720px)] px-3.5 py-2.5 border border-border rounded-overlay bg-card shadow-overlay [transform:translateX(-50%)]"
-		role="toolbar"
-		aria-label={$_('batch_selected_count', { values: { count: selection.size } })}
-	>
-		<p
-			class="mergebar__count mr-1.5 font-body font-bold text-[15px] leading-[1.4] text-text whitespace-nowrap tabular-nums"
-		>
-			{$_('batch_selected_count', { values: { count: selection.size } })}
-		</p>
-		<!-- The bar is a toolbar: its actions are icon-only (the
-		     icon-first rule), named by their aria-labels. -->
-		<IconButton
-			variant="ghost"
-			disabled={selection.size < 2 || mergeBusy}
-			aria-label={$_('people_merge_action')}
-			title={$_('people_merge_action')}
-			onclick={() => {
-				mergeErrorKey = '';
-				mergeOpen = true;
-			}}
-		>
-			<GitMerge size={20} aria-hidden="true" />
-		</IconButton>
-		<IconButton
-			variant="ghost"
-			aria-label={$_('action_clear_selection')}
-			title={$_('action_clear_selection')}
-			onclick={exitSelection}
-		>
-			<X size={20} aria-hidden="true" />
-		</IconButton>
+					· {$_('people_unnamed_count', { values: { count: totalCount } })}
+				</span>
+			{/if}
+		</h1>
 	</div>
-{/if}
 
-<PersonNameDialog
-	bind:open={nameDialogOpen}
-	titleKey="people_name_dialog_title"
-	submitKey="people_name_submit"
-	busy={nameBusy}
-	errorKey={nameErrorKey}
-	onsubmit={(name) => void submitName(name)}
-/>
+	<div class="unnamed__content pt-4">
+		{#if firstLoad}
+			<p class="unnamed__loading my-12 text-center text-text-soft animate-loading-in" role="status">
+				{$_('people_unnamed_loading')}
+			</p>
+		{:else if settledEmpty}
+			<div
+				class="unnamed__empty max-w-[420px] box-content mx-auto my-12 py-8 px-6 text-center bg-card border border-border rounded-card shadow-card"
+			>
+				<p class="unnamed__empty-title mb-2 font-display font-bold text-[16px] leading-[1.3] text-text">
+					{$_('people_unnamed_empty_title')}
+				</p>
+				<p class="m-0 text-text-soft">{$_('people_unnamed_empty')}</p>
+			</div>
+		{:else if status === 'error' && items.length === 0}
+			<div
+				class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
+				<p>{errorText(errorKey)}</p>
+				<Button variant="primary" onclick={() => void loadMore()}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{:else}
+			<div class="unnamed__grid grid grid-cols-[repeat(auto-fill,minmax(min(160px,100%),1fr))] gap-3">
+				{#each items as cluster (cluster.clusterId)}
+					<!-- The cluster card: a LINK into the person detail's
+					     unnamed variant (the same page the named cards open).
+					     No check circle, no pressed state: the card is an
+					     entrance. -->
+					<a
+						class="cluster-card relative flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card focus-visible:border-accent"
+						href="/people/{encodeURIComponent(cluster.clusterId)}?state=unnamed"
+					>
+						<span class="cluster-card__crop relative block aspect-square bg-accent-soft" aria-hidden="true">
+							<img
+								class="absolute inset-0 w-full h-full object-cover"
+								src={cluster.thumbnail}
+								alt=""
+								loading="lazy"
+								decoding="async"
+								draggable="false"
+							/>
+						</span>
+						<span class="cluster-card__meta flex items-center gap-2 px-3 py-2">
+							<span
+								class="cluster-card__name min-w-0 font-body font-semibold text-[14px] leading-[1.4] text-text truncate"
+								>{$_('people_unnamed_title')}</span
+							>
+							<span
+								class="cluster-card__count ml-auto inline-flex items-center gap-1 font-body font-normal text-[13px] leading-[1.4] text-text-soft tabular-nums whitespace-nowrap"
+								role="img"
+								aria-label={$_('people_face_count', { values: { count: cluster.faceCount } })}
+								title={$_('people_face_count', { values: { count: cluster.faceCount } })}
+							>
+								<ScanFace size={14} aria-hidden="true" />{cluster.faceCount}
+							</span>
+						</span>
+					</a>
+				{/each}
+			</div>
+		{/if}
 
-<MergeDialog
-	bind:open={mergeOpen}
-	selected={selectedClusters}
-	busy={mergeBusy}
-	errorKey={mergeErrorKey}
-	onsubmit={(target) => void runMerge(target)}
-/>
+		{#if status === 'error' && items.length > 0}
+			<!-- A failed follow-up page while cards exist: the page stays,
+			     the retry re-runs the same cursor (an idempotent position). -->
+			<div
+				class="unnamed__failure flex flex-col items-center gap-3 max-w-[420px] box-content mx-auto my-12 p-5 text-center border border-danger rounded-card text-danger-text"
+				role="alert"
+			>
+				<p>{errorText(errorKey)}</p>
+				<Button variant="primary" onclick={() => void loadMore()}
+					><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				>
+			</div>
+		{/if}
+
+		{#if !observerAvailable && hasMore && status === 'ready'}
+			<div class="unnamed__pager flex justify-center my-5">
+				<Button variant="ghost" onclick={() => void loadMore()}
+					><ChevronsDown size={20} aria-hidden="true" />{$_('timeline_load_more')}</Button
+				>
+			</div>
+		{/if}
+
+		<div class="unnamed__sentinel h-px" bind:this={sentinel} aria-hidden="true"></div>
+	</div>
+</section>

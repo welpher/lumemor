@@ -1,17 +1,21 @@
-// The people surface writes: the caller's label and
-// hidden switches behind PUT/DELETE /people/{clusterId}/label and
-// PUT /people/{clusterId}/hidden, the cluster merge behind
+// The people surface writes: the caller's label beside
+// PUT/DELETE /people/{clusterId}/label, the person ENTITY's two
+// attributes behind PUT /people/{clusterId}/birthdate and
+// PUT /people/{clusterId}/avatar, the cluster merge behind
 // POST /people/merge, the single face move behind
 // POST /faces/{faceId}/move, the from-face person creation behind
 // POST /faces/{faceId}/cluster and the single-face detach behind
 // DELETE /faces/{faceId}.
 //
-// The per-user-state discipline runs through every label write: the writes are
-// per-caller upserts on the (user_id, cluster_id) pair -- they never
-// read or touch another account's row, and duplicating another
-// account's name is fine (no NAME_TAKEN exists; families have real
-// duplicates). The structural writes stick to the cluster
-// maintenance discipline for every faces.cluster_id
+// The per-user-state discipline runs through the label writes: they
+// are per-caller upserts and deletes on the (user_id, cluster_id)
+// pair -- they never read or touch another account's row, and
+// duplicating another account's name is fine (no NAME_TAKEN exists;
+// families have real duplicates). The birth date and the avatar are
+// the OPPOSITE shape on purpose: the person entity's attributes are
+// one value per cluster for the whole family, so those writes touch
+// the cluster's own columns. The structural writes stick to the
+// cluster maintenance discipline for every faces.cluster_id
 // change: member moves, representative re-pointing and the
 // dissolution of vacated clusters (labels cascading) land in ONE
 // transaction, never as bare member moves.
@@ -28,6 +32,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
@@ -60,8 +65,8 @@ func (s *server) writePersonNotFound(w http.ResponseWriter) {
 
 // writeMessageKey emits a 400 VALIDATION_FAILED whose details carry a
 // message key: a code-specific sub-condition the clients translate
-// through their i18n tables (person_hide_requires_label on the people
-// surface, album_cover_not_member on the album face).
+// through their i18n tables (album_cover_not_member on the album
+// face).
 func (s *server) writeMessageKey(w http.ResponseWriter, message string, key string) {
 	details := map[string]interface{}{"key": key}
 	s.writeError(w, http.StatusBadRequest, apigen.VALIDATIONFAILED, message, &details)
@@ -80,8 +85,8 @@ func personFKViolation(err error) bool {
 // publishPersonEvent reports one people-surface event onto the
 // activity stream. The nil guard matches the asset publisher (a
 // router wired without a bus is a wiring-order state, tests only);
-// the payload carries the acting user beside the ids, because label
-// and hidden state are private per user.
+// the payload carries the acting user beside the ids, because the
+// entity writes are shared state a subscriber filters by ids.
 func (s *server) publishPersonEvent(name string, payload map[string]string) {
 	if s.events == nil {
 		return
@@ -91,7 +96,8 @@ func (s *server) publishPersonEvent(name string, payload map[string]string) {
 
 // LabelPerson implements PUT /people/{clusterId}/label: the caller's
 // private upsert of one cluster's name. Duplicate names are allowed
-// (no NAME_TAKEN); a rename keeps the hidden switch; the write
+// (no NAME_TAKEN); the person entity's attributes (birth date,
+// avatar) live on the cluster and stay untouched; the write
 // publishes person.labeled.
 func (s *server) LabelPerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
@@ -124,7 +130,7 @@ func (s *server) LabelPerson(w http.ResponseWriter, r *http.Request, clusterId o
 		s.internalError(w, r, "count cluster faces", err)
 		return
 	}
-	if visible == 0 {
+	if visible.FaceCount == 0 {
 		s.writePersonNotFound(w)
 		return
 	}
@@ -151,8 +157,7 @@ func (s *server) LabelPerson(w http.ResponseWriter, r *http.Request, clusterId o
 
 	s.writeJSON(w, http.StatusOK, apigen.PersonLabelResponse{
 		ClusterId: clusterId,
-		Name:      labelRow.Name,
-		IsHidden:  labelRow.IsHidden,
+		Name:      labelRow,
 	})
 }
 
@@ -180,7 +185,7 @@ func (s *server) UnlabelPerson(w http.ResponseWriter, r *http.Request, clusterId
 		s.internalError(w, r, "count cluster faces", err)
 		return
 	}
-	if visible == 0 {
+	if visible.FaceCount == 0 {
 		s.writePersonNotFound(w)
 		return
 	}
@@ -205,21 +210,32 @@ func (s *server) UnlabelPerson(w http.ResponseWriter, r *http.Request, clusterId
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// SetPersonHidden implements PUT /people/{clusterId}/hidden: the
-// hidden switch flips on the CALLER'S label row, so hiding an
-// unlabeled cluster answers the pinned person_hide_requires_label
-// message key. Hidden people stay listed (badge semantics). The
-// write publishes person.hidden in both directions.
-func (s *server) SetPersonHidden(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
+// SetPersonBirthdate implements PUT /people/{clusterId}/birthdate:
+// the person ENTITY's birth date, one value per cluster read by
+// every account. The body carries the field explicitly (a body
+// without it is a client bug the 400 names) and null clears it --
+// a clear is an act, not an omission. The write publishes
+// person.birthdate_updated.
+func (s *server) SetPersonBirthdate(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
 		s.rejectUnauthenticated(w)
 		return
 	}
 
-	var request apigen.SetPersonHiddenRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+	var body map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+		return
+	}
+	raw, present := body["birthDate"]
+	if !present {
+		s.writeValidationError(w, "birthDate must be a YYYY-MM-DD date or null", []string{"birthDate"})
+		return
+	}
+	var request apigen.SetPersonBirthdateRequest
+	if err := json.Unmarshal(raw, &request.BirthDate); err != nil {
+		s.writeValidationError(w, "birthDate must be a YYYY-MM-DD date or null", []string{"birthDate"})
 		return
 	}
 
@@ -235,37 +251,100 @@ func (s *server) SetPersonHidden(w http.ResponseWriter, r *http.Request, cluster
 		s.internalError(w, r, "count cluster faces", err)
 		return
 	}
-	if visible == 0 {
+	if visible.FaceCount == 0 {
 		s.writePersonNotFound(w)
 		return
 	}
 
-	// The update IS the label existence check, atomically: zero
-	// rows mean the caller has not named the cluster (the switch's
-	// home row is missing), whatever raced.
-	labelRow, err := s.queries.SetUserFaceLabelHidden(ctx, dbgen.SetUserFaceLabelHiddenParams{
-		UserID:    callerID,
-		ClusterID: clusterID,
-		IsHidden:  request.IsHidden,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		s.writeMessageKey(w, "the person carries no label to hide", "person_hide_requires_label")
-		return
+	birthDate := pgtype.Date{}
+	if request.BirthDate != nil {
+		birthDate = pgtype.Date{Time: request.BirthDate.UTC(), Valid: true}
 	}
-	if err != nil {
-		s.internalError(w, r, "set the person hidden switch", err)
+	if err := s.queries.SetClusterBirthDate(ctx, dbgen.SetClusterBirthDateParams{
+		ClusterID: clusterID,
+		BirthDate: birthDate,
+	}); err != nil {
+		s.internalError(w, r, "set the person birth date", err)
 		return
 	}
 
-	s.publishPersonEvent("person.hidden", map[string]string{
+	s.publishPersonEvent("person.birthdate_updated", map[string]string{
 		"clusterId": uuid.UUID(clusterId).String(),
 		"userId":    requester.userID.String(),
 	})
 
-	s.writeJSON(w, http.StatusOK, apigen.PersonLabelResponse{
+	s.writeJSON(w, http.StatusOK, apigen.PersonBirthdateResponse{
 		ClusterId: clusterId,
-		Name:      labelRow.Name,
-		IsHidden:  labelRow.IsHidden,
+		BirthDate: request.BirthDate,
+	})
+}
+
+// SetPersonAvatar implements PUT /people/{clusterId}/avatar: the
+// person ENTITY's avatar face, one pick per cluster read by every
+// account. The face must be one of the cluster's own, on an asset
+// the caller can see -- anything else answers the pinned 404, so a
+// face id cannot be probed either. The pick is advisory to the
+// clustering (representative_face_id is untouched) and the read
+// falls back to the best visible member when it stops holding. The
+// write publishes person.avatar_updated.
+func (s *server) SetPersonAvatar(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	var request apigen.SetPersonAvatarRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+		return
+	}
+	if uuid.UUID(request.FaceId) == uuid.Nil {
+		s.writeValidationError(w, "faceId must be a UUID", []string{"faceId"})
+		return
+	}
+
+	ctx := r.Context()
+	callerID := pgUUID(requester.userID)
+	clusterID := pgUUID(uuid.UUID(clusterId))
+
+	// The face-side gate first: another cluster's face is no avatar
+	// of this person, and the one 404 keeps the two misses
+	// indistinguishable.
+	if _, err := s.queries.GetClusterAvatarFaceForCaller(ctx, dbgen.GetClusterAvatarFaceForCallerParams{
+		FaceID:    pgUUID(uuid.UUID(request.FaceId)),
+		ClusterID: clusterID,
+		UserID:    callerID,
+	}); errors.Is(err, pgx.ErrNoRows) {
+		s.writePersonNotFound(w)
+		return
+	} else if err != nil {
+		s.internalError(w, r, "load the avatar face", err)
+		return
+	}
+
+	if err := s.queries.SetClusterAvatarFace(ctx, dbgen.SetClusterAvatarFaceParams{
+		ClusterID:    clusterID,
+		AvatarFaceID: pgUUID(uuid.UUID(request.FaceId)),
+	}); err != nil {
+		if personFKViolation(err) {
+			// The cluster (or the face) dissolved in the race
+			// against the write: no such person to the picker.
+			s.writePersonNotFound(w)
+			return
+		}
+		s.internalError(w, r, "set the person avatar", err)
+		return
+	}
+
+	s.publishPersonEvent("person.avatar_updated", map[string]string{
+		"clusterId": uuid.UUID(clusterId).String(),
+		"userId":    requester.userID.String(),
+	})
+
+	s.writeJSON(w, http.StatusOK, apigen.PersonAvatarResponse{
+		ClusterId:    clusterId,
+		AvatarFaceId: request.FaceId,
 	})
 }
 
@@ -485,7 +564,7 @@ func (s *server) MoveFace(w http.ResponseWriter, r *http.Request, faceId openapi
 		s.internalError(w, r, "count target faces", err)
 		return
 	}
-	if visible == 0 {
+	if visible.FaceCount == 0 {
 		s.writePersonNotFound(w)
 		return
 	}

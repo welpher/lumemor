@@ -8,15 +8,14 @@ import 'package:built_value/serializer.dart';
 
 part 'person_summary.g.dart';
 
-/// One named person of the caller's people list: a global face cluster carrying the caller's own label. The name and the hidden switch are the caller's private label state -- another account labeling or hiding the same cluster never changes this view. 
+/// One named person of the caller's people list: a global face cluster carrying the caller's own label. The name is the caller's private label state -- another account labeling the same cluster never changes this view. The person entity's own attributes (the avatar) are shared: every account of the family sees the same avatar face. 
 ///
 /// Properties:
 /// * [clusterId] - Identifier of the face cluster.
 /// * [name] - The caller's own label of the cluster.
-/// * [faceCount] - The cluster's faces on assets visible to the caller -- the honest per-caller count, not the global member count. 
-/// * [representativeFaceId] - The face the person card renders: the cluster's strongest-scoring face on a caller-visible live asset (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, not the cluster's global representative, so a card never crops out of an asset the caller cannot view. The field is the thumbnail's face id. 
-/// * [thumbnail] - URL of the card's face crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the caller-visible best face's id. 
-/// * [isHidden] - The caller's hidden switch for this person. Hidden people stay listed carrying this flag (badge semantics); they are not filtered out. 
+/// * [photoCount] - The number of DISTINCT live assets the cluster has a face on that the caller can see -- photos, not faces, so two faces of one person in one photo count once. Honest per caller, never the global count. 
+/// * [representativeFaceId] - The face the person card renders: the person's chosen avatar face when it is a caller-visible live member of the cluster, otherwise the cluster's strongest-scoring caller-visible face (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, never a face on an asset the caller cannot view. The field is the thumbnail's face id. 
+/// * [thumbnail] - URL of the card's face crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with `representativeFaceId`. 
 @BuiltValue()
 abstract class PersonSummary implements Built<PersonSummary, PersonSummaryBuilder> {
   /// Identifier of the face cluster.
@@ -27,21 +26,17 @@ abstract class PersonSummary implements Built<PersonSummary, PersonSummaryBuilde
   @BuiltValueField(wireName: r'name')
   String get name;
 
-  /// The cluster's faces on assets visible to the caller -- the honest per-caller count, not the global member count. 
-  @BuiltValueField(wireName: r'faceCount')
-  int get faceCount;
+  /// The number of DISTINCT live assets the cluster has a face on that the caller can see -- photos, not faces, so two faces of one person in one photo count once. Honest per caller, never the global count. 
+  @BuiltValueField(wireName: r'photoCount')
+  int get photoCount;
 
-  /// The face the person card renders: the cluster's strongest-scoring face on a caller-visible live asset (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, not the cluster's global representative, so a card never crops out of an asset the caller cannot view. The field is the thumbnail's face id. 
+  /// The face the person card renders: the person's chosen avatar face when it is a caller-visible live member of the cluster, otherwise the cluster's strongest-scoring caller-visible face (score descending, the face id ascending as the tiebreak) -- the best face the CALLER can see, never a face on an asset the caller cannot view. The field is the thumbnail's face id. 
   @BuiltValueField(wireName: r'representativeFaceId')
   String get representativeFaceId;
 
-  /// URL of the card's face crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with the caller-visible best face's id. 
+  /// URL of the card's face crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with `representativeFaceId`. 
   @BuiltValueField(wireName: r'thumbnail')
   String get thumbnail;
-
-  /// The caller's hidden switch for this person. Hidden people stay listed carrying this flag (badge semantics); they are not filtered out. 
-  @BuiltValueField(wireName: r'isHidden')
-  bool get isHidden;
 
   PersonSummary._();
 
@@ -76,9 +71,9 @@ class _$PersonSummarySerializer implements PrimitiveSerializer<PersonSummary> {
       object.name,
       specifiedType: const FullType(String),
     );
-    yield r'faceCount';
+    yield r'photoCount';
     yield serializers.serialize(
-      object.faceCount,
+      object.photoCount,
       specifiedType: const FullType(int),
     );
     yield r'representativeFaceId';
@@ -90,11 +85,6 @@ class _$PersonSummarySerializer implements PrimitiveSerializer<PersonSummary> {
     yield serializers.serialize(
       object.thumbnail,
       specifiedType: const FullType(String),
-    );
-    yield r'isHidden';
-    yield serializers.serialize(
-      object.isHidden,
-      specifiedType: const FullType(bool),
     );
   }
 
@@ -133,12 +123,12 @@ class _$PersonSummarySerializer implements PrimitiveSerializer<PersonSummary> {
           ) as String;
           result.name = valueDes;
           break;
-        case r'faceCount':
+        case r'photoCount':
           final valueDes = serializers.deserialize(
             value,
             specifiedType: const FullType(int),
           ) as int;
-          result.faceCount = valueDes;
+          result.photoCount = valueDes;
           break;
         case r'representativeFaceId':
           final valueDes = serializers.deserialize(
@@ -153,13 +143,6 @@ class _$PersonSummarySerializer implements PrimitiveSerializer<PersonSummary> {
             specifiedType: const FullType(String),
           ) as String;
           result.thumbnail = valueDes;
-          break;
-        case r'isHidden':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(bool),
-          ) as bool;
-          result.isHidden = valueDes;
           break;
         default:
           unhandled.add(key);

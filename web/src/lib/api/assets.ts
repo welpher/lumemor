@@ -114,17 +114,23 @@ function faceSummaryFrom(body: unknown): AssetFaceSummary | null {
 	if (typeof candidate.clusterId !== 'string' && candidate.clusterId !== null) {
 		return null;
 	}
+	// birthDate is the person entity's own attribute (always present,
+	// null when unset): the chip's capture-time age reads it.
+	if (candidate.birthDate !== null && typeof candidate.birthDate !== 'string') {
+		return null;
+	}
+	if (candidate.birthDate === undefined) {
+		return null;
+	}
 	// label is the caller's label state or null (always present); a
-	// present label must carry its two fields.
+	// present label carries the caller's name (the people domain's
+	// only per-user field -- hiding retired whole).
 	if (candidate.label !== null) {
 		if (typeof candidate.label !== 'object') {
 			return null;
 		}
 		const label = candidate.label as Partial<NonNullable<AssetFaceSummary['label']>>;
 		if (typeof label.name !== 'string') {
-			return null;
-		}
-		if (label.isHidden !== true && label.isHidden !== false) {
 			return null;
 		}
 	}

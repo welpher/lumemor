@@ -8,12 +8,11 @@ import 'package:built_value/serializer.dart';
 
 part 'person_label_response.g.dart';
 
-/// The calling user's label state of one face cluster after a label or hidden write: the caller's own row only (another account's label never shows here). 
+/// The calling user's label state of one face cluster after a label write: the caller's own row only (another account's label never shows here). 
 ///
 /// Properties:
 /// * [clusterId] - Identifier of the face cluster.
 /// * [name] - The caller's (trimmed) name for the person.
-/// * [isHidden] - The caller's hidden switch for this person.
 @BuiltValue()
 abstract class PersonLabelResponse implements Built<PersonLabelResponse, PersonLabelResponseBuilder> {
   /// Identifier of the face cluster.
@@ -23,10 +22,6 @@ abstract class PersonLabelResponse implements Built<PersonLabelResponse, PersonL
   /// The caller's (trimmed) name for the person.
   @BuiltValueField(wireName: r'name')
   String get name;
-
-  /// The caller's hidden switch for this person.
-  @BuiltValueField(wireName: r'isHidden')
-  bool get isHidden;
 
   PersonLabelResponse._();
 
@@ -60,11 +55,6 @@ class _$PersonLabelResponseSerializer implements PrimitiveSerializer<PersonLabel
     yield serializers.serialize(
       object.name,
       specifiedType: const FullType(String),
-    );
-    yield r'isHidden';
-    yield serializers.serialize(
-      object.isHidden,
-      specifiedType: const FullType(bool),
     );
   }
 
@@ -102,13 +92,6 @@ class _$PersonLabelResponseSerializer implements PrimitiveSerializer<PersonLabel
             specifiedType: const FullType(String),
           ) as String;
           result.name = valueDes;
-          break;
-        case r'isHidden':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType(bool),
-          ) as bool;
-          result.isHidden = valueDes;
           break;
         default:
           unhandled.add(key);

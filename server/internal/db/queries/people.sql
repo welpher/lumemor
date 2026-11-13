@@ -2,12 +2,21 @@
 -- region, the unnamed region's keyset pages and the cluster detail.
 --
 -- The per-user-state semantics run through every query: face clusters are GLOBAL
--- rows (face_clusters / faces), while names and the hidden switch are
--- PRIVATE per user (user_face_labels, keyed (user_id, cluster_id) --
--- never an instance-level name). A caller's view of a cluster is
--- therefore computed, not stored: which region the cluster sits in,
--- its label state and its face count all come from the caller's own
--- rows joined onto the global structure.
+-- rows (face_clusters / faces), and so are the person entity's
+-- attributes (birth_date, avatar_face_id -- one birthday and one
+-- avatar per person for the whole family), while the NAME is PRIVATE
+-- per user (user_face_labels, keyed (user_id, cluster_id) -- never an
+-- instance-level name). A caller's view of a cluster is therefore
+-- computed, not stored: which region the cluster sits in, its label
+-- state and its counts all come from the caller's own rows joined
+-- onto the global structure.
+--
+-- The people domain has exactly two regions -- named (a label row of
+-- the caller) and unnamed (no label row of the caller). Hiding a
+-- person retired whole with the model decision (2026-11-11): the
+-- is_hidden column, its badge and its events are gone; the write
+-- that ends a name (`DeleteUserFaceLabel`) is the only way a person
+-- leaves the named region.
 --
 -- Caller visibility is the album union: an asset is
 -- visible to the caller when caller_asset_visible says so -- the
@@ -35,15 +44,25 @@
 -- The named region: clusters that carry a label row OF THE CALLER
 -- (the inner join) and contain at least one face on a caller-visible
 -- asset (the faces join drops the rest -- a label on an invisible
--- cluster lists nowhere). Hidden people stay listed carrying their
--- is_hidden flag: the switch is a badge, not a filter. Ordered by
--- name case-insensitively, cluster id as the tiebreak. The card face
--- is the cluster's best caller-visible live member (the correlated
--- pick: score DESC, face id ASC), which the listing cluster proves
--- exists -- the join below already found a visible face.
+-- cluster lists nowhere). Ordered by name case-insensitively,
+-- cluster id as the tiebreak.
+--
+-- Two counts live here and they are different questions: photo_count
+-- is the DISTINCT live assets carrying a member face (the card's
+-- honest number -- a person in one photo is one photo however many
+-- times they appear in it), while face_count is the membership size
+-- (unused by the named cards, kept because the same CTE-style join
+-- answers the unnamed region's count).
+--
+-- The card face is the person's CHOSEN avatar when that face is a
+-- caller-visible live member of this cluster, otherwise the cluster's
+-- best caller-visible live member (the ordering puts the avatar
+-- first): an avatar picked on an asset the caller cannot see never
+-- renders a dead crop, and a face that later left the cluster stops
+-- counting -- the pick degrades to the fallback instead of breaking.
 SELECT fc.id AS cluster_id,
        l.name,
-       l.is_hidden,
+       count(DISTINCT a.id) AS photo_count,
        (
            SELECT f2.id
            FROM faces f2
@@ -53,10 +72,9 @@ SELECT fc.id AS cluster_id,
              AND a2.is_hidden = false
              AND a2.is_component = false
              AND caller_asset_visible(sqlc.arg('user_id'), a2.id)
-           ORDER BY f2.score DESC, f2.id
+           ORDER BY (f2.id = fc.avatar_face_id) DESC, f2.score DESC, f2.id
            LIMIT 1
-       ) AS best_face_id,
-       count(*) AS face_count
+       ) AS best_face_id
 FROM face_clusters fc
 JOIN user_face_labels l ON l.cluster_id = fc.id AND l.user_id = sqlc.arg('user_id')
 JOIN faces f ON f.cluster_id = fc.id
@@ -65,7 +83,7 @@ WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
   AND caller_asset_visible(sqlc.arg('user_id'), a.id)
-GROUP BY fc.id, l.name, l.is_hidden
+GROUP BY fc.id, l.name
 ORDER BY lower(l.name), fc.id;
 
 -- name: ListUnnamedClusters :many
@@ -90,7 +108,7 @@ FROM (
                  AND a2.is_hidden = false
                  AND a2.is_component = false
                  AND caller_asset_visible(sqlc.arg('user_id'), a2.id)
-               ORDER BY f2.score DESC, f2.id
+               ORDER BY (f2.id = fc.avatar_face_id) DESC, f2.score DESC, f2.id
                LIMIT 1
            ) AS best_face_id,
            count(*) AS face_count
@@ -115,14 +133,41 @@ WHERE (
 ORDER BY face_count DESC, cluster_id DESC
 LIMIT sqlc.arg('limit_count');
 
+-- name: CountUnnamedClusters :one
+-- The caller's whole unnamed region in one number: the same
+-- predicate ListUnnamedClusters walks (a caller-visible face, no
+-- label row of the caller), without the page window. It answers the
+-- unnamed listing's own count and the people list's entry badge --
+-- neither has to walk pages to count the region.
+SELECT count(*) AS cluster_count
+FROM face_clusters fc
+WHERE EXISTS (
+    SELECT 1
+    FROM faces f
+    JOIN assets a ON a.id = f.asset_id
+    WHERE f.cluster_id = fc.id
+      AND a.deleted_at IS NULL
+      AND a.is_hidden = false
+      AND a.is_component = false
+      AND caller_asset_visible(sqlc.arg('user_id'), a.id)
+)
+AND NOT EXISTS (
+    SELECT 1 FROM user_face_labels l
+    WHERE l.user_id = sqlc.arg('user_id') AND l.cluster_id = fc.id
+);
+
 -- name: CountClusterFaces :one
--- The cluster's face count over caller-visible assets ONLY. A count
--- of zero covers both "unknown cluster" and "every face sits on
--- another account's assets or a share the caller lost" -- the double
--- meaning the detail endpoint answers with one indistinguishable
--- 404. This gate also fronts the label writes (a sharee names the
--- people they see; the label row stays the caller's own).
-SELECT count(*) AS face_count
+-- The cluster's membership over caller-visible assets ONLY: the face
+-- count (how many detected faces of this person the caller can see)
+-- and the photo count (how many DISTINCT assets carry one). A face
+-- count of zero covers both "unknown cluster" and "every face sits
+-- on another account's assets or a share the caller lost" -- the
+-- double meaning the detail endpoint answers with one
+-- indistinguishable 404. This gate also fronts every people write (a
+-- sharee names and dates the people they see; the writes stay the
+-- caller's own).
+SELECT count(*) AS face_count,
+       count(DISTINCT a.id) AS photo_count
 FROM faces f
 JOIN assets a ON a.id = f.asset_id
 WHERE f.cluster_id = sqlc.arg('cluster_id')
@@ -132,13 +177,15 @@ WHERE f.cluster_id = sqlc.arg('cluster_id')
   AND caller_asset_visible(sqlc.arg('user_id'), a.id);
 
 -- name: GetClusterForCaller :one
--- One cluster's label state for the caller: the caller's own label
--- via the LEFT JOIN (null columns = the unnamed state), whatever any
--- other account labeled. Visibility is not this query's concern --
--- the count gate runs first.
+-- One cluster's state for the caller: the caller's own label via the
+-- LEFT JOIN (null name = the unnamed state) beside the person
+-- entity's OWN attributes (the birth date and the picked avatar),
+-- whatever any other account labeled or picked. Visibility is not
+-- this query's concern -- the count gate runs first.
 SELECT fc.id AS cluster_id,
        l.name AS label_name,
-       l.is_hidden AS label_hidden
+       fc.birth_date,
+       fc.avatar_face_id
 FROM face_clusters fc
 LEFT JOIN user_face_labels l ON l.cluster_id = fc.id AND l.user_id = sqlc.arg('user_id')
 WHERE fc.id = sqlc.arg('cluster_id');
@@ -161,11 +208,14 @@ WHERE f.cluster_id = sqlc.arg('cluster_id')
   AND caller_asset_visible(sqlc.arg('user_id'), a.id)
 ORDER BY f.score DESC, f.id;
 
--- The write side. The label and hidden writes are
--- per-caller upserts on the (user_id, cluster_id) pair -- the
--- per-user-state discipline's writes: they never read or touch another account's
--- row. The structural writes (merge, face move, from-face creation,
--- detach) stick to the
+-- The write side. The label writes are per-caller upserts and
+-- deletes on the (user_id, cluster_id) pair -- the per-user-state
+-- discipline's writes: they never read or touch another account's
+-- row. The person entity's writes (the birth date, the avatar pick)
+-- are plain cluster-column updates: they are shared state by design
+-- (one birthday, one avatar per person), so they touch no per-user
+-- row at all. The structural writes (merge, face move, from-face
+-- creation, detach) stick to the
 -- cluster-maintenance discipline for every
 -- faces.cluster_id change: the member moves land inside ONE
 -- transaction together with the representative maintenance and the
@@ -175,15 +225,15 @@ ORDER BY f.score DESC, f.id;
 
 -- name: UpsertUserFaceLabel :one
 -- The caller's label write: an insert for a first naming, a rename
--- for a repeat (the upsert arm updates ONLY the name, so the hidden
--- switch keeps its state -- a rename is not an unhide). The row is
--- the caller's own: the (user_id, cluster_id) primary key scopes
--- every read to it.
+-- for a repeat. The row is the caller's own: the (user_id,
+-- cluster_id) primary key scopes every read to it; the person
+-- entity's own attributes live on the cluster row and stay untouched
+-- here.
 INSERT INTO user_face_labels (user_id, cluster_id, name)
 VALUES (sqlc.arg('user_id'), sqlc.arg('cluster_id'), sqlc.arg('name'))
 ON CONFLICT (user_id, cluster_id)
 DO UPDATE SET name = EXCLUDED.name, updated_at = now()
-RETURNING name, is_hidden;
+RETURNING name;
 
 -- name: DeleteUserFaceLabel :exec
 -- Removes the caller's label row: the person returns to the
@@ -192,15 +242,40 @@ RETURNING name, is_hidden;
 DELETE FROM user_face_labels
 WHERE user_id = sqlc.arg('user_id') AND cluster_id = sqlc.arg('cluster_id');
 
--- name: SetUserFaceLabelHidden :one
--- Flips the hidden switch on the caller's label row. The label row
--- IS the hidden state's home (name NOT NULL), so zero rows here
--- mean the caller has not named the cluster yet -- the
--- person_hide_requires_label case the handler maps to a 400.
-UPDATE user_face_labels
-SET is_hidden = sqlc.arg('is_hidden'), updated_at = now()
-WHERE user_id = sqlc.arg('user_id') AND cluster_id = sqlc.arg('cluster_id')
-RETURNING name, is_hidden;
+-- name: SetClusterBirthDate :exec
+-- The birth date write: one cluster column, shared by every account
+-- (the person entity's attribute). A NULL clears the value -- the
+-- clear is as explicit as the set, and both answer the same
+-- response shape.
+UPDATE face_clusters
+SET birth_date = sqlc.narg('birth_date')::date, updated_at = now()
+WHERE id = sqlc.arg('cluster_id');
+
+-- name: GetClusterAvatarFaceForCaller :one
+-- The avatar pick's face-side gate in one read: the face belongs to
+-- THIS cluster and sits on a caller-visible live asset. A miss
+-- covers an unknown face, a face of another cluster and a face on an
+-- asset the caller cannot see alike -- the same 404 the people
+-- surface answers everywhere (anti-enumeration).
+SELECT f.id
+FROM faces f
+JOIN assets a ON a.id = f.asset_id
+WHERE f.id = sqlc.arg('face_id')
+  AND f.cluster_id = sqlc.arg('cluster_id')
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND caller_asset_visible(sqlc.arg('user_id'), a.id);
+
+-- name: SetClusterAvatarFace :exec
+-- The avatar pick's write: one cluster column, shared by every
+-- account. It is advisory to the clustering -- representative_face_id
+-- (the structural maintenance's own pointer) stays untouched, and a
+-- pick whose face later leaves the cluster simply stops counting at
+-- read time (the reads fall back to the best visible member).
+UPDATE face_clusters
+SET avatar_face_id = sqlc.arg('avatar_face_id'), updated_at = now()
+WHERE id = sqlc.arg('cluster_id');
 
 -- name: CountVisibleClusters :one
 -- How many of the given clusters the caller holds CURATION over:
@@ -369,15 +444,20 @@ WHERE f.id = sqlc.arg('face_id')
 -- hidden asset's detail answers 200 and its faces ride along. The
 -- cluster_id crosses as NULL for a face the clustering has not
 -- assigned yet (label null with it -- nothing to label); the caller's
--- unnamed clusters read as null label columns. Ordered score
--- descending, the face id ascending as the tiebreak.
+-- unnamed clusters read as null label columns. The cluster's
+-- birth_date rides beside the label because it is the ENTITY's own
+-- attribute (one value per person, every account reading the same):
+-- the chip computes the capture-time age from it and the asset's
+-- taken_at. Ordered score descending, the face id ascending as the
+-- tiebreak.
 SELECT f.id,
        f.score,
        f.cluster_id,
        l.name AS label_name,
-       l.is_hidden AS label_hidden
+       fc.birth_date
 FROM faces f
 LEFT JOIN user_face_labels l
        ON l.cluster_id = f.cluster_id AND l.user_id = sqlc.arg('user_id')
+LEFT JOIN face_clusters fc ON fc.id = f.cluster_id
 WHERE f.asset_id = sqlc.arg('asset_id')
 ORDER BY f.score DESC, f.id;
