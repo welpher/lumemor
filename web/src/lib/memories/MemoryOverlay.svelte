@@ -45,6 +45,7 @@
 		fetchAlbumDetail,
 		patchAlbum,
 		removeAlbumItems,
+		setAlbumTimelinePreference,
 		updateAlbumAudience,
 		type AlbumDetail,
 		type AlbumSummary
@@ -72,6 +73,8 @@
 	import Play from '@lucide/svelte/icons/play';
 	import Pause from '@lucide/svelte/icons/pause';
 	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
+	import Calendar from '@lucide/svelte/icons/calendar';
+	import CalendarOff from '@lucide/svelte/icons/calendar-off';
 	import CircleMinus from '@lucide/svelte/icons/circle-minus';
 	import Check from '@lucide/svelte/icons/check';
 
@@ -167,6 +170,10 @@
 	let previouslyFocused: HTMLElement | null = null;
 
 	const owner = $derived(detail?.callerRole === 'owner');
+	/** Whether the memory's kind is a preference target for this caller
+	 *  (the owner's own reference set never feeds their timeline). */
+	const excludable = $derived(detail !== null && !owner && detail.inTimeline !== undefined);
+	const excluded = $derived(detail?.inTimeline === false);
 	/** The bar's title: the detail's, the card's while it loads. */
 	const titleText = $derived(detail?.title ?? card?.title ?? '');
 	/** The bar's count: the server's own number, the card's while it loads. */
@@ -616,6 +623,27 @@
 		onclose();
 	}
 
+	// The member's ONE action: the caller's own timeline preference --
+	// the same self-affecting switch a shared album carries (a shared
+	// memory IS a legal target: the endpoint's refusals cover the
+	// caller's own sync and own memory albums, never a shared one).
+	// The write publishes no event, so the response's stored switch is
+	// what the bar flips to.
+	async function toggleExclusion(): Promise<void> {
+		if (writeBusy || detail === null || detail.inTimeline === undefined) {
+			return;
+		}
+		writeBusy = true;
+		const outcome = await setAlbumTimelinePreference(memoryId, !detail.inTimeline);
+		writeBusy = false;
+		if (!outcome.ok) {
+			return;
+		}
+		if (detail !== null) {
+			detail = { ...detail, inTimeline: outcome.preference.inTimeline };
+		}
+	}
+
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon).
 	function errorText(key: string): string {
@@ -752,6 +780,26 @@
 							>
 								{$_('shared_readonly_badge')}
 							</span>
+							<!-- The one writable thing a shared memory gives the
+							     caller: their own timeline preference. The glyph
+							     and the name follow the state (in the timeline ->
+							     take it out; excluded -> keep it in). -->
+							{#if excludable}
+								<button
+									class="memory-overlay__exclusion inline-flex h-9 w-9 items-center justify-center rounded-control border border-transparent bg-transparent text-cream-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-white/10 disabled:opacity-55 disabled:cursor-not-allowed"
+									type="button"
+									disabled={writeBusy}
+									aria-label={excluded ? $_('albums_action_include') : $_('albums_action_exclude')}
+									title={excluded ? $_('albums_action_include') : $_('albums_action_exclude')}
+									onclick={() => void toggleExclusion()}
+								>
+									{#if excluded}
+										<Calendar size={18} aria-hidden="true" />
+									{:else}
+										<CalendarOff size={18} aria-hidden="true" />
+									{/if}
+								</button>
+							{/if}
 						{/if}
 					{/if}
 				</div>
