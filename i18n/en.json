@@ -442,7 +442,7 @@
   "search_facet_tags": "Tags",
   "search_kind_image": "Photos",
   "search_kind_video": "Videos",
-  "search_empty_title": "No matching results",
+  "search_empty_title": "No matching photos",
   "search_empty_body": "Try a different keyword, or drop a filter.",
   "places_loading": "Loading your places…",
   "places_bar_count": "{count, plural, one {# city} other {# cities}}",
