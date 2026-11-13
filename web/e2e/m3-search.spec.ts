@@ -299,10 +299,11 @@ test.describe('the signed-in scenes', () => {
 	test('scene 5: the places page renders the city grid and deep-links into the filtered browse', async ({ page }) => {
 		await page.goto('/places');
 		await expect(page).toHaveTitle('Places · lumemor');
-		await expect(page.getByRole('heading', { level: 1, name: 'Places', exact: true })).toBeVisible();
+		await expect(page.getByRole('heading', { level: 1, name: 'Places · 1 city', exact: true })).toBeVisible();
 
-		// The head's honest summary: one city, one photo.
-		await expect(page.locator('.places__sub')).toHaveText('1 city · 1 photo');
+		// The count rides the title in the page bar (one city here,
+		// counted by CARDS, never a second line under the title).
+		await expect(page.locator('.places__toolbar')).toHaveClass(/border-b/);
 
 		// The Beijing card: the locale name over the cover, the
 		// country label and the honest per-caller count below.
