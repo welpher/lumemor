@@ -229,11 +229,17 @@ docker-lint: web-build
 # on demand and kept from rotting by their monthly schedule.
 
 COLD_WEB_IMAGE ?= node:22
-# Restricted networks: pull the base images through a registry mirror
-# (e.g. docker.m.daocloud.io/library/node:22, the same prefix the
-# other base images in this environment use) and pass it via
-# COLD_WEB_IMAGE, or retag it -- the default carries no mirror
-# configuration, same as APT_MIRROR below.
+# The cold web step's network reach, two knobs for restricted
+# networks: pull the base image through a registry mirror by
+# overriding COLD_WEB_IMAGE (e.g. docker.m.daocloud.io/library/node:22
+# -- the default carries no mirror configuration, same as APT_MIRROR
+# below), and pass the host's forward proxy to the container through
+# COLD_WEB_ENV, e.g.
+#   make ci-local COLD_WEB_ENV='-e https_proxy=http://host.docker.internal:7890 -e http_proxy=http://host.docker.internal:7890'
+# The install itself is capped: a short fetch timeout with few
+# retries fails loudly within minutes on an unreachable registry
+# instead of crawling for hours inside pnpm's default retry backoff.
+COLD_WEB_ENV ?=
 
 .PHONY: ci-local
 ci-local: web-build
@@ -242,8 +248,9 @@ ci-local: web-build
 	@echo "=== ci-local 2/6: the web suite, cold (ephemeral node container) ==="
 	docker run --rm \
 		-v $(CURDIR):/src:ro \
+		$(COLD_WEB_ENV) \
 		$(COLD_WEB_IMAGE) \
-		sh -c 'set -e; corepack enable; mkdir -p /tree/web; tar -C /src/web --exclude=./node_modules --exclude=./build --exclude=./.svelte-kit -cf - . | tar -C /tree/web -xf -; cp -R /src/openapi /tree/openapi; cp -R /src/i18n /tree/i18n; cd /tree/web; pnpm install --frozen-lockfile; pnpm run format:check; pnpm run lint; pnpm run check; pnpm run test; pnpm run build'
+		sh -c 'set -e; corepack enable; mkdir -p /tree/web; tar -C /src/web --exclude=./node_modules --exclude=./build --exclude=./.svelte-kit -cf - . | tar -C /tree/web -xf -; cp -R /src/openapi /tree/openapi; cp -R /src/i18n /tree/i18n; cd /tree/web; pnpm install --frozen-lockfile --fetch-timeout 60000 --fetch-retries 2; pnpm run format:check; pnpm run lint; pnpm run check; pnpm run test; pnpm run build'
 	@echo "=== ci-local 3/6: the server suite, cold (dev container, no cache volumes) ==="
 	docker build -f docker/dev.Dockerfile \
 		--build-arg APT_MIRROR=$(APT_MIRROR) \
