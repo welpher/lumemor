@@ -47,10 +47,10 @@
 //     Places · Beijing chip) toggles: the URL gains placeIds, the
 //     wall re-executes to the one Beijing photo, the chip stays
 //     pressed.
-//  5. The places page: the city grid renders the Beijing card (the
-//     locale name, the country label, the honest count), and the
-//     card deep-links into the filtered browse (/search?placeIds=)
-//     with the month-grouped wall.
+//  5. The places page: the flat list renders the Beijing card (the
+//     locale name, the country and capture years, the honest count),
+//     and the card opens the place's own wall (the place domain's
+//     third face) with its context bar and month-grouped photos.
 //  6. The tags flow on the timeline: the batch bar's "Add tag"
 //     opens the dialog, the "New tag" path names the tag, the
 //     honest {added, skipped} report lands, Done closes and clears
@@ -296,7 +296,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.wall__month-header', { hasText: 'June 2026' })).toBeVisible();
 	});
 
-	test('scene 5: the places page renders the city grid and deep-links into the filtered browse', async ({ page }) => {
+	test('scene 5: the places page renders the flat city list and the card opens the place', async ({ page }) => {
 		await page.goto('/places');
 		await expect(page).toHaveTitle('Places · lumemor');
 		await expect(page.getByRole('heading', { level: 1, name: 'Places · 1 city', exact: true })).toBeVisible();
@@ -305,12 +305,12 @@ test.describe('the signed-in scenes', () => {
 		// counted by CARDS, never a second line under the title).
 		await expect(page.locator('.places__toolbar')).toHaveClass(/border-b/);
 
-		// The Beijing card: the locale name over the cover, the
-		// country label and the honest per-caller count below.
+		// The Beijing card: the locale name over the cover, the country
+		// and the capture years, the honest per-caller count below.
 		const card = page.locator('a.place-card');
 		await expect(card).toHaveCount(1);
 		await expect(card.locator('.place-card__name')).toHaveText('Beijing');
-		await expect(card.locator('.place-card__region')).toHaveText('China');
+		await expect(card.locator('.place-card__years')).toHaveText('China · 2026');
 		// The count is the glyph and the number; the wording is its
 		// accessible name.
 		await expect(card.locator('.place-card__count')).toHaveAttribute('aria-label', '1 photo');
@@ -320,10 +320,13 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('[data-places-mode="list"]')).toHaveAttribute('aria-current', 'page');
 		await expect(page.locator('[data-places-mode="map"]')).toHaveAttribute('href', '/places?mode=map');
 
-		// The deep link: the card navigates into the filtered browse
-		// -- the search page owns the filter state.
+		// The card opens the place's own wall (the place domain's third
+		// face), with the context bar and the month-grouped photos.
 		await card.click();
-		await expect(page).toHaveURL(/\/search\?placeIds=\d+$/);
+		await expect(page).toHaveURL(/\/places\/\d+$/);
+		await expect(page.locator('.place-bar__title')).toHaveText('Beijing');
+		await expect(page.locator('.place-bar__country')).toHaveText('China');
+		await expect(page.locator('.place-bar button')).toHaveCount(0);
 		await expect(page.locator('.tile')).toHaveCount(1);
 		await expect(page.locator('.tile').first().getByRole('link')).toHaveAccessibleName(PHOTO_GPS_NAME);
 		await expect(page.locator('.wall__month-header', { hasText: 'June 2026' })).toBeVisible();

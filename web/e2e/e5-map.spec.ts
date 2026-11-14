@@ -24,7 +24,8 @@
 //  3. The GPS fixture uploads through the asset API and its pipeline
 //     completes (the place resolution needs the metadata job).
 //  4. The places map tab: the stubbed source draws, the city pin shows
-//     its count, and the click lands on the filtered browse.
+//     its count, and the click opens the place panel in place (the
+//     place domain's own face; the pin no longer navigates).
 //  5. A source that fails: the map states the missing base layer and
 //     keeps the pin.
 //  6. No source at all: the same promise, worded for the configuration.
@@ -223,11 +224,18 @@ test.describe('the signed-in scenes', () => {
 		await expect(pin).toHaveAttribute('aria-label', /1 photo/);
 		await expect(pin.locator('.map__pin-name')).toHaveText('Beijing');
 
-		// The pin click: the city's assets through the filtered browse.
+		// The pin click opens the place panel IN PLACE: the page never
+		// navigates, and the panel's wall carries the city's photo.
 		await pin.click();
-		await expect(page).toHaveURL(/\/search\?placeIds=\d+$/);
-		await expect(page.locator('.tile').first()).toBeVisible();
-		await expect(page.locator('.tile').first().getByRole('link')).toHaveAccessibleName(PHOTO_GPS_NAME);
+		await expect(page).toHaveURL(/\/places\?mode=map&place=\d+$/);
+		const panel = page.getByTestId('places-panel');
+		await expect(panel).toBeVisible();
+		await expect(panel.locator('[data-place-panel-name]')).toHaveText('Beijing');
+		await expect(panel.locator('.tile').first().getByRole('link')).toHaveAccessibleName(PHOTO_GPS_NAME);
+
+		// The same pin collapses it again.
+		await pin.click();
+		await expect(panel).toHaveCount(0);
 	});
 
 	test('scene 5: a source that fails states the missing base layer and keeps the pin', async ({ page }) => {
