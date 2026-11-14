@@ -1490,9 +1490,9 @@ test("the drawer's browsable rows deep-link: albums, tags, camera, named faces, 
 	const faceLink = document.body.querySelector<HTMLAnchorElement>('[data-face-id="f1"]');
 	expect(faceLink?.getAttribute('href')).toBe('/people/c-f1');
 
-	// The resolved place: the place-filtered browse link.
+	// The resolved place: the place's own page link.
 	const placeLink = document.body.querySelector<HTMLAnchorElement>('.info__place');
-	expect(placeLink?.getAttribute('href')).toBe('/search?placeIds=2988507');
+	expect(placeLink?.getAttribute('href')).toBe('/places/2988507');
 	expect(placeLink?.textContent?.trim()).toBe('Paris');
 
 	unmount(app);

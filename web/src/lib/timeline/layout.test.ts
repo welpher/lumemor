@@ -196,6 +196,47 @@ describe('packRows: determinism and resize', () => {
 	});
 });
 
+describe('packRows: the narrow frame (the map panel)', () => {
+	// The panel is the narrow-container case: when a line is
+	// stretched, the row grows TALLER instead of squeezing several
+	// photos into a thin strip. The engine's floor rule is what
+	// guarantees it -- a second photo that would drop the row below
+	// the band floor opens its own (taller) line instead.
+	const PANEL_WIDTH = 420;
+	const threeLandscape = [itemAt('p1', 1.5), itemAt('p2', 1.5), itemAt('p3', 1.5)];
+
+	test('a three-photo line at panel width becomes tall lines, not a ribbon', () => {
+		const rows = packRows(threeLandscape, PANEL_WIDTH);
+		// The naive one-row pack would be (420 - 4) / 4.5 = 92px -- a
+		// ribbon. The engine refuses: the photos take separate lines.
+		expect(rows.length).toBe(3);
+		for (const row of rows) {
+			expect(row.height).toBeGreaterThanOrEqual(92);
+			// Every tile keeps its true aspect (width = height * aspect).
+			for (const tile of row.tiles) {
+				expect(tile.width / row.height).toBeCloseTo(tile.item.width / tile.item.height, 7);
+			}
+		}
+	});
+
+	test('a stretched line grows tall rather than flattening its photos', () => {
+		// One landscape photo alone on a line: filling the panel width
+		// makes it TALL (420 / 1.5 = 280), never a short wide strip.
+		const [row] = packRows([itemAt('p1', 1.5)], PANEL_WIDTH);
+		expect(row?.height).toBe(WALL_ROW_TARGET);
+		expect(row?.tiles[0]?.width).toBe(WALL_ROW_TARGET * 1.5);
+		// Two photos that DO share a justified line keep their aspects
+		// at the taller of the two container widths (the row grows with
+		// the width, it never squashes the tiles).
+		const wide = packRows(threeLandscape, 900);
+		const shared = wide.find((candidate) => candidate.tiles.length > 1);
+		expect(shared).toBeDefined();
+		for (const tile of shared?.tiles ?? []) {
+			expect(tile.width / shared!.height).toBeCloseTo(tile.item.width / tile.item.height, 7);
+		}
+	});
+});
+
 describe('packWall: group boundaries', () => {
 	function month(items: TimelineItem[], key = '2026-10'): MonthGroup {
 		return {

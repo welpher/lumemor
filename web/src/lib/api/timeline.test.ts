@@ -148,6 +148,26 @@ test('the album narrow rides every page fetch as the leading query parameter', a
 	expect(get(timeline).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3', 'b1']);
 });
 
+test('the place narrow rides every page fetch and stays a narrowed walk', async () => {
+	const seen: string[] = [];
+	const timeline = createTimelineClient({
+		fetcher: vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			seen.push(url);
+			if (url === '/api/v1/assets/timeline?placeIds=2988507,1816670&limit=100') {
+				return page([item('a1', '2026-06-20T12:00:00Z')]);
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		}),
+		placeIds: [2988507, 1816670]
+	});
+
+	await timeline.loadMore();
+
+	expect(seen).toEqual(['/api/v1/assets/timeline?placeIds=2988507,1816670&limit=100']);
+	expect(get(timeline).items.map((i) => i.id)).toEqual(['a1']);
+});
+
 test('a reset mid-flight discards the stale page response', async () => {
 	// The first page-one fetch hangs until the test releases it; the
 	// reset restarts the walk while it is in flight, so the stale

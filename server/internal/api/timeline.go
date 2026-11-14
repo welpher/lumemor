@@ -28,6 +28,10 @@ const (
 	// timelineMaxLimit caps the page size however large the request
 	// asks: one response stays a bounded JSON document.
 	timelineMaxLimit = 200
+
+	// timelineMaxPlaceIDs caps the place narrow's id list (the
+	// contract's own bound): one request stays a bounded lookup.
+	timelineMaxPlaceIDs = 200
 )
 
 // timelineCursor is the decoded continuation token: the (taken_at, id)
@@ -81,9 +85,11 @@ func decodeTimelineCursor(value string) (timelineCursor, error) {
 // GetTimeline implements GET /api/v1/assets/timeline: one keyset page
 // of the caller's aggregated timeline, or -- with albumId -- of that
 // album's own timeline, or -- with clusterId -- of that person's
-// photos (the detail's wall). The two narrows are mutually exclusive:
-// a request carrying both names no single view, so it is a client
-// bug the 400 reports.
+// photos, or -- with placeIds -- of the photos resolved to those
+// places (the place detail's wall and the map panel's read). The
+// narrows are mutually exclusive: a request naming more than one
+// view is a client bug the 400 reports; a single request always
+// renders exactly one view.
 func (s *server) GetTimeline(w http.ResponseWriter, r *http.Request, params apigen.GetTimelineParams) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -91,9 +97,32 @@ func (s *server) GetTimeline(w http.ResponseWriter, r *http.Request, params apig
 		return
 	}
 
-	if params.AlbumId != nil && params.ClusterId != nil {
-		s.writeValidationError(w, "albumId and clusterId are mutually exclusive", []string{"clusterId", "albumId"})
+	narrows := 0
+	for _, present := range []bool{params.AlbumId != nil, params.ClusterId != nil, params.PlaceIds != nil} {
+		if present {
+			narrows++
+		}
+	}
+	if narrows > 1 {
+		s.writeValidationError(w, "albumId, clusterId and placeIds are mutually exclusive",
+			[]string{"albumId", "clusterId", "placeIds"})
 		return
+	}
+	if params.PlaceIds != nil {
+		if len(*params.PlaceIds) == 0 {
+			s.writeValidationError(w, "placeIds must carry at least one place id", []string{"placeIds"})
+			return
+		}
+		if len(*params.PlaceIds) > timelineMaxPlaceIDs {
+			s.writeValidationError(w, "placeIds is too long", []string{"placeIds"})
+			return
+		}
+		for _, id := range *params.PlaceIds {
+			if id < 1 {
+				s.writeValidationError(w, "placeIds must carry positive place ids", []string{"placeIds"})
+				return
+			}
+		}
 	}
 
 	limit, cursor, ok := s.timelinePageParams(w, params.Limit, params.Cursor)
@@ -141,6 +170,23 @@ func (s *server) GetTimeline(w http.ResponseWriter, r *http.Request, params apig
 			return
 		}
 		response = timelinePage(rows, limit, albumAssetFields)
+	} else if params.PlaceIds != nil {
+		// The place domain's wall: assets resolved to one of these
+		// places among the caller-visible union. An id no visible
+		// asset resolves to contributes nothing -- the empty list,
+		// never an error.
+		rows, err := s.queries.ListPlaceTimelineAssets(r.Context(), dbgen.ListPlaceTimelineAssetsParams{
+			PlaceIds:      *params.PlaceIds,
+			UserID:        pgUUID(requester.userID),
+			CursorTakenAt: cursor.takenAt,
+			CursorID:      cursor.id,
+			LimitCount:    fetch,
+		})
+		if err != nil {
+			s.internalError(w, r, "load place timeline", err)
+			return
+		}
+		response = timelinePage(rows, limit, placeAssetFields)
 	} else {
 		rows, err := s.queries.ListTimelineAssets(r.Context(), dbgen.ListTimelineAssetsParams{
 			CursorTakenAt: cursor.takenAt,
@@ -194,6 +240,10 @@ func albumAssetFields(row dbgen.ListAlbumTimelineAssetsRow) (dbgen.Asset, bool) 
 }
 
 func personAssetFields(row dbgen.ListPersonTimelineAssetsRow) (dbgen.Asset, bool) {
+	return row.Asset, row.IsFavorite
+}
+
+func placeAssetFields(row dbgen.ListPlaceTimelineAssetsRow) (dbgen.Asset, bool) {
 	return row.Asset, row.IsFavorite
 }
 

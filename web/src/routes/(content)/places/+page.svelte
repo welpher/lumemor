@@ -1,26 +1,29 @@
 <script lang="ts">
-	// The places page (the city grid): the
-	// caller's city grouping as a card grid -- the derived-cover
-	// collage over the place's representative ids (the album wall's
-	// own cover discipline: one full-bleed, two split, three the
-	// 2+1 fall, four the quad), the gradient-shaded city name, the
-	// country label and the honest per-caller count. A city click
-	// deep-links into the filtered browse (/search?placeIds=) -- the
-	// natural handoff, the search page owns the filter state.
+	// The places page: the city domain's two browse faces, one
+	// address each.
 	//
-	// THE COUNTRY LABEL: the contract carries the ISO code and
-	// leaves the display name to the client's own locale table --
-	// Intl.DisplayNames(region) is that table, so no country name is
-	// hardcoded (a locale switch relabels without a refetch).
+	// THE FLAT LIST: one full-width grid of city cards, no grouping
+	// headers (a family's places are a handful of cities; a country
+	// grouping would only add empty rows). Each card is the
+	// derived-cover collage with the city name over it, then the
+	// country and the capture years as the card's second line beside
+	// the honest per-caller count. The list's order is the server's:
+	// the most recently photographed city first.
 	//
-	// THE TWO FACES: the flat city grid and the map, one segmented
-	// switch in the toolbar and `?mode=map` as its address. The map
-	// draws the same grouping as pins (the cities' own coordinates
-	// from the places read, clustered by zoom at the map's own
-	// layer); a pin or a bubble opens that group's assets through
-	// the filtered browse, the card click's own handoff. A source the
-	// browser cannot load is the map's stated absence -- the pins
-	// stay.
+	// THE MAP: the full viewport height under the toolbar (the page
+	// does not scroll in this face). The pins are the same grouping
+	// in map coordinates, clustered by zoom; a pin or bubble click
+	// opens the RIGHT panel -- the page never navigates. The map
+	// yields to a 70/30 split (stacked half/half on narrow screens),
+	// the camera re-frames the selected spot, and the panel renders
+	// the shared wall over that spot's photos. Clicking the same
+	// marker again, Escape, or the panel's close collapses it.
+	//
+	// THE VIEW IS AN ADDRESS: `?mode=map` is the map face's own
+	// link, so a reload or a shared address lands on the same face.
+	// Switching back to the list restores the list's scroll seat
+	// (the frame resets it to the top on a push navigation; this
+	// page puts it back).
 	//
 	// SSE: every asset.* event refetches the grouping (the places
 	// family's own convergence -- the fresh answer owns the truth),
@@ -30,7 +33,7 @@
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, replaceState } from '$app/navigation';
 	import { listPlaces, type PlaceSummary } from '$lib/api/places';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
@@ -42,6 +45,8 @@
 	import Map from '@lucide/svelte/icons/map';
 	import MapView, { type MapState } from '$lib/map/MapView.svelte';
 	import type { PlacePoint } from '$lib/map/tiles';
+	import PlacePanel from '$lib/places/PlacePanel.svelte';
+	import { countryName, placeYearsText, selectedPlaces } from '$lib/places/places';
 	import { untrack } from 'svelte';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -57,6 +62,11 @@
 	let mapState = $state<MapState>('loading');
 	/** The tile host's attribution line, as the map resolves it. */
 	let mapAttribution = $state('');
+
+	// The list's scroll seat, captured when the map face opens and
+	// restored when the list face returns (the frame's navigation
+	// reset lands every push at the top).
+	let listSeat = 0;
 
 	// The single-flight guard: while one fetch runs, later triggers
 	// park (the burst's tail) and one trailing fetch runs when it
@@ -120,14 +130,109 @@
 	});
 
 	/**
-	 * A pin or bubble click: that group's assets through the filtered
-	 * browse (the card click's handoff, with the group's place ids).
+	 * The panel's selection: the clicked marker's place ids. It is
+	 * read from the address once at mount (`?place=<ids>`, the viewer
+	 * round trip's restoration -- the router has already resolved the
+	 * URL by the time this component initializes), then owned by the
+	 * page; every change is written back into the address with a
+	 * replace (never a navigation).
 	 */
-	function openGroup(placeIds: number[]): void {
+	let selectedIds = $state<number[]>(parsePlaceParam(new URL(window.location.href).searchParams.get('place')));
+	/** The selected places (the panel's rows), in the listing order. */
+	const selected = $derived(selectedPlaces(places, selectedIds));
+	const selectedKey = $derived(selectedIds.join(','));
+
+	/** Whether two marker selections are the same marker's. */
+	function sameSelection(a: readonly number[], b: readonly number[]): boolean {
+		if (a.length !== b.length) {
+			return false;
+		}
+		const wanted = new Set(a);
+		return b.every((id) => wanted.has(id));
+	}
+
+	/** Parse the address's `place` parameter (the selected marker's ids). */
+	function parsePlaceParam(raw: string | null): number[] {
+		if (raw === null || raw === '') {
+			return [];
+		}
+		const ids: number[] = [];
+		for (const part of raw.split(',')) {
+			if (!/^[0-9]+$/.test(part)) {
+				return [];
+			}
+			ids.push(Number(part));
+		}
+		return ids;
+	}
+
+	/**
+	 * Write the selection into the address (replace, never navigate):
+	 * the panel's own state survives the viewer round trip -- a photo
+	 * click leaves the map, and coming back restores the same spot and
+	 * camera -- without ever turning a pin click into a page
+	 * navigation.
+	 */
+	function syncSelection(next: number[] | null): void {
+		selectedIds = next ?? [];
+		const url = new URL(page.url);
+		if (selectedIds.length === 0) {
+			url.searchParams.delete('place');
+		} else {
+			url.searchParams.set('place', selectedIds.join(','));
+		}
+		replaceState(url, {});
+	}
+
+	/**
+	 * A pin or bubble click: a fresh marker opens the panel (in
+	 * place -- no navigation); the SAME marker again collapses it.
+	 */
+	function pickMarker(placeIds: number[]): void {
 		if (placeIds.length === 0) {
 			return;
 		}
-		void goto(`/search?placeIds=${placeIds.join(',')}`);
+		if (sameSelection(selectedIds, placeIds)) {
+			syncSelection(null);
+			return;
+		}
+		syncSelection([...placeIds]);
+	}
+
+	function closePanel(): void {
+		syncSelection(null);
+	}
+
+	/**
+	 * The face switch: the address is the state (`?mode=map`), and
+	 * the list's seat survives the round trip.
+	 */
+	async function switchMode(next: 'list' | 'map'): Promise<void> {
+		if ((next === 'map') === isMap) {
+			return;
+		}
+		const main = document.querySelector<HTMLElement>('main');
+		if (next === 'map') {
+			listSeat = main?.scrollTop ?? 0;
+			selectedIds = [];
+			await goto('/places?mode=map');
+			return;
+		}
+		selectedIds = [];
+		await goto('/places');
+		const seat = listSeat;
+		requestAnimationFrame(() => {
+			if (main !== null) {
+				main.scrollTop = seat;
+			}
+		});
+	}
+
+	/** The escape hatch: the panel collapses (the map returns to full width). */
+	function handleWindowKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape' && selectedIds.length > 0) {
+			syncSelection(null);
+		}
 	}
 
 	// The shared unknown-code fallback (see $lib/i18n/errors): an
@@ -138,19 +243,21 @@
 		return resolveErrorText($_, key);
 	}
 
-	/**
-	 * The country's display name: the client's locale table maps the
-	 * ISO code (the contract leaves the name to the client). A host
-	 * without the region data falls back to the code itself -- the
-	 * honest label, never a blank.
-	 */
-	function countryName(code: string, activeLocale: string): string {
-		try {
-			const names = new Intl.DisplayNames([activeLocale], { type: 'region' });
-			return names.of(code) ?? code;
-		} catch {
-			return code;
-		}
+	/** The card's year text: one year, or the span's two (the
+	 * translation carries the dash; the digits are the locale's). */
+	function yearsText(place: PlaceSummary): string {
+		return placeYearsText(
+			place,
+			(from, to) => $_('places_year_range', { values: { from, to } }),
+			(year) => String(year)
+		);
+	}
+
+	/** The card's second line: the country and the capture years. */
+	function cardSpan(place: PlaceSummary): string {
+		return $_('places_card_span', {
+			values: { country: countryName(place.country, $locale ?? 'en'), years: yearsText(place) }
+		});
 	}
 
 	// The load, the locale join and the SSE subscription: the first
@@ -172,21 +279,35 @@
 		});
 		return unsubscribe;
 	});
+
+	// A selected place that left the grouping (its last visible
+	// photo went away) collapses the panel: an empty selection has
+	// nothing to look at -- and the address drops it with it.
+	$effect(() => {
+		if (selectedIds.length > 0 && status === 'ready' && selected.length === 0) {
+			syncSelection(null);
+		}
+	});
 </script>
+
+<svelte:window onkeydown={handleWindowKeydown} />
 
 <svelte:head>
 	<title>{$_('nav_places')} · lumemor</title>
 </svelte:head>
 
-<!-- The card grid's container ): full width + 16px margins --
-     a wider window adds columns, the cards' own size stays bounded. -->
-<section class="places px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<!-- The page's container: full width + 16px. The map face is the
+     frame's whole height (toolbar and footer fixed, the map eats the
+     rest, the page does not scroll); the list face scrolls with the
+     shell. -->
+<section
+	class="places w-full px-4 pt-4 {isMap ? 'places--map flex h-full min-h-0 flex-col overflow-hidden pb-3' : 'pb-12'}"
+	aria-busy={status === 'loading'}
+>
 	<!-- THE ONE ROW: the page title with the city count on the left,
-	     no action on the right (the view is the grid alone until the
-	     map's own decision lands), one divider under the row. The
-	     count follows the CARDS (one card IS one city), never the
-	     photos behind them. -->
-	<div class="places__toolbar flex items-center gap-3 pb-4 border-b border-border">
+	     the two-face switch on the right. The count follows the
+	     CARDS (one card IS one city), never the photos behind them. -->
+	<div class="places__toolbar flex flex-none items-center gap-3 pb-4 border-b border-border">
 		<h1 class="places__title m-0 font-display font-bold text-[20px] leading-[1.3] text-text">
 			{$_('nav_places')}
 			{#if status === 'ready'}
@@ -199,7 +320,8 @@
 		</h1>
 		<!-- The view switch: the page's one action, an address not a
 		     local toggle (`?mode=map` is linkable and survives a
-		     reload). -->
+		     reload). The click routes through the page so the list's
+		     scroll seat survives. -->
 		<div
 			class="places__views ms-auto inline-flex items-center gap-0.5 rounded-control border border-border-strong p-0.5"
 			role="group"
@@ -210,6 +332,10 @@
 				href="/places"
 				aria-current={isMap ? undefined : 'page'}
 				data-places-mode="list"
+				onclick={(event) => {
+					event.preventDefault();
+					void switchMode('list');
+				}}
 			>
 				<List size={14} aria-hidden="true" />
 				{$_('places_view_list')}
@@ -219,6 +345,10 @@
 				href="/places?mode=map"
 				aria-current={isMap ? 'page' : undefined}
 				data-places-mode="map"
+				onclick={(event) => {
+					event.preventDefault();
+					void switchMode('map');
+				}}
 			>
 				<Map size={14} aria-hidden="true" />
 				{$_('places_view_map')}
@@ -226,7 +356,7 @@
 		</div>
 	</div>
 
-	<div class="places__content pt-4">
+	<div class="places__content {isMap ? 'flex min-h-0 flex-1 flex-col pt-3' : 'pt-4'}">
 		{#if firstLoad}
 			<LoadingLine label={$_('places_loading')} />
 		{:else if settledEmpty}
@@ -239,23 +369,34 @@
 				onaction={() => void runLoad(false)}
 			/>
 		{:else if isMap}
-			<!-- The map face: the full-width card, the tiles the browser
-			     loads, the pins over them, and the footer's honest counts
-			     plus the tile host's attribution. -->
-			<div class="places__map-face flex flex-col gap-3">
-				<div
-					class="places__map-card relative h-[min(70vh,560px)] overflow-hidden rounded-card border border-border"
-					data-testid="places-map"
-				>
-					<MapView
-						places={mapPoints}
-						label={$_('places_map_label')}
-						onselect={openGroup}
-						bind:tiles={mapState}
-						bind:attribution={mapAttribution}
-					/>
+			<!-- The map face: the map (and its place panel) fill the
+			     rest of the frame; the counts and the tile source's
+			     attribution ride the footer. -->
+			<div class="places__map-face flex min-h-0 flex-1 flex-col gap-3">
+				<div class="places__map-row flex min-h-0 flex-1 flex-col gap-4 sm:flex-row" data-place-row>
+					<div
+						class="places__map-card relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-card border border-border"
+						data-testid="places-map"
+					>
+						<MapView
+							places={mapPoints}
+							focus={selectedIds.length > 0 ? selectedIds : null}
+							selected={selectedIds.length > 0 ? selectedIds : null}
+							label={$_('places_map_label')}
+							onselect={pickMarker}
+							bind:tiles={mapState}
+							bind:attribution={mapAttribution}
+						/>
+					</div>
+					{#if selected.length > 0}
+						<!-- The selection changes remount the panel: its wall
+						     walks exactly the selected spot's places. -->
+						{#key selectedKey}
+							<PlacePanel places={selected} onclose={closePanel} />
+						{/key}
+					{/if}
 				</div>
-				<div class="places__map-footer flex flex-wrap items-center justify-between gap-2">
+				<div class="places__map-footer flex flex-none flex-wrap items-center justify-between gap-2">
 					<p
 						class="places__map-counts m-0 font-body font-normal text-[13px] leading-[1.4] text-text-soft tabular-nums"
 					>
@@ -267,11 +408,13 @@
 							}
 						})}
 					</p>
-					<p
-						class="places__map-attribution m-0 font-body font-normal text-[11px] leading-[1.4] text-text-faint"
-					>
-						{$_('places_map_attribution', { values: { source: mapAttribution } })}
-					</p>
+					{#if mapAttribution !== ''}
+						<p
+							class="places__map-attribution m-0 font-body font-normal text-[11px] leading-[1.4] text-text-faint"
+						>
+							{$_('places_map_attribution', { values: { source: mapAttribution } })}
+						</p>
+					{/if}
 				</div>
 			</div>
 		{:else}
@@ -297,12 +440,12 @@
 
 {#snippet card(place: PlaceSummary)}
 	<!-- One city card: the derived-cover collage with the gradient
-	     shade and the name over it, the country label and the honest
-	     per-caller count below. The click deep-links into the
-	     filtered browse. -->
+	     shade and the name over it, the country and the capture
+	     years beside the honest per-caller count below. The click
+	     opens the place's own wall. -->
 	<a
 		class="place-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
-		href="/search?placeIds={place.placeId}"
+		href="/places/{place.placeId}"
 	>
 		<span class="place-card__cover relative block aspect-[4/3] bg-accent-soft" aria-hidden="true">
 			{#if place.representativeCoverAssetIds.length === 1}
@@ -350,12 +493,13 @@
 				>{place.name}</span
 			>
 		</span>
-		<span class="place-card__body flex items-center justify-between px-3.5 pt-2.5 pb-3">
-			<span class="place-card__region font-body font-normal text-[13px] leading-[1.4] text-text-soft truncate"
-				>{countryName(place.country, $locale ?? 'en')}</span
+		<span class="place-card__body flex items-center justify-between gap-2 px-3.5 pt-2.5 pb-3">
+			<span
+				class="place-card__years font-body font-normal text-[13px] leading-[1.4] text-text-soft tabular-nums truncate"
+				>{cardSpan(place)}</span
 			>
 			<CountLabel
-				class="place-card__count font-body font-normal text-[12px] leading-[1.4] text-text-faint"
+				class="place-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
 				count={place.assetCount}
 				label={$_('places_photo_count', { values: { count: place.assetCount } })}
 			/>
