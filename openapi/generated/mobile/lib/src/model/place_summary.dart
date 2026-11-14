@@ -16,6 +16,8 @@ part 'place_summary.g.dart';
 /// * [name] - The display name in the request's locale: the `place_names` row of that locale when the place data carries one, the GeoNames canonical (English or romanized) name otherwise. A locale switch changes this join only, never an asset row. 
 /// * [country] - The place's ISO 3166-1 alpha-2 country code. The display country name is the client's business (its own locale table maps the code). 
 /// * [assetCount] - The place's caller-visible live assets -- the honest per-caller count, not the global member count. 
+/// * [latitude] - The place's latitude in degrees (the GeoNames record's own coordinate, never a photo's). It is the point the places map pins and clusters -- the map layer is a view over the same grouping, so no asset coordinate ever needs to leave the instance for it. 
+/// * [longitude] - The place's longitude in degrees (the GeoNames record's own coordinate, never a photo's). 
 /// * [representativeCoverAssetIds] - The place's cover candidates: its (up to) four most recent caller-visible live members, taken_at descending with the asset id as the tiebreak -- the wall's derived-cover discipline applied to city groups, newest first. 
 @BuiltValue()
 abstract class PlaceSummary implements Built<PlaceSummary, PlaceSummaryBuilder> {
@@ -34,6 +36,14 @@ abstract class PlaceSummary implements Built<PlaceSummary, PlaceSummaryBuilder> 
   /// The place's caller-visible live assets -- the honest per-caller count, not the global member count. 
   @BuiltValueField(wireName: r'assetCount')
   int get assetCount;
+
+  /// The place's latitude in degrees (the GeoNames record's own coordinate, never a photo's). It is the point the places map pins and clusters -- the map layer is a view over the same grouping, so no asset coordinate ever needs to leave the instance for it. 
+  @BuiltValueField(wireName: r'latitude')
+  double get latitude;
+
+  /// The place's longitude in degrees (the GeoNames record's own coordinate, never a photo's). 
+  @BuiltValueField(wireName: r'longitude')
+  double get longitude;
 
   /// The place's cover candidates: its (up to) four most recent caller-visible live members, taken_at descending with the asset id as the tiebreak -- the wall's derived-cover discipline applied to city groups, newest first. 
   @BuiltValueField(wireName: r'representativeCoverAssetIds')
@@ -81,6 +91,16 @@ class _$PlaceSummarySerializer implements PrimitiveSerializer<PlaceSummary> {
     yield serializers.serialize(
       object.assetCount,
       specifiedType: const FullType(int),
+    );
+    yield r'latitude';
+    yield serializers.serialize(
+      object.latitude,
+      specifiedType: const FullType(double),
+    );
+    yield r'longitude';
+    yield serializers.serialize(
+      object.longitude,
+      specifiedType: const FullType(double),
     );
     yield r'representativeCoverAssetIds';
     yield serializers.serialize(
@@ -137,6 +157,20 @@ class _$PlaceSummarySerializer implements PrimitiveSerializer<PlaceSummary> {
             specifiedType: const FullType(int),
           ) as int;
           result.assetCount = valueDes;
+          break;
+        case r'latitude':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(double),
+          ) as double;
+          result.latitude = valueDes;
+          break;
+        case r'longitude':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(double),
+          ) as double;
+          result.longitude = valueDes;
           break;
         case r'representativeCoverAssetIds':
           final valueDes = serializers.deserialize(

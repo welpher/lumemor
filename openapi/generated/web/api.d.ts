@@ -326,6 +326,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/server/update-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the instance's release check state.
+         * @description The instance's release check, read from the cached answer --
+         *     this request never touches the network. The server runs the
+         *     probe itself on the configured cadence (a release feed URL,
+         *     the interval in hours) and this face reports what the last
+         *     probe concluded.
+         *
+         *     THE PROBE: one plain HTTPS request for a public document --
+         *     no photo, no EXIF, no embedding, no instance identifier; the
+         *     feed sees the instance's address and nothing else. The check
+         *     can be switched off (a settings switch); the endpoint
+         *     address must be a public one: an address that resolves to a
+         *     loopback, private, link-local or otherwise internal range is
+         *     refused, and redirects are never followed. A refused or
+         *     failed probe is not an error state: `status` turns `unknown`
+         *     and nothing else changes -- the next interval retries.
+         *
+         *     THE COMPARISON takes tags only: an optional `v` prefix, then
+         *     the numeric version fields. `up_to_date` and
+         *     `update_available` are the two claims a successful probe can
+         *     make; `latestVersion` carries the feed's tag verbatim. The
+         *     server never downloads or installs an update -- this surface
+         *     only reports that a newer release exists.
+         *
+         *     `disabled` means the check does not run: the administrator
+         *     switched it off, or the deployment disabled it at boot. The
+         *     last answer is kept while disabled, so switching the check
+         *     back on resumes from the same state.
+         */
+        get: operations["getUpdateCheck"];
+        put?: never;
+        /**
+         * Run the release check now.
+         * @description The manual check of the settings face: the server probes the
+         *     configured release feed now (the same bounded, refused-
+         *     internal-address, redirect-refusing request the scheduled
+         *     check makes) and answers the fresh state -- the same document
+         *     `GET` serves.
+         *
+         *     A failed probe answers 200 with `status: unknown`, exactly as
+         *     the scheduled one would: a check that cannot reach its feed
+         *     is the ordinary case of an offline instance, not a request
+         *     error, and it carries no message. A check that is switched
+         *     off (or disabled by the deployment) answers 200 with
+         *     `disabled` and probes nothing. The probe is bounded
+         *     server-side and well under the request timeout; a slow feed
+         *     lands on `unknown` like any other failure.
+         */
+        post: operations["runUpdateCheck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assets": {
         parameters: {
             query?: never;
@@ -2502,6 +2565,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/map/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The map's client-side tile configuration.
+         * @description The configuration the places map and the viewer's location
+         *     card need before they can draw a base layer: the tile source
+         *     the administrator configured, and nothing else.
+         *
+         *     THE POLYGON: the value is a URL the BROWSER loads directly
+         *     from the tile host -- the server never fetches, proxies or
+         *     caches a tile, so a pan or a zoom never makes the photo
+         *     server a tile CDN. What the tile host sees is the viewport,
+         *     the zoom level and the browsing device's address; the pins
+         *     the map draws come from this instance's own API and never
+         *     cross the tile line. A deployment whose browser cannot reach
+         *     a public tile host points the setting at a self-hosted or
+         *     mirrored source; there is deliberately no bundled default
+         *     (a public tile service's usage policy forbids carrying the
+         *     traffic of an application's whole install base).
+         *
+         *     `tilejsonUrl` is null when no source is configured. That is
+         *     not an error: the map renders its honest degraded state --
+         *     the pins stay, the base layer is stated as absent -- and the
+         *     admin settings face is where it gets fixed. A stored value
+         *     is handed back verbatim; its reachability is the browser's
+         *     business, and a source that fails to load lands on the same
+         *     stated absence.
+         */
+        get: operations["getMapConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/search": {
         parameters: {
             query?: never;
@@ -3603,6 +3708,160 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/settings/update-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the release check settings.
+         * @description The release check's three knobs, as the settings face renders
+         *     them: the switch, the release feed URL and the cadence in
+         *     hours.
+         *
+         *     `endpoint` is the URL the server fetches on every check. The
+         *     document behind it must be a JSON object whose newest tag
+         *     rides `tag` (a release feed that names it `tag_name`, as
+         *     release APIs commonly do, is read the same way). The value
+         *     is handed back verbatim; the default is the product's own
+         *     release feed.
+         *
+         *     `intervalHours` is the cadence: the server probes at most
+         *     once per interval, and the answer is cached until the next
+         *     one -- a failed probe waits the same interval instead of
+         *     hammering a feed that is not there.
+         *
+         *     A corrupt settings row answers the documented defaults
+         *     (enabled, the default feed, 24 hours) with the corruption
+         *     logged server-side, the same discipline the other instance
+         *     settings keep.
+         */
+        get: operations["getUpdateCheckSettings"];
+        /**
+         * Save the release check settings.
+         * @description The settings save: all three fields are required (an omitted
+         *     `enabled` would decode as the disabled switch, silently
+         *     turning the check off), and each is validated before
+         *     anything is written.
+         *
+         *     `endpoint` must be an `http` or `https` URL with a host --
+         *     the address the server will probe. The probe itself refuses
+         *     addresses that resolve to loopback, private, link-local or
+         *     otherwise internal ranges, and never follows a redirect:
+         *     the setting can be saved pointing at an internal host, and
+         *     the check simply stays `unknown` (the settings save does not
+         *     probe, so it cannot judge reachability).
+         *
+         *     A failed validation answers 400 `VALIDATION_FAILED` naming
+         *     the offending field, with nothing written. A saved value
+         *     takes effect from the next scheduled check on; the manual
+         *     check runs against the saved value immediately.
+         */
+        put: operations["updateUpdateCheckSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/settings/tiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the map tile source setting.
+         * @description The map's tile source, as the administrator configured it: one
+         *     URL, or the empty string when the instance has none.
+         *
+         *     THE SHAPE: the URL names a document the browser's map library
+         *     can build a base layer from -- a style document (the vector
+         *     case: sources, layers, sprites and glyphs) or a TileJSON
+         *     descriptor (the raster case: the tile templates and their
+         *     attribution). The map detects which of the two it received
+         *     and builds the base layer accordingly, so one field covers
+         *     both the raster and the vector-and-style forms of the
+         *     self-hosting ecosystem.
+         *
+         *     THE EMPTY VALUE IS THE SHIPPED DEFAULT and a real state: no
+         *     source ships with the product (a public tile service's usage
+         *     policy forbids carrying the traffic of every install), so a
+         *     fresh instance draws its map with the tile layer absent and
+         *     says so. Loading the document needs the host to send the
+         *     usual cross-origin headers; a host that does not lands on the
+         *     same stated absence.
+         *
+         *     A corrupt settings row answers the empty string with the
+         *     corruption logged server-side.
+         */
+        get: operations["getTilesSettings"];
+        /**
+         * Save the map tile source setting.
+         * @description The settings save. `tilejsonUrl` is required: the empty
+         *     string clears the source (the map falls back to its stated
+         *     absence), any other value must be an absolute `http` or
+         *     `https` URL.
+         *
+         *     The save validates the SHAPE only. The browser is the party
+         *     that loads the source, so a LAN address is legitimate here
+         *     (a self-hosted tile server inside the home network) and
+         *     reachability is not judged at save time. The value takes
+         *     effect on the map's next load -- there is no restart, and a
+         *     map already open keeps the source it loaded.
+         */
+        put: operations["updateTilesSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/settings/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the model download settings.
+         * @description The model store's one policy switch: whether an AI job whose
+         *     slot is configured but whose weights are missing may start
+         *     the model group's download on its own.
+         *
+         *     WHAT AUTO-FILLS: only a slot that already has an active
+         *     model whose files are gone from the store -- the case of a
+         *     store wiped below a configured instance. A slot that was
+         *     never configured stays empty; the first-run download and the
+         *     settings face's download button remain the administrator's
+         *     active path, and an unconfigured slot keeps the honest
+         *     no-AI degraded mode.
+         *
+         *     A corrupt settings row answers the default (on) with the
+         *     corruption logged server-side.
+         */
+        get: operations["getModelSettings"];
+        /**
+         * Save the model download settings.
+         * @description The settings save. `autoDownload` is required (an omitted
+         *     boolean would decode as off, silently changing the policy).
+         *     The value takes effect on the next AI job's readiness check;
+         *     no run is started or cancelled by the save itself.
+         */
+        put: operations["updateModelSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4111,6 +4370,151 @@ export interface components {
             thumbnailFrame: boolean;
             /** @description The failure policy to save. */
             keepOriginal: boolean;
+        };
+        /**
+         * @description The release check's settings of `GET /admin/settings/update-check`
+         *     and the successful `PUT`.
+         */
+        UpdateCheckSettingsResponse: {
+            /**
+             * @description The switch in force at the settings layer. `false` stops
+             *     every scheduled and manual check; the cached answer is
+             *     kept, so switching it back on resumes from the same
+             *     state.
+             */
+            enabled: boolean;
+            /**
+             * @description The release feed URL the server probes: a JSON document
+             *     whose newest tag rides `tag` (or `tag_name`). The server
+             *     fetches it with a bounded timeout, through the
+             *     environment's forward proxy, refusing internal addresses
+             *     and never following a redirect.
+             * @example https://api.github.com/repos/welpher/lumemor/releases/latest
+             */
+            endpoint: string;
+            /**
+             * @description The cadence in hours, 1-168: the server probes at most
+             *     once per interval and caches the answer until the next
+             *     one.
+             * @example 24
+             */
+            intervalHours: number;
+        };
+        /** @description Payload of `PUT /admin/settings/update-check`. */
+        UpdateCheckSettingsUpdateRequest: {
+            /** @description The switch to save. */
+            enabled: boolean;
+            /**
+             * @description The release feed URL to save: an absolute `http` or
+             *     `https` URL with a host.
+             */
+            endpoint: string;
+            /** @description The cadence to save, 1-168 hours. */
+            intervalHours: number;
+        };
+        /**
+         * @description The verdict of the release check. `up_to_date` and
+         *     `update_available` are the two claims a successful tag
+         *     comparison makes; `unknown` is the honest silence of a check
+         *     that could not conclude (a failed probe, a feed that named
+         *     nothing readable, a running version that is not a release
+         *     tag); `disabled` means no check runs.
+         * @enum {string}
+         */
+        UpdateCheckStatus: "disabled" | "unknown" | "up_to_date" | "update_available";
+        /**
+         * @description The instance's release check state, served by
+         *     `GET /server/update-check` and the manual `POST`.
+         */
+        UpdateCheckResponse: {
+            /**
+             * @description Whether a check runs at all: the settings switch AND the
+             *     deployment's own switch, both closed for `true`.
+             */
+            enabled: boolean;
+            status: components["schemas"]["UpdateCheckStatus"];
+            /**
+             * @description The running server version -- the build's version
+             *     string, verbatim (development builds report `dev`,
+             *     which the comparison cannot rank; such an instance stays
+             *     `unknown`).
+             * @example 0.4.1
+             * @example dev
+             */
+            currentVersion: string;
+            /**
+             * @description The newest tag the feed named, verbatim including its
+             *     `v` prefix, or null when no probe has succeeded yet.
+             * @example v0.5.0
+             */
+            latestVersion: string | null;
+            /**
+             * Format: date-time
+             * @description When the last probe completed, successful or not; null
+             *     before the first probe. The settings face renders it as
+             *     the quiet "last checked" line when a probe failed.
+             */
+            checkedAt: string | null;
+        };
+        /**
+         * @description The map tile source of `GET /admin/settings/tiles` and the
+         *     successful `PUT`: one URL, empty when the instance has none.
+         */
+        TilesSettingsResponse: {
+            /**
+             * @description The tile source URL: a style document (vector) or a
+             *     TileJSON descriptor (raster), loaded by the browser.
+             *     The empty string is the shipped state: no source, and
+             *     the map draws its pins over the stated absence of a
+             *     base layer.
+             * @example https://tiles.example.net/osm/tilejson.json
+             * @example
+             */
+            tilejsonUrl: string;
+        };
+        /** @description Payload of `PUT /admin/settings/tiles`. */
+        TilesSettingsUpdateRequest: {
+            /**
+             * @description The tile source URL to save, or the empty string to
+             *     clear it. A non-empty value must be an absolute `http`
+             *     or `https` URL; a LAN address is legitimate (the browser
+             *     loads the source, not the server).
+             */
+            tilejsonUrl: string;
+        };
+        /**
+         * @description The model store's policy of `GET /admin/settings/models`
+         *     and the successful `PUT`.
+         */
+        ModelSettingsResponse: {
+            /**
+             * @description Whether an AI job whose slot is configured but whose
+             *     weights are missing may start the model group's download
+             *     on its own. It never fills an unconfigured slot: the
+             *     first-run download stays the administrator's own act.
+             */
+            autoDownload: boolean;
+        };
+        /** @description Payload of `PUT /admin/settings/models`. */
+        ModelSettingsUpdateRequest: {
+            /** @description The policy to save. */
+            autoDownload: boolean;
+        };
+        /**
+         * @description The map's client-side configuration of `GET /map/config`:
+         *     the tile source the browser loads, or null when the instance
+         *     has none.
+         */
+        MapConfigResponse: {
+            /**
+             * @description The tile source URL the browser loads directly from the
+             *     tile host (a style document or a TileJSON descriptor);
+             *     null means no source is configured and the map renders
+             *     its stated absence. The pin data never crosses the tile
+             *     line: it comes from `GET /places`.
+             * @example https://tiles.example.net/planet/style.json
+             */
+            tilejsonUrl: string | null;
         };
         /**
          * @description The path completion answer: the pickable source directories
@@ -5641,6 +6045,23 @@ export interface components {
              */
             assetCount: number;
             /**
+             * Format: double
+             * @description The place's latitude in degrees (the GeoNames record's
+             *     own coordinate, never a photo's). It is the point the
+             *     places map pins and clusters -- the map layer is a view
+             *     over the same grouping, so no asset coordinate ever
+             *     needs to leave the instance for it.
+             * @example 48.85341
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description The place's longitude in degrees (the GeoNames record's
+             *     own coordinate, never a photo's).
+             * @example 2.3488
+             */
+            longitude: number;
+            /**
              * @description The place's cover candidates: its (up to) four most
              *     recent caller-visible live members, taken_at descending
              *     with the asset id as the tiebreak -- the wall's
@@ -7164,6 +7585,122 @@ export interface operations {
             };
             /** @description An administrator already exists; setup is complete. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getUpdateCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The cached state of the release check: the switch in
+             *     force, the verdict of the last probe, the running
+             *     version, the newest tag the feed named (null when no
+             *     probe succeeded) and when the last probe completed
+             *     (null before the first one).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateCheckResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    runUpdateCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The state after the probe: the fresh verdict when it
+             *     succeeded, `unknown` when it failed, `disabled` when no
+             *     check runs.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateCheckResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10310,6 +10847,50 @@ export interface operations {
             };
         };
     };
+    getMapConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The tile source URL, or null when the instance has none
+             *     configured.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapConfigResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     searchAssets: {
         parameters: {
             query?: {
@@ -12301,6 +12882,375 @@ export interface operations {
                 };
             };
             /** @description The validated profile could not be written. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getUpdateCheckSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The release check's settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateCheckSettingsResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateUpdateCheckSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCheckSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The validated settings were saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateCheckSettingsResponse"];
+                };
+            };
+            /**
+             * @description A field is missing, `endpoint` is not an absolute
+             *     `http`/`https` URL, or `intervalHours` is outside 1-168.
+             *     The details name the offending field; nothing was
+             *     written.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The validated settings could not be written. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTilesSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The configured tile source, or the empty string. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TilesSettingsResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateTilesSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TilesSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The validated setting was saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TilesSettingsResponse"];
+                };
+            };
+            /**
+             * @description `tilejsonUrl` is missing or is not an absolute
+             *     `http`/`https` URL. The details name the field; nothing
+             *     was written.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The validated setting could not be written. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getModelSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The model download policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSettingsResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateModelSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The validated setting was saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSettingsResponse"];
+                };
+            };
+            /**
+             * @description `autoDownload` is missing or the body is not valid JSON.
+             *     The details name the field; nothing was written.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The validated setting could not be written. */
             500: {
                 headers: {
                     [name: string]: unknown;

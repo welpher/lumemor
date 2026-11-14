@@ -9,8 +9,52 @@ All URIs are relative to */api/v1*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
+[**getMapConfig**](PlacesApi.md#getmapconfig) | **GET** /map/config | The map&#39;s client-side tile configuration.
 [**listPlaces**](PlacesApi.md#listplaces) | **GET** /places | The caller&#39;s city grouping.
 
+
+# **getMapConfig**
+> MapConfigResponse getMapConfig()
+
+The map's client-side tile configuration.
+
+The configuration the places map and the viewer's location card need before they can draw a base layer: the tile source the administrator configured, and nothing else.  THE POLYGON: the value is a URL the BROWSER loads directly from the tile host -- the server never fetches, proxies or caches a tile, so a pan or a zoom never makes the photo server a tile CDN. What the tile host sees is the viewport, the zoom level and the browsing device's address; the pins the map draws come from this instance's own API and never cross the tile line. A deployment whose browser cannot reach a public tile host points the setting at a self-hosted or mirrored source; there is deliberately no bundled default (a public tile service's usage policy forbids carrying the traffic of an application's whole install base).  `tilejsonUrl` is null when no source is configured. That is not an error: the map renders its honest degraded state -- the pins stay, the base layer is stated as absent -- and the admin settings face is where it gets fixed. A stored value is handed back verbatim; its reachability is the browser's business, and a source that fails to load lands on the same stated absence. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getPlacesApi();
+
+try {
+    final response = api.getMapConfig();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling PlacesApi->getMapConfig: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**MapConfigResponse**](MapConfigResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **listPlaces**
 > BuiltList<PlaceSummary> listPlaces(locale)
