@@ -130,6 +130,20 @@ function submitSectionForm(testId: string): void {
 	form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 }
 
+/**
+ * Submit one section's form through the browser's own constraint
+ * validation (the native pre-flight): requestSubmit refuses an invalid
+ * form before the submit event, the path a reader's click takes.
+ */
+function requestSectionSubmit(testId: string): void {
+	const form = sectionOf(testId).querySelector<HTMLFormElement>('form');
+	if (form === null) {
+		throw new Error(`missing form of ${testId}`);
+	}
+	form.requestSubmit();
+	flushSync();
+}
+
 function pickSelect(testId: string, value: string): void {
 	const select = document.body.querySelector<HTMLSelectElement>(`[data-testid="${testId}"]`);
 	if (select === null) {
@@ -292,6 +306,43 @@ test('a mismatched confirm pair blocks the password change client-side', async (
 	// message shows under the confirm field.
 	expect(callsOf(fetchMock, 'PUT', '/users/me/password').length).toBe(0);
 	expect(document.body.textContent).toContain('The two new passwords do not match.');
+});
+
+test('the change form carries the native required pair and the 8-128 bound', async () => {
+	const fetchMock = stubFetch(defaultReads());
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	// The fields mirror the change body: required, 8-128 runes. (The
+	// short-value refusal itself is a browser-side dirty-value rule;
+	// jsdom's programmatic values never trip it, so the attributes are
+	// the pin here and the walkthrough is the short-value evidence.)
+	const currentField = document.body.querySelector<HTMLInputElement>('#settings-password-current');
+	const newField = document.body.querySelector<HTMLInputElement>('#settings-password-new');
+	const confirmField = document.body.querySelector<HTMLInputElement>('#settings-password-confirm');
+	expect(currentField?.required).toBe(true);
+	expect(newField?.required).toBe(true);
+	expect(newField?.getAttribute('minlength')).toBe('8');
+	expect(newField?.getAttribute('maxlength')).toBe('128');
+	expect(confirmField?.required).toBe(true);
+	expect(confirmField?.getAttribute('minlength')).toBe('8');
+	expect(confirmField?.getAttribute('maxlength')).toBe('128');
+
+	// The empty form is the required guard's arm: the browser refuses
+	// it before the submit event, so nothing is sent.
+	fillField('settings-password-current', '');
+	fillField('settings-password-new', 'another fine passphrase here');
+	fillField('settings-password-confirm', 'another fine passphrase here');
+	requestSectionSubmit('settings-password');
+	await settle();
+	expect(callsOf(fetchMock, 'PUT', '/users/me/password').length).toBe(0);
+
+	// A filled pair still leaves (the native layer only pre-flights).
+	fillField('settings-password-current', 'correct horse battery staple');
+	requestSectionSubmit('settings-password');
+	await settle();
+	expect(callsOf(fetchMock, 'PUT', '/users/me/password').length).toBe(1);
 });
 
 test('a successful password change PUTs the pair, notes the revocation, and refreshes the devices', async () => {
