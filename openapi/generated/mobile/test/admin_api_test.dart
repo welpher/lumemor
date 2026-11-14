@@ -34,12 +34,30 @@ void main() {
       // TODO
     });
 
+    // Read the model download settings.
+    //
+    // The model store's one policy switch: whether an AI job whose slot is configured but whose weights are missing may start the model group's download on its own.  WHAT AUTO-FILLS: only a slot that already has an active model whose files are gone from the store -- the case of a store wiped below a configured instance. A slot that was never configured stays empty; the first-run download and the settings face's download button remain the administrator's active path, and an unconfigured slot keeps the honest no-AI degraded mode.  A corrupt settings row answers the default (on) with the corruption logged server-side. 
+    //
+    //Future<ModelSettingsResponse> getModelSettings() async
+    test('test getModelSettings', () async {
+      // TODO
+    });
+
     // Read the storage template setting.
     //
     // The storage settings read of the admin surface: the instance's upload path template, the sample path it renders, and the built-in preset list the settings section's dropdown fills from.  The template is the path grammar every NEW upload renders its file placement from: `originals/<ownerUserId>/<rendered>.<ext>`, with the per-user root pinning one directory tree per account. The grammar is variable substitution plus `{{#if album}}...{{else}}...{{/if}}` conditionals over the file (`{{filename}}`, `{{ext}}`, `{{filetype}}`, `{{filetypefull}}`), date (`{{y}} {{yy}} {{M}} {{MM}} {{MMM}} {{MMMM}} {{d}} {{dd}} {{W}} {{WW}} {{H}} {{HH}} {{h}} {{hh}} {{m}} {{mm}} {{s}} {{ss}} {{SSS}}`), album (`{{album}}`, `{{album-startDate-*}}`, `{{album-endDate-*}}`), camera (`{{make}} {{model}} {{lensModel}}`) and id (`{{assetId}}`, `{{assetIdShort}}`) families. Compilation is strict -- an unknown variable or a malformed conditional is an error, never a silent blank.  THE RENDERING CONTRACT (what changing the template does and never does): the path is rendered exactly once, at ingest, from the taken-at fallback chain (the file's EXIF header time, else the client-reported `deviceCreatedAt`, else the upload time) and the values known at that moment. Later metadata refinement NEVER re-paths an asset -- a refined taken-at, an album membership joined after upload, none of it moves a file. Existing assets keep the paths they were ingested under; there is deliberately NO migration of stored files when the template changes (moving files after ingest is the architecture photo libraries have lost data to; lumemor never moves them). New uploads follow the new template from the moment it is saved. Album variables render empty for direct uploads: the only album an upload joins at ingest is the system sync stream, which is not a naming source.  The sample path is the current template rendered over a fixed sample asset (an image named `IMG_1234.jpg`, taken `2023:07:14 10:15:30.123 +05:30`, camera `Acme Alpha 5` with the `24-70mm f/2.8` lens, no album, under the sample owner `0192f8c1-0000-7000-8000-000000000001`) with the extension appended -- exactly the shape a real upload of that file would land at under this template. The response never fails over a corrupt setting row: the default template answers instead, and the server log carries the corruption. 
     //
     //Future<StorageSettingsResponse> getStorageSettings() async
     test('test getStorageSettings', () async {
+      // TODO
+    });
+
+    // Read the map tile source setting.
+    //
+    // The map's tile source, as the administrator configured it: one URL, or the empty string when the instance has none.  THE SHAPE: the URL names a document the browser's map library can build a base layer from -- a style document (the vector case: sources, layers, sprites and glyphs) or a TileJSON descriptor (the raster case: the tile templates and their attribution). The map detects which of the two it received and builds the base layer accordingly, so one field covers both the raster and the vector-and-style forms of the self-hosting ecosystem.  THE EMPTY VALUE IS THE SHIPPED DEFAULT and a real state: no source ships with the product (a public tile service's usage policy forbids carrying the traffic of every install), so a fresh instance draws its map with the tile layer absent and says so. Loading the document needs the host to send the usual cross-origin headers; a host that does not lands on the same stated absence.  A corrupt settings row answers the empty string with the corruption logged server-side. 
+    //
+    //Future<TilesSettingsResponse> getTilesSettings() async
+    test('test getTilesSettings', () async {
       // TODO
     });
 
@@ -58,6 +76,24 @@ void main() {
     //
     //Future<TrashSettingsResponse> getTrashSettings() async
     test('test getTrashSettings', () async {
+      // TODO
+    });
+
+    // Read the instance's release check state.
+    //
+    // The instance's release check, read from the cached answer -- this request never touches the network. The server runs the probe itself on the configured cadence (a release feed URL, the interval in hours) and this face reports what the last probe concluded.  THE PROBE: one plain HTTPS request for a public document -- no photo, no EXIF, no embedding, no instance identifier; the feed sees the instance's address and nothing else. The check can be switched off (a settings switch); the endpoint address must be a public one: an address that resolves to a loopback, private, link-local or otherwise internal range is refused, and redirects are never followed. A refused or failed probe is not an error state: `status` turns `unknown` and nothing else changes -- the next interval retries.  THE COMPARISON takes tags only: an optional `v` prefix, then the numeric version fields. `up_to_date` and `update_available` are the two claims a successful probe can make; `latestVersion` carries the feed's tag verbatim. The server never downloads or installs an update -- this surface only reports that a newer release exists.  `disabled` means the check does not run: the administrator switched it off, or the deployment disabled it at boot. The last answer is kept while disabled, so switching the check back on resumes from the same state. 
+    //
+    //Future<UpdateCheckResponse> getUpdateCheck() async
+    test('test getUpdateCheck', () async {
+      // TODO
+    });
+
+    // Read the release check settings.
+    //
+    // The release check's three knobs, as the settings face renders them: the switch, the release feed URL and the cadence in hours.  `endpoint` is the URL the server fetches on every check. The document behind it must be a JSON object whose newest tag rides `tag` (a release feed that names it `tag_name`, as release APIs commonly do, is read the same way). The value is handed back verbatim; the default is the product's own release feed.  `intervalHours` is the cadence: the server probes at most once per interval, and the answer is cached until the next one -- a failed probe waits the same interval instead of hammering a feed that is not there.  A corrupt settings row answers the documented defaults (enabled, the default feed, 24 hours) with the corruption logged server-side, the same discipline the other instance settings keep. 
+    //
+    //Future<UpdateCheckSettingsResponse> getUpdateCheckSettings() async
+    test('test getUpdateCheckSettings', () async {
       // TODO
     });
 
@@ -106,6 +142,15 @@ void main() {
       // TODO
     });
 
+    // Run the release check now.
+    //
+    // The manual check of the settings face: the server probes the configured release feed now (the same bounded, refused- internal-address, redirect-refusing request the scheduled check makes) and answers the fresh state -- the same document `GET` serves.  A failed probe answers 200 with `status: unknown`, exactly as the scheduled one would: a check that cannot reach its feed is the ordinary case of an offline instance, not a request error, and it carries no message. A check that is switched off (or disabled by the deployment) answers 200 with `disabled` and probes nothing. The probe is bounded server-side and well under the request timeout; a slow feed lands on `unknown` like any other failure. 
+    //
+    //Future<UpdateCheckResponse> runUpdateCheck() async
+    test('test runUpdateCheck', () async {
+      // TODO
+    });
+
     // Register the custom models found in the models dir.
     //
     // The custom model registration of the admin surface: every directory under the instance's models dir that carries a `manifest.json` is verified against the digests the manifest pins and registered in the models table with source `custom`. Directories without a manifest are skipped -- the models dir also holds download staging, not every entry is a model.  Scanning registers, it never activates: an administrator reviews the registered models and switches them on through the activation endpoint. Re-scanning converges: the registration is an upsert on the descriptive fields and leaves every row's activation state alone. A directory whose files drifted from their pinned digests fails the whole scan with 400 MODEL_INVALID and registers nothing. 
@@ -115,12 +160,30 @@ void main() {
       // TODO
     });
 
+    // Save the model download settings.
+    //
+    // The settings save. `autoDownload` is required (an omitted boolean would decode as off, silently changing the policy). The value takes effect on the next AI job's readiness check; no run is started or cancelled by the save itself. 
+    //
+    //Future<ModelSettingsResponse> updateModelSettings(ModelSettingsUpdateRequest modelSettingsUpdateRequest) async
+    test('test updateModelSettings', () async {
+      // TODO
+    });
+
     // Validate and save the storage template.
     //
     // The storage settings save of the admin surface. The template passes a three-stage validation before anything is written:  1. **Compile** -- strict grammar: every `{{variable}}` must be a known member of the variable table, every conditional balanced. An unknown variable or a malformed conditional is rejected here. 2. **Sample render** -- the compiled template renders over a fixed set of sample assets (an album-less image, an album-grouped image, a video), exactly as an upload would: a template that renders an empty path (an album-only template over the album-less sample) is rejected here. 3. **Structure** -- the rendered paths must be safe: no `..` traversal, no dot segments, bounded depth (10) and bounded length, per-segment and total. The engine sanitizes the user-influenced values (file name, album, camera) and the structural pass guards the literal template text.  A template that passes is saved and answers 200 with the saved value, its sample render and the presets. A template that fails any stage answers 400 `VALIDATION_FAILED` naming `template` in the details, with the specific reason in the error message; nothing is written. The save takes effect for uploads from the next request on: paths already recorded are never re-derived and never moved (see GET for the full rendering contract). 
     //
     //Future<StorageSettingsResponse> updateStorageSettings(StorageSettingsUpdateRequest storageSettingsUpdateRequest) async
     test('test updateStorageSettings', () async {
+      // TODO
+    });
+
+    // Save the map tile source setting.
+    //
+    // The settings save. `tilejsonUrl` is required: the empty string clears the source (the map falls back to its stated absence), any other value must be an absolute `http` or `https` URL.  The save validates the SHAPE only. The browser is the party that loads the source, so a LAN address is legitimate here (a self-hosted tile server inside the home network) and reachability is not judged at save time. The value takes effect on the map's next load -- there is no restart, and a map already open keeps the source it loaded. 
+    //
+    //Future<TilesSettingsResponse> updateTilesSettings(TilesSettingsUpdateRequest tilesSettingsUpdateRequest) async
+    test('test updateTilesSettings', () async {
       // TODO
     });
 
@@ -139,6 +202,15 @@ void main() {
     //
     //Future<TrashSettingsResponse> updateTrashSettings(TrashSettingsUpdateRequest trashSettingsUpdateRequest) async
     test('test updateTrashSettings', () async {
+      // TODO
+    });
+
+    // Save the release check settings.
+    //
+    // The settings save: all three fields are required (an omitted `enabled` would decode as the disabled switch, silently turning the check off), and each is validated before anything is written.  `endpoint` must be an `http` or `https` URL with a host -- the address the server will probe. The probe itself refuses addresses that resolve to loopback, private, link-local or otherwise internal ranges, and never follows a redirect: the setting can be saved pointing at an internal host, and the check simply stays `unknown` (the settings save does not probe, so it cannot judge reachability).  A failed validation answers 400 `VALIDATION_FAILED` naming the offending field, with nothing written. A saved value takes effect from the next scheduled check on; the manual check runs against the saved value immediately. 
+    //
+    //Future<UpdateCheckSettingsResponse> updateUpdateCheckSettings(UpdateCheckSettingsUpdateRequest updateCheckSettingsUpdateRequest) async
+    test('test updateUpdateCheckSettings', () async {
       // TODO
     });
 
