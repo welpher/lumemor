@@ -112,12 +112,18 @@
 			<p class="login__description mb-5 font-body font-normal text-[15px] leading-[1.5] text-text-soft">
 				{$_('login_description')}
 			</p>
+			<!-- The native pre-flight: both fields are required, exactly as
+			     the sign-in body marks them. The password carries no length
+			     bound on purpose -- accounts whose password predates any
+			     bound must still be able to sign in; the 8-128 range is the
+			     creation and change faces' own. -->
 			<form class="login__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
 				<Input
 					id="login-email"
 					label={$_('login_email')}
 					type="email"
 					autocomplete="username"
+					required
 					bind:value={email}
 				/>
 				<Input
@@ -125,6 +131,7 @@
 					label={$_('login_password')}
 					type="password"
 					autocomplete="current-password"
+					required
 					bind:value={password}
 				/>
 				{#if errorKey !== ''}

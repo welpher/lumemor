@@ -53,6 +53,20 @@ async function settle(): Promise<void> {
 	}).catch(() => undefined);
 }
 
+/**
+ * Submit through the browser's own constraint validation (the native
+ * pre-flight): requestSubmit refuses an invalid form before the
+ * submit event, the path a reader's click takes.
+ */
+function requestSubmit(): void {
+	const form = document.body.querySelector<HTMLFormElement>('form');
+	if (form === null) {
+		throw new Error('missing form');
+	}
+	form.requestSubmit();
+	flushSync();
+}
+
 beforeEach(async () => {
 	document.body.textContent = '';
 	vi.clearAllMocks();
@@ -81,6 +95,56 @@ test('the form renders labeled fields and the pairing placeholder notes', () => 
 	// Placeholder notes for the mobile pairing entry (QR + manual URL hint).
 	expect(text).toContain('Pairing a phone by scanning a QR code arrives with the mobile app.');
 	expect(text).toContain("You can also sign in on the mobile app by entering this server's address.");
+	unmount(page);
+	flushSync();
+});
+
+test('an empty form never reaches the network: the required pair blocks it in place', async () => {
+	const fetchMock = vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }));
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountLogin();
+	flushSync();
+
+	const email = document.body.querySelector<HTMLInputElement>('#login-email');
+	const password = document.body.querySelector<HTMLInputElement>('#login-password');
+	// The native pre-flight, the sign-in body's own required pair.
+	expect(email?.required).toBe(true);
+	expect(password?.required).toBe(true);
+	// The password is deliberately NOT length-bounded: an account
+	// whose password predates a bound must still be able to sign in.
+	expect(password?.hasAttribute('minlength')).toBe(false);
+	expect(password?.hasAttribute('maxlength')).toBe(false);
+
+	requestSubmit();
+	await settle();
+
+	// Zero network calls, and no error line invented for a submit the
+	// browser refused.
+	expect(fetchMock).not.toHaveBeenCalled();
+	expect(document.body.querySelector('.login__error')).toBeNull();
+
+	unmount(page);
+	flushSync();
+});
+
+test('a legacy short password still submits: the login bounds nothing but presence', async () => {
+	// The other arm of the same pin: the required pair is the login's
+	// ONLY native guard, so a two-character stored password round-
+	// trips to the server (which answers the credentials check).
+	const fetchMock = vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }));
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountLogin();
+	flushSync();
+
+	fillField('#login-email', 'ada@example.test');
+	fillField('#login-password', 'ab');
+	requestSubmit();
+	await settle();
+
+	expect(fetchMock).toHaveBeenCalledTimes(1);
+	expect(String(fetchMock.mock.calls[0]?.[0])).toBe('/api/v1/auth/login');
+	expect(document.body.querySelector('.login__error')).not.toBeNull();
+
 	unmount(page);
 	flushSync();
 });
