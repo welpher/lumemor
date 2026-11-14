@@ -20,21 +20,29 @@
 	// THE 403 PAGE: a signed-in non-admin landing on this route sees
 	// the mapped auth_forbidden message -- the session contract
 	// carries no role, so this page's own read is the probe.
-	import { _ } from 'svelte-i18n';
+	import { _, locale } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
 	import {
+		getModelSettings,
 		getStorageSettings,
-		getTrashSettings,
+		getTilesSettings,
 		getTranscodingSettings,
+		getTrashSettings,
+		getUpdateCheckSettings,
+		saveModelSettings,
 		saveStorageSettings,
-		saveTrashSettings,
+		saveTilesSettings,
 		saveTranscodingSettings,
+		saveTrashSettings,
+		saveUpdateCheckSettings,
 		type StorageSettings,
-		type TranscodingSettings
+		type TranscodingSettings,
+		type UpdateCheckSettings
 	} from '$lib/api/adminSettings';
+	import { getUpdateCheck, runUpdateCheck, type UpdateCheckState } from '$lib/api/updateCheck';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Check from '@lucide/svelte/icons/check';
@@ -42,6 +50,10 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import MonitorPlay from '@lucide/svelte/icons/monitor-play';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import Map from '@lucide/svelte/icons/map';
+	import PackageCheck from '@lucide/svelte/icons/package-check';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -80,6 +92,32 @@
 	let transcodingErrorKey = $state('');
 	let transcodingSaved = $state(false);
 
+	// The release check: the settings form and the cached state.
+	let formUpdateCheck = $state<UpdateCheckSettings>({
+		enabled: true,
+		endpoint: '',
+		intervalHours: 24
+	});
+	let savingUpdateCheck = $state(false);
+	let updateCheckErrorKey = $state('');
+	let updateCheckSaved = $state(false);
+	/** The cached check state (null until the read lands). */
+	let updateState = $state<UpdateCheckState | null>(null);
+	/** True while the manual check runs. */
+	let checking = $state(false);
+
+	// The map's tile source form.
+	let formTilejsonUrl = $state('');
+	let savingTiles = $state(false);
+	let tilesErrorKey = $state('');
+	let tilesSaved = $state(false);
+
+	// The model store's policy form.
+	let formAutoDownload = $state(true);
+	let savingModels = $state(false);
+	let modelsErrorKey = $state('');
+	let modelsSaved = $state(false);
+
 	// The read, keyed on the retry tick. A superseded run -- the
 	// retry fired again, or the route left -- never applies.
 	$effect(() => {
@@ -88,18 +126,22 @@
 		errorKey = '';
 		let current = true;
 		void (async () => {
-			const [storage, trash, transcoding] = await Promise.all([
+			const [storage, trash, transcoding, updateCheck, tiles, models, checkState] = await Promise.all([
 				getStorageSettings(),
 				getTrashSettings(),
-				getTranscodingSettings()
+				getTranscodingSettings(),
+				getUpdateCheckSettings(),
+				getTilesSettings(),
+				getModelSettings(),
+				getUpdateCheck()
 			]);
 			if (!current) {
 				return;
 			}
-			// The three reads share one gate: they are one page, and
-			// the admin-role probe belongs to whichever read answers
-			// first (any failure -- the role refusal, a session loss,
-			// an unparseable body -- is the page's failure).
+			// The reads share one gate: they are one page, and the
+			// admin-role probe belongs to whichever read answers first
+			// (any failure -- the role refusal, a session loss, an
+			// unparseable body -- is the page's failure).
 			if (!storage.ok) {
 				status = 'error';
 				errorKey = storage.errorKey;
@@ -115,13 +157,52 @@
 				errorKey = transcoding.errorKey;
 				return;
 			}
+			if (!updateCheck.ok) {
+				status = 'error';
+				errorKey = updateCheck.errorKey;
+				return;
+			}
+			if (!tiles.ok) {
+				status = 'error';
+				errorKey = tiles.errorKey;
+				return;
+			}
+			if (!models.ok) {
+				status = 'error';
+				errorKey = models.errorKey;
+				return;
+			}
+			if (!checkState.ok) {
+				status = 'error';
+				errorKey = checkState.errorKey;
+				return;
+			}
 			adoptSettings(storage.settings, trash.settings.retentionDays, transcoding.settings);
+			adoptNetworkingSettings(updateCheck.settings, tiles.settings.tilejsonUrl, models.settings.autoDownload);
+			updateState = checkState.state;
 			status = 'ready';
 		})();
 		return () => {
 			current = false;
 		};
 	});
+
+	/** Adopt the networking sections' read documents as their fresh state. */
+	function adoptNetworkingSettings(
+		updateCheck: UpdateCheckSettings,
+		tilejsonUrl: string,
+		autoDownload: boolean
+	): void {
+		formUpdateCheck = { ...updateCheck };
+		updateCheckErrorKey = '';
+		updateCheckSaved = false;
+		formTilejsonUrl = tilejsonUrl;
+		tilesErrorKey = '';
+		tilesSaved = false;
+		formAutoDownload = autoDownload;
+		modelsErrorKey = '';
+		modelsSaved = false;
+	}
 
 	/** Adopt the three read documents as the sections' fresh state. */
 	function adoptSettings(next: StorageSettings, retentionDays: number, transcoding: TranscodingSettings): void {
@@ -229,6 +310,96 @@
 			return;
 		}
 		transcodingErrorKey = outcome.errorKey;
+	}
+
+	async function handleUpdateCheckSubmit(event: SubmitEvent): Promise<void> {
+		event.preventDefault();
+		if (savingUpdateCheck) {
+			return;
+		}
+		savingUpdateCheck = true;
+		updateCheckErrorKey = '';
+		updateCheckSaved = false;
+		const outcome = await saveUpdateCheckSettings({ ...formUpdateCheck });
+		savingUpdateCheck = false;
+		if (outcome.ok) {
+			formUpdateCheck = { ...outcome.settings };
+			updateCheckSaved = true;
+			return;
+		}
+		updateCheckErrorKey = outcome.errorKey;
+	}
+
+	/**
+	 * The manual check: one server-side probe, then the fresh state
+	 * replaces the card's. A failed probe is not an error here -- the
+	 * answer's status stays `unknown` and the card keeps its quiet
+	 * "last checked" line.
+	 */
+	async function handleCheckNow(): Promise<void> {
+		if (checking) {
+			return;
+		}
+		checking = true;
+		const outcome = await runUpdateCheck();
+		checking = false;
+		if (outcome.ok) {
+			updateState = outcome.state;
+		}
+	}
+
+	async function handleTilesSubmit(event: SubmitEvent): Promise<void> {
+		event.preventDefault();
+		if (savingTiles) {
+			return;
+		}
+		savingTiles = true;
+		tilesErrorKey = '';
+		tilesSaved = false;
+		const outcome = await saveTilesSettings(formTilejsonUrl.trim());
+		savingTiles = false;
+		if (outcome.ok) {
+			formTilejsonUrl = outcome.settings.tilejsonUrl;
+			tilesSaved = true;
+			return;
+		}
+		tilesErrorKey = outcome.errorKey;
+	}
+
+	async function handleModelsSubmit(event: SubmitEvent): Promise<void> {
+		event.preventDefault();
+		if (savingModels) {
+			return;
+		}
+		savingModels = true;
+		modelsErrorKey = '';
+		modelsSaved = false;
+		const outcome = await saveModelSettings({ autoDownload: formAutoDownload });
+		savingModels = false;
+		if (outcome.ok) {
+			formAutoDownload = outcome.settings.autoDownload;
+			modelsSaved = true;
+			return;
+		}
+		modelsErrorKey = outcome.errorKey;
+	}
+
+	/**
+	 * One relative time in the active locale (the Intl table's own
+	 * wording): the card's quiet last-checked line. Minute granularity
+	 * is the finest the cadence needs.
+	 */
+	function relativeTime(iso: string): string {
+		const seconds = Math.round((new Date(iso).getTime() - Date.now()) / 1000);
+		const formatter = new Intl.RelativeTimeFormat($locale ?? 'en', { numeric: 'auto' });
+		const magnitude = Math.abs(seconds);
+		if (magnitude < 3600) {
+			return formatter.format(Math.round(seconds / 60), 'minute');
+		}
+		if (magnitude < 86400) {
+			return formatter.format(Math.round(seconds / 3600), 'hour');
+		}
+		return formatter.format(Math.round(seconds / 86400), 'day');
 	}
 
 	const presetChoices: ReadonlyArray<{ value: TranscodingSettings['preset']; labelKey: string }> = [
@@ -528,6 +699,279 @@
 					class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint"
 				>
 					{$_('admin_settings_transcode_contract')}
+				</p>
+			</Card>
+		</section>
+
+		<!-- The release check: the running version, the last answer's
+		     face, the manual check, and the three knobs. A failed check
+		     is silent -- a quiet "last checked" line, never red. -->
+		<section class="settings__card" data-testid="admin-settings-update">
+			<Card>
+				<h2
+					class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text"
+				>
+					<RefreshCw size={18} class="settings__section-icon text-accent" aria-hidden="true" />
+					{$_('admin_settings_update_title')}
+				</h2>
+				<p
+					class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_update_note')}
+				</p>
+
+				<div
+					class="settings__update-state flex flex-wrap items-center gap-2 py-1"
+					data-testid="update-check-state"
+				>
+					<p class="settings__version m-0 font-body font-normal text-[13px] leading-[1.5] text-text-soft">
+						{$_('admin_settings_update_current', {
+							values: { version: updateState?.currentVersion ?? '' }
+						})}
+					</p>
+					{#if updateState !== null}
+						{#if updateState.status === 'update_available'}
+							<span
+								class="settings__update-chip inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-notice text-navy-900 font-body font-semibold text-[12px] leading-[1.4]"
+								data-state="available"
+							>
+								{$_('admin_settings_update_available', {
+									values: { version: updateState.latestVersion ?? '' }
+								})}
+							</span>
+						{:else if updateState.status === 'up_to_date'}
+							<span
+								class="settings__update-chip inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-soft text-accent-soft-text font-body font-semibold text-[12px] leading-[1.4]"
+								data-state="latest"
+							>
+								<CircleCheck size={13} aria-hidden="true" />
+								{$_('admin_settings_update_latest')}
+							</span>
+						{:else if updateState.status === 'disabled'}
+							<span
+								class="settings__update-quiet font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+								data-state="disabled"
+							>
+								{$_('admin_settings_update_off')}
+							</span>
+						{:else}
+							<span
+								class="settings__update-quiet font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+								data-state="unknown"
+							>
+								{#if updateState.checkedAt !== null}
+									{$_('admin_settings_update_unknown', {
+										values: { when: relativeTime(updateState.checkedAt) }
+									})}
+								{:else}
+									{$_('admin_settings_update_never')}
+								{/if}
+							</span>
+						{/if}
+						{#if updateState.status === 'up_to_date' && updateState.checkedAt !== null}
+							<span
+								class="settings__update-quiet font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+							>
+								{$_('admin_settings_update_checked_at', {
+									values: { when: relativeTime(updateState.checkedAt) }
+								})}
+							</span>
+						{/if}
+					{/if}
+					<Button
+						variant="ghost"
+						disabled={checking || updateState?.enabled === false}
+						onclick={() => void handleCheckNow()}
+						data-testid="update-check-now"
+						><RefreshCw size={20} aria-hidden="true" />{checking
+							? $_('admin_settings_update_checking')
+							: $_('admin_settings_update_check_now')}</Button
+					>
+				</div>
+				{#if updateState?.status === 'update_available'}
+					<p
+						class="settings__update-hint m-0 mt-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+					>
+						{$_('admin_settings_update_not_automatic')}
+					</p>
+				{/if}
+
+				<form class="settings__update-form flex flex-col gap-3.5 mt-4" onsubmit={handleUpdateCheckSubmit}>
+					<label
+						class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+					>
+						<input
+							class="settings__toggle-input w-[18px] h-[18px] accent-accent"
+							type="checkbox"
+							data-testid="update-check-enabled"
+							bind:checked={formUpdateCheck.enabled}
+						/>
+						{$_('admin_settings_update_enabled')}
+					</label>
+					<Input
+						id="admin-update-endpoint"
+						label={$_('admin_settings_update_endpoint')}
+						type="url"
+						autocomplete="off"
+						spellcheck="false"
+						class="font-mono"
+						bind:value={formUpdateCheck.endpoint}
+					/>
+					<div class="settings__field flex flex-col gap-1.5">
+						<label
+							class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+							for="admin-update-interval">{$_('admin_settings_update_interval')}</label
+						>
+						<input
+							class="settings__number w-[120px] px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
+							id="admin-update-interval"
+							type="number"
+							min="1"
+							max="168"
+							step="1"
+							data-testid="update-check-interval"
+							bind:value={formUpdateCheck.intervalHours}
+						/>
+					</div>
+					{#if updateCheckSaved}
+						<p
+							class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+							role="status"
+						>
+							{$_('admin_settings_update_saved')}
+						</p>
+					{/if}
+					{#if updateCheckErrorKey !== ''}
+						<p
+							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(updateCheckErrorKey)}
+						</p>
+					{/if}
+					<div class="settings__form-actions flex justify-end mt-1">
+						<Button type="submit" disabled={savingUpdateCheck}
+							><Check size={20} aria-hidden="true" />{$_('admin_settings_update_save')}</Button
+						>
+					</div>
+				</form>
+				<p
+					class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_update_contract')}
+				</p>
+			</Card>
+		</section>
+
+		<!-- The map's tile source: the browser loads it, so a LAN
+		     address is legitimate; an empty value is the shipped state
+		     and the map's stated absence. -->
+		<section class="settings__card" data-testid="admin-settings-tiles">
+			<Card>
+				<h2
+					class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text"
+				>
+					<Map size={18} class="settings__section-icon text-accent" aria-hidden="true" />
+					{$_('admin_settings_tiles_title')}
+				</h2>
+				<p
+					class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_tiles_note')}
+				</p>
+				<form class="settings__tiles flex flex-col gap-3.5" onsubmit={handleTilesSubmit}>
+					<Input
+						id="admin-tiles-source"
+						label={$_('admin_settings_tiles_source')}
+						type="url"
+						autocomplete="off"
+						spellcheck="false"
+						class="font-mono"
+						bind:value={formTilejsonUrl}
+					/>
+					{#if tilesSaved}
+						<p
+							class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+							role="status"
+						>
+							{$_('admin_settings_tiles_saved')}
+						</p>
+					{/if}
+					{#if tilesErrorKey !== ''}
+						<p
+							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(tilesErrorKey)}
+						</p>
+					{/if}
+					<div class="settings__form-actions flex justify-end mt-1">
+						<Button type="submit" disabled={savingTiles}
+							><Check size={20} aria-hidden="true" />{$_('admin_settings_tiles_save')}</Button
+						>
+					</div>
+				</form>
+				<p
+					class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_tiles_contract')}
+				</p>
+			</Card>
+		</section>
+
+		<!-- The model store's policy: the automatic fill of a slot that
+		     is configured but whose weights are gone. -->
+		<section class="settings__card" data-testid="admin-settings-models">
+			<Card>
+				<h2
+					class="settings__section-title flex items-center gap-2 mb-1 font-display font-bold text-[17px] text-text"
+				>
+					<PackageCheck size={18} class="settings__section-icon text-accent" aria-hidden="true" />
+					{$_('admin_settings_models_title')}
+				</h2>
+				<p
+					class="settings__section-note mb-3.5 font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_models_note')}
+				</p>
+				<form class="settings__models flex flex-col gap-3.5" onsubmit={handleModelsSubmit}>
+					<label
+						class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+					>
+						<input
+							class="settings__toggle-input w-[18px] h-[18px] accent-accent"
+							type="checkbox"
+							data-testid="models-auto-download"
+							bind:checked={formAutoDownload}
+						/>
+						{$_('admin_settings_models_auto')}
+					</label>
+					{#if modelsSaved}
+						<p
+							class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft"
+							role="status"
+						>
+							{$_('admin_settings_models_saved')}
+						</p>
+					{/if}
+					{#if modelsErrorKey !== ''}
+						<p
+							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
+							role="alert"
+						>
+							{errorText(modelsErrorKey)}
+						</p>
+					{/if}
+					<div class="settings__form-actions flex justify-end mt-1">
+						<Button type="submit" disabled={savingModels}
+							><Check size={20} aria-hidden="true" />{$_('admin_settings_models_save')}</Button
+						>
+					</div>
+				</form>
+				<p
+					class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint"
+				>
+					{$_('admin_settings_models_contract')}
 				</p>
 			</Card>
 		</section>

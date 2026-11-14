@@ -6,12 +6,20 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 
 // The places page: the city card grid (the derived-cover collage,
 // the shaded name, the honest per-caller count), the country label
-// through the client's locale table (Intl region names), the map
-// placeholder's honest copy, the empty state, the error box, the
-// SSE refetch on the asset family, and the locale join riding the
-// request. A city click deep-links into the filtered browse
-// (/search?placeIds=). $app/navigation is not used by this page;
+// through the client's locale table (Intl region names), the view
+// switch (the list on screen, the map behind `?mode=map`), the empty
+// state, the error box, the SSE refetch on the asset family, and the
+// locale join riding the request. A city click deep-links into the
+// filtered browse (/search?placeIds=). The address supplies the view;
 // the events module is mocked with a captured handler registry.
+
+const { pageState, gotoMock } = vi.hoisted(() => ({
+	pageState: { url: new URL('http://localhost/places') },
+	gotoMock: vi.fn(async () => undefined)
+}));
+
+vi.mock('$app/state', () => ({ page: pageState }));
+vi.mock('$app/navigation', () => ({ goto: gotoMock }));
 
 const { handlers } = vi.hoisted(() => ({
 	handlers: [] as Array<(event: unknown) => void>
@@ -34,6 +42,8 @@ const paris = {
 	name: 'Paris',
 	country: 'FR',
 	assetCount: 17,
+	latitude: 48.85341,
+	longitude: 2.3488,
 	representativeCoverAssetIds: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72', '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73']
 };
 
@@ -42,6 +52,8 @@ const beijing = {
 	name: '北京',
 	country: 'CN',
 	assetCount: 42,
+	latitude: 39.9075,
+	longitude: 116.39723,
 	representativeCoverAssetIds: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70']
 };
 
@@ -82,6 +94,7 @@ function buttonByText(text: string): HTMLButtonElement {
 beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
+	pageState.url = new URL('http://localhost/places');
 	vi.clearAllMocks();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
@@ -124,15 +137,18 @@ test('the grid renders the city cards with the honest counts and the deep links'
 	expect(second?.querySelector('.place-card__region')?.textContent).toBe('France');
 	expect(second?.querySelectorAll('img')).toHaveLength(2);
 
-	// The page bar's count segment (the title lives beside it) and the
-	// map placeholder's honest copy.
+	// The page bar's count segment (the title lives beside it), the
+	// view switch (the list is the current face, the map is its own
+	// address), and the retired grid subtitle.
 	expect(document.body.querySelector('.places__title')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
 		'Places · 2 cities'
 	);
 	expect(document.body.querySelector('.places__sub')).toBeNull();
-	expect(document.body.querySelector('.places__map')?.textContent).toContain(
-		'The map view arrives with a self-hosted tile decision'
-	);
+	const listView = document.body.querySelector('[data-places-mode="list"]');
+	const mapView = document.body.querySelector('[data-places-mode="map"]');
+	expect(listView?.getAttribute('aria-current')).toBe('page');
+	expect(mapView?.getAttribute('aria-current')).toBeNull();
+	expect(mapView?.getAttribute('href')).toBe('/places?mode=map');
 
 	unmount(page);
 	flushSync();
@@ -167,8 +183,9 @@ test('an empty grouping renders the empty state', async () => {
 	const empty = document.body.querySelector('.state-card');
 	expect(empty?.textContent).toContain('No places yet');
 	expect(empty?.textContent).toContain('Photos land here by city once their location resolves.');
-	// The map placeholder stays honest even with nothing to show.
-	expect(document.body.querySelector('.places__map')).not.toBeNull();
+	// The switch stands even with nothing to show: the map face states
+	// the same emptiness over its own canvas.
+	expect(document.body.querySelector('[data-places-mode="map"]')?.getAttribute('href')).toBe('/places?mode=map');
 
 	unmount(page);
 	flushSync();

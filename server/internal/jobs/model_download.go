@@ -20,15 +20,18 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/ml"
@@ -201,4 +204,66 @@ func (q *Queue) EnqueueModelDownload(ctx context.Context) (uuid.UUID, error) {
 		return uuid.Nil, fmt.Errorf("commit the model download enqueue: %w", err)
 	}
 	return id, nil
+}
+
+// joinOrStartModelDownload decides what the automatic fill's seam does
+// with the group's runs. Nil means a run is in flight (joined) or was
+// just started, so the caller waits for it through its own retry;
+// errModelDownloadFailed means the most recent run failed and no new
+// one starts -- a broken source must not be re-fetched by every AI job,
+// and the download endpoint's retry stays the administrator's.
+//
+// The rules, in order:
+//
+//   - a run still in flight is joined (its identifier is not needed
+//     here: the caller only waits);
+//   - the most recent run succeeded but the slot's files are missing
+//     again -- the store was wiped below a configured instance -- so a
+//     fresh run starts (its verified-file skip keeps the re-run cheap);
+//   - the most recent run failed: no new run per job;
+//   - no run at all starts one.
+//
+// The download endpoint keeps its own idempotence (a click joins an
+// in-flight or the most recent run); this decision exists for the
+// automatic path, whose trigger is a missing file rather than a click.
+//
+// The check-then-enqueue window is NOT closed, by design: two workers
+// that read the run table in the same millisecond can both decide "no
+// run in flight" and both enqueue, landing two queued run rows. In
+// practice the enqueue's own transaction commits the queued row before
+// the second worker's read runs, so the burst normally collapses to
+// one run; the property the fill promises (a burst of AI jobs starts
+// one download) is a practical one, not a database-guaranteed one.
+// Closing it would need an arbiter on the read -- a lock across the
+// table on every ML job's path -- for a case whose cost is one extra
+// run row: the duplicate checks the file store again (the verified-
+// file skip) and, at worst, re-fetches bytes the first run had not
+// landed yet.
+func (q *Queue) joinOrStartModelDownload(ctx context.Context) error {
+	queries := dbgen.New(q.pool)
+	if _, err := queries.FindInFlightJobRunByKind(ctx, ModelDownloadKind); err == nil {
+		return nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("find the in-flight model download run: %w", err)
+	}
+	row, err := queries.LatestJobRunByKind(ctx, ModelDownloadKind)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		_, enqueueErr := q.EnqueueModelDownload(ctx)
+		return enqueueErr
+	case err != nil:
+		return fmt.Errorf("find the latest model download run: %w", err)
+	case row.State == dbgen.JobStateSucceeded:
+		// The store lost files a finished run had landed: start again.
+		_, enqueueErr := q.EnqueueModelDownload(ctx)
+		return enqueueErr
+	default:
+		return errModelDownloadFailed
+	}
+}
+
+// modelSettings reads the model store's policy through the shared
+// accessor (the documented default answers a corrupt row).
+func (q *Queue) modelSettings(ctx context.Context) (db.ModelSettings, error) {
+	return db.ModelSettingsOf(ctx, dbgen.New(q.pool))
 }

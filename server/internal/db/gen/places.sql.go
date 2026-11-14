@@ -101,6 +101,8 @@ const listCallerPlaces = `-- name: ListCallerPlaces :many
 SELECT p.id,
        COALESCE(pn.name, p.name) AS name,
        p.country_code,
+       p.lat,
+       p.lon,
        count(*) AS asset_count
 FROM assets a
 JOIN places p ON p.id = a.place_id
@@ -110,7 +112,7 @@ WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
   AND caller_asset_visible($2, a.id)
-GROUP BY p.id, p.name, pn.name, p.country_code
+GROUP BY p.id, p.name, pn.name, p.country_code, p.lat, p.lon
 ORDER BY asset_count DESC, p.id ASC
 `
 
@@ -120,10 +122,12 @@ type ListCallerPlacesParams struct {
 }
 
 type ListCallerPlacesRow struct {
-	ID          int32  `json:"id"`
-	Name        string `json:"name"`
-	CountryCode string `json:"country_code"`
-	AssetCount  int64  `json:"asset_count"`
+	ID          int32   `json:"id"`
+	Name        string  `json:"name"`
+	CountryCode string  `json:"country_code"`
+	Lat         float64 `json:"lat"`
+	Lon         float64 `json:"lon"`
+	AssetCount  int64   `json:"asset_count"`
 }
 
 // The city grouping of GET /places: every place holding at least one
@@ -131,8 +135,10 @@ type ListCallerPlacesRow struct {
 // live-asset filters), with the honest per-caller count. The display
 // name is the locale join: the request's locale row of the place when
 // place_names carries one, the canonical name otherwise -- a locale
-// switch changes the join, never an asset row. Ordered by the asset
-// count descending with the place id ascending as the deterministic
+// switch changes the join, never an asset row. The place's own
+// coordinate rides along: the map face pins it, and it is the place
+// record's coordinate -- never a photo's. Ordered by the asset count
+// descending with the place id ascending as the deterministic
 // tiebreak.
 func (q *Queries) ListCallerPlaces(ctx context.Context, arg ListCallerPlacesParams) ([]ListCallerPlacesRow, error) {
 	rows, err := q.db.Query(ctx, listCallerPlaces, arg.Locale, arg.UserID)
@@ -147,6 +153,8 @@ func (q *Queries) ListCallerPlaces(ctx context.Context, arg ListCallerPlacesPara
 			&i.ID,
 			&i.Name,
 			&i.CountryCode,
+			&i.Lat,
+			&i.Lon,
 			&i.AssetCount,
 		); err != nil {
 			return nil, err

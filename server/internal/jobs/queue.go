@@ -139,6 +139,9 @@ type Queue struct {
 	// places is the in-memory place grid (the bake's centroids, built
 	// at boot); the places rerun enqueue refuses to start without it.
 	places *geodata.Index
+	// logger is the queue's own diagnostics sink: the automatic model
+	// fill's policy read and the missing-weights lines land here.
+	logger *slog.Logger
 }
 
 // Start applies River's own migrations (idempotent: applied versions
@@ -260,26 +263,29 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		logger:   logger,
 	}
 	river.AddWorker(workers, faceDetectWorker)
-	river.AddWorker(workers, &FaceRecognizeWorker{
+	recognizeWorker := &FaceRecognizeWorker{
 		pool:     cfg.Pool,
 		dataDir:  cfg.DataDir,
 		registry: registry,
 		bus:      cfg.Bus,
 		logger:   logger,
-	})
-	river.AddWorker(workers, &ClipEmbedWorker{
+	}
+	river.AddWorker(workers, recognizeWorker)
+	clipEmbedWorker := &ClipEmbedWorker{
 		pool:     cfg.Pool,
 		dataDir:  cfg.DataDir,
 		registry: registry,
 		bus:      cfg.Bus,
 		logger:   logger,
-	})
-	river.AddWorker(workers, &OcrWorker{
+	}
+	river.AddWorker(workers, clipEmbedWorker)
+	ocrWorker := &OcrWorker{
 		pool:     cfg.Pool,
 		dataDir:  cfg.DataDir,
 		registry: registry,
 		logger:   logger,
-	})
+	}
+	river.AddWorker(workers, ocrWorker)
 
 	workerCount := cfg.Workers
 	if workerCount <= 0 {
@@ -320,7 +326,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		return nil, fmt.Errorf("jobs: create river client: %w", err)
 	}
 
-	queue := &Queue{client: client, pool: cfg.Pool, models: models, registry: registry, places: cfg.Places}
+	queue := &Queue{client: client, pool: cfg.Pool, models: models, registry: registry, places: cfg.Places, logger: logger}
 
 	// Wire the ML readiness seam into the three pipeline workers: the
 	// dispatch is the queue's EnqueueMlJobs method value, and the
@@ -338,6 +344,14 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	thumbnailWorker.mlDispatch = queue.EnqueueMlJobs
 	transcodeWorker.mlDispatch = queue.EnqueueMlJobs
 	faceDetectWorker.recognizeDispatch = queue.EnqueueFaceRecognize
+	// The automatic model fill: every inference worker's readiness gate
+	// joins it behind a configured-but-missing slot, and the seam
+	// reads the policy switch per attempt, so flipping the switch
+	// takes effect on the next job without a restart.
+	faceDetectWorker.modelFill = queue.ensureModelDownload
+	recognizeWorker.modelFill = queue.ensureModelDownload
+	clipEmbedWorker.modelFill = queue.ensureModelDownload
+	ocrWorker.modelFill = queue.ensureModelDownload
 	if cfg.MlRerunDispatch != nil {
 		mlRerunWorker.dispatch = cfg.MlRerunDispatch
 	} else {

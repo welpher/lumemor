@@ -13,9 +13,14 @@
 	// Intl.DisplayNames(region) is that table, so no country name is
 	// hardcoded (a locale switch relabels without a refetch).
 	//
-	// THE MAP PLACEHOLDER: the pinned honest copy -- the tile
-	// source is a self-hosting decision of a later update, the city
-	// grouping comes first. No map machinery, no stub.
+	// THE TWO FACES: the flat city grid and the map, one segmented
+	// switch in the toolbar and `?mode=map` as its address. The map
+	// draws the same grouping as pins (the cities' own coordinates
+	// from the places read, clustered by zoom at the map's own
+	// layer); a pin or a bubble opens that group's assets through
+	// the filtered browse, the card click's own handoff. A source the
+	// browser cannot load is the map's stated absence -- the pins
+	// stay.
 	//
 	// SSE: every asset.* event refetches the grouping (the places
 	// family's own convergence -- the fresh answer owns the truth),
@@ -24,6 +29,8 @@
 	// refetches too: the name join rides the request.
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { listPlaces, type PlaceSummary } from '$lib/api/places';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
@@ -31,6 +38,10 @@
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import CountLabel from '$lib/components/CountLabel.svelte';
 	import MapPin from '@lucide/svelte/icons/map-pin';
+	import List from '@lucide/svelte/icons/list';
+	import Map from '@lucide/svelte/icons/map';
+	import MapView, { type MapState } from '$lib/map/MapView.svelte';
+	import type { PlacePoint } from '$lib/map/tiles';
 	import { untrack } from 'svelte';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -39,6 +50,13 @@
 	let status = $state<ListStatus>('idle');
 	/** The error-code i18n key of the last failed load ('' when none). */
 	let errorKey = $state('');
+
+	/** The map face: the address decides (`?mode=map`), never local state alone. */
+	const isMap = $derived(page.url.searchParams.get('mode') === 'map');
+	/** The base layer's state, as the map reports it. */
+	let mapState = $state<MapState>('loading');
+	/** The tile host's attribution line, as the map resolves it. */
+	let mapAttribution = $state('');
 
 	// The single-flight guard: while one fetch runs, later triggers
 	// park (the burst's tail) and one trailing fetch runs when it
@@ -82,6 +100,35 @@
 
 	const firstLoad = $derived(places.length === 0 && status === 'loading');
 	const settledEmpty = $derived(places.length === 0 && status === 'ready');
+
+	/** The pins of the map face: the same grouping, in map coordinates. */
+	const mapPoints = $derived<PlacePoint[]>(
+		places.map((place) => ({
+			placeId: place.placeId,
+			name: place.name,
+			count: place.assetCount,
+			lat: place.latitude,
+			lon: place.longitude
+		}))
+	);
+
+	/** The map footer's left line: cities, photos and countries of the grouping. */
+	const mapSummary = $derived({
+		cities: places.length,
+		photos: places.reduce((sum, place) => sum + place.assetCount, 0),
+		countries: new Set(places.map((place) => place.country)).size
+	});
+
+	/**
+	 * A pin or bubble click: that group's assets through the filtered
+	 * browse (the card click's handoff, with the group's place ids).
+	 */
+	function openGroup(placeIds: number[]): void {
+		if (placeIds.length === 0) {
+			return;
+		}
+		void goto(`/search?placeIds=${placeIds.join(',')}`);
+	}
 
 	// The shared unknown-code fallback (see $lib/i18n/errors): an
 	// unknown error code has no i18n key, and svelte-i18n would echo
@@ -150,6 +197,33 @@
 				</span>
 			{/if}
 		</h1>
+		<!-- The view switch: the page's one action, an address not a
+		     local toggle (`?mode=map` is linkable and survives a
+		     reload). -->
+		<div
+			class="places__views ms-auto inline-flex items-center gap-0.5 rounded-control border border-border-strong p-0.5"
+			role="group"
+			aria-label={$_('places_view_switch')}
+		>
+			<a
+				class="places__view inline-flex items-center gap-1 px-2.5 py-1 font-body font-semibold text-[13px] leading-[1.4] rounded-control no-underline text-text-soft hover:text-text aria-[current=page]:bg-accent-soft aria-[current=page]:text-accent-soft-text"
+				href="/places"
+				aria-current={isMap ? undefined : 'page'}
+				data-places-mode="list"
+			>
+				<List size={14} aria-hidden="true" />
+				{$_('places_view_list')}
+			</a>
+			<a
+				class="places__view inline-flex items-center gap-1 px-2.5 py-1 font-body font-semibold text-[13px] leading-[1.4] rounded-control no-underline text-text-soft hover:text-text aria-[current=page]:bg-accent-soft aria-[current=page]:text-accent-soft-text"
+				href="/places?mode=map"
+				aria-current={isMap ? 'page' : undefined}
+				data-places-mode="map"
+			>
+				<Map size={14} aria-hidden="true" />
+				{$_('places_view_map')}
+			</a>
+		</div>
 	</div>
 
 	<div class="places__content pt-4">
@@ -164,6 +238,42 @@
 				actionLabel={$_('action_retry')}
 				onaction={() => void runLoad(false)}
 			/>
+		{:else if isMap}
+			<!-- The map face: the full-width card, the tiles the browser
+			     loads, the pins over them, and the footer's honest counts
+			     plus the tile host's attribution. -->
+			<div class="places__map-face flex flex-col gap-3">
+				<div
+					class="places__map-card relative h-[min(70vh,560px)] overflow-hidden rounded-card border border-border"
+					data-testid="places-map"
+				>
+					<MapView
+						places={mapPoints}
+						label={$_('places_map_label')}
+						onselect={openGroup}
+						bind:tiles={mapState}
+						bind:attribution={mapAttribution}
+					/>
+				</div>
+				<div class="places__map-footer flex flex-wrap items-center justify-between gap-2">
+					<p
+						class="places__map-counts m-0 font-body font-normal text-[13px] leading-[1.4] text-text-soft tabular-nums"
+					>
+						{$_('places_map_summary', {
+							values: {
+								cities: mapSummary.cities,
+								photos: mapSummary.photos,
+								countries: mapSummary.countries
+							}
+						})}
+					</p>
+					<p
+						class="places__map-attribution m-0 font-body font-normal text-[11px] leading-[1.4] text-text-faint"
+					>
+						{$_('places_map_attribution', { values: { source: mapAttribution } })}
+					</p>
+				</div>
+			</div>
 		{:else}
 			<div class="places__grid grid grid-cols-[repeat(auto-fill,minmax(min(240px,100%),1fr))] gap-3.5">
 				{#each places as place (place.placeId)}
@@ -182,15 +292,6 @@
 				onaction={() => void runLoad(false)}
 			/>
 		{/if}
-
-		<!-- The map placeholder's honest copy: the tile source is a
-	     self-hosting decision of a later update; the city grouping
-	     comes first. -->
-		<p
-			class="places__map m-0 mt-5 py-5 px-6 text-center font-body font-normal text-[13px] leading-[1.5] text-text-faint border border-dashed border-border-strong rounded-card"
-		>
-			{$_('places_map_placeholder')}
-		</p>
 	</div>
 </section>
 

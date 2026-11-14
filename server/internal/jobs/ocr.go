@@ -68,6 +68,11 @@ type OcrWorker struct {
 	dataDir  string
 	registry *ml.Registry
 	logger   *slog.Logger
+	// modelFill is the automatic model fill seam (the queue's own,
+	// wired at Start): a configured-but-missing slot joins the model
+	// group's download through it. Nil (directly constructed workers)
+	// keeps the manual-only behavior.
+	modelFill func(context.Context) error
 }
 
 // Timeout is the job's execution envelope; see ocrTimeout.
@@ -104,7 +109,7 @@ func (w *OcrWorker) work(ctx context.Context, job *river.Job[OcrArgs]) error {
 		return nil
 	}
 
-	model, err := w.registry.Active(ml.SlotOcr)
+	model, err := resolveMlModel(ctx, w.registry, w.modelFill, w.logger, ml.SlotOcr)
 	if errors.Is(err, ml.ErrNoActiveModel) {
 		w.logger.Info("ocr job skipped: no active ocr model", "asset_id", assetID)
 		return nil
