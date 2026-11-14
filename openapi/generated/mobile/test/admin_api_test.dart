@@ -160,9 +160,9 @@ void main() {
       // TODO
     });
 
-    // Save the model download settings.
+    // Save the model download settings and download sources.
     //
-    // The settings save. `autoDownload` is required (an omitted boolean would decode as off, silently changing the policy). The value takes effect on the next AI job's readiness check; no run is started or cancelled by the save itself. 
+    // The settings save. `autoDownload`, `allowedHosts` and `mirrorBaseUrl` are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  `allowedHosts` replaces the stored list wholesale; every entry must be a hostname, optionally with a leading `*.` wildcard label and an optional port. `mirrorBaseUrl`, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins `allowedHosts` automatically, so saving a mirror never leaves it refusing its own first hop. The values take effect on the next download run; no run is started or cancelled by the save itself. 
     //
     //Future<ModelSettingsResponse> updateModelSettings(ModelSettingsUpdateRequest modelSettingsUpdateRequest) async
     test('test updateModelSettings', () async {

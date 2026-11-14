@@ -10580,13 +10580,21 @@ paths:
                 $ref: '#/components/schemas/ModelSettingsResponse'
               examples:
                 defaults:
-                  summary: 'The shipped default: auto-download on.'
+                  summary: "The shipped default: auto-download on, the manifest's own hosts."
                   value:
                     autoDownload: true
+                    allowedHosts:
+                      - huggingface.co
+                      - '*.hf.co'
+                      - hf-mirror.com
+                    mirrorBaseUrl: ''
                 manualOnly:
                   summary: Only the administrator's own act.
                   value:
                     autoDownload: false
+                    allowedHosts:
+                      - huggingface.co
+                    mirrorBaseUrl: ''
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -10628,12 +10636,21 @@ paths:
       operationId: updateModelSettings
       tags:
         - admin
-      summary: Save the model download settings.
+      summary: Save the model download settings and download sources.
       description: |
-        The settings save. `autoDownload` is required (an omitted
-        boolean would decode as off, silently changing the policy).
-        The value takes effect on the next AI job's readiness check;
-        no run is started or cancelled by the save itself.
+        The settings save. `autoDownload`, `allowedHosts` and
+        `mirrorBaseUrl` are required (an omitted field would decode
+        as its zero value, silently changing the policy): the caller
+        saves the whole object it read.
+
+        `allowedHosts` replaces the stored list wholesale; every
+        entry must be a hostname, optionally with a leading `*.`
+        wildcard label and an optional port. `mirrorBaseUrl`, when
+        non-empty, must be a host (or a full http/https URL whose
+        host is kept); its host joins `allowedHosts` automatically,
+        so saving a mirror never leaves it refusing its own first
+        hop. The values take effect on the next download run; no run
+        is started or cancelled by the save itself.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -10645,9 +10662,14 @@ paths:
               $ref: '#/components/schemas/ModelSettingsUpdateRequest'
             examples:
               manualOnly:
-                summary: Turn the automatic fill off.
+                summary: Turn the automatic fill off and keep the manifest's own hosts.
                 value:
                   autoDownload: false
+                  allowedHosts:
+                    - huggingface.co
+                    - '*.hf.co'
+                    - hf-mirror.com
+                  mirrorBaseUrl: ''
       responses:
         '200':
           description: The validated setting was saved.
@@ -10657,13 +10679,19 @@ paths:
                 $ref: '#/components/schemas/ModelSettingsResponse'
               examples:
                 saved:
-                  summary: The freshly saved policy.
+                  summary: The freshly saved policy and sources.
                   value:
                     autoDownload: false
+                    allowedHosts:
+                      - huggingface.co
+                      - '*.hf.co'
+                      - hf-mirror.com
+                    mirrorBaseUrl: ''
         '400':
           description: |
-            `autoDownload` is missing or the body is not valid JSON.
-            The details name the field; nothing was written.
+            A required field is missing, a host entry is malformed, or
+            the body is not valid JSON. The details name the field;
+            nothing was written.
           content:
             application/json:
               schema:
@@ -10676,6 +10704,13 @@ paths:
                     details:
                       fields:
                         - autoDownload
+                badHost:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: 'allowedHosts must be hostnames, with an optional leading *. wildcard'
+                    details:
+                      fields:
+                        - allowedHosts
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -11519,10 +11554,12 @@ components:
     ModelSettingsResponse:
       type: object
       description: |
-        The model store's policy of `GET /admin/settings/models`
-        and the successful `PUT`.
+        The model store's policy and download sources of
+        `GET /admin/settings/models` and the successful `PUT`.
       required:
         - autoDownload
+        - allowedHosts
+        - mirrorBaseUrl
       properties:
         autoDownload:
           type: boolean
@@ -11531,15 +11568,56 @@ components:
             weights are missing may start the model group's download
             on its own. It never fills an unconfigured slot: the
             first-run download stays the administrator's own act.
+        allowedHosts:
+          type: array
+          items:
+            type: string
+          description: |
+            The hosts the model download may travel through. A URL
+            whose host matches no entry -- entries are exact
+            hostnames or a `*.` wildcard prefix for a whole domain
+            suffix -- fails the download with the host named, and the
+            answer points at the sources panel that can add it. The
+            shipped default list covers the manifest's own hosts;
+            the manifest's pinned URLs stay the identity of what is
+            downloaded, this list is only where the bytes may come
+            from.
+          examples:
+            - - huggingface.co
+              - '*.hf.co'
+              - hf-mirror.com
+        mirrorBaseUrl:
+          type: string
+          description: |
+            The download mirror's base host, the empty string when
+            no mirror is configured. Non-empty, it replaces the
+            manifest's pinned `huggingface.co` hostname wholesale on
+            every candidate URL before the fetch, and its host joins
+            `allowedHosts` automatically at save time (a mirror the
+            list refuses would fail on its first hop). Custom model
+            imports are not mirror-rewritten.
+          examples:
+            - - ''
+            - hf-mirror.com
     ModelSettingsUpdateRequest:
       type: object
       description: Payload of `PUT /admin/settings/models`.
       required:
         - autoDownload
+        - allowedHosts
+        - mirrorBaseUrl
       properties:
         autoDownload:
           type: boolean
           description: The policy to save.
+        allowedHosts:
+          type: array
+          items:
+            type: string
+          description: The allowed hosts to save, replacing the stored list wholesale.
+        mirrorBaseUrl:
+          type: string
+          description: The mirror base host to save, or the empty string to clear it.
     MapConfigResponse:
       type: object
       description: |

@@ -397,6 +397,9 @@ function modelSettingsFrom(body: unknown): ModelSettings | null {
 	if (typeof candidate.autoDownload !== 'boolean') {
 		return null;
 	}
+	if (!Array.isArray(candidate.allowedHosts) || typeof candidate.mirrorBaseUrl !== 'string') {
+		return null;
+	}
 	return body as ModelSettings;
 }
 

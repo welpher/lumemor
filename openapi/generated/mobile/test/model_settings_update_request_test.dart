@@ -13,5 +13,17 @@ void main() {
       // TODO
     });
 
+    // The allowed hosts to save, replacing the stored list wholesale.
+    // BuiltList<String> allowedHosts
+    test('to test the property `allowedHosts`', () async {
+      // TODO
+    });
+
+    // The mirror base host to save, or the empty string to clear it.
+    // String mirrorBaseUrl
+    test('to test the property `mirrorBaseUrl`', () async {
+      // TODO
+    });
+
   });
 }

@@ -3,6 +3,7 @@
 //
 
 // ignore_for_file: unused_element
+import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
@@ -12,11 +13,21 @@ part 'model_settings_update_request.g.dart';
 ///
 /// Properties:
 /// * [autoDownload] - The policy to save.
+/// * [allowedHosts] - The allowed hosts to save, replacing the stored list wholesale.
+/// * [mirrorBaseUrl] - The mirror base host to save, or the empty string to clear it.
 @BuiltValue()
 abstract class ModelSettingsUpdateRequest implements Built<ModelSettingsUpdateRequest, ModelSettingsUpdateRequestBuilder> {
   /// The policy to save.
   @BuiltValueField(wireName: r'autoDownload')
   bool get autoDownload;
+
+  /// The allowed hosts to save, replacing the stored list wholesale.
+  @BuiltValueField(wireName: r'allowedHosts')
+  BuiltList<String> get allowedHosts;
+
+  /// The mirror base host to save, or the empty string to clear it.
+  @BuiltValueField(wireName: r'mirrorBaseUrl')
+  String get mirrorBaseUrl;
 
   ModelSettingsUpdateRequest._();
 
@@ -45,6 +56,16 @@ class _$ModelSettingsUpdateRequestSerializer implements PrimitiveSerializer<Mode
     yield serializers.serialize(
       object.autoDownload,
       specifiedType: const FullType(bool),
+    );
+    yield r'allowedHosts';
+    yield serializers.serialize(
+      object.allowedHosts,
+      specifiedType: const FullType(BuiltList, [FullType(String)]),
+    );
+    yield r'mirrorBaseUrl';
+    yield serializers.serialize(
+      object.mirrorBaseUrl,
+      specifiedType: const FullType(String),
     );
   }
 
@@ -75,6 +96,20 @@ class _$ModelSettingsUpdateRequestSerializer implements PrimitiveSerializer<Mode
             specifiedType: const FullType(bool),
           ) as bool;
           result.autoDownload = valueDes;
+          break;
+        case r'allowedHosts':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>;
+          result.allowedHosts.replace(valueDes);
+          break;
+        case r'mirrorBaseUrl':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.mirrorBaseUrl = valueDes;
           break;
         default:
           unhandled.add(key);

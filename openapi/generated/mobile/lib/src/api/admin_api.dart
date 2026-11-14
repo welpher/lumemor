@@ -1528,8 +1528,8 @@ class AdminApi {
     );
   }
 
-  /// Save the model download settings.
-  /// The settings save. &#x60;autoDownload&#x60; is required (an omitted boolean would decode as off, silently changing the policy). The value takes effect on the next AI job&#39;s readiness check; no run is started or cancelled by the save itself. 
+  /// Save the model download settings and download sources.
+  /// The settings save. &#x60;autoDownload&#x60;, &#x60;allowedHosts&#x60; and &#x60;mirrorBaseUrl&#x60; are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  &#x60;allowedHosts&#x60; replaces the stored list wholesale; every entry must be a hostname, optionally with a leading &#x60;*.&#x60; wildcard label and an optional port. &#x60;mirrorBaseUrl&#x60;, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins &#x60;allowedHosts&#x60; automatically, so saving a mirror never leaves it refusing its own first hop. The values take effect on the next download run; no run is started or cancelled by the save itself. 
   ///
   /// Parameters:
   /// * [modelSettingsUpdateRequest] 

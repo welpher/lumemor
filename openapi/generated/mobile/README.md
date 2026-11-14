@@ -104,7 +104,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**runUpdateCheck**](doc/AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
-[*AdminApi*](doc/AdminApi.md) | [**updateModelSettings**](doc/AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings.
+[*AdminApi*](doc/AdminApi.md) | [**updateModelSettings**](doc/AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings and download sources.
 [*AdminApi*](doc/AdminApi.md) | [**updateStorageSettings**](doc/AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [*AdminApi*](doc/AdminApi.md) | [**updateTilesSettings**](doc/AdminApi.md#updatetilessettings) | **PUT** /admin/settings/tiles | Save the map tile source setting.
 [*AdminApi*](doc/AdminApi.md) | [**updateTranscodingSettings**](doc/AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.

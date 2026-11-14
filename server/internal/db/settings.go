@@ -451,23 +451,52 @@ func SaveTileSettings(ctx context.Context, q *dbgen.Queries, tilejsonURL string)
 	return nil
 }
 
-// ModelSettings is the model store's policy: whether an AI job whose
-// slot is configured but whose weights are missing may start the
-// download on its own.
+// ModelSettings is the model store's policy and download sources:
+// whether an AI job whose slot is configured but whose weights are
+// missing may start the download on its own, the hosts the download
+// may travel through, and the mirror base that rewrites the pinned
+// huggingface.co hostnames.
 type ModelSettings struct {
-	AutoDownload bool `json:"autoDownload"`
+	AutoDownload  bool     `json:"autoDownload"`
+	AllowedHosts  []string `json:"allowedHosts"`
+	MirrorBaseUrl string   `json:"mirrorBaseUrl"`
+}
+
+// ModelSettingsDefaultAllowedHosts lists the hosts the manifest's own
+// pinned URLs travel through (the HuggingFace pair's GitHub media
+// fallback included), plus the mirror host a deployment is likely to
+// reach them through. The manifest's URLs stay the identity of what
+// is downloaded; this list is only where the bytes may come from, and
+// the sources panel extends it.
+var ModelSettingsDefaultAllowedHosts = []string{
+	"huggingface.co",
+	"*.hf.co",
+	"hf-mirror.com",
+	"github.com",
+	"objects.githubusercontent.com",
+	"media.githubusercontent.com",
 }
 
 // ModelSettingsDefault is the policy when the row is absent: the
 // configured-but-missing case fills itself, because the alternative
 // is an AI pipeline silently stalled behind a wiped model store.
-var ModelSettingsDefault = ModelSettings{AutoDownload: true}
+var ModelSettingsDefault = ModelSettings{
+	AutoDownload:  true,
+	AllowedHosts:  ModelSettingsDefaultAllowedHosts,
+	MirrorBaseUrl: "",
+}
 
 // ModelSettingsOf reads the model store policy. Absent and corrupt
 // rows answer the default with the corruption returned for the
-// caller's log line.
+// caller's log line. The default's host slice is copied per read, so
+// a caller that extends its own answer never aliases the package
+// default.
 func ModelSettingsOf(ctx context.Context, q *dbgen.Queries) (ModelSettings, error) {
-	settings := ModelSettingsDefault
+	settings := ModelSettings{
+		AutoDownload:  ModelSettingsDefault.AutoDownload,
+		MirrorBaseUrl: ModelSettingsDefault.MirrorBaseUrl,
+	}
+	settings.AllowedHosts = append([]string(nil), ModelSettingsDefault.AllowedHosts...)
 	raw, err := q.GetInstanceSetting(ctx, ModelSettingsKey)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return settings, nil
@@ -476,7 +505,12 @@ func ModelSettingsOf(ctx context.Context, q *dbgen.Queries) (ModelSettings, erro
 		return settings, fmt.Errorf("db: read instance setting %s: %w", ModelSettingsKey, err)
 	}
 	if err := json.Unmarshal(raw, &settings); err != nil {
-		return ModelSettingsDefault, fmt.Errorf("db: instance setting %s = %s is not a JSON object", ModelSettingsKey, raw)
+		corrupt := ModelSettings{
+			AutoDownload:  ModelSettingsDefault.AutoDownload,
+			MirrorBaseUrl: ModelSettingsDefault.MirrorBaseUrl,
+		}
+		corrupt.AllowedHosts = append([]string(nil), ModelSettingsDefault.AllowedHosts...)
+		return corrupt, fmt.Errorf("db: instance setting %s = %s is not a JSON object", ModelSettingsKey, raw)
 	}
 	return settings, nil
 }

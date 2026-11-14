@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/updatecheck"
@@ -326,7 +328,9 @@ func TestMapConfigIsReadableByEveryMember(t *testing.T) {
 	}
 }
 
-// TestModelSettingsRoundTrip pins the default (on), a save and the
+// TestModelSettingsRoundTrip pins the defaults (the switch on, the
+// manifest's own hosts), the whole-object save (the hosts replaced
+// wholesale, the mirror's host auto-joining the list) and the
 // missing-field refusal.
 func TestModelSettingsRoundTrip(t *testing.T) {
 	env := newNetworkingEnv(t, http.StatusOK, `{}`)
@@ -339,20 +343,51 @@ func TestModelSettingsRoundTrip(t *testing.T) {
 	if initial["autoDownload"] != true {
 		t.Fatalf("default autoDownload = %v, want true", initial["autoDownload"])
 	}
+	hosts, ok := initial["allowedHosts"].([]any)
+	if !ok || len(hosts) == 0 {
+		t.Fatalf("default allowedHosts = %v, want the shipped list", initial["allowedHosts"])
+	}
+	if initial["mirrorBaseUrl"] != "" {
+		t.Fatalf("default mirrorBaseUrl = %v, want the empty string", initial["mirrorBaseUrl"])
+	}
 
-	saved := env.do(t, http.MethodPut, "/api/v1/admin/settings/models", `{"autoDownload":false}`, env.cookie)
+	// The save replaces the hosts wholesale and the mirror's host
+	// joins the saved list automatically: a mirror the list refuses
+	// would fail on its own first hop.
+	saved := env.do(t, http.MethodPut, "/api/v1/admin/settings/models",
+		`{"autoDownload":false,"allowedHosts":["models.example.net"],"mirrorBaseUrl":"mirror.example.net"}`, env.cookie)
 	if saved.Code != http.StatusOK {
 		t.Fatalf("save: status = %d, want %d", saved.Code, http.StatusOK)
+	}
+	var answer apigen.ModelSettingsResponse
+	if err := json.Unmarshal(saved.Body.Bytes(), &answer); err != nil {
+		t.Fatalf("decode the save answer: %v", err)
+	}
+	if answer.AutoDownload {
+		t.Error("autoDownload = true, want false after the save")
+	}
+	if len(answer.AllowedHosts) != 2 {
+		t.Fatalf("saved hosts = %v, want the saved entry plus the mirror's", answer.AllowedHosts)
+	}
+	sorted := append([]string(nil), answer.AllowedHosts...)
+	sort.Strings(sorted)
+	if sorted[0] != "mirror.example.net" || sorted[1] != "models.example.net" {
+		t.Errorf("saved hosts = %v, want the saved entry plus the mirror's host", sorted)
 	}
 	settings, err := db.ModelSettingsOf(context.Background(), dbgen.New(env.pool))
 	if err != nil {
 		t.Fatalf("read the saved policy: %v", err)
 	}
-	if settings.AutoDownload {
-		t.Error("autoDownload = true, want false after the save")
+	if settings.MirrorBaseUrl != "mirror.example.net" {
+		t.Errorf("mirrorBaseUrl = %q, want mirror.example.net", settings.MirrorBaseUrl)
 	}
 
-	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/models", `{}`, env.cookie); rec.Code != http.StatusBadRequest {
+	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/models", `{"autoDownload":false}`, env.cookie); rec.Code != http.StatusBadRequest {
 		t.Errorf("missing field: status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	// A malformed host entry is refused with the field named.
+	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/models",
+		`{"autoDownload":false,"allowedHosts":["bad host*"],"mirrorBaseUrl":""}`, env.cookie); rec.Code != http.StatusBadRequest {
+		t.Errorf("malformed host: status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
