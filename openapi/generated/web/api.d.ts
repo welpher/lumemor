@@ -3864,11 +3864,20 @@ export interface paths {
          */
         get: operations["getModelSettings"];
         /**
-         * Save the model download settings.
-         * @description The settings save. `autoDownload` is required (an omitted
-         *     boolean would decode as off, silently changing the policy).
-         *     The value takes effect on the next AI job's readiness check;
-         *     no run is started or cancelled by the save itself.
+         * Save the model download settings and download sources.
+         * @description The settings save. `autoDownload`, `allowedHosts` and
+         *     `mirrorBaseUrl` are required (an omitted field would decode
+         *     as its zero value, silently changing the policy): the caller
+         *     saves the whole object it read.
+         *
+         *     `allowedHosts` replaces the stored list wholesale; every
+         *     entry must be a hostname, optionally with a leading `*.`
+         *     wildcard label and an optional port. `mirrorBaseUrl`, when
+         *     non-empty, must be a host (or a full http/https URL whose
+         *     host is kept); its host joins `allowedHosts` automatically,
+         *     so saving a mirror never leaves it refusing its own first
+         *     hop. The values take effect on the next download run; no run
+         *     is started or cancelled by the save itself.
          */
         put: operations["updateModelSettings"];
         post?: never;
@@ -4501,8 +4510,8 @@ export interface components {
             tilejsonUrl: string;
         };
         /**
-         * @description The model store's policy of `GET /admin/settings/models`
-         *     and the successful `PUT`.
+         * @description The model store's policy and download sources of
+         *     `GET /admin/settings/models` and the successful `PUT`.
          */
         ModelSettingsResponse: {
             /**
@@ -4512,11 +4521,46 @@ export interface components {
              *     first-run download stays the administrator's own act.
              */
             autoDownload: boolean;
+            /**
+             * @description The hosts the model download may travel through. A URL
+             *     whose host matches no entry -- entries are exact
+             *     hostnames or a `*.` wildcard prefix for a whole domain
+             *     suffix -- fails the download with the host named, and the
+             *     answer points at the sources panel that can add it. The
+             *     shipped default list covers the manifest's own hosts;
+             *     the manifest's pinned URLs stay the identity of what is
+             *     downloaded, this list is only where the bytes may come
+             *     from.
+             * @example [
+             *       "huggingface.co",
+             *       "*.hf.co",
+             *       "hf-mirror.com"
+             *     ]
+             */
+            allowedHosts: string[];
+            /**
+             * @description The download mirror's base host, the empty string when
+             *     no mirror is configured. Non-empty, it replaces the
+             *     manifest's pinned `huggingface.co` hostname wholesale on
+             *     every candidate URL before the fetch, and its host joins
+             *     `allowedHosts` automatically at save time (a mirror the
+             *     list refuses would fail on its first hop). Custom model
+             *     imports are not mirror-rewritten.
+             * @example [
+             *       ""
+             *     ]
+             * @example hf-mirror.com
+             */
+            mirrorBaseUrl: string;
         };
         /** @description Payload of `PUT /admin/settings/models`. */
         ModelSettingsUpdateRequest: {
             /** @description The policy to save. */
             autoDownload: boolean;
+            /** @description The allowed hosts to save, replacing the stored list wholesale. */
+            allowedHosts: string[];
+            /** @description The mirror base host to save, or the empty string to clear it. */
+            mirrorBaseUrl: string;
         };
         /**
          * @description The map's client-side configuration of `GET /map/config`:
@@ -13261,8 +13305,9 @@ export interface operations {
                 };
             };
             /**
-             * @description `autoDownload` is missing or the body is not valid JSON.
-             *     The details name the field; nothing was written.
+             * @description A required field is missing, a host entry is malformed, or
+             *     the body is not valid JSON. The details name the field;
+             *     nothing was written.
              */
             400: {
                 headers: {

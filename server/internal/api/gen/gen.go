@@ -2823,20 +2823,52 @@ type ModelScanResponse struct {
 	Registered []ModelResponse `json:"registered"`
 }
 
-// ModelSettingsResponse The model store's policy of `GET /admin/settings/models`
-// and the successful `PUT`.
+// ModelSettingsResponse The model store's policy and download sources of
+// `GET /admin/settings/models` and the successful `PUT`.
 type ModelSettingsResponse struct {
+	// AllowedHosts The hosts the model download may travel through. A URL
+	// whose host matches no entry -- entries are exact
+	// hostnames or a `*.` wildcard prefix for a whole domain
+	// suffix -- fails the download with the host named, and the
+	// answer points at the sources panel that can add it. The
+	// shipped default list covers the manifest's own hosts;
+	// the manifest's pinned URLs stay the identity of what is
+	// downloaded, this list is only where the bytes may come
+	// from.
+	//
+	//
+	// Examples: ["huggingface.co","*.hf.co","hf-mirror.com"]
+	AllowedHosts []string `json:"allowedHosts"`
+
 	// AutoDownload Whether an AI job whose slot is configured but whose
 	// weights are missing may start the model group's download
 	// on its own. It never fills an unconfigured slot: the
 	// first-run download stays the administrator's own act.
 	AutoDownload bool `json:"autoDownload"`
+
+	// MirrorBaseUrl The download mirror's base host, the empty string when
+	// no mirror is configured. Non-empty, it replaces the
+	// manifest's pinned `huggingface.co` hostname wholesale on
+	// every candidate URL before the fetch, and its host joins
+	// `allowedHosts` automatically at save time (a mirror the
+	// list refuses would fail on its first hop). Custom model
+	// imports are not mirror-rewritten.
+	//
+	//
+	// Examples: [""], hf-mirror.com
+	MirrorBaseUrl string `json:"mirrorBaseUrl"`
 }
 
 // ModelSettingsUpdateRequest Payload of `PUT /admin/settings/models`.
 type ModelSettingsUpdateRequest struct {
+	// AllowedHosts The allowed hosts to save, replacing the stored list wholesale.
+	AllowedHosts []string `json:"allowedHosts"`
+
 	// AutoDownload The policy to save.
 	AutoDownload bool `json:"autoDownload"`
+
+	// MirrorBaseUrl The mirror base host to save, or the empty string to clear it.
+	MirrorBaseUrl string `json:"mirrorBaseUrl"`
 }
 
 // ModelSlot The functional slot a model fills. `face_detect`,
@@ -4501,7 +4533,7 @@ type ServerInterface interface {
 	// GetModelSettings Read the model download settings.
 	// (GET /admin/settings/models)
 	GetModelSettings(w http.ResponseWriter, r *http.Request)
-	// UpdateModelSettings Save the model download settings.
+	// UpdateModelSettings Save the model download settings and download sources.
 	// (PUT /admin/settings/models)
 	UpdateModelSettings(w http.ResponseWriter, r *http.Request)
 	// GetStorageSettings Read the storage template setting.
@@ -4792,7 +4824,7 @@ func (_ Unimplemented) GetModelSettings(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// UpdateModelSettings Save the model download settings.
+// UpdateModelSettings Save the model download settings and download sources.
 // (PUT /admin/settings/models)
 func (_ Unimplemented) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)

@@ -26,7 +26,7 @@ Method | HTTP request | Description
 [**rerunModel**](AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [**runUpdateCheck**](AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [**scanModels**](AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
-[**updateModelSettings**](AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings.
+[**updateModelSettings**](AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings and download sources.
 [**updateStorageSettings**](AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [**updateTilesSettings**](AdminApi.md#updatetilessettings) | **PUT** /admin/settings/tiles | Save the map tile source setting.
 [**updateTranscodingSettings**](AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
@@ -787,9 +787,9 @@ This endpoint does not need any parameter.
 # **updateModelSettings**
 > ModelSettingsResponse updateModelSettings(modelSettingsUpdateRequest)
 
-Save the model download settings.
+Save the model download settings and download sources.
 
-The settings save. `autoDownload` is required (an omitted boolean would decode as off, silently changing the policy). The value takes effect on the next AI job's readiness check; no run is started or cancelled by the save itself. 
+The settings save. `autoDownload`, `allowedHosts` and `mirrorBaseUrl` are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  `allowedHosts` replaces the stored list wholesale; every entry must be a hostname, optionally with a leading `*.` wildcard label and an optional port. `mirrorBaseUrl`, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins `allowedHosts` automatically, so saving a mirror never leaves it refusing its own first hop. The values take effect on the next download run; no run is started or cancelled by the save itself. 
 
 ### Example
 ```dart
@@ -800,7 +800,7 @@ import 'package:lumemor_api/api.dart';
 //defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
 
 final api = LumemorApi().getAdminApi();
-final ModelSettingsUpdateRequest modelSettingsUpdateRequest = {"autoDownload":false}; // ModelSettingsUpdateRequest | 
+final ModelSettingsUpdateRequest modelSettingsUpdateRequest = {"autoDownload":false,"allowedHosts":["huggingface.co","*.hf.co","hf-mirror.com"],"mirrorBaseUrl":""}; // ModelSettingsUpdateRequest | 
 
 try {
     final response = api.updateModelSettings(modelSettingsUpdateRequest);

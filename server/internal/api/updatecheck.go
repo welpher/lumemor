@@ -18,14 +18,17 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	"github.com/welpher/lumemor/server/internal/db"
+	"github.com/welpher/lumemor/server/internal/ml"
 	"github.com/welpher/lumemor/server/internal/updatecheck"
 )
 
@@ -210,7 +213,8 @@ func (s *server) UpdateTilesSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetModelSettings implements GET /api/v1/admin/settings/models: the
-// model store's automatic download switch.
+// model store's automatic download switch plus the download sources
+// (the allowed hosts and the mirror base the footer's panel edits).
 func (s *server) GetModelSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := authFrom(r.Context()); !ok {
 		s.rejectUnauthenticated(w)
@@ -220,13 +224,28 @@ func (s *server) GetModelSettings(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("read the model settings; answering the defaults", "error", err)
 	}
-	s.writeJSON(w, http.StatusOK, apigen.ModelSettingsResponse{AutoDownload: settings.AutoDownload})
+	s.writeJSON(w, http.StatusOK, modelSettingsResponse(settings))
+}
+
+// modelSettingsResponse maps the stored policy onto the contract
+// shape; the response's host slice is a copy, so the encoder never
+// aliases the stored value.
+func modelSettingsResponse(settings db.ModelSettings) apigen.ModelSettingsResponse {
+	return apigen.ModelSettingsResponse{
+		AutoDownload:  settings.AutoDownload,
+		AllowedHosts:  append([]string(nil), settings.AllowedHosts...),
+		MirrorBaseUrl: settings.MirrorBaseUrl,
+	}
 }
 
 // UpdateModelSettings implements PUT /api/v1/admin/settings/models:
-// the switch is contract-required (an omitted boolean would decode as
-// off and silently change the policy) and takes effect on the next AI
-// job's readiness check.
+// every field is contract-required (an omitted one would decode as
+// its zero value and silently change the policy) and the values take
+// effect on the next download run. The allowed hosts must be
+// hostnames with an optional `*.` wildcard label; a mirror base,
+// when non-empty, must name a host -- and that host joins the saved
+// list automatically, so a mirror the list refuses would never fail
+// on its own first hop.
 func (s *server) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := authFrom(r.Context()); !ok {
 		s.rejectUnauthenticated(w)
@@ -244,15 +263,114 @@ func (s *server) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	var presence map[string]json.RawMessage
 	_ = json.Unmarshal(body, &presence)
-	if _, ok := presence["autoDownload"]; !ok {
-		s.writeValidationError(w, "required fields missing: autoDownload", []string{"autoDownload"})
+	missing := make([]string, 0, 3)
+	for _, field := range []string{"autoDownload", "allowedHosts", "mirrorBaseUrl"} {
+		if _, ok := presence[field]; !ok {
+			missing = append(missing, field)
+		}
+	}
+	if len(missing) > 0 {
+		s.writeValidationError(w, "required fields missing: "+strings.Join(missing, ", "), missing)
 		return
 	}
-	if err := db.SaveModelSettings(r.Context(), s.queries, db.ModelSettings{AutoDownload: req.AutoDownload}); err != nil {
+	hosts := make([]string, 0, len(req.AllowedHosts))
+	for _, host := range req.AllowedHosts {
+		normalized, err := normalizeAllowedHost(host)
+		if err != nil {
+			s.writeValidationError(w,
+				"allowedHosts must be hostnames, with an optional leading *. wildcard and an optional port",
+				[]string{"allowedHosts"})
+			return
+		}
+		hosts = append(hosts, normalized)
+	}
+	mirror := req.MirrorBaseUrl
+	if mirror != "" {
+		normalized, err := normalizeMirrorBase(mirror)
+		if err != nil {
+			s.writeValidationError(w,
+				"mirrorBaseUrl must be a host, or an absolute http(s) URL whose host is kept",
+				[]string{"mirrorBaseUrl"})
+			return
+		}
+		mirror = normalized
+		// The mirror's host name (port stripped) joins the saved
+		// list, so a mirror the list refuses never fails on its own
+		// first hop.
+		mirrorHost := strings.Split(mirror, ":")[0]
+		if !ml.HostAllowed(hosts, mirrorHost) {
+			hosts = append(hosts, mirrorHost)
+		}
+	}
+	if err := db.SaveModelSettings(r.Context(), s.queries, db.ModelSettings{
+		AutoDownload:  req.AutoDownload,
+		AllowedHosts:  hosts,
+		MirrorBaseUrl: mirror,
+	}); err != nil {
 		s.internalError(w, r, "save the model settings", err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, apigen.ModelSettingsResponse(req))
+	s.writeJSON(w, http.StatusOK, modelSettingsResponse(db.ModelSettings{
+		AutoDownload:  req.AutoDownload,
+		AllowedHosts:  hosts,
+		MirrorBaseUrl: mirror,
+	}))
+}
+
+// normalizeAllowedHost validates one host entry: a hostname with an
+// optional leading `*.` wildcard label and an optional port (the port
+// is stripped -- the gate matches hostnames, ports never decide).
+// Anything else is refused.
+func normalizeAllowedHost(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", errors.New("empty host")
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		// A full URL carries its host; the scheme's presence marks it.
+		value = parsed.Host
+	}
+	if strings.HasPrefix(value, "*.") {
+		rest := value[2:]
+		if rest == "" || strings.ContainsAny(rest, "*? ") {
+			return "", errors.New("bad wildcard host")
+		}
+		value = "*." + rest
+	}
+	if strings.ContainsAny(value, "*?/ ") {
+		return "", errors.New("bad host")
+	}
+	if strings.Contains(value, ":") {
+		host, _, err := net.SplitHostPort(value)
+		if err != nil {
+			return "", errors.New("bad host or port")
+		}
+		value = host
+	}
+	if value == "" || value == "*" {
+		return "", errors.New("bad host")
+	}
+	return strings.ToLower(value), nil
+}
+
+// normalizeMirrorBase validates the mirror base: a bare host (with an
+// optional port, which the mirror rewrite uses), or an absolute
+// http(s) URL whose host is taken verbatim.
+func normalizeMirrorBase(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", errors.New("empty mirror base")
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return "", errors.New("bad mirror base")
+		}
+		return strings.ToLower(parsed.Host), nil
+	}
+	if strings.ContainsAny(value, "/ ") {
+		return "", errors.New("bad mirror base")
+	}
+	return strings.ToLower(value), nil
 }
 
 // GetMapConfig implements GET /api/v1/map/config: the map's
