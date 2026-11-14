@@ -15,15 +15,25 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 // mocked with a captured handler registry and the map itself with the
 // colocated stand-in (MapLibre needs a layout host).
 
-const { gotoMock, replaceStateMock } = vi.hoisted(() => ({
-	gotoMock: vi.fn(async () => undefined),
-	replaceStateMock: vi.fn()
+const { gotoMock } = vi.hoisted(() => ({
+	gotoMock: vi.fn(async () => undefined)
 }));
 
 vi.mock('$app/state', async () => ({
 	page: (await import('./places-page-state.svelte')).placesPageState
 }));
-vi.mock('$app/navigation', () => ({ goto: gotoMock, replaceState: replaceStateMock }));
+vi.mock('$app/navigation', async () => {
+	const { placesPageState } = await import('./places-page-state.svelte');
+	return {
+		goto: gotoMock,
+		// The real replaceState updates the page's address in place;
+		// the panel's selection is read from it, so the double must
+		// too.
+		replaceState: (url: URL | string) => {
+			placesPageState.url = new URL(String(url));
+		}
+	};
+});
 vi.mock('$lib/map/MapView.svelte', async () => ({
 	default: (await import('./MapViewStub.svelte')).default
 }));
@@ -106,6 +116,7 @@ beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
 	placesPageState.url = new URL('http://localhost/places');
+	window.history.replaceState({}, '', '/places');
 	vi.clearAllMocks();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
@@ -259,9 +270,7 @@ test('the map face fills the frame and its pins open the place panel in place', 
 	expect(gotoMock).not.toHaveBeenCalled();
 	// The selection rides the address without navigating (the viewer
 	// round trip restores the same spot).
-	expect(replaceStateMock).toHaveBeenCalled();
-	const selectionURL = replaceStateMock.mock.calls[0]?.[0] as URL;
-	expect(selectionURL.searchParams.get('place')).toBe('1816670');
+	expect(placesPageState.url.searchParams.get('place')).toBe('1816670');
 	// The selected pin carries its pressed state.
 	expect(pin?.getAttribute('aria-pressed')).toBe('true');
 
@@ -350,6 +359,7 @@ test('switching faces keeps the address and restores the list seat', async () =>
 
 test('the address restores the panel (the viewer round trip)', async () => {
 	placesPageState.url = new URL('http://localhost/places?mode=map&place=1816670');
+	window.history.replaceState({}, '', '/places?mode=map&place=1816670');
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async () => jsonResponse(200, [beijing, paris]))

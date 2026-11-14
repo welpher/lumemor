@@ -62,8 +62,6 @@
 	let mapState = $state<MapState>('loading');
 	/** The tile host's attribution line, as the map resolves it. */
 	let mapAttribution = $state('');
-	/** The panel's selection: the clicked marker's place ids. */
-	let selectedIds = $state<number[] | null>(null);
 
 	// The list's scroll seat, captured when the map face opens and
 	// restored when the list face returns (the frame's navigation
@@ -131,9 +129,18 @@
 		countries: new Set(places.map((place) => place.country)).size
 	});
 
+	/**
+	 * The panel's selection: the clicked marker's place ids. It is
+	 * read from the address once at mount (`?place=<ids>`, the viewer
+	 * round trip's restoration -- the router has already resolved the
+	 * URL by the time this component initializes), then owned by the
+	 * page; every change is written back into the address with a
+	 * replace (never a navigation).
+	 */
+	let selectedIds = $state<number[]>(parsePlaceParam(new URL(window.location.href).searchParams.get('place')));
 	/** The selected places (the panel's rows), in the listing order. */
 	const selected = $derived(selectedPlaces(places, selectedIds));
-	const selectedKey = $derived(selectedIds === null ? '' : selectedIds.join(','));
+	const selectedKey = $derived(selectedIds.join(','));
 
 	/** Whether two marker selections are the same marker's. */
 	function sameSelection(a: readonly number[], b: readonly number[]): boolean {
@@ -167,12 +174,12 @@
 	 * navigation.
 	 */
 	function syncSelection(next: number[] | null): void {
-		selectedIds = next;
+		selectedIds = next ?? [];
 		const url = new URL(page.url);
-		if (next === null || next.length === 0) {
+		if (selectedIds.length === 0) {
 			url.searchParams.delete('place');
 		} else {
-			url.searchParams.set('place', next.join(','));
+			url.searchParams.set('place', selectedIds.join(','));
 		}
 		replaceState(url, {});
 	}
@@ -185,7 +192,7 @@
 		if (placeIds.length === 0) {
 			return;
 		}
-		if (selectedIds !== null && sameSelection(selectedIds, placeIds)) {
+		if (sameSelection(selectedIds, placeIds)) {
 			syncSelection(null);
 			return;
 		}
@@ -207,11 +214,11 @@
 		const main = document.querySelector<HTMLElement>('main');
 		if (next === 'map') {
 			listSeat = main?.scrollTop ?? 0;
-			selectedIds = null;
+			selectedIds = [];
 			await goto('/places?mode=map');
 			return;
 		}
-		selectedIds = null;
+		selectedIds = [];
 		await goto('/places');
 		const seat = listSeat;
 		requestAnimationFrame(() => {
@@ -223,7 +230,7 @@
 
 	/** The escape hatch: the panel collapses (the map returns to full width). */
 	function handleWindowKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape' && selectedIds !== null) {
+		if (event.key === 'Escape' && selectedIds.length > 0) {
 			syncSelection(null);
 		}
 	}
@@ -277,24 +284,8 @@
 	// photo went away) collapses the panel: an empty selection has
 	// nothing to look at -- and the address drops it with it.
 	$effect(() => {
-		if (selectedIds !== null && status === 'ready' && selected.length === 0) {
+		if (selectedIds.length > 0 && status === 'ready' && selected.length === 0) {
 			syncSelection(null);
-		}
-	});
-
-	// The address's own selection (the panel restored after the
-	// viewer round trip): read once, after the grouping has landed so
-	// the pin's place is a known row. An id no place answers is
-	// dropped by the effect above.
-	let restoredSelection = false;
-	$effect(() => {
-		if (restoredSelection || !isMap || status !== 'ready') {
-			return;
-		}
-		restoredSelection = true;
-		const ids = parsePlaceParam(page.url.searchParams.get('place'));
-		if (ids.length > 0) {
-			selectedIds = ids;
 		}
 	});
 </script>
@@ -389,8 +380,8 @@
 					>
 						<MapView
 							places={mapPoints}
-							focus={selectedIds}
-							selected={selectedIds}
+							focus={selectedIds.length > 0 ? selectedIds : null}
+							selected={selectedIds.length > 0 ? selectedIds : null}
 							label={$_('places_map_label')}
 							onselect={pickMarker}
 							bind:tiles={mapState}
