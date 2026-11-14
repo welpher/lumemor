@@ -81,7 +81,8 @@
 			label={$_('people_name_field_label')}
 			name="name"
 			bind:value={draft}
-			maxlength={128}
+			required
+			maxlength={64}
 			autocomplete="off"
 		/>
 		<!-- The local bound check and the write's error line share the

@@ -124,8 +124,8 @@
 		return new Intl.DateTimeFormat(activeLocale, { dateStyle: 'medium' }).format(new Date(user.createdAt));
 	}
 
-	async function handleSubmit(event?: SubmitEvent): Promise<void> {
-		event?.preventDefault();
+	async function handleSubmit(event: SubmitEvent): Promise<void> {
+		event.preventDefault();
 		if (creating) {
 			return;
 		}
@@ -384,11 +384,18 @@
 		{$_('admin_users_create_note')}
 	</p>
 	<form id="admin-user-create" class="users__form flex flex-col gap-3.5" onsubmit={handleSubmit}>
+		<!-- The native pre-flight mirrors the creation body: the email and
+		     password are required, the password spans the contract's 8-128
+		     runes (the wizard's own numbers), and the optional display name
+		     stops where the account rules stop at 100. There is no edit arm
+		     to bound here -- the only account write this page carries is the
+		     create and the disable switch. -->
 		<Input
 			id="admin-user-name"
 			label={$_('admin_users_field_name')}
 			type="text"
 			autocomplete="name"
+			maxlength={100}
 			bind:value={formName}
 		/>
 		<Input
@@ -396,6 +403,7 @@
 			label={$_('admin_users_field_email')}
 			type="email"
 			autocomplete="off"
+			required
 			bind:value={formEmail}
 		/>
 		<Input
@@ -403,6 +411,9 @@
 			label={$_('admin_users_field_password')}
 			type="password"
 			autocomplete="new-password"
+			required
+			minlength={8}
+			maxlength={128}
 			bind:value={formPassword}
 		/>
 		<div class="users__field flex flex-col gap-1.5">
@@ -430,7 +441,11 @@
 			<X size={20} aria-hidden="true" />
 			{$_('common_cancel')}
 		</Button>
-		<Button disabled={creating} onclick={() => void handleSubmit()}>
+		<!-- A real submit control: the footer sits outside the form
+		     (the modal's own structure), so the button binds to it by
+		     id -- the browser's validation runs on the click path and
+		     Enter in a field submits the form. -->
+		<Button type="submit" form="admin-user-create" disabled={creating}>
 			<UserPlus size={20} aria-hidden="true" />
 			{$_('admin_users_create_submit')}
 		</Button>

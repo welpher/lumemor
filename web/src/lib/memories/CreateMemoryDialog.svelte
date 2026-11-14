@@ -105,7 +105,8 @@
 				name="create-memory-title"
 				placeholder={$_('memories_title_placeholder')}
 				bind:value={titleDraft}
-				maxlength={128}
+				required
+				maxlength={64}
 				autocomplete="off"
 				error={titleViolated ? $_('albums_title_invalid') : ''}
 			/>
