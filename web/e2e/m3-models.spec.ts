@@ -266,9 +266,13 @@ test.describe('the signed-in scenes', () => {
 		await expect(dialog).toContainText('cannot be undone');
 
 		const select = dialog.locator('select');
-		const groups = select.locator('optgroup');
-		await expect(groups.filter({ hasText: 'Official list' })).toHaveCount(1);
-		await expect(groups.filter({ hasText: 'Added' })).toHaveCount(1);
+		// The two groups: the optgroup labels live on the DOM
+		// attributes, not the options' text.
+		const groupLabels = await select.locator('optgroup').evaluateAll((nodes) =>
+			nodes.map((node) => (node as HTMLOptGroupElement).label)
+		);
+		expect(groupLabels).toContain('Official list');
+		expect(groupLabels).toContain('Added');
 
 		// Selecting the 512 fixture and saving performs the switch:
 		// the card's badge reads Active and its meta line carries the

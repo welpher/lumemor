@@ -1120,9 +1120,8 @@
 								{entry.name} · {entry.license} · {entry.downloaded
 									? $_('admin_models_catalog_downloaded')
 									: $_(
-											'admin_models_catalog_need_download'
-										)}{#if entry.dim !== null && entry.dim !== undefined}
-									· {$_('admin_models_dim', { values: { dim: entry.dim } })}{/if}
+										'admin_models_catalog_need_download'
+									)}{#if entry.dim !== null && entry.dim !== undefined}&nbsp;·&nbsp;{$_('admin_models_dim', { values: { dim: entry.dim } })}{/if}
 							</option>
 						{/each}
 					</optgroup>

@@ -116,6 +116,49 @@ func (q *Queries) InsertModel(ctx context.Context, arg InsertModelParams) error 
 	return err
 }
 
+const insertModelKeepSource = `-- name: InsertModelKeepSource :exec
+INSERT INTO models (id, slot, version, source, file_path, input_size, dim, params)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO UPDATE SET
+    slot = EXCLUDED.slot,
+    version = EXCLUDED.version,
+    file_path = EXCLUDED.file_path,
+    input_size = EXCLUDED.input_size,
+    dim = EXCLUDED.dim,
+    params = EXCLUDED.params,
+    updated_at = now()
+`
+
+type InsertModelKeepSourceParams struct {
+	ID        string      `json:"id"`
+	Slot      ModelSlot   `json:"slot"`
+	Version   string      `json:"version"`
+	Source    ModelSource `json:"source"`
+	FilePath  string      `json:"file_path"`
+	InputSize pgtype.Int4 `json:"input_size"`
+	Dim       pgtype.Int4 `json:"dim"`
+	Params    []byte      `json:"params"`
+}
+
+// The scan's registration: the same upsert WITHOUT touching source.
+// The source is the registration's identity (downloaded = the
+// service's own landing, custom = an administrator import), not a
+// descriptive fact -- a scan that re-reads an official model's
+// directory must not relabel it.
+func (q *Queries) InsertModelKeepSource(ctx context.Context, arg InsertModelKeepSourceParams) error {
+	_, err := q.db.Exec(ctx, insertModelKeepSource,
+		arg.ID,
+		arg.Slot,
+		arg.Version,
+		arg.Source,
+		arg.FilePath,
+		arg.InputSize,
+		arg.Dim,
+		arg.Params,
+	)
+	return err
+}
+
 const listModels = `-- name: ListModels :many
 
 SELECT id, slot, version, source, file_path, input_size, dim, params, is_active, added_at, updated_at FROM models ORDER BY slot ASC, id ASC

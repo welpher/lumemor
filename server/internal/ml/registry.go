@@ -355,7 +355,7 @@ func (r *Registry) scanModelDir(ctx context.Context, modelDir, id string) (*Mode
 		}
 	}
 
-	if err := r.queries.InsertModel(ctx, dbgen.InsertModelParams{
+	if err := r.queries.InsertModelKeepSource(ctx, dbgen.InsertModelKeepSourceParams{
 		ID:       id,
 		Slot:     dbgen.ModelSlot(slot),
 		Version:  manifest.Version,
