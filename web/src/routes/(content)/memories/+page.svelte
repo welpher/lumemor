@@ -42,7 +42,7 @@
 	// initial load's failure raises the error box.
 	import { _ } from 'svelte-i18n';
 	import { page } from '$app/state';
-	import { pushState, replaceState } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { listAlbums, createMemory, type AlbumSummary, type AlbumAudienceSkip } from '$lib/api/albums';
 	import { subscribeAlbumEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
@@ -162,6 +162,13 @@
 	// browser's back closes the overlay exactly like Escape -- and a
 	// deep link's close replaces the entry instead (there is no
 	// in-app history behind it).
+	//
+	// EVERY WRITE IS A ROUTER WALK, never a raw history call: the
+	// router's own URL update is what makes the address reactive, so
+	// the overlay opens, flips and closes from the same `page.url` the
+	// deep link seeds (a bare history write would change the address
+	// bar and leave the page's view of the URL where it was). The walks
+	// scroll nothing -- the wall keeps its place under the stage.
 	const overlayId = $derived(page.url.searchParams.get('memory') ?? '');
 	const overlayMode = $derived<MemoryMode>(page.url.searchParams.get('mode') === 'grid' ? 'grid' : 'play');
 	/** The card the overlay opened from: the wall is its reachability gate. */
@@ -176,8 +183,8 @@
 		const url = new URL(page.url);
 		url.searchParams.set('memory', id);
 		url.searchParams.delete('mode');
-		pushState(url, page.state);
 		pushedOverlay = true;
+		void goto(url, { noScroll: true });
 	}
 
 	/** Close the overlay: back through our own push, replace for a deep link. */
@@ -190,7 +197,7 @@
 		const url = new URL(page.url);
 		url.searchParams.delete('memory');
 		url.searchParams.delete('mode');
-		replaceState(url, page.state);
+		void goto(url, { replaceState: true, noScroll: true });
 	}
 
 	/** Flip the overlay's face (the grid is a state of the same entry). */
@@ -201,7 +208,7 @@
 		} else {
 			url.searchParams.delete('mode');
 		}
-		replaceState(url, page.state);
+		void goto(url, { replaceState: true, noScroll: true });
 	}
 
 	// The creation write: the refetch the write's SSE echo triggers

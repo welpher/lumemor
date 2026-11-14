@@ -30,23 +30,20 @@ import Page from './+page.svelte';
 // 3 across 2 down, and its caption is ONE row (the 20px title
 // truncating beside the count and the no-wrap badges).
 
-const { handlers, pageState, pushStateMock, replaceStateMock } = vi.hoisted(() => ({
+const { handlers, pageState, gotoMock } = vi.hoisted(() => ({
 	handlers: [] as Array<(event: unknown) => void>,
 	pageState: {
 		url: new URL('http://localhost/memories'),
 		params: {} as Record<string, string>,
 		state: {}
 	},
-	pushStateMock: vi.fn((url: URL) => {
-		pageState.url = new URL(url);
-	}),
-	replaceStateMock: vi.fn((url: URL) => {
+	gotoMock: vi.fn(async (url: URL, _options?: { replaceState?: boolean; noScroll?: boolean }) => {
 		pageState.url = new URL(url);
 	})
 }));
 
 vi.mock('$app/state', () => ({ page: pageState }));
-vi.mock('$app/navigation', () => ({ pushState: pushStateMock, replaceState: replaceStateMock }));
+vi.mock('$app/navigation', () => ({ goto: gotoMock }));
 
 vi.mock('$lib/events', () => ({
 	subscribeAlbumEvents: (listener: (event: unknown) => void) => {
@@ -302,8 +299,9 @@ test('the wall keeps the memory rows alone in ONE list, newest first', async () 
 	// reference set has no page of its own to route to).
 	expect(own?.tagName).toBe('BUTTON');
 	own?.click();
-	expect(pushStateMock).toHaveBeenCalledTimes(1);
-	expect(String(pushStateMock.mock.calls[0]?.[0])).toBe('http://localhost/memories?memory=mem1');
+	expect(gotoMock).toHaveBeenCalledTimes(1);
+	expect(String(gotoMock.mock.calls[0]?.[0])).toBe('http://localhost/memories?memory=mem1');
+	expect(gotoMock.mock.calls[0]?.[1]).toEqual({ noScroll: true });
 
 	// THE GRID'S OWN SHAPE: full width, and a column floor that is
 	// exactly one third of the band minus the two 16px gaps -- a
@@ -799,7 +797,8 @@ test('a mode=grid deep link opens the overlay on its management face', async () 
 	// step -- the overlay never owns two addresses).
 	buttonByText('Play', overlay ?? document.body).click();
 	flushSync();
-	expect(String(replaceStateMock.mock.lastCall?.[0])).toBe(`http://localhost/memories?memory=${id}`);
+	expect(String(gotoMock.mock.lastCall?.[0])).toBe(`http://localhost/memories?memory=${id}`);
+	expect(gotoMock.mock.lastCall?.[1]).toEqual({ replaceState: true, noScroll: true });
 
 	unmount(page);
 	flushSync();
@@ -841,7 +840,8 @@ test('a deep link closes by replacing its address, never by stepping history bac
 	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
 	flushSync();
 	expect(backSpy).not.toHaveBeenCalled();
-	expect(String(replaceStateMock.mock.lastCall?.[0])).toBe('http://localhost/memories');
+	expect(String(gotoMock.mock.lastCall?.[0])).toBe('http://localhost/memories');
+	expect(gotoMock.mock.lastCall?.[1]).toEqual({ replaceState: true, noScroll: true });
 
 	unmount(page);
 	backSpy.mockRestore();
