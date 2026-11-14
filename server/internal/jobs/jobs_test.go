@@ -131,6 +131,17 @@ func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, reru
 	if err := db.Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
+	// The model download worker reads its transport gate from the
+	// settings; the tests' sources are loopback httptest servers, so
+	// every environment admits the loopback host explicitly (the
+	// shipped default list names the manifest's public hosts, which
+	// the local fixtures are not).
+	if err := db.SaveModelSettings(t.Context(), dbgen.New(pool), db.ModelSettings{
+		AutoDownload: true,
+		AllowedHosts: []string{"127.0.0.1"},
+	}); err != nil {
+		t.Fatalf("save the fixture model settings: %v", err)
+	}
 
 	dataDir := t.TempDir()
 	if err := storage.EnsureLayout(dataDir, t.TempDir()); err != nil {

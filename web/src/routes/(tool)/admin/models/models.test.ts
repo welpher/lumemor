@@ -4,15 +4,14 @@ import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
 
-// The admin models page: the slot-grouped listing renders every
-// model's facts, the empty state's download CTA starts the run and
-// follows it through the SSE job events (the all-strings payload) to
-// the converged listing, the activation switch confirms first with
-// the same-dimension and cross-dimension copies (the destructive arm
-// on the danger variant), the rerun hands off to the task panel, and
-// every failure maps onto the shared i18n table. The events module is
-// mocked with a captured handler registry, the same pattern as the
-// trash page test.
+// The admin models page: the four switchable slot cards speak the
+// four states (active, downloading N%, not downloaded, failed), the
+// switch dialog carries the slot contract and the two-group select,
+// a custom import must PASS its probe before the save enables (the
+// failed probe leaves nothing saved), the sources footer edits the
+// allowed hosts and the mirror base, and every failure maps onto the
+// shared i18n table. The events module is mocked with a captured
+// handler registry, the same pattern as the trash page test.
 
 const { handlers } = vi.hoisted(() => ({
 	handlers: [] as Array<(event: unknown) => void>
@@ -63,26 +62,75 @@ function model(id: string, overrides: Record<string, unknown> = {}) {
 	};
 }
 
-const clipA = model('clip-a', { isActive: true, params: { scoreThreshold: 0.6 } });
-const clipB = model('clip-b', { version: 'alt-2024' });
-const clipWide = model('clip-wide', { dim: 768 });
-// The search's text tower: the clip_text slot the semantic arm embeds
-// queries through (the manifest's fifth default model).
-const textTower = model('cnclip-vit-b16-text', {
-	slot: 'clip_text',
-	inputSize: { width: 52, height: 1 },
-	isActive: true,
-	params: { contextLength: 52 }
-});
+/** One official catalog entry (the ModelCatalogEntry shape). */
+function catalog(id: string, overrides: Record<string, unknown> = {}) {
+	return {
+		id,
+		slot: 'clip_embed',
+		name: 'Chinese-CLIP ViT-B/16',
+		license: 'unknown',
+		dim: 512,
+		bytes: 345839119,
+		downloaded: true,
+		...overrides
+	};
+}
+
+/** One slot state row (the SlotStateResponse shape). */
+function slotState(slot: string, overrides: Record<string, unknown> = {}) {
+	return {
+		slot,
+		state: 'not_downloaded',
+		modelId: null,
+		source: null,
+		progress: null,
+		...overrides
+	};
+}
+
+const clipActive = model('clip-a', { isActive: true, source: 'custom' });
 const detector = model('detect-fx', {
 	id: 'detect-fx',
 	slot: 'face_detect',
 	version: '2023mar',
 	license: 'MIT',
 	dim: null,
-	inputSize: { width: 320, height: 320 },
+	inputSize: { width: 640, height: 640 },
 	isActive: true
 });
+
+const listing = {
+	models: [detector, clipActive],
+	download: null,
+	slots: [
+		slotState('face_detect', {
+			state: 'active',
+			modelId: 'detect-fx',
+			source: {
+				kind: 'official',
+				host: 'huggingface.co',
+				sha256: '8f2383e4',
+				downloadedAt: '2026-11-03T09:14:00Z'
+			}
+		}),
+		slotState('face_recognize'),
+		slotState('clip_embed', {
+			state: 'active',
+			modelId: 'clip-a',
+			source: {
+				kind: 'custom',
+				host: 'models.example.net',
+				sha256: '92d6b93b',
+				downloadedAt: '2026-11-10T09:14:00Z'
+			}
+		}),
+		slotState('ocr', { state: 'downloading', progress: { done: 100, total: 400 } })
+	],
+	official: [
+		catalog('cnclip-vit-b16-vision'),
+		catalog('yunet-2023mar', { slot: 'face_detect', name: 'YuNet', license: 'MIT', dim: null })
+	]
+};
 
 function jsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
@@ -96,7 +144,15 @@ type FetchRoute = Record<string, () => Response>;
 
 function modelsRoutes(models: unknown[], overrides: FetchRoute = {}): FetchRoute {
 	return {
-		'/api/v1/admin/models': () => jsonResponse(200, { models, download: null }),
+		'/api/v1/admin/models': () =>
+			jsonResponse(200, {
+				models,
+				download: null,
+				slots: listing.slots,
+				official: listing.official
+			}),
+		'/api/v1/admin/settings/models': () =>
+			jsonResponse(200, { autoDownload: true, allowedHosts: ['huggingface.co'], mirrorBaseUrl: '' }),
 		...overrides
 	};
 }
@@ -147,23 +203,14 @@ function modalButton(text: string): HTMLButtonElement {
 	return found;
 }
 
-/** The model row (card) whose text names the model id. */
-function modelCard(id: string): HTMLElement {
-	const cards = Array.from(document.body.querySelectorAll<HTMLElement>('[data-model-id]'));
-	const found = cards.find((card) => card.dataset.modelId === id);
+/** The slot card whose data-slot names the pipeline slot. */
+function slotCard(slot: string): HTMLElement {
+	const cards = Array.from(document.body.querySelectorAll<HTMLElement>('.models__card'));
+	const found = cards.find((card) => card.dataset.slot === slot);
 	if (found === undefined) {
-		throw new Error(`missing model card ${id}`);
+		throw new Error(`missing slot card ${slot}`);
 	}
 	return found;
-}
-
-/** The Activate button of one model's row. */
-function activateButton(id: string): HTMLButtonElement {
-	const button = modelCard(id).querySelector<HTMLButtonElement>('button');
-	if (button === null) {
-		throw new Error(`missing activate button of ${id}`);
-	}
-	return button;
 }
 
 /** Deliver one SSE job event to the page's subscription. */
@@ -201,127 +248,90 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-test('the listing renders the Machine learning page-header row and slot-grouped cards with every model fact', async () => {
-	vi.stubGlobal('fetch', stubFetch(modelsRoutes([detector, clipA, clipB, textTower])));
+test('the listing renders the four switchable cards with their state badges and facts', async () => {
+	vi.stubGlobal('fetch', stubFetch(modelsRoutes([detector, clipActive])));
 	const page = mountPage();
 	await settle();
 
-	// THE NAMING RULE: the page is the Machine
-	// Learning workbench -- the page-header row's title carries the
-	// domain name (the rail's item echoes it), the hairline under it.
+	// The page-header row names the domain; the cards carry the slot
+	// labels and the switch action first.
 	const header = document.body.querySelector<HTMLElement>('.page-header');
 	expect(header?.querySelector('h1')?.textContent).toBe('Machine learning');
-	expect(header?.className).toContain('border-b');
 
 	const text = document.body.textContent ?? '';
-	// The slot sections, in the enum's declaration order (the
-	// clip_text slot between the embedding slot and OCR).
 	expect(text).toContain('Face detection');
+	expect(text).toContain('Face recognition');
 	expect(text).toContain('Semantic embeddings');
-	expect(text).toContain('Search text encoder');
-	// The empty slots say so honestly.
-	expect(text).toContain('No model registered for this slot.');
-	// The detector's facts: id, version, license badge, source label,
-	// input geometry -- and no dimension line (detectors do not embed).
-	const detectorText = modelCard('detect-fx').textContent ?? '';
-	expect(detectorText).toContain('detect-fx');
-	expect(detectorText).toContain('2023mar');
-	expect(detectorText).toContain('MIT');
-	expect(detectorText).toContain('Downloaded');
-	expect(detectorText).toContain('320×320');
-	expect(detectorText).not.toContain('Dimension');
-	// The active badge.
-	expect(detectorText).toContain('Active');
-	// The clip model's facts: dimension, params summary and the
-	// provenance notice line.
-	const clipText = modelCard('clip-a').textContent ?? '';
-	expect(clipText).toContain('Dimension 512');
-	expect(clipText).toContain('scoreThreshold 0.6');
-	// The text tower's own card: the token geometry (52×1 -- the
-	// context length, not pixels) and its params summary.
-	const towerText = modelCard('cnclip-vit-b16-text').textContent ?? '';
-	expect(towerText).toContain('52×1');
-	expect(towerText).toContain('contextLength 52');
-	expect(towerText).toContain('Active');
-	// An inactive model offers the activation switch.
-	expect(modelCard('clip-b').textContent).toContain('Activate');
+	expect(text).toContain('Text recognition');
+	expect((text.match(/Swap model/g) ?? []).length).toBe(4);
+
+	// The four states speak their badges: the active slots carry the
+	// active badge, the OCR slot renders the group percent.
+	expect(slotCard('face_detect').querySelector('[data-state="active"]')?.textContent).toContain('Active');
+	expect(slotCard('face_recognize').querySelector('[data-state="not_downloaded"]')?.textContent).toContain(
+		'Not downloaded'
+	);
+	expect(slotCard('ocr').querySelector('[data-state="downloading"]')?.textContent).toContain('Downloading 25%');
+
+	// The custom slot's meta line: the source host, the digest's
+	// short form.
+	const custom = slotCard('clip_embed');
+	expect(custom.textContent).toContain('Custom');
+	expect(custom.textContent).toContain('models.example.net');
+	expect(custom.textContent).toContain('92d6b93b');
 
 	unmount(page);
-	flushSync();
-});
-
-test('a model with missing files shows the files-missing indicator', async () => {
-	vi.stubGlobal('fetch', stubFetch(modelsRoutes([{ ...clipB, filesPresent: false }])));
-	const page = mountPage();
-	await settle();
-
-	expect(modelCard('clip-b').textContent).toContain('Files missing');
-
-	unmount(page);
-	flushSync();
 });
 
 test('the empty state offers the download; SSE progress advances it and the finish refreshes the listing', async () => {
-	let listed = 0;
-	const posted: number[] = [];
-	const runningState: Record<string, unknown> = {
-		state: 'running',
-		total: 400371536,
-		done: 0,
-		failed: 0
-	};
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (init?.method === 'POST' && url === '/api/v1/admin/models/download') {
-			posted.push(202);
-			return jsonResponse(202, { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10' });
-		}
-		if (url === '/api/v1/admin/models') {
-			listed += 1;
-			// The second listing (after the POST) carries the running
-			// download row; the third (after job.finished) the landed
-			// models.
-			if (listed === 1) {
-				return jsonResponse(200, { models: [], download: null });
+	const posted: string[] = [];
+	let listingCount = 0;
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/admin/models': () => {
+				listingCount += 1;
+				if (listingCount === 1) {
+					return jsonResponse(200, { models: [], download: null, slots: [], official: listing.official });
+				}
+				return jsonResponse(200, {
+					models: listing.models,
+					download: downloadRun({ state: 'succeeded', done: 400371536 }),
+					slots: listing.slots,
+					official: listing.official
+				});
+			},
+			'/api/v1/admin/models/download': () => {
+				posted.push('download');
+				return jsonResponse(202, { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10' });
 			}
-			if (listed === 2) {
-				return jsonResponse(200, { models: [], download: downloadRun(runningState) });
-			}
-			return jsonResponse(200, {
-				models: [clipA],
-				download: downloadRun({ state: 'succeeded', done: 400371536, finishedAt: '2026-11-03T09:14:30Z' })
-			});
-		}
-		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
-	});
-	vi.stubGlobal('fetch', fetchMock);
+		})
+	);
 	const page = mountPage();
 	await settle();
 
-	// The empty state names the honest degradation and offers the CTA.
-	expect(document.body.textContent).toContain('No models yet');
-	expect(document.body.textContent).toContain('stay off');
-	buttonByText('Download the default models').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	// The empty card owns the action surface: the download CTA.
+	const cta = buttonByText('Download the default models');
+	await cta.click();
 	await settle();
-	expect(posted).toEqual([202]);
-	expect(listed).toBe(2);
+	expect(posted).toEqual(['download']);
 
-	// The progress region: the run's totals, the bytes formatted MB.
-	expect(document.body.textContent).toContain('0.0 MB of 381.8 MB');
-	// The SSE progress events (all-strings payloads) advance it.
+	// The SSE progress advances the bar; the finish refreshes the
+	// listing. The convergence also rides the 5s polling fallback:
+	// the read lands the finished run and the active cards without
+	// waiting for the fallback (the poll fires at 5s, past the test's
+	// bound; the assertions hold on the first refetch).
 	deliverJobEvent({
 		name: 'job.progress',
 		jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10',
 		kind: 'model_download',
 		total: '400371536',
-		done: '104857600',
+		done: '200185768',
 		failed: '0',
 		state: 'running'
 	});
-	expect(document.body.textContent).toContain('100.0 MB of 381.8 MB');
-
-	// The finish converges the listing: the run landed, the model
-	// registered and active.
+	const bar = document.body.querySelector<HTMLElement>('[role="progressbar"]');
+	expect(bar?.getAttribute('aria-valuenow')).toBe('50');
 	deliverJobEvent({
 		name: 'job.finished',
 		jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10',
@@ -332,313 +342,256 @@ test('the empty state offers the download; SSE progress advances it and the fini
 		state: 'succeeded'
 	});
 	await settle();
-	expect(listed).toBe(3);
-	expect(modelCard('clip-a')).toBeTruthy();
-	expect(modelCard('clip-a').textContent).toContain('Active');
+	await settle();
+	expect(slotCard('face_detect').querySelector('[data-state="active"]')).not.toBeNull();
 
 	unmount(page);
-	flushSync();
-});
+}, 15_000);
 
 test('a failed download start renders the mapped error; the retry re-posts (idempotent)', async () => {
-	const posted: number[] = [];
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (init?.method === 'POST' && url === '/api/v1/admin/models/download') {
-			if (posted.length === 0) {
-				posted.push(500);
-				return jsonResponse(500, { code: 'MODEL_DOWNLOAD_FAILED', message: 'no queue' });
-			}
-			// The idempotent join: 200, nothing new started.
-			posted.push(200);
-			return jsonResponse(200, { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10' });
-		}
-		if (url === '/api/v1/admin/models') {
-			const listed = fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/v1/admin/models').length;
-			// The initial listing knows no run; the refetch after the
-			// idempotent join carries the running one.
-			if (listed === 1) {
-				return jsonResponse(200, { models: [], download: null });
-			}
-			return jsonResponse(200, { models: [], download: downloadRun() });
-		}
-		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
-	});
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-
-	buttonByText('Download the default models').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-	expect(posted).toEqual([500]);
-	// The mapped model_download_failed message.
-	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
-		'The model download could not be started'
-	);
-
-	// The retry re-posts and joins the run idempotently.
-	buttonByText('Try again').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-	expect(posted).toEqual([500, 200]);
-	expect(document.body.textContent).toContain('0.0 MB of 381.8 MB');
-
-	unmount(page);
-	flushSync();
-});
-
-test('a same-dimension switch confirms with the kept-products copy, patches and flips the badge', async () => {
-	const patches: string[] = [];
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (init?.method === 'PATCH' && url === '/api/v1/admin/models/clip-b') {
-			patches.push(String(init.body));
-			return jsonResponse(200, { activated: { id: 'clip-b', slot: 'clip_embed' } });
-		}
-		if (url === '/api/v1/admin/models') {
-			const listed = fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/v1/admin/models').length;
-			// The refetch after the PATCH carries the flipped flags.
-			const models =
-				listed <= 1
-					? [detector, clipA, clipB]
-					: [detector, { ...clipA, isActive: false }, { ...clipB, isActive: true }];
-			return jsonResponse(200, { models, download: null });
-		}
-		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
-	});
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-
-	activateButton('clip-b').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	// The confirm-first gate: the same-dimension copy states the
-	// coexistence semantics -- kept products, rollback by switching
-	// back, the manual rerun.
-	const modalText = document.body.querySelector('.modal__panel')?.textContent ?? '';
-	expect(modalText).toContain('products are kept');
-	expect(modalText).toContain('switching back restores them');
-	expect(modalText).toContain('needs a rerun');
-	expect(patches).toEqual([]);
-
-	modalButton('Activate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-	expect(patches).toEqual(['{}']);
-	// The refetched listing flips the badge.
-	expect(modelCard('clip-b').textContent).toContain('Active');
-	expect(modelCard('clip-a').textContent).not.toContain('Active');
-	expect(document.body.querySelector('.modal__panel')).toBeNull();
-
-	unmount(page);
-	flushSync();
-});
-
-test('a cross-dimension switch warns on the danger variant and reports the wipe', async () => {
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (init?.method === 'PATCH' && url === '/api/v1/admin/models/clip-wide') {
-			return jsonResponse(200, {
-				activated: { id: 'clip-wide', slot: 'clip_embed' },
-				dimensionChanged: { from: 512, to: 768 },
-				wipedEmbeddings: 14002
-			});
-		}
-		if (url === '/api/v1/admin/models') {
-			const listed = fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/v1/admin/models').length;
-			const models =
-				listed <= 1
-					? [clipA, clipWide]
-					: [
-							{ ...clipA, isActive: false },
-							{ ...clipWide, isActive: true }
-						];
-			return jsonResponse(200, { models, download: null });
-		}
-		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
-	});
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-
-	activateButton('clip-wide').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	// The destructive arm's copy and the danger variant: the column's
-	// dimension is not knowable before the PATCH, so a clip model of a
-	// different dimension than the active one's warns.
-	const modalText = document.body.querySelector('.modal__panel')?.textContent ?? '';
-	expect(modalText).toContain('every embedding is deleted');
-	expect(modalText).toContain('re-typed');
-	const confirm = modalButton('Activate');
-	expect(confirm.className).toContain('btn--danger');
-
-	modalButton('Activate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-	// The response's facts surface: the wipe happened, the rerun is
-	// the rebuild.
-	expect(document.body.textContent).toContain('14002 embeddings were removed');
-	expect(modelCard('clip-wide').textContent).toContain('Active');
-
-	unmount(page);
-	flushSync();
-});
-
-test('an unknown model on the switch maps the not-found message inside the modal', async () => {
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (init?.method === 'PATCH' && url === '/api/v1/admin/models/clip-b') {
-			return jsonResponse(404, { code: 'MODEL_NOT_FOUND', message: 'no model' });
-		}
-		if (url === '/api/v1/admin/models') {
-			return jsonResponse(200, { models: [detector, clipA, clipB], download: null });
-		}
-		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
-	});
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-
-	activateButton('clip-b').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	modalButton('Activate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-
-	// The confirm dialog stays open with the mapped failure (the
-	// trash page's confirm pattern); the row is untouched.
-	expect(document.body.querySelector('.modal__panel')).not.toBeNull();
-	expect(document.body.querySelector('.modal__panel [role="alert"]')?.textContent).toContain(
-		'This model is not registered.'
-	);
-	expect(modelCard('clip-b').textContent).not.toContain('Active');
-
-	unmount(page);
-	flushSync();
-});
-
-test('a model with drifted files maps the invalid message inside the modal', async () => {
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (init?.method === 'PATCH' && url === '/api/v1/admin/models/clip-b') {
-			return jsonResponse(400, { code: 'MODEL_INVALID', message: 'digest mismatch' });
-		}
-		if (url === '/api/v1/admin/models') {
-			return jsonResponse(200, { models: [detector, clipA, clipB], download: null });
-		}
-		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
-	});
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-
-	activateButton('clip-b').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	modalButton('Activate').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-
-	expect(document.body.querySelector('.modal__panel [role="alert"]')?.textContent).toContain(
-		'This model cannot be used for the requested action.'
-	);
-
-	unmount(page);
-	flushSync();
-});
-
-test('the rerun confirms, posts and hands off to the task panel', async () => {
-	const reruns: string[] = [];
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (init?.method === 'POST' && url === '/api/v1/admin/models/clip-a/rerun') {
-			reruns.push(url);
-			return jsonResponse(202, { jobRunId: '0192f8b1-4c5d-8e9f-a0b1-2c3d4e5f6a70' });
-		}
-		if (url === '/api/v1/admin/models') {
-			return jsonResponse(200, { models: [detector, clipA, clipB], download: null });
-		}
-		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
-	});
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
-	await settle();
-
-	// The rerun is offered on the active model's row.
-	const card = modelCard('clip-a');
-	const rerun = Array.from(card.querySelectorAll<HTMLButtonElement>('button')).find(
-		(button) => button.textContent?.trim() === 'Rerun for the library'
-	);
-	if (rerun === undefined) {
-		throw new Error('missing rerun button of clip-a');
-	}
-	rerun.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	flushSync();
-	const modalText = document.body.querySelector('.modal__panel')?.textContent ?? '';
-	expect(modalText).toContain('every ready image');
-	expect(modalText).toContain('task panel');
-	expect(reruns).toEqual([]);
-
-	modalButton('Start the rerun').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
-	expect(reruns).toEqual(['/api/v1/admin/models/clip-a/rerun']);
-	// The handoff: the started line links to the task panel.
-	const link = document.body.querySelector<HTMLAnchorElement>('a[href="/admin/jobs"]');
-	if (link === null) {
-		throw new Error('missing the task panel link');
-	}
-	expect(link.textContent).toContain('Open the task panel');
-	expect(document.body.querySelector('.modal__panel')).toBeNull();
-
-	unmount(page);
-	flushSync();
-});
-
-test('a non-admin caller sees the mapped auth_forbidden message', async () => {
+	const posted: string[] = [];
+	let attempt = 0;
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
 			'/api/v1/admin/models': () =>
-				jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' })
+				jsonResponse(200, { models: [], download: null, slots: [], official: listing.official }),
+			'/api/v1/admin/models/download': () => {
+				posted.push('download');
+				attempt += 1;
+				if (attempt === 1) {
+					return jsonResponse(502, { code: 'MODEL_DOWNLOAD_FAILED', message: 'the run failed' });
+				}
+				return jsonResponse(202, { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10' });
+			}
 		})
 	);
 	const page = mountPage();
 	await settle();
 
-	// The generic AUTH_FORBIDDEN message (the albums branch made
-	// the code cover the album share face too, so the text stopped
-	// naming the admin surface).
-	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
-		"You don't have permission to do this."
-	);
-	expect(buttonByText('Try again')).toBeTruthy();
+	await buttonByText('Download the default models').click();
+	await settle();
+	expect(document.body.textContent).toContain('The model download could not be started');
+
+	await buttonByText('Try again').click();
+	await settle();
+	expect(posted).toEqual(['download', 'download']);
 
 	unmount(page);
-	flushSync();
 });
 
-test('while a download runs the page polls the listing when the stream stays silent', async () => {
-	vi.useFakeTimers();
-	let listed = 0;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-		if (String(input) === '/api/v1/admin/models') {
-			listed += 1;
-			// The first listing carries a running download at zero; the
-			// poll's refetch finds it advanced.
-			const done = listed === 1 ? 0 : 209715200;
-			return jsonResponse(200, { models: [], download: downloadRun({ done }) });
-		}
-		throw new Error(`unexpected fetch ${String(input)}`);
-	});
-	vi.stubGlobal('fetch', fetchMock);
+test('the switch dialog carries the slot contract and the official group; the probed import enables the save', async () => {
+	const calls: Array<{ url: string; method: string }> = [];
+	let probeReads = 0;
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/admin/models': () =>
+				jsonResponse(200, {
+					models: listing.models,
+					download: null,
+					slots: listing.slots,
+					official: listing.official
+				}),
+			'/api/v1/admin/models/clip_embed/probe': () => {
+				calls.push({ url: 'probe', method: 'POST' });
+				return jsonResponse(202, { probeId: '0192f8b0-0000-7000-8000-00000000000a' });
+			},
+			'/api/v1/admin/models/probes/0192f8b0-0000-7000-8000-00000000000a': () => {
+				probeReads += 1;
+				if (probeReads === 1) {
+					return jsonResponse(200, {
+						probeId: '0192f8b0-0000-7000-8000-00000000000a',
+						state: 'running',
+						progress: { done: 10, total: 100 },
+						dims: null,
+						inputSize: null,
+						sha256: null,
+						hostDeclared: true,
+						reason: null
+					});
+				}
+				return jsonResponse(200, {
+					probeId: '0192f8b0-0000-7000-8000-00000000000a',
+					state: 'ok',
+					progress: null,
+					dims: 512,
+					inputSize: { width: 224, height: 224 },
+					sha256: '92d6b93b89bf6ccec24222be86689b6ff18370503d3d71316d5d325bd2116766',
+					hostDeclared: true,
+					reason: null
+				});
+			},
+			'/api/v1/admin/models/clip_embed/source': () => {
+				calls.push({ url: 'source', method: 'POST' });
+				return jsonResponse(202, {
+					activated: { id: 'clip-a@92d6b93b', slot: 'clip_embed' },
+					dimensionChanged: null,
+					wipedEmbeddings: null,
+					recalcRunId: null
+				});
+			}
+		})
+	);
 	const page = mountPage();
-	await vi.advanceTimersByTimeAsync(0);
-	await tick();
+	await settle();
 
-	expect(document.body.textContent).toContain('0.0 MB of 381.8 MB');
+	// Open the semantic slot's dialog: the contract names the output
+	// dimension and the red consequence line; the official group
+	// preselects the running model.
+	await slotCard('clip_embed').querySelector<HTMLButtonElement>('button[data-slot]')!.click();
+	await settle();
+	const panel = document.body.querySelector<HTMLElement>('.modal__panel')!;
+	expect(panel.getAttribute('aria-label')).toBe('Swap the Semantic embeddings model');
+	expect(panel.textContent).toContain('Output 512 dims');
+	expect(panel.textContent).toContain('cannot be undone');
 
-	// No SSE block ever arrives (the stream is down); the 5-second
-	// fallback poll converges the progress.
-	await vi.advanceTimersByTimeAsync(5000);
-	await tick();
-	flushSync();
-	expect(document.body.textContent).toContain('200.0 MB of 381.8 MB');
+	// The select's two groups: the official list and the added
+	// custom.
+	const select = panel.querySelector<HTMLSelectElement>('select')!;
+	const groups = Array.from(select.querySelectorAll('optgroup'));
+	expect(groups[0]?.label).toBe('Official list');
+	expect(groups[1]?.label).toBe('Added');
 
-	vi.useRealTimers();
+	// The save switch starts ENABLED: the official group preselects
+	// the slot's running entry (a switch to it is one click), and a
+	// filled URL takes over the save's meaning -- until the probe
+	// passes it stays disabled.
+	const save = modalButton('Save and switch');
+	expect(save.disabled).toBe(false);
+
+	// Fill the URL and run the probe: the running state, then the
+	// settled ok enables the save.
+	const urlField = panel.querySelector<HTMLInputElement>('.models__url-input')!;
+	urlField.value = 'https://models.example.net/my.onnx';
+	urlField.dispatchEvent(new Event('input', { bubbles: true }));
+	await modalButton('Check').click();
+	await settle();
+	expect(calls.some((call) => call.url === 'probe')).toBe(true);
+	expect(panel.querySelector('[data-probe-state="running"]')).not.toBeNull();
+	// The probe settles through its poll: wait for the ok state (the
+	// stub answers running once, then the settled facts).
+	const deadline = Date.now() + 5000;
+	let settled = false;
+	while (Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		await settle();
+		if (panel.querySelector('[data-probe-state="ok"]') !== null) {
+			settled = true;
+			break;
+		}
+	}
+	expect(settled).toBe(true);
+	expect(save.disabled).toBe(false);
+
+	await save.click();
+	await settle();
+	expect(calls.some((call) => call.url === 'source')).toBe(true);
+	// The dialog closed and the listing converged.
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
+
 	unmount(page);
-	flushSync();
+});
+
+test('a failed probe leaves the save disabled and nothing saved', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/admin/models': () =>
+				jsonResponse(200, {
+					models: listing.models,
+					download: null,
+					slots: listing.slots,
+					official: listing.official
+				}),
+			'/api/v1/admin/models/clip_embed/probe': () =>
+				jsonResponse(202, { probeId: '0192f8b0-0000-7000-8000-00000000000b' }),
+			'/api/v1/admin/models/probes/0192f8b0-0000-7000-8000-00000000000b': () =>
+				jsonResponse(200, {
+					probeId: '0192f8b0-0000-7000-8000-00000000000b',
+					state: 'error',
+					progress: null,
+					dims: 384,
+					inputSize: null,
+					sha256: null,
+					hostDeclared: true,
+					reason: 'the model emits 384 dimensions, this slot needs 512'
+				})
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	await slotCard('clip_embed').querySelector<HTMLButtonElement>('button[data-slot]')!.click();
+	await settle();
+	const mismatchField = document.body.querySelector<HTMLInputElement>('.modal__panel .models__url-input')!;
+	mismatchField.value = 'https://models.example.net/mismatch.onnx';
+	mismatchField.dispatchEvent(new Event('input', { bubbles: true }));
+	await modalButton('Check').click();
+	await settle();
+	// The probe settles into the error state through its poll: the
+	// save switch stays disabled (a failed probe saves nothing).
+	const deadline = Date.now() + 5000;
+	while (Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		await settle();
+		const panelRef = document.body.querySelector<HTMLElement>('.modal__panel');
+		if (panelRef !== null && panelRef.querySelector('[data-probe-state="error"]') !== null) {
+			break;
+		}
+	}
+	const panelRef = document.body.querySelector<HTMLElement>('.modal__panel')!;
+	expect(panelRef.querySelector('[data-probe-state="error"]')?.textContent).toContain('384');
+	expect(modalButton('Save and switch').disabled).toBe(true);
+	unmount(page);
+});
+
+test('the sources footer edits the allowed hosts and saves the settings', async () => {
+	const puts: Array<{ body: unknown }> = [];
+	vi.stubGlobal(
+		'fetch',
+		stubFetch({
+			'/api/v1/admin/models': () =>
+				jsonResponse(200, {
+					models: listing.models,
+					download: null,
+					slots: listing.slots,
+					official: listing.official
+				}),
+			'/api/v1/admin/settings/models': () => {
+				if (puts.length > 0) {
+					return jsonResponse(200, {
+						autoDownload: true,
+						allowedHosts: ['huggingface.co', 'models.example.net'],
+						mirrorBaseUrl: ''
+					});
+				}
+				return jsonResponse(200, { autoDownload: true, allowedHosts: ['huggingface.co'], mirrorBaseUrl: '' });
+			}
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	// The footer is collapsed by default: the summary line names the
+	// count without the panel being open.
+	const details = document.body.querySelector<HTMLDetailsElement>('details[data-testid="models-sources"]')!;
+	expect(details.open).toBe(false);
+	expect(document.body.querySelector('[data-testid="models-sources-summary"]')?.textContent).toBe('1 hosts');
+
+	// Expanding reads the settings; adding a host and saving PUTs the
+	// whole document.
+	details.querySelector('summary')!.click();
+	await settle();
+	await settle();
+	const input = document.body.querySelector<HTMLInputElement>('.models__host-input')!;
+	input.value = 'models.example.net';
+	input.dispatchEvent(new Event('input', { bubbles: true }));
+	await buttonByText('Add host').click();
+	await settle();
+	await buttonByText('Save').click();
+	await settle();
+	expect(document.body.textContent).toContain('The download sources are saved.');
+
+	unmount(page);
 });

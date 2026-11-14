@@ -125,7 +125,7 @@ function stubFetchWithModels(jobs: unknown[], models: unknown[]): ReturnType<typ
 			return jsonResponse(200, { jobs });
 		}
 		if (String(input) === '/api/v1/admin/models') {
-			return jsonResponse(200, { models, download: null });
+			return jsonResponse(200, { models, download: null, slots: [], official: [] });
 		}
 		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${String(input)}`);
 	});
@@ -406,7 +406,12 @@ test('a failed run states its reason and retries through its own trigger', async
 		}
 		if (url === '/api/v1/admin/models') {
 			// The OCR slot's active model is in place: the retry re-runs it.
-			return jsonResponse(200, { models: [model('ppocr-v4-mobile-ch')], download: null });
+			return jsonResponse(200, {
+				models: [model('ppocr-v4-mobile-ch')],
+				download: null,
+				slots: [],
+				official: []
+			});
 		}
 		throw new Error(`unexpected fetch ${url}`);
 	});
@@ -534,7 +539,12 @@ test('a rejected retry reports in place, above the row it belongs to', async () 
 				return jsonResponse(200, { jobs: [ocrRun] });
 			}
 			if (url === '/api/v1/admin/models') {
-				return jsonResponse(200, { models: [model('ppocr-v4-mobile-ch')], download: null });
+				return jsonResponse(200, {
+					models: [model('ppocr-v4-mobile-ch')],
+					download: null,
+					slots: [],
+					official: []
+				});
 			}
 			throw new Error(`unexpected fetch ${url}`);
 		})

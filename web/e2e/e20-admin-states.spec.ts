@@ -359,7 +359,9 @@ test.describe('the administrator scenes', () => {
 							params: {}
 						}
 					],
-					download: null
+					download: null,
+					slots: [],
+					official: []
 				}
 			})
 		);

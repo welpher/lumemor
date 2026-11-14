@@ -36,6 +36,18 @@ func (q *Queries) DeactivateSlot(ctx context.Context, slot ModelSlot) error {
 	return err
 }
 
+const deleteModel = `-- name: DeleteModel :exec
+DELETE FROM models WHERE id = $1
+`
+
+// The removal of one registration: the models row goes first (the
+// handler deletes its directory after), and the still-referencing
+// products keep resolving through their own foreign keys.
+func (q *Queries) DeleteModel(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, deleteModel, id)
+	return err
+}
+
 const getActiveModelBySlot = `-- name: GetActiveModelBySlot :one
 SELECT id, slot, version, source, file_path, input_size, dim, params, is_active, added_at, updated_at FROM models WHERE slot = $1 AND is_active
 `
@@ -92,6 +104,49 @@ type InsertModelParams struct {
 // leaves is_active exactly as it was.
 func (q *Queries) InsertModel(ctx context.Context, arg InsertModelParams) error {
 	_, err := q.db.Exec(ctx, insertModel,
+		arg.ID,
+		arg.Slot,
+		arg.Version,
+		arg.Source,
+		arg.FilePath,
+		arg.InputSize,
+		arg.Dim,
+		arg.Params,
+	)
+	return err
+}
+
+const insertModelKeepSource = `-- name: InsertModelKeepSource :exec
+INSERT INTO models (id, slot, version, source, file_path, input_size, dim, params)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO UPDATE SET
+    slot = EXCLUDED.slot,
+    version = EXCLUDED.version,
+    file_path = EXCLUDED.file_path,
+    input_size = EXCLUDED.input_size,
+    dim = EXCLUDED.dim,
+    params = EXCLUDED.params,
+    updated_at = now()
+`
+
+type InsertModelKeepSourceParams struct {
+	ID        string      `json:"id"`
+	Slot      ModelSlot   `json:"slot"`
+	Version   string      `json:"version"`
+	Source    ModelSource `json:"source"`
+	FilePath  string      `json:"file_path"`
+	InputSize pgtype.Int4 `json:"input_size"`
+	Dim       pgtype.Int4 `json:"dim"`
+	Params    []byte      `json:"params"`
+}
+
+// The scan's registration: the same upsert WITHOUT touching source.
+// The source is the registration's identity (downloaded = the
+// service's own landing, custom = an administrator import), not a
+// descriptive fact -- a scan that re-reads an official model's
+// directory must not relabel it.
+func (q *Queries) InsertModelKeepSource(ctx context.Context, arg InsertModelKeepSourceParams) error {
+	_, err := q.db.Exec(ctx, insertModelKeepSource,
 		arg.ID,
 		arg.Slot,
 		arg.Version,

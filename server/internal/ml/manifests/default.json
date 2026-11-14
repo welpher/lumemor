@@ -1,13 +1,17 @@
 {
-  "revision": 1,
+  "revision": 2,
   "models": [
     {
       "id": "yunet-2023mar",
       "slot": "face-detect",
+      "name": "YuNet",
       "version": "2023mar",
       "license": "MIT",
-      "sourceUrl": "https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
-      "fallbackUrl": "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      "urls": [
+        "https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+        "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+      ],
+      "hosts": ["huggingface.co", "media.githubusercontent.com", "hf-mirror.com"],
       "notice": "YuNet face detection from OpenCV Zoo (opencv/opencv_zoo); MIT, copyright Shiqi Yu.",
       "inputSize": { "width": 640, "height": 640 },
       "dim": 0,
@@ -23,10 +27,14 @@
     {
       "id": "sface-2021dec",
       "slot": "face-recognize",
+      "name": "SFace",
       "version": "2021dec",
       "license": "Apache-2.0",
-      "sourceUrl": "https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
-      "fallbackUrl": "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+      "urls": [
+        "https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+        "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
+      ],
+      "hosts": ["huggingface.co", "media.githubusercontent.com", "hf-mirror.com"],
       "notice": "SFace face recognition from OpenCV Zoo (opencv/opencv_zoo); Apache-2.0.",
       "inputSize": { "width": 112, "height": 112 },
       "dim": 128,
@@ -42,10 +50,13 @@
     {
       "id": "cnclip-vit-b16-vision",
       "slot": "clip-embed",
+      "name": "Chinese-CLIP ViT-B/16",
       "version": "base-patch16",
       "license": "unknown",
-      "sourceUrl": "https://huggingface.co/felixdu/chinese-clip-vit-base-patch16-onnx/resolve/main/cn_clip_vision.onnx",
-      "fallbackUrl": null,
+      "urls": [
+        "https://huggingface.co/felixdu/chinese-clip-vit-base-patch16-onnx/resolve/main/cn_clip_vision.onnx"
+      ],
+      "hosts": ["huggingface.co", "hf-mirror.com"],
       "notice": "Community ONNX conversion of the Chinese-CLIP ViT-B/16 vision tower (weights: OFA-Sys/chinese-clip-vit-base-patch16, conversion: felixdu). No license declared upstream at either source; pinned by checksum, see tools/models/NOTICES.md.",
       "inputSize": { "width": 224, "height": 224 },
       "dim": 512,
@@ -64,10 +75,13 @@
     {
       "id": "cnclip-vit-b16-text",
       "slot": "clip-text",
+      "name": "Chinese-CLIP ViT-B/16 text tower",
       "version": "base-patch16",
       "license": "unknown",
-      "sourceUrl": "https://huggingface.co/zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/text.onnx",
-      "fallbackUrl": null,
+      "urls": [
+        "https://huggingface.co/zihuv/chinese-clip-vit-base-patch16-onnx/resolve/main/text.onnx"
+      ],
+      "hosts": ["huggingface.co", "hf-mirror.com"],
       "notice": "Community ONNX conversion of the Chinese-CLIP ViT-B/16 text tower (weights: OFA-Sys/chinese-clip-vit-base-patch16, conversion: zihuv). The search's semantic arm embeds queries through it into the SAME joint 512-dim space the vision tower writes; empirically verified against the pinned vision tower (identical cross-modal cosines to the felixdu text conversion). The tokenizer vocabulary rides along as the second file: the canonical Chinese-CLIP/BERT-Chinese table, byte-identical to OFA-Sys/chinese-clip-vit-base-patch16's vocab.txt. inputSize carries the token context length (52) instead of pixels. No license declared upstream at either source; pinned by checksum, see tools/models/NOTICES.md.",
       "inputSize": { "width": 52, "height": 1 },
       "dim": 512,
@@ -88,10 +102,13 @@
     {
       "id": "ppocr-v4-mobile-ch",
       "slot": "ocr",
+      "name": "PP-OCRv4 mobile",
       "version": "v4-mobile",
       "license": "Apache-2.0",
-      "sourceUrl": "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx",
-      "fallbackUrl": null,
+      "urls": [
+        "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx"
+      ],
+      "hosts": ["huggingface.co", "hf-mirror.com"],
       "notice": "PP-OCRv4 mobile Chinese detection and recognition networks from PaddleOCR, hosted as ONNX by RapidOCR (SWHL/RapidOCR); Apache-2.0.",
       "inputSize": { "width": 960, "height": 960 },
       "dim": 0,

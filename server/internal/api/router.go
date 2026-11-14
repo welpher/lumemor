@@ -81,6 +81,11 @@ type Deps struct {
 	// resolve against the registry's root), so a divergence fails
 	// loudly instead of registering unusable rows.
 	ModelsDir string
+	// ProbeHosts answers the download sources list the source
+	// pipeline checks its URL candidates against: the same settings
+	// the downloader's own gate reads. Nil admits every host (the
+	// unconfigured gate).
+	ProbeHosts func() []string
 	// MlReruns starts the ML rerun runs of a slot: the rerun endpoint
 	// enqueues the rerun driver job through this seam. Nil keeps the
 	// endpoint answering 500 INTERNAL (no queue wired -- tests,
@@ -199,6 +204,28 @@ func NewRouter(deps *Deps) *chi.Mux {
 	return newRouter(deps, handlerTimeout)
 }
 
+// probeManagerOf builds the source pipeline's probe manager from the
+// router's deps: present whenever a models dir is wired (the staging
+// lives under it), with the allowed-hosts check reading the download
+// sources' settings and the dimension requirement reading the
+// embedding column's current dimension (the database's truth).
+func probeManagerOf(deps *Deps) *ml.ProbeManager {
+	if deps.ModelsDir == "" {
+		return nil
+	}
+	requireDims := func(slot ml.Slot) (int, bool) {
+		if slot != ml.SlotClipEmbed || deps.Pool == nil {
+			return 0, false
+		}
+		dim, err := ml.EmbeddingColumnDim(context.Background(), deps.Pool)
+		if err != nil || dim <= 0 {
+			return 0, false
+		}
+		return dim, true
+	}
+	return ml.NewProbeManager(deps.ModelsDir, deps.ProbeHosts, requireDims, nil, nil)
+}
+
 // newRouter builds the router with a configurable timeout for the
 // non-streaming handler groups. NewRouter pins that bound to
 // handlerTimeout; tests shorten it so the timeout behavior itself is
@@ -225,6 +252,12 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		// answer the generic internal error then.
 		models:    deps.Models,
 		modelsDir: deps.ModelsDir,
+		// The source pipeline: a models dir wired with a registry
+		// carries the probe manager (the transient probes live in
+		// this process; a restart clears them with their staging).
+		// Its host check reads the same allowed-hosts list the
+		// downloader's gate reads.
+		probes: probeManagerOf(deps),
 		// The rerun enqueue seam: nil is a valid (no queue) wiring.
 		mlReruns: deps.MlReruns,
 		// The places re-resolution enqueue seam: nil is a valid (no
@@ -579,8 +612,18 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// different method, and two segments for the rerun).
 				r.Get("/admin/models", wrapper.ListModels)
 				r.Patch("/admin/models/{id}", wrapper.ActivateModel)
+				r.Delete("/admin/models/{id}", wrapper.DeleteModel)
 				r.Post("/admin/models/{id}/rerun", wrapper.RerunModel)
 				r.Post("/admin/models/scan", wrapper.ScanModels)
+				// The source pipeline: the probe pair (the POST is
+				// multipart and streams; the GET is the dialog's
+				// poll) and the switch. The {slot} param name
+				// differs from the {id} param at the same position
+				// only across DIFFERENT static suffixes, which chi
+				// routes independently.
+				r.Post("/admin/models/{slot}/probe", wrapper.ProbeModelSource)
+				r.Post("/admin/models/{slot}/source", wrapper.SwitchModelSource)
+				r.Get("/admin/models/probes/{probeId}", wrapper.GetModelProbe)
 				// The places re-resolution trigger: the
 				// places-data-update path's run start. The handler is
 				// one bounded row read plus one enqueue; the walk over
@@ -681,6 +724,10 @@ type server struct {
 	models *ml.Registry
 	// modelsDir is the model store root the scan endpoint walks.
 	modelsDir string
+	// probes is the source pipeline's probe manager: the stage and
+	// probe steps of a custom import, and the register step's key
+	// holder. Nil means no pipeline is wired.
+	probes *ml.ProbeManager
 	// mlReruns starts the ML rerun runs of a slot; nil means no queue
 	// is wired and the rerun endpoint answers the generic internal
 	// error.

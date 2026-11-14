@@ -366,9 +366,14 @@ const (
 	AUTHINVALIDCREDENTIALS ErrorCode = "AUTH_INVALID_CREDENTIALS"
 	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
 	INTERNAL               ErrorCode = "INTERNAL"
+	MODELCONFIRMREQUIRED   ErrorCode = "MODEL_CONFIRM_REQUIRED"
 	MODELDOWNLOADFAILED    ErrorCode = "MODEL_DOWNLOAD_FAILED"
 	MODELINVALID           ErrorCode = "MODEL_INVALID"
 	MODELNOTFOUND          ErrorCode = "MODEL_NOT_FOUND"
+	MODELPROBENOTFOUND     ErrorCode = "MODEL_PROBE_NOT_FOUND"
+	MODELPROBEREQUIRED     ErrorCode = "MODEL_PROBE_REQUIRED"
+	MODELSLOTLOCKED        ErrorCode = "MODEL_SLOT_LOCKED"
+	MODELSLOTUNKNOWN       ErrorCode = "MODEL_SLOT_UNKNOWN"
 	PAIRINGTOKENINVALID    ErrorCode = "PAIRING_TOKEN_INVALID"
 	PERSONNOTFOUND         ErrorCode = "PERSON_NOT_FOUND"
 	SETUPALREADYCOMPLETED  ErrorCode = "SETUP_ALREADY_COMPLETED"
@@ -410,11 +415,21 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case INTERNAL:
 		return true
+	case MODELCONFIRMREQUIRED:
+		return true
 	case MODELDOWNLOADFAILED:
 		return true
 	case MODELINVALID:
 		return true
 	case MODELNOTFOUND:
+		return true
+	case MODELPROBENOTFOUND:
+		return true
+	case MODELPROBEREQUIRED:
+		return true
+	case MODELSLOTLOCKED:
+		return true
+	case MODELSLOTUNKNOWN:
 		return true
 	case PAIRINGTOKENINVALID:
 		return true
@@ -472,22 +487,22 @@ func (e JobRunKind) Valid() bool {
 
 // Defines values for JobRunState.
 const (
-	Failed    JobRunState = "failed"
-	Queued    JobRunState = "queued"
-	Running   JobRunState = "running"
-	Succeeded JobRunState = "succeeded"
+	JobRunStateFailed    JobRunState = "failed"
+	JobRunStateQueued    JobRunState = "queued"
+	JobRunStateRunning   JobRunState = "running"
+	JobRunStateSucceeded JobRunState = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the JobRunState enum.
 func (e JobRunState) Valid() bool {
 	switch e {
-	case Failed:
+	case JobRunStateFailed:
 		return true
-	case Queued:
+	case JobRunStateQueued:
 		return true
-	case Running:
+	case JobRunStateRunning:
 		return true
-	case Succeeded:
+	case JobRunStateSucceeded:
 		return true
 	default:
 		return false
@@ -551,6 +566,33 @@ func (e MemoryCreateResponseType) Valid() bool {
 	}
 }
 
+// Defines values for ModelProbeResponseState.
+const (
+	ModelProbeResponseStateError   ModelProbeResponseState = "error"
+	ModelProbeResponseStateOk      ModelProbeResponseState = "ok"
+	ModelProbeResponseStateQueued  ModelProbeResponseState = "queued"
+	ModelProbeResponseStateRunning ModelProbeResponseState = "running"
+	ModelProbeResponseStateWarn    ModelProbeResponseState = "warn"
+)
+
+// Valid indicates whether the value is a known member of the ModelProbeResponseState enum.
+func (e ModelProbeResponseState) Valid() bool {
+	switch e {
+	case ModelProbeResponseStateError:
+		return true
+	case ModelProbeResponseStateOk:
+		return true
+	case ModelProbeResponseStateQueued:
+		return true
+	case ModelProbeResponseStateRunning:
+		return true
+	case ModelProbeResponseStateWarn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ModelSlot.
 const (
 	ClipEmbed     ModelSlot = "clip_embed"
@@ -580,16 +622,37 @@ func (e ModelSlot) Valid() bool {
 
 // Defines values for ModelSource.
 const (
-	Custom     ModelSource = "custom"
-	Downloaded ModelSource = "downloaded"
+	ModelSourceCustom     ModelSource = "custom"
+	ModelSourceDownloaded ModelSource = "downloaded"
 )
 
 // Valid indicates whether the value is a known member of the ModelSource enum.
 func (e ModelSource) Valid() bool {
 	switch e {
-	case Custom:
+	case ModelSourceCustom:
 		return true
-	case Downloaded:
+	case ModelSourceDownloaded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelSourceSwitchRequestKind.
+const (
+	ModelSourceSwitchRequestKindBuiltin ModelSourceSwitchRequestKind = "builtin"
+	ModelSourceSwitchRequestKindFile    ModelSourceSwitchRequestKind = "file"
+	ModelSourceSwitchRequestKindUrl     ModelSourceSwitchRequestKind = "url"
+)
+
+// Valid indicates whether the value is a known member of the ModelSourceSwitchRequestKind enum.
+func (e ModelSourceSwitchRequestKind) Valid() bool {
+	switch e {
+	case ModelSourceSwitchRequestKindBuiltin:
+		return true
+	case ModelSourceSwitchRequestKindFile:
+		return true
+	case ModelSourceSwitchRequestKindUrl:
 		return true
 	default:
 		return false
@@ -608,6 +671,48 @@ func (e SessionInfoKind) Valid() bool {
 	case SessionInfoKindMobile:
 		return true
 	case SessionInfoKindWeb:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SlotState.
+const (
+	SlotStateActive        SlotState = "active"
+	SlotStateDownloading   SlotState = "downloading"
+	SlotStateFailed        SlotState = "failed"
+	SlotStateNotDownloaded SlotState = "not_downloaded"
+)
+
+// Valid indicates whether the value is a known member of the SlotState enum.
+func (e SlotState) Valid() bool {
+	switch e {
+	case SlotStateActive:
+		return true
+	case SlotStateDownloading:
+		return true
+	case SlotStateFailed:
+		return true
+	case SlotStateNotDownloaded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SlotStateResponseSourceKind.
+const (
+	SlotStateResponseSourceKindCustom   SlotStateResponseSourceKind = "custom"
+	SlotStateResponseSourceKindOfficial SlotStateResponseSourceKind = "official"
+)
+
+// Valid indicates whether the value is a known member of the SlotStateResponseSourceKind enum.
+func (e SlotStateResponseSourceKind) Valid() bool {
+	switch e {
+	case SlotStateResponseSourceKindCustom:
+		return true
+	case SlotStateResponseSourceKindOfficial:
 		return true
 	default:
 		return false
@@ -854,6 +959,24 @@ func (e UserTheme) Valid() bool {
 	case UserThemeDark:
 		return true
 	case UserThemeLight:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProbeModelSourceMultipartBodyKind.
+const (
+	ProbeModelSourceMultipartBodyKindFile ProbeModelSourceMultipartBodyKind = "file"
+	ProbeModelSourceMultipartBodyKindUrl  ProbeModelSourceMultipartBodyKind = "url"
+)
+
+// Valid indicates whether the value is a known member of the ProbeModelSourceMultipartBodyKind enum.
+func (e ProbeModelSourceMultipartBodyKind) Valid() bool {
+	switch e {
+	case ProbeModelSourceMultipartBodyKindFile:
+		return true
+	case ProbeModelSourceMultipartBodyKindUrl:
 		return true
 	default:
 		return false
@@ -2689,6 +2812,40 @@ type ModelActivateResponse struct {
 	WipedEmbeddings *int `json:"wipedEmbeddings,omitempty"`
 }
 
+// ModelCatalogEntry One official-list entry: a manifest model with the facts the
+// switch dialog's dropdown renders (name, license, size,
+// dimension) and its download state.
+type ModelCatalogEntry struct {
+	// Bytes The pinned byte count of the entry's files.
+	Bytes int `json:"bytes"`
+
+	// Dim The embedding dimension; absent for models that do not embed.
+	Dim *int `json:"dim,omitempty"`
+
+	// Downloaded Whether the entry's files are present on disk (a presence probe, not a digest check).
+	Downloaded bool `json:"downloaded"`
+
+	// Id The manifest model's stable id.
+	Id string `json:"id"`
+
+	// License The upstream license identifier, empty when undeclared.
+	License string `json:"license"`
+
+	// Name The display name the manifest's notice carries, derived from the model id.
+	//
+	// Examples: Chinese-CLIP ViT-B/16
+	Name string `json:"name"`
+
+	// Slot The functional slot a model fills. `face_detect`,
+	// `face_recognize`, `clip_embed` and `ocr` are the machine
+	// learning slots of the pipeline; `clip_text` is the search's
+	// semantic arm -- the CLIP text tower that embeds queries into
+	// the vision tower's joint embedding space (it produces no
+	// per-asset rows, so its rerun endpoint answers 400
+	// `MODEL_INVALID`); a speech slot arrives later.
+	Slot ModelSlot `json:"slot"`
+}
+
 // ModelDimensionChange The dimension switch of a cross-dimension clip activation:
 // what the embeddings column was and what it became.
 type ModelDimensionChange struct {
@@ -2709,7 +2866,9 @@ type ModelDownloadResponse struct {
 }
 
 // ModelListResponse The model management listing: every registered model plus
-// the download run summary.
+// the download run summary, the per-slot state view the page's
+// cards render, and the manifest catalog the switch dialog's
+// official group renders.
 type ModelListResponse struct {
 	// Download The most recent `model_download` run of whatever state,
 	// or null before the first download was ever started.
@@ -2717,7 +2876,67 @@ type ModelListResponse struct {
 
 	// Models Every registered model, grouped by slot then id.
 	Models []ModelResponse `json:"models"`
+
+	// Official The manifest's catalog: the validated list the switch
+	// dialog's official group renders, every entry with its
+	// download state. The image is not the entry -- the mirror
+	// carries no weights; `downloaded` is the presence probe
+	// and the digest check stays the activation's business.
+	Official []ModelCatalogEntry `json:"official"`
+
+	// Slots One row per pipeline slot (the contract's enum order):
+	// the four-state view the page's cards render, the slot's
+	// active model, its source facts and the download run's
+	// progress while a run is in flight.
+	Slots []SlotStateResponse `json:"slots"`
 }
+
+// ModelProbeAcceptedResponse The 202 answer of a probe POST: the identifier to poll.
+type ModelProbeAcceptedResponse struct {
+	ProbeId string `json:"probeId"`
+}
+
+// ModelProbeResponse One source probe's current state. `state` is `queued`,
+// `running` (with the download progress when the source is a
+// URL), `ok`, `error` (the reason names the check that failed)
+// or `warn` (the checks passed; the host is not on the download
+// sources list; the save may still proceed). `dims` and
+// `inputSize` are the facts a finished probe read off the
+// graph; `sha256` is the computed digest of the staged bytes
+// (the given pin, when one was given, already matched it); a
+// failed probe carries none of them.
+type ModelProbeResponse struct {
+	// Dims The model's output dimension, read off the graph.
+	Dims *int `json:"dims"`
+
+	// HostDeclared Whether the source's host is on the download sources list.
+	HostDeclared bool `json:"hostDeclared"`
+
+	// InputSize The model's input geometry, read off the graph.
+	InputSize *struct {
+		Height int `json:"height"`
+		Width  int `json:"width"`
+	} `json:"inputSize"`
+	ProbeId string `json:"probeId"`
+
+	// Progress The URL download's `{done, total}` counts while running, null otherwise.
+	Progress *struct {
+		Done  int `json:"done"`
+		Total int `json:"total"`
+	} `json:"progress"`
+
+	// Reason The failing check, named, for state `error`.
+	//
+	// Examples: the model emits 384 dimensions, this slot needs 512
+	Reason *string `json:"reason"`
+
+	// Sha256 The staged bytes' digest, set when the probe finished (ok or warn).
+	Sha256 *string                 `json:"sha256"`
+	State  ModelProbeResponseState `json:"state"`
+}
+
+// ModelProbeResponseState defines model for ModelProbeResponse.State.
+type ModelProbeResponseState string
 
 // ModelRef The identity of one model: its slug id and its slot.
 type ModelRef struct {
@@ -2823,20 +3042,52 @@ type ModelScanResponse struct {
 	Registered []ModelResponse `json:"registered"`
 }
 
-// ModelSettingsResponse The model store's policy of `GET /admin/settings/models`
-// and the successful `PUT`.
+// ModelSettingsResponse The model store's policy and download sources of
+// `GET /admin/settings/models` and the successful `PUT`.
 type ModelSettingsResponse struct {
+	// AllowedHosts The hosts the model download may travel through. A URL
+	// whose host matches no entry -- entries are exact
+	// hostnames or a `*.` wildcard prefix for a whole domain
+	// suffix -- fails the download with the host named, and the
+	// answer points at the sources panel that can add it. The
+	// shipped default list covers the manifest's own hosts;
+	// the manifest's pinned URLs stay the identity of what is
+	// downloaded, this list is only where the bytes may come
+	// from.
+	//
+	//
+	// Examples: ["huggingface.co","*.hf.co","hf-mirror.com"]
+	AllowedHosts []string `json:"allowedHosts"`
+
 	// AutoDownload Whether an AI job whose slot is configured but whose
 	// weights are missing may start the model group's download
 	// on its own. It never fills an unconfigured slot: the
 	// first-run download stays the administrator's own act.
 	AutoDownload bool `json:"autoDownload"`
+
+	// MirrorBaseUrl The download mirror's base host, the empty string when
+	// no mirror is configured. Non-empty, it replaces the
+	// manifest's pinned `huggingface.co` hostname wholesale on
+	// every candidate URL before the fetch, and its host joins
+	// `allowedHosts` automatically at save time (a mirror the
+	// list refuses would fail on its first hop). Custom model
+	// imports are not mirror-rewritten.
+	//
+	//
+	// Examples: [""], hf-mirror.com
+	MirrorBaseUrl string `json:"mirrorBaseUrl"`
 }
 
 // ModelSettingsUpdateRequest Payload of `PUT /admin/settings/models`.
 type ModelSettingsUpdateRequest struct {
+	// AllowedHosts The allowed hosts to save, replacing the stored list wholesale.
+	AllowedHosts []string `json:"allowedHosts"`
+
 	// AutoDownload The policy to save.
 	AutoDownload bool `json:"autoDownload"`
+
+	// MirrorBaseUrl The mirror base host to save, or the empty string to clear it.
+	MirrorBaseUrl string `json:"mirrorBaseUrl"`
 }
 
 // ModelSlot The functional slot a model fills. `face_detect`,
@@ -2853,6 +3104,50 @@ type ModelSlot string
 // group; `custom` models were registered by the scan of a
 // directory an administrator placed.
 type ModelSource string
+
+// ModelSourceSwitchRequest The source a slot is switched onto. `kind` selects the shape:
+// `builtin` takes `modelId` (an official-list entry, no probe
+// needed), `url` and `file` take a `probeId` whose checks
+// finished OK. `confirmWipe` is required when the switch would
+// change the embed slot's vector dimension.
+type ModelSourceSwitchRequest struct {
+	// ConfirmWipe The explicit confirmation a cross-dimension embed switch
+	// requires (the wipe cannot be undone).
+	ConfirmWipe *bool                        `json:"confirmWipe,omitempty"`
+	Kind        ModelSourceSwitchRequestKind `json:"kind"`
+
+	// ModelId The official-list entry, for kind `builtin`.
+	ModelId *string `json:"modelId,omitempty"`
+
+	// ProbeId The finished probe, for kinds `url` and `file`.
+	ProbeId *string `json:"probeId,omitempty"`
+}
+
+// ModelSourceSwitchRequestKind defines model for ModelSourceSwitchRequest.Kind.
+type ModelSourceSwitchRequestKind string
+
+// ModelSourceSwitchResponse What one switch did: the slot's newly active model, the
+// destructive arm's facts when the dimension changed, and the
+// recalculation run's id when the switch's semantics enqueue
+// one (the face slots and a cross-dimension embed switch; a
+// same-dimension embed switch keeps both generations and
+// recomputes nothing).
+type ModelSourceSwitchResponse struct {
+	// Activated The identity of one model: its slug id and its slot.
+	Activated ModelRef `json:"activated"`
+
+	// DimensionChanged Set when the switch re-typed the vector column.
+	DimensionChanged *struct {
+		From int `json:"from"`
+		To   int `json:"to"`
+	} `json:"dimensionChanged"`
+
+	// RecalcRunId The enqueued recalculation run's identifier, null when none is due.
+	RecalcRunId *string `json:"recalcRunId"`
+
+	// WipedEmbeddings The number of embeddings the dimension switch deleted.
+	WipedEmbeddings *int `json:"wipedEmbeddings"`
+}
 
 // MoveFaceRequest One face's move onto an existing face cluster.
 type MoveFaceRequest struct {
@@ -3295,6 +3590,76 @@ type SetPersonBirthdateRequest struct {
 	// BirthDate The person's birth date, or null to clear it.
 	BirthDate *openapi_types.Date `json:"birthDate"`
 }
+
+// SlotState The four states a slot's card speaks. `active` is a slot
+// running its model (the state badge renders as the model's
+// own facts); `downloading` is a model download run in flight
+// whose bytes this slot still waits for (the card shows the
+// run's percent); `not_downloaded` is an unfilled slot -- or a
+// filled one whose weights are gone with no run coming; `failed`
+// is the same missing-weights state while the most recent
+// download run failed (the card shows the retry).
+type SlotState string
+
+// SlotStateResponse One pipeline slot's state row. `modelId` is the slot's active
+// model's id, null when the slot is unfilled; `source` is null
+// for an unfilled slot; `progress` is the in-flight download
+// run's counts while `state` is `downloading` (and null
+// otherwise -- the run is group-level, the card renders its
+// percent).
+type SlotStateResponse struct {
+	ModelId *string `json:"modelId"`
+
+	// Progress The in-flight download run's `{done, total}` pinned-byte
+	// counts, null when no run is in flight.
+	Progress *struct {
+		Done  int `json:"done"`
+		Total int `json:"total"`
+	} `json:"progress"`
+
+	// Slot The functional slot a model fills. `face_detect`,
+	// `face_recognize`, `clip_embed` and `ocr` are the machine
+	// learning slots of the pipeline; `clip_text` is the search's
+	// semantic arm -- the CLIP text tower that embeds queries into
+	// the vision tower's joint embedding space (it produces no
+	// per-asset rows, so its rerun endpoint answers 400
+	// `MODEL_INVALID`); a speech slot arrives later.
+	Slot ModelSlot `json:"slot"`
+
+	// Source Where the slot's active model came from. `official` models
+	// were registered by the download service; `custom` models
+	// were imported by the administrator (a URL or a local file
+	// probe). `host` and `sha256` come from the model's on-disk
+	// manifest (the host is null when the manifest is unreadable
+	// or carries no source URL); `downloadedAt` is the
+	// registration time. Null for an unfilled slot.
+	Source *struct {
+		// DownloadedAt When the model was registered.
+		DownloadedAt time.Time `json:"downloadedAt"`
+
+		// Host The host the bytes were fetched from, when known.
+		//
+		// Examples: huggingface.co
+		Host *string                     `json:"host"`
+		Kind SlotStateResponseSourceKind `json:"kind"`
+
+		// Sha256 The primary file's pinned digest, or null when unknown.
+		Sha256 *string `json:"sha256"`
+	} `json:"source"`
+
+	// State The four states a slot's card speaks. `active` is a slot
+	// running its model (the state badge renders as the model's
+	// own facts); `downloading` is a model download run in flight
+	// whose bytes this slot still waits for (the card shows the
+	// run's percent); `not_downloaded` is an unfilled slot -- or a
+	// filled one whose weights are gone with no run coming; `failed`
+	// is the same missing-weights state while the most recent
+	// download run failed (the card shows the retry).
+	State SlotState `json:"state"`
+}
+
+// SlotStateResponseSourceKind defines model for SlotStateResponse.Source.Kind.
+type SlotStateResponseSourceKind string
 
 // StorageSettingsResponse The storage settings of `GET /admin/settings/storage` and the
 // successful `PUT`: the instance's upload path template, the
@@ -4105,6 +4470,25 @@ type ListJobsParams struct {
 // ActivateModelJSONBody defines parameters for ActivateModel.
 type ActivateModelJSONBody = map[string]interface{}
 
+// ProbeModelSourceMultipartBody defines parameters for ProbeModelSource.
+type ProbeModelSourceMultipartBody struct {
+	// File The candidate model's bytes, for kind `file`.
+	File *openapi_types.File `json:"file,omitempty"`
+
+	// Kind Which source the candidate comes from.
+	Kind ProbeModelSourceMultipartBodyKind `json:"kind"`
+
+	// Sha256 The digest the bytes must match, when the caller
+	// pins one (64 lowercase hex chars).
+	Sha256 *string `json:"sha256,omitempty"`
+
+	// Url The candidate model's URL, for kind `url`.
+	Url *string `json:"url,omitempty"`
+}
+
+// ProbeModelSourceMultipartBodyKind defines parameters for ProbeModelSource.
+type ProbeModelSourceMultipartBodyKind string
+
 // CompleteAlbumPathParams defines parameters for CompleteAlbumPath.
 type CompleteAlbumPathParams struct {
 	// Prefix The path fragment typed so far. Absent or empty lists
@@ -4379,6 +4763,12 @@ type SearchAssetsParamsLocale string
 // ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
 type ActivateModelJSONRequestBody = ActivateModelJSONBody
 
+// ProbeModelSourceMultipartRequestBody defines body for ProbeModelSource for multipart/form-data ContentType.
+type ProbeModelSourceMultipartRequestBody ProbeModelSourceMultipartBody
+
+// SwitchModelSourceJSONRequestBody defines body for SwitchModelSource for application/json ContentType.
+type SwitchModelSourceJSONRequestBody = ModelSourceSwitchRequest
+
 // UpdateModelSettingsJSONRequestBody defines body for UpdateModelSettings for application/json ContentType.
 type UpdateModelSettingsJSONRequestBody = ModelSettingsUpdateRequest
 
@@ -4486,22 +4876,34 @@ type ServerInterface interface {
 	// DownloadModels Start the default model group's download.
 	// (POST /admin/models/download)
 	DownloadModels(w http.ResponseWriter, r *http.Request)
+	// GetModelProbe Read one model source probe's result.
+	// (GET /admin/models/probes/{probeId})
+	GetModelProbe(w http.ResponseWriter, r *http.Request, probeId string)
 	// ScanModels Register the custom models found in the models dir.
 	// (POST /admin/models/scan)
 	ScanModels(w http.ResponseWriter, r *http.Request)
+	// DeleteModel Delete one registered model.
+	// (DELETE /admin/models/{id})
+	DeleteModel(w http.ResponseWriter, r *http.Request, id string)
 	// ActivateModel Activate the model (the model switch).
 	// (PATCH /admin/models/{id})
 	ActivateModel(w http.ResponseWriter, r *http.Request, id string)
 	// RerunModel Start a manual rerun of the active model's slot.
 	// (POST /admin/models/{id}/rerun)
 	RerunModel(w http.ResponseWriter, r *http.Request, id string)
+	// ProbeModelSource Probe a model source for one slot.
+	// (POST /admin/models/{slot}/probe)
+	ProbeModelSource(w http.ResponseWriter, r *http.Request, slot ModelSlot)
+	// SwitchModelSource Switch a slot onto a probed source.
+	// (POST /admin/models/{slot}/source)
+	SwitchModelSource(w http.ResponseWriter, r *http.Request, slot ModelSlot)
 	// ReresolvePlaces Start a full place re-resolution run.
 	// (POST /admin/places/reresolve)
 	ReresolvePlaces(w http.ResponseWriter, r *http.Request)
 	// GetModelSettings Read the model download settings.
 	// (GET /admin/settings/models)
 	GetModelSettings(w http.ResponseWriter, r *http.Request)
-	// UpdateModelSettings Save the model download settings.
+	// UpdateModelSettings Save the model download settings and download sources.
 	// (PUT /admin/settings/models)
 	UpdateModelSettings(w http.ResponseWriter, r *http.Request)
 	// GetStorageSettings Read the storage template setting.
@@ -4762,9 +5164,21 @@ func (_ Unimplemented) DownloadModels(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetModelProbe Read one model source probe's result.
+// (GET /admin/models/probes/{probeId})
+func (_ Unimplemented) GetModelProbe(w http.ResponseWriter, r *http.Request, probeId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ScanModels Register the custom models found in the models dir.
 // (POST /admin/models/scan)
 func (_ Unimplemented) ScanModels(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteModel Delete one registered model.
+// (DELETE /admin/models/{id})
+func (_ Unimplemented) DeleteModel(w http.ResponseWriter, r *http.Request, id string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4780,6 +5194,18 @@ func (_ Unimplemented) RerunModel(w http.ResponseWriter, r *http.Request, id str
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ProbeModelSource Probe a model source for one slot.
+// (POST /admin/models/{slot}/probe)
+func (_ Unimplemented) ProbeModelSource(w http.ResponseWriter, r *http.Request, slot ModelSlot) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SwitchModelSource Switch a slot onto a probed source.
+// (POST /admin/models/{slot}/source)
+func (_ Unimplemented) SwitchModelSource(w http.ResponseWriter, r *http.Request, slot ModelSlot) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ReresolvePlaces Start a full place re-resolution run.
 // (POST /admin/places/reresolve)
 func (_ Unimplemented) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
@@ -4792,7 +5218,7 @@ func (_ Unimplemented) GetModelSettings(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// UpdateModelSettings Save the model download settings.
+// UpdateModelSettings Save the model download settings and download sources.
 // (PUT /admin/settings/models)
 func (_ Unimplemented) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -5336,11 +5762,63 @@ func (siw *ServerInterfaceWrapper) DownloadModels(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetModelProbe operation middleware
+func (siw *ServerInterfaceWrapper) GetModelProbe(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "probeId" -------------
+	var probeId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "probeId", chi.URLParam(r, "probeId"), &probeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "probeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetModelProbe(w, r, probeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ScanModels operation middleware
 func (siw *ServerInterfaceWrapper) ScanModels(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ScanModels(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteModel operation middleware
+func (siw *ServerInterfaceWrapper) DeleteModel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteModel(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5393,6 +5871,58 @@ func (siw *ServerInterfaceWrapper) RerunModel(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RerunModel(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ProbeModelSource operation middleware
+func (siw *ServerInterfaceWrapper) ProbeModelSource(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slot" -------------
+	var slot ModelSlot
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slot", chi.URLParam(r, "slot"), &slot, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slot", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProbeModelSource(w, r, slot)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SwitchModelSource operation middleware
+func (siw *ServerInterfaceWrapper) SwitchModelSource(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slot" -------------
+	var slot ModelSlot
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slot", chi.URLParam(r, "slot"), &slot, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slot", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SwitchModelSource(w, r, slot)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7725,6 +8255,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/models", wrapper.ListModels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/models/probes/{probeId}", wrapper.GetModelProbe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/models/{slot}/probe", wrapper.ProbeModelSource)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/models/{slot}/source", wrapper.SwitchModelSource)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/models/{id}", wrapper.DeleteModel)
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/models/{id}", wrapper.ActivateModel)

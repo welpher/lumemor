@@ -74,6 +74,28 @@ func (w *ModelDownloadWorker) Timeout(job *river.Job[ModelDownloadArgs]) time.Du
 	return modelDownloadTimeout
 }
 
+// downloadTransport reads the download sources' policy for one run:
+// the allowed hosts (the transport gate every hop is validated
+// against) and the mirror base (the rewrite of the pinned
+// huggingface.co hostnames). The settings' mirror wins; the
+// deployment's environment fallback answers only when no mirror is
+// configured in the admin face -- the same rewrite either way, owned
+// by the surface that edits it.
+func (w *ModelDownloadWorker) downloadTransport(ctx context.Context) (mirror string, allowed []string) {
+	queries := dbgen.New(w.pool)
+	settings, err := db.ModelSettingsOf(ctx, queries)
+	if err != nil {
+		// The accessor answered the documented default (the manifest's
+		// own hosts); the line points at the row to fix.
+		w.logger.Warn("read the model download sources; answering the defaults", "error", err)
+	}
+	mirror = w.hfMirror
+	if settings.MirrorBaseUrl != "" {
+		mirror = settings.MirrorBaseUrl
+	}
+	return mirror, settings.AllowedHosts
+}
+
 // Work executes one model download attempt: the row flips to running
 // and job.started fires before the first byte moves, the download
 // service drives the throttled progress reports into the row and the
@@ -105,12 +127,14 @@ func (w *ModelDownloadWorker) Work(ctx context.Context, job *river.Job[ModelDown
 		w.bus.Publish("job.progress", jobEventPayload(jobRunID, ModelDownloadKind, total, done, 0, dbgen.JobStateRunning))
 	}
 
+	mirror, allowed := w.downloadTransport(ctx)
 	report, runErr := ml.RunDownload(ctx, ml.RunDownloadDeps{
-		Manifest:  w.manifest,
-		ModelsDir: w.modelsDir,
-		Registry:  w.registry,
-		Queries:   queries,
-		HFMirror:  w.hfMirror,
+		Manifest:     w.manifest,
+		ModelsDir:    w.modelsDir,
+		Registry:     w.registry,
+		Queries:      queries,
+		HFMirror:     mirror,
+		AllowedHosts: allowed,
 	}, progress)
 
 	if runErr != nil && ctx.Err() != nil {

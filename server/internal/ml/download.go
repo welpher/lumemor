@@ -101,6 +101,12 @@ type RunDownloadDeps struct {
 	// HFMirror replaces huggingface.co hostnames wholesale when
 	// non-empty; every other host stays untouched.
 	HFMirror string
+	// AllowedHosts gates every hop of every candidate URL: a URL
+	// (or a redirect hop) whose host is outside the list fails with
+	// the host named, and the walk moves to the next candidate. The
+	// empty list is the unconfigured gate: every host is admitted
+	// and the sha256 alone guards the bytes.
+	AllowedHosts []string
 	// Now drives the progress throttle; nil falls back to time.Now.
 	Now func() time.Time
 }
@@ -153,6 +159,12 @@ func RunDownload(ctx context.Context, dst RunDownloadDeps, progress func(done, t
 	client := dst.Client
 	if client == nil {
 		client = &http.Client{}
+	}
+	if len(dst.AllowedHosts) > 0 {
+		// The redirect gate wraps the caller's transport once per
+		// run: the walk validates each candidate's first hop, and
+		// the policy validates every hop a redirect reaches.
+		client = clientWithHostGate(client, dst.AllowedHosts)
 	}
 	now := dst.Now
 	if now == nil {
@@ -262,19 +274,16 @@ func runDownloadModel(ctx context.Context, dst RunDownloadDeps, client *http.Cli
 	return nil
 }
 
-// fetchModelFile lands one file: the primary URL first, then the
-// model's fallback URL when the primary fails (no fallback: the
-// failure stands). The bytes stream into a staging file next to the
-// target, verify against the pinned digest and size, and rename
-// atomically into place.
+// fetchModelFile lands one file: the model's ordered candidate chain,
+// each URL rewritten by the mirror first and tried in order (a
+// timeout, a 404, a 5xx, a refused host or a digest mismatch all move
+// the walk to the next candidate -- the failure is named for the
+// report, but the chain is not abandoned early). The bytes stream
+// into a staging file next to the target, verify against the pinned
+// digest and size, and rename atomically into place.
 func fetchModelFile(ctx context.Context, dst RunDownloadDeps, client *http.Client, model *ManifestModel, file ManifestFile, modelDir, target string, emit *progressEmitter, report *DownloadReport) error {
-	candidates := []string{model.SourceURL}
-	if model.FallbackURL != nil && *model.FallbackURL != "" {
-		candidates = append(candidates, *model.FallbackURL)
-	}
-
 	var failures []error
-	for _, candidate := range candidates {
+	for _, candidate := range model.CandidateURLs() {
 		rewritten, err := mirrorURL(candidate, dst.HFMirror)
 		if err != nil {
 			// A malformed pinned URL is a manifest bug, not a source
@@ -285,13 +294,24 @@ func fetchModelFile(ctx context.Context, dst RunDownloadDeps, client *http.Clien
 		if err != nil {
 			return err
 		}
-		err = downloadToTarget(ctx, client, fileURL, file, modelDir, target, emit, report)
+		host, err := URLHost(fileURL)
+		if err != nil {
+			return err
+		}
+		if !HostAllowed(dst.AllowedHosts, host) {
+			failures = append(failures, fmt.Errorf("host %s is not in the allowed list", host))
+			continue
+		}
+		err = downloadToTarget(ctx, dst, client, fileURL, file, modelDir, target, emit, report)
 		if err == nil {
 			return nil
 		}
 		failures = append(failures, err)
 	}
-	return errors.Join(failures...)
+	if len(failures) == 0 {
+		return fmt.Errorf("model %s lists no download URL for %s", model.ID, file.Name)
+	}
+	return fmt.Errorf("every source failed for %s (last: %w)", file.Name, failures[len(failures)-1])
 }
 
 // downloadToTarget streams one source URL into the file's staging
@@ -299,7 +319,14 @@ func fetchModelFile(ctx context.Context, dst RunDownloadDeps, client *http.Clien
 // read loop caps the transfer at the pinned byte count (a source that
 // serves more is a drifted source), digests while streaming, and
 // reports the throttled cumulative progress.
-func downloadToTarget(ctx context.Context, client *http.Client, fileURL string, file ManifestFile, modelDir, target string, emit *progressEmitter, report *DownloadReport) error {
+//
+// The per-hop host gate rides the client's redirect policy: the first
+// hop's host was validated by the chain walk, and every redirect hop
+// is validated the same way before the client follows it -- a CDN 302
+// to an admitted host passes, a redirect inward or to an unnamed host
+// stops the transfer with the host named. The gate only binds when
+// the run carries a list (the unconfigured gate admits every hop).
+func downloadToTarget(ctx context.Context, dst RunDownloadDeps, client *http.Client, fileURL string, file ManifestFile, modelDir, target string, emit *progressEmitter, report *DownloadReport) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
 	if err != nil {
 		return fmt.Errorf("build the request: %w", err)
