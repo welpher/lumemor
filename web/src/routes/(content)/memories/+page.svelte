@@ -1,16 +1,31 @@
 <script lang="ts">
 	// The memory wall: the reference-set cards in ONE list (the design's
-	// single list, carried to the memories page: no own/shared sections,
-	// no group labels, most recently updated first) -- the manual origin
-	// badge on an own card, the honest owner attribution beside the
-	// read-only badge on a shared one (the attribution names the
-	// person, the email only falls back) -- with the same collage cover
-	// language the album cards carry. A memory card NEVER
-	// carries the timeline-exclusion badge: a memory never feeds its
-	// creator's timeline by construction (the exclusion is the
-	// memory's fixed semantics, not a signal worth a badge).
-	// Card clicks open the memory's own detail (the reference-set
-	// face -- the curation bar and the removal selection).
+	// single list: no own/shared sections, no group labels, most
+	// recently updated first) -- the manual origin badge on an own
+	// card, the honest owner attribution beside the read-only badge on
+	// a shared one (the attribution names the person, the email only
+	// falls back).
+	//
+	// THE GRID IS THE MEMORY'S OWN, deliberately unlike the album
+	// wall's: at most THREE columns at every width (a product
+	// decision, not an automatic count -- the formula's fixed floor
+	// keeps a fourth column from ever fitting, so 1920 and 2560 keep
+	// three and the cards widen), and each card is a long band whose
+	// cover is a 3:1 strip of up to six frames laid 3 across and 2
+	// down. The album card's small 4:3 square with a 2x2 collage says
+	// "a box that holds things"; the memory's band of frames says "a
+	// run of picked moments". Memories are few (a family keeps a
+	// handful), so the large card is the page's advantage, not a
+	// oversize.
+	//
+	// The caption is ONE row: the 20px display title truncating on the
+	// left, the count and the badges no-wrap on the right. A memory
+	// card NEVER carries the timeline-exclusion badge: a memory never
+	// feeds its creator's timeline by construction (the exclusion is
+	// the memory's fixed semantics, not a signal worth a badge).
+	//
+	// Card clicks open the memory's playback overlay (the reference
+	// set's own face, opened over this page rather than routed to).
 	//
 	// THE CREATION ENTRY IS EVERY MEMBER'S: a memory is personal
 	// curation, the OPPOSITE gate of the album wall's
@@ -26,6 +41,8 @@
 	// convergence keeps the last good state silently; only the
 	// initial load's failure raises the error box.
 	import { _ } from 'svelte-i18n';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { listAlbums, createMemory, type AlbumSummary, type AlbumAudienceSkip } from '$lib/api/albums';
 	import { subscribeAlbumEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
@@ -35,6 +52,7 @@
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import CountLabel from '$lib/components/CountLabel.svelte';
 	import CreateMemoryDialog from '$lib/memories/CreateMemoryDialog.svelte';
+	import MemoryOverlay, { type MemoryMode } from '$lib/memories/MemoryOverlay.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -131,22 +149,88 @@
 		return memory.owner !== undefined && ambiguousOwners.has(ownerLabel(memory)) ? memory.owner.email : undefined;
 	}
 
-	// The cover layout class of one card: the pinned cover and the
-	// single newest member render full-bleed, two split, three the
-	// 2+1 fall, four the quad; a bare memory renders the placeholder.
-	function coverClass(count: number): string {
-		switch (count) {
-			case 0:
-				return 'memory-card__cover--empty';
-			case 1:
-				return 'memory-card__cover--single';
-			case 2:
-				return 'memory-card__cover--split';
-			case 3:
-				return 'memory-card__cover--duo-plus-one';
-			default:
-				return 'memory-card__cover--quad';
+	// The cover's frames: at most six, in the server's own order (the
+	// pinned choice first, the newest members after it). One frame
+	// fills the band, two split it, three or more fill the 3x2 strip
+	// left to right -- the count never reorders them.
+	const COVER_FRAMES = 6;
+
+	// THE OVERLAY'S ADDRESS. The playback overlay is a state of this
+	// page, not a route: `?memory=<id>` opens it (the deep link the
+	// review and the viewer's album row use), `mode=grid` opens its
+	// management face. The card click PUSHES the entry -- so the
+	// browser's back closes the overlay exactly like Escape -- and a
+	// deep link's close replaces the entry instead (there is no
+	// in-app history behind it).
+	//
+	// EVERY WRITE IS A ROUTER WALK, never a raw history call: the
+	// router's own URL update is what makes the address reactive, so
+	// the overlay opens, flips and closes from the same `page.url` the
+	// deep link seeds (a bare history write would change the address
+	// bar and leave the page's view of the URL where it was). The walks
+	// hand the frame to the shell's post-navigation reset; the seat
+	// captured on open is restored on close.
+	const overlayId = $derived(page.url.searchParams.get('memory') ?? '');
+	const overlayMode = $derived<MemoryMode>(page.url.searchParams.get('mode') === 'grid' ? 'grid' : 'play');
+	/** The card the overlay opened from: the wall is its reachability gate. */
+	const overlayCard = $derived(memories.find((memory) => memory.id === overlayId) ?? null);
+	/** The overlay's attribution title: the email when the name is not unique. */
+	const overlayOwnerTitle = $derived(overlayCard === null ? undefined : ownerTitle(overlayCard));
+	/** Whether this page pushed the current overlay entry (close goes back). */
+	let pushedOverlay = false;
+	/** The wall's scroll seat when the overlay opened: the shell resets
+	 *  the frame on every non-popstate walk, so the overlay's router
+	 *  walks would strand the reader at the top of the wall on close;
+	 *  the seat hands back the card they left. */
+	let wallScrollSeat = 0;
+	let overlayWasOpen = false;
+
+	$effect(() => {
+		const openNow = overlayId !== '';
+		if (overlayWasOpen && !openNow) {
+			const seat = document.querySelector('main');
+			if (seat !== null) {
+				seat.scrollTop = wallScrollSeat;
+			}
 		}
+		overlayWasOpen = openNow;
+	});
+
+	/** Open the playback overlay on one memory (a card click). */
+	function openMemory(id: string): void {
+		const seat = document.querySelector('main');
+		if (seat !== null) {
+			wallScrollSeat = seat.scrollTop;
+		}
+		const url = new URL(page.url);
+		url.searchParams.set('memory', id);
+		url.searchParams.delete('mode');
+		pushedOverlay = true;
+		void goto(url, { noScroll: true });
+	}
+
+	/** Close the overlay: back through our own push, replace for a deep link. */
+	function closeMemory(): void {
+		if (pushedOverlay) {
+			pushedOverlay = false;
+			history.back();
+			return;
+		}
+		const url = new URL(page.url);
+		url.searchParams.delete('memory');
+		url.searchParams.delete('mode');
+		void goto(url, { replaceState: true, noScroll: true });
+	}
+
+	/** Flip the overlay's face (the grid is a state of the same entry). */
+	function changeMemoryMode(mode: MemoryMode): void {
+		const url = new URL(page.url);
+		if (mode === 'grid') {
+			url.searchParams.set('mode', 'grid');
+		} else {
+			url.searchParams.delete('mode');
+		}
+		void goto(url, { replaceState: true, noScroll: true });
 	}
 
 	// The creation write: the refetch the write's SSE echo triggers
@@ -200,7 +284,7 @@
 	<title>{$_('memories_title')} · lumemor</title>
 </svelte:head>
 
-<section class="memories max-w-[1200px] mx-auto px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
+<section class="memories w-full px-4 pt-4 pb-12" aria-busy={status === 'loading'}>
 	<!-- THE ONE ROW: the page title with its count on the left, the
 	     creation on the right, one divider under the row (the count
 	     never takes a row of its own, and the loading face counts
@@ -252,8 +336,13 @@
 			/>
 		{:else}
 			<!-- ONE grid: own and shared memories mixed by recency, no
-			     group labels. -->
-			<div class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(min(220px,100%),1fr))] gap-3">
+			     group labels. The column floor is the fixed 280px (a
+			     third of the band minus the two 16px gaps), so the
+			     count tops out at three however wide the viewport
+			     grows -- and the cards widen with it. -->
+			<div
+				class="memories__grid grid grid-cols-[repeat(auto-fill,minmax(max(280px,calc((100%_-_32px)/3)),1fr))] gap-4"
+			>
 				{#each memoryCards as memory (memory.id)}
 					{@render card(memory)}
 				{/each}
@@ -274,40 +363,30 @@
 </section>
 
 {#snippet card(memory: AlbumSummary)}
-	<!-- One memory card: the collage cover, the title, the count, then the
-	     badge row -- the manual origin badge on an own card, the owner
-	     attribution beside the read-only badge on a shared one (the
-	     attribution rules). No exclusion badge anywhere: a memory never feeds
-	     its creator's timeline. -->
-	<a
-		class="memory-card flex flex-col overflow-hidden rounded-card bg-card border border-border no-underline text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
-		href="/memories/{encodeURIComponent(memory.id)}"
+	<!-- One memory card: the 3:1 band (up to six frames, 3 across 2
+	     down), then the ONE caption row -- the title on the left, the
+	     count and the badges no-wrap on the right. The band's cells
+	     carry the same 1px seam the design's strip does. -->
+	{@const frames = memory.coverAssetIds.slice(0, COVER_FRAMES)}
+	<button
+		class="memory-card group flex w-full flex-col overflow-hidden rounded-card bg-card border border-border text-left text-text cursor-pointer transition-[border-color,box-shadow] duration-(--motion-fast) ease-standard hover:border-accent hover:shadow-card"
+		type="button"
+		onclick={() => openMemory(memory.id)}
 	>
-		<span
-			class="memory-card__cover {coverClass(
-				memory.coverAssetIds.length
-			)} relative block aspect-[4/3] bg-accent-soft"
-			aria-hidden="true"
-		>
-			{#if memory.coverAssetIds.length === 1}
-				<img
-					class="absolute inset-0 w-full h-full object-cover"
-					src={`/api/v1/assets/${encodeURIComponent(memory.coverAssetIds[0] ?? '')}/thumbnail?size=tile`}
-					alt=""
-					loading="lazy"
-					decoding="async"
-					draggable="false"
-				/>
-			{:else if memory.coverAssetIds.length > 1}
-				<!-- The collage cells: the 2+1 fall's third cell spans both
-				     columns, the quad fills the 2x2 grid. -->
-				<span class="memory-card__cells grid grid-cols-2 absolute inset-0">
-					{#each memory.coverAssetIds.slice(0, 4) as coverId, index (coverId)}
-						<span
-							class="memory-card__cell {memory.coverAssetIds.length === 3 && index === 2
-								? 'memory-card__cell--wide col-span-2'
-								: ''} overflow-hidden"
-						>
+		<span class="memory-card__cover relative block aspect-[3/1] overflow-hidden bg-accent-soft" aria-hidden="true">
+			{#if frames.length > 0}
+				<!-- One frame fills the band, two split it, three or more
+				     fill the 3x2 strip in order; every cell crops its
+				     frame (object-cover), so the strip never letterboxes. -->
+				<span
+					class="memory-card__frames absolute inset-0 grid gap-px {frames.length === 1
+						? 'grid-cols-1'
+						: frames.length === 2
+							? 'grid-cols-2'
+							: 'grid-cols-3 grid-rows-2'}"
+				>
+					{#each frames as coverId (coverId)}
+						<span class="memory-card__frame relative overflow-hidden">
 							<img
 								class="w-full h-full object-cover"
 								src={`/api/v1/assets/${encodeURIComponent(coverId)}/thumbnail?size=tile`}
@@ -319,59 +398,50 @@
 						</span>
 					{/each}
 				</span>
-			{:else}
-				<!-- A bare memory: the honest placeholder, no requests. -->
-				<span class="memory-card__placeholder absolute inset-0 grid place-items-center text-text-faint">
-					<svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-						<path
-							d="M4 7c0-1.1.9-2 2-2l1.7.0a2 2 0 0 1 1.7 1l.8 1.4a2 2 0 0 0 1.7 1H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linejoin="round"
-						/>
-					</svg>
-				</span>
 			{/if}
 		</span>
-		<span class="memory-card__caption flex flex-col gap-0.5 px-3 py-2.5">
-			<span class="memory-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
+		<span class="memory-card__caption flex items-center gap-3 px-4 py-3">
+			<span
+				class="memory-card__title min-w-0 flex-1 truncate font-display font-bold text-[20px] leading-[1.3] text-text"
 				>{memory.title}</span
 			>
-			<CountLabel
-				class="memory-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
-				count={memory.itemCount}
-				label={$_('memories_photo_count', { values: { count: memory.itemCount } })}
-			/>
-			<span class="memory-card__badges mt-0.5 flex flex-wrap items-center gap-1.5">
-				{#if memory.callerRole === 'owner'}
-					<!-- The manual origin badge: the reference set the owner
-					     curated photo by photo. -->
-					<span
-						class="memory-card__badge memory-card__badge--manual inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
-					>
-						{$_('memories_manual_badge')}
-					</span>
-				{:else}
-					<!-- The shared face: who shared it, then what it means for
-					     the member -- the attribution and the read-only mark
-					     ride one line. -->
-					{#if memory.owner !== undefined}
+			<span class="memory-card__meta flex shrink-0 items-center gap-3">
+				<CountLabel
+					class="memory-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+					count={memory.itemCount}
+					label={$_('memories_photo_count', { values: { count: memory.itemCount } })}
+				/>
+				<span class="memory-card__badges flex items-center gap-1.5 whitespace-nowrap">
+					{#if memory.callerRole === 'owner'}
+						<!-- The manual origin badge: the reference set the owner
+						     curated photo by photo. -->
 						<span
-							class="memory-card__badge memory-card__badge--owner inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
-							title={ownerTitle(memory)}
+							class="memory-card__badge memory-card__badge--manual inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
 						>
-							{$_('albums_shared_by', { values: { name: ownerLabel(memory) } })}
+							{$_('memories_manual_badge')}
+						</span>
+					{:else}
+						<!-- The shared face: who shared it, then what it means for
+						     the member -- the attribution and the read-only mark
+						     ride the caption's right end. -->
+						{#if memory.owner !== undefined}
+							<span
+								class="memory-card__badge memory-card__badge--owner inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+								title={ownerTitle(memory)}
+							>
+								{$_('albums_shared_by', { values: { name: ownerLabel(memory) } })}
+							</span>
+						{/if}
+						<span
+							class="memory-card__badge memory-card__badge--readonly inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
+						>
+							{$_('shared_readonly_badge')}
 						</span>
 					{/if}
-					<span
-						class="memory-card__badge memory-card__badge--readonly inline-flex items-center gap-1 px-1.5 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-faint border border-border rounded-control whitespace-nowrap"
-					>
-						{$_('shared_readonly_badge')}
-					</span>
-				{/if}
+				</span>
 			</span>
 		</span>
-	</a>
+	</button>
 {/snippet}
 
 <CreateMemoryDialog
@@ -382,3 +452,42 @@
 	onsubmit={(title, audience) => void submitCreate(title, audience)}
 	ondone={finishCreate}
 />
+
+<!-- The playback overlay: the reference set's own face, opened over
+     this page. A deep link (`?memory=<id>`) mounts it before the wall
+     settles -- the wall's answer then decides whether it opens. -->
+{#if overlayId !== ''}
+	<MemoryOverlay
+		open={true}
+		memoryId={overlayId}
+		card={overlayCard}
+		wallStatus={status}
+		wallErrorKey={errorKey}
+		ownerTitle={overlayOwnerTitle}
+		mode={overlayMode}
+		onclose={closeMemory}
+		onmodechange={changeMemoryMode}
+		onretrywall={() => void runLoad(false)}
+	/>
+{/if}
+
+<style>
+	/* The band's hover push: the cover's frames step 2% toward the
+	 * reader while the card's border warms. The global reduced-motion
+	 * collapse only flattens the transition's duration, so the
+	 * transform itself is suppressed here -- a motion-sensitive
+	 * reader gets a static cover. */
+	.memory-card__frames {
+		transition: transform var(--motion-base) var(--ease-standard);
+	}
+
+	.memory-card:hover .memory-card__frames {
+		transform: scale(1.02);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.memory-card:hover .memory-card__frames {
+			transform: none;
+		}
+	}
+</style>

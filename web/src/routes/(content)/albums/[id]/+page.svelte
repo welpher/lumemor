@@ -233,13 +233,14 @@
 	/** Apply one detail outcome; the superseded runs never call this. */
 	function apply(outcome: Awaited<ReturnType<typeof fetchAlbumDetail>>): void {
 		if (outcome.ok) {
-			// THE MEMORY HAND-OVER: a memory-typed id bounces to its
-			// own route (the memory's curation face); this page keeps
-			// rendering nothing for it.
+			// THE MEMORY HAND-OVER: a memory-typed id bounces to the
+			// memory wall's playback overlay (the reference set's own
+			// face, opened over its wall); this page keeps rendering
+			// nothing for it.
 			if (outcome.detail.type === 'memory') {
 				detail = null;
 				status = 'loading';
-				void goto(`/memories/${encodeURIComponent(outcome.detail.id)}`);
+				void goto(`/memories?memory=${encodeURIComponent(outcome.detail.id)}`);
 				return;
 			}
 			detail = outcome.detail;
