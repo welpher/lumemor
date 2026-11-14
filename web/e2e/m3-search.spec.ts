@@ -315,9 +315,10 @@ test.describe('the signed-in scenes', () => {
 		// accessible name.
 		await expect(card.locator('.place-card__count')).toHaveAttribute('aria-label', '1 photo');
 
-		// The map placeholder's honest copy (the tile decision is a
-		// later update; the city grouping comes first).
-		await expect(page.getByText(/self-hosted tile decision in a later update/)).toBeVisible();
+		// The view switch: the list is the current face, the map is the
+		// page's other half (its own address).
+		await expect(page.locator('[data-places-mode="list"]')).toHaveAttribute('aria-current', 'page');
+		await expect(page.locator('[data-places-mode="map"]')).toHaveAttribute('href', '/places?mode=map');
 
 		// The deep link: the card navigates into the filtered browse
 		// -- the search page owns the filter state.
