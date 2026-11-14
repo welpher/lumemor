@@ -13,6 +13,8 @@ const paris: PlaceSummary = {
 	name: 'Paris',
 	country: 'FR',
 	assetCount: 17,
+	latitude: 48.85341,
+	longitude: 2.3488,
 	representativeCoverAssetIds: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72', '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73']
 };
 
@@ -21,6 +23,8 @@ const beijing: PlaceSummary = {
 	name: '北京',
 	country: 'CN',
 	assetCount: 42,
+	latitude: 39.9075,
+	longitude: 116.39723,
 	representativeCoverAssetIds: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70']
 };
 

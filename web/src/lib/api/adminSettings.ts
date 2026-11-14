@@ -341,3 +341,170 @@ export async function saveTranscodingSettings(
 	}
 	return { ok: true, settings: saved };
 }
+
+/** The release check's settings, exactly the contract's shape. */
+export type UpdateCheckSettings = components['schemas']['UpdateCheckSettingsResponse'];
+
+/** The map's tile source settings, exactly the contract's shape. */
+export type TilesSettings = components['schemas']['TilesSettingsResponse'];
+
+/** The model store's policy, exactly the contract's shape. */
+export type ModelSettings = components['schemas']['ModelSettingsResponse'];
+
+/** A settings read's outcome: the document, or the failure's i18n key. */
+export type NetworkingSettingsResult<T> = { ok: true; settings: T } | { ok: false; errorKey: string };
+
+const UPDATE_CHECK_SETTINGS_ENDPOINT = '/api/v1/admin/settings/update-check';
+const TILES_SETTINGS_ENDPOINT = '/api/v1/admin/settings/tiles';
+const MODEL_SETTINGS_ENDPOINT = '/api/v1/admin/settings/models';
+
+/** Structurally validate one release check settings body; null when it is not one. */
+function updateCheckSettingsFrom(body: unknown): UpdateCheckSettings | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<UpdateCheckSettings>;
+	if (
+		typeof candidate.enabled !== 'boolean' ||
+		typeof candidate.endpoint !== 'string' ||
+		typeof candidate.intervalHours !== 'number' ||
+		!Number.isInteger(candidate.intervalHours)
+	) {
+		return null;
+	}
+	return body as UpdateCheckSettings;
+}
+
+/** Structurally validate one tile settings body; null when it is not one. */
+function tilesSettingsFrom(body: unknown): TilesSettings | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<TilesSettings>;
+	if (typeof candidate.tilejsonUrl !== 'string') {
+		return null;
+	}
+	return body as TilesSettings;
+}
+
+/** Structurally validate one model settings body; null when it is not one. */
+function modelSettingsFrom(body: unknown): ModelSettings | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<ModelSettings>;
+	if (typeof candidate.autoDownload !== 'boolean') {
+		return null;
+	}
+	return body as ModelSettings;
+}
+
+/** One settings read over a JSON endpoint (the admin settings shape). */
+async function readSettings<T>(
+	endpoint: string,
+	validate: (body: unknown) => T | null,
+	fetcher: typeof fetch
+): Promise<NetworkingSettingsResult<T>> {
+	let response: Response;
+	try {
+		response = await apiFetch(endpoint, undefined, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const settings = validate(body);
+	if (settings === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, settings };
+}
+
+/** One settings save over a JSON endpoint (the admin settings shape). */
+async function writeSettings<T>(
+	endpoint: string,
+	payload: unknown,
+	validate: (body: unknown) => T | null,
+	fetcher: typeof fetch
+): Promise<NetworkingSettingsResult<T>> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			endpoint,
+			{
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const settings = validate(body);
+	if (settings === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, settings };
+}
+
+/** GET /api/v1/admin/settings/update-check: the release check's knobs. */
+export function getUpdateCheckSettings(
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<UpdateCheckSettings>> {
+	return readSettings(UPDATE_CHECK_SETTINGS_ENDPOINT, updateCheckSettingsFrom, fetcher);
+}
+
+/** PUT /api/v1/admin/settings/update-check: save the switch, the feed and the cadence. */
+export function saveUpdateCheckSettings(
+	settings: UpdateCheckSettings,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<UpdateCheckSettings>> {
+	return writeSettings(UPDATE_CHECK_SETTINGS_ENDPOINT, settings, updateCheckSettingsFrom, fetcher);
+}
+
+/** GET /api/v1/admin/settings/tiles: the map's tile source ('' when none). */
+export function getTilesSettings(
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<TilesSettings>> {
+	return readSettings(TILES_SETTINGS_ENDPOINT, tilesSettingsFrom, fetcher);
+}
+
+/** PUT /api/v1/admin/settings/tiles: save the tile source ('' clears it). */
+export function saveTilesSettings(
+	tilejsonUrl: string,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<TilesSettings>> {
+	return writeSettings(TILES_SETTINGS_ENDPOINT, { tilejsonUrl }, tilesSettingsFrom, fetcher);
+}
+
+/** GET /api/v1/admin/settings/models: the model store's policy. */
+export function getModelSettings(
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<ModelSettings>> {
+	return readSettings(MODEL_SETTINGS_ENDPOINT, modelSettingsFrom, fetcher);
+}
+
+/** PUT /api/v1/admin/settings/models: save the automatic download switch. */
+export function saveModelSettings(
+	settings: ModelSettings,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<ModelSettings>> {
+	return writeSettings(MODEL_SETTINGS_ENDPOINT, settings, modelSettingsFrom, fetcher);
+}
