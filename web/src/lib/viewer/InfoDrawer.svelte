@@ -37,6 +37,14 @@
 	// the brand language (no heavy borders, feather shadows): the EXIF
 	// groups dropped their card borders for the same row rhythm.
 	//
+	// THE LOCATION CARD: the asset's own coordinates (its EXIF
+	// position) under the resolved city row -- the same map component
+	// the places tab uses, in its single-point form. The tile source
+	// is the instance's one configured source (the browser loads it);
+	// with no source, or an unreachable one, the card states the
+	// absence and keeps the coordinates, which are the fact the
+	// camera recorded.
+	//
 	// The drawer is presentation and edit-mode state only: the page
 	// owns the detail and every network call, through the
 	// onedit / onassignface callbacks. Escape does not close it from
@@ -67,6 +75,7 @@
 	import Tag from '@lucide/svelte/icons/tag';
 	import Camera from '@lucide/svelte/icons/camera';
 	import MapPin from '@lucide/svelte/icons/map-pin';
+	import MapView, { type MapState } from '$lib/map/MapView.svelte';
 
 	type Props = {
 		/** The current asset's detail (the page's local, optimistic copy). */
@@ -349,6 +358,17 @@
 		detail.place === null ? undefined : `/search?placeIds=${encodeURIComponent(String(detail.place.placeId))}`
 	);
 	const place: AssetPlaceRef | null = $derived(detail.place);
+
+	// The camera's own position, when the file carried one. A pair
+	// only counts when both halves are numbers: half a coordinate is
+	// no location.
+	const coordinates = $derived<{ lat: number; lon: number } | null>(
+		typeof detail.exif?.lat === 'number' && typeof detail.exif?.lon === 'number'
+			? { lat: detail.exif.lat, lon: detail.exif.lon }
+			: null
+	);
+	/** The mini map's base-layer state (the component's own notice renders it). */
+	let locationState = $state<MapState>('loading');
 </script>
 
 <!-- The shared fact-row language: the label column faint, the
@@ -755,6 +775,30 @@
 				<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">
 					{$_('viewer_places_placeholder')}
 				</p>
+			{/if}
+
+			<!-- The capture location card: the small map over the
+			     coordinates the file recorded, the coordinates printed
+			     beneath (the fact survives any tile source's absence). -->
+			{#if coordinates !== null}
+				<div
+					class="info__location mt-1.5 overflow-hidden rounded-control border border-border bg-card"
+					data-testid="viewer-location"
+				>
+					<div class="relative h-[150px]">
+						<MapView
+							point={coordinates}
+							cluster={false}
+							label={$_('viewer_location_map_label')}
+							bind:tiles={locationState}
+						/>
+					</div>
+					<p
+						class="info__location-coords m-0 border-t border-border px-2.5 py-1.5 font-mono font-normal text-[11px] leading-[1.4] text-text-faint tabular-nums"
+					>
+						{coordinates.lat.toFixed(4)}, {coordinates.lon.toFixed(4)}
+					</p>
+				</div>
 			{/if}
 		</section>
 	</div>

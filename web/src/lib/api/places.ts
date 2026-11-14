@@ -66,6 +66,17 @@ function placeFrom(body: unknown): PlaceSummary | null {
 	) {
 		return null;
 	}
+	// The place's own coordinate: the map face pins it. A grouping
+	// answer without it cannot draw the map, so it is a shape failure
+	// rather than a silently misplaced pin.
+	if (
+		typeof candidate.latitude !== 'number' ||
+		!Number.isFinite(candidate.latitude) ||
+		typeof candidate.longitude !== 'number' ||
+		!Number.isFinite(candidate.longitude)
+	) {
+		return null;
+	}
 	// The contract pins at least one cover candidate, but the card
 	// renders an honest placeholder for a bare group -- the types
 	// are what must hold, the cardinality degrades gracefully.

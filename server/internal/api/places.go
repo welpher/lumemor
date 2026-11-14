@@ -116,9 +116,13 @@ func (s *server) ListPlaces(w http.ResponseWriter, r *http.Request, params apige
 			continue
 		}
 		places = append(places, apigen.PlaceSummary{
-			PlaceId:                     row.ID,
-			Name:                        row.Name,
-			Country:                     row.CountryCode,
+			PlaceId: row.ID,
+			Name:    row.Name,
+			Country: row.CountryCode,
+			// The place record's own coordinate: the map face pins it,
+			// and it is GeoNames' city point -- never a photo's.
+			Latitude:                    row.Lat,
+			Longitude:                   row.Lon,
 			AssetCount:                  int(row.AssetCount),
 			RepresentativeCoverAssetIds: candidates,
 		})
