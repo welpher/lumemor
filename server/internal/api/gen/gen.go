@@ -3823,8 +3823,10 @@ type UpdateCheckResponse struct {
 	// Examples: 0.4.1, dev
 	CurrentVersion string `json:"currentVersion"`
 
-	// Enabled Whether a check runs at all: the settings switch AND the
-	// deployment's own switch, both closed for `true`.
+	// Enabled Whether a check runs at all: both switches -- the
+	// settings switch and the deployment's own -- are open
+	// (neither one is off) for `true`; either one off answers
+	// `false`.
 	Enabled bool `json:"enabled"`
 
 	// LatestVersion The newest tag the feed named, verbatim including its

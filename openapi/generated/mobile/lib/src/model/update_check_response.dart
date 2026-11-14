@@ -12,14 +12,14 @@ part 'update_check_response.g.dart';
 /// The instance's release check state, served by `GET /server/update-check` and the manual `POST`. 
 ///
 /// Properties:
-/// * [enabled] - Whether a check runs at all: the settings switch AND the deployment's own switch, both closed for `true`. 
+/// * [enabled] - Whether a check runs at all: both switches -- the settings switch and the deployment's own -- are open (neither one is off) for `true`; either one off answers `false`. 
 /// * [status] 
 /// * [currentVersion] - The running server version -- the build's version string, verbatim (development builds report `dev`, which the comparison cannot rank; such an instance stays `unknown`). 
 /// * [latestVersion] - The newest tag the feed named, verbatim including its `v` prefix, or null when no probe has succeeded yet. 
 /// * [checkedAt] - When the last probe completed, successful or not; null before the first probe. The settings face renders it as the quiet \"last checked\" line when a probe failed. 
 @BuiltValue()
 abstract class UpdateCheckResponse implements Built<UpdateCheckResponse, UpdateCheckResponseBuilder> {
-  /// Whether a check runs at all: the settings switch AND the deployment's own switch, both closed for `true`. 
+  /// Whether a check runs at all: both switches -- the settings switch and the deployment's own -- are open (neither one is off) for `true`; either one off answers `false`. 
   @BuiltValueField(wireName: r'enabled')
   bool get enabled;
 
