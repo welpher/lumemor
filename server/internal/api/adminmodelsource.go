@@ -361,6 +361,16 @@ func (s *server) switchCustom(w http.ResponseWriter, r *http.Request, slotVal ap
 		return
 	}
 
+	// The warned path keeps its promise: an activation through a
+	// host the settings never declared is recorded in the server's
+	// log -- the copy says the use is logged, so the use is logged.
+	// The record carries the digest and the slot; the host itself is
+	// the probe reason's business (the warning names it).
+	if !record.Declared {
+		s.logger.Warn("a custom model source from an undeclared host was switched in",
+			"slot", string(slotVal), "sha256", record.SHA256, "probe", record.ID)
+	}
+
 	// The same-bytes reuse: a registration whose primary digest
 	// matches the staged bytes is the model to activate, and the
 	// staged file is dropped -- the same bytes are never stored
@@ -414,14 +424,27 @@ func (s *server) activateAndRecalc(w http.ResponseWriter, r *http.Request, slotV
 	// The destructive arm's gate: a cross-dimension embed switch
 	// wipes the column inside the activation transaction, so the
 	// confirmation is the request's own field. The current dimension
-	// is the database catalog's truth, never an assumption.
+	// is the database catalog's truth, never an assumption -- and a
+	// read that cannot be made answers an error, never a silent
+	// pass: the gate must fail closed like the transaction it guards.
 	var requireConfirm bool
 	if slotVal == apigen.ClipEmbed {
-		if currentDim, err := ml.EmbeddingColumnDim(ctx, s.pool); err == nil && currentDim > 0 {
-			row, rowErr := s.queries.ModelByID(ctx, modelID)
-			if rowErr == nil && row.Dim.Valid && int(row.Dim.Int32) != currentDim {
-				requireConfirm = true
-			}
+		currentDim, err := ml.EmbeddingColumnDim(ctx, s.pool)
+		if err != nil {
+			s.internalError(w, r, "read the embedding dimension", err)
+			return nil
+		}
+		if currentDim <= 0 {
+			s.internalError(w, r, "the embedding dimension is absent", errors.New("dimension not present"))
+			return nil
+		}
+		row, rowErr := s.queries.ModelByID(ctx, modelID)
+		if rowErr != nil {
+			s.internalError(w, r, "read the target model", rowErr)
+			return nil
+		}
+		if row.Dim.Valid && int(row.Dim.Int32) != currentDim {
+			requireConfirm = true
 		}
 	}
 	if requireConfirm && !confirmWipe {

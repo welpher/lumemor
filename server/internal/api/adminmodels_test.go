@@ -13,9 +13,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -131,7 +133,9 @@ func (s *stubMlReruns) EnqueueMlRerun(ctx context.Context, slot ml.Slot) (uuid.U
 // adminModelsEnv provisions the surface's test environment: a migrated
 // throwaway database, a real registry over a throwaway models dir
 // carrying the given fixtures, the router wired to the stub rerun
-// seam, and both an administrator and a plain signed-in user.
+// seam, and both an administrator and a plain signed-in user. The
+// router's logger writes into the env's buffer so the tests can pin
+// the server's log lines.
 type adminModelsEnv struct {
 	router    http.Handler
 	pool      *pgxpool.Pool
@@ -141,6 +145,7 @@ type adminModelsEnv struct {
 	cookie    *http.Cookie
 	plain     *http.Cookie
 	ownerID   uuid.UUID
+	logs      *bytes.Buffer
 }
 
 // newAdminModelsEnv provisions the environment with the given fixture
@@ -162,9 +167,11 @@ func newAdminModelsEnvHosts(t *testing.T, hosts func() []string, fixtures ...adm
 	}
 	registry := ml.NewRegistry(pool, dbgen.New(pool), modelsDir)
 	stub := &stubMlReruns{id: uuid.MustParse("0192f8b1-4c5d-8e9f-a0b1-2c3d4e5f6a70")}
+	logs := &bytes.Buffer{}
 	router := NewRouter(&Deps{
 		Pool:       pool,
 		Version:    testVersion,
+		Logger:     slog.New(slog.NewTextHandler(logs, nil)),
 		Models:     registry,
 		ModelsDir:  modelsDir,
 		MlReruns:   stub,
@@ -193,6 +200,7 @@ func newAdminModelsEnvHosts(t *testing.T, hosts func() []string, fixtures ...adm
 		cookie:    cookie,
 		plain:     plain,
 		ownerID:   adminID,
+		logs:      logs,
 	}
 }
 
