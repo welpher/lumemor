@@ -448,6 +448,10 @@ else
     # The upstream mode: empty keeps the pinned upstreams, a host
     # name routes the HF URLs through a domain mirror.
     export LUMEMOR_MODELS_HF_MIRROR="$hf_mirror"
+# The suites never reach the outside world: the release check is off
+# at the deployment level for every acceptance stack (its own request
+# would be the only outbound one the stories do not stub).
+export LUMEMOR_UPDATE_CHECK_DISABLED=1
     if [ -n "$hf_mirror" ]; then
         echo "==> download source: upstream through the HF mirror $hf_mirror"
     else

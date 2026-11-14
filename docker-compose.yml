@@ -115,6 +115,20 @@ services:
       # other host untouched. Empty keeps the manifest's pinned
       # upstreams.
       LUMEMOR_MODELS_HF_MIRROR: ${LUMEMOR_MODELS_HF_MIRROR:-}
+      # Optional passthrough: turn the scheduled release check off at
+      # the deployment level (the test harness does, so no stack it
+      # boots ever reaches the outside world). Unset or empty keeps the
+      # check under the admin settings switch alone; the proxy
+      # environment below is what the check's request travels through.
+      LUMEMOR_UPDATE_CHECK_DISABLED: ${LUMEMOR_UPDATE_CHECK_DISABLED:-}
+      # The forward proxy the instance's outbound requests travel
+      # through (the release check), when the deployment reaches the
+      # outside world through one; Docker Desktop reaches the host's
+      # proxy at host.docker.internal. no_proxy keeps the host-side
+      # services reachable directly.
+      https_proxy: ${https_proxy:-}
+      http_proxy: ${http_proxy:-}
+      no_proxy: ${no_proxy:-}
     # No app healthcheck in M1: /healthz exists, but compose-level
     # dependency gating on the server is deferred until the container
     # gains something meaningful to probe beyond liveness.

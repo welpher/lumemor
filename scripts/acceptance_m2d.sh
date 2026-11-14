@@ -101,6 +101,11 @@ docker compose run --rm --no-deps --entrypoint /bin/sh -u 0 lumemor \
     -c 'chown -R 10001:10001 /var/lib/lumemor' \
     || fail "chown of ./lumemor to 10001:10001 through the image failed"
 
+# The suites never reach the outside world: the release check is off
+# at the deployment level for every acceptance stack (its own request
+# would be the only outbound one the stories do not stub).
+export LUMEMOR_UPDATE_CHECK_DISABLED=1
+
 echo "==> building and starting the stack"
 docker compose up -d --build || fail "docker compose up -d --build failed"
 
