@@ -12,17 +12,39 @@
 	// stream is alive. History rows are static, and the unmount
 	// unsubscribes both.
 	//
+	// THE FOUR STATES, FOUR SHAPES (not one row with a swapped badge):
+	// a queued run draws NO progress bar -- it has not touched any
+	// work yet, and a bar at zero would read as a stalled run; a
+	// running run carries the live bar, its counts and its start; a
+	// succeeded run carries the closed bar, its counts, the finish
+	// time and how long it took; a failed run carries the bar in the
+	// danger color stopping where the work broke, the REASON --
+	// derived from what the panel can honestly know, never the bare
+	// word "failed" -- and a retry only where the run's kind has a
+	// trigger the web surface owns.
+	//
 	// THE PROGRESS UNITS: each run's counts carry its own work's
 	// units -- the model download's are pinned bytes (rendered as
 	// megabytes), the reruns' are asset counts, the rescan's are
 	// resolved source entries. The kind decides the formatting;
 	// the numbers themselves are the row's.
+	//
+	// THE FAILED REASON: the listing carries counts, never the
+	// worker's error text, so the panel derives the diagnosis from
+	// state it has. When the run's dependency is a model, the models
+	// read says whether that slot actually has one; when it does not,
+	// the row names the missing download and points at the models
+	// page. Otherwise the row reports the failed count in the run's
+	// units and names where the detail lives (the server's log --
+	// the deployment's own surface, which no web route mirrors).
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
 	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
 	import { listJobRuns, type JobRun } from '$lib/api/jobruns';
-	import { formatMegabytes } from '$lib/format';
+	import { listModels, rerunModel, startModelDownload, type AdminModel, type ModelSlotId } from '$lib/api/models';
+	import { reresolvePlaces } from '$lib/api/places';
+	import { formatMegabytes, formatDuration } from '$lib/format';
 	import { subscribeJobEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -48,11 +70,39 @@
 		failed: 'admin_jobs_state_failed'
 	};
 
+	/**
+	 * The rerun kinds whose work one model backs: the run's
+	 * dependency, and the model the retry re-runs.
+	 */
+	const RERUN_SLOTS: Readonly<Record<string, ModelSlotId>> = {
+		face_detect_rerun: 'face_detect',
+		face_recognize_rerun: 'face_recognize',
+		clip_embed_rerun: 'clip_embed',
+		ocr_rerun: 'ocr'
+	};
+
+	/** The slot label keys (the models page's own vocabulary). */
+	const SLOT_LABEL_KEYS: Readonly<Record<ModelSlotId, string>> = {
+		face_detect: 'admin_models_slot_face_detect',
+		face_recognize: 'admin_models_slot_face_recognize',
+		clip_embed: 'admin_models_slot_clip_embed',
+		clip_text: 'admin_models_slot_clip_text',
+		ocr: 'admin_models_slot_ocr'
+	};
+
 	let jobs = $state<JobRun[]>([]);
+	/** The models read behind the retry matrix and the missing-dependency diagnosis. */
+	let models = $state<AdminModel[]>([]);
 	let status = $state<ListStatus>('idle');
 	let errorKey = $state('');
 	/** Bumping re-runs the listing (the retry button, the convergence). */
 	let retryTick = $state(0);
+	/** Bumping re-reads the models (the mount, a retry that may have changed them). */
+	let modelsTick = $state(0);
+	/** The failed run whose retry is in flight (null while none). */
+	let retrying = $state<string | null>(null);
+	/** The last failed retry, pinned to its row (null while none). */
+	let retryError = $state<{ jobId: string; errorKey: string } | null>(null);
 
 	const activeLocale = $derived($locale ?? 'en');
 	/** The fallback poll's cadence, in milliseconds. */
@@ -78,6 +128,26 @@
 			}
 			jobs = outcome.jobs;
 			status = 'ready';
+		})();
+		return () => {
+			current = false;
+		};
+	});
+
+	// The models read stands apart from the listing's tick: it is the
+	// dependency probe's fact, not the runs' state, so the 5-second
+	// convergence never re-reads it. Its failure never fails the panel
+	// -- the rows simply lose the model-backed retry and the
+	// missing-dependency wording.
+	$effect(() => {
+		void modelsTick;
+		let current = true;
+		void (async () => {
+			const outcome = await listModels();
+			if (!current || !outcome.ok) {
+				return;
+			}
+			models = outcome.models;
 		})();
 		return () => {
 			current = false;
@@ -167,13 +237,101 @@
 			new Date(value)
 		);
 	}
+
+	/** How long a closed run took, at the wall's m:ss rhythm. */
+	function durationLabel(job: JobRun): string {
+		if (job.startedAt === null || job.finishedAt === null) {
+			return '';
+		}
+		return formatDuration(new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime());
+	}
+
+	/** The slot a run's work depends on, when one model backs it. */
+	function neededSlot(job: JobRun): ModelSlotId | null {
+		return RERUN_SLOTS[job.kind] ?? null;
+	}
+
+	/** The active, downloaded model of a slot (null when the slot has none). */
+	function activeModelOf(slot: ModelSlotId): AdminModel | null {
+		return models.find((model) => model.slot === slot && model.isActive && model.filesPresent) ?? null;
+	}
+
+	/** The slot's label, in the models page's own words. */
+	function slotLabel(slot: ModelSlotId): string {
+		return $_(SLOT_LABEL_KEYS[slot]);
+	}
+
+	/** Whether the failed run's dependency (its model) is missing. */
+	function dependencyMissing(job: JobRun): boolean {
+		const slot = neededSlot(job);
+		// The models read failed or has not landed: claiming a missing
+		// download without the facts would be a guess.
+		if (slot === null || models.length === 0) {
+			return false;
+		}
+		return activeModelOf(slot) === null;
+	}
+
+	/** The missing-dependency sentence of one failed run. */
+	function missingSlotLabel(job: JobRun): string {
+		const slot = neededSlot(job);
+		return slot === null ? '' : $_('admin_jobs_reason_model_missing', { values: { slot: slotLabel(slot) } });
+	}
+
+	/**
+	 * Whether this failed run has a retry the web surface owns: the
+	 * download can be re-joined, the reruns re-post through their
+	 * model, and the places rerun has its own endpoint. The album
+	 * rescan does not -- its run row carries no album id, so the
+	 * trigger belongs to the album page, not here.
+	 */
+	function canRetry(job: JobRun): boolean {
+		if (job.state !== 'failed') {
+			return false;
+		}
+		if (job.kind === 'model_download' || job.kind === 'places_rerun') {
+			return true;
+		}
+		const slot = neededSlot(job);
+		return slot !== null && activeModelOf(slot) !== null;
+	}
+
+	/** Re-post the failed run's own trigger; the listing converges on the new run. */
+	async function retryRun(job: JobRun): Promise<void> {
+		if (retrying !== null) {
+			return;
+		}
+		retrying = job.id;
+		retryError = null;
+		let outcome: { ok: boolean; errorKey?: string };
+		if (job.kind === 'model_download') {
+			outcome = await startModelDownload();
+		} else if (job.kind === 'places_rerun') {
+			outcome = await reresolvePlaces();
+		} else {
+			const slot = neededSlot(job);
+			const model = slot === null ? null : activeModelOf(slot);
+			if (model === null) {
+				retrying = null;
+				return;
+			}
+			outcome = await rerunModel(model.id);
+		}
+		retrying = null;
+		if (!outcome.ok) {
+			retryError = { jobId: job.id, errorKey: outcome.errorKey ?? 'internal' };
+			return;
+		}
+		retryTick += 1;
+		modelsTick += 1;
+	}
 </script>
 
 <svelte:head>
 	<title>Jobs · lumemor</title>
 </svelte:head>
 
-<div class="jobs max-w-[680px] mx-auto flex flex-col gap-5">
+<div class="jobs max-w-[760px] mx-auto flex flex-col gap-5">
 	{#if status === 'loading'}
 		<p class="jobs__status my-12 text-center text-text-soft animate-loading-in" role="status">
 			{$_('admin_jobs_loading')}
@@ -210,6 +368,7 @@
 					<article
 						class="jobs__row flex flex-col gap-2 py-4 px-4.5 bg-card border border-border rounded-card shadow-card"
 						data-job-run-id={job.id}
+						data-job-state={job.state}
 					>
 						<header class="jobs__row-head flex items-center justify-between gap-2.5">
 							<h2 class="jobs__kind font-body font-semibold text-[16px] leading-[1.4] text-text">
@@ -220,35 +379,93 @@
 								>{stateLabel(job)}</span
 							>
 						</header>
-						<div
-							class="jobs__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden animate-progress-in"
-							role="progressbar"
-							aria-valuemin="0"
-							aria-valuemax="100"
-							aria-valuenow={percent(job)}
-						>
+
+						{#if job.state === 'queued'}
+							<!-- A queued run has touched nothing yet: the bar
+							     would sit at zero and read as a stall. -->
+							<p class="jobs__waiting m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft">
+								{$_('admin_jobs_queued_waiting')}
+							</p>
+						{:else}
 							<div
-								class="jobs__progress-fill jobs__progress-fill--{job.state} h-full bg-accent transition-[width] duration-(--motion-base) ease-standard"
-								style="width: {percent(job)}%"
-							></div>
-						</div>
-						<p class="jobs__counts font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums">
-							{progressText(job)}
-							{#if job.failed > 0}
-								<span class="jobs__failed ml-2.5 text-danger-text"
-									>{$_('admin_jobs_failed_count', { values: { count: job.failed } })}</span
-								>
+								class="jobs__progress w-full h-2 bg-accent-soft rounded-control overflow-hidden animate-progress-in"
+								role="progressbar"
+								aria-valuemin="0"
+								aria-valuemax="100"
+								aria-valuenow={percent(job)}
+							>
+								<div
+									class="jobs__progress-fill jobs__progress-fill--{job.state} h-full bg-accent transition-[width] duration-(--motion-base) ease-standard"
+									style="width: {percent(job)}%"
+								></div>
+							</div>
+							<p
+								class="jobs__counts font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums"
+							>
+								{progressText(job)}
+								{#if job.failed > 0}
+									<span class="jobs__failed ml-2.5 text-danger-text"
+										>{$_('admin_jobs_failed_count', { values: { count: job.failed } })}</span
+									>
+								{/if}
+							</p>
+						{/if}
+
+						{#if job.state === 'failed'}
+							<!-- The reason: the row says WHY, never only "failed". -->
+							<p
+								class="jobs__reason m-0 font-body font-normal text-[13px] leading-[1.5] text-danger-text"
+								data-testid="job-reason"
+							>
+								{#if dependencyMissing(job)}
+									{missingSlotLabel(job)}
+									<a
+										class="jobs__reason-link font-semibold text-accent no-underline hover:underline"
+										href="/admin/models"
+									>
+										{$_('admin_jobs_reason_model_link')}
+									</a>
+								{:else if job.failed > 0}
+									{$_(
+										job.kind === 'model_download'
+											? 'admin_jobs_reason_models'
+											: 'admin_jobs_reason_items',
+										{ values: { count: job.failed } }
+									)}
+								{:else}
+									{$_('admin_jobs_reason_stopped')}
+								{/if}
+							</p>
+							{#if canRetry(job)}
+								<div class="jobs__actions flex flex-wrap items-center gap-2">
+									<Button
+										variant="ghost"
+										disabled={retrying !== null}
+										data-testid="job-retry"
+										onclick={() => void retryRun(job)}
+										><RotateCcw size={16} aria-hidden="true" />{$_('admin_jobs_retry')}</Button
+									>
+								</div>
 							{/if}
-						</p>
+							{#if retryError !== null && retryError.jobId === job.id}
+								<p
+									class="jobs__retry-error m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+									role="alert"
+								>
+									{errorText(retryError.errorKey)}
+								</p>
+							{/if}
+						{/if}
+
 						<p class="jobs__times font-body font-normal text-[13px] leading-[1.5] text-text-faint">
 							{#if job.startedAt !== null}
 								{$_('admin_jobs_started', { values: { time: timeLabel(job.startedAt) } })}
-							{:else}
-								{$_('admin_jobs_not_started')}
-							{/if}
-							{#if job.finishedAt !== null}
-								·
-								{$_('admin_jobs_finished', { values: { time: timeLabel(job.finishedAt) } })}
+								{#if job.finishedAt !== null}
+									·
+									{$_('admin_jobs_finished', { values: { time: timeLabel(job.finishedAt) } })}
+									·
+									{$_('admin_jobs_duration', { values: { duration: durationLabel(job) } })}
+								{/if}
 							{/if}
 						</p>
 					</article>
