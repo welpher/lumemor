@@ -777,3 +777,101 @@ func TestTimelinePersonScope(t *testing.T) {
 		}
 	})
 }
+
+// TestTimelinePlaceScope pins the place domain's wall data: the
+// placeIds narrow answers the live assets resolved to those places
+// among the CALLER's visible union -- deduped by asset, in the
+// timeline's ordering with the caller's own favourite flags -- and
+// nothing else: another account's unshared asset at the same place
+// never surfaces, an id no visible asset resolves to reads as the
+// empty list, and the narrows refuse to combine.
+func TestTimelinePlaceScope(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, _ := env.createSecondUser(t, "place-scope-grace@example.com")
+	env.insertPlacesFixture(t)
+
+	// The admin's four Paris assets: two live, one trashed, one
+	// hidden. takenAt ascends with the suffix, so the walk reads
+	// newest first.
+	a1 := placeAssetID("31")
+	a2 := placeAssetID("32")
+	aTrash := placeAssetID("33")
+	aHidden := placeAssetID("34")
+	env.insertOwnedAsset(t, a1, adminID, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, a2, adminID, time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, aTrash, adminID, time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC), timelineAssetOpts{deleted: true})
+	env.insertOwnedAsset(t, aHidden, adminID, time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC), timelineAssetOpts{isHidden: true})
+	env.exec(t, "UPDATE assets SET place_id = $1 WHERE id = ANY($2)",
+		placeParisID, []uuid.UUID{a1, a2, aTrash, aHidden})
+
+	// The admin's one Beijing asset: the union of two places is the
+	// map panel's bubble read.
+	aBeijing := placeAssetID("35")
+	env.insertOwnedAsset(t, aBeijing, adminID, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.exec(t, "UPDATE assets SET place_id = $1 WHERE id = $2", placeBeijingID, aBeijing)
+
+	// Grace's own Paris asset: visible to her walk, never the admin's.
+	gParis := placeAssetID("36")
+	env.insertOwnedAsset(t, gParis, graceID, time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.exec(t, "UPDATE assets SET place_id = $1 WHERE id = $2", placeParisID, gParis)
+
+	// The admin favourites a1: the per-user flag rides the place walk.
+	if _, err := env.pool.Exec(t.Context(),
+		"INSERT INTO user_favorites (user_id, asset_id) VALUES ($1, $2)",
+		pgUUID(adminID), pgUUID(a1)); err != nil {
+		t.Fatalf("seed the favourite row: %v", err)
+	}
+
+	t.Run("PlaceWalkIsLiveAndCallerScoped", func(t *testing.T) {
+		page := env.getTimeline(t, env.cookie, fmt.Sprintf("placeIds=%d", placeParisID))
+		requireTimelineIDs(t, page.Items, a2, a1)
+		if !page.Items[1].IsFavorite {
+			t.Error("a1 isFavorite = false, want the caller's own favourite flag")
+		}
+		if page.Items[0].IsFavorite {
+			t.Error("a2 isFavorite = true, want false")
+		}
+	})
+
+	t.Run("BubbleUnionIsOneWalk", func(t *testing.T) {
+		// The map panel's read: the union of a bubble's places in the
+		// same order, deduplicated.
+		page := env.getTimeline(t, env.cookie,
+			fmt.Sprintf("placeIds=%d,%d", placeParisID, placeBeijingID))
+		requireTimelineIDs(t, page.Items, a2, a1, aBeijing)
+	})
+
+	t.Run("UnknownPlaceIsEmpty", func(t *testing.T) {
+		page := env.getTimeline(t, env.cookie, "placeIds=999999999")
+		requireTimelineIDs(t, page.Items)
+		if page.NextCursor != nil {
+			t.Error("nextCursor set on the empty walk, want absent")
+		}
+	})
+
+	t.Run("NarrowCombinationRejected", func(t *testing.T) {
+		album := env.syncAlbumIDOf(t, adminID)
+		rec := env.getTimelineRaw(t, env.cookie,
+			fmt.Sprintf("albumId=%s&placeIds=%d", album.String(), placeParisID))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d (body %q)", rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+		apiErr, fields := decodeError(t, rec)
+		if apiErr.Code != apigen.VALIDATIONFAILED {
+			t.Errorf("code = %q, want %q", apiErr.Code, apigen.VALIDATIONFAILED)
+		}
+		if !contains(fields, "albumId") || !contains(fields, "placeIds") {
+			t.Errorf("details.fields = %v, want both narrows named", fields)
+		}
+	})
+
+	t.Run("MalformedPlaceIDsRejected", func(t *testing.T) {
+		for _, query := range []string{"placeIds=0", "placeIds=-5", "placeIds=abc", "placeIds="} {
+			rec := env.getTimelineRaw(t, env.cookie, query)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("%s: status = %d, want %d (body %q)", query, rec.Code, http.StatusBadRequest, rec.Body.String())
+			}
+		}
+	})
+}

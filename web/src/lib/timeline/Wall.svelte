@@ -86,13 +86,22 @@
 	// back from the computed var so the stop switches at the exact
 	// line the headers pin to.
 	//
+	// THE TWO FRAMES (the map panel's narrow wall): `variant="panel"`
+	// renders the SAME wall inside a panel -- its own scroll root
+	// (`h-full overflow-y-auto`), the horizontal padding on that
+	// root so the row math measures the true content width (the
+	// no-horizontal-scrollbar discipline), and a compact 24px axis
+	// inside the panel instead of the fixed right-edge rail. The
+	// rows, headers, day flow and tiles are one rendering; only the
+	// frame changes.
+	//
 	// PERFORMANCE: every row carries content-visibility with its
 	// height known from the engine's math, so offscreen rows skip
 	// their tiles' layout and paint while the scrollbar stays honest
 	// (the row-level windowing the justified math makes exact); the
 	// tiles keep their own content-visibility inside a partially
 	// visible row.
-	import { locale } from 'svelte-i18n';
+	import { _, locale } from 'svelte-i18n';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { packWall, WALL_MAX_WIDTH, WALL_TILE_SEAM, type PackedMonth } from './layout';
 	import { groupTimelineItems } from './grouping';
@@ -112,6 +121,24 @@
 	type Props = {
 		/** The loaded items, newest first (the page owns the walk that fills this). */
 		items: readonly TimelineItem[];
+		/**
+		 * Which frame the wall renders in. `page` is the full-page
+		 * wall whose scroll root is the shell's <main> and whose axis
+		 * is the fixed right-edge rail. `panel` is the same wall in a
+		 * narrow container (the map's place panel): the wall carries
+		 * its OWN scroll root, the horizontal padding lives on that
+		 * root so the row math measures the true content width, and
+		 * a compact 24px axis sits inside the panel -- one component,
+		 * one density language, two widths.
+		 */
+		variant?: 'page' | 'panel';
+		/**
+		 * Called when a panel-mode wall's own scroll root is near its
+		 * bottom: the host appends the next page. The panel has no
+		 * page-level sentinel outside the wall, so the wall reports
+		 * the reach itself.
+		 */
+		onreachbottom?: () => void;
 		/**
 		 * The armed select mode (bindable): a page-level arming writes
 		 * it; the wall owns the drops (Escape, the bar's clear). An
@@ -168,6 +195,8 @@
 
 	let {
 		items,
+		variant = 'page',
+		onreachbottom,
 		selectMode = $bindable(false),
 		onbatch,
 		actions,
@@ -220,8 +249,16 @@
 		if (element === undefined) {
 			return;
 		}
-		if (element.clientWidth > 0) {
-			measuredWidth = element.clientWidth;
+		// The measured width is the CONTENT box: a panel wall carries
+		// its horizontal padding on the scroll root itself, so the
+		// client width includes the gutter and the row math must
+		// subtract it (rows never outgrow the panel -- the
+		// no-horizontal-scrollbar discipline).
+		const style = getComputedStyle(element);
+		const padStart = Number.parseFloat(style.paddingLeft) || 0;
+		const padEnd = Number.parseFloat(style.paddingRight) || 0;
+		if (element.clientWidth - padStart - padEnd > 0) {
+			measuredWidth = element.clientWidth - padStart - padEnd;
 		}
 		if (!observerAvailable) {
 			return;
@@ -260,10 +297,29 @@
 	let scrollProgress = $state(0);
 	let scrollScheduled = false;
 
+	/** The element this wall scrolls in: the shell's <main> for the
+	 * page wall, the wall's own root for the panel wall. */
+	function scrollRoot(): HTMLElement | null {
+		if (variant === 'panel') {
+			return wall ?? null;
+		}
+		return document.querySelector<HTMLElement>('main');
+	}
+
 	/** Jump one month group into view (a rail tap or the keyboard). */
 	function jumpToMonth(key: string): void {
 		const element = wall?.querySelector<HTMLElement>(`[data-month-key="${key}"]`) ?? null;
-		if (element !== null && typeof element.scrollIntoView === 'function') {
+		if (element === null) {
+			return;
+		}
+		if (variant === 'panel') {
+			// The panel's own scroller: the section's offset inside
+			// it is the exact jump target (scrollIntoView would walk
+			// outer ancestors too, moving the page).
+			wall?.scrollTo({ top: element.offsetTop, behavior: 'smooth' });
+			return;
+		}
+		if (typeof element.scrollIntoView === 'function') {
 			element.scrollIntoView({ block: 'start', behavior: 'smooth' });
 		}
 	}
@@ -272,7 +328,7 @@
 	 * bar pins over the wall). An unset var answers an empty string;
 	 * a layout-less host answers the same nothing. */
 	function readStickyOffset(): number {
-		if (wall === undefined) {
+		if (wall === undefined || wall === null) {
 			return 0;
 		}
 		const value = getComputedStyle(wall).getPropertyValue('--wall-sticky-offset');
@@ -280,9 +336,9 @@
 		return Number.isNaN(parsed) ? 0 : Math.max(0, parsed);
 	}
 
-	/** Track which month the viewport reads, for the rail's stop. */
+	/** Track which month the viewport reads, for the axis's stop. */
 	function updateActiveMonth(): void {
-		if (wall === undefined) {
+		if (wall === undefined || wall === null) {
 			return;
 		}
 		const sections = Array.from(wall.querySelectorAll<HTMLElement>('[data-month-key]'));
@@ -294,18 +350,15 @@
 		if (first === undefined || (first.top === 0 && first.height === 0)) {
 			return;
 		}
-		// The frame's scroll root is the shell's <main>: the sticky
-		// month/day header stack pins to its content top (main's p-6
-		// padding below the pinned top bar), so the anchor keeps the
-		// old rule's 100px -- the stack plus its grace -- below that
-		// edge, shifted by the pinned-offset var when a page's own
-		// bar pins over the wall (the album detail's contextual
-		// bar): the stop switches at the same line the headers pin
-		// to. A page mounted without the shell (the unit tests)
-		// reads the viewport's top.
-		const scroller = document.querySelector<HTMLElement>('main');
+		// The anchor is the sticky header stack below the scroll
+		// root's own top: the page wall keeps the shell's 124px rule
+		// (the pinned top bar plus the stack) shifted by a page's
+		// pinned-context bar; the panel wall's root starts at its
+		// own header row, so the stack's own height (~40px) is the
+		// whole offset.
+		const scroller = scrollRoot();
 		const scrollerTop = scroller?.getBoundingClientRect().top ?? 0;
-		const anchor = scrollerTop + readStickyOffset() + 124;
+		const anchor = scrollerTop + (variant === 'panel' ? 40 : readStickyOffset() + 124);
 		let current: string | null = null;
 		for (const section of sections) {
 			if (section.getBoundingClientRect().top <= anchor) {
@@ -317,11 +370,11 @@
 		activeMonthKey = current;
 	}
 
-	/** The wall's scroll progress (0-1) for the rail's position
+	/** The wall's scroll progress (0-1) for the axis's position
 	 * indicator: the scroll root's own fraction, read alongside the
 	 * active-month tracking. */
 	function updateScrollProgress(): void {
-		const scroller = document.querySelector<HTMLElement>('main');
+		const scroller = scrollRoot();
 		if (scroller === null) {
 			return;
 		}
@@ -334,13 +387,25 @@
 	 * position (within months), applied frame-accurate with no
 	 * smoothing (direct manipulation). */
 	function handleRailScrub(fraction: number): void {
-		const scroller = document.querySelector<HTMLElement>('main');
+		const scroller = scrollRoot();
 		if (scroller === null) {
 			return;
 		}
 		const span = scroller.scrollHeight - scroller.clientHeight;
 		if (span > 0) {
 			scroller.scrollTop = fraction * span;
+		}
+	}
+
+	/** The panel's walk hook: near the root's bottom, the host pages
+	 * the next batch. The page wall keeps its sentinel observer. */
+	function maybeReachBottom(): void {
+		if (variant !== 'panel' || onreachbottom === undefined || wall === undefined || wall === null) {
+			return;
+		}
+		const remaining = wall.scrollHeight - wall.scrollTop - wall.clientHeight;
+		if (remaining <= 600) {
+			onreachbottom();
 		}
 	}
 
@@ -354,27 +419,57 @@
 			scrollScheduled = false;
 			updateActiveMonth();
 			updateScrollProgress();
+			maybeReachBottom();
 		});
 	}
 
-	// THE FRAME MIGRATION'S RISKY EDGE: scrolling lives in
-	// the shell's <main>, and element scroll events do not bubble --
-	// a window-level onscroll handler would silently never fire
-	// again. The tracking therefore listens in the CAPTURE phase on
-	// the document: the one registration that observes every scroll
-	// container below it (the frame's main today, whatever scrolls
-	// tomorrow).
+	// THE SCROLL ROOT'S OWN LISTENER: the page wall listens in the
+	// capture phase at the document (the shell's <main> is an
+	// ancestor the wall must observe without naming it per event);
+	// the panel wall's root is its own scroll container, so one
+	// element listener is exact. A layoutless host (tests) still
+	// resolves the same functions.
 	$effect(() => {
+		if (variant === 'panel') {
+			const element = wall;
+			if (element === undefined) {
+				return;
+			}
+			element.addEventListener('scroll', handleScrollEvent, { passive: true });
+			return () => {
+				element.removeEventListener('scroll', handleScrollEvent);
+			};
+		}
 		document.addEventListener('scroll', handleScrollEvent, { capture: true, passive: true });
 		return () => {
 			document.removeEventListener('scroll', handleScrollEvent, { capture: true });
 		};
 	});
 
-	// The month axis IS the wall's scrollbar: while this wall lives,
-	// the scroll root's own bar hides (the axis's position indicator
-	// carries the feedback). Other pages keep the thin custom bar.
+	// The panel's own content changes (a page appended, an event
+	// removed a tile): the stop and the progress must follow without
+	// waiting for a scroll, and the next page starts when the fresh
+	// content still does not fill the root.
 	$effect(() => {
+		if (variant !== 'panel') {
+			return;
+		}
+		void packed;
+		requestAnimationFrame(() => {
+			updateActiveMonth();
+			updateScrollProgress();
+			maybeReachBottom();
+		});
+	});
+
+	// The month axis IS the wall's scrollbar: while the PAGE wall
+	// lives, the shell's scroll root hides its own bar (the axis's
+	// position indicator carries the feedback). The panel wall's
+	// root hides its bar by style (the compact axis is inside it).
+	$effect(() => {
+		if (variant === 'panel') {
+			return;
+		}
 		const scroller = document.querySelector('main');
 		scroller?.classList.add('wall-rail-scroll');
 		return () => {
@@ -485,9 +580,16 @@
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<div class="wall__groups" class:is-selecting={selectMode} bind:this={wall}>
-	{#each packed as month (month.key)}
-		<!-- Both sticky headers ride above the rows; the section's
+<div class="wall {variant === 'panel' ? 'wall--panel relative h-full min-h-0' : ''}">
+	<div
+		class="wall__groups {variant === 'panel'
+			? 'wall__groups--panel relative h-full overflow-y-auto px-1 pe-8 pb-2'
+			: ''}"
+		class:is-selecting={selectMode}
+		bind:this={wall}
+	>
+		{#each packed as month (month.key)}
+			<!-- Both sticky headers ride above the rows; the section's
 		     scroll margin leaves room for them under the axis's jumps
 		     (the pinned-offset term shifts the landing below a page's
 		     own pinned bar). The day header stacks under the month band
@@ -495,69 +597,110 @@
 		     text-[20px]/1.3, probe-verified). The month header's top
 		     rides the pinned-offset var (0 unless a page's own bar
 		     pins over the wall). -->
-		<section class="wall__month scroll-mt-[calc(92px_+_var(--wall-sticky-offset,0px))]" data-month-key={month.key}>
-			<h2
-				class="wall__month-header sticky top-[var(--wall-sticky-offset,0px)] z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page"
+			<section
+				class="wall__month scroll-mt-[calc(92px_+_var(--wall-sticky-offset,0px))]"
+				data-month-key={month.key}
 			>
-				{month.label}
-			</h2>
-			<!-- The day blocks flow horizontally and wrap (the day-flow
-			     shape): a day is a header plus its justified
-			     stack at its own width, and sparse dates sit beside their
-			     neighbors instead of leaving a hole. -->
-			<div class="wall__day-flow flex flex-wrap gap-3">
-				{#each month.days as day (day.key)}
-					<div class="wall__day shrink-0" data-day-key={day.key} style="width:{day.width}px">
-						<h3
-							class="wall__day-header mt-1 mb-1.5 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft"
-						>
-							{day.label}
-						</h3>
-						{#each day.rows as row, rowIndex (rowIndex)}
-							<!-- The row's height is the engine's exact math; the
-						     seam rides the row's gap so the widths plus the
-						     gaps fill the container. Offscreen rows skip their
-						     tiles' layout and paint (the height is style-pinned,
-						     so the scrollbar stays honest). -->
-							<div
-								class="wall__row flex [content-visibility:auto]"
-								style="height:{row.height}px; gap:{WALL_TILE_SEAM}px"
+				<h2
+					class="wall__month-header sticky top-[var(--wall-sticky-offset,0px)] z-(--z-sticky) mt-(--wall-month-gap) mb-2 py-1.5 text-[20px] bg-page"
+				>
+					{month.label}
+				</h2>
+				<!-- The day blocks flow horizontally and wrap (the day-flow
+				     shape): a day is a header plus its justified
+				     stack at its own width, and sparse dates sit beside their
+				     neighbors instead of leaving a hole. -->
+				<div class="wall__day-flow flex flex-wrap gap-3">
+					{#each month.days as day (day.key)}
+						<div class="wall__day shrink-0" data-day-key={day.key} style="width:{day.width}px">
+							<h3
+								class="wall__day-header mt-1 mb-1.5 font-body font-semibold text-[13px] tracking-[0.02em] text-text-soft"
 							>
-								{#each row.tiles as tile (tile.item.id)}
-									<div class="wall__cell shrink-0" style="width:{tile.width}px">
-										<!-- The capability gate rides the onselect hand-off: a
-									     wall with no runner wired passes no toggle, so
-									     PhotoTile renders no check at all (the pure
-									     navigation walls); a curatable wall always passes
-									     it and the reveal rides the selectable state. -->
-										<PhotoTile
-											item={tile.item}
-											selected={selection.has(tile.item.id)}
-											{selectable}
-											onselect={curatable ? toggleSelected : undefined}
-										/>
-									</div>
-								{/each}
-							</div>
-						{/each}
+								{day.label}
+							</h3>
+							{#each day.rows as row, rowIndex (rowIndex)}
+								<!-- The row's height is the engine's exact math; the
+							     seam rides the row's gap so the widths plus the
+							     gaps fill the container. Offscreen rows skip their
+							     tiles' layout and paint (the height is style-pinned,
+							     so the scrollbar stays honest). -->
+								<div
+									class="wall__row flex [content-visibility:auto]"
+									style="height:{row.height}px; gap:{WALL_TILE_SEAM}px"
+								>
+									{#each row.tiles as tile (tile.item.id)}
+										<div class="wall__cell shrink-0" style="width:{tile.width}px">
+											<!-- The capability gate rides the onselect hand-off: a
+										     wall with no runner wired passes no toggle, so
+										     PhotoTile renders no check at all (the pure
+										     navigation walls); a curatable wall always passes
+										     it and the reveal rides the selectable state. -->
+											<PhotoTile
+												item={tile.item}
+												selected={selection.has(tile.item.id)}
+												{selectable}
+												onselect={curatable ? toggleSelected : undefined}
+											/>
+										</div>
+									{/each}
+								</div>
+							{/each}
+						</div>
+					{/each}
+				</div>
+			</section>
+		{/each}
+	</div>
+
+	{#if variant === 'panel' && months.length > 0}
+		<!-- The panel's compact axis (the same organ, the narrow
+		     width): one stop per month, the active month marked, and
+		     a tap scrolling the panel's own root to that month. The
+		     rail lives inside the panel (the page's fixed scrubber
+		     belongs to the full-page wall). -->
+		<nav
+			class="wall__axis absolute inset-y-2 end-1 flex w-6 flex-col items-center"
+			aria-label={$_('timeline_scrubber_label')}
+			data-testid="panel-axis"
+		>
+			<span class="absolute inset-y-2 right-[8px] w-px bg-border" aria-hidden="true"></span>
+			<div class="relative flex h-full w-full flex-col py-1.5">
+				{#each months as month (month.key)}
+					<div class="flex flex-1 items-center justify-end pe-1.5">
+						<button
+							class="wall__axis-stop relative flex h-4 w-full items-center justify-end cursor-pointer"
+							type="button"
+							aria-label={month.label}
+							aria-current={activeMonthKey === month.key ? 'true' : undefined}
+							onclick={() => jumpToMonth(month.key)}
+						>
+							<span
+								class="w-[6px] h-[6px] rounded-full {activeMonthKey === month.key
+									? 'bg-accent'
+									: 'bg-border-strong'}"
+								aria-hidden="true"
+							></span>
+						</button>
 					</div>
 				{/each}
 			</div>
-		</section>
-	{/each}
+		</nav>
+	{/if}
 </div>
 
-<!-- The wall's own month axis: the photo
-     rendering and the rail are one thing). The scrubber is
-     viewport-fixed, so it renders from any wall depth; its empty
-     months guard hides it for an empty wall. -->
-<MonthScrubber
-	{months}
-	activeKey={activeMonthKey}
-	progress={scrollProgress}
-	onjump={jumpToMonth}
-	onscrub={handleRailScrub}
-/>
+{#if variant !== 'panel'}
+	<!-- The wall's own month axis: the photo
+	     rendering and the rail are one thing). The scrubber is
+	     viewport-fixed, so it renders from any wall depth; its empty
+	     months guard hides it for an empty wall. -->
+	<MonthScrubber
+		{months}
+		activeKey={activeMonthKey}
+		progress={scrollProgress}
+		onjump={jumpToMonth}
+		onscrub={handleRailScrub}
+	/>
+{/if}
 
 <!-- THE BOTTOM BATCH BAR (the 2026-11-08 selection pin's last
      organ): the wall composes the presentation-only bar whenever
@@ -580,3 +723,28 @@
 		onclear={exitSelection}
 	/>
 {/if}
+
+<style>
+	/* The panel wall's root: its compact axis IS the scrollbar (the
+	 * same discipline the page wall applies to the shell's root), so
+	 * the native bar hides -- the axis's own stops carry the
+	 * position. */
+	.wall__groups--panel {
+		scrollbar-width: none;
+	}
+
+	.wall__groups--panel::-webkit-scrollbar {
+		display: none;
+	}
+
+	/* The panel frame's type scale follows its width: the same wall,
+	 * the narrow container's own header sizes -- one component, one
+	 * density language, two widths. */
+	.wall--panel .wall__month-header {
+		font-size: 14px;
+	}
+
+	.wall--panel .wall__day-header {
+		font-size: 11px;
+	}
+</style>

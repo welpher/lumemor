@@ -519,11 +519,20 @@ export interface paths {
          *     assets carrying at least one of the cluster's faces that the
          *     caller can see, in the same ordering and per-user favourite
          *     flags, deduplicated by asset (two faces of the person in one
-         *     photo are one item). The two narrows are mutually exclusive:
-         *     a request carrying both answers 400 `VALIDATION_FAILED`. A
-         *     cluster that does not exist or is not visible to the caller
-         *     answers the empty list, not an error -- the same
-         *     anti-enumeration shape as `albumId`.
+         *     photo are one item). The narrows are mutually exclusive: a
+         *     request carrying more than one answers 400
+         *     `VALIDATION_FAILED`. A cluster that does not exist or is not
+         *     visible to the caller answers the empty list, not an error
+         *     -- the same anti-enumeration shape as `albumId`.
+         *
+         *     `placeIds` narrows the response to the live assets resolved
+         *     to one of those places (GeoNames ids) -- the place detail's
+         *     photo wall, and the map panel's read for the spot a pin or a
+         *     bubble stands for. Every item passes the same caller-visible
+         *     live filter and carries the same per-user favourite flag as
+         *     the aggregate; an id no caller-visible asset resolves to
+         *     contributes nothing, so the answer is the empty list rather
+         *     than an error.
          */
         get: operations["getTimeline"];
         put?: never;
@@ -2545,10 +2554,17 @@ export interface paths {
          *     least one candidate (the listing itself proved a visible
          *     member exists).
          *
-         *     The list is ordered by `assetCount` descending, the place id
+         *     `takenAtFrom` and `takenAtTo` are the place's caller-visible
+         *     live members' earliest and latest capture times: the span the
+         *     city card prints as its year range ("2019-2026", one year
+         *     when the two fall in the same calendar year). A listed place
+         *     always carries both.
+         *
+         *     The list is ordered by `takenAtTo` descending -- the most
+         *     recently photographed city first -- with the place id
          *     ascending as the deterministic tiebreak. It is not paginated:
-         *     the same single-document shape the named-people listing
-         *     uses, sized for a family instance's few thousand places.
+         *     the same single-document shape the named-people listing uses,
+         *     sized for a family instance's few thousand places.
          *
          *     Place resolution itself (which asset belongs to which city)
          *     is the ingestion pipeline's business -- the metadata job's
@@ -6064,6 +6080,25 @@ export interface components {
              */
             longitude: number;
             /**
+             * Format: date-time
+             * @description The earliest capture time among the place's
+             *     caller-visible live members (RFC 3339 UTC). The city
+             *     card's year span starts here; the listing's own ordering
+             *     reads the other end.
+             * @example 2019-04-08T10:12:00Z
+             */
+            takenAtFrom: string;
+            /**
+             * Format: date-time
+             * @description The latest capture time among the place's caller-visible
+             *     live members (RFC 3339 UTC). It is the ordering key of
+             *     the list -- the most recently photographed city leads --
+             *     and the city card's year span ends here. Equal to
+             *     `takenAtFrom` when the place holds one member.
+             * @example 2026-08-02T15:40:00Z
+             */
+            takenAtTo: string;
+            /**
              * @description The place's cover candidates: its (up to) four most
              *     recent caller-visible live members, taken_at descending
              *     with the asset id as the tiebreak -- the wall's
@@ -7865,10 +7900,19 @@ export interface operations {
                 limit?: number;
                 /**
                  * @description Restrict the response to one face cluster's photos (the
-                 *     person detail's wall). Mutually exclusive with `albumId`;
-                 *     an unknown or invisible cluster answers the empty list.
+                 *     person detail's wall). Mutually exclusive with `albumId`
+                 *     and `placeIds`; an unknown or invisible cluster answers
+                 *     the empty list.
                  */
                 clusterId?: string;
+                /**
+                 * @description Restrict the response to assets resolved to one of these
+                 *     places (GeoNames ids) -- the place detail's wall and the
+                 *     map panel's read. Mutually exclusive with `albumId` and
+                 *     `clusterId`; ids no visible asset resolves to answer the
+                 *     empty list.
+                 */
+                placeIds?: number[];
                 /**
                  * @description Restrict the response to the timeline of this one album
                  *     (an album the caller owns or that is shared to the caller)
@@ -10801,9 +10845,9 @@ export interface operations {
         requestBody?: never;
         responses: {
             /**
-             * @description The caller's city grouping, ordered by asset count
-             *     descending (the place id ascending as the tiebreak). The
-             *     array is empty when no visible asset of the caller
+             * @description The caller's city grouping, ordered by the latest capture
+             *     time descending (the place id ascending as the tiebreak).
+             *     The array is empty when no visible asset of the caller
              *     carries a resolved place.
              */
             200: {

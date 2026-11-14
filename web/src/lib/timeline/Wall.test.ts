@@ -442,3 +442,33 @@ test("an empty wall renders no rail (the scrubber's own guard)", () => {
 	unmount(wall);
 	flushSync();
 });
+
+test('the panel frame: its own scroll root and compact axis, no fixed scrubber', () => {
+	// The same wall in a narrow container: the root IS the scroll
+	// container (the horizontal padding lives there so the row math
+	// measures the true content width), the axis is the compact
+	// in-panel rail, and the page-level fixed scrubber never renders.
+	const wall = mount(Wall, {
+		target: document.body,
+		props: { items, variant: 'panel', onreachbottom: () => undefined }
+	});
+	flushSync();
+
+	const root = document.body.querySelector('.wall__groups--panel');
+	expect(root).not.toBeNull();
+	expect(root?.className).toContain('overflow-y-auto');
+	expect(root?.className).toContain('px-1');
+	expect(root?.className).toContain('pe-8');
+	// The month headers are the same bands.
+	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
+	// The compact axis: one stop per month, inside the panel.
+	const axis = document.body.querySelector('[data-testid="panel-axis"]');
+	expect(axis).not.toBeNull();
+	const stops = Array.from(axis?.querySelectorAll('button') ?? []);
+	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual(['November 2026', 'October 2026']);
+	// No page-level fixed scrubber in the panel frame.
+	expect(document.body.querySelector('.scrubber')).toBeNull();
+
+	unmount(wall);
+	flushSync();
+});

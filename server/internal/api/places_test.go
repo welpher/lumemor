@@ -92,6 +92,17 @@ func requirePlace(t *testing.T, got apigen.PlaceSummary, placeID int32, name, co
 	}
 }
 
+// requireSpan asserts one entry's capture span (the earliest and
+// latest member capture times the city card's year range prints).
+func requireSpan(t *testing.T, got apigen.PlaceSummary, from, to time.Time) {
+	t.Helper()
+	if !got.TakenAtFrom.Equal(from) || !got.TakenAtTo.Equal(to) {
+		t.Errorf("place %d span = %s..%s, want %s..%s",
+			got.PlaceId, got.TakenAtFrom.Format(time.RFC3339), got.TakenAtTo.Format(time.RFC3339),
+			from.Format(time.RFC3339), to.Format(time.RFC3339))
+	}
+}
+
 // TestPlacesCityGrouping pins the caller's city grouping: the locale
 // join (the requested locale's row, the canonical fallback), the
 // honest count ordering (asset count descending, the place id as the
@@ -133,19 +144,26 @@ func TestPlacesCityGrouping(t *testing.T) {
 	t.Run("EnLocaleDefault", func(t *testing.T) {
 		places := decodePlaces(t, listPlaces(env.router, env.cookie, ""))
 		if len(places) != 3 {
-			t.Fatalf("places = %d entries, want 3 (Paris 3, Beijing 2, Highland Falls 1)", len(places))
+			t.Fatalf("places = %d entries, want 3 (Highland Falls 1, Beijing 2, Paris 3)", len(places))
 		}
-		requirePlace(t, places[0], placeParisID, "Paris", "FR", 3, 3)
+		// The ordering is the latest capture time descending: Highland
+		// Falls (sep 1), Beijing (aug 2), Paris (jul 3) -- never the
+		// asset count.
+		requirePlace(t, places[0], placeHighlandID, "Highland Falls", "US", 1, 1)
 		requirePlace(t, places[1], placeBeijingID, "Beijing", "CN", 2, 2)
 		// Highland Falls carries no zh-Hans row anywhere; in en it is
 		// its canonical self.
-		requirePlace(t, places[2], placeHighlandID, "Highland Falls", "US", 1, 1)
-		// The covers are the newest live members first: jul 3, jul 2,
-		// jul 1 -- the hidden, trashed and component rows never cover.
+		requirePlace(t, places[2], placeParisID, "Paris", "FR", 3, 3)
+		// The capture span is the members' earliest and latest (the
+		// hidden, trashed and component rows never move it).
+		requireSpan(t, places[2],
+			time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC),
+			time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC))
+		// The covers are the newest live members first: jul 3, jul 2, jul 1.
 		want := []uuid.UUID{aParis3, aParis2, aParis1}
 		for i, id := range want {
-			if places[0].RepresentativeCoverAssetIds[i] != id {
-				t.Errorf("Paris cover[%d] = %s, want %s", i, places[0].RepresentativeCoverAssetIds[i], id)
+			if places[2].RepresentativeCoverAssetIds[i] != id {
+				t.Errorf("Paris cover[%d] = %s, want %s", i, places[2].RepresentativeCoverAssetIds[i], id)
 			}
 		}
 	})
@@ -175,10 +193,10 @@ func TestPlacesCityGrouping(t *testing.T) {
 		if len(places) != 3 {
 			t.Fatalf("places = %d entries, want 3", len(places))
 		}
-		requirePlace(t, places[0], placeParisID, "巴黎", "FR", 3, 3)
+		requirePlace(t, places[0], placeHighlandID, "Highland Falls", "US", 1, 1)
 		requirePlace(t, places[1], placeBeijingID, "北京", "CN", 2, 2)
 		// No zh-Hans row: the canonical name answers the fallback.
-		requirePlace(t, places[2], placeHighlandID, "Highland Falls", "US", 1, 1)
+		requirePlace(t, places[2], placeParisID, "巴黎", "FR", 3, 3)
 
 		var after []time.Time
 		rows, err = env.pool.Query(context.Background(), `
@@ -273,9 +291,10 @@ func TestPlacesShareeVisibility(t *testing.T) {
 
 	places := decodePlaces(t, listPlaces(env.router, graceCookie, "zh-Hans"))
 	if len(places) != 2 {
-		t.Fatalf("places = %d entries, want 2 (Paris 1 shared-live, Beijing 1 own)", len(places))
+		t.Fatalf("places = %d entries, want 2 (Beijing 1 own, Paris 1 shared-live)", len(places))
 	}
-	// The tie on count 1 breaks on the smaller place id first.
+	// Grace's own Beijing photo (jul 4) is newer than the shared
+	// Paris member (jul 1), so Beijing leads.
 	requirePlace(t, places[0], placeBeijingID, "北京", "CN", 1, 1)
 	if places[0].RepresentativeCoverAssetIds[0] != g1 {
 		t.Errorf("Beijing cover = %s, want Grace's own asset %s", places[0].RepresentativeCoverAssetIds[0], g1)

@@ -160,6 +160,13 @@ export type TimelineClientOptions = {
 	 * passes both.
 	 */
 	clusterId?: string;
+	/**
+	 * The places whose photos this wall walks: the endpoint's
+	 * `placeIds` narrow (the place detail's wall and the map
+	 * panel's read for a spot). Mutually exclusive with `albumId`
+	 * and `clusterId` at the endpoint.
+	 */
+	placeIds?: readonly number[];
 };
 
 /** The contract's default page size. */
@@ -178,11 +185,13 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	const view = options.view ?? 'timeline';
 	const albumId = options.albumId;
 	const clusterId = options.clusterId;
-	// A narrowed wall (an album's own items, a person's photos): the
-	// pages ARE the membership, so event-driven inserts beyond the
-	// delivered ids never apply (the aggregate's feed gate does not
-	// run here either).
-	const narrowed = albumId !== undefined || clusterId !== undefined;
+	const placeIds = options.placeIds;
+	// A narrowed wall (an album's own items, a person's photos, a
+	// place's photos): the pages ARE the membership, so event-driven
+	// inserts beyond the delivered ids never apply (the aggregate's
+	// feed gate does not run here either).
+	const narrowed =
+		albumId !== undefined || clusterId !== undefined || (placeIds !== undefined && placeIds.length > 0);
 
 	const store = writable<TimelineState>({
 		items: [],
@@ -670,7 +679,9 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 				? `albumId=${encodeURIComponent(albumId)}&`
 				: clusterId !== undefined
 					? `clusterId=${encodeURIComponent(clusterId)}&`
-					: '';
+					: placeIds !== undefined
+						? `placeIds=${placeIds.join(',')}&`
+						: '';
 		const query = `${narrow}limit=${limit}${nextCursor === null ? '' : `&cursor=${encodeURIComponent(nextCursor)}`}`;
 		let response: Response;
 		try {

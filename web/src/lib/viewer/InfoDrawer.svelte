@@ -354,9 +354,9 @@
 		return album.type === 'sync' ? $_('album_all_photos') : album.title;
 	}
 
-	/** The resolved place's deep link into the place-filtered browse. */
+	/** The resolved place's own page (the reader's language names it there). */
 	const placeHref = $derived(
-		detail.place === null ? undefined : `/search?placeIds=${encodeURIComponent(String(detail.place.placeId))}`
+		detail.place === null ? undefined : `/places/${encodeURIComponent(String(detail.place.placeId))}`
 	);
 	const place: AssetPlaceRef | null = $derived(detail.place);
 
@@ -765,9 +765,9 @@
 				{$_('nav_places')}
 			</h3>
 			{#if place !== null && placeHref !== undefined}
-				<!-- The resolved city: the row deep-links into the
-				     place-filtered browse (the places facet's own key, the
-				     display name the request's locale joined). -->
+				<!-- The resolved city: the row deep-links into the place's own
+				     page (the place domain's wall, named in the reader's
+				     language). -->
 				<a
 					class="info__place flex items-center gap-1.5 py-[7px] font-body font-medium text-[13px] leading-[1.4] text-accent no-underline hover:underline"
 					href={placeHref}
