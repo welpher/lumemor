@@ -65,20 +65,22 @@ FROM places;
 -- name: ListCallerPlaces :many
 -- The city grouping of GET /places: every place holding at least one
 -- CALLER-VISIBLE live asset (the album union plus the timeline's
--- live-asset filters), with the honest per-caller count. The display
--- name is the locale join: the request's locale row of the place when
--- place_names carries one, the canonical name otherwise -- a locale
--- switch changes the join, never an asset row. The place's own
--- coordinate rides along: the map face pins it, and it is the place
--- record's coordinate -- never a photo's. Ordered by the asset count
--- descending with the place id ascending as the deterministic
--- tiebreak.
+-- live-asset filters), with the honest per-caller count and capture
+-- span. The display name is the locale join: the request's locale row
+-- of the place when place_names carries one, the canonical name
+-- otherwise -- a locale switch changes the join, never an asset row.
+-- The place's own coordinate rides along: the map face pins it, and it
+-- is the place record's coordinate -- never a photo's. Ordered by the
+-- latest capture time descending (the most recently photographed city
+-- first) with the place id ascending as the deterministic tiebreak.
 SELECT p.id,
        COALESCE(pn.name, p.name) AS name,
        p.country_code,
        p.lat,
        p.lon,
-       count(*) AS asset_count
+       count(*) AS asset_count,
+       min(a.taken_at)::timestamptz AS taken_at_from,
+       max(a.taken_at)::timestamptz AS taken_at_to
 FROM assets a
 JOIN places p ON p.id = a.place_id
 LEFT JOIN place_names pn
@@ -88,7 +90,7 @@ WHERE a.deleted_at IS NULL
   AND a.is_component = false
   AND caller_asset_visible(sqlc.arg('user_id'), a.id)
 GROUP BY p.id, p.name, pn.name, p.country_code, p.lat, p.lon
-ORDER BY asset_count DESC, p.id ASC;
+ORDER BY taken_at_to DESC, p.id ASC;
 
 -- name: ListPlaceCoverCandidates :many
 -- The derived covers of the given places: each one's four most

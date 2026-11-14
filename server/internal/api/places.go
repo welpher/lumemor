@@ -48,10 +48,13 @@ const (
 
 // ListPlaces implements GET /api/v1/places: the caller's city
 // grouping -- every place holding at least one caller-visible live
-// asset, ordered by that count descending. Names resolve through the
-// requested locale's place_names row with the canonical name as the
-// fallback; the covers are each place's four most recent
-// caller-visible live members, the wall's derived-cover discipline.
+// asset, ordered by the latest capture time descending (the most
+// recently photographed city first; the place id ascending as the
+// tiebreak). Names resolve through the requested locale's
+// place_names row with the canonical name as the fallback; the covers
+// are each place's four most recent caller-visible live members, the
+// wall's derived-cover discipline, and the span carries the members'
+// earliest and latest capture times.
 func (s *server) ListPlaces(w http.ResponseWriter, r *http.Request, params apigen.ListPlacesParams) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -124,6 +127,8 @@ func (s *server) ListPlaces(w http.ResponseWriter, r *http.Request, params apige
 			Latitude:                    row.Lat,
 			Longitude:                   row.Lon,
 			AssetCount:                  int(row.AssetCount),
+			TakenAtFrom:                 row.TakenAtFrom.Time.UTC(),
+			TakenAtTo:                   row.TakenAtTo.Time.UTC(),
 			RepresentativeCoverAssetIds: candidates,
 		})
 	}

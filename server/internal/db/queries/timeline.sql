@@ -129,6 +129,33 @@ WHERE al.id = sqlc.arg('album_id')
 ORDER BY a.taken_at DESC, a.id DESC
 LIMIT sqlc.arg('limit_count');
 
+-- name: ListPlaceTimelineAssets :many
+-- The place domain's photo wall: the live assets resolved to one of
+-- the given places, with the aggregate's is_favorite computation,
+-- ordering and keyset predicate. The narrow is a plain place_id
+-- membership over the caller-visible asset union -- the same domain
+-- the city grouping counts -- so a place id outside the caller's
+-- visible assets contributes nothing (the empty list, never an
+-- error). The map panel reads the union of a bubble's places through
+-- the same query.
+SELECT sqlc.embed(a),
+       EXISTS (
+           SELECT 1 FROM user_favorites uf
+           WHERE uf.asset_id = a.id AND uf.user_id = sqlc.arg('user_id')
+       ) AS is_favorite
+FROM assets a
+WHERE a.place_id = ANY(sqlc.arg('place_ids')::integer[])
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND caller_asset_visible(sqlc.arg('user_id'), a.id)
+  AND (
+      sqlc.narg('cursor_taken_at')::timestamptz IS NULL
+      OR (a.taken_at, a.id) < (sqlc.narg('cursor_taken_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
+  )
+ORDER BY a.taken_at DESC, a.id DESC
+LIMIT sqlc.arg('limit_count');
+
 -- name: ListPersonTimelineAssets :many
 -- The person detail's photo wall: one face cluster's own photos with
 -- the aggregate's is_favorite computation, ordering and keyset
