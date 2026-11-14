@@ -25,6 +25,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/ml"
 	"github.com/welpher/lumemor/server/internal/storage"
 	"github.com/welpher/lumemor/server/internal/trash"
+	"github.com/welpher/lumemor/server/internal/updatecheck"
 )
 
 const (
@@ -221,6 +222,21 @@ func run(logger *slog.Logger) error {
 			"expired", expiryCounts.Expired, "files", expiryCounts.FilesRemoved)
 	}
 
+	// The release check: the instance's one scheduled outbound probe.
+	// It starts with the server and follows the same signal context,
+	// so a shutdown cancels a probe in flight; the answer it already
+	// persisted survives. A deployment that must stay off the network
+	// turns it off through the environment, independently of the
+	// admin settings switch.
+	releaseChecker := updatecheck.New(updatecheck.Options{
+		Queries:  queries,
+		Logger:   logger,
+		Version:  buildinfo.Version,
+		Disabled: cfg.UpdateCheckDisabled,
+	})
+	go releaseChecker.Run(ctx)
+	logger.Info("release check started", "disabled", cfg.UpdateCheckDisabled, "version", buildinfo.Version)
+
 	srv := &http.Server{
 		Addr: cfg.Listen,
 		Handler: api.NewRouter(&api.Deps{
@@ -250,6 +266,9 @@ func run(logger *slog.Logger) error {
 			// The album rescan endpoint enqueues through the same
 			// queue.
 			AlbumRescans: queue,
+			// The release check face reads and runs the checker the
+			// schedule above drives.
+			UpdateChecks: releaseChecker,
 			Initialized: func(ctx context.Context) bool {
 				admins, err := queries.CountAdmins(ctx)
 				if err != nil {
