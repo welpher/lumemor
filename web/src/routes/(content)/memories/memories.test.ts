@@ -22,10 +22,28 @@ import Page from './+page.svelte';
 // fetch (the albums page's collapsed single-flight); the refetched
 // SERVER answer decides what changed. The events module is mocked
 // with a captured handler registry, the albums page's pattern.
+//
+// The GRID is this page's own shape, deliberately unlike the album
+// wall's: the column floor is the fixed third of the band, so the
+// count tops out at three at every width and the cards widen
+// instead; each card's cover is a 3:1 strip of up to six frames laid
+// 3 across 2 down, and its caption is ONE row (the 20px title
+// truncating beside the count and the no-wrap badges).
 
-const { handlers } = vi.hoisted(() => ({
-	handlers: [] as Array<(event: unknown) => void>
+const { handlers, pageState, gotoMock } = vi.hoisted(() => ({
+	handlers: [] as Array<(event: unknown) => void>,
+	pageState: {
+		url: new URL('http://localhost/memories'),
+		params: {} as Record<string, string>,
+		state: {}
+	},
+	gotoMock: vi.fn(async (url: URL, _options?: { replaceState?: boolean; noScroll?: boolean }) => {
+		pageState.url = new URL(url);
+	})
 }));
+
+vi.mock('$app/state', () => ({ page: pageState }));
+vi.mock('$app/navigation', () => ({ goto: gotoMock }));
 
 vi.mock('$lib/events', () => ({
 	subscribeAlbumEvents: (listener: (event: unknown) => void) => {
@@ -36,7 +54,10 @@ vi.mock('$lib/events', () => ({
 				handlers.splice(index, 1);
 			}
 		};
-	}
+	},
+	// The playback overlay (mounted by a deep link) subscribes to the
+	// asset stream too; this suite's scenes never fire asset events.
+	subscribeAssetEvents: () => () => undefined
 }));
 
 function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummary {
@@ -215,6 +236,7 @@ beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
 	vi.clearAllMocks();
+	pageState.url = new URL('http://localhost/memories');
 	wallState = [myPhotos, springFestival, paris, weekendPark, sanya, familyArchive];
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
@@ -273,9 +295,80 @@ test('the wall keeps the memory rows alone in ONE list, newest first', async () 
 	expect(shared?.querySelector('.memory-card__owner')).toBeNull();
 	expect(shared?.textContent).not.toContain('{name}');
 	expect(shared?.querySelectorAll('.memory-card__badge--owner')).toHaveLength(1);
-	// Cards link into the memory's own detail.
-	expect(own?.getAttribute('href')).toBe('/memories/mem1');
-	expect(shared?.getAttribute('href')).toBe('/memories/mem4');
+	// A card is a control that opens the playback overlay (the
+	// reference set has no page of its own to route to).
+	expect(own?.tagName).toBe('BUTTON');
+	own?.click();
+	expect(gotoMock).toHaveBeenCalledTimes(1);
+	expect(String(gotoMock.mock.calls[0]?.[0])).toBe('http://localhost/memories?memory=mem1');
+	expect(gotoMock.mock.calls[0]?.[1]).toEqual({ noScroll: true });
+
+	// THE GRID'S OWN SHAPE: full width, and a column floor that is
+	// exactly one third of the band minus the two 16px gaps -- a
+	// fourth column never fits, so the count tops out at three and
+	// the cards widen with the viewport.
+	const grid = document.body.querySelector<HTMLElement>('.memories__grid');
+	expect(grid?.className).toContain('grid-cols-[repeat(auto-fill,minmax(max(280px,calc((100%_-_32px)/3)),1fr))]');
+	expect(grid?.className).toContain('gap-4');
+	const section = document.body.querySelector<HTMLElement>('.memories');
+	expect(section?.className).toContain('w-full');
+	expect(section?.className).not.toContain('max-w-[1200px]');
+
+	// The cover is a 3:1 band: one frame fills it, two split it, and
+	// five fill the 3x2 strip in order -- never a 2x2 collage.
+	expect(own?.querySelector('.memory-card__cover')?.className).toContain('aspect-[3/1]');
+	expect(own?.querySelectorAll('.memory-card__frames > .memory-card__frame')).toHaveLength(4);
+	expect(own?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-3');
+	expect(shared?.querySelectorAll('.memory-card__frames > .memory-card__frame')).toHaveLength(3);
+
+	// The caption is ONE row: the title truncating on the left, the
+	// count and the badges sharing the right end.
+	expect(own?.querySelector('.memory-card__caption')?.className).toContain('items-center');
+	expect(own?.querySelector('.memory-card__title')?.className).toContain('truncate');
+	expect(own?.querySelector('.memory-card__title')?.className).toContain('text-[20px]');
+	expect(own?.querySelector('.memory-card__badges')?.className).toContain('whitespace-nowrap');
+
+	unmount(page);
+	flushSync();
+});
+
+test('the cover degrades by frame count: one fills, two split, six caps the strip', async () => {
+	wallState = [
+		summary('mem-bare', { title: 'Bare', coverAssetIds: [], updatedAt: '2026-11-09T10:00:00Z' }),
+		summary('mem-one', { title: 'One', coverAssetIds: ['c1'], updatedAt: '2026-11-08T10:00:00Z' }),
+		summary('mem-two', { title: 'Two', coverAssetIds: ['c1', 'c2'], updatedAt: '2026-11-07T10:00:00Z' }),
+		summary('mem-five', {
+			title: 'Five',
+			coverAssetIds: ['c1', 'c2', 'c3', 'c4', 'c5'],
+			updatedAt: '2026-11-06T10:00:00Z'
+		}),
+		summary('mem-six', {
+			title: 'Six',
+			coverAssetIds: ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'],
+			updatedAt: '2026-11-05T10:00:00Z'
+		})
+	];
+	vi.stubGlobal('fetch', stubFetch(wallRoutes()));
+	const page = mountPage();
+	await settle();
+
+	const frames = (title: string): Element[] => {
+		const card = cards().find((entry) => entry.querySelector('.memory-card__title')?.textContent === title);
+		return Array.from(card?.querySelectorAll('.memory-card__frames > .memory-card__frame') ?? []);
+	};
+	// A bare memory renders the empty accent band and requests no
+	// image at all.
+	expect(frames('Bare')).toHaveLength(0);
+	expect(cards()[0]?.querySelector('img')).toBeNull();
+	// One frame fills the band; two split it.
+	expect(frames('One')).toHaveLength(1);
+	expect(cards()[1]?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-1');
+	expect(frames('Two')).toHaveLength(2);
+	expect(cards()[2]?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-2');
+	// Fewer than six frames fill that many cells of the 3x2 strip;
+	// a seventh cover id is dropped (the strip is six frames).
+	expect(frames('Five')).toHaveLength(5);
+	expect(frames('Six')).toHaveLength(6);
 
 	unmount(page);
 	flushSync();
@@ -551,5 +644,206 @@ test('a failed initial load raises the error box with a working retry', async ()
 	expect(cards()).toHaveLength(4);
 
 	unmount(page);
+	flushSync();
+});
+
+test('a ?memory= deep link opens the playback overlay over the wall', async () => {
+	const id = '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071';
+	wallState = [summary(id, { title: 'Deep link memory', coverAssetIds: ['d1'], itemCount: 2 })];
+	pageState.url = new URL(`http://localhost/memories?memory=${id}`);
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			wallRoutes({
+				[`/api/v1/albums/${id}?limit=1`]: () =>
+					jsonResponse(200, {
+						id,
+						title: 'Deep link memory',
+						type: 'memory',
+						coverAssetId: null,
+						callerRole: 'owner',
+						itemCount: 2,
+						items: [],
+						shares: []
+					}),
+				[`/api/v1/assets/timeline?albumId=${id}&limit=100`]: () =>
+					jsonResponse(200, {
+						items: [
+							{
+								id: 'd1',
+								takenAt: '2026-09-10T12:00:00Z',
+								originalFilename: 'IMG_0001.jpg',
+								ownerId: 'u1',
+								kind: 'image',
+								fileSize: 1000,
+								mimeType: 'image/jpeg',
+								checksum: 'c',
+								createdAt: '2026-09-10T12:00:00Z',
+								takenAtSource: 'exif',
+								isTrashed: false,
+								isFavorite: false,
+								isReady: true,
+								width: 4000,
+								height: 3000,
+								durationMs: null,
+								blurhash: 'UHL6aAof00WBWB00ayWB00',
+								livePhotoVideoId: null
+							},
+							{
+								id: 'd2',
+								takenAt: '2026-09-09T12:00:00Z',
+								originalFilename: 'IMG_0002.jpg',
+								ownerId: 'u1',
+								kind: 'image',
+								fileSize: 1000,
+								mimeType: 'image/jpeg',
+								checksum: 'c',
+								createdAt: '2026-09-09T12:00:00Z',
+								takenAtSource: 'exif',
+								isTrashed: false,
+								isFavorite: false,
+								isReady: true,
+								width: 4000,
+								height: 3000,
+								durationMs: null,
+								blurhash: 'UHL6aAof00WBWB00ayWB00',
+								livePhotoVideoId: null
+							}
+						]
+					})
+			})
+		)
+	);
+	const page = mountPage();
+	await settle();
+	await settle();
+
+	const overlay = document.body.querySelector<HTMLElement>('.memory-overlay__panel');
+	expect(overlay?.getAttribute('aria-label')).toBe('Memory playback');
+	expect(overlay?.querySelector('.memory-overlay__title')?.textContent?.trim()).toBe('Deep link memory');
+	expect(overlay?.querySelector('.memory-overlay__index')?.textContent?.replace(/\s+/g, ' ').trim()).toBe('1 / 2');
+
+	// The card behind is still the wall's, not a second page: the
+	// overlay is a state of THIS route.
+	expect(cards()).toHaveLength(1);
+
+	unmount(page);
+	flushSync();
+});
+
+/** The memory walk's item fixtures (the overlay's stage and grid). */
+function walkItems(ids: readonly string[]): unknown {
+	return {
+		items: ids.map((id, index) => ({
+			id,
+			takenAt: `2026-09-${String(10 - index).padStart(2, '0')}T12:00:00Z`,
+			originalFilename: `IMG_000${index + 1}.jpg`,
+			ownerId: 'u1',
+			kind: 'image',
+			fileSize: 1000,
+			mimeType: 'image/jpeg',
+			checksum: 'c',
+			createdAt: '2026-09-10T12:00:00Z',
+			takenAtSource: 'exif',
+			isTrashed: false,
+			isFavorite: false,
+			isReady: true,
+			width: 4000,
+			height: 3000,
+			durationMs: null,
+			blurhash: 'UHL6aAof00WBWB00ayWB00',
+			livePhotoVideoId: null
+		}))
+	};
+}
+
+test('a mode=grid deep link opens the overlay on its management face', async () => {
+	const id = '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071';
+	wallState = [summary(id, { title: 'Grid link memory', coverAssetIds: ['g1'], itemCount: 2 })];
+	pageState.url = new URL(`http://localhost/memories?memory=${id}&mode=grid`);
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			wallRoutes({
+				[`/api/v1/albums/${id}?limit=1`]: () =>
+					jsonResponse(200, {
+						id,
+						title: 'Grid link memory',
+						type: 'memory',
+						coverAssetId: null,
+						callerRole: 'owner',
+						itemCount: 2,
+						items: [],
+						shares: []
+					}),
+				[`/api/v1/assets/timeline?albumId=${id}&limit=100`]: () => jsonResponse(200, walkItems(['g1', 'g2']))
+			})
+		)
+	);
+	const page = mountPage();
+	await settle();
+	await settle();
+
+	// The face is the address's: the grid's cells render, the stage
+	// does not, and the switch reads the grid as pressed.
+	const overlay = document.body.querySelector<HTMLElement>('.memory-overlay__panel');
+	expect(overlay?.getAttribute('data-mode')).toBe('grid');
+	expect(document.body.querySelectorAll('.memory-overlay__cell')).toHaveLength(2);
+	expect(document.body.querySelector('.memory-overlay__frame')).toBeNull();
+	expect(buttonByText('Grid', overlay ?? document.body).getAttribute('aria-pressed')).toBe('true');
+
+	// The face switch is a state of the SAME entry: the address keeps
+	// the memory and drops the mode (a replace, not a new history
+	// step -- the overlay never owns two addresses).
+	buttonByText('Play', overlay ?? document.body).click();
+	flushSync();
+	expect(String(gotoMock.mock.lastCall?.[0])).toBe(`http://localhost/memories?memory=${id}`);
+	expect(gotoMock.mock.lastCall?.[1]).toEqual({ replaceState: true, noScroll: true });
+
+	unmount(page);
+	flushSync();
+});
+
+test('a deep link closes by replacing its address, never by stepping history back', async () => {
+	const id = '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071';
+	wallState = [summary(id, { title: 'Link memory', coverAssetIds: ['g1'], itemCount: 1 })];
+	pageState.url = new URL(`http://localhost/memories?memory=${id}`);
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			wallRoutes({
+				[`/api/v1/albums/${id}?limit=1`]: () =>
+					jsonResponse(200, {
+						id,
+						title: 'Link memory',
+						type: 'memory',
+						coverAssetId: null,
+						callerRole: 'owner',
+						itemCount: 1,
+						items: [],
+						shares: []
+					}),
+				[`/api/v1/assets/timeline?albumId=${id}&limit=100`]: () => jsonResponse(200, walkItems(['g1']))
+			})
+		)
+	);
+	const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
+	const page = mountPage();
+	await settle();
+	await settle();
+
+	// The deep link has no in-app history behind it: Escape replaces
+	// the address with the bare wall, so the reader never lands on
+	// some other site's page through Back. (The pushed entry -- the
+	// card click -- closes through its own history step instead; the
+	// browser's Back is that same step, so the e2e story walks it.)
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+	flushSync();
+	expect(backSpy).not.toHaveBeenCalled();
+	expect(String(gotoMock.mock.lastCall?.[0])).toBe('http://localhost/memories');
+	expect(gotoMock.mock.lastCall?.[1]).toEqual({ replaceState: true, noScroll: true });
+
+	unmount(page);
+	backSpy.mockRestore();
 	flushSync();
 });

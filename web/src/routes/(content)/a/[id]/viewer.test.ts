@@ -1462,12 +1462,12 @@ test("the drawer's browsable rows deep-link: albums, tags, camera, named faces, 
 
 	// The albums rows: one link per visible album, the sync card's
 	// localized display name keyed by the type -- and a memory row
-	// deep-links into the memory's own route (the reference set's
-	// face), never the album detail's.
+	// deep-links into the memory wall's playback overlay (the
+	// reference set's face), never the album detail's.
 	const albumLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__album'));
 	expect(albumLinks.map((link) => link.getAttribute('href'))).toEqual([
 		'/albums/al-1',
-		'/memories/mem-1',
+		'/memories?memory=mem-1',
 		'/albums/al-2'
 	]);
 	expect(albumLinks[1]?.textContent?.trim()).toBe('Paris trip');
