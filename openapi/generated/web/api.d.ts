@@ -4428,8 +4428,10 @@ export interface components {
          */
         UpdateCheckResponse: {
             /**
-             * @description Whether a check runs at all: the settings switch AND the
-             *     deployment's own switch, both closed for `true`.
+             * @description Whether a check runs at all: both switches -- the
+             *     settings switch and the deployment's own -- are open
+             *     (neither one is off) for `true`; either one off answers
+             *     `false`.
              */
             enabled: boolean;
             status: components["schemas"]["UpdateCheckStatus"];

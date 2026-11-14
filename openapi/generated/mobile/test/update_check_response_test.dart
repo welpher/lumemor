@@ -7,7 +7,7 @@ void main() {
   // TODO add properties to the builder and call build()
 
   group(UpdateCheckResponse, () {
-    // Whether a check runs at all: the settings switch AND the deployment's own switch, both closed for `true`. 
+    // Whether a check runs at all: both switches -- the settings switch and the deployment's own -- are open (neither one is off) for `true`; either one off answers `false`. 
     // bool enabled
     test('to test the property `enabled`', () async {
       // TODO
