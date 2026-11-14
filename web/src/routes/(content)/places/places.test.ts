@@ -162,8 +162,14 @@ test('the flat list renders the city cards with the span, the count and the plac
 	expect(second?.querySelector('.place-card__years')?.textContent).toBe('France · 2024');
 	expect(second?.querySelectorAll('img')).toHaveLength(2);
 
-	// No grouping headers: one grid, flat.
-	expect(document.body.querySelectorAll('.places__group').length).toBe(0);
+	// No grouping headers: one grid, flat -- every child of the grid
+	// is a card, and no heading rides between the toolbar and it.
+	expect(document.body.querySelectorAll('.places__content h2').length).toBe(0);
+	const grid = document.body.querySelector('.places__grid');
+	expect(grid).not.toBeNull();
+	for (const child of Array.from(grid?.children ?? [])) {
+		expect(child.matches('a.place-card')).toBe(true);
+	}
 
 	// The page bar's count segment, and the view switch (the list is
 	// the current face, the map is its own address).
@@ -370,6 +376,27 @@ test('the address restores the panel (the viewer round trip)', async () => {
 	const panel = document.body.querySelector('[data-testid="places-panel"]');
 	expect(panel).not.toBeNull();
 	expect(panel?.querySelector('[data-place-panel-name]')?.textContent).toBe('北京');
+
+	unmount(page);
+	flushSync();
+});
+
+test('a list-face address drops the stray place parameter', async () => {
+	// The parameter is the map face's state: on the list it selects
+	// nothing, and the address sheds it so a reload or a share never
+	// carries a selection the face cannot show.
+	placesPageState.url = new URL('http://localhost/places?place=1816670');
+	window.history.replaceState({}, '', '/places?place=1816670');
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, [beijing, paris]))
+	);
+	const page = mountPage();
+	await settle();
+
+	expect(document.body.querySelector('[data-testid="places-panel"]')).toBeNull();
+	expect(cards()).toHaveLength(2);
+	expect(placesPageState.url.searchParams.has('place')).toBe(false);
 
 	unmount(page);
 	flushSync();

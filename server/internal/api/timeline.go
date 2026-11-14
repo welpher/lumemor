@@ -97,15 +97,23 @@ func (s *server) GetTimeline(w http.ResponseWriter, r *http.Request, params apig
 		return
 	}
 
-	narrows := 0
-	for _, present := range []bool{params.AlbumId != nil, params.ClusterId != nil, params.PlaceIds != nil} {
-		if present {
-			narrows++
-		}
+	// The narrows are mutually exclusive: a request naming more than
+	// one view is a client bug the 400 reports. The details name ONLY
+	// the narrows the caller actually sent -- an unnamed query
+	// parameter is not the caller's mistake, and pointing at it would
+	// send them to edit a field they never wrote.
+	presentNarrows := make([]string, 0, 3)
+	if params.AlbumId != nil {
+		presentNarrows = append(presentNarrows, "albumId")
 	}
-	if narrows > 1 {
-		s.writeValidationError(w, "albumId, clusterId and placeIds are mutually exclusive",
-			[]string{"albumId", "clusterId", "placeIds"})
+	if params.ClusterId != nil {
+		presentNarrows = append(presentNarrows, "clusterId")
+	}
+	if params.PlaceIds != nil {
+		presentNarrows = append(presentNarrows, "placeIds")
+	}
+	if len(presentNarrows) > 1 {
+		s.writeValidationError(w, "albumId, clusterId and placeIds are mutually exclusive", presentNarrows)
 		return
 	}
 	if params.PlaceIds != nil {
