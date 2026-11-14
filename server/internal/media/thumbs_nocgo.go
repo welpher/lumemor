@@ -22,6 +22,27 @@ const (
 	SizeOriginal = "original"
 )
 
+// The derivative encodings: the format string is the file extension
+// of the stored serving copies.
+const (
+	// FormatAvif is the shipped encoding.
+	FormatAvif = "avif"
+	// FormatWebp is the fast encoding.
+	FormatWebp = "webp"
+)
+
+// DeriveOptions carries the image settings one derivation runs at;
+// the CGO-less build never consumes them (every derivation refuses),
+// but the type keeps both halves of the build's signatures one
+// shape.
+type DeriveOptions struct {
+	TileBox      int
+	ViewLongEdge int
+	Format       string
+	FullSize     bool
+	RawEmbedded  bool
+}
+
 // ThumbnailsSupported reports whether this build linked the libvips
 // thumbnail pipeline: false here, so the media tests skip with a
 // pointer at the containerized suite.
@@ -46,10 +67,22 @@ func LibvipsVersion() string {
 // errNoThumbnails is the CGO-less stub's refusal.
 var errNoThumbnails = errors.New("media: thumbnail generation requires a CGO build with libvips")
 
-// GenerateThumbnails is the CGO-less stub: the AVIF derivation is
+// GenerateThumbnails is the CGO-less stub: the derivation is
 // unavailable without libvips.
 func GenerateThumbnails(originalPath, assetID string) (string, error) {
+	return GenerateThumbnailsWithOptions(originalPath, assetID, DeriveOptions{})
+}
+
+// GenerateThumbnailsWithOptions is the CGO-less stub: the derivation
+// is unavailable without libvips.
+func GenerateThumbnailsWithOptions(originalPath, assetID string, opts DeriveOptions) (string, error) {
 	return "", errNoThumbnails
+}
+
+// ValidDerivativeFormat reports the encodings the CGO-less stub
+// admits: the same two names the real pipeline writes.
+func ValidDerivativeFormat(format string) bool {
+	return format == FormatAvif || format == FormatWebp
 }
 
 // HEICDecodeSupported reports whether this build's libvips carries the

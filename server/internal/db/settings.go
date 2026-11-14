@@ -275,6 +275,11 @@ const TilesSettingsKey = "tiles_settings"
 // store's policy (the automatic download switch).
 const ModelSettingsKey = "model_settings"
 
+// ImageSettingsKey is the instance_settings key holding the
+// derivative image settings (the sizes and encoding every new
+// derivation runs at) as one JSON object.
+const ImageSettingsKey = "image_settings"
+
 // UpdateCheckEndpointDefault is the release feed a fresh instance
 // probes: the product's own release feed (the newest release
 // document, whose tag the comparison reads).
@@ -526,6 +531,127 @@ func SaveModelSettings(ctx context.Context, q *dbgen.Queries, settings ModelSett
 		Value: value,
 	}); err != nil {
 		return fmt.Errorf("db: write instance setting %s: %w", ModelSettingsKey, err)
+	}
+	return nil
+}
+
+// The image settings' admitted values: the contract's enums are the
+// same lists.
+var (
+	imageTileSizes     = map[int]bool{250: true, 320: true}
+	imagePreviewSizes  = map[int]bool{1080: true, 1440: true, 2048: true}
+	imageDeriveFormats = map[string]bool{"avif": true, "webp": true}
+)
+
+// ImageSettings is the instance's derivative image settings: the
+// timeline tile's box, the viewer preview's long edge, the serving
+// copies' encoding, whether derivations also produce the
+// full-resolution copy, and the RAW-embedded-preview posture. It is
+// the typed form of the instance_settings row the admin surface
+// reads and writes; the zero value is never used (the accessor
+// always answers the documented defaults). The JSON tags match the
+// contract's ImageSettingsResponse field names, so the stored row's
+// shape and the API's shape are one shape.
+type ImageSettings struct {
+	TileSize    int    `json:"tileSize"`
+	PreviewSize int    `json:"previewSize"`
+	Format      string `json:"format"`
+	FullSize    bool   `json:"fullSize"`
+	RawEmbedded bool   `json:"rawEmbedded"`
+}
+
+// ImageSettingsDefault is the posture when the setting row is absent:
+// the shipped 250 tile, the 1080 preview, AVIF, no full-size copy
+// (the viewer reads the preview), and RAW sources deriving from
+// their embedded previews.
+var ImageSettingsDefault = ImageSettings{
+	TileSize:    250,
+	PreviewSize: 1080,
+	Format:      "avif",
+	FullSize:    false,
+	RawEmbedded: true,
+}
+
+// ValidImageTileSize reports whether size is a member of the
+// contract's tile-size enum.
+func ValidImageTileSize(size int) bool {
+	return imageTileSizes[size]
+}
+
+// ValidImagePreviewSize reports whether size is a member of the
+// contract's preview-size enum.
+func ValidImagePreviewSize(size int) bool {
+	return imagePreviewSizes[size]
+}
+
+// ImageSettingsOf reads the instance's derivative image settings. A
+// missing setting row answers the documented default (an instance
+// that never wrote the setting derives at the shipped posture). A row
+// that is not a structurally valid document ALSO answers the default
+// with the error describing it, per FIELD: the thumbnail job reads
+// this on every image ingest and must never fail over a corrupt
+// settings row, and a partial corruption degrades to the default for
+// that field while the honest rest survives.
+func ImageSettingsOf(ctx context.Context, q *dbgen.Queries) (ImageSettings, error) {
+	settings := ImageSettingsDefault
+	raw, err := q.GetInstanceSetting(ctx, ImageSettingsKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return settings, nil
+	}
+	if err != nil {
+		return settings, fmt.Errorf("db: read instance setting %s: %w", ImageSettingsKey, err)
+	}
+	var stored map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return settings, fmt.Errorf("db: instance setting %s = %s is not a JSON object", ImageSettingsKey, raw)
+	}
+	if value, ok := stored["tileSize"]; ok {
+		var size int
+		if err := json.Unmarshal(value, &size); err != nil || !imageTileSizes[size] {
+			return settings, fmt.Errorf("db: instance setting %s tileSize = %s is not a member of the enum", ImageSettingsKey, value)
+		}
+		settings.TileSize = size
+	}
+	if value, ok := stored["previewSize"]; ok {
+		var size int
+		if err := json.Unmarshal(value, &size); err != nil || !imagePreviewSizes[size] {
+			return settings, fmt.Errorf("db: instance setting %s previewSize = %s is not a member of the enum", ImageSettingsKey, value)
+		}
+		settings.PreviewSize = size
+	}
+	if value, ok := stored["format"]; ok {
+		var format string
+		if err := json.Unmarshal(value, &format); err != nil || !imageDeriveFormats[format] {
+			return settings, fmt.Errorf("db: instance setting %s format = %s is not a member of the enum", ImageSettingsKey, value)
+		}
+		settings.Format = format
+	}
+	for field, into := range map[string]*bool{
+		"fullSize":    &settings.FullSize,
+		"rawEmbedded": &settings.RawEmbedded,
+	} {
+		if value, ok := stored[field]; ok {
+			if err := json.Unmarshal(value, into); err != nil {
+				return settings, fmt.Errorf("db: instance setting %s %s = %s is not a JSON boolean", ImageSettingsKey, field, value)
+			}
+		}
+	}
+	return settings, nil
+}
+
+// SaveImageSettings writes the derivative image settings as one JSON
+// object (the raw writer). The caller validates every field against
+// its enum; this leaf only writes.
+func SaveImageSettings(ctx context.Context, q *dbgen.Queries, settings ImageSettings) error {
+	value, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("db: encode instance setting %s: %w", ImageSettingsKey, err)
+	}
+	if err := q.SetInstanceSettingRaw(ctx, dbgen.SetInstanceSettingRawParams{
+		Key:   ImageSettingsKey,
+		Value: value,
+	}); err != nil {
+		return fmt.Errorf("db: write instance setting %s: %w", ImageSettingsKey, err)
 	}
 	return nil
 }

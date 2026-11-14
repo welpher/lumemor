@@ -660,3 +660,129 @@ func TestNewSettingsFacesGuardPinsTheAdminRole(t *testing.T) {
 		})
 	}
 }
+
+// The image card's settings face and the run budget's face: the same
+// GET/PUT shape over the instance_settings rows the derivative
+// settings own (the image card's five knobs; the task panel's three
+// dials). Their tests ride this file's env -- the settings faces are
+// one surface family.
+
+// TestImageSettingsGetAnswersDefault pins the read of a fresh
+// instance: the shipped posture -- the 250 tile, the 1080 preview,
+// AVIF, no full-size copy, RAW sources deriving from their embedded
+// previews.
+func TestImageSettingsGetAnswersDefault(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	rec := env.getSetting(t, "image", env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET image settings status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var settings apigen.ImageSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode image settings %q: %v", rec.Body.String(), err)
+	}
+	if settings.TileSize != 250 || settings.PreviewSize != 1080 {
+		t.Errorf("sizes = %d/%d, want the shipped 250/1080", settings.TileSize, settings.PreviewSize)
+	}
+	if settings.Format != apigen.Avif {
+		t.Errorf("format = %q, want the shipped avif", settings.Format)
+	}
+	if settings.FullSize {
+		t.Error("fullSize = true, want the shipped off")
+	}
+	if !settings.RawEmbedded {
+		t.Error("rawEmbedded = false, want the shipped on")
+	}
+}
+
+// TestImageSettingsPutSavesDocument pins the save: a full document
+// persists (answering the saved value) and the read adopts it; a
+// second save replaces the row (the setting is one value).
+func TestImageSettingsPutSavesDocument(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	body := `{"tileSize":320,"previewSize":1440,"format":"webp","fullSize":false,"rawEmbedded":true}`
+	rec := env.putSetting(t, "image", body, env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT image settings status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var settings apigen.ImageSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode image settings %q: %v", rec.Body.String(), err)
+	}
+	if settings.TileSize != 320 || settings.PreviewSize != 1440 || settings.Format != apigen.Webp || settings.FullSize || !settings.RawEmbedded {
+		t.Errorf("answered settings = %+v, want the saved document", settings)
+	}
+
+	rec = env.getSetting(t, "image", env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET after the save status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	settings = apigen.ImageSettingsResponse{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode reread image settings: %v", err)
+	}
+	if settings.TileSize != 320 || settings.Format != apigen.Webp {
+		t.Errorf("reread settings = %+v, want the saved document persisted", settings)
+	}
+}
+
+// TestImageSettingsPutRejectsInvalid pins the validation: a missing
+// required field or a value outside its enum answers 400 naming the
+// field, and nothing is written.
+func TestImageSettingsPutRejectsInvalid(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+	for _, tt := range []struct {
+		name   string
+		body   string
+		fields []string
+	}{
+		{
+			name:   "missing tileSize",
+			body:   `{"previewSize":1080,"format":"avif","fullSize":false,"rawEmbedded":true}`,
+			fields: []string{"tileSize"},
+		},
+		{
+			name:   "tileSize out of enum",
+			body:   `{"tileSize":500,"previewSize":1080,"format":"avif","fullSize":false,"rawEmbedded":true}`,
+			fields: []string{"tileSize"},
+		},
+		{
+			name:   "previewSize out of enum",
+			body:   `{"tileSize":250,"previewSize":9999,"format":"avif","fullSize":false,"rawEmbedded":true}`,
+			fields: []string{"previewSize"},
+		},
+		{
+			name:   "format out of enum",
+			body:   `{"tileSize":250,"previewSize":1080,"format":"jpegxl","fullSize":false,"rawEmbedded":true}`,
+			fields: []string{"format"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := env.putSetting(t, "image", tt.body, env.cookie)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %q)", rec.Code, rec.Body.String())
+			}
+			var envelope struct {
+				Code    string   `json:"code"`
+				Details struct{} `json:"details"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode the error envelope: %v", err)
+			}
+			if envelope.Code != "VALIDATION_FAILED" {
+				t.Errorf("code = %q, want VALIDATION_FAILED", envelope.Code)
+			}
+		})
+	}
+	// Nothing was written: the read still answers the defaults.
+	rec := env.getSetting(t, "image", env.cookie)
+	var settings apigen.ImageSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode the untouched read: %v", err)
+	}
+	if settings.TileSize != 250 || settings.Format != apigen.Avif {
+		t.Errorf("settings after the rejected saves = %+v, want the untouched defaults", settings)
+	}
+}

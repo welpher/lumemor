@@ -597,6 +597,12 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// networking block): one settings row read/write.
 				r.Get("/admin/settings/models", wrapper.GetModelSettings)
 				r.Put("/admin/settings/models", wrapper.UpdateModelSettings)
+				// The derivative image settings (the background work's
+				// cost block): the sizes and encoding every NEW
+				// derivation runs at. The save recomputes nothing --
+				// the rebuild is the explicit action below.
+				r.Get("/admin/settings/image", wrapper.GetImageSettings)
+				r.Put("/admin/settings/image", wrapper.UpdateImageSettings)
 				// The model download trigger: the
 				// default group's first-boot download. The handler is
 				// one bounded row read plus one enqueue; the heavy

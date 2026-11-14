@@ -1037,12 +1037,15 @@ func TestUploadToReadyFullFlow(t *testing.T) {
 		t.Errorf("taken_at_source = %q, want exif", state.source)
 	}
 
-	// The thumbnail job ran too: the three AVIF serving copies exist
-	// (64x64 source: tile and view keep the source size) and the
-	// blurhash is stored on the row.
-	requireJobThumbDimensions(t, assetID, media.SizeTile, 64, 64)
-	requireJobThumbDimensions(t, assetID, media.SizeView, 64, 64)
-	requireJobThumbDimensions(t, assetID, media.SizeOriginal, 64, 64)
+	// The thumbnail job ran too: the shipped-posture serving copies
+	// exist (64x64 source: tile and view keep the source size; the
+	// full-size copy is off by default) and the blurhash is stored
+	// on the row.
+	requireJobThumbDimensions(t, assetID, media.SizeTile, media.FormatAvif, 64, 64)
+	requireJobThumbDimensions(t, assetID, media.SizeView, media.FormatAvif, 64, 64)
+	if _, err := os.Stat(storage.ThumbPath(assetID.String(), media.SizeOriginal, media.FormatAvif)); !os.IsNotExist(err) {
+		t.Errorf("original derivative stat err = %v, want NotExist under the shipped posture", err)
+	}
 	if hash := e.blurhashOf(t, assetID); !hash.Valid || len(hash.String) < 6 {
 		t.Errorf("blurhash = %v, want the stored non-empty hash", hash)
 	}
@@ -1184,8 +1187,8 @@ func TestUploadLivePhotoPipeline(t *testing.T) {
 	// no thumbnails (no thumbnail job was enqueued for it) but its
 	// playable stream does exist -- with the +faststart layout the
 	// transcode produces.
-	requireJobThumbDimensions(t, photoID, media.SizeTile, 64, 64)
-	requireJobThumbDimensions(t, photoID, media.SizeOriginal, 64, 64)
+	requireJobThumbDimensions(t, photoID, media.SizeTile, media.FormatAvif, 64, 64)
+	requireJobThumbDimensions(t, photoID, media.SizeView, media.FormatAvif, 64, 64)
 	if files := e.thumbFiles(t, videoID); files != nil {
 		t.Errorf("component video derived files = %v, want none", files)
 	}
