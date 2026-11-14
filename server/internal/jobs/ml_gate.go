@@ -45,6 +45,12 @@ var ErrModelFilesMissing = errors.New("jobs: the model weights are missing and t
 // the semantics an administrator who chose manual downloads expects.
 var errAutoDownloadOff = errors.New("jobs: the automatic model download is switched off")
 
+// errModelDownloadFailed is the seam's answer when the most recent run
+// failed: the failure stays the administrator's to retry, and the job
+// answers the ordinary missing-weights failure instead of waiting for
+// a run that is not coming.
+var errModelDownloadFailed = errors.New("jobs: the most recent model download failed")
+
 // missingWeightsError is the configured-but-missing failure when no
 // fill happens (no queue wired, the switch off, or a failing enqueue).
 // It carries the registry's own sentinel, so the job's failure is the
@@ -89,7 +95,7 @@ func resolveMlModel(ctx context.Context, registry *ml.Registry, fill func(contex
 		return nil, missingWeightsError(slot)
 	}
 	if fillErr := fill(ctx); fillErr != nil {
-		if !errors.Is(fillErr, errAutoDownloadOff) {
+		if !errors.Is(fillErr, errAutoDownloadOff) && !errors.Is(fillErr, errModelDownloadFailed) {
 			logger.Warn("start the model download for a missing model", "error", fillErr, "slot", string(slot))
 		}
 		return nil, missingWeightsError(slot)
@@ -113,8 +119,5 @@ func (q *Queue) ensureModelDownload(ctx context.Context) error {
 	if !settings.AutoDownload {
 		return errAutoDownloadOff
 	}
-	if _, err := q.EnsureModelDownload(ctx); err != nil {
-		return fmt.Errorf("ensure the model download run: %w", err)
-	}
-	return nil
+	return q.joinOrStartModelDownload(ctx)
 }

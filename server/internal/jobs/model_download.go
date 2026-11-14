@@ -206,29 +206,47 @@ func (q *Queue) EnqueueModelDownload(ctx context.Context) (uuid.UUID, error) {
 	return id, nil
 }
 
-// EnsureModelDownload joins the model group's download instead of
-// stacking runs on it: a run still in flight answers its identifier,
-// and so does the most recent finished run -- the download endpoint's
-// idempotence, shared here so a burst of AI jobs behind one missing
-// model starts one download rather than one per job. A group that
-// already landed (or whose failed run owns its own retries) is
-// therefore not re-fetched; the administrator's explicit retry is the
-// path for that, exactly as the endpoint has it.
+// joinOrStartModelDownload decides what the automatic fill's seam does
+// with the group's runs. Nil means a run is in flight (joined) or was
+// just started, so the caller waits for it through its own retry;
+// errModelDownloadFailed means the most recent run failed and no new
+// one starts -- a broken source must not be re-fetched by every AI job,
+// and the download endpoint's retry stays the administrator's.
 //
-// The automatic fill's seam lives beside it (see ml_gate.go).
-func (q *Queue) EnsureModelDownload(ctx context.Context) (uuid.UUID, error) {
+// The rules, in order:
+//
+//   - a run still in flight is joined (its identifier is not needed
+//     here: the caller only waits);
+//   - the most recent run succeeded but the slot's files are missing
+//     again -- the store was wiped below a configured instance -- so a
+//     fresh run starts (its verified-file skip keeps the re-run cheap);
+//   - the most recent run failed: no new run per job;
+//   - no run at all starts one.
+//
+// The download endpoint keeps its own idempotence (a click joins an
+// in-flight or the most recent run); this decision exists for the
+// automatic path, whose trigger is a missing file rather than a click.
+func (q *Queue) joinOrStartModelDownload(ctx context.Context) error {
 	queries := dbgen.New(q.pool)
-	if row, err := queries.FindInFlightJobRunByKind(ctx, ModelDownloadKind); err == nil {
-		return uuid.UUID(row.ID.Bytes), nil
+	if _, err := queries.FindInFlightJobRunByKind(ctx, ModelDownloadKind); err == nil {
+		return nil
 	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, fmt.Errorf("find the in-flight model download run: %w", err)
+		return fmt.Errorf("find the in-flight model download run: %w", err)
 	}
-	if row, err := queries.LatestJobRunByKind(ctx, ModelDownloadKind); err == nil {
-		return uuid.UUID(row.ID.Bytes), nil
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, fmt.Errorf("find the latest model download run: %w", err)
+	row, err := queries.LatestJobRunByKind(ctx, ModelDownloadKind)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		_, enqueueErr := q.EnqueueModelDownload(ctx)
+		return enqueueErr
+	case err != nil:
+		return fmt.Errorf("find the latest model download run: %w", err)
+	case row.State == dbgen.JobStateSucceeded:
+		// The store lost files a finished run had landed: start again.
+		_, enqueueErr := q.EnqueueModelDownload(ctx)
+		return enqueueErr
+	default:
+		return errModelDownloadFailed
 	}
-	return q.EnqueueModelDownload(ctx)
 }
 
 // modelSettings reads the model store's policy through the shared
