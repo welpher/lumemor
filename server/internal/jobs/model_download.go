@@ -20,15 +20,18 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/ml"
@@ -201,4 +204,35 @@ func (q *Queue) EnqueueModelDownload(ctx context.Context) (uuid.UUID, error) {
 		return uuid.Nil, fmt.Errorf("commit the model download enqueue: %w", err)
 	}
 	return id, nil
+}
+
+// EnsureModelDownload joins the model group's download instead of
+// stacking runs on it: a run still in flight answers its identifier,
+// and so does the most recent finished run -- the download endpoint's
+// idempotence, shared here so a burst of AI jobs behind one missing
+// model starts one download rather than one per job. A group that
+// already landed (or whose failed run owns its own retries) is
+// therefore not re-fetched; the administrator's explicit retry is the
+// path for that, exactly as the endpoint has it.
+//
+// The automatic fill's seam lives beside it (see ml_gate.go).
+func (q *Queue) EnsureModelDownload(ctx context.Context) (uuid.UUID, error) {
+	queries := dbgen.New(q.pool)
+	if row, err := queries.FindInFlightJobRunByKind(ctx, ModelDownloadKind); err == nil {
+		return uuid.UUID(row.ID.Bytes), nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, fmt.Errorf("find the in-flight model download run: %w", err)
+	}
+	if row, err := queries.LatestJobRunByKind(ctx, ModelDownloadKind); err == nil {
+		return uuid.UUID(row.ID.Bytes), nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, fmt.Errorf("find the latest model download run: %w", err)
+	}
+	return q.EnqueueModelDownload(ctx)
+}
+
+// modelSettings reads the model store's policy through the shared
+// accessor (the documented default answers a corrupt row).
+func (q *Queue) modelSettings(ctx context.Context) (db.ModelSettings, error) {
+	return db.ModelSettingsOf(ctx, dbgen.New(q.pool))
 }
