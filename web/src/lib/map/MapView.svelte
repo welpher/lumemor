@@ -48,6 +48,14 @@
 	let container = $state<HTMLDivElement>();
 	let map: MapLibreMap | null = null;
 	let markers = $state<Marker[]>([]);
+	/**
+	 * The single-asset mini map's one marker. A state field, not a
+	 * derived: the map handle is a plain variable (the library is
+	 * loaded lazily, never a signal), so a derivation would cache the
+	 * `null` of the first render and never see the map arrive. The
+	 * refresh writes it beside the pins instead.
+	 */
+	let single = $state<Marker | null>(null);
 	/** True while the map has not finished its first layout. */
 	let ready = $state(false);
 
@@ -64,6 +72,7 @@
 			const pixel = map!.project([place.lon, place.lat]);
 			return { placeId: place.placeId, name: place.name, count: place.count, x: pixel.x, y: pixel.y };
 		});
+		single = point === null ? null : assetMarker(map, point);
 		if (cluster) {
 			markers = clusterPins(projected, 56);
 			return;
@@ -78,12 +87,9 @@
 		}));
 	}
 
-	/** The single-asset mini map's one marker. */
-	function singleMarker(): Marker | null {
-		if (point === null || map === null) {
-			return null;
-		}
-		const pixel = map.project([point.lon, point.lat]);
+	/** The mini map's one marker: the asset's own point, projected. */
+	function assetMarker(instance: MapLibreMap, at: NonNullable<Props['point']>): Marker {
+		const pixel = instance.project([at.lon, at.lat]);
 		return { key: 'asset', x: pixel.x, y: pixel.y, count: 0, name: null, placeIds: [] };
 	}
 
@@ -192,27 +198,41 @@
 			onselect(marker.placeIds);
 		}
 	}
-
-	const single = $derived(singleMarker());
 </script>
 
-// The map surface: one MapLibre instance over the instance's tile // source, with the places' pins drawn as an HTML
-overlay. // // THE TWO HALVES OF THE PRIVACY LINE: the base layer is loaded by the // BROWSER straight from the tile
-host (the server never proxies a // tile), while the pins come from the app's own places read -- a // thumbnail link and
-a city name never cross the tile line. The map // only tells the tile host what any map tells it: a viewport, a zoom //
-level and the device's address. // // WHY THE PINS ARE HTML: cluster counts and city names are text, and a // symbol
-layer needs a glyph endpoint the tile source may not carry. // Drawing the pins as buttons over the canvas keeps the
-names in the // instance's own language (the labels come from our read endpoint, not // from baked-in basemap text),
-keeps them clickable and accessible, // and lets the clustering rule stay in one tested function. // // THE DEGRADATION:
-no tile source, an unreachable source, or tiles // failing to load all land on the same honest state -- the base layer
-// is gone, the pins stay, and the notice says which part is missing. // The empty base style is a real style with no
-layers, so the library // never has to invent anything. // // The library is loaded lazily: the wall pages never pay for
-it, and // the two map surfaces (the places tab and the viewer's location card) // import the same component.
+<!--
+	The map surface: one MapLibre instance over the instance's tile
+	source, with the places' pins drawn as an HTML overlay.
+
+	THE TWO HALVES OF THE PRIVACY LINE: the base layer is loaded by the
+	BROWSER straight from the tile host (the server never proxies a
+	tile), while the pins come from the app's own places read -- a
+	thumbnail link and a city name never cross the tile line. The map
+	only tells the tile host what any map tells it: a viewport, a zoom
+	level and the device's address.
+
+	WHY THE PINS ARE HTML: cluster counts and city names are text, and a
+	symbol layer needs a glyph endpoint the tile source may not carry.
+	Drawing the pins as buttons over the canvas keeps the names in the
+	instance's own language (the labels come from our read endpoint, not
+	from baked-in basemap text), keeps them clickable and accessible,
+	and lets the clustering rule stay in one tested function.
+
+	THE DEGRADATION: no tile source, an unreachable source, or tiles
+	failing to load all land on the same honest state -- the base layer
+	is gone, the pins stay, and the notice says which part is missing.
+	The empty base style is a real style with no layers, so the library
+	never has to invent anything.
+
+	The library is loaded lazily: the wall pages never pay for it, and
+	the two map surfaces (the places tab and the viewer's location card)
+	import the same component.
+-->
 
 <div
 	class="map relative h-full w-full overflow-hidden bg-[color-mix(in_srgb,var(--color-text)_3%,var(--color-card))]"
 	aria-label={label}
-	role="application"
+	role="region"
 >
 	<div class="map__canvas absolute inset-0" bind:this={container}></div>
 
