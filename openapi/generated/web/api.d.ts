@@ -3308,10 +3308,156 @@ export interface paths {
          *     `download` is the most recent `model_download` run of whatever
          *     state -- the run the download endpoint's idempotence would
          *     return -- or null before the first download was ever started.
+         *
+         *     `slots` is the per-slot state view the page's cards render:
+         *     one row per pipeline slot, each carrying one of the four
+         *     states the cards speak (`active`, `downloading`,
+         *     `not_downloaded`, `failed`), the slot's active model, its
+         *     source facts (official or custom, the host, the digest, the
+         *     download time) and the download run's progress while a run is
+         *     in flight. `official` is the manifest's catalog -- the
+         *     validated list the switch dialog's official group renders,
+         *     every entry with its download state (`downloaded` is the
+         *     presence probe, the digest check stays the activation's).
          */
         get: operations["listModels"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/models/probes/{probeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one model source probe's result.
+         * @description The probe the switch dialog polls. A source probe -- the
+         *     download-to-staging of a URL, or the accept of an uploaded
+         *     file, then the sha256 check when one was given, the sandbox
+         *     load of the ONNX graph and the slot contract's shape and
+         *     dimension checks -- runs in the server's background after the
+         *     probe POST answered 202; this read answers the probe's current
+         *     state, whatever it is: running (with its download progress),
+         *     ok (with the facts the dialog renders), error (with the reason
+         *     that names the exact check that failed) or warn (the checks
+         *     passed, the host is not on the download sources list, and the
+         *     save may still proceed).
+         *
+         *     A probe is transient: its record lives for a few minutes after
+         *     it settles, then it is gone -- an unknown or expired probeId
+         *     answers 404 and the dialog simply probes again.
+         */
+        get: operations["getModelProbe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/models/{slot}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe a model source for one slot.
+         * @description The first half of a source import: download (or read) the
+         *     candidate model, check it against the slot's contract, and
+         *     stage it -- without touching the slot's active model. The
+         *     answer is 202 with a probeId; the probe itself runs in the
+         *     server's background (a URL download legitimately takes
+         *     minutes) and is read through the probe GET until it settles.
+         *
+         *     The body is `multipart/form-data` with these parts:
+         *
+         *     - `kind` (text, required) -- `url` or `file`.
+         *     - `url` (text, required for kind `url`) -- the model URL; the
+         *       download lands in the slot's staging area, its bytes are
+         *       never trusted before the digest check.
+         *     - `sha256` (text, optional) -- a digest the bytes must match;
+         *       without it the probe still computes and reports the digest,
+         *       and the save marks the model an unverified source.
+         *     - `file` (file, required for kind `file`) -- the ONNX bytes
+         *       (up to 2 GiB; the sniff reads the content, never the file
+         *       name).
+         *
+         *     The checks, in order, every failure naming its own check: the
+         *     digest when one was given; the graph loads (a file that is not
+         *     a readable ONNX model is refused); the input shape and the
+         *     output dimension against the slot's contract -- a mismatch is
+         *     refused naming both numbers. A host that is not on the
+         *     download sources list does NOT refuse: the probe answers
+         *     `warn` (the checks passed, the host is undeclared, the save is
+         *     still the administrator's own act and its use is logged).
+         *
+         *     The probe does not register anything: the save endpoint takes
+         *     the probeId, and a probe whose checks failed can never be
+         *     saved.
+         */
+        post: operations["probeModelSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/models/{slot}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch a slot onto a probed source.
+         * @description The second half of a source import, and the official list's
+         *     switch: the slot is switched onto the source the request
+         *     names, under the slot's lock. The answer is 202 -- the switch
+         *     itself is seconds, the recalculation its semantics demand is
+         *     an async run the task panel owns.
+         *
+         *     The body depends on the kind:
+         *
+         *     - `builtin` (the official list): `modelId` names the manifest
+         *       entry; nothing was probed because the entry is the
+         *       validated list. A cross-dimension switch of the embed slot
+         *       requires `confirmWipe: true` -- the confirmation is the
+         *       dialog's contract, and the response reports the wipe's facts
+         *       exactly as the activation switch does.
+         *     - `url` or `file` (a custom source): `probeId` names a probe
+         *       that finished OK -- the server never reuses an unverified
+         *       result, a missing or failed probe answers 400. The model is
+         *       registered from the staged bytes (same sha256 reuse: bytes
+         *       already on disk are never stored twice), activated, and the
+         *       slot's recalculation run is enqueued.
+         *
+         *     The slot lock: a switch stops being possible while one is in
+         *     flight (409) -- the same-dimension switch is seconds, but the
+         *     recalculation it started is the slot's business, and two
+         *     overlapping switches would race its products. The switch
+         *     refuses to lose the named persons: a face slot's recalculation
+         *     inherits the cluster names by overlap, so the confirm copy
+         *     states what is kept; nothing here deletes a user label.
+         *
+         *     A failed switch changes nothing: the slot keeps its previous
+         *     model and its products.
+         */
+        post: operations["switchModelSource"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3328,7 +3474,28 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete one registered model.
+         * @description The removal of a model registration: the row is deleted and
+         *     its model directory (weights plus manifest copy) is removed
+         *     from the models dir. Only a model that is NOT its slot's
+         *     active one can be deleted -- the active model of a slot is
+         *     the pipeline's running configuration, and the removal of it
+         *     is a switch first (the dialog's removal flow switches the
+         *     slot back onto the official entry, then removes).
+         *
+         *     A rerun or other job still holding the model's products is
+         *     unaffected: the products reference the model by id and the
+         *     registry's foreign keys keep them resolvable, so a delete of
+         *     a model whose products still exist answers 200 and leaves the
+         *     products to their own lifecycle.
+         *
+         *     The model's files are removed from disk after the row is
+         *     deleted; a directory removal failure logs and still answers
+         *     200 (the registration is gone; the leftover directory is
+         *     cleaned by the next scan's refusal).
+         */
+        delete: operations["deleteModel"];
         options?: never;
         head?: never;
         /**
@@ -3864,11 +4031,20 @@ export interface paths {
          */
         get: operations["getModelSettings"];
         /**
-         * Save the model download settings.
-         * @description The settings save. `autoDownload` is required (an omitted
-         *     boolean would decode as off, silently changing the policy).
-         *     The value takes effect on the next AI job's readiness check;
-         *     no run is started or cancelled by the save itself.
+         * Save the model download settings and download sources.
+         * @description The settings save. `autoDownload`, `allowedHosts` and
+         *     `mirrorBaseUrl` are required (an omitted field would decode
+         *     as its zero value, silently changing the policy): the caller
+         *     saves the whole object it read.
+         *
+         *     `allowedHosts` replaces the stored list wholesale; every
+         *     entry must be a hostname, optionally with a leading `*.`
+         *     wildcard label and an optional port. `mirrorBaseUrl`, when
+         *     non-empty, must be a host (or a full http/https URL whose
+         *     host is kept); its host joins `allowedHosts` automatically,
+         *     so saving a mirror never leaves it refusing its own first
+         *     hop. The values take effect on the next download run; no run
+         *     is started or cancelled by the save itself.
          */
         put: operations["updateModelSettings"];
         post?: never;
@@ -4501,8 +4677,8 @@ export interface components {
             tilejsonUrl: string;
         };
         /**
-         * @description The model store's policy of `GET /admin/settings/models`
-         *     and the successful `PUT`.
+         * @description The model store's policy and download sources of
+         *     `GET /admin/settings/models` and the successful `PUT`.
          */
         ModelSettingsResponse: {
             /**
@@ -4512,11 +4688,46 @@ export interface components {
              *     first-run download stays the administrator's own act.
              */
             autoDownload: boolean;
+            /**
+             * @description The hosts the model download may travel through. A URL
+             *     whose host matches no entry -- entries are exact
+             *     hostnames or a `*.` wildcard prefix for a whole domain
+             *     suffix -- fails the download with the host named, and the
+             *     answer points at the sources panel that can add it. The
+             *     shipped default list covers the manifest's own hosts;
+             *     the manifest's pinned URLs stay the identity of what is
+             *     downloaded, this list is only where the bytes may come
+             *     from.
+             * @example [
+             *       "huggingface.co",
+             *       "*.hf.co",
+             *       "hf-mirror.com"
+             *     ]
+             */
+            allowedHosts: string[];
+            /**
+             * @description The download mirror's base host, the empty string when
+             *     no mirror is configured. Non-empty, it replaces the
+             *     manifest's pinned `huggingface.co` hostname wholesale on
+             *     every candidate URL before the fetch, and its host joins
+             *     `allowedHosts` automatically at save time (a mirror the
+             *     list refuses would fail on its first hop). Custom model
+             *     imports are not mirror-rewritten.
+             * @example [
+             *       ""
+             *     ]
+             * @example hf-mirror.com
+             */
+            mirrorBaseUrl: string;
         };
         /** @description Payload of `PUT /admin/settings/models`. */
         ModelSettingsUpdateRequest: {
             /** @description The policy to save. */
             autoDownload: boolean;
+            /** @description The allowed hosts to save, replacing the stored list wholesale. */
+            allowedHosts: string[];
+            /** @description The mirror base host to save, or the empty string to clear it. */
+            mirrorBaseUrl: string;
         };
         /**
          * @description The map's client-side configuration of `GET /map/config`:
@@ -4768,7 +4979,9 @@ export interface components {
         };
         /**
          * @description The model management listing: every registered model plus
-         *     the download run summary.
+         *     the download run summary, the per-slot state view the page's
+         *     cards render, and the manifest catalog the switch dialog's
+         *     official group renders.
          */
         ModelListResponse: {
             /** @description Every registered model, grouped by slot then id. */
@@ -4778,6 +4991,183 @@ export interface components {
              *     or null before the first download was ever started.
              */
             download: (components["schemas"]["JobRunResponse"] | null) & components["schemas"]["JobRunResponse"];
+            /**
+             * @description One row per pipeline slot (the contract's enum order):
+             *     the four-state view the page's cards render, the slot's
+             *     active model, its source facts and the download run's
+             *     progress while a run is in flight.
+             */
+            slots: components["schemas"]["SlotStateResponse"][];
+            /**
+             * @description The manifest's catalog: the validated list the switch
+             *     dialog's official group renders, every entry with its
+             *     download state. The image is not the entry -- the mirror
+             *     carries no weights; `downloaded` is the presence probe
+             *     and the digest check stays the activation's business.
+             */
+            official: components["schemas"]["ModelCatalogEntry"][];
+        };
+        /**
+         * @description The four states a slot's card speaks. `active` is a slot
+         *     running its model (the state badge renders as the model's
+         *     own facts); `downloading` is a model download run in flight
+         *     whose bytes this slot still waits for (the card shows the
+         *     run's percent); `not_downloaded` is an unfilled slot -- or a
+         *     filled one whose weights are gone with no run coming; `failed`
+         *     is the same missing-weights state while the most recent
+         *     download run failed (the card shows the retry).
+         * @enum {string}
+         */
+        SlotState: "active" | "downloading" | "not_downloaded" | "failed";
+        /**
+         * @description One pipeline slot's state row. `modelId` is the slot's active
+         *     model's id, null when the slot is unfilled; `source` is null
+         *     for an unfilled slot; `progress` is the in-flight download
+         *     run's counts while `state` is `downloading` (and null
+         *     otherwise -- the run is group-level, the card renders its
+         *     percent).
+         */
+        SlotStateResponse: {
+            slot: components["schemas"]["ModelSlot"];
+            state: components["schemas"]["SlotState"];
+            modelId: string | null;
+            /**
+             * @description Where the slot's active model came from. `official` models
+             *     were registered by the download service; `custom` models
+             *     were imported by the administrator (a URL or a local file
+             *     probe). `host` and `sha256` come from the model's on-disk
+             *     manifest (the host is null when the manifest is unreadable
+             *     or carries no source URL); `downloadedAt` is the
+             *     registration time. Null for an unfilled slot.
+             */
+            source: {
+                /** @enum {string} */
+                kind: "official" | "custom";
+                /**
+                 * @description The host the bytes were fetched from, when known.
+                 * @example huggingface.co
+                 */
+                host: string | null;
+                /** @description The primary file's pinned digest, or null when unknown. */
+                sha256: string | null;
+                /**
+                 * Format: date-time
+                 * @description When the model was registered.
+                 */
+                downloadedAt: string;
+            } | null;
+            /**
+             * @description The in-flight download run's `{done, total}` pinned-byte
+             *     counts, null when no run is in flight.
+             */
+            progress: {
+                done: number;
+                total: number;
+            } | null;
+        };
+        /**
+         * @description One official-list entry: a manifest model with the facts the
+         *     switch dialog's dropdown renders (name, license, size,
+         *     dimension) and its download state.
+         */
+        ModelCatalogEntry: {
+            /** @description The manifest model's stable id. */
+            id: string;
+            slot: components["schemas"]["ModelSlot"];
+            /**
+             * @description The display name the manifest's notice carries, derived from the model id.
+             * @example Chinese-CLIP ViT-B/16
+             */
+            name: string;
+            /** @description The upstream license identifier, empty when undeclared. */
+            license: string;
+            /** @description The embedding dimension; absent for models that do not embed. */
+            dim?: number;
+            /** @description The pinned byte count of the entry's files. */
+            bytes: number;
+            /** @description Whether the entry's files are present on disk (a presence probe, not a digest check). */
+            downloaded: boolean;
+        };
+        /** @description The 202 answer of a probe POST: the identifier to poll. */
+        ModelProbeAcceptedResponse: {
+            probeId: string;
+        };
+        /**
+         * @description One source probe's current state. `state` is `queued`,
+         *     `running` (with the download progress when the source is a
+         *     URL), `ok`, `error` (the reason names the check that failed)
+         *     or `warn` (the checks passed; the host is not on the download
+         *     sources list; the save may still proceed). `dims` and
+         *     `inputSize` are the facts a finished probe read off the
+         *     graph; `sha256` is the computed digest of the staged bytes
+         *     (the given pin, when one was given, already matched it); a
+         *     failed probe carries none of them.
+         */
+        ModelProbeResponse: {
+            probeId: string;
+            /** @enum {string} */
+            state: "queued" | "running" | "ok" | "error" | "warn";
+            /** @description The URL download's `{done, total}` counts while running, null otherwise. */
+            progress: {
+                done: number;
+                total: number;
+            } | null;
+            /** @description The model's output dimension, read off the graph. */
+            dims: number | null;
+            /** @description The model's input geometry, read off the graph. */
+            inputSize: {
+                width: number;
+                height: number;
+            } | null;
+            /** @description The staged bytes' digest, set when the probe finished (ok or warn). */
+            sha256: string | null;
+            /** @description Whether the source's host is on the download sources list. */
+            hostDeclared: boolean;
+            /**
+             * @description The failing check, named, for state `error`.
+             * @example the model emits 384 dimensions, this slot needs 512
+             */
+            reason: string | null;
+        };
+        /**
+         * @description The source a slot is switched onto. `kind` selects the shape:
+         *     `builtin` takes `modelId` (an official-list entry, no probe
+         *     needed), `url` and `file` take a `probeId` whose checks
+         *     finished OK. `confirmWipe` is required when the switch would
+         *     change the embed slot's vector dimension.
+         */
+        ModelSourceSwitchRequest: {
+            /** @enum {string} */
+            kind: "builtin" | "url" | "file";
+            /** @description The official-list entry, for kind `builtin`. */
+            modelId?: string;
+            /** @description The finished probe, for kinds `url` and `file`. */
+            probeId?: string;
+            /**
+             * @description The explicit confirmation a cross-dimension embed switch
+             *     requires (the wipe cannot be undone).
+             */
+            confirmWipe?: boolean;
+        };
+        /**
+         * @description What one switch did: the slot's newly active model, the
+         *     destructive arm's facts when the dimension changed, and the
+         *     recalculation run's id when the switch's semantics enqueue
+         *     one (the face slots and a cross-dimension embed switch; a
+         *     same-dimension embed switch keeps both generations and
+         *     recomputes nothing).
+         */
+        ModelSourceSwitchResponse: {
+            activated: components["schemas"]["ModelRef"];
+            /** @description Set when the switch re-typed the vector column. */
+            dimensionChanged: {
+                from: number;
+                to: number;
+            } | null;
+            /** @description The number of embeddings the dimension switch deleted. */
+            wipedEmbeddings: number | null;
+            /** @description The enqueued recalculation run's identifier, null when none is due. */
+            recalcRunId: string | null;
         };
         /** @description The identity of one model: its slug id and its slot. */
         ModelRef: {
@@ -7139,7 +7529,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -12171,6 +12561,335 @@ export interface operations {
             };
         };
     };
+    getModelProbe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The probe identifier the POST answered.
+                 * @example 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+                 */
+                probeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The probe's current state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelProbeResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No probe under this identifier: it expired, or the id is
+             *     not one the server issued.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    probeModelSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The slot the candidate model would fill.
+                 * @example clip_embed
+                 */
+                slot: components["schemas"]["ModelSlot"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * @description Which source the candidate comes from.
+                     * @enum {string}
+                     */
+                    kind: "url" | "file";
+                    /**
+                     * @description The candidate model's URL, for kind `url`.
+                     * @example https://models.example.net/my-clip.onnx
+                     */
+                    url?: string;
+                    /**
+                     * @description The digest the bytes must match, when the caller
+                     *     pins one (64 lowercase hex chars).
+                     */
+                    sha256?: string;
+                    /**
+                     * Format: binary
+                     * @description The candidate model's bytes, for kind `file`.
+                     */
+                    file?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The probe was accepted; read it through the probe GET. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelProbeAcceptedResponse"];
+                };
+            };
+            /**
+             * @description The body is malformed: the kind is missing or unknown, the
+             *     URL part is absent for kind `url` (or not an absolute
+             *     http/https URL), the file part is absent for kind `file`,
+             *     the slot does not carry file imports (the text tower rides
+             *     the vision tower), or the sha256 is not 64 hex chars.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No slot with this name (the slot path is a machine value,
+             *     as the listing returns it).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    switchModelSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The slot being switched.
+                 * @example clip_embed
+                 */
+                slot: components["schemas"]["ModelSlot"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelSourceSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description The switch landed; the recalculation, when one is due, is an async run. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSourceSwitchResponse"];
+                };
+            };
+            /**
+             * @description The request is malformed or refuses itself: an unknown
+             *     kind, a builtin without `modelId`, a custom source without
+             *     a probeId or with a probe that did not finish OK, a
+             *     cross-dimension switch without `confirmWipe`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No slot with this name, or no builtin model under the
+             *     named id.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The slot is locked by a switch already in flight; nothing
+             *     was changed.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The identifier of the model to delete.
+                 * @example my-clip-980020bf
+                 */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The model was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deleted: boolean;
+                    };
+                };
+            };
+            /**
+             * @description The model is its slot's active one: switch the slot first
+             *     (the removal flow does).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No model is registered under this identifier. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     activateModel: {
         parameters: {
             query?: never;
@@ -13261,8 +13980,9 @@ export interface operations {
                 };
             };
             /**
-             * @description `autoDownload` is missing or the body is not valid JSON.
-             *     The details name the field; nothing was written.
+             * @description A required field is missing, a host entry is malformed, or
+             *     the body is not valid JSON. The details name the field;
+             *     nothing was written.
              */
             400: {
                 headers: {

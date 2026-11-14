@@ -11,7 +11,9 @@ Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**activateModel**](AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [**createUser**](AdminApi.md#createuser) | **POST** /admin/users | Create one account.
+[**deleteModel**](AdminApi.md#deletemodel) | **DELETE** /admin/models/{id} | Delete one registered model.
 [**downloadModels**](AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
+[**getModelProbe**](AdminApi.md#getmodelprobe) | **GET** /admin/models/probes/{probeId} | Read one model source probe&#39;s result.
 [**getModelSettings**](AdminApi.md#getmodelsettings) | **GET** /admin/settings/models | Read the model download settings.
 [**getStorageSettings**](AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [**getTilesSettings**](AdminApi.md#gettilessettings) | **GET** /admin/settings/tiles | Read the map tile source setting.
@@ -22,11 +24,13 @@ Method | HTTP request | Description
 [**listJobs**](AdminApi.md#listjobs) | **GET** /admin/jobs | List the job runs of the task panel.
 [**listModels**](AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [**listUsers**](AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
+[**probeModelSource**](AdminApi.md#probemodelsource) | **POST** /admin/models/{slot}/probe | Probe a model source for one slot.
 [**reresolvePlaces**](AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [**rerunModel**](AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [**runUpdateCheck**](AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [**scanModels**](AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
-[**updateModelSettings**](AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings.
+[**switchModelSource**](AdminApi.md#switchmodelsource) | **POST** /admin/models/{slot}/source | Switch a slot onto a probed source.
+[**updateModelSettings**](AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings and download sources.
 [**updateStorageSettings**](AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [**updateTilesSettings**](AdminApi.md#updatetilessettings) | **PUT** /admin/settings/tiles | Save the map tile source setting.
 [**updateTranscodingSettings**](AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
@@ -131,6 +135,53 @@ Name | Type | Description  | Notes
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **deleteModel**
+> DeleteModel200Response deleteModel(id)
+
+Delete one registered model.
+
+The removal of a model registration: the row is deleted and its model directory (weights plus manifest copy) is removed from the models dir. Only a model that is NOT its slot's active one can be deleted -- the active model of a slot is the pipeline's running configuration, and the removal of it is a switch first (the dialog's removal flow switches the slot back onto the official entry, then removes).  A rerun or other job still holding the model's products is unaffected: the products reference the model by id and the registry's foreign keys keep them resolvable, so a delete of a model whose products still exist answers 200 and leaves the products to their own lifecycle.  The model's files are removed from disk after the row is deleted; a directory removal failure logs and still answers 200 (the registration is gone; the leftover directory is cleaned by the next scan's refusal). 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final String id = my-clip-980020bf; // String | The identifier of the model to delete.
+
+try {
+    final response = api.deleteModel(id);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->deleteModel: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **String**| The identifier of the model to delete. | 
+
+### Return type
+
+[**DeleteModel200Response**](DeleteModel200Response.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **downloadModels**
 > ModelDownloadResponse downloadModels()
 
@@ -162,6 +213,53 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**ModelDownloadResponse**](ModelDownloadResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getModelProbe**
+> ModelProbeResponse getModelProbe(probeId)
+
+Read one model source probe's result.
+
+The probe the switch dialog polls. A source probe -- the download-to-staging of a URL, or the accept of an uploaded file, then the sha256 check when one was given, the sandbox load of the ONNX graph and the slot contract's shape and dimension checks -- runs in the server's background after the probe POST answered 202; this read answers the probe's current state, whatever it is: running (with its download progress), ok (with the facts the dialog renders), error (with the reason that names the exact check that failed) or warn (the checks passed, the host is not on the download sources list, and the save may still proceed).  A probe is transient: its record lives for a few minutes after it settles, then it is gone -- an unknown or expired probeId answers 404 and the dialog simply probes again. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final String probeId = 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10; // String | The probe identifier the POST answered.
+
+try {
+    final response = api.getModelProbe(probeId);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getModelProbe: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **probeId** | **String**| The probe identifier the POST answered. | 
+
+### Return type
+
+[**ModelProbeResponse**](ModelProbeResponse.md)
 
 ### Authorization
 
@@ -527,7 +625,7 @@ Name | Type | Description  | Notes
 
 List the registered models and the download run's state.
 
-The model management listing of the admin surface: every registered model of the instance with its facts, its activation state and the presence of its files, plus the most recent model download run as the summary the model page's progress bar renders.  Every model row of the `models` table appears, grouped by slot then id -- including a model whose weights went missing, which lists with `filesPresent: false` so the administrator can see and clean it up. `filesPresent` is a presence probe only (the on-disk manifest is readable and every file it pins exists); the sha256 verification itself is the activation's and the session loader's business, never the listing's. `license`, `notice` and `inputSize` come from the model's on-disk manifest, `dim` and `params` from the registered row (which the download and the scan keep in step with that manifest); `dim` and `inputSize` are null when the model declares none, `license` is empty and `notice` null when the manifest is unreadable; `isActive` comes from the table.  `download` is the most recent `model_download` run of whatever state -- the run the download endpoint's idempotence would return -- or null before the first download was ever started. 
+The model management listing of the admin surface: every registered model of the instance with its facts, its activation state and the presence of its files, plus the most recent model download run as the summary the model page's progress bar renders.  Every model row of the `models` table appears, grouped by slot then id -- including a model whose weights went missing, which lists with `filesPresent: false` so the administrator can see and clean it up. `filesPresent` is a presence probe only (the on-disk manifest is readable and every file it pins exists); the sha256 verification itself is the activation's and the session loader's business, never the listing's. `license`, `notice` and `inputSize` come from the model's on-disk manifest, `dim` and `params` from the registered row (which the download and the scan keep in step with that manifest); `dim` and `inputSize` are null when the model declares none, `license` is empty and `notice` null when the manifest is unreadable; `isActive` comes from the table.  `download` is the most recent `model_download` run of whatever state -- the run the download endpoint's idempotence would return -- or null before the first download was ever started.  `slots` is the per-slot state view the page's cards render: one row per pipeline slot, each carrying one of the four states the cards speak (`active`, `downloading`, `not_downloaded`, `failed`), the slot's active model, its source facts (official or custom, the host, the digest, the download time) and the download run's progress while a run is in flight. `official` is the manifest's catalog -- the validated list the switch dialog's official group renders, every entry with its download state (`downloaded` is the presence probe, the digest check stays the activation's). 
 
 ### Example
 ```dart
@@ -604,6 +702,61 @@ This endpoint does not need any parameter.
 ### HTTP request headers
 
  - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **probeModelSource**
+> ModelProbeAcceptedResponse probeModelSource(slot, kind, url, sha256, file)
+
+Probe a model source for one slot.
+
+The first half of a source import: download (or read) the candidate model, check it against the slot's contract, and stage it -- without touching the slot's active model. The answer is 202 with a probeId; the probe itself runs in the server's background (a URL download legitimately takes minutes) and is read through the probe GET until it settles.  The body is `multipart/form-data` with these parts:  - `kind` (text, required) -- `url` or `file`. - `url` (text, required for kind `url`) -- the model URL; the   download lands in the slot's staging area, its bytes are   never trusted before the digest check. - `sha256` (text, optional) -- a digest the bytes must match;   without it the probe still computes and reports the digest,   and the save marks the model an unverified source. - `file` (file, required for kind `file`) -- the ONNX bytes   (up to 2 GiB; the sniff reads the content, never the file   name).  The checks, in order, every failure naming its own check: the digest when one was given; the graph loads (a file that is not a readable ONNX model is refused); the input shape and the output dimension against the slot's contract -- a mismatch is refused naming both numbers. A host that is not on the download sources list does NOT refuse: the probe answers `warn` (the checks passed, the host is undeclared, the save is still the administrator's own act and its use is logged).  The probe does not register anything: the save endpoint takes the probeId, and a probe whose checks failed can never be saved. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final ModelSlot slot = clip_embed; // ModelSlot | The slot the candidate model would fill.
+final String kind = kind_example; // String | Which source the candidate comes from.
+final String url = url_example; // String | The candidate model's URL, for kind `url`.
+final String sha256 = sha256_example; // String | The digest the bytes must match, when the caller pins one (64 lowercase hex chars). 
+final MultipartFile file = BINARY_DATA_HERE; // MultipartFile | The candidate model's bytes, for kind `file`.
+
+try {
+    final response = api.probeModelSource(slot, kind, url, sha256, file);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->probeModelSource: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **slot** | [**ModelSlot**](.md)| The slot the candidate model would fill. | 
+ **kind** | **String**| Which source the candidate comes from. | 
+ **url** | **String**| The candidate model's URL, for kind `url`. | [optional] 
+ **sha256** | **String**| The digest the bytes must match, when the caller pins one (64 lowercase hex chars).  | [optional] 
+ **file** | **MultipartFile**| The candidate model's bytes, for kind `file`. | [optional] 
+
+### Return type
+
+[**ModelProbeAcceptedResponse**](ModelProbeAcceptedResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: multipart/form-data
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -784,12 +937,12 @@ This endpoint does not need any parameter.
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **updateModelSettings**
-> ModelSettingsResponse updateModelSettings(modelSettingsUpdateRequest)
+# **switchModelSource**
+> ModelSourceSwitchResponse switchModelSource(slot, modelSourceSwitchRequest)
 
-Save the model download settings.
+Switch a slot onto a probed source.
 
-The settings save. `autoDownload` is required (an omitted boolean would decode as off, silently changing the policy). The value takes effect on the next AI job's readiness check; no run is started or cancelled by the save itself. 
+The second half of a source import, and the official list's switch: the slot is switched onto the source the request names, under the slot's lock. The answer is 202 -- the switch itself is seconds, the recalculation its semantics demand is an async run the task panel owns.  The body depends on the kind:  - `builtin` (the official list): `modelId` names the manifest   entry; nothing was probed because the entry is the   validated list. A cross-dimension switch of the embed slot   requires `confirmWipe: true` -- the confirmation is the   dialog's contract, and the response reports the wipe's facts   exactly as the activation switch does. - `url` or `file` (a custom source): `probeId` names a probe   that finished OK -- the server never reuses an unverified   result, a missing or failed probe answers 400. The model is   registered from the staged bytes (same sha256 reuse: bytes   already on disk are never stored twice), activated, and the   slot's recalculation run is enqueued.  The slot lock: a switch stops being possible while one is in flight (409) -- the same-dimension switch is seconds, but the recalculation it started is the slot's business, and two overlapping switches would race its products. The switch refuses to lose the named persons: a face slot's recalculation inherits the cluster names by overlap, so the confirm copy states what is kept; nothing here deletes a user label.  A failed switch changes nothing: the slot keeps its previous model and its products. 
 
 ### Example
 ```dart
@@ -800,7 +953,56 @@ import 'package:lumemor_api/api.dart';
 //defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
 
 final api = LumemorApi().getAdminApi();
-final ModelSettingsUpdateRequest modelSettingsUpdateRequest = {"autoDownload":false}; // ModelSettingsUpdateRequest | 
+final ModelSlot slot = clip_embed; // ModelSlot | The slot being switched.
+final ModelSourceSwitchRequest modelSourceSwitchRequest = {"kind":"builtin","modelId":"cnclip-vit-b16-vision"}; // ModelSourceSwitchRequest | 
+
+try {
+    final response = api.switchModelSource(slot, modelSourceSwitchRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->switchModelSource: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **slot** | [**ModelSlot**](.md)| The slot being switched. | 
+ **modelSourceSwitchRequest** | [**ModelSourceSwitchRequest**](ModelSourceSwitchRequest.md)|  | 
+
+### Return type
+
+[**ModelSourceSwitchResponse**](ModelSourceSwitchResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **updateModelSettings**
+> ModelSettingsResponse updateModelSettings(modelSettingsUpdateRequest)
+
+Save the model download settings and download sources.
+
+The settings save. `autoDownload`, `allowedHosts` and `mirrorBaseUrl` are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  `allowedHosts` replaces the stored list wholesale; every entry must be a hostname, optionally with a leading `*.` wildcard label and an optional port. `mirrorBaseUrl`, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins `allowedHosts` automatically, so saving a mirror never leaves it refusing its own first hop. The values take effect on the next download run; no run is started or cancelled by the save itself. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final ModelSettingsUpdateRequest modelSettingsUpdateRequest = {"autoDownload":false,"allowedHosts":["huggingface.co","*.hf.co","hf-mirror.com"],"mirrorBaseUrl":""}; // ModelSettingsUpdateRequest | 
 
 try {
     final response = api.updateModelSettings(modelSettingsUpdateRequest);

@@ -40,6 +40,10 @@ type ManifestModel struct {
 	// ID is the stable identity of the model, e.g. "yunet-2023mar".
 	// It doubles as the directory name under the models dir.
 	ID string `json:"id"`
+	// Name is the model's display name ("Chinese-CLIP ViT-B/16"),
+	// the official list's face. It is a revision 2 field; empty
+	// names render from the id.
+	Name string `json:"name,omitempty"`
 	// Slot is the functional slot the model fills once activated:
 	// face-detect, face-recognize, clip-embed or ocr.
 	Slot string `json:"slot"`
@@ -49,12 +53,26 @@ type ManifestModel struct {
 	// License is the upstream license identifier, cross-referenced
 	// with the provenance record in tools/models/NOTICES.md.
 	License string `json:"license"`
-	// SourceURL is the primary download URL, always https.
+	// SourceURL is the primary download URL, always https. Revision
+	// 1's two-field shape: it and FallbackURL are the whole chain.
 	SourceURL string `json:"sourceUrl"`
 	// FallbackURL is the secondary URL tried when the primary fails.
-	// It is nil when no natural second source exists; the HF domain
-	// mirror rewrite then remains the only redundancy.
+	// It is nil when no natural second source exists; the mirror
+	// rewrite then remains the only redundancy.
 	FallbackURL *string `json:"fallbackUrl"`
+	// Urls is the ordered candidate chain, revision 2's shape: the
+	// fetcher tries every entry in order, each hop's host validated
+	// and the bytes digest-checked, until one lands. It replaces
+	// (and subsumes) SourceURL and FallbackURL, which a revision 2
+	// manifest leaves empty.
+	Urls []string `json:"urls,omitempty"`
+	// Hosts names the hosts the chain travels through (including
+	// the CDN hosts a redirect can reach), lowercase. It is the
+	// model's declaration the listing and the import surface check
+	// their sources against; a host the manifest declares is always
+	// a permitted hop, while the instance's own allowed-hosts list
+	// may name more.
+	Hosts []string `json:"hosts,omitempty"`
 	// Notice is the short provenance line surfaced in the admin UI.
 	Notice string `json:"notice"`
 	// InputSize is the expected input image geometry in pixels.
@@ -70,6 +88,60 @@ type ManifestModel struct {
 	// byte count. A downloaded model is only registered once every
 	// file matches its digest.
 	Files []ManifestFile `json:"files"`
+}
+
+// CandidateURLs answers the model's ordered download chain: revision
+// 2's Urls list when it carries one, else the revision 1 pair (the
+// primary and, when present, the fallback). Every reader -- the
+// downloader, the offline import's provenance check -- goes through
+// this accessor, so both revisions share one walk.
+func (m *ManifestModel) CandidateURLs() []string {
+	if len(m.Urls) > 0 {
+		return m.Urls
+	}
+	candidates := make([]string, 0, 2)
+	if m.SourceURL != "" {
+		candidates = append(candidates, m.SourceURL)
+	}
+	if m.FallbackURL != nil && *m.FallbackURL != "" {
+		candidates = append(candidates, *m.FallbackURL)
+	}
+	return candidates
+}
+
+// Deduplicate merges other into the manifest's model list by sha256:
+// the same digest is the same artifact wherever it was found, so a
+// custom import that reproduces an official model's bytes registers
+// nothing new and the official entry -- the one with the provenance
+// record -- stays the single face of those bytes. The merge is the
+// manifest's dedup discipline: first-seen entries win their slot in
+// the list.
+func (m *Manifest) Deduplicate(other []ManifestModel) int {
+	seen := map[string]bool{}
+	for i := range m.Models {
+		for _, file := range m.Models[i].Files {
+			seen[file.SHA256] = true
+		}
+	}
+	added := 0
+	for _, model := range other {
+		duplicated := false
+		for _, file := range model.Files {
+			if seen[file.SHA256] {
+				duplicated = true
+				break
+			}
+		}
+		if duplicated {
+			continue
+		}
+		m.Models = append(m.Models, model)
+		for _, file := range model.Files {
+			seen[file.SHA256] = true
+		}
+		added++
+	}
+	return added
 }
 
 // ManifestSize is the input geometry of a model, in pixels.
@@ -103,4 +175,10 @@ func LoadManifest(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("parse model manifest %s: %w", path, err)
 	}
 	return &manifest, nil
+}
+
+// marshal renders the manifest as JSON, the bundle builder's and the
+// tests' writer side of LoadManifest.
+func (m *Manifest) marshal() ([]byte, error) {
+	return json.Marshal(m)
 }

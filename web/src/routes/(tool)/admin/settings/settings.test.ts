@@ -57,7 +57,7 @@ function tilesSettingsBody(tilejsonUrl = ''): Record<string, unknown> {
 }
 
 function modelSettingsBody(autoDownload = true): Record<string, unknown> {
-	return { autoDownload };
+	return { autoDownload, allowedHosts: ['huggingface.co'], mirrorBaseUrl: '' };
 }
 
 function updateCheckStateBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -654,5 +654,9 @@ test('the tile source and the model policy save their own bodies', async () => {
 		(call) =>
 			String(call[0]).endsWith('/admin/settings/models') && (call[1] as RequestInit | undefined)?.method === 'PUT'
 	);
-	expect(JSON.parse(String((modelsPut?.[1] as RequestInit).body))).toEqual({ autoDownload: false });
+	expect(JSON.parse(String((modelsPut?.[1] as RequestInit).body))).toEqual({
+		autoDownload: false,
+		allowedHosts: ['huggingface.co'],
+		mirrorBaseUrl: ''
+	});
 });

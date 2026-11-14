@@ -13,34 +13,40 @@
 // re-verification) unless the mount is cold, in which case it
 // transfers the group from the stack's configured source. The script
 // also stages two self-made constant clip-embedding fixture models
-// into the models dir before the stack starts: the activation dialog
-// scenes need a second model in the clip slot, and a third with a
-// different dimension for the destructive branch's warning.
+// into the models dir before the stack starts (clip-fixture-512 and
+// clip-fixture-768, the second at a different dimension) and uploads
+// the face-portrait fixtures.
 //
-// THE SCENES (the M3 model management story, in order):
+// THE SCENES (the M3 model sources story, in order):
 //
-//  1. Signing in through the form lands on the deep-linked models
-//     page, whose empty state carries the download CTA (the v1 form
-//     of the first-run wizard's model download step) and the honest
-//     per-slot emptiness.
+//  1. Signing in through the form lands on the models page whose
+//     four slot cards honestly read Not downloaded (the mirror
+//     carries no weights: an unregistered group is the fresh
+//     instance's truth) and the empty state's download CTA. The
+//     admin rail's items carry their 18px glyphs.
 //  2. The CTA drives the default group's download: the progress
-//     region takes over, the bar advances (observed; a warm models
-//     dir may legitimately complete before an intermediate sample
-//     lands), the run completes, and the five default models render
-//     with their Active badges.
+//     region takes over, the run completes, and the four cards read
+//     Active.
 //  3. The task panel lists the succeeded model_download row with its
 //     converged byte counts.
 //  4. The directory scan (through the admin API -- the browser
 //     surface has no scan button, the same seeding pattern the M2
-//     story uses for its Live Photo pair) registers the two fixture
-//     models, which the page lists as inactive custom models.
-//  5. The same-dimension switch: the confirm dialog renders the
-//     coexistence copy (the products are kept, switching back
-//     restores them); confirming moves the Active badge to the
-//     fixture model.
-//  6. The cross-dimension switch: the confirm dialog renders the
-//     wipe warning (every embedding is deleted, the vector column is
-//     re-typed); canceling leaves the badge where scene 5 put it.
+//     story uses) registers the two fixture models. The semantic
+//     slot's switch dialog shows them in the Added group; selecting
+//     the 512 fixture and saving moves the card onto the custom
+//     model (the Custom badge, the source meta line).
+//  5. The failed probe: a 128-dim file cannot pass the embed slot's
+//     contract -- the probe's error state names the check, and the
+//     save switch stays disabled (a failed probe leaves nothing
+//     saved).
+//  6. The passing probe and the same-bytes reuse: the card switches
+//     back onto the official entry first; the 512 fixture's bytes
+//     (the file the dialog drops) then pass the probe and the save
+//     activates the ALREADY-REGISTERED model with the same digest --
+//     the same bytes are one model, never a second copy.
+//  7. The download-sources footer: collapsed by default, its summary
+//     names the count; adding a host and saving persists it (the
+//     summary follows).
 //
 // THE STATE HANDOFF: the scenes are serial (one stack, one story --
 // see playwright.config.ts) and share the browser session: scene 1
@@ -50,6 +56,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
+import path from 'node:path';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -66,22 +73,16 @@ const BASE_URL = 'http://localhost:8244';
 const ADMIN_EMAIL = 'admin@m3a-e2e.invalid';
 const ADMIN_PASSWORD = 'correct-horse-battery';
 
-// The five default models of the manifest, by the row identity the
-// page renders (article[data-model-id]) -- the vision tower, the
-// search's text tower, the face pair and the OCR pair.
-const DEFAULT_MODEL_IDS = [
-	'yunet-2023mar',
-	'sface-2021dec',
-	'cnclip-vit-b16-vision',
-	'cnclip-vit-b16-text',
-	'ppocr-v4-mobile-ch'
-] as const;
-
-// The two fixture models the acceptance script stages for the dialog
+// The fixture models the acceptance script stages for the dialog
 // scenes: the same 512 dimension as the default clip model (the
 // coexistence branch) and a 768 one (the destructive branch).
 const FIXTURE_512_ID = 'clip-fixture-512';
-const FIXTURE_768_ID = 'clip-fixture-768';
+
+// The ONNX fixtures the probe scenes drop into the file input: the
+// 128-dim one fails the embed slot's contract, the 512 one passes and
+// reuses the already-registered bytes.
+const FIXTURE_128_FILE = path.join(specDir, '..', '..', 'server', 'internal', 'ml', 'testdata', 'const128.onnx');
+const FIXTURE_512_FILE = path.join(specDir, '..', '..', 'server', 'internal', 'ml', 'testdata', 'const512.onnx');
 
 // The download progress bound: the cold upstream transfer of the
 // group (about 771 MB with the search's text tower) is minutes, the
@@ -91,6 +92,10 @@ const DOWNLOAD_TIMEOUT_MS = 900_000;
 // The storage-state file scene 1 writes and every later scene replays
 // (git-ignored, recreated per run).
 const authStatePath = `${specDir}/.auth/m3-state.json`;
+
+// The four slot cards, by their data-slot (the pipeline slots the
+// four-card face covers; the text tower rides the semantic card).
+const CARD_SLOTS = ['face_detect', 'face_recognize', 'clip_embed', 'ocr'] as const;
 
 test.beforeAll(async ({ playwright }) => {
 	// The first-run bootstrap, the acceptance scripts' pattern: the
@@ -105,7 +110,7 @@ test.beforeAll(async ({ playwright }) => {
 	await api.dispose();
 });
 
-test('scene 1: signing in through the form lands on the empty models page', async ({ page }) => {
+test('scene 1: signing in through the form lands on the honest un-downloaded models page', async ({ page }) => {
 	await page.goto('/login?redirectTo=%2Fadmin%2Fmodels');
 	await page.getByLabel('Email').fill(ADMIN_EMAIL);
 	await page.getByLabel('Password').fill(ADMIN_PASSWORD);
@@ -127,10 +132,33 @@ test('scene 1: signing in through the form lands on the empty models page', asyn
 	).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Download the default models', exact: true })).toBeVisible();
 
-	// Every slot section reports its emptiness (the five slots:
-	// detection, recognition, the embedding and text towers of the
-	// semantic arm, and OCR).
-	await expect(page.getByText('No model registered for this slot.')).toHaveCount(5);
+	// The four slot cards each honestly read Not downloaded: the
+	// mirror carries no weights and nothing is registered yet.
+	for (const slot of CARD_SLOTS) {
+		const card = page.locator(`.models__card[data-slot="${slot}"]`);
+		await expect(card).toBeVisible();
+		await expect(card.locator('[data-state="not_downloaded"]')).toHaveText('Not downloaded');
+		// The switch action sits first in every card's action row.
+		await expect(card.getByRole('button', { name: 'Swap model' })).toBeVisible();
+	}
+
+	// The admin rail's items name themselves with their glyphs (the
+	// icon-first rule): every item carries an 18px svg before the
+	// label.
+	const rail = page.getByRole('navigation', { name: 'Administration' });
+	for (const label of ['Users', 'Instance settings', 'Machine learning', 'Jobs']) {
+		const item = rail.getByRole('link', { name: label, exact: true });
+		await expect(item).toBeVisible();
+		expect(await item.locator('svg').count()).toBe(1);
+	}
+
+	// The download-sources footer: collapsed, its summary line names
+	// the shipped host count (the manifest's own hosts plus the
+	// mirror host).
+	const sources = page.locator('details[data-testid="models-sources"]');
+	await expect(sources).toBeVisible();
+	await expect(sources).not.toHaveAttribute('open');
+	await expect(sources.locator('[data-testid="models-sources-summary"]')).toHaveText(/hosts$/);
 
 	// Hand the session to every later scene: the storage state rides
 	// the login cookie (the fresh contexts replay it).
@@ -143,7 +171,7 @@ test('scene 1: signing in through the form lands on the empty models page', asyn
 test.describe('the signed-in scenes', () => {
 	test.use({ storageState: authStatePath });
 
-	test('scene 2: the download CTA completes and activates the five models', async ({ page }) => {
+	test('scene 2: the download CTA completes and the four cards read Active', async ({ page }) => {
 		test.setTimeout(DOWNLOAD_TIMEOUT_MS + 60_000);
 		await page.goto('/admin/models');
 		const cta = page.getByRole('button', { name: 'Download the default models', exact: true });
@@ -156,7 +184,7 @@ test.describe('the signed-in scenes', () => {
 		// may complete before any intermediate sample is possible, so
 		// the honest convergence is: the region carries the run, and
 		// either the bar advances or the run completes outright; either
-		// way the five model rows land.
+		// way the four cards land Active.
 		const bar = page.getByRole('progressbar');
 		let peak = -1;
 		let sawAdvance = false;
@@ -173,7 +201,16 @@ test.describe('the signed-in scenes', () => {
 						}
 						return false;
 					}
-					return (await page.locator('article[data-model-id]').count()) === 5;
+					let active = 0;
+					for (const slot of CARD_SLOTS) {
+						if (
+							(await page.locator(`.models__card[data-slot="${slot}"] [data-state="active"]`).count()) ===
+							1
+						) {
+							active += 1;
+						}
+					}
+					return active === CARD_SLOTS.length;
 				},
 				{ timeout: DOWNLOAD_TIMEOUT_MS, intervals: [200, 500, 1000, 2000] }
 			)
@@ -184,10 +221,10 @@ test.describe('the signed-in scenes', () => {
 		});
 
 		// The empty state's CTA is gone (the listing owns the surface
-		// now) and each default model carries its Active badge.
+		// now) and the four cards carry the Active badge.
 		await expect(cta).toHaveCount(0);
-		for (const id of DEFAULT_MODEL_IDS) {
-			await expect(page.locator(`article[data-model-id="${id}"] .models__badge`)).toHaveText('Active');
+		for (const slot of CARD_SLOTS) {
+			await expect(page.locator(`.models__card[data-slot="${slot}"] [data-state="active"]`)).toHaveText('Active');
 		}
 	});
 
@@ -209,69 +246,149 @@ test.describe('the signed-in scenes', () => {
 		await expect(row.getByText(/of 771\.5 MB/)).toBeVisible();
 	});
 
-	test('scene 4: the scan registers the fixture models as inactive customs', async ({ page }) => {
+	test('scene 4: the scan registers the fixtures and the switch moves the semantic card onto a custom model', async ({
+		page
+	}) => {
 		await page.goto('/admin/models');
 
 		// The directory scan rides the admin API (the browser surface
 		// has no scan button): the request rides the page's own context
-		// and its login cookie, the page renders the outcome.
+		// and its login cookie.
 		const scan = await page.request.post('/api/v1/admin/models/scan');
 		expect(scan.status()).toBe(200);
 
-		// A fresh navigation re-lists: the two fixture models appear
-		// under the Semantic embeddings slot, unbadged.
+		// The listing's models array carries the fixtures; the
+		// switch dialog's Added group offers them for the semantic
+		// slot.
 		await page.goto('/admin/models');
-		for (const id of [FIXTURE_512_ID, FIXTURE_768_ID]) {
-			const row = page.locator(`article[data-model-id="${id}"]`);
-			await expect(row).toBeVisible();
-			await expect(row.locator('.models__badge')).toHaveText('');
-		}
-	});
-
-	test('scene 5: the same-dimension switch confirms and moves the badge', async ({ page }) => {
-		await page.goto('/admin/models');
-
-		// Asking to activate the 512-dim fixture opens the confirm
-		// dialog with the coexistence copy: the previous model's
-		// products are kept and switching back restores them.
-		await page
-			.locator(`article[data-model-id="${FIXTURE_512_ID}"]`)
-			.getByRole('button', { name: 'Activate', exact: true })
-			.click();
-		const dialog = page.getByRole('dialog', { name: 'Activate this model?', exact: true });
+		await page.locator('.models__card[data-slot="clip_embed"]').getByRole('button', { name: 'Swap model' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Swap the Semantic embeddings model', exact: true });
 		await expect(dialog).toBeVisible();
-		await expect(dialog).toContainText("The previous model's products are kept");
-		await expect(dialog).toContainText('switching back restores them');
-		await expect(dialog).toContainText('needs a rerun over the library before its products appear');
 
-		// Confirming performs the switch: the badge moves to the
-		// fixture model and leaves the default clip model.
-		await dialog.getByRole('button', { name: 'Activate', exact: true }).click();
+		// The slot contract names the output dimension and the red
+		// consequence line.
+		await expect(dialog).toContainText('Output 512 dims');
+		await expect(dialog).toContainText('cannot be undone');
+
+		const select = dialog.locator('select');
+		// The two groups: the optgroup labels live on the DOM
+		// attributes, not the options' text.
+		const groupLabels = await select
+			.locator('optgroup')
+			.evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptGroupElement).label));
+		expect(groupLabels).toContain('Official list');
+		expect(groupLabels).toContain('Added');
+
+		// Selecting the 512 fixture and saving performs the switch:
+		// the card's badge reads Active and its meta line carries the
+		// custom source facts.
+		await select.selectOption(FIXTURE_512_ID);
+		await dialog.getByRole('button', { name: 'Save and switch', exact: true }).click();
 		await expect(dialog).toHaveCount(0);
-		await expect(page.locator(`article[data-model-id="${FIXTURE_512_ID}"] .models__badge`)).toHaveText('Active');
-		await expect(page.locator('article[data-model-id="cnclip-vit-b16-vision"] .models__badge')).toHaveText('');
+
+		const card = page.locator('.models__card[data-slot="clip_embed"]');
+		await expect(card.locator('[data-state="active"]')).toHaveText('Active');
+		await expect(card).toContainText('Custom');
+		await expect(card).toContainText('downloaded');
 	});
 
-	test('scene 6: the cross-dimension switch warns and canceling keeps the badge', async ({ page }) => {
+	test('scene 5: the failed probe names the check and the save stays disabled', async ({ page }) => {
 		await page.goto('/admin/models');
-
-		// Asking to activate the 768-dim fixture opens the confirm
-		// dialog with the destructive branch's warning: every embedding
-		// is deleted and the vector column is re-typed.
-		await page
-			.locator(`article[data-model-id="${FIXTURE_768_ID}"]`)
-			.getByRole('button', { name: 'Activate', exact: true })
-			.click();
-		const dialog = page.getByRole('dialog', { name: 'Activate this model?', exact: true });
+		await page.locator('.models__card[data-slot="clip_embed"]').getByRole('button', { name: 'Swap model' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Swap the Semantic embeddings model', exact: true });
 		await expect(dialog).toBeVisible();
-		await expect(dialog).toContainText('a different embedding dimension');
-		await expect(dialog).toContainText('every embedding is deleted and the vector column is re-typed');
-		await expect(dialog).toContainText('switching back does not bring the deleted embeddings back');
 
-		// Canceling keeps the activation where scene 5 left it: the
-		// destructive switch never ran.
+		// A 128-dim file cannot pass the embed slot's 512 contract: the
+		// probe's error state names the check, and the save switch
+		// never enables.
+		// The file tab first: the URL tab is the import panel's default.
+		await dialog.getByRole('tab', { name: 'Local file', exact: true }).click();
+		await dialog.locator('input[type="file"]').setInputFiles(FIXTURE_128_FILE);
+		await dialog.getByRole('button', { name: 'Check', exact: true }).click();
+		const failure = dialog.locator('[data-probe-state="error"]');
+		await expect(failure).toBeVisible({ timeout: 60_000 });
+		await expect(failure).toContainText('This model cannot be used');
+		await expect(dialog).toContainText(/dimensions?/);
+		await expect(dialog.getByRole('button', { name: 'Save and switch', exact: true })).toBeDisabled();
+
+		// Canceling keeps everything as it was: nothing was saved.
 		await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 		await expect(dialog).toHaveCount(0);
-		await expect(page.locator(`article[data-model-id="${FIXTURE_512_ID}"] .models__badge`)).toHaveText('Active');
+		const card = page.locator('.models__card[data-slot="clip_embed"]');
+		await expect(card.locator('[data-state="active"]')).toHaveText('Active');
+	});
+
+	test('scene 6: the passing probe switches back through the same bytes, never a second copy', async ({ page }) => {
+		await page.goto('/admin/models');
+
+		// First the card switches back onto the official entry: the
+		// dialog's select names the official entry (it preselects the
+		// running custom), the save performs the switch, and the
+		// custom meta line is gone.
+		await page.locator('.models__card[data-slot="clip_embed"]').getByRole('button', { name: 'Swap model' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Swap the Semantic embeddings model', exact: true });
+		await expect(dialog).toBeVisible();
+		await dialog.locator('select').selectOption('cnclip-vit-b16-vision');
+		await dialog.getByRole('button', { name: 'Save and switch', exact: true }).click();
+		await expect(dialog).toHaveCount(0);
+		const card = page.locator('.models__card[data-slot="clip_embed"]');
+		await expect(card.locator('[data-state="active"]')).toHaveText('Active');
+		await expect(card).not.toContainText('Custom');
+
+		// The 512 fixture's bytes pass the probe (they match the slot's
+		// contract), and the save activates the ALREADY-REGISTERED
+		// model carrying the same digest -- the same bytes are one
+		// model, never a second copy.
+		await card.getByRole('button', { name: 'Swap model' }).click();
+		const dialog2 = page.getByRole('dialog', { name: 'Swap the Semantic embeddings model', exact: true });
+		await expect(dialog2).toBeVisible();
+		// The file tab first: the URL tab is the import panel's default.
+		await dialog2.getByRole('tab', { name: 'Local file', exact: true }).click();
+		await dialog2.locator('input[type="file"]').setInputFiles(FIXTURE_512_FILE);
+		await dialog2.getByRole('button', { name: 'Check', exact: true }).click();
+		const ok = dialog2.locator('[data-probe-state="ok"]');
+		await expect(ok).toBeVisible({ timeout: 60_000 });
+		await expect(ok).toContainText('The checks passed');
+		await dialog2.getByRole('button', { name: 'Save and switch', exact: true }).click();
+		await expect(dialog2).toHaveCount(0);
+		await expect(card.locator('[data-state="active"]')).toHaveText('Active');
+		await expect(card).toContainText('Custom');
+		// The active model is the fixture's registration, not a
+		// content-named duplicate (the listing's models carry it).
+		const listing = await page.request.get('/api/v1/admin/models');
+		const body = (await listing.json()) as { models: Array<{ id: string; slot: string; isActive: boolean }> };
+		const activeIds = body.models.filter((model) => model.isActive).map((model) => model.id);
+		expect(activeIds).toContain(FIXTURE_512_ID);
+	});
+
+	test('scene 7: the download-sources footer edits the hosts and the summary follows', async ({ page }) => {
+		await page.goto('/admin/models');
+
+		const sources = page.locator('details[data-testid="models-sources"]');
+		await sources.locator('summary').click();
+		await expect(sources).toHaveAttribute('open');
+
+		// The shipped chips render; adding a host appends one, and the
+		// save persists the whole document (the summary's count
+		// follows).
+		const chips = sources.locator('.models__host');
+		const before = await chips.count();
+		expect(before).toBeGreaterThanOrEqual(4);
+		await sources.locator('.models__host-input').fill('models.example.net');
+		await sources.getByRole('button', { name: 'Add host', exact: true }).click();
+		await expect(chips).toHaveCount(before + 1);
+		await sources.getByRole('button', { name: 'Save', exact: true }).click();
+		await expect(sources).toContainText('The download sources are saved.');
+		await expect(sources.locator('[data-testid="models-sources-summary"]')).toHaveText(
+			new RegExp(`^${before + 1} hosts`)
+		);
+
+		// The persisted answer: a fresh navigation reads the saved
+		// list back.
+		await page.goto('/admin/models');
+		const sourcesAfter = page.locator('details[data-testid="models-sources"]');
+		await expect(sourcesAfter.locator('[data-testid="models-sources-summary"]')).toHaveText(
+			new RegExp(`^${before + 1} hosts`)
+		);
 	});
 });

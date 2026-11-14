@@ -42,6 +42,23 @@ ON CONFLICT (id) DO UPDATE SET
     params = EXCLUDED.params,
     updated_at = now();
 
+-- name: InsertModelKeepSource :exec
+-- The scan's registration: the same upsert WITHOUT touching source.
+-- The source is the registration's identity (downloaded = the
+-- service's own landing, custom = an administrator import), not a
+-- descriptive fact -- a scan that re-reads an official model's
+-- directory must not relabel it.
+INSERT INTO models (id, slot, version, source, file_path, input_size, dim, params)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO UPDATE SET
+    slot = EXCLUDED.slot,
+    version = EXCLUDED.version,
+    file_path = EXCLUDED.file_path,
+    input_size = EXCLUDED.input_size,
+    dim = EXCLUDED.dim,
+    params = EXCLUDED.params,
+    updated_at = now();
+
 -- name: ActivateModel :exec
 -- The activation half of the switch; the registry has already verified
 -- the model exists (ModelByID) and its files match their pinned
@@ -54,3 +71,9 @@ WHERE id = $1;
 -- success: the slot was unfilled.
 UPDATE models SET is_active = false, updated_at = now()
 WHERE slot = $1 AND is_active;
+
+-- name: DeleteModel :exec
+-- The removal of one registration: the models row goes first (the
+-- handler deletes its directory after), and the still-referencing
+-- products keep resolving through their own foreign keys.
+DELETE FROM models WHERE id = $1;

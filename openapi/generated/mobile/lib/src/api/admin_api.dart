@@ -15,15 +15,21 @@ import 'package:lumemor_api/src/model/admin_create_user_request.dart';
 import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
+import 'package:lumemor_api/src/model/delete_model200_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/job_run_list_response.dart';
 import 'package:lumemor_api/src/model/model_activate_response.dart';
 import 'package:lumemor_api/src/model/model_download_response.dart';
 import 'package:lumemor_api/src/model/model_list_response.dart';
+import 'package:lumemor_api/src/model/model_probe_accepted_response.dart';
+import 'package:lumemor_api/src/model/model_probe_response.dart';
 import 'package:lumemor_api/src/model/model_rerun_response.dart';
 import 'package:lumemor_api/src/model/model_scan_response.dart';
 import 'package:lumemor_api/src/model/model_settings_response.dart';
 import 'package:lumemor_api/src/model/model_settings_update_request.dart';
+import 'package:lumemor_api/src/model/model_slot.dart';
+import 'package:lumemor_api/src/model/model_source_switch_request.dart';
+import 'package:lumemor_api/src/model/model_source_switch_response.dart';
 import 'package:lumemor_api/src/model/places_rerun_response.dart';
 import 'package:lumemor_api/src/model/storage_settings_response.dart';
 import 'package:lumemor_api/src/model/storage_settings_update_request.dart';
@@ -259,6 +265,92 @@ class AdminApi {
     );
   }
 
+  /// Delete one registered model.
+  /// The removal of a model registration: the row is deleted and its model directory (weights plus manifest copy) is removed from the models dir. Only a model that is NOT its slot&#39;s active one can be deleted -- the active model of a slot is the pipeline&#39;s running configuration, and the removal of it is a switch first (the dialog&#39;s removal flow switches the slot back onto the official entry, then removes).  A rerun or other job still holding the model&#39;s products is unaffected: the products reference the model by id and the registry&#39;s foreign keys keep them resolvable, so a delete of a model whose products still exist answers 200 and leaves the products to their own lifecycle.  The model&#39;s files are removed from disk after the row is deleted; a directory removal failure logs and still answers 200 (the registration is gone; the leftover directory is cleaned by the next scan&#39;s refusal). 
+  ///
+  /// Parameters:
+  /// * [id] - The identifier of the model to delete.
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [DeleteModel200Response] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<DeleteModel200Response>> deleteModel({ 
+    required String id,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/models/{id}'.replaceAll('{' r'id' '}', encodeQueryParameter(_serializers, id, const FullType(String)).toString());
+    final _options = Options(
+      method: r'DELETE',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    DeleteModel200Response? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(DeleteModel200Response),
+      ) as DeleteModel200Response;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<DeleteModel200Response>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
   /// Start the default model group&#39;s download.
   /// The model download trigger of the admin surface: the default group&#39;s models -- pinned by the manifest with upstream URLs and sha256 digests -- are downloaded, verified and registered, and each model activates into its slot when the slot is still empty. The request body is deliberately empty: the default group is the only group v1 downloads.  The endpoint is idempotent. A run that is still in flight (state &#x60;queued&#x60; or &#x60;running&#x60;) answers 200 with its identifier and nothing new is started; so does the most recent finished run -- a repeated click neither re-downloads a landed group nor piles up jobs, and the recovery of a failed run belongs to the job&#39;s own retries. Only a first call -- no run of this kind at all -- creates one and answers 202.  The run&#39;s progress is observable two ways: the &#x60;job_runs&#x60; row of the returned identifier (kind &#x60;model_download&#x60;, &#x60;total&#x60; and &#x60;done&#x60; carrying the group&#39;s pinned byte counts) and the &#x60;job.started&#x60; / &#x60;job.progress&#x60; / &#x60;job.finished&#x60; events on the activity stream, the progress events throttled to at most one per second. 
   ///
@@ -332,6 +424,92 @@ class AdminApi {
     }
 
     return Response<ModelDownloadResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Read one model source probe&#39;s result.
+  /// The probe the switch dialog polls. A source probe -- the download-to-staging of a URL, or the accept of an uploaded file, then the sha256 check when one was given, the sandbox load of the ONNX graph and the slot contract&#39;s shape and dimension checks -- runs in the server&#39;s background after the probe POST answered 202; this read answers the probe&#39;s current state, whatever it is: running (with its download progress), ok (with the facts the dialog renders), error (with the reason that names the exact check that failed) or warn (the checks passed, the host is not on the download sources list, and the save may still proceed).  A probe is transient: its record lives for a few minutes after it settles, then it is gone -- an unknown or expired probeId answers 404 and the dialog simply probes again. 
+  ///
+  /// Parameters:
+  /// * [probeId] - The probe identifier the POST answered.
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [ModelProbeResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<ModelProbeResponse>> getModelProbe({ 
+    required String probeId,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/models/probes/{probeId}'.replaceAll('{' r'probeId' '}', encodeQueryParameter(_serializers, probeId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    ModelProbeResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(ModelProbeResponse),
+      ) as ModelProbeResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<ModelProbeResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,
@@ -1023,7 +1201,7 @@ class AdminApi {
   }
 
   /// List the registered models and the download run&#39;s state.
-  /// The model management listing of the admin surface: every registered model of the instance with its facts, its activation state and the presence of its files, plus the most recent model download run as the summary the model page&#39;s progress bar renders.  Every model row of the &#x60;models&#x60; table appears, grouped by slot then id -- including a model whose weights went missing, which lists with &#x60;filesPresent: false&#x60; so the administrator can see and clean it up. &#x60;filesPresent&#x60; is a presence probe only (the on-disk manifest is readable and every file it pins exists); the sha256 verification itself is the activation&#39;s and the session loader&#39;s business, never the listing&#39;s. &#x60;license&#x60;, &#x60;notice&#x60; and &#x60;inputSize&#x60; come from the model&#39;s on-disk manifest, &#x60;dim&#x60; and &#x60;params&#x60; from the registered row (which the download and the scan keep in step with that manifest); &#x60;dim&#x60; and &#x60;inputSize&#x60; are null when the model declares none, &#x60;license&#x60; is empty and &#x60;notice&#x60; null when the manifest is unreadable; &#x60;isActive&#x60; comes from the table.  &#x60;download&#x60; is the most recent &#x60;model_download&#x60; run of whatever state -- the run the download endpoint&#39;s idempotence would return -- or null before the first download was ever started. 
+  /// The model management listing of the admin surface: every registered model of the instance with its facts, its activation state and the presence of its files, plus the most recent model download run as the summary the model page&#39;s progress bar renders.  Every model row of the &#x60;models&#x60; table appears, grouped by slot then id -- including a model whose weights went missing, which lists with &#x60;filesPresent: false&#x60; so the administrator can see and clean it up. &#x60;filesPresent&#x60; is a presence probe only (the on-disk manifest is readable and every file it pins exists); the sha256 verification itself is the activation&#39;s and the session loader&#39;s business, never the listing&#39;s. &#x60;license&#x60;, &#x60;notice&#x60; and &#x60;inputSize&#x60; come from the model&#39;s on-disk manifest, &#x60;dim&#x60; and &#x60;params&#x60; from the registered row (which the download and the scan keep in step with that manifest); &#x60;dim&#x60; and &#x60;inputSize&#x60; are null when the model declares none, &#x60;license&#x60; is empty and &#x60;notice&#x60; null when the manifest is unreadable; &#x60;isActive&#x60; comes from the table.  &#x60;download&#x60; is the most recent &#x60;model_download&#x60; run of whatever state -- the run the download endpoint&#39;s idempotence would return -- or null before the first download was ever started.  &#x60;slots&#x60; is the per-slot state view the page&#39;s cards render: one row per pipeline slot, each carrying one of the four states the cards speak (&#x60;active&#x60;, &#x60;downloading&#x60;, &#x60;not_downloaded&#x60;, &#x60;failed&#x60;), the slot&#39;s active model, its source facts (official or custom, the host, the digest, the download time) and the download run&#39;s progress while a run is in flight. &#x60;official&#x60; is the manifest&#39;s catalog -- the validated list the switch dialog&#39;s official group renders, every entry with its download state (&#x60;downloaded&#x60; is the presence probe, the digest check stays the activation&#39;s). 
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -1179,6 +1357,124 @@ class AdminApi {
     }
 
     return Response<AdminUserListResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Probe a model source for one slot.
+  /// The first half of a source import: download (or read) the candidate model, check it against the slot&#39;s contract, and stage it -- without touching the slot&#39;s active model. The answer is 202 with a probeId; the probe itself runs in the server&#39;s background (a URL download legitimately takes minutes) and is read through the probe GET until it settles.  The body is &#x60;multipart/form-data&#x60; with these parts:  - &#x60;kind&#x60; (text, required) -- &#x60;url&#x60; or &#x60;file&#x60;. - &#x60;url&#x60; (text, required for kind &#x60;url&#x60;) -- the model URL; the   download lands in the slot&#39;s staging area, its bytes are   never trusted before the digest check. - &#x60;sha256&#x60; (text, optional) -- a digest the bytes must match;   without it the probe still computes and reports the digest,   and the save marks the model an unverified source. - &#x60;file&#x60; (file, required for kind &#x60;file&#x60;) -- the ONNX bytes   (up to 2 GiB; the sniff reads the content, never the file   name).  The checks, in order, every failure naming its own check: the digest when one was given; the graph loads (a file that is not a readable ONNX model is refused); the input shape and the output dimension against the slot&#39;s contract -- a mismatch is refused naming both numbers. A host that is not on the download sources list does NOT refuse: the probe answers &#x60;warn&#x60; (the checks passed, the host is undeclared, the save is still the administrator&#39;s own act and its use is logged).  The probe does not register anything: the save endpoint takes the probeId, and a probe whose checks failed can never be saved. 
+  ///
+  /// Parameters:
+  /// * [slot] - The slot the candidate model would fill.
+  /// * [kind] - Which source the candidate comes from.
+  /// * [url] - The candidate model's URL, for kind `url`.
+  /// * [sha256] - The digest the bytes must match, when the caller pins one (64 lowercase hex chars). 
+  /// * [file] - The candidate model's bytes, for kind `file`.
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [ModelProbeAcceptedResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<ModelProbeAcceptedResponse>> probeModelSource({ 
+    required ModelSlot slot,
+    required String kind,
+    String? url,
+    String? sha256,
+    MultipartFile? file,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/models/{slot}/probe'.replaceAll('{' r'slot' '}', encodeQueryParameter(_serializers, slot, const FullType(ModelSlot)).toString());
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'multipart/form-data',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      _bodyData = FormData.fromMap(<String, dynamic>{
+        r'kind': encodeFormParameter(_serializers, kind, const FullType(String)),
+        if (url != null) r'url': encodeFormParameter(_serializers, url, const FullType(String)),
+        if (sha256 != null) r'sha256': encodeFormParameter(_serializers, sha256, const FullType(String)),
+        if (file != null) r'file': file,
+      });
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    ModelProbeAcceptedResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(ModelProbeAcceptedResponse),
+      ) as ModelProbeAcceptedResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<ModelProbeAcceptedResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,
@@ -1528,8 +1824,116 @@ class AdminApi {
     );
   }
 
-  /// Save the model download settings.
-  /// The settings save. &#x60;autoDownload&#x60; is required (an omitted boolean would decode as off, silently changing the policy). The value takes effect on the next AI job&#39;s readiness check; no run is started or cancelled by the save itself. 
+  /// Switch a slot onto a probed source.
+  /// The second half of a source import, and the official list&#39;s switch: the slot is switched onto the source the request names, under the slot&#39;s lock. The answer is 202 -- the switch itself is seconds, the recalculation its semantics demand is an async run the task panel owns.  The body depends on the kind:  - &#x60;builtin&#x60; (the official list): &#x60;modelId&#x60; names the manifest   entry; nothing was probed because the entry is the   validated list. A cross-dimension switch of the embed slot   requires &#x60;confirmWipe: true&#x60; -- the confirmation is the   dialog&#39;s contract, and the response reports the wipe&#39;s facts   exactly as the activation switch does. - &#x60;url&#x60; or &#x60;file&#x60; (a custom source): &#x60;probeId&#x60; names a probe   that finished OK -- the server never reuses an unverified   result, a missing or failed probe answers 400. The model is   registered from the staged bytes (same sha256 reuse: bytes   already on disk are never stored twice), activated, and the   slot&#39;s recalculation run is enqueued.  The slot lock: a switch stops being possible while one is in flight (409) -- the same-dimension switch is seconds, but the recalculation it started is the slot&#39;s business, and two overlapping switches would race its products. The switch refuses to lose the named persons: a face slot&#39;s recalculation inherits the cluster names by overlap, so the confirm copy states what is kept; nothing here deletes a user label.  A failed switch changes nothing: the slot keeps its previous model and its products. 
+  ///
+  /// Parameters:
+  /// * [slot] - The slot being switched.
+  /// * [modelSourceSwitchRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [ModelSourceSwitchResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<ModelSourceSwitchResponse>> switchModelSource({ 
+    required ModelSlot slot,
+    required ModelSourceSwitchRequest modelSourceSwitchRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/models/{slot}/source'.replaceAll('{' r'slot' '}', encodeQueryParameter(_serializers, slot, const FullType(ModelSlot)).toString());
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(ModelSourceSwitchRequest);
+      _bodyData = _serializers.serialize(modelSourceSwitchRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    ModelSourceSwitchResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(ModelSourceSwitchResponse),
+      ) as ModelSourceSwitchResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<ModelSourceSwitchResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Save the model download settings and download sources.
+  /// The settings save. &#x60;autoDownload&#x60;, &#x60;allowedHosts&#x60; and &#x60;mirrorBaseUrl&#x60; are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  &#x60;allowedHosts&#x60; replaces the stored list wholesale; every entry must be a hostname, optionally with a leading &#x60;*.&#x60; wildcard label and an optional port. &#x60;mirrorBaseUrl&#x60;, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins &#x60;allowedHosts&#x60; automatically, so saving a mirror never leaves it refusing its own first hop. The values take effect on the next download run; no run is started or cancelled by the save itself. 
   ///
   /// Parameters:
   /// * [modelSettingsUpdateRequest] 

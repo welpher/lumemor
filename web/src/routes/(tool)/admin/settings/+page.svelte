@@ -38,6 +38,7 @@
 		saveTranscodingSettings,
 		saveTrashSettings,
 		saveUpdateCheckSettings,
+		type ModelSettings,
 		type StorageSettings,
 		type TranscodingSettings,
 		type UpdateCheckSettings
@@ -114,6 +115,9 @@
 
 	// The model store's policy form.
 	let formAutoDownload = $state(true);
+	/** The model settings' read document, the sources included: the
+	 * card's save is the whole object (the PUT replaces wholesale). */
+	let formModels = $state<ModelSettings>({ autoDownload: true, allowedHosts: [], mirrorBaseUrl: '' });
 	let savingModels = $state(false);
 	let modelsErrorKey = $state('');
 	let modelsSaved = $state(false);
@@ -178,7 +182,7 @@
 				return;
 			}
 			adoptSettings(storage.settings, trash.settings.retentionDays, transcoding.settings);
-			adoptNetworkingSettings(updateCheck.settings, tiles.settings.tilejsonUrl, models.settings.autoDownload);
+			adoptNetworkingSettings(updateCheck.settings, tiles.settings.tilejsonUrl, models.settings);
 			updateState = checkState.state;
 			status = 'ready';
 		})();
@@ -191,7 +195,7 @@
 	function adoptNetworkingSettings(
 		updateCheck: UpdateCheckSettings,
 		tilejsonUrl: string,
-		autoDownload: boolean
+		models: ModelSettings
 	): void {
 		formUpdateCheck = { ...updateCheck };
 		updateCheckErrorKey = '';
@@ -199,7 +203,7 @@
 		formTilejsonUrl = tilejsonUrl;
 		tilesErrorKey = '';
 		tilesSaved = false;
-		formAutoDownload = autoDownload;
+		formModels = { ...models };
 		modelsErrorKey = '';
 		modelsSaved = false;
 	}
@@ -374,9 +378,12 @@
 		savingModels = true;
 		modelsErrorKey = '';
 		modelsSaved = false;
-		const outcome = await saveModelSettings({ autoDownload: formAutoDownload });
+		// The save is the whole object: the read document carried the
+		// download sources too, and the PUT replaces them wholesale.
+		const outcome = await saveModelSettings({ ...formModels, autoDownload: formAutoDownload });
 		savingModels = false;
 		if (outcome.ok) {
+			formModels = { ...outcome.settings };
 			formAutoDownload = outcome.settings.autoDownload;
 			modelsSaved = true;
 			return;

@@ -54,6 +54,7 @@ import 'package:lumemor_api/src/model/camera_facet_count.dart';
 import 'package:lumemor_api/src/model/cluster_detail.dart';
 import 'package:lumemor_api/src/model/cluster_face_response.dart';
 import 'package:lumemor_api/src/model/create_admin_request.dart';
+import 'package:lumemor_api/src/model/delete_model200_response.dart';
 import 'package:lumemor_api/src/model/device_session.dart';
 import 'package:lumemor_api/src/model/download_format.dart';
 import 'package:lumemor_api/src/model/error.dart';
@@ -74,9 +75,14 @@ import 'package:lumemor_api/src/model/memory_create_response.dart';
 import 'package:lumemor_api/src/model/merge_people_request.dart';
 import 'package:lumemor_api/src/model/merge_people_response.dart';
 import 'package:lumemor_api/src/model/model_activate_response.dart';
+import 'package:lumemor_api/src/model/model_catalog_entry.dart';
 import 'package:lumemor_api/src/model/model_dimension_change.dart';
 import 'package:lumemor_api/src/model/model_download_response.dart';
 import 'package:lumemor_api/src/model/model_list_response.dart';
+import 'package:lumemor_api/src/model/model_probe_accepted_response.dart';
+import 'package:lumemor_api/src/model/model_probe_response.dart';
+import 'package:lumemor_api/src/model/model_probe_response_input_size.dart';
+import 'package:lumemor_api/src/model/model_probe_response_progress.dart';
 import 'package:lumemor_api/src/model/model_ref.dart';
 import 'package:lumemor_api/src/model/model_rerun_response.dart';
 import 'package:lumemor_api/src/model/model_response.dart';
@@ -86,6 +92,9 @@ import 'package:lumemor_api/src/model/model_settings_response.dart';
 import 'package:lumemor_api/src/model/model_settings_update_request.dart';
 import 'package:lumemor_api/src/model/model_slot.dart';
 import 'package:lumemor_api/src/model/model_source.dart';
+import 'package:lumemor_api/src/model/model_source_switch_request.dart';
+import 'package:lumemor_api/src/model/model_source_switch_response.dart';
+import 'package:lumemor_api/src/model/model_source_switch_response_dimension_changed.dart';
 import 'package:lumemor_api/src/model/move_face_request.dart';
 import 'package:lumemor_api/src/model/move_face_response.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
@@ -108,6 +117,10 @@ import 'package:lumemor_api/src/model/server_info.dart';
 import 'package:lumemor_api/src/model/session_info.dart';
 import 'package:lumemor_api/src/model/set_person_avatar_request.dart';
 import 'package:lumemor_api/src/model/set_person_birthdate_request.dart';
+import 'package:lumemor_api/src/model/slot_state.dart';
+import 'package:lumemor_api/src/model/slot_state_response.dart';
+import 'package:lumemor_api/src/model/slot_state_response_progress.dart';
+import 'package:lumemor_api/src/model/slot_state_response_source.dart';
 import 'package:lumemor_api/src/model/storage_settings_response.dart';
 import 'package:lumemor_api/src/model/storage_settings_update_request.dart';
 import 'package:lumemor_api/src/model/tag_assets_request.dart';
@@ -184,6 +197,7 @@ part 'serializers.g.dart';
   ClusterDetail,
   ClusterFaceResponse,
   CreateAdminRequest,
+  DeleteModel200Response,
   DeviceSession,
   DownloadFormat,
   Error,
@@ -204,9 +218,14 @@ part 'serializers.g.dart';
   MergePeopleRequest,
   MergePeopleResponse,
   ModelActivateResponse,
+  ModelCatalogEntry,
   ModelDimensionChange,
   ModelDownloadResponse,
   ModelListResponse,
+  ModelProbeAcceptedResponse,
+  ModelProbeResponse,
+  ModelProbeResponseInputSize,
+  ModelProbeResponseProgress,
   ModelRef,
   ModelRerunResponse,
   ModelResponse,
@@ -216,6 +235,9 @@ part 'serializers.g.dart';
   ModelSettingsUpdateRequest,
   ModelSlot,
   ModelSource,
+  ModelSourceSwitchRequest,
+  ModelSourceSwitchResponse,
+  ModelSourceSwitchResponseDimensionChanged,
   MoveFaceRequest,
   MoveFaceResponse,
   PairingConsumeRequest,
@@ -238,6 +260,10 @@ part 'serializers.g.dart';
   SessionInfo,
   SetPersonAvatarRequest,
   SetPersonBirthdateRequest,
+  SlotState,
+  SlotStateResponse,
+  SlotStateResponseProgress,
+  SlotStateResponseSource,
   StorageSettingsResponse,
   StorageSettingsUpdateRequest,
   TagAssetsRequest,
@@ -317,6 +343,10 @@ Serializers serializers = (_$serializers.toBuilder()
         () => ListBuilder<DeviceSession>(),
       )
       ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(ModelCatalogEntry)]),
+        () => ListBuilder<ModelCatalogEntry>(),
+      )
+      ..addBuilderFactory(
         const FullType(BuiltList, [FullType(YearFacetCount)]),
         () => ListBuilder<YearFacetCount>(),
       )
@@ -383,6 +413,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(TagSummary)]),
         () => ListBuilder<TagSummary>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(SlotStateResponse)]),
+        () => ListBuilder<SlotStateResponse>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(UserSummary)]),

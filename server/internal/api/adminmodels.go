@@ -20,6 +20,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -78,6 +81,11 @@ func (s *server) ListModels(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, "list the models", err)
 		return
 	}
+	rows, err := s.queries.ListModels(ctx)
+	if err != nil {
+		s.internalError(w, r, "list the model rows", err)
+		return
+	}
 	active, err := s.modelActivationMap(ctx)
 	if err != nil {
 		s.internalError(w, r, "read the models' activation flags", err)
@@ -87,6 +95,51 @@ func (s *server) ListModels(w http.ResponseWriter, r *http.Request) {
 	response := apigen.ModelListResponse{Models: make([]apigen.ModelResponse, 0, len(models))}
 	for _, model := range models {
 		response.Models = append(response.Models, modelResponseFrom(model, active[model.ID]))
+	}
+
+	// The per-slot state rows: the four states the page's cards
+	// speak, derived from the registry's rows and the most recent
+	// download run.
+	if s.modelsDir != "" {
+		var runRow *dbgen.JobRun
+		if row, err := s.queries.LatestJobRunByKind(ctx, modelDownloadKind); err == nil {
+			runRow = &row
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			s.internalError(w, r, "find the latest model download run", err)
+			return
+		}
+		slots, err := s.slotStates(rows, runRow)
+		if err != nil {
+			s.internalError(w, r, "derive the slot states", err)
+			return
+		}
+		response.Slots = slots
+	} else {
+		response.Slots = make([]apigen.SlotStateResponse, 0)
+	}
+
+	// The official list: the manifest's catalog with its download
+	// markers.
+	entries, err := s.models.Catalog()
+	if err != nil {
+		s.internalError(w, r, "read the official list", err)
+		return
+	}
+	response.Official = make([]apigen.ModelCatalogEntry, 0, len(entries))
+	for _, entry := range entries {
+		catalog := apigen.ModelCatalogEntry{
+			Id:         entry.ID,
+			Slot:       apigen.ModelSlot(entry.Slot),
+			Name:       entry.Name,
+			License:    entry.License,
+			Bytes:      int(entry.Bytes),
+			Downloaded: entry.Downloaded,
+		}
+		if entry.Dim > 0 {
+			dim := entry.Dim
+			catalog.Dim = &dim
+		}
+		response.Official = append(response.Official, catalog)
 	}
 
 	// The download summary: the most recent run of the kind, whatever
@@ -100,6 +153,107 @@ func (s *server) ListModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, response)
+}
+
+// slotStates derives the four-state row of every pipeline slot from
+// the models table's rows and the most recent download run. The states
+// are the listing's own vocabulary: a slot whose active model's files
+// are present runs (active); a slot with a download run in flight
+// waits for it (downloading, the run's group progress is the card's
+// bar); a slot whose weights are missing with the last run failed
+// failed; everything else is honestly not_downloaded -- the mirror
+// carries no weights, so an unfilled slot is the fresh instance's
+// truth, not an error.
+func (s *server) slotStates(rows []dbgen.Model, run *dbgen.JobRun) ([]apigen.SlotStateResponse, error) {
+	registryModels, err := s.models.List()
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]ml.Model, len(registryModels))
+	for _, model := range registryModels {
+		byID[model.ID] = model
+	}
+	runInFlight := run != nil && (run.State == dbgen.JobStateQueued || run.State == dbgen.JobStateRunning)
+	runFailed := run != nil && run.State == dbgen.JobStateFailed
+	states := make([]apigen.SlotStateResponse, 0, 5)
+	for _, slot := range []apigen.ModelSlot{
+		apigen.FaceDetect, apigen.FaceRecognize,
+		apigen.ClipEmbed, apigen.ClipText, apigen.Ocr,
+	} {
+		state := apigen.SlotStateResponse{Slot: slot}
+		var activeRow *dbgen.Model
+		for i := range rows {
+			if rows[i].Slot == dbgen.ModelSlot(slot) && rows[i].IsActive {
+				activeRow = &rows[i]
+				break
+			}
+		}
+		if activeRow == nil {
+			state.ModelId = nil
+			state.Source = nil
+			if runInFlight {
+				state.State = apigen.SlotStateDownloading
+				state.Progress = slotProgressOf(run)
+			} else if runFailed {
+				state.State = apigen.SlotStateFailed
+			} else {
+				state.State = apigen.SlotStateNotDownloaded
+			}
+			states = append(states, state)
+			continue
+		}
+		model := byID[activeRow.ID]
+		state.ModelId = &activeRow.ID
+		host, sha := s.models.SourceFacts(model)
+		// The source row is the contract's inline object: kind, the
+		// host and digest facts (null when the manifest is unreadable
+		// or carries no source URL), the registration time.
+		source := &struct {
+			DownloadedAt time.Time                          `json:"downloadedAt"`
+			Host         *string                            `json:"host"`
+			Kind         apigen.SlotStateResponseSourceKind `json:"kind"`
+			Sha256       *string                            `json:"sha256"`
+		}{
+			Kind:         apigen.SlotStateResponseSourceKindOfficial,
+			Host:         nil,
+			Sha256:       nil,
+			DownloadedAt: activeRow.AddedAt.Time.UTC(),
+		}
+		if model.Source == "custom" {
+			source.Kind = apigen.SlotStateResponseSourceKindCustom
+		}
+		if host != "" {
+			source.Host = &host
+		}
+		if sha != "" {
+			source.Sha256 = &sha
+		}
+		state.Source = source
+		if ml.FilesPresent(model) {
+			state.State = apigen.SlotStateActive
+		} else if runInFlight {
+			state.State = apigen.SlotStateDownloading
+			state.Progress = slotProgressOf(run)
+		} else if runFailed {
+			state.State = apigen.SlotStateFailed
+		} else {
+			state.State = apigen.SlotStateNotDownloaded
+		}
+		states = append(states, state)
+	}
+	return states, nil
+}
+
+// slotProgressOf maps a download run's counts onto the slot row's
+// progress object.
+func slotProgressOf(run *dbgen.JobRun) *struct {
+	Done  int `json:"done"`
+	Total int `json:"total"`
+} {
+	return &struct {
+		Done  int `json:"done"`
+		Total int `json:"total"`
+	}{Done: int(run.Done), Total: int(run.Total)}
 }
 
 // ActivateModel implements PATCH /api/v1/admin/models/{id}: the model
@@ -226,6 +380,55 @@ func (s *server) RerunModel(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	s.writeJSON(w, http.StatusAccepted, apigen.ModelRerunResponse{JobRunId: jobRunID})
+}
+
+// DeleteModel implements DELETE /api/v1/admin/models/{id}: the
+// removal of a registration that is not its slot's active one. The
+// row goes first (the foreign keys keep the still-referencing
+// products resolvable), the model directory follows; a directory
+// failure logs and still reports the deletion -- the registration is
+// gone, the leftover directory is the next scan's cleanup.
+func (s *server) DeleteModel(w http.ResponseWriter, r *http.Request, id string) {
+	if _, ok := authFrom(r.Context()); !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+	ctx := r.Context()
+	if s.models == nil || s.modelsDir == "" {
+		s.logger.Error("model deletion requested without a model registry")
+		s.writeError(w, http.StatusInternalServerError, apigen.INTERNAL,
+			"the model registry is not wired to this server", nil)
+		return
+	}
+	row, err := s.queries.ModelByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.writeError(w, http.StatusNotFound, apigen.MODELNOTFOUND,
+			"no model with this identifier", nil)
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "load the model", err)
+		return
+	}
+	if row.IsActive {
+		s.writeError(w, http.StatusBadRequest, apigen.MODELINVALID,
+			"the active model of a slot cannot be deleted; switch first", nil)
+		return
+	}
+	if err := s.queries.DeleteModel(ctx, id); err != nil {
+		s.internalError(w, r, "delete the model", err)
+		return
+	}
+	// The model's directory: the weights and the manifest copy live
+	// beside the registered file (the landing layout's one-dir-per-id
+	// rule), so the removal is the registered file's parent.
+	modelDir := filepath.Dir(filepath.Join(s.modelsDir, row.FilePath))
+	if err := os.RemoveAll(modelDir); err != nil {
+		// The registration is already gone; the leftover directory is
+		// the next scan's business, and the answer stays honest.
+		s.logger.Error("remove the deleted model's directory", "error", err, "model", id)
+	}
+	s.writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // ScanModels implements POST /api/v1/admin/models/scan: every model

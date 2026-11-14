@@ -25,6 +25,21 @@ export type AdminModel = components['schemas']['ModelResponse'];
 /** The functional slots a model fills, the contract's ModelSlot enum. */
 export type ModelSlotId = components['schemas']['ModelSlot'];
 
+/** One slot's four-state row, the contract's SlotStateResponse. */
+export type SlotState = components['schemas']['SlotStateResponse'];
+
+/** One official-list entry, the contract's ModelCatalogEntry. */
+export type CatalogEntry = components['schemas']['ModelCatalogEntry'];
+
+/** The contract's four slot states. */
+export type SlotStateId = SlotState['state'];
+
+/** One probe's state row, the contract's ModelProbeResponse. */
+export type ModelProbe = components['schemas']['ModelProbeResponse'];
+
+/** The switch answer's shape, the contract's ModelSourceSwitchResponse. */
+export type SourceSwitchResult = components['schemas']['ModelSourceSwitchResponse'];
+
 // The clip_text slot is the search's semantic arm (the CLIP text
 // tower); it rides the same contract enum as the pipeline's slots.
 const MODEL_SLOTS: readonly string[] = ['face_detect', 'face_recognize', 'clip_embed', 'clip_text', 'ocr'];
@@ -35,7 +50,14 @@ const MODELS_ENDPOINT = '/api/v1/admin/models';
 
 /** The listing's outcome: every model plus the download summary, or the failure's i18n key. */
 export type ModelListResult =
-	{ ok: true; models: AdminModel[]; download: JobRun | null } | { ok: false; errorKey: string };
+	| {
+			ok: true;
+			models: AdminModel[];
+			download: JobRun | null;
+			slots: SlotState[];
+			official: CatalogEntry[];
+	  }
+	| { ok: false; errorKey: string };
 
 /** The download trigger's outcome: the joined or started run's id, or the failure's i18n key. */
 export type ModelDownloadResult = { ok: true; jobRunId: string } | { ok: false; errorKey: string };
@@ -140,34 +162,167 @@ export async function listModels(fetcher: typeof fetch = globalThis.fetch): Prom
 	if (!response.ok) {
 		return { ok: false, errorKey: await modelErrorKey(response) };
 	}
-	const parsed = await readJsonBody(response, (body): { models: AdminModel[]; download: JobRun | null } | null => {
-		if (body === null || typeof body !== 'object' || !Array.isArray((body as { models?: unknown }).models)) {
-			return null;
-		}
-		const models: AdminModel[] = [];
-		for (const entry of (body as { models: unknown[] }).models) {
-			const model = modelFrom(entry);
-			if (model === null) {
+	const parsed = await readJsonBody(
+		response,
+		(
+			body
+		): {
+			models: AdminModel[];
+			download: JobRun | null;
+			slots: SlotState[];
+			official: CatalogEntry[];
+		} | null => {
+			if (body === null || typeof body !== 'object' || !Array.isArray((body as { models?: unknown }).models)) {
 				return null;
 			}
-			models.push(model);
+			const models: AdminModel[] = [];
+			for (const entry of (body as { models: unknown[] }).models) {
+				const model = modelFrom(entry);
+				if (model === null) {
+					return null;
+				}
+				models.push(model);
+			}
+			const downloadBody = (body as { download?: unknown }).download;
+			if (downloadBody === undefined) {
+				return null;
+			}
+			// A null download is the honest "no run yet" answer; a present
+			// body must validate as one run row.
+			const download = downloadBody === null ? null : jobRunFrom(downloadBody);
+			if (downloadBody !== null && download === null) {
+				return null;
+			}
+			const slots = slotStatesFrom((body as { slots?: unknown }).slots);
+			if (slots === null) {
+				return null;
+			}
+			const official = catalogFrom((body as { official?: unknown }).official);
+			if (official === null) {
+				return null;
+			}
+			return { models, download, slots, official };
 		}
-		const downloadBody = (body as { download?: unknown }).download;
-		if (downloadBody === undefined) {
-			return null;
-		}
-		// A null download is the honest "no run yet" answer; a present
-		// body must validate as one run row.
-		const download = downloadBody === null ? null : jobRunFrom(downloadBody);
-		if (downloadBody !== null && download === null) {
-			return null;
-		}
-		return { models, download };
-	});
+	);
 	if (!parsed.ok) {
 		return { ok: false, errorKey: parsed.errorKey };
 	}
-	return { ok: true, models: parsed.value.models, download: parsed.value.download };
+	return {
+		ok: true,
+		models: parsed.value.models,
+		download: parsed.value.download,
+		slots: parsed.value.slots,
+		official: parsed.value.official
+	};
+}
+
+const SLOT_STATES: readonly string[] = ['active', 'downloading', 'not_downloaded', 'failed'];
+const SLOT_SOURCE_KINDS: readonly string[] = ['official', 'custom'];
+
+/** Structurally validate one slot state row; null when it is not one. */
+function slotStateFrom(body: unknown): SlotState | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<SlotState>;
+	if (typeof candidate.slot !== 'string' || !MODEL_SLOTS.includes(candidate.slot)) {
+		return null;
+	}
+	if (typeof candidate.state !== 'string' || !SLOT_STATES.includes(candidate.state)) {
+		return null;
+	}
+	if (candidate.modelId !== null && typeof candidate.modelId !== 'string') {
+		return null;
+	}
+	if (candidate.source !== null && candidate.source !== undefined) {
+		const source = candidate.source as Partial<{
+			kind: string;
+			host: string | null;
+			sha256: string | null;
+			downloadedAt: string;
+		}>;
+		if (
+			typeof source.kind !== 'string' ||
+			!SLOT_SOURCE_KINDS.includes(source.kind) ||
+			source.host === undefined ||
+			source.sha256 === undefined ||
+			typeof source.downloadedAt !== 'string'
+		) {
+			return null;
+		}
+		if (source.host !== null && typeof source.host !== 'string') {
+			return null;
+		}
+		if (source.sha256 !== null && typeof source.sha256 !== 'string') {
+			return null;
+		}
+	} else if (candidate.source === undefined) {
+		return null;
+	}
+	if (candidate.progress !== null && candidate.progress !== undefined) {
+		const progress = candidate.progress as { done?: unknown; total?: unknown };
+		if (typeof progress.done !== 'number' || typeof progress.total !== 'number') {
+			return null;
+		}
+	} else if (candidate.progress === undefined) {
+		return null;
+	}
+	return body as SlotState;
+}
+
+/** Validate the listing's slot rows; null when the shape drifted. */
+function slotStatesFrom(body: unknown): SlotState[] | null {
+	if (!Array.isArray(body)) {
+		return null;
+	}
+	const slots: SlotState[] = [];
+	for (const entry of body) {
+		const slot = slotStateFrom(entry);
+		if (slot === null) {
+			return null;
+		}
+		slots.push(slot);
+	}
+	return slots;
+}
+
+/** Structurally validate one official-list entry; null when it is not one. */
+function catalogEntryFrom(body: unknown): CatalogEntry | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<CatalogEntry>;
+	if (
+		typeof candidate.id !== 'string' ||
+		typeof candidate.slot !== 'string' ||
+		!MODEL_SLOTS.includes(candidate.slot) ||
+		typeof candidate.name !== 'string' ||
+		typeof candidate.license !== 'string' ||
+		typeof candidate.bytes !== 'number' ||
+		typeof candidate.downloaded !== 'boolean'
+	) {
+		return null;
+	}
+	if (candidate.dim !== null && candidate.dim !== undefined && typeof candidate.dim !== 'number') {
+		return null;
+	}
+	return body as CatalogEntry;
+}
+
+/** Validate the listing's official rows; null when the shape drifted. */
+function catalogFrom(body: unknown): CatalogEntry[] | null {
+	if (!Array.isArray(body)) {
+		return null;
+	}
+	const entries: CatalogEntry[] = [];
+	for (const entry of body) {
+		const catalog = catalogEntryFrom(entry);
+		if (catalog === null) {
+			return null;
+		}
+		entries.push(catalog);
+	}
+	return entries;
 }
 
 /**
@@ -352,3 +507,183 @@ export async function scanModels(fetcher: typeof fetch = globalThis.fetch): Prom
 	}
 	return { ok: true, registered: parsed.value };
 }
+
+/** The probe POST's outcome: the identifier to poll, or the failure's i18n key. */
+export type ProbeStartResult = { ok: true; probeId: string } | { ok: false; errorKey: string };
+
+/**
+ * DELETE /admin/models/{id}: the removal of a registration that is
+ * not its slot's active one (the active one is a switch first).
+ */
+export async function deleteModel(
+	id: string,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<{ ok: true } | { ok: false; errorKey: string }> {
+	let response: Response;
+	try {
+		response = await apiFetch(`${MODELS_ENDPOINT}/${encodeURIComponent(id)}`, { method: 'DELETE' }, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await modelErrorKey(response) };
+	}
+	return { ok: true };
+}
+
+/**
+ * POST /admin/models/{slot}/probe: stage and probe one candidate
+ * source. The multipart body carries the URL or the uploaded file;
+ * the answer is 202 with the identifier the dialog polls.
+ */
+export async function probeModelSource(
+	slot: ModelSlotId,
+	source: { kind: 'url'; url: string; sha256?: string } | { kind: 'file'; file: File; sha256?: string },
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<ProbeStartResult> {
+	const form = new FormData();
+	form.set('kind', source.kind);
+	if (source.sha256 !== undefined && source.sha256 !== '') {
+		form.set('sha256', source.sha256);
+	}
+	if (source.kind === 'url') {
+		form.set('url', source.url);
+	} else {
+		form.set('file', source.file, source.file.name || 'model.onnx');
+	}
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`${MODELS_ENDPOINT}/${encodeURIComponent(slot)}/probe`,
+			{ method: 'POST', body: form },
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await modelErrorKey(response) };
+	}
+	const parsed = await readJsonBody(response, (body): string | null => {
+		if (body === null || typeof body !== 'object') {
+			return null;
+		}
+		const probeId = (body as { probeId?: unknown }).probeId;
+		return typeof probeId === 'string' && probeId !== '' ? probeId : null;
+	});
+	if (!parsed.ok) {
+		return { ok: false, errorKey: parsed.errorKey };
+	}
+	return { ok: true, probeId: parsed.value };
+}
+
+/** The probe GET's outcome: the probe's state row, or the failure's i18n key. */
+export type ProbeReadResult = { ok: true; probe: ModelProbe } | { ok: false; errorKey: string };
+
+/**
+ * GET /admin/models/probes/{probeId}: one probe's current state. A
+ * 404 (the probe expired) is the retry-shaped failure the dialog maps
+ * onto "probe again".
+ */
+export async function readModelProbe(
+	probeId: string,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<ProbeReadResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(`${MODELS_ENDPOINT}/probes/${encodeURIComponent(probeId)}`, undefined, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await modelErrorKey(response) };
+	}
+	const parsed = await readJsonBody(response, (body): ModelProbe | null => {
+		if (body === null || typeof body !== 'object') {
+			return null;
+		}
+		const candidate = body as Partial<ModelProbe>;
+		if (typeof candidate.probeId !== 'string' || typeof candidate.state !== 'string') {
+			return null;
+		}
+		if (!['queued', 'running', 'ok', 'error', 'warn'].includes(candidate.state)) {
+			return null;
+		}
+		if (typeof candidate.hostDeclared !== 'boolean') {
+			return null;
+		}
+		return body as ModelProbe;
+	});
+	if (!parsed.ok) {
+		return { ok: false, errorKey: parsed.errorKey };
+	}
+	return { ok: true, probe: parsed.value };
+}
+
+/**
+ * POST /admin/models/{slot}/source: the register+swap half of the
+ * pipeline. 202 answers the switch's facts (the destructive arm's
+ * report, the recalc run's id); every refusal is the mapped error.
+ */
+export async function switchModelSource(
+	slot: ModelSlotId,
+	request:
+		| { kind: 'builtin'; modelId: string; confirmWipe?: boolean }
+		| { kind: 'url' | 'file'; probeId: string; confirmWipe?: boolean },
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<SourceSwitchOutcome> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`${MODELS_ENDPOINT}/${encodeURIComponent(slot)}/source`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(request)
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await modelErrorKey(response) };
+	}
+	const parsed = await readJsonBody(response, (body): SourceSwitchResult | null => {
+		if (body === null || typeof body !== 'object') {
+			return null;
+		}
+		const candidate = body as Partial<SourceSwitchResult>;
+		if (
+			candidate.activated === null ||
+			typeof candidate.activated !== 'object' ||
+			typeof (candidate.activated as { id?: unknown }).id !== 'string' ||
+			typeof (candidate.activated as { slot?: unknown }).slot !== 'string'
+		) {
+			return null;
+		}
+		return body as SourceSwitchResult;
+	});
+	if (!parsed.ok) {
+		return { ok: false, errorKey: parsed.errorKey };
+	}
+	const value = parsed.value;
+	return {
+		ok: true,
+		activated: value.activated,
+		dimensionChanged: value.dimensionChanged ?? undefined,
+		wipedEmbeddings: value.wipedEmbeddings ?? undefined,
+		recalcRunId: value.recalcRunId ?? undefined
+	};
+}
+
+/** The switch POST's outcome, with the destructive arm's facts when it ran. */
+export type SourceSwitchOutcome =
+	| {
+			ok: true;
+			activated: { id: string; slot: ModelSlotId };
+			dimensionChanged?: { from: number; to: number };
+			wipedEmbeddings?: number;
+			recalcRunId?: string;
+	  }
+	| { ok: false; errorKey: string };

@@ -54,8 +54,15 @@ const (
 	// envModelsHfMirror overrides the HF domain mirror the model
 	// download rewrites huggingface.co hostnames to (restricted
 	// networks; e.g. "hf-mirror.com"). Empty or unset = direct
-	// connections.
+	// connections; the admin settings' mirror base, when configured,
+	// wins over this deployment-level fallback.
 	envModelsHfMirror = "LUMEMOR_MODELS_HF_MIRROR"
+
+	// envModelsBundle points the boot at an offline model bundle
+	// (models-<version>.tar with its checksums.txt), the no-network
+	// first deployment's path into the same registry the online
+	// download writes. Empty or unset = no import.
+	envModelsBundle = "LUMEMOR_MODELS_BUNDLE"
 )
 
 func main() {
@@ -162,6 +169,24 @@ func run(logger *slog.Logger) error {
 	}
 	registry := ml.NewRegistry(pool, queries, modelsDir)
 
+	// The offline bundle import (the no-network first deployment's
+	// path): a configured bundle path is unpacked, digest-verified
+	// and registered here, before the queue starts -- so a boot
+	// carrying a bundle lands its models the same way an online
+	// download would, and the slots it filled are simply active. A
+	// failed import does not fail the boot: the instance comes up
+	// with the honest unfilled slots, the same state a network-less
+	// boot without a bundle produces.
+	if bundle := os.Getenv(envModelsBundle); bundle != "" {
+		report, err := ml.ImportBundle(ctx, bundle, modelsDir, registry, queries)
+		if err != nil {
+			logger.Error("offline model bundle import failed", "error", err, "bundle", bundle)
+		} else {
+			logger.Info("offline model bundle imported",
+				"bundle", bundle, "members", report.Members, "models", report.ModelsDone)
+		}
+	}
+
 	// The job queue starts only after the schema exists: River applies
 	// its own table migrations here (river_job and friends live outside
 	// the goose schema by design), then the workers begin consuming.
@@ -260,6 +285,16 @@ func run(logger *slog.Logger) error {
 			Models:    registry,
 			ModelsDir: modelsDir,
 			MlReruns:  queue,
+			// The source pipeline's host check reads the same
+			// allowed-hosts list the downloader's transport gate
+			// reads: one settings document owns both.
+			ProbeHosts: func() []string {
+				settings, err := db.ModelSettingsOf(context.Background(), queries)
+				if err != nil {
+					logger.Warn("read the model download sources; answering the defaults", "error", err)
+				}
+				return settings.AllowedHosts
+			},
 			// The places re-resolution endpoint enqueues through the
 			// same queue.
 			PlacesReruns: queue,
