@@ -34,11 +34,11 @@ export type UserSelfPatch = Partial<
 /** The read's outcome: the account document, or the failure's i18n key. */
 export type UserSelfResult = { ok: true; self: UserSelf } | { ok: false; errorKey: string };
 
-/** The patch's outcome: the saved account state, or the failure's i18n key. */
-export type UserSelfSaveResult = { ok: true; self: UserSelf } | { ok: false; errorKey: string };
+/** The patch's outcome: the saved account state, or the failure's i18n key and the fields it named. */
+export type UserSelfSaveResult = { ok: true; self: UserSelf } | { ok: false; errorKey: string; fields: string[] };
 
-/** The password change's outcome; the i18n key of the failure. */
-export type PasswordChangeResult = { ok: true } | { ok: false; errorKey: string };
+/** The password change's outcome; the i18n key of the failure and the fields it named. */
+export type PasswordChangeResult = { ok: true } | { ok: false; errorKey: string; fields: string[] };
 
 /** The device list's outcome, or the failure's i18n key. */
 export type DeviceListResult = { ok: true; devices: DeviceSession[] } | { ok: false; errorKey: string };
@@ -98,6 +98,17 @@ async function userErrorKey(response: Response): Promise<string> {
 	return envelope !== null ? envelope.code.toLowerCase() : 'internal';
 }
 
+/** Map a non-OK response onto the failure's i18n key and the fields it named. */
+async function userError(response: Response): Promise<{ errorKey: string; fields: string[] }> {
+	if (response.status === 401) {
+		return { errorKey: 'session_expired', fields: [] };
+	}
+	const envelope = await errorEnvelope(response);
+	return envelope === null
+		? { errorKey: 'internal', fields: [] }
+		: { errorKey: envelope.code.toLowerCase(), fields: envelope.fields };
+}
+
 /**
  * GET /api/v1/users/me: the caller's own account -- the profile
  * fields, the appearance pair and the download preferences.
@@ -146,20 +157,20 @@ export async function updateUserSelf(
 			fetcher
 		);
 	} catch {
-		return { ok: false, errorKey: 'internal' };
+		return { ok: false, errorKey: 'internal', fields: [] };
 	}
 	if (!response.ok) {
-		return { ok: false, errorKey: await userErrorKey(response) };
+		return { ok: false, ...(await userError(response)) };
 	}
 	let body: unknown;
 	try {
 		body = await response.json();
 	} catch {
-		return { ok: false, errorKey: 'internal' };
+		return { ok: false, errorKey: 'internal', fields: [] };
 	}
 	const self = selfFrom(body);
 	if (self === null) {
-		return { ok: false, errorKey: 'internal' };
+		return { ok: false, errorKey: 'internal', fields: [] };
 	}
 	return { ok: true, self };
 }
@@ -188,12 +199,12 @@ export async function changeUserPassword(
 			fetcher
 		);
 	} catch {
-		return { ok: false, errorKey: 'internal' };
+		return { ok: false, errorKey: 'internal', fields: [] };
 	}
 	if (response.ok) {
 		return { ok: true };
 	}
-	return { ok: false, errorKey: await userErrorKey(response) };
+	return { ok: false, ...(await userError(response)) };
 }
 
 /**

@@ -301,10 +301,27 @@ test('logout clears the store even when the revoke call fails', async () => {
 
 test('errorEnvelope reads the code, tolerates non-envelope bodies', async () => {
 	expect(await errorEnvelope(jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))).toEqual({
-		code: 'AUTH_INVALID_CREDENTIALS'
+		code: 'AUTH_INVALID_CREDENTIALS',
+		fields: []
 	});
 	expect(await errorEnvelope(jsonResponse(502, { nothing: 'here' }))).toBeNull();
 	expect(await errorEnvelope(new Response('not json', { status: 500 }))).toBeNull();
+});
+
+test('errorEnvelope carries the field names a validation failure rejects', async () => {
+	expect(
+		await errorEnvelope(
+			jsonResponse(400, {
+				code: 'VALIDATION_FAILED',
+				message: 'current password does not match',
+				details: { fields: ['current'] }
+			})
+		)
+	).toEqual({ code: 'VALIDATION_FAILED', fields: ['current'] });
+	// A details object of another shape names nothing (no guessing).
+	expect(await errorEnvelope(jsonResponse(400, { code: 'VALIDATION_FAILED', details: { fields: 'email' } }))).toEqual(
+		{ code: 'VALIDATION_FAILED', fields: [] }
+	);
 });
 
 test('parseRetryAfter reads whole seconds, rejects junk', () => {

@@ -177,6 +177,13 @@ function samplePath(): string {
 	return line?.textContent ?? '';
 }
 
+/** The update card's faces, in render order: exactly one renders. */
+function faceNames(): string[] {
+	return Array.from(document.body.querySelectorAll<HTMLElement>('[data-update-face]')).map(
+		(face) => face.dataset.updateFace ?? ''
+	);
+}
+
 beforeEach(async () => {
 	await initI18n();
 });
@@ -462,10 +469,13 @@ test('the release card renders the last verdict, the last-checked line and the m
 	mountPage();
 	await settle();
 
-	// The first face: up to date, with the quiet last-checked line.
-	expect(document.querySelector('[data-testid="update-check-state"]')?.textContent).toContain('Up to date');
-	expect(document.querySelector('[data-testid="update-check-state"]')?.textContent).toContain('Last checked');
-	expect(document.body.textContent).toContain('Current version 0.4.1');
+	// The first face: up to date, with the quiet last-checked line and
+	// exactly one face on the page.
+	expect(faceNames()).toEqual(['latest']);
+	expect(document.querySelector('[data-update-face="latest"]')?.textContent).toContain('Up to date');
+	expect(document.querySelector('[data-update-face="latest"]')?.textContent).toContain('Last checked');
+	expect(document.body.querySelector('[data-testid="update-check-version"]')?.textContent).toContain('0.4.1');
+	expect(document.body.querySelector('[data-testid="update-check-version"]')?.textContent).toContain('Self-hosted');
 	// The privacy boundary stands beside the knobs.
 	expect(document.body.textContent).toContain('Only the version number is compared');
 
@@ -476,8 +486,56 @@ test('the release card renders the last verdict, the last-checked line and the m
 	const post = fetchMock.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === 'POST');
 	expect(post).toBeDefined();
 	expect(String(post?.[0])).toBe('/api/v1/server/update-check');
-	expect(document.querySelector('[data-testid="update-check-state"]')?.textContent).toContain('v0.5.0 available');
+	expect(faceNames()).toEqual(['available']);
+	const available = document.querySelector('[data-update-face="available"]');
+	expect(available?.textContent).toContain('v0.5.0 available');
+	// The pair: the running version stays on the card beside the offer.
+	expect(document.body.querySelector('[data-testid="update-check-version"]')?.textContent).toContain('0.4.1');
 	expect(document.body.textContent).toContain('nothing is downloaded, installed or restarted for you');
+	expect(document.body.textContent).toContain('pull');
+});
+
+test('the manual check shows its busy state while the probe runs', async () => {
+	let release = (): void => undefined;
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url === '/api/v1/server/update-check' && init?.method === 'POST') {
+				await held;
+				return jsonResponse(
+					200,
+					updateCheckStateBody({ status: 'up_to_date', checkedAt: new Date().toISOString() })
+				);
+			}
+			const answer = defaultReads()[url];
+			if (answer === undefined) {
+				throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+			}
+			return answer(init);
+		})
+	);
+	mountPage();
+	await settle();
+
+	const button = buttonByText('Check now');
+	button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await tick();
+
+	// The busy state: the label names the work, the button refuses a
+	// second click, and the face keeps its last verdict while the
+	// probe runs.
+	const busy = buttonByText('Checking…');
+	expect(busy.disabled).toBe(true);
+	expect(busy.getAttribute('aria-busy')).toBe('true');
+	expect(faceNames()).toEqual(['latest']);
+
+	release();
+	await settle();
+	expect(buttonByText('Check now').disabled).toBe(false);
 });
 
 test('a failed check stays silent: the quiet last-checked line, no danger text', async () => {
@@ -500,10 +558,51 @@ test('a failed check stays silent: the quiet last-checked line, no danger text',
 	mountPage();
 	await settle();
 
-	const stateLine = document.querySelector('[data-testid="update-check-state"]');
-	expect(stateLine?.textContent).toContain("couldn't reach the release feed");
-	expect(stateLine?.querySelector('.settings__update-chip')).toBeNull();
-	expect(document.querySelector('.settings__update-form .text-danger-text')).toBeNull();
+	// The third face is the silent one: it says when it last asked and
+	// that the feed could not be reached -- nothing red, no chip, no
+	// button-styled warning.
+	expect(faceNames()).toEqual(['failed']);
+	const failed = document.querySelector('[data-update-face="failed"]');
+	expect(failed?.textContent).toContain("couldn't reach the release feed");
+	expect(failed?.querySelector('.settings__update-chip')).toBeNull();
+	expect(failed?.querySelector('.text-danger-text')).toBeNull();
+	expect(document.querySelector('.settings__update-face .text-danger-text')).toBeNull();
+	expect(document.body.querySelector('.toast, [role="alert"]')).toBeNull();
+});
+
+test('a check that never ran says so instead of inventing a verdict', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/server/update-check': () =>
+					jsonResponse(200, updateCheckStateBody({ status: 'unknown', latestVersion: null, checkedAt: null }))
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	expect(faceNames()).toEqual(['failed']);
+	expect(document.querySelector('[data-update-face="failed"]')?.textContent).toContain('Not checked yet.');
+	expect(document.querySelector('.settings__update-face .text-danger-text')).toBeNull();
+});
+
+test('a check switched off renders its own quiet face, not a verdict', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/server/update-check': () =>
+					jsonResponse(200, updateCheckStateBody({ enabled: false, status: 'disabled', latestVersion: null }))
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	expect(faceNames()).toEqual(['off']);
+	expect(document.body.querySelector('[data-testid="update-check-now"]')?.hasAttribute('disabled')).toBe(true);
 });
 
 test('the tile source and the model policy save their own bodies', async () => {

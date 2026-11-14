@@ -58,7 +58,8 @@
 	let formName = $state('');
 	let formEmail = $state('');
 	let savingProfile = $state(false);
-	let profileErrorKey = $state('');
+	/** The last failed profile save: its text, and the fields the server named. */
+	let profileError = $state<{ errorKey: string; fields: string[] } | null>(null);
 	let profileSaved = $state(false);
 
 	// The password form. The confirm field is the client's own
@@ -67,7 +68,8 @@
 	let newPassword = $state('');
 	let confirmPassword = $state('');
 	let changingPassword = $state(false);
-	let passwordErrorKey = $state('');
+	/** The last failed password change: its text, and the fields the server named. */
+	let passwordError = $state<{ errorKey: string; fields: string[] } | null>(null);
 	let passwordMismatch = $state(false);
 	let passwordChanged = $state(false);
 
@@ -139,9 +141,9 @@
 		self = next;
 		formName = next.name;
 		formEmail = next.email;
-		profileErrorKey = '';
+		profileError = null;
 		profileSaved = false;
-		passwordErrorKey = '';
+		passwordError = null;
 		passwordMismatch = false;
 		passwordChanged = false;
 		appearanceErrorKey = '';
@@ -160,6 +162,31 @@
 	// reactive `$_` keeps the text locale-tracked.
 	function errorText(key: string): string {
 		return resolveErrorText($_, key);
+	}
+
+	/**
+	 * The save failures' placement rule: a failure the server pinned
+	 * to a field renders under that field's input; one that named no
+	 * field renders as the section's own line. The email address is
+	 * the account identity, so the taken-address refusal (a 409 that
+	 * names nothing) belongs under the address input too.
+	 */
+	function fieldError(error: { errorKey: string; fields: string[] } | null, field: string): string {
+		if (error === null) {
+			return '';
+		}
+		const namesField = error.fields.includes(field);
+		const onIdentity = field === 'email' && error.errorKey === 'user_email_taken';
+		return namesField || onIdentity ? errorText(error.errorKey) : '';
+	}
+
+	/** The section-level line of a failure that named no field. */
+	function generalError(error: { errorKey: string; fields: string[] } | null): string {
+		if (error === null || error.fields.length > 0) {
+			return '';
+		}
+		// The taken-address refusal sits under the address, not here.
+		return error.errorKey === 'user_email_taken' ? '' : errorText(error.errorKey);
 	}
 
 	// THE APPEARANCE PAIR'S IMMEDIATE APPLY: the theme's pick maps
@@ -259,7 +286,7 @@
 			return;
 		}
 		savingProfile = true;
-		profileErrorKey = '';
+		profileError = null;
 		profileSaved = false;
 		const outcome = await updateUserSelf({
 			name: formName.trim(),
@@ -267,7 +294,7 @@
 		});
 		savingProfile = false;
 		if (!outcome.ok) {
-			profileErrorKey = outcome.errorKey;
+			profileError = { errorKey: outcome.errorKey, fields: outcome.fields };
 			return;
 		}
 		adoptSelf(outcome.self);
@@ -286,12 +313,12 @@
 			return;
 		}
 		changingPassword = true;
-		passwordErrorKey = '';
+		passwordError = null;
 		passwordChanged = false;
 		const outcome = await changeUserPassword(currentPassword, newPassword);
 		changingPassword = false;
 		if (!outcome.ok) {
-			passwordErrorKey = outcome.errorKey;
+			passwordError = { errorKey: outcome.errorKey, fields: outcome.fields };
 			return;
 		}
 		// The contract's revocation note: the other devices were
@@ -438,6 +465,7 @@
 						autocomplete="name"
 						maxlength={100}
 						bind:value={formName}
+						error={fieldError(profileError, 'name')}
 					/>
 					<Input
 						id="settings-email"
@@ -446,6 +474,7 @@
 						autocomplete="email"
 						required
 						bind:value={formEmail}
+						error={fieldError(profileError, 'email')}
 					/>
 					{#if profileSaved}
 						<p
@@ -455,12 +484,12 @@
 							{$_('settings_profile_saved')}
 						</p>
 					{/if}
-					{#if profileErrorKey !== ''}
+					{#if generalError(profileError) !== ''}
 						<p
 							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
 							role="alert"
 						>
-							{errorText(profileErrorKey)}
+							{generalError(profileError)}
 						</p>
 					{/if}
 					<div class="settings__actions flex justify-end">
@@ -496,6 +525,7 @@
 						autocomplete="current-password"
 						required
 						bind:value={currentPassword}
+						error={fieldError(passwordError, 'current')}
 					/>
 					<Input
 						id="settings-password-new"
@@ -507,6 +537,7 @@
 						minlength={8}
 						maxlength={128}
 						bind:value={newPassword}
+						error={fieldError(passwordError, 'next')}
 					/>
 					<Input
 						id="settings-password-confirm"
@@ -527,12 +558,12 @@
 							{$_('settings_password_changed')}
 						</p>
 					{/if}
-					{#if passwordErrorKey !== ''}
+					{#if generalError(passwordError) !== ''}
 						<p
 							class="settings__error font-body font-medium text-[14px] leading-[1.4] text-danger-text"
 							role="alert"
 						>
-							{errorText(passwordErrorKey)}
+							{generalError(passwordError)}
 						</p>
 					{/if}
 					<div class="settings__actions flex justify-end">
