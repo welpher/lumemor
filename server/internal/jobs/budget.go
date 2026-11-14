@@ -41,9 +41,11 @@ const (
 const pauseHold = 30 * time.Second
 
 // windowHoldCap bounds one window hold: a job outside the window
-// wakes at most hourly to re-read the budget, so a config change (or
-// a window whose opening moved) shortens the wait within the hour.
-const windowHoldCap = time.Hour
+// wakes at most once a minute to re-read the budget, so a config
+// change (or a window whose opening moved) lands within the minute
+// -- the hold is one tiny settings read per wake, and a held week
+// costs a thousand of them.
+const windowHoldCap = time.Minute
 
 // maxDialWorkers is the dial's ceiling: the queue's worker pool is
 // sized for the biggest mapping the dial can produce (the document's

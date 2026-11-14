@@ -57,7 +57,8 @@ func (q *Queries) CountImageAssetsAfter(ctx context.Context, id pgtype.UUID) (in
 const listImageAssetPage = `-- name: ListImageAssetPage :many
 SELECT id,
        file_path,
-       storage_kind
+       storage_kind,
+       pending_jobs
 FROM assets
 WHERE media_kind = 'image'
   AND deleted_at IS NULL
@@ -75,12 +76,17 @@ type ListImageAssetPageRow struct {
 	ID          pgtype.UUID `json:"id"`
 	FilePath    string      `json:"file_path"`
 	StorageKind StorageKind `json:"storage_kind"`
+	PendingJobs int32       `json:"pending_jobs"`
 }
 
 // One page of the rebuild scope, keyset-ordered by the asset id (the
 // cursor is the previous page's last id; the zero value starts the
 // walk). The file path and storage kind ride along: the driver
-// resolves the original against the data root.
+// resolves the original against the data root. pending_jobs rides
+// too: an asset whose pipeline is still running is the PIPELINE's
+// business -- its own thumbnail job derives the serving copies at
+// the settings live when it runs -- so the rebuild's missing scope
+// must not double-pay for it.
 func (q *Queries) ListImageAssetPage(ctx context.Context, arg ListImageAssetPageParams) ([]ListImageAssetPageRow, error) {
 	rows, err := q.db.Query(ctx, listImageAssetPage, arg.Cursor, arg.PageSize)
 	if err != nil {
@@ -90,7 +96,12 @@ func (q *Queries) ListImageAssetPage(ctx context.Context, arg ListImageAssetPage
 	var items []ListImageAssetPageRow
 	for rows.Next() {
 		var i ListImageAssetPageRow
-		if err := rows.Scan(&i.ID, &i.FilePath, &i.StorageKind); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.FilePath,
+			&i.StorageKind,
+			&i.PendingJobs,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -210,11 +210,16 @@ func (w *RebuildWorker) Work(ctx context.Context, job *river.Job[RebuildArgs]) e
 				continue
 			}
 
-			// The missing scope skips the assets whose
-			// current-format serving files already exist: a library
-			// that has never been rebuilt, or one that gained the
-			// full-size copy, pays only for what it lacks.
+			// The missing scope skips the assets whose serving copies
+			// already exist AND whose own pipeline has finished: a
+			// library that has never been rebuilt, or one that gained
+			// the full-size copy, pays only for what it lacks. A
+			// pipeline still in flight is the PIPELINE's business --
+			// its thumbnail job derives the copies at the settings
+			// live when it runs, so the rebuild neither double-pays
+			// for it nor races its half-written file set.
 			if job.Args.Scope == RebuildScopeMissing &&
+				row.PendingJobs == 0 &&
 				derivativesPresent(assetID.String(), image.Format, image.FullSize) {
 				done++
 				continue

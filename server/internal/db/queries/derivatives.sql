@@ -18,10 +18,15 @@ WHERE media_kind = 'image'
 -- One page of the rebuild scope, keyset-ordered by the asset id (the
 -- cursor is the previous page's last id; the zero value starts the
 -- walk). The file path and storage kind ride along: the driver
--- resolves the original against the data root.
+-- resolves the original against the data root. pending_jobs rides
+-- too: an asset whose pipeline is still running is the PIPELINE's
+-- business -- its own thumbnail job derives the serving copies at
+-- the settings live when it runs -- so the rebuild's missing scope
+-- must not double-pay for it.
 SELECT id,
        file_path,
-       storage_kind
+       storage_kind,
+       pending_jobs
 FROM assets
 WHERE media_kind = 'image'
   AND deleted_at IS NULL

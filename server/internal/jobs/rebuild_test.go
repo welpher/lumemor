@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/welpher/lumemor/server/internal/db"
+	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
@@ -123,7 +124,10 @@ func TestRebuildMissingSkipsPresent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the golden fixture: %v", err)
 	}
-	id := e.insertAsset(t, "originals/rebuild/two.jpg", content, time.Now(), `{}`)
+	// The pipeline has completed for this asset (pending_jobs zero
+	// is the completed-pipeline fact the skip reads alongside the
+	// files).
+	id := e.insertAssetKind(t, "originals/rebuild/two.jpg", content, time.Now(), `{}`, dbgen.MediaKindImage, "image/jpeg", 0)
 	// The AVIF serving files exist (the shipped settings' format):
 	// the missing scope skips this asset.
 	for _, size := range []string{media.SizeTile, media.SizeView} {
