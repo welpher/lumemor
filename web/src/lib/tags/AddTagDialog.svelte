@@ -157,7 +157,8 @@
 					label={$_('tags_name_field')}
 					name="add-tag-name"
 					bind:value={draft}
-					maxlength={128}
+					required
+					maxlength={64}
 					autocomplete="off"
 				/>
 				{#if boundViolated}

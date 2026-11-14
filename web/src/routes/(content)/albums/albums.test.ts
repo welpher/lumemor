@@ -932,6 +932,12 @@ test('an invalid create draft never leaves the page', async () => {
 	buttonByText('New album').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	flushSync();
 	const dialog = modal();
+	// The title's native ceiling is the contract's 64 (the input stops
+	// the typing there; the local rune check owns the submit).
+	const titleInput = dialog?.querySelector<HTMLInputElement>('#create-album-title');
+	expect(titleInput?.required).toBe(true);
+	expect(titleInput?.getAttribute('maxlength')).toBe('64');
+
 	// Whitespace title: the local 1-64 rune bound refuses it.
 	fillField(dialog as ParentNode, '   ', 'create-album-title');
 	fillField(dialog as ParentNode, '/Volumes/Photos/x', 'create-album-path');
@@ -941,6 +947,14 @@ test('an invalid create draft never leaves the page', async () => {
 	const posts = fetchMock.mock.calls.filter(
 		([input, init]) => String(input) === '/api/v1/albums' && init?.method === 'POST'
 	);
+	expect(posts).toHaveLength(0);
+	expect(dialog?.textContent).toContain('Titles span 1 to 64 characters.');
+
+	// A title past the bound (65 runes, the length a programmatic or
+	// pasted draft could still carry): the same local check refuses it.
+	fillField(dialog as ParentNode, `${'a'.repeat(64)}b`, 'create-album-title');
+	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
 	expect(posts).toHaveLength(0);
 	expect(dialog?.textContent).toContain('Titles span 1 to 64 characters.');
 

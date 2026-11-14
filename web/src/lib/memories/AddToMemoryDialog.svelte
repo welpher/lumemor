@@ -325,7 +325,8 @@
 						id="add-memory-create-title"
 						aria-label={$_('memories_picker_create_label')}
 						bind:value={titleDraft}
-						maxlength={128}
+						required
+						maxlength={64}
 						autocomplete="off"
 					/>
 					<Button class="add-memory__create-submit" disabled={busy} onclick={() => void createAndAdd()}>

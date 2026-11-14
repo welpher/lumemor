@@ -209,7 +209,8 @@
 					label={$_('people_name_field_label')}
 					name="new-person-name"
 					bind:value={draft}
-					maxlength={128}
+					required
+					maxlength={64}
 					autocomplete="off"
 				/>
 				<!-- The family-semantics note: naming labels every face of
