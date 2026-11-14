@@ -489,7 +489,14 @@ NON_ERROR_KEYS = {
     "admin_jobs_failed_count",
     "admin_jobs_started",
     "admin_jobs_finished",
-    "admin_jobs_not_started",
+    "admin_jobs_duration",
+    "admin_jobs_queued_waiting",
+    "admin_jobs_retry",
+    "admin_jobs_reason_models",
+    "admin_jobs_reason_items",
+    "admin_jobs_reason_stopped",
+    "admin_jobs_reason_model_missing",
+    "admin_jobs_reason_model_link",
     # Admin storage settings UI strings (the storage-template
     # feature): the settings section of the admin surface.
     "admin_settings_loading",
