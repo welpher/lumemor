@@ -43,6 +43,18 @@ void main() {
       // TODO
     });
 
+    // The earliest capture time among the place's caller-visible live members (RFC 3339 UTC). The city card's year span starts here; the listing's own ordering reads the other end. 
+    // DateTime takenAtFrom
+    test('to test the property `takenAtFrom`', () async {
+      // TODO
+    });
+
+    // The latest capture time among the place's caller-visible live members (RFC 3339 UTC). It is the ordering key of the list -- the most recently photographed city leads -- and the city card's year span ends here. Equal to `takenAtFrom` when the place holds one member. 
+    // DateTime takenAtTo
+    test('to test the property `takenAtTo`', () async {
+      // TODO
+    });
+
     // The place's cover candidates: its (up to) four most recent caller-visible live members, taken_at descending with the asset id as the tiebreak -- the wall's derived-cover discipline applied to city groups, newest first. 
     // BuiltList<String> representativeCoverAssetIds
     test('to test the property `representativeCoverAssetIds`', () async {
