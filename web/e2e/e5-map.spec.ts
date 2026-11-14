@@ -28,8 +28,8 @@
 //  5. A source that fails: the map states the missing base layer and
 //     keeps the pin.
 //  6. No source at all: the same promise, worded for the configuration.
-//  7. The viewer's location card: the asset's own coordinates and the
-//     mini map over them.
+//  7. The viewer's location card: the asset's own coordinates, the
+//     mini map over them, and the point's marker on it.
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -283,6 +283,10 @@ test.describe('the signed-in scenes', () => {
 		// decimals; the mini map draws the same stubbed tiles.
 		await expect(card.locator('.info__location-coords')).toHaveText(/^-?\d+\.\d{4}, -?\d+\.\d{4}$/);
 		await expect(card.locator('.maplibregl-canvas')).toBeVisible();
+		// The point's own marker: the map handle is not a signal, so
+		// this pins the overlay following the map's readiness (a
+		// derived would have cached the first render's empty state).
+		await expect(card.locator('.map__asset-pin')).toBeVisible();
 		await expect(card.locator('[data-map-state]')).toHaveCount(0);
 	});
 });
