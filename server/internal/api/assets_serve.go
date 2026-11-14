@@ -30,7 +30,9 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
 
@@ -145,12 +147,13 @@ func (s *server) GetAssetThumbnail(w http.ResponseWriter, r *http.Request, id op
 		return
 	}
 
-	// The serving file of this request: an image serves the AVIF of
-	// the requested size; a video serves its poster frame (a JPEG)
-	// whatever the size says -- the poster is the video's thumbnail,
-	// while the playable stream is the transcoded copy the play
-	// endpoint serves.
-	path, contentType := derivedMediaPath(row, string(params.Size))
+	// The serving file of this request: an image serves the
+	// derivative of the requested size at the instance's configured
+	// encoding; a video serves its poster frame (a JPEG) whatever
+	// the size says -- the poster is the video's thumbnail, while
+	// the playable stream is the transcoded copy the play endpoint
+	// serves.
+	path, contentType := s.derivedMediaPath(r.Context(), row, string(params.Size))
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		// The asset exists but the derived file does not: the
@@ -343,17 +346,39 @@ func assetETag(checksum string) string {
 	return `"` + checksum + `"`
 }
 
+// derivativeContentType maps a derivative encoding onto its content
+// type: the extension IS the format, and both maps are closed over
+// the two encodings the pipeline writes.
+func derivativeContentType(ext string) string {
+	if ext == media.FormatWebp {
+		return "image/webp"
+	}
+	return "image/avif"
+}
+
 // derivedMediaPath resolves the serving file of a thumbnail request:
-// an image asset serves the AVIF of the requested size (the storage
-// layout's storage/thumbs/<assetID>/<size>.avif), a video asset
-// serves its poster frame (storage/thumbs/<assetID>/poster.jpg, a
-// JPEG) whatever the requested size is.
-func derivedMediaPath(row dbgen.Asset, size string) (path string, contentType string) {
+// an image asset serves the derivative of the requested size at the
+// instance's configured encoding -- falling back to the shipped AVIF
+// when the configured encoding's file is absent (a library that
+// pre-dates an encoding change stays servable until a rebuild
+// rewrites it) -- and a video asset serves its poster frame (a JPEG)
+// whatever the requested size is. A corrupt image settings row
+// answers the defaults with the corruption logged.
+func (s *server) derivedMediaPath(ctx context.Context, row dbgen.Asset, size string) (path string, contentType string) {
 	assetID := uuid.UUID(row.ID.Bytes).String()
 	if row.MediaKind == dbgen.MediaKindVideo {
 		return storage.PosterPath(assetID), "image/jpeg"
 	}
-	return storage.ThumbPath(assetID, size), "image/avif"
+	settings, err := db.ImageSettingsOf(ctx, s.queries)
+	if err != nil {
+		s.logger.Error("resolve a thumbnail's encoding; answering the default", "error", err)
+	}
+	path = storage.ThumbPath(assetID, size, settings.Format)
+	if _, err := os.Stat(path); err != nil && settings.Format != media.FormatAvif {
+		path = storage.ThumbPath(assetID, size, media.FormatAvif)
+		return path, derivativeContentType(media.FormatAvif)
+	}
+	return path, derivativeContentType(settings.Format)
 }
 
 // escapeExtFilename escapes a file name for the filename* parameter

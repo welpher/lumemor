@@ -51,6 +51,11 @@ const (
 	// remain in the originals tree, and Q50 keeps the derived files
 	// small without visible degradation at these sizes.
 	avifQuality = 50
+
+	// webpQuality is the WebP encode quality of the serving copies,
+	// the same posture as the AVIF quality: visually comparable at
+	// these sizes, with the encoding the faster side of the trade.
+	webpQuality = 80
 )
 
 // ThumbnailsSupported reports whether this build linked the libvips
@@ -79,19 +84,71 @@ func LibvipsVersion() string {
 	return vips.Version
 }
 
-// GenerateThumbnails derives the three AVIF serving copies of the
-// image at originalPath -- storage/thumbs/<assetID>/{tile,view,original}.avif
-// -- and returns the blurhash computed from the tile. It runs
-// idempotently: every invocation overwrites the same three paths, so
-// a re-run converges to the same file set without duplicates.
+// DerivativeFormats are the encodings the derivation writes: the
+// file extension equals the format name, so the format string is
+// also the stored path's extension.
+const (
+	// FormatAvif is the shipped encoding: smaller files, slower
+	// encodes.
+	FormatAvif = "avif"
+	// FormatWebp is the fast encoding: quicker encodes, a little
+	// larger files.
+	FormatWebp = "webp"
+)
+
+// ValidDerivativeFormat reports whether format is an encoding the
+// derivation writes.
+func ValidDerivativeFormat(format string) bool {
+	return format == FormatAvif || format == FormatWebp
+}
+
+// GenerateThumbnails derives the serving copies of the image at
+// originalPath at the SHIPPED settings -- the parameterized entry
+// point is GenerateThumbnailsWithOptions, and this wrapper keeps the
+// pinned defaults legible for the tests that exercise the shipped
+// posture.
+func GenerateThumbnails(originalPath, assetID string) (string, error) {
+	return GenerateThumbnailsWithOptions(originalPath, assetID, DeriveOptions{
+		TileBox:      tileBox,
+		ViewLongEdge: viewLongEdge,
+		Format:       FormatAvif,
+		FullSize:     true,
+		RawEmbedded:  true,
+	})
+}
+
+// DeriveOptions carries the image settings one derivation runs at:
+// the tile's bounding box, the view's long edge, the serving copies'
+// encoding, whether the full-resolution copy is derived too, and the
+// RAW-embedded-preview posture (consulted for RAW-typed sources;
+// this pipeline derives every decode-able image the same way).
+type DeriveOptions struct {
+	TileBox      int
+	ViewLongEdge int
+	Format       string
+	FullSize     bool
+	RawEmbedded  bool
+}
+
+// GenerateThumbnailsWithOptions derives the serving copies of the
+// image at originalPath -- storage/thumbs/<assetID>/{tile,view[,original]}.ext
+// -- at the settings the options carry, and returns the blurhash
+// computed from the tile. It runs idempotently: every invocation
+// overwrites the same paths, so a re-run converges to the same file
+// set without duplicates. The full-size copy derives only when the
+// options ask for it: the viewer reads the preview, and the
+// full-resolution copy is disk the settings may decline to spend.
 //
 // Orientation is handled here, at render time: the loaded image is
-// auto-rotated once before any size is derived, so all three copies
-// present the upright image (the metadata job, by contrast, stores
-// the sensor-order dimensions the file reports). EXIF and every other
-// metadata block are stripped from the serving copies: the database
-// owns the extracted metadata.
-func GenerateThumbnails(originalPath, assetID string) (string, error) {
+// auto-rotated once before any size is derived, so every copy
+// presents the upright image (the metadata job, by contrast, stores
+// the sensor-order dimensions the file reports). EXIF and every
+// other metadata block are stripped from the serving copies: the
+// database owns the extracted metadata.
+func GenerateThumbnailsWithOptions(originalPath, assetID string, opts DeriveOptions) (string, error) {
+	if !ValidDerivativeFormat(opts.Format) {
+		return "", fmt.Errorf("unknown derivative encoding %q", opts.Format)
+	}
 	if err := os.MkdirAll(thumbDir(assetID), 0o755); err != nil {
 		return "", fmt.Errorf("create thumbnail directory of asset %s: %w", assetID, err)
 	}
@@ -114,20 +171,20 @@ func GenerateThumbnails(originalPath, assetID string) (string, error) {
 
 	// The tile: fit within the box, never upscaled. The blurhash is
 	// computed from this in-memory tile -- cheaper than decoding the
-	// encoded AVIF back.
+	// encoded file back.
 	tile, err := image.Copy()
 	if err != nil {
 		return "", fmt.Errorf("copy for tile: %w", err)
 	}
 	defer tile.Close()
-	if err := tile.ThumbnailWithSize(tileBox, tileBox, vips.InterestingNone, vips.SizeDown); err != nil {
+	if err := tile.ThumbnailWithSize(opts.TileBox, opts.TileBox, vips.InterestingNone, vips.SizeDown); err != nil {
 		return "", fmt.Errorf("derive tile of %s: %w", originalPath, err)
 	}
 	hash, err := tileBlurhash(tile)
 	if err != nil {
 		return "", err
 	}
-	if err := writeAvif(tile, storage.ThumbPath(assetID, SizeTile)); err != nil {
+	if err := writeDerivative(tile, storage.ThumbPath(assetID, SizeTile, opts.Format), opts.Format); err != nil {
 		return "", err
 	}
 
@@ -137,32 +194,49 @@ func GenerateThumbnails(originalPath, assetID string) (string, error) {
 		return "", fmt.Errorf("copy for view: %w", err)
 	}
 	defer view.Close()
-	if err := view.ThumbnailWithSize(viewLongEdge, viewLongEdge, vips.InterestingNone, vips.SizeDown); err != nil {
+	if err := view.ThumbnailWithSize(opts.ViewLongEdge, opts.ViewLongEdge, vips.InterestingNone, vips.SizeDown); err != nil {
 		return "", fmt.Errorf("derive view of %s: %w", originalPath, err)
 	}
-	if err := writeAvif(view, storage.ThumbPath(assetID, SizeView)); err != nil {
+	if err := writeDerivative(view, storage.ThumbPath(assetID, SizeView, opts.Format), opts.Format); err != nil {
 		return "", err
 	}
 
-	// The original: the full-resolution re-encode; no resize at all.
-	if err := writeAvif(image, storage.ThumbPath(assetID, SizeOriginal)); err != nil {
-		return "", err
+	// The full-size copy: the full-resolution re-encode at the
+	// configured encoding; no resize at all. Only a settings posture
+	// that asks for it pays this disk.
+	if opts.FullSize {
+		if err := writeDerivative(image, storage.ThumbPath(assetID, SizeOriginal, opts.Format), opts.Format); err != nil {
+			return "", err
+		}
 	}
 	return hash, nil
 }
 
-// writeAvif encodes ref as AVIF (Q50, metadata stripped) and writes it
-// to path atomically: the bytes land in a temporary file beside the
-// destination and are renamed into place, so a concurrent reader (the
-// serving endpoint mid re-run) never observes a partial file. A
-// re-run converges to the same path set.
-func writeAvif(ref *vips.ImageRef, path string) error {
-	buf, _, err := ref.ExportAvif(&vips.AvifExportParams{
-		Quality:       avifQuality,
-		StripMetadata: true,
-	})
-	if err != nil {
-		return fmt.Errorf("encode AVIF %s: %w", path, err)
+// writeDerivative encodes ref at the configured encoding (metadata
+// stripped) and writes it to path atomically: the bytes land in a
+// temporary file beside the destination and are renamed into place,
+// so a concurrent reader (the serving endpoint mid re-run) never
+// observes a partial file. A re-run converges to the same path set.
+func writeDerivative(ref *vips.ImageRef, path, format string) error {
+	var buf []byte
+	var err error
+	switch format {
+	case FormatWebp:
+		buf, _, err = ref.ExportWebp(&vips.WebpExportParams{
+			Quality:       webpQuality,
+			StripMetadata: true,
+		})
+		if err != nil {
+			return fmt.Errorf("encode WebP %s: %w", path, err)
+		}
+	default:
+		buf, _, err = ref.ExportAvif(&vips.AvifExportParams{
+			Quality:       avifQuality,
+			StripMetadata: true,
+		})
+		if err != nil {
+			return fmt.Errorf("encode AVIF %s: %w", path, err)
+		}
 	}
 	if err := writeFileAtomic(path, buf); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
@@ -293,5 +367,5 @@ func ImageAverageColor(path string) (float64, float64, float64, error) {
 
 // thumbDir returns the thumbnail directory of an asset.
 func thumbDir(assetID string) string {
-	return filepath.Dir(storage.ThumbPath(assetID, SizeTile))
+	return filepath.Dir(storage.ThumbPath(assetID, SizeTile, FormatAvif))
 }

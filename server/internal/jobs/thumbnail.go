@@ -85,12 +85,17 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 		return fmt.Errorf("resolve file of asset %s: %w", assetID, err)
 	}
 
-	// Image assets get the three AVIF sizes; video assets get the
-	// poster frame instead -- never AVIF thumbnails (the poster IS the
+	// Image assets get the serving copies at the instance's image
+	// settings (the tile and preview sizes, the encoding, the
+	// full-size copy switch); video assets get the poster frame
+	// instead -- never an encoded image thumbnail (the poster IS the
 	// video's thumbnail, served by the thumbnail endpoint; the
 	// playable stream is the transcode job's product). A video under
 	// a thumbnailFrame=off instance skips the capture: no poster, no
-	// blurhash, the pipeline still completes below.
+	// blurhash, the pipeline still completes below. A corrupt image
+	// settings row answers the defaults (the corrupt read is
+	// logged): the pipeline keeps deriving while the log points at
+	// the row to fix.
 	var hash string
 	skipDerivation := false
 	if row.MediaKind == dbgen.MediaKindVideo {
@@ -105,7 +110,17 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 			hash, err = media.GeneratePoster(ctx, path, assetID.String())
 		}
 	} else {
-		hash, err = media.GenerateThumbnails(path, assetID.String())
+		image, imageSettingsErr := db.ImageSettingsOf(ctx, dbgen.New(w.pool))
+		if imageSettingsErr != nil {
+			w.logger.Error("thumbnail job: image settings are corrupt, using the default", "error", imageSettingsErr)
+		}
+		hash, err = media.GenerateThumbnailsWithOptions(path, assetID.String(), media.DeriveOptions{
+			TileBox:      image.TileSize,
+			ViewLongEdge: image.PreviewSize,
+			Format:       image.Format,
+			FullSize:     image.FullSize,
+			RawEmbedded:  image.RawEmbedded,
+		})
 	}
 	if err != nil {
 		return fmt.Errorf("derive serving copies of asset %s: %w", assetID, err)

@@ -13,9 +13,9 @@ import (
 // requireThumbDimensions decodes the produced AVIF of the given size
 // and pins its dimensions: the assertions read the actual encoded
 // files, not the in-memory references.
-func requireThumbDimensions(t *testing.T, assetID, size string, wantWidth, wantHeight int) {
+func requireThumbDimensions(t *testing.T, assetID, size, ext string, wantWidth, wantHeight int) {
 	t.Helper()
-	path := storage.ThumbPath(assetID, size)
+	path := storage.ThumbPath(assetID, size, ext)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("thumbnail %s missing: %v", path, err)
 	}
@@ -44,9 +44,9 @@ func TestGenerateThumbnailsSizes(t *testing.T) {
 		t.Errorf("blurhash = %q, want a non-empty encoded hash", hash)
 	}
 
-	requireThumbDimensions(t, assetID, SizeTile, 250, 125)
-	requireThumbDimensions(t, assetID, SizeView, 1080, 540)
-	requireThumbDimensions(t, assetID, SizeOriginal, 1600, 800)
+	requireThumbDimensions(t, assetID, SizeTile, "avif", 250, 125)
+	requireThumbDimensions(t, assetID, SizeView, "avif", 1080, 540)
+	requireThumbDimensions(t, assetID, SizeOriginal, "avif", 1600, 800)
 }
 
 // TestGenerateThumbnailsNeverUpscales pins the no-upscale rule: a
@@ -65,9 +65,9 @@ func TestGenerateThumbnailsNeverUpscales(t *testing.T) {
 		t.Fatalf("GenerateThumbnails: %v", err)
 	}
 
-	requireThumbDimensions(t, assetID, SizeTile, 64, 64)
-	requireThumbDimensions(t, assetID, SizeView, 64, 64)
-	requireThumbDimensions(t, assetID, SizeOriginal, 64, 64)
+	requireThumbDimensions(t, assetID, SizeTile, "avif", 64, 64)
+	requireThumbDimensions(t, assetID, SizeView, "avif", 64, 64)
+	requireThumbDimensions(t, assetID, SizeOriginal, "avif", 64, 64)
 }
 
 // TestGenerateThumbnailsHEIC pins the HEIC decode path: a real HEIC
@@ -89,9 +89,9 @@ func TestGenerateThumbnailsHEIC(t *testing.T) {
 		t.Errorf("blurhash = %q, want a non-empty encoded hash", hash)
 	}
 
-	requireThumbDimensions(t, assetID, SizeTile, 250, 125)
-	requireThumbDimensions(t, assetID, SizeView, 1080, 540)
-	requireThumbDimensions(t, assetID, SizeOriginal, 1600, 800)
+	requireThumbDimensions(t, assetID, SizeTile, "avif", 250, 125)
+	requireThumbDimensions(t, assetID, SizeView, "avif", 1080, 540)
+	requireThumbDimensions(t, assetID, SizeOriginal, "avif", 1600, 800)
 }
 
 // TestGenerateThumbnailsOrientation pins the orientation handling: a
@@ -107,9 +107,9 @@ func TestGenerateThumbnailsOrientation(t *testing.T) {
 		t.Fatalf("GenerateThumbnails: %v", err)
 	}
 
-	requireThumbDimensions(t, assetID, SizeTile, 100, 200)
-	requireThumbDimensions(t, assetID, SizeView, 100, 200)
-	requireThumbDimensions(t, assetID, SizeOriginal, 100, 200)
+	requireThumbDimensions(t, assetID, SizeTile, "avif", 100, 200)
+	requireThumbDimensions(t, assetID, SizeView, "avif", 100, 200)
+	requireThumbDimensions(t, assetID, SizeOriginal, "avif", 100, 200)
 }
 
 // TestGenerateThumbnailsOverwritesSamePaths pins the idempotency of
@@ -128,7 +128,7 @@ func TestGenerateThumbnailsOverwritesSamePaths(t *testing.T) {
 		t.Fatalf("second GenerateThumbnails: %v", err)
 	}
 
-	entries, err := os.ReadDir(filepath.Dir(storage.ThumbPath(assetID, SizeTile)))
+	entries, err := os.ReadDir(filepath.Dir(storage.ThumbPath(assetID, SizeTile, "avif")))
 	if err != nil {
 		t.Fatalf("list thumbnail directory: %v", err)
 	}
@@ -145,5 +145,5 @@ func TestGenerateThumbnailsOverwritesSamePaths(t *testing.T) {
 			t.Errorf("thumbnail files = %v, want exactly %v", names, want)
 		}
 	}
-	requireThumbDimensions(t, assetID, SizeTile, 250, 125)
+	requireThumbDimensions(t, assetID, SizeTile, "avif", 250, 125)
 }

@@ -128,13 +128,15 @@ func renameProbe(tmp, originals string) error {
 	return nil
 }
 
-// ThumbPath returns the path of the AVIF thumbnail of the given size
-// for an asset under the data root:
-// storage/thumbs/<assetID>/<size>.avif. It panics when EnsureLayout
-// has not succeeded yet.
-func ThumbPath(assetID, size string) string {
+// ThumbPath returns the path of the derivative of the given size and
+// encoding for an asset under the data root:
+// storage/thumbs/<assetID>/<size>.<ext> (the extension is the
+// encoding: .avif or .webp, whichever the image settings carried when
+// the file was derived). It panics when EnsureLayout has not
+// succeeded yet.
+func ThumbPath(assetID, size, ext string) string {
 	requireDataRoot("ThumbPath")
-	return filepath.Join(dataRoot, "storage", "thumbs", assetID, size+".avif")
+	return filepath.Join(dataRoot, "storage", "thumbs", assetID, size+"."+ext)
 }
 
 // RemoveAssetFiles removes the on-disk artifacts of one permanently
