@@ -226,6 +226,19 @@ func (q *Queue) EnqueueModelDownload(ctx context.Context) (uuid.UUID, error) {
 // The download endpoint keeps its own idempotence (a click joins an
 // in-flight or the most recent run); this decision exists for the
 // automatic path, whose trigger is a missing file rather than a click.
+//
+// The check-then-enqueue window is NOT closed, by design: two workers
+// that read the run table in the same millisecond can both decide "no
+// run in flight" and both enqueue, landing two queued run rows. In
+// practice the enqueue's own transaction commits the queued row before
+// the second worker's read runs, so the burst normally collapses to
+// one run; the property the fill promises (a burst of AI jobs starts
+// one download) is a practical one, not a database-guaranteed one.
+// Closing it would need an arbiter on the read -- a lock across the
+// table on every ML job's path -- for a case whose cost is one extra
+// run row: the duplicate checks the file store again (the verified-
+// file skip) and, at worst, re-fetches bytes the first run had not
+// landed yet.
 func (q *Queue) joinOrStartModelDownload(ctx context.Context) error {
 	queries := dbgen.New(q.pool)
 	if _, err := queries.FindInFlightJobRunByKind(ctx, ModelDownloadKind); err == nil {
