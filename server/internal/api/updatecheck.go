@@ -331,11 +331,13 @@ func normalizeAllowedHost(raw string) (string, error) {
 		value = parsed.Host
 	}
 	if strings.HasPrefix(value, "*.") {
+		// The wildcard label is the one star an entry may carry: the
+		// rest must be a plain hostname.
 		rest := value[2:]
-		if rest == "" || strings.ContainsAny(rest, "*? ") {
+		if rest == "" || strings.ContainsAny(rest, "*?/ ") {
 			return "", errors.New("bad wildcard host")
 		}
-		value = "*." + rest
+		return strings.ToLower(value), nil
 	}
 	if strings.ContainsAny(value, "*?/ ") {
 		return "", errors.New("bad host")

@@ -301,6 +301,8 @@ test.describe('the signed-in scenes', () => {
 		// A 128-dim file cannot pass the embed slot's 512 contract: the
 		// probe's error state names the check, and the save switch
 		// never enables.
+		// The file tab first: the URL tab is the import panel's default.
+		await dialog.getByRole('tab', { name: 'Local file', exact: true }).click();
 		await dialog.locator('input[type="file"]').setInputFiles(FIXTURE_128_FILE);
 		await dialog.getByRole('button', { name: 'Check', exact: true }).click();
 		const failure = dialog.locator('[data-probe-state="error"]');
@@ -320,11 +322,13 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/admin/models');
 
 		// First the card switches back onto the official entry: the
-		// dialog's official group preselects it, the save performs the
-		// switch, and the custom meta line is gone.
+		// dialog's select names the official entry (it preselects the
+		// running custom), the save performs the switch, and the
+		// custom meta line is gone.
 		await page.locator('.models__card[data-slot="clip_embed"]').getByRole('button', { name: 'Swap model' }).click();
 		const dialog = page.getByRole('dialog', { name: 'Swap the Semantic embeddings model', exact: true });
 		await expect(dialog).toBeVisible();
+		await dialog.locator('select').selectOption('cnclip-vit-b16-vision');
 		await dialog.getByRole('button', { name: 'Save and switch', exact: true }).click();
 		await expect(dialog).toHaveCount(0);
 		const card = page.locator('.models__card[data-slot="clip_embed"]');
@@ -338,6 +342,8 @@ test.describe('the signed-in scenes', () => {
 		await card.getByRole('button', { name: 'Swap model' }).click();
 		const dialog2 = page.getByRole('dialog', { name: 'Swap the Semantic embeddings model', exact: true });
 		await expect(dialog2).toBeVisible();
+		// The file tab first: the URL tab is the import panel's default.
+		await dialog2.getByRole('tab', { name: 'Local file', exact: true }).click();
 		await dialog2.locator('input[type="file"]').setInputFiles(FIXTURE_512_FILE);
 		await dialog2.getByRole('button', { name: 'Check', exact: true }).click();
 		const ok = dialog2.locator('[data-probe-state="ok"]');

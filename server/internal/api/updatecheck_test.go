@@ -385,9 +385,15 @@ func TestModelSettingsRoundTrip(t *testing.T) {
 	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/models", `{"autoDownload":false}`, env.cookie); rec.Code != http.StatusBadRequest {
 		t.Errorf("missing field: status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
-	// A malformed host entry is refused with the field named.
+	// A malformed host entry is refused with the field named; the
+	// wildcard label is accepted (the shipped list carries one).
 	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/models",
 		`{"autoDownload":false,"allowedHosts":["bad host*"],"mirrorBaseUrl":""}`, env.cookie); rec.Code != http.StatusBadRequest {
 		t.Errorf("malformed host: status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	saved2 := env.do(t, http.MethodPut, "/api/v1/admin/settings/models",
+		`{"autoDownload":false,"allowedHosts":["*.hf.co","huggingface.co"],"mirrorBaseUrl":""}`, env.cookie)
+	if saved2.Code != http.StatusOK {
+		t.Fatalf("wildcard host save: status = %d, want %d (body %q)", saved2.Code, http.StatusOK, saved2.Body.String())
 	}
 }
