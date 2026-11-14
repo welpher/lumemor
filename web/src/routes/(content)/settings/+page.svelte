@@ -436,6 +436,7 @@
 						label={$_('settings_profile_name')}
 						type="text"
 						autocomplete="name"
+						maxlength={100}
 						bind:value={formName}
 					/>
 					<Input
@@ -443,6 +444,7 @@
 						label={$_('settings_profile_email')}
 						type="email"
 						autocomplete="email"
+						required
 						bind:value={formEmail}
 					/>
 					{#if profileSaved}
@@ -482,11 +484,17 @@
 					{$_('settings_password_title')}
 				</h2>
 				<form class="settings__password flex flex-col gap-3.5" onsubmit={handlePasswordSubmit}>
+					<!-- The native pre-flight mirrors the change body: all three
+					     fields are required, and the new pair carries the contract's
+					     8-128 rune bound (the wizard's own numbers). The confirm
+					     field also keeps the mismatch slot below -- the server owns
+					     the current password's verdict. -->
 					<Input
 						id="settings-password-current"
 						label={$_('settings_password_current')}
 						type="password"
 						autocomplete="current-password"
+						required
 						bind:value={currentPassword}
 					/>
 					<Input
@@ -495,6 +503,9 @@
 						type="password"
 						autocomplete="new-password"
 						placeholder={$_('settings_password_new_hint')}
+						required
+						minlength={8}
+						maxlength={128}
 						bind:value={newPassword}
 					/>
 					<Input
@@ -502,6 +513,9 @@
 						label={$_('settings_password_confirm')}
 						type="password"
 						autocomplete="new-password"
+						required
+						minlength={8}
+						maxlength={128}
 						bind:value={confirmPassword}
 						error={passwordMismatch ? $_('settings_password_mismatch') : ''}
 					/>

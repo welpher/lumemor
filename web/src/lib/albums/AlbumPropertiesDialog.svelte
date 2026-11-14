@@ -156,7 +156,8 @@
 			id="album-title"
 			name="album-title"
 			bind:value={titleDraft}
-			maxlength={128}
+			required
+			maxlength={64}
 			autocomplete="off"
 			error={boundViolated ? $_('albums_title_invalid') : ''}
 		/>
