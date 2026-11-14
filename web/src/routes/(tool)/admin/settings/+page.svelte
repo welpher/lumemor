@@ -720,81 +720,116 @@
 					{$_('admin_settings_update_note')}
 				</p>
 
+				<!-- The running version, with the deployment's own answer to
+				     "who updates this": nobody here. -->
 				<div
-					class="settings__update-state flex flex-wrap items-center gap-2 py-1"
-					data-testid="update-check-state"
+					class="settings__version flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-border"
+					data-testid="update-check-version"
 				>
-					<p class="settings__version m-0 font-body font-normal text-[13px] leading-[1.5] text-text-soft">
-						{$_('admin_settings_update_current', {
-							values: { version: updateState?.currentVersion ?? '' }
-						})}
-					</p>
+					<div class="flex flex-col gap-0.5">
+						<span class="font-body font-semibold text-[14px] leading-[1.4] text-text">
+							{$_('admin_settings_update_version_label')}
+						</span>
+						<span class="font-body font-normal text-[13px] leading-[1.4] text-text-soft tabular-nums">
+							{updateState?.currentVersion ?? ''}
+						</span>
+					</div>
+					<span
+						class="settings__deployment inline-flex items-center h-8 px-3 rounded-control border border-border bg-page font-body font-semibold text-[13px] leading-[1.4] text-text-soft"
+					>
+						{$_('admin_settings_update_badge')}
+					</span>
+				</div>
+
+				<!-- The three faces: exactly one renders. A failed check is
+				     SILENT -- quiet text, no danger color, no toast, no
+				     dialog. -->
+				<div class="settings__update-face mt-3" data-testid="update-check-state">
 					{#if updateState !== null}
 						{#if updateState.status === 'update_available'}
-							<span
-								class="settings__update-chip inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-notice text-navy-900 font-body font-semibold text-[12px] leading-[1.4]"
-								data-state="available"
-							>
-								{$_('admin_settings_update_available', {
-									values: { version: updateState.latestVersion ?? '' }
-								})}
-							</span>
+							<div class="settings__face flex flex-col gap-2" data-update-face="available">
+								<div class="flex flex-wrap items-center gap-2">
+									<span
+										class="settings__update-chip inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-notice text-navy-900 font-body font-semibold text-[12px] leading-[1.4]"
+									>
+										{$_('admin_settings_update_available', {
+											values: { version: updateState.latestVersion ?? '' }
+										})}
+									</span>
+									{#if updateState.checkedAt !== null}
+										<span
+											class="font-body font-normal text-[13px] leading-[1.4] text-text-faint tabular-nums"
+										>
+											{$_('admin_settings_update_checked_at', {
+												values: { when: relativeTime(updateState.checkedAt) }
+											})}
+										</span>
+									{/if}
+								</div>
+								<p class="m-0 font-body font-normal text-[13px] leading-[1.5] text-text-soft">
+									{$_('admin_settings_update_not_automatic')}
+								</p>
+							</div>
 						{:else if updateState.status === 'up_to_date'}
-							<span
-								class="settings__update-chip inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-soft text-accent-soft-text font-body font-semibold text-[12px] leading-[1.4]"
-								data-state="latest"
-							>
-								<CircleCheck size={13} aria-hidden="true" />
-								{$_('admin_settings_update_latest')}
-							</span>
-						{:else if updateState.status === 'disabled'}
-							<span
-								class="settings__update-quiet font-body font-normal text-[13px] leading-[1.4] text-text-faint"
-								data-state="disabled"
-							>
-								{$_('admin_settings_update_off')}
-							</span>
-						{:else}
-							<span
-								class="settings__update-quiet font-body font-normal text-[13px] leading-[1.4] text-text-faint"
-								data-state="unknown"
-							>
+							<div class="settings__face flex flex-wrap items-center gap-2" data-update-face="latest">
+								<span
+									class="settings__update-chip inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-soft text-accent-soft-text font-body font-semibold text-[12px] leading-[1.4]"
+								>
+									<CircleCheck size={13} aria-hidden="true" />
+									{$_('admin_settings_update_latest')}
+								</span>
 								{#if updateState.checkedAt !== null}
-									{$_('admin_settings_update_unknown', {
-										values: { when: relativeTime(updateState.checkedAt) }
-									})}
-								{:else}
-									{$_('admin_settings_update_never')}
+									<span
+										class="font-body font-normal text-[13px] leading-[1.4] text-text-faint tabular-nums"
+									>
+										{$_('admin_settings_update_checked_at', {
+											values: { when: relativeTime(updateState.checkedAt) }
+										})}
+									</span>
 								{/if}
-							</span>
-						{/if}
-						{#if updateState.status === 'up_to_date' && updateState.checkedAt !== null}
-							<span
-								class="settings__update-quiet font-body font-normal text-[13px] leading-[1.4] text-text-faint"
-							>
-								{$_('admin_settings_update_checked_at', {
-									values: { when: relativeTime(updateState.checkedAt) }
-								})}
-							</span>
+							</div>
+						{:else if updateState.status === 'disabled'}
+							<div class="settings__face" data-update-face="off">
+								<span class="font-body font-normal text-[13px] leading-[1.4] text-text-faint">
+									{$_('admin_settings_update_off')}
+								</span>
+							</div>
+						{:else}
+							<!-- The silent failure: the state is unknown, and the
+							     only thing the card says is when it last asked.
+							     The retry sentence is the affordance, not a
+							     warning. -->
+							<div class="settings__face flex flex-col gap-2" data-update-face="failed">
+								<span
+									class="settings__update-quiet font-body font-normal text-[13px] leading-[1.4] text-text-faint tabular-nums"
+								>
+									{#if updateState.checkedAt !== null}
+										{$_('admin_settings_update_unknown', {
+											values: { when: relativeTime(updateState.checkedAt) }
+										})}
+									{:else}
+										{$_('admin_settings_update_never')}
+									{/if}
+								</span>
+								<p class="m-0 font-body font-normal text-[13px] leading-[1.5] text-text-faint">
+									{$_('admin_settings_update_failed_note')}
+								</p>
+							</div>
 						{/if}
 					{/if}
-					<Button
-						variant="ghost"
-						disabled={checking || updateState?.enabled === false}
-						onclick={() => void handleCheckNow()}
-						data-testid="update-check-now"
-						><RefreshCw size={20} aria-hidden="true" />{checking
-							? $_('admin_settings_update_checking')
-							: $_('admin_settings_update_check_now')}</Button
-					>
+					<div class="settings__update-actions flex justify-end mt-3">
+						<Button
+							variant="ghost"
+							disabled={checking || updateState?.enabled === false}
+							onclick={() => void handleCheckNow()}
+							data-testid="update-check-now"
+							aria-busy={checking}
+							><RefreshCw size={20} aria-hidden="true" />{checking
+								? $_('admin_settings_update_checking')
+								: $_('admin_settings_update_check_now')}</Button
+						>
+					</div>
 				</div>
-				{#if updateState?.status === 'update_available'}
-					<p
-						class="settings__update-hint m-0 mt-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft"
-					>
-						{$_('admin_settings_update_not_automatic')}
-					</p>
-				{/if}
 
 				<form class="settings__update-form flex flex-col gap-3.5 mt-4" onsubmit={handleUpdateCheckSubmit}>
 					<label
