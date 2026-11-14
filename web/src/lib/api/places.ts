@@ -77,6 +77,16 @@ function placeFrom(body: unknown): PlaceSummary | null {
 	) {
 		return null;
 	}
+	// The capture span: both ends always present on a listed place
+	// (the card's year range and the list's ordering read them).
+	if (
+		typeof candidate.takenAtFrom !== 'string' ||
+		Number.isNaN(Date.parse(candidate.takenAtFrom)) ||
+		typeof candidate.takenAtTo !== 'string' ||
+		Number.isNaN(Date.parse(candidate.takenAtTo))
+	) {
+		return null;
+	}
 	// The contract pins at least one cover candidate, but the card
 	// renders an honest placeholder for a bare group -- the types
 	// are what must hold, the cardinality degrades gracefully.
@@ -90,9 +100,9 @@ function placeFrom(body: unknown): PlaceSummary | null {
 }
 
 /**
- * GET /api/v1/places: the caller's city grouping, ordered by asset
- * count descending. `locale` picks the display names' join (the web
- * app's active locale; the default en).
+ * GET /api/v1/places: the caller's city grouping, ordered by the
+ * latest capture time descending. `locale` picks the display names'
+ * join (the web app's active locale; the default en).
  */
 export async function listPlaces(
 	locale: string = DEFAULT_LOCALE,

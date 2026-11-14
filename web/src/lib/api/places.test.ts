@@ -15,6 +15,8 @@ const paris: PlaceSummary = {
 	assetCount: 17,
 	latitude: 48.85341,
 	longitude: 2.3488,
+	takenAtFrom: '2024-01-21T09:05:00Z',
+	takenAtTo: '2024-01-25T18:20:00Z',
 	representativeCoverAssetIds: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72', '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f73']
 };
 
@@ -25,6 +27,8 @@ const beijing: PlaceSummary = {
 	assetCount: 42,
 	latitude: 39.9075,
 	longitude: 116.39723,
+	takenAtFrom: '2019-04-08T10:12:00Z',
+	takenAtTo: '2026-08-02T15:40:00Z',
 	representativeCoverAssetIds: ['0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70']
 };
 
@@ -103,6 +107,33 @@ test('listPlaces maps the failure arms: dead session, error codes, broken bodies
 		]),
 		jsonResponse(200, [
 			{ placeId: 1, name: 'Paris', country: 'FR', assetCount: 1, representativeCoverAssetIds: 'no' }
+		]),
+		// The capture span is required and must parse: a grouping row
+		// without it (or with a malformed date) is a broken body.
+		jsonResponse(200, [
+			{
+				placeId: 1,
+				name: 'Paris',
+				country: 'FR',
+				assetCount: 1,
+				latitude: 48.85,
+				longitude: 2.35,
+				takenAtTo: '2024-01-25T18:20:00Z',
+				representativeCoverAssetIds: []
+			}
+		]),
+		jsonResponse(200, [
+			{
+				placeId: 1,
+				name: 'Paris',
+				country: 'FR',
+				assetCount: 1,
+				latitude: 48.85,
+				longitude: 2.35,
+				takenAtFrom: 'not-a-date',
+				takenAtTo: '2024-01-25T18:20:00Z',
+				representativeCoverAssetIds: []
+			}
 		]),
 		new Response('not json', { status: 200, headers: { 'Content-Type': 'application/json' } })
 	];
