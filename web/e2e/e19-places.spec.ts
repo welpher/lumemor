@@ -172,9 +172,15 @@ test.describe('the signed-in scenes', () => {
 		await expect(page).toHaveTitle('Places · lumemor');
 		await expect(page.getByRole('heading', { level: 1, name: 'Places · 1 city', exact: true })).toBeVisible();
 
-		// One flat grid: no grouping headers above the cards.
+		// One flat grid: no grouping headers above the cards, and the
+		// grid's own children are the cards -- nothing else rides
+		// between them.
 		expect(await page.locator('.place-card').count()).toBe(1);
-		await expect(page.locator('.places__group')).toHaveCount(0);
+		await expect(page.locator('.places__content h2')).toHaveCount(0);
+		const gridChildren = await page
+			.locator('.places__grid > *')
+			.evaluateAll((nodes) => nodes.map((node) => node.tagName.toLowerCase()));
+		expect(gridChildren).toEqual(['a']);
 
 		const card = page.locator('a.place-card').first();
 		await expect(card.locator('.place-card__name')).toHaveText('Beijing');

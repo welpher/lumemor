@@ -765,8 +765,13 @@ func TestTimelinePersonScope(t *testing.T) {
 		if apiErr.Code != apigen.VALIDATIONFAILED {
 			t.Errorf("code = %q, want %q", apiErr.Code, apigen.VALIDATIONFAILED)
 		}
-		if !contains(fields, "clusterId") || !contains(fields, "albumId") {
-			t.Errorf("details.fields = %v, want both narrows named", fields)
+		// Only the narrows the caller sent: naming placeIds (absent
+		// from this request) would point at a field never written.
+		if len(fields) != 2 || !contains(fields, "clusterId") || !contains(fields, "albumId") {
+			t.Errorf("details.fields = %v, want exactly the two narrows sent", fields)
+		}
+		if contains(fields, "placeIds") {
+			t.Errorf("details.fields = %v, want the absent placeIds unnamed", fields)
 		}
 	})
 
@@ -861,8 +866,11 @@ func TestTimelinePlaceScope(t *testing.T) {
 		if apiErr.Code != apigen.VALIDATIONFAILED {
 			t.Errorf("code = %q, want %q", apiErr.Code, apigen.VALIDATIONFAILED)
 		}
-		if !contains(fields, "albumId") || !contains(fields, "placeIds") {
-			t.Errorf("details.fields = %v, want both narrows named", fields)
+		if len(fields) != 2 || !contains(fields, "albumId") || !contains(fields, "placeIds") {
+			t.Errorf("details.fields = %v, want exactly the two narrows sent", fields)
+		}
+		if contains(fields, "clusterId") {
+			t.Errorf("details.fields = %v, want the absent clusterId unnamed", fields)
 		}
 	})
 

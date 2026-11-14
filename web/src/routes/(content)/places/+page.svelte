@@ -131,13 +131,19 @@
 
 	/**
 	 * The panel's selection: the clicked marker's place ids. It is
-	 * read from the address once at mount (`?place=<ids>`, the viewer
-	 * round trip's restoration -- the router has already resolved the
-	 * URL by the time this component initializes), then owned by the
-	 * page; every change is written back into the address with a
-	 * replace (never a navigation).
+	 * read from the ADDRESS once at mount (`?place=<ids>`, the viewer
+	 * round trip's restoration): the browser's own address is the
+	 * source, because a popstate landing (the viewer's Escape) has
+	 * resolved it before the component initializes while a router
+	 * snapshot may still trail. The page owns the value afterwards;
+	 * every change is written back into the address with a replace
+	 * (never a navigation). The parameter belongs to the MAP face: on
+	 * the list face it is read as nothing.
 	 */
-	let selectedIds = $state<number[]>(parsePlaceParam(new URL(window.location.href).searchParams.get('place')));
+	const mountUrl = new URL(window.location.href);
+	let selectedIds = $state<number[]>(
+		mountUrl.searchParams.get('mode') === 'map' ? parsePlaceParam(mountUrl.searchParams.get('place')) : []
+	);
 	/** The selected places (the panel's rows), in the listing order. */
 	const selected = $derived(selectedPlaces(places, selectedIds));
 	const selectedKey = $derived(selectedIds.join(','));
@@ -287,6 +293,25 @@
 		if (selectedIds.length > 0 && status === 'ready' && selected.length === 0) {
 			syncSelection(null);
 		}
+	});
+
+	// The `place` parameter is the MAP face's own state. A list-face
+	// address carrying one is a leftover (a stale deep link, a hand
+	// edit, a back navigation that crossed faces): the parameter is
+	// dropped so a reload or a shared address never carries a
+	// selection the face cannot show. The browser's address decides
+	// -- a router snapshot still trailing the popstate must not cost
+	// the map its own selection.
+	$effect(() => {
+		if (isMap) {
+			return;
+		}
+		const url = new URL(window.location.href);
+		if (url.searchParams.get('mode') === 'map' || !url.searchParams.has('place')) {
+			return;
+		}
+		url.searchParams.delete('place');
+		replaceState(url, {});
 	});
 </script>
 

@@ -131,3 +131,33 @@ export async function listPlaces(
 	}
 	return { ok: true, places };
 }
+
+/** The place re-resolution trigger's outcome: the run's id, or the failure's i18n key. */
+export type PlacesReresolveResult = { ok: true; jobRunId: string } | { ok: false; errorKey: string };
+
+/**
+ * POST /api/v1/admin/places/reresolve: start (or join) one full
+ * place re-resolution run. The endpoint is idempotent -- an in-flight
+ * run answers 200 with its identifier, a fresh one 202 -- so both
+ * statuses are the same outcome for the caller.
+ */
+export async function reresolvePlaces(fetcher: typeof fetch = globalThis.fetch): Promise<PlacesReresolveResult> {
+	let response: Response;
+	try {
+		response = await apiFetch('/api/v1/admin/places/reresolve', { method: 'POST' }, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const body = await bodyOf(response);
+	if (body === null || typeof body !== 'object') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const jobRunId = (body as { jobRunId?: unknown }).jobRunId;
+	if (typeof jobRunId !== 'string' || jobRunId === '') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, jobRunId };
+}
