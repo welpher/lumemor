@@ -206,7 +206,7 @@ func (s *server) UpdateTilesSettings(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, "save the tile settings", err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, apigen.TilesSettingsResponse{TilejsonUrl: req.TilejsonUrl})
+	s.writeJSON(w, http.StatusOK, apigen.TilesSettingsResponse(req))
 }
 
 // GetModelSettings implements GET /api/v1/admin/settings/models: the
@@ -252,7 +252,7 @@ func (s *server) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, "save the model settings", err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, apigen.ModelSettingsResponse{AutoDownload: req.AutoDownload})
+	s.writeJSON(w, http.StatusOK, apigen.ModelSettingsResponse(req))
 }
 
 // GetMapConfig implements GET /api/v1/map/config: the map's
