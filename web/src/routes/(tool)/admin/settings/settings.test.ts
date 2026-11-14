@@ -681,3 +681,159 @@ test('the tile source and the model policy save their own bodies', async () => {
 		mirrorBaseUrl: ''
 	});
 });
+
+// THE COLLAPSE AND THE IMAGE CARD (E33): the settings page is an
+// index of folded cards -- the first visit lands collapsed with
+// every summary naming its card's current value, the expanded set is
+// remembered in localStorage (stored as the EXPANDED ids, so a card
+// added later stays collapsed), and the image card carries the
+// honest cost line with its explicit rebuild.
+
+test('the first visit is the collapsed index: every card folded, every summary naming its value', async () => {
+	window.localStorage.removeItem('lumemor:settings:expanded');
+	vi.stubGlobal('fetch', stubFetch(defaultReads()));
+	mountPage();
+	await settle();
+
+	const cards = Array.from(document.body.querySelectorAll<HTMLDetailsElement>('.settings__card'));
+	expect(cards).toHaveLength(7);
+	// No card opens by default, and the fold is in the MARKUP (no
+	// open attribute): a JS-off browser still sees the index.
+	for (const card of cards) {
+		expect(card.hasAttribute('open')).toBe(false);
+	}
+	// Each collapsed row states its card's current value.
+	const meta = (testId: string): string =>
+		document.body.querySelector<HTMLElement>(`[data-testid="${testId}"] .settings__section-meta`)?.textContent ??
+		'';
+	expect(meta('admin-settings-storage')).toContain('{{y}}/{{MM}}/{{filename}}');
+	expect(meta('admin-settings-trash')).toContain('30');
+	expect(meta('admin-settings-image')).toContain('250');
+	expect(meta('admin-settings-image')).toContain('1080');
+	expect(meta('admin-settings-image')).toContain('AVIF');
+	expect(meta('admin-settings-tiles')).toContain('not configured');
+	expect(meta('admin-settings-models')).toContain('on');
+});
+
+test('expanding cards persists the expanded set, and a fresh mount restores it', async () => {
+	window.localStorage.removeItem('lumemor:settings:expanded');
+	vi.stubGlobal('fetch', stubFetch(defaultReads()));
+	mountPage();
+	await settle();
+
+	// Open two cards by toggling their summaries (the native fold).
+	const image = document.body.querySelector<HTMLDetailsElement>('[data-testid="admin-settings-image"]');
+	const update = document.body.querySelector<HTMLDetailsElement>('[data-testid="admin-settings-update"]');
+	if (image === null || update === null) {
+		throw new Error('missing cards');
+	}
+	image.open = true;
+	image.dispatchEvent(new Event('toggle', { bubbles: false }));
+	update.open = true;
+	update.dispatchEvent(new Event('toggle', { bubbles: false }));
+	await tick();
+
+	// The stored set names the EXPANDED ids only.
+	const stored = JSON.parse(window.localStorage.getItem('lumemor:settings:expanded') ?? '[]');
+	expect(stored).toEqual(expect.arrayContaining(['image', 'update']));
+	expect(stored).not.toContain('storage');
+
+	// A fresh mount (the refresh) restores exactly those.
+	unmount(page!);
+	page = null;
+	document.body.innerHTML = '';
+	mountPage();
+	await settle();
+	expect(document.body.querySelector<HTMLDetailsElement>('[data-testid="admin-settings-image"]')?.open).toBe(true);
+	expect(document.body.querySelector<HTMLDetailsElement>('[data-testid="admin-settings-update"]')?.open).toBe(true);
+	expect(document.body.querySelector<HTMLDetailsElement>('[data-testid="admin-settings-storage"]')?.open).toBe(false);
+});
+
+test('the image card saves its PUT body and the consequence line names the no-recompute rule', async () => {
+	window.localStorage.removeItem('lumemor:settings:expanded');
+	const reads = defaultReads();
+	let savedBody: unknown = null;
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url === '/api/v1/admin/settings/image' && init?.method === 'PUT') {
+				savedBody = JSON.parse(String(init.body));
+				return jsonResponse(200, imageSettingsBody({ tileSize: 320, format: 'webp' }));
+			}
+			const answer = reads[url];
+			if (answer === undefined) {
+				throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+			}
+			return answer(init);
+		})
+	);
+	mountPage();
+	await settle();
+
+	// The consequence line rides in the card: the save recomputes
+	// nothing, the rebuild is the explicit action.
+	const card = document.body.querySelector<HTMLElement>('[data-testid="admin-settings-image"]');
+	expect(card?.textContent).toContain('Saving recomputes nothing');
+	// The cost line names the summary's declared estimate.
+	expect(card?.textContent).toContain('a full rebuild takes about');
+
+	// The save PUTs the whole document.
+	submitFormBy('admin-settings-image');
+	await settle();
+	expect(savedBody).toEqual({
+		tileSize: 250,
+		previewSize: 1080,
+		format: 'avif',
+		fullSize: false,
+		rawEmbedded: true
+	});
+	// The adopted answer fills the card and the collapsed row.
+	const tileSelect = document.body.querySelector<HTMLSelectElement>('#admin-image-thumb');
+	expect(tileSelect?.value).toBe('320');
+	const meta = document.body.querySelector<HTMLElement>(
+		'[data-testid="admin-settings-image"] .settings__section-meta'
+	);
+	expect(meta?.textContent).toContain('WEBP');
+});
+
+test('the rebuild dialog opens over the collapsed card, defaults to the missing scope and POSTs it', async () => {
+	window.localStorage.removeItem('lumemor:settings:expanded');
+	let postedScope: unknown = null;
+	const reads = defaultReads();
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url === '/api/v1/admin/derivatives/rebuild' && init?.method === 'POST') {
+				postedScope = JSON.parse(String(init.body)).scope;
+				return jsonResponse(202, { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10' });
+			}
+			const answer = reads[url];
+			if (answer === undefined) {
+				throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+			}
+			return answer(init);
+		})
+	);
+	mountPage();
+	await settle();
+
+	// The card stays folded while the dialog opens (the dialog is a
+	// page-level layer).
+	const image = document.body.querySelector<HTMLDetailsElement>('[data-testid="admin-settings-image"]');
+	expect(image?.hasAttribute('open')).toBe(false);
+	buttonByText('Rebuild derivatives').click();
+	await settle();
+	const dialog = document.body.querySelector<HTMLElement>('[data-testid="rebuild-dialog"]');
+	expect(dialog).not.toBeNull();
+	// The missing scope is the default radio.
+	const missing = dialog?.querySelector<HTMLInputElement>('input[value="missing"]');
+	expect(missing?.checked).toBe(true);
+	// The scope note carries the summary's declared estimate.
+	expect(dialog?.textContent).toContain('Re-derives all 0 images');
+
+	buttonByText('Start rebuild').click();
+	await settle();
+	expect(postedScope).toBe('missing');
+});
