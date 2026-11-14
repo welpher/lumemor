@@ -24,6 +24,15 @@
 		cluster?: boolean;
 		/** The map's accessible name. */
 		label: string;
+		/**
+		 * The place ids the view frames: a selected marker's places.
+		 * Null (or absent) frames every pin -- the map's resting
+		 * view. A selection change re-frames the camera around
+		 * exactly those places.
+		 */
+		focus?: readonly number[] | null;
+		/** The selected marker's place ids (its pin renders the pressed state). */
+		selected?: readonly number[] | null;
 		/** A cluster or pin click hands back the place ids it stands for. */
 		onselect?: (placeIds: number[]) => void;
 		/** The base layer's state (bindable: the page states it too). */
@@ -37,6 +46,8 @@
 		point = null,
 		cluster = true,
 		label,
+		focus = null,
+		selected = null,
 		onselect,
 		tiles = $bindable<MapState>('loading'),
 		attribution = $bindable('')
@@ -58,6 +69,8 @@
 	let single = $state<Marker | null>(null);
 	/** True while the map has not finished its first layout. */
 	let ready = $state(false);
+	/** The container observer (the 70/30 squeeze's canvas resize). */
+	let resizeObserver: ResizeObserver | undefined;
 
 	/**
 	 * Recompute the overlay from the map's current camera: project
@@ -92,6 +105,61 @@
 		const pixel = instance.project([at.lon, at.lat]);
 		return { key: 'asset', x: pixel.x, y: pixel.y, count: 0, name: null, placeIds: [] };
 	}
+
+	/**
+	 * Frame a set of places: the camera fits their bounding box with
+	 * the container's padding, which is the aspect rule (the box
+	 * fills the view as far as the container's own ratio allows --
+	 * nothing inside it is cropped, and the map's own surface fills
+	 * the rest). Null frames every pin. A single place has no
+	 * extent, so it gets a small frame around its point instead of a
+	 * collapsed box.
+	 */
+	function frameOn(ids: readonly number[] | null): void {
+		if (map === null) {
+			return;
+		}
+		// The container may have just changed size (the panel's
+		// squeeze): resize first so the fit reads the fresh viewport.
+		map.resize();
+		const wanted = ids === null ? [...places] : places.filter((place) => ids.includes(place.placeId));
+		const bounds = placesBounds(wanted);
+		if (bounds === null) {
+			return;
+		}
+		const [west, south, east, north] = bounds;
+		if (west === east || south === north) {
+			map.fitBounds(
+				[
+					[west - 0.4, south - 0.3],
+					[east + 0.4, north + 0.3]
+				],
+				{ padding: 64, maxZoom: 9, animate: true }
+			);
+			return;
+		}
+		map.fitBounds(
+			[
+				[west, south],
+				[east, north]
+			],
+			{ padding: 64, maxZoom: 8, animate: true }
+		);
+	}
+
+	/** Whether one marker is the current selection (the aria state). */
+	function isSelected(marker: Marker): boolean {
+		if (selected === null || marker.placeIds.length !== selected.length) {
+			return false;
+		}
+		return marker.placeIds.every((id) => selected.includes(id));
+	}
+
+	// The last camera frame the focus prop requested: a fresh frame
+	// runs only when the SELECTION moves, never on every re-render
+	// (a convergence refetch must not yank a camera the reader
+	// panned).
+	let framedKey = '';
 
 	// The instance: the config read, the source resolution, the lazy
 	// library load, then the pins. One mount, one instance: the maps
@@ -159,6 +227,7 @@
 			instance.on('load', () => {
 				ready = true;
 				const bounds = placesBounds(places);
+				framedKey = '';
 				if (point !== null) {
 					instance.jumpTo({ center: [point.lon, point.lat], zoom: 12 });
 				} else if (bounds !== null) {
@@ -173,9 +242,25 @@
 				refreshMarkers();
 			});
 			instance.on('move', refreshMarkers);
+
+			// The map's container is a flex cell: opening the place
+			// panel narrows it, and the library's own resize listener
+			// watches the window, not the container. A container
+			// observer keeps the canvas and the projected pins honest
+			// across the 70/30 squeeze.
+			if (typeof ResizeObserver === 'function') {
+				const observer = new ResizeObserver(() => {
+					instance.resize();
+					refreshMarkers();
+				});
+				observer.observe(container);
+				resizeObserver = observer;
+			}
 		})();
 		return () => {
 			disposed = true;
+			resizeObserver?.disconnect();
+			resizeObserver = undefined;
 			map?.remove();
 			map = null;
 		};
@@ -190,6 +275,20 @@
 		if (ready) {
 			refreshMarkers();
 		}
+	});
+
+	// The view framing: a selection move re-frames the camera around
+	// that marker's places; clearing it returns to every pin. The key
+	// comparison keeps a pan or a convergence from re-framing under
+	// the reader.
+	$effect(() => {
+		const ids = focus;
+		const key = ids === null || ids.length === 0 ? '' : [...ids].sort((a, b) => a - b).join(',');
+		if (!ready || key === framedKey) {
+			return;
+		}
+		framedKey = key;
+		frameOn(ids === null || ids.length === 0 ? null : ids);
 	});
 
 	/** A pin or bubble click: the place ids it stands for. */
@@ -250,6 +349,8 @@
 				style="left: {marker.x}px; top: {marker.y}px"
 				type="button"
 				data-place-count={marker.count}
+				data-place-ids={marker.placeIds.join(',')}
+				aria-pressed={isSelected(marker)}
 				aria-label={marker.name === null
 					? $_('places_map_pin_count', { values: { count: marker.count } })
 					: $_('places_map_pin_label', { values: { name: marker.name, count: marker.count } })}
@@ -261,8 +362,12 @@
 				<span
 					class="map__pin-pill inline-flex items-center gap-1 rounded-full font-body font-semibold text-[13px] leading-[1.4] transition-[scale,border-color] duration-(--motion-fast) ease-standard hover:scale-105 {marker.name ===
 					null
-						? 'bg-accent text-accent-on px-2.5 h-9 ring-2 ring-card shadow-overlay'
-						: 'bg-card text-text border border-border-strong px-2.5 py-1 shadow-card'}"
+						? 'bg-accent text-accent-on px-2.5 h-9 shadow-overlay'
+						: 'bg-card text-text border border-border-strong px-2.5 py-1 shadow-card'} {isSelected(marker)
+						? 'ring-2 ring-accent'
+						: marker.name === null
+							? 'ring-2 ring-card'
+							: ''}"
 				>
 					<svg
 						aria-hidden="true"
