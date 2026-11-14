@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // EnvListen is the environment variable overriding the HTTP listen address.
@@ -35,6 +36,14 @@ const EnvUploadLimitBytes = "LUMEMOR_UPLOAD_LIMIT_BYTES"
 // refuses to start -- which is the local-development default (the
 // Docker image sets it to the bake it carries).
 const EnvGeodataDir = "LUMEMOR_GEODATA_DIR"
+
+// EnvUpdateCheckDisabled is the environment variable that turns the
+// release check off at the deployment level: a stack that must never
+// reach the outside world (a test harness, an air-gapped evaluation)
+// sets it to a true value and the feature idles, without touching the
+// instance's own settings. Unset or empty leaves the check under the
+// admin settings switch alone.
+const EnvUpdateCheckDisabled = "LUMEMOR_UPDATE_CHECK_DISABLED"
 
 // DefaultListen is the listen address used when EnvListen is unset or empty.
 const DefaultListen = ":8244"
@@ -71,6 +80,10 @@ type Config struct {
 	// UploadLimitBytes is the maximum accepted size in bytes of a
 	// single uploaded file.
 	UploadLimitBytes int64
+	// UpdateCheckDisabled is the deployment-level off switch of the
+	// release check (the environment's own, distinct from the
+	// admin settings switch).
+	UpdateCheckDisabled bool
 }
 
 // Load reads the configuration from the environment. It returns an
@@ -105,13 +118,27 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		Listen:           listen,
-		DatabaseURL:      databaseURL,
-		DataDir:          dataDir,
-		ConfigDir:        configDir,
-		GeodataDir:       os.Getenv(EnvGeodataDir),
-		UploadLimitBytes: uploadLimitBytes,
+		Listen:              listen,
+		DatabaseURL:         databaseURL,
+		DataDir:             dataDir,
+		ConfigDir:           configDir,
+		GeodataDir:          os.Getenv(EnvGeodataDir),
+		UploadLimitBytes:    uploadLimitBytes,
+		UpdateCheckDisabled: parseTruthyEnv(EnvUpdateCheckDisabled),
 	}, nil
+}
+
+// parseTruthyEnv reports whether the named environment variable is set
+// to a true value ("1", "true", "yes", "on", case-insensitive). An
+// unset, empty or unrecognized value is false -- the feature's default
+// is the documented one, and a typo must not silently arm a switch.
+func parseTruthyEnv(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // loadUploadLimitBytes parses EnvUploadLimitBytes. An unset or empty

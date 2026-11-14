@@ -104,6 +104,13 @@ dev_image="lumemor-dev:latest"
 mirror_service="m3a-offline-mirror"
 mirror_port="8443"
 
+# The suites never reach the outside world: the release check is off
+# at the deployment level for every acceptance stack (its own request
+# would be the only outbound one the stories do not stub). Exported
+# before either source mode is prepared: the offline mirror boots the
+# check exactly like the upstream mode does.
+export LUMEMOR_UPDATE_CHECK_DISABLED=1
+
 # One timestamp for the run's unique identities (admin emails, device
 # asset ids) so reruns never collide with leftover data, and one for
 # the elapsed-time reporting of the phases.

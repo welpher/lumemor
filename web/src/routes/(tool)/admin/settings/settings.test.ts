@@ -43,6 +43,34 @@ function transcodingBody(overrides: Record<string, unknown> = {}): Record<string
 	};
 }
 
+function updateCheckSettingsBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		enabled: true,
+		endpoint: 'https://api.github.com/repos/welpher/lumemor/releases/latest',
+		intervalHours: 24,
+		...overrides
+	};
+}
+
+function tilesSettingsBody(tilejsonUrl = ''): Record<string, unknown> {
+	return { tilejsonUrl };
+}
+
+function modelSettingsBody(autoDownload = true): Record<string, unknown> {
+	return { autoDownload };
+}
+
+function updateCheckStateBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		enabled: true,
+		status: 'up_to_date',
+		currentVersion: '0.4.1',
+		latestVersion: 'v0.4.1',
+		checkedAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+		...overrides
+	};
+}
+
 function jsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -53,12 +81,16 @@ function jsonResponse(status: number, body: unknown): Response {
 /** Route table for the fetch stub; every test installs its own. */
 type FetchRoute = Record<string, (init?: RequestInit) => Response>;
 
-/** The three read routes every mount fires, with default 200 bodies. */
+/** The read routes every mount fires, with default 200 bodies. */
 function defaultReads(overrides: Partial<FetchRoute> = {}): FetchRoute {
 	return {
 		'/api/v1/admin/settings/storage': () => jsonResponse(200, settingsBody()),
 		'/api/v1/admin/settings/trash': () => jsonResponse(200, trashBody(30)),
 		'/api/v1/admin/settings/transcoding': () => jsonResponse(200, transcodingBody()),
+		'/api/v1/admin/settings/update-check': () => jsonResponse(200, updateCheckSettingsBody()),
+		'/api/v1/admin/settings/tiles': () => jsonResponse(200, tilesSettingsBody()),
+		'/api/v1/admin/settings/models': () => jsonResponse(200, modelSettingsBody()),
+		'/api/v1/server/update-check': () => jsonResponse(200, updateCheckStateBody()),
 		...overrides
 	};
 }
@@ -171,10 +203,14 @@ test('the read renders the page-header row, the template, the presets and the sa
 	expect(header?.className).toContain('border-b');
 	const column = document.body.querySelector<HTMLElement>('.settings');
 	expect(column?.className).toContain('max-w-[760px]');
-	// The mount-roots section is GONE: the page carries exactly
-	// the three sections.
-	expect(document.body.querySelectorAll('.settings__card')).toHaveLength(3);
+	// The mount-roots section is GONE; the settings sections are the
+	// storage template, the trash retention, transcoding, the release
+	// check, the map tile source and the model download policy.
+	expect(document.body.querySelectorAll('.settings__card')).toHaveLength(6);
 	expect(document.body.querySelector('[data-testid="admin-settings-mounts"]')).toBeNull();
+	expect(document.body.querySelector('[data-testid="admin-settings-update"]')).not.toBeNull();
+	expect(document.body.querySelector('[data-testid="admin-settings-tiles"]')).not.toBeNull();
+	expect(document.body.querySelector('[data-testid="admin-settings-models"]')).not.toBeNull();
 
 	const field = document.body.querySelector<HTMLInputElement>('#admin-storage-template');
 	expect(field?.value).toBe('{{y}}/{{MM}}/{{filename}}');
@@ -404,4 +440,120 @@ test('an unparseable read maps to the generic failure', async () => {
 	await settle();
 
 	expect(document.body.textContent).toContain('Something went wrong');
+});
+
+test('the release card renders the last verdict, the last-checked line and the manual check', async () => {
+	const fetchMock = stubFetch(
+		defaultReads({
+			'/api/v1/server/update-check': (init?: RequestInit) =>
+				init?.method === 'POST'
+					? jsonResponse(
+							200,
+							updateCheckStateBody({
+								status: 'update_available',
+								latestVersion: 'v0.5.0',
+								checkedAt: new Date().toISOString()
+							})
+						)
+					: jsonResponse(200, updateCheckStateBody())
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	// The first face: up to date, with the quiet last-checked line.
+	expect(document.querySelector('[data-testid="update-check-state"]')?.textContent).toContain('Up to date');
+	expect(document.querySelector('[data-testid="update-check-state"]')?.textContent).toContain('Last checked');
+	expect(document.body.textContent).toContain('Current version 0.4.1');
+	// The privacy boundary stands beside the knobs.
+	expect(document.body.textContent).toContain('Only the version number is compared');
+
+	// The manual check probes through the server and adopts the fresh
+	// verdict, including the "nothing is installed for you" line.
+	buttonByText('Check now').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const post = fetchMock.mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === 'POST');
+	expect(post).toBeDefined();
+	expect(String(post?.[0])).toBe('/api/v1/server/update-check');
+	expect(document.querySelector('[data-testid="update-check-state"]')?.textContent).toContain('v0.5.0 available');
+	expect(document.body.textContent).toContain('nothing is downloaded, installed or restarted for you');
+});
+
+test('a failed check stays silent: the quiet last-checked line, no danger text', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/server/update-check': () =>
+					jsonResponse(
+						200,
+						updateCheckStateBody({
+							status: 'unknown',
+							latestVersion: null,
+							checkedAt: new Date(Date.now() - 3 * 86400 * 1000).toISOString()
+						})
+					)
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	const stateLine = document.querySelector('[data-testid="update-check-state"]');
+	expect(stateLine?.textContent).toContain("couldn't reach the release feed");
+	expect(stateLine?.querySelector('.settings__update-chip')).toBeNull();
+	expect(document.querySelector('.settings__update-form .text-danger-text')).toBeNull();
+});
+
+test('the tile source and the model policy save their own bodies', async () => {
+	const fetchMock = stubFetch(
+		defaultReads({
+			'/api/v1/admin/settings/tiles': (init?: RequestInit) =>
+				init?.method === 'PUT'
+					? jsonResponse(200, tilesSettingsBody('https://tiles.example.net/osm/tilejson.json'))
+					: jsonResponse(200, tilesSettingsBody()),
+			'/api/v1/admin/settings/models': (init?: RequestInit) =>
+				init?.method === 'PUT'
+					? jsonResponse(200, modelSettingsBody(false))
+					: jsonResponse(200, modelSettingsBody())
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	// The shipped state: no source configured, the automatic policy on.
+	const tilesField = document.body.querySelector<HTMLInputElement>('#admin-tiles-source');
+	expect(tilesField?.value).toBe('');
+	expect(document.body.querySelector<HTMLInputElement>('[data-testid="models-auto-download"]')?.checked).toBe(true);
+	// The boundary copy rides both cards.
+	expect(document.body.textContent).toContain('never fetches or proxies a tile');
+	expect(document.body.textContent).toContain('a wiped model store');
+
+	tilesField!.value = 'https://tiles.example.net/osm/tilejson.json';
+	tilesField!.dispatchEvent(new Event('input', { bubbles: true }));
+	submitFormBy('admin-settings-tiles');
+	await settle();
+
+	const tilesPut = fetchMock.mock.calls.find(
+		(call) =>
+			String(call[0]).endsWith('/admin/settings/tiles') && (call[1] as RequestInit | undefined)?.method === 'PUT'
+	);
+	expect(JSON.parse(String((tilesPut?.[1] as RequestInit).body))).toEqual({
+		tilejsonUrl: 'https://tiles.example.net/osm/tilejson.json'
+	});
+	expect(document.body.textContent).toContain('The map picks it up on its next load');
+
+	const auto = document.body.querySelector<HTMLInputElement>('[data-testid="models-auto-download"]');
+	auto!.checked = false;
+	auto!.dispatchEvent(new Event('change', { bubbles: true }));
+	submitFormBy('admin-settings-models');
+	await settle();
+
+	const modelsPut = fetchMock.mock.calls.find(
+		(call) =>
+			String(call[0]).endsWith('/admin/settings/models') && (call[1] as RequestInit | undefined)?.method === 'PUT'
+	);
+	expect(JSON.parse(String((modelsPut?.[1] as RequestInit).body))).toEqual({ autoDownload: false });
 });

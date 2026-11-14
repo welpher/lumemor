@@ -122,6 +122,11 @@ type FaceRecognizeWorker struct {
 	registry *ml.Registry
 	bus      *events.Bus
 	logger   *slog.Logger
+	// modelFill is the automatic model fill seam (the queue's own,
+	// wired at Start): a configured-but-missing slot joins the model
+	// group's download through it. Nil (directly constructed workers)
+	// keeps the manual-only behavior.
+	modelFill func(context.Context) error
 }
 
 // Timeout is the job's execution envelope; see faceRecognizeTimeout.
@@ -166,7 +171,7 @@ func (w *FaceRecognizeWorker) work(ctx context.Context, job *river.Job[FaceRecog
 	// recognize model and redetects landmarks through the detect one.
 	// An unfilled slot is the degraded mode -- a stale or mis-routed
 	// job completes silently rather than burning retries.
-	recognizeModel, err := w.registry.Active(ml.SlotFaceRecognize)
+	recognizeModel, err := resolveMlModel(ctx, w.registry, w.modelFill, w.logger, ml.SlotFaceRecognize)
 	if errors.Is(err, ml.ErrNoActiveModel) {
 		w.logger.Info("face recognize job skipped: no active recognize model", "asset_id", assetID)
 		return nil
@@ -174,7 +179,7 @@ func (w *FaceRecognizeWorker) work(ctx context.Context, job *river.Job[FaceRecog
 	if err != nil {
 		return fmt.Errorf("resolve the active face recognize model: %w", err)
 	}
-	detectModel, err := w.registry.Active(ml.SlotFaceDetect)
+	detectModel, err := resolveMlModel(ctx, w.registry, w.modelFill, w.logger, ml.SlotFaceDetect)
 	if errors.Is(err, ml.ErrNoActiveModel) {
 		w.logger.Info("face recognize job skipped: no active detect model (landmark redetection needs it)", "asset_id", assetID)
 		return nil

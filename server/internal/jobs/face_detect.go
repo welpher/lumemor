@@ -95,6 +95,12 @@ type FaceDetectWorker struct {
 	// value before the client starts; a directly constructed worker
 	// carries none, and its completion chains nothing.
 	recognizeDispatch func(ctx context.Context, assetID uuid.UUID) error
+
+	// modelFill is the automatic model fill seam (the queue's own,
+	// wired at Start): a configured-but-missing slot joins the model
+	// group's download through it. Nil (directly constructed workers)
+	// keeps the manual-only behavior.
+	modelFill func(context.Context) error
 }
 
 // Timeout is the job's execution envelope; see faceDetectTimeout.
@@ -145,10 +151,11 @@ func (w *FaceDetectWorker) work(ctx context.Context, job *river.Job[FaceDetectAr
 		return nil
 	}
 
-	// The slot's active model. An unfilled slot is the degraded mode:
-	// a stale or mis-routed job completes silently (the readiness
-	// seam dispatched nothing in the first place).
-	model, err := w.registry.Active(ml.SlotFaceDetect)
+	// The slot's active model through the shared gate: an unfilled
+	// slot is the degraded mode (a stale or mis-routed job completes
+	// silently -- the readiness seam dispatched nothing), and a
+	// configured-but-missing model joins the download and retries.
+	model, err := resolveMlModel(ctx, w.registry, w.modelFill, w.logger, ml.SlotFaceDetect)
 	if errors.Is(err, ml.ErrNoActiveModel) {
 		w.logger.Info("face detect job skipped: no active detect model", "asset_id", assetID)
 		return nil

@@ -12,18 +12,26 @@ Method | HTTP request | Description
 [**activateModel**](AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [**createUser**](AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [**downloadModels**](AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
+[**getModelSettings**](AdminApi.md#getmodelsettings) | **GET** /admin/settings/models | Read the model download settings.
 [**getStorageSettings**](AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
+[**getTilesSettings**](AdminApi.md#gettilessettings) | **GET** /admin/settings/tiles | Read the map tile source setting.
 [**getTranscodingSettings**](AdminApi.md#gettranscodingsettings) | **GET** /admin/settings/transcoding | Read the video transcoding settings.
 [**getTrashSettings**](AdminApi.md#gettrashsettings) | **GET** /admin/settings/trash | Read the trash retention setting.
+[**getUpdateCheck**](AdminApi.md#getupdatecheck) | **GET** /server/update-check | Read the instance&#39;s release check state.
+[**getUpdateCheckSettings**](AdminApi.md#getupdatechecksettings) | **GET** /admin/settings/update-check | Read the release check settings.
 [**listJobs**](AdminApi.md#listjobs) | **GET** /admin/jobs | List the job runs of the task panel.
 [**listModels**](AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [**listUsers**](AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
 [**reresolvePlaces**](AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [**rerunModel**](AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
+[**runUpdateCheck**](AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [**scanModels**](AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
+[**updateModelSettings**](AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings.
 [**updateStorageSettings**](AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
+[**updateTilesSettings**](AdminApi.md#updatetilessettings) | **PUT** /admin/settings/tiles | Save the map tile source setting.
 [**updateTranscodingSettings**](AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
 [**updateTrashSettings**](AdminApi.md#updatetrashsettings) | **PUT** /admin/settings/trash | Save the trash retention setting.
+[**updateUpdateCheckSettings**](AdminApi.md#updateupdatechecksettings) | **PUT** /admin/settings/update-check | Save the release check settings.
 [**updateUser**](AdminApi.md#updateuser) | **PATCH** /admin/users/{id} | Toggle one account&#39;s disabled switch.
 
 
@@ -166,6 +174,49 @@ This endpoint does not need any parameter.
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **getModelSettings**
+> ModelSettingsResponse getModelSettings()
+
+Read the model download settings.
+
+The model store's one policy switch: whether an AI job whose slot is configured but whose weights are missing may start the model group's download on its own.  WHAT AUTO-FILLS: only a slot that already has an active model whose files are gone from the store -- the case of a store wiped below a configured instance. A slot that was never configured stays empty; the first-run download and the settings face's download button remain the administrator's active path, and an unconfigured slot keeps the honest no-AI degraded mode.  A corrupt settings row answers the default (on) with the corruption logged server-side. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getModelSettings();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getModelSettings: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**ModelSettingsResponse**](ModelSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **getStorageSettings**
 > StorageSettingsResponse getStorageSettings()
 
@@ -197,6 +248,49 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**StorageSettingsResponse**](StorageSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getTilesSettings**
+> TilesSettingsResponse getTilesSettings()
+
+Read the map tile source setting.
+
+The map's tile source, as the administrator configured it: one URL, or the empty string when the instance has none.  THE SHAPE: the URL names a document the browser's map library can build a base layer from -- a style document (the vector case: sources, layers, sprites and glyphs) or a TileJSON descriptor (the raster case: the tile templates and their attribution). The map detects which of the two it received and builds the base layer accordingly, so one field covers both the raster and the vector-and-style forms of the self-hosting ecosystem.  THE EMPTY VALUE IS THE SHIPPED DEFAULT and a real state: no source ships with the product (a public tile service's usage policy forbids carrying the traffic of every install), so a fresh instance draws its map with the tile layer absent and says so. Loading the document needs the host to send the usual cross-origin headers; a host that does not lands on the same stated absence.  A corrupt settings row answers the empty string with the corruption logged server-side. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getTilesSettings();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getTilesSettings: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TilesSettingsResponse**](TilesSettingsResponse.md)
 
 ### Authorization
 
@@ -283,6 +377,92 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**TrashSettingsResponse**](TrashSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getUpdateCheck**
+> UpdateCheckResponse getUpdateCheck()
+
+Read the instance's release check state.
+
+The instance's release check, read from the cached answer -- this request never touches the network. The server runs the probe itself on the configured cadence (a release feed URL, the interval in hours) and this face reports what the last probe concluded.  THE PROBE: one plain HTTPS request for a public document -- no photo, no EXIF, no embedding, no instance identifier; the feed sees the instance's address and nothing else. The check can be switched off (a settings switch); the endpoint address must be a public one: an address that resolves to a loopback, private, link-local or otherwise internal range is refused, and redirects are never followed. A refused or failed probe is not an error state: `status` turns `unknown` and nothing else changes -- the next interval retries.  THE COMPARISON takes tags only: an optional `v` prefix, then the numeric version fields. `up_to_date` and `update_available` are the two claims a successful probe can make; `latestVersion` carries the feed's tag verbatim. The server never downloads or installs an update -- this surface only reports that a newer release exists.  `disabled` means the check does not run: the administrator switched it off, or the deployment disabled it at boot. The last answer is kept while disabled, so switching the check back on resumes from the same state. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getUpdateCheck();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getUpdateCheck: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**UpdateCheckResponse**](UpdateCheckResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getUpdateCheckSettings**
+> UpdateCheckSettingsResponse getUpdateCheckSettings()
+
+Read the release check settings.
+
+The release check's three knobs, as the settings face renders them: the switch, the release feed URL and the cadence in hours.  `endpoint` is the URL the server fetches on every check. The document behind it must be a JSON object whose newest tag rides `tag` (a release feed that names it `tag_name`, as release APIs commonly do, is read the same way). The value is handed back verbatim; the default is the product's own release feed.  `intervalHours` is the cadence: the server probes at most once per interval, and the answer is cached until the next one -- a failed probe waits the same interval instead of hammering a feed that is not there.  A corrupt settings row answers the documented defaults (enabled, the default feed, 24 hours) with the corruption logged server-side, the same discipline the other instance settings keep. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getUpdateCheckSettings();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getUpdateCheckSettings: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**UpdateCheckSettingsResponse**](UpdateCheckSettingsResponse.md)
 
 ### Authorization
 
@@ -518,6 +698,49 @@ Name | Type | Description  | Notes
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **runUpdateCheck**
+> UpdateCheckResponse runUpdateCheck()
+
+Run the release check now.
+
+The manual check of the settings face: the server probes the configured release feed now (the same bounded, refused- internal-address, redirect-refusing request the scheduled check makes) and answers the fresh state -- the same document `GET` serves.  A failed probe answers 200 with `status: unknown`, exactly as the scheduled one would: a check that cannot reach its feed is the ordinary case of an offline instance, not a request error, and it carries no message. A check that is switched off (or disabled by the deployment) answers 200 with `disabled` and probes nothing. The probe is bounded server-side and well under the request timeout; a slow feed lands on `unknown` like any other failure. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.runUpdateCheck();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->runUpdateCheck: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**UpdateCheckResponse**](UpdateCheckResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **scanModels**
 > ModelScanResponse scanModels()
 
@@ -561,6 +784,53 @@ This endpoint does not need any parameter.
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **updateModelSettings**
+> ModelSettingsResponse updateModelSettings(modelSettingsUpdateRequest)
+
+Save the model download settings.
+
+The settings save. `autoDownload` is required (an omitted boolean would decode as off, silently changing the policy). The value takes effect on the next AI job's readiness check; no run is started or cancelled by the save itself. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final ModelSettingsUpdateRequest modelSettingsUpdateRequest = {"autoDownload":false}; // ModelSettingsUpdateRequest | 
+
+try {
+    final response = api.updateModelSettings(modelSettingsUpdateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->updateModelSettings: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **modelSettingsUpdateRequest** | [**ModelSettingsUpdateRequest**](ModelSettingsUpdateRequest.md)|  | 
+
+### Return type
+
+[**ModelSettingsResponse**](ModelSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **updateStorageSettings**
 > StorageSettingsResponse updateStorageSettings(storageSettingsUpdateRequest)
 
@@ -596,6 +866,53 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**StorageSettingsResponse**](StorageSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **updateTilesSettings**
+> TilesSettingsResponse updateTilesSettings(tilesSettingsUpdateRequest)
+
+Save the map tile source setting.
+
+The settings save. `tilejsonUrl` is required: the empty string clears the source (the map falls back to its stated absence), any other value must be an absolute `http` or `https` URL.  The save validates the SHAPE only. The browser is the party that loads the source, so a LAN address is legitimate here (a self-hosted tile server inside the home network) and reachability is not judged at save time. The value takes effect on the map's next load -- there is no restart, and a map already open keeps the source it loaded. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final TilesSettingsUpdateRequest tilesSettingsUpdateRequest = {"tilejsonUrl":"http://192.168.1.20:8080/tilejson.json"}; // TilesSettingsUpdateRequest | 
+
+try {
+    final response = api.updateTilesSettings(tilesSettingsUpdateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->updateTilesSettings: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **tilesSettingsUpdateRequest** | [**TilesSettingsUpdateRequest**](TilesSettingsUpdateRequest.md)|  | 
+
+### Return type
+
+[**TilesSettingsResponse**](TilesSettingsResponse.md)
 
 ### Authorization
 
@@ -690,6 +1007,53 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**TrashSettingsResponse**](TrashSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **updateUpdateCheckSettings**
+> UpdateCheckSettingsResponse updateUpdateCheckSettings(updateCheckSettingsUpdateRequest)
+
+Save the release check settings.
+
+The settings save: all three fields are required (an omitted `enabled` would decode as the disabled switch, silently turning the check off), and each is validated before anything is written.  `endpoint` must be an `http` or `https` URL with a host -- the address the server will probe. The probe itself refuses addresses that resolve to loopback, private, link-local or otherwise internal ranges, and never follows a redirect: the setting can be saved pointing at an internal host, and the check simply stays `unknown` (the settings save does not probe, so it cannot judge reachability).  A failed validation answers 400 `VALIDATION_FAILED` naming the offending field, with nothing written. A saved value takes effect from the next scheduled check on; the manual check runs against the saved value immediately. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final UpdateCheckSettingsUpdateRequest updateCheckSettingsUpdateRequest = {"enabled":true,"endpoint":"https://api.github.com/repos/welpher/lumemor/releases/latest","intervalHours":24}; // UpdateCheckSettingsUpdateRequest | 
+
+try {
+    final response = api.updateUpdateCheckSettings(updateCheckSettingsUpdateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->updateUpdateCheckSettings: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **updateCheckSettingsUpdateRequest** | [**UpdateCheckSettingsUpdateRequest**](UpdateCheckSettingsUpdateRequest.md)|  | 
+
+### Return type
+
+[**UpdateCheckSettingsResponse**](UpdateCheckSettingsResponse.md)
 
 ### Authorization
 

@@ -79,6 +79,11 @@ type ClipEmbedWorker struct {
 	registry *ml.Registry
 	bus      *events.Bus
 	logger   *slog.Logger
+	// modelFill is the automatic model fill seam (the queue's own,
+	// wired at Start): a configured-but-missing slot joins the model
+	// group's download through it. Nil (directly constructed workers)
+	// keeps the manual-only behavior.
+	modelFill func(context.Context) error
 }
 
 // Timeout is the job's execution envelope; see clipEmbedTimeout.
@@ -122,9 +127,10 @@ func (w *ClipEmbedWorker) work(ctx context.Context, job *river.Job[ClipEmbedArgs
 		return nil
 	}
 
-	// The slot's active model. An unfilled slot is the degraded mode:
-	// a stale or mis-routed job completes silently.
-	model, err := w.registry.Active(ml.SlotClipEmbed)
+	// The slot's active model through the shared gate: an unfilled
+	// slot is the degraded mode; a configured-but-missing model joins
+	// the download and retries.
+	model, err := resolveMlModel(ctx, w.registry, w.modelFill, w.logger, ml.SlotClipEmbed)
 	if errors.Is(err, ml.ErrNoActiveModel) {
 		w.logger.Info("clip embed job skipped: no active clip model", "asset_id", assetID)
 		return nil

@@ -779,6 +779,30 @@ func (e TrashItemTakenAtSource) Valid() bool {
 	}
 }
 
+// Defines values for UpdateCheckStatus.
+const (
+	Disabled        UpdateCheckStatus = "disabled"
+	Unknown         UpdateCheckStatus = "unknown"
+	UpToDate        UpdateCheckStatus = "up_to_date"
+	UpdateAvailable UpdateCheckStatus = "update_available"
+)
+
+// Valid indicates whether the value is a known member of the UpdateCheckStatus enum.
+func (e UpdateCheckStatus) Valid() bool {
+	switch e {
+	case Disabled:
+		return true
+	case Unknown:
+		return true
+	case UpToDate:
+		return true
+	case UpdateAvailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserLocale.
 const (
 	UserLocaleEn     UserLocale = "en"
@@ -2480,6 +2504,21 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+// MapConfigResponse The map's client-side configuration of `GET /map/config`:
+// the tile source the browser loads, or null when the instance
+// has none.
+type MapConfigResponse struct {
+	// TilejsonUrl The tile source URL the browser loads directly from the
+	// tile host (a style document or a TileJSON descriptor);
+	// null means no source is configured and the map renders
+	// its stated absence. The pin data never crosses the tile
+	// line: it comes from `GET /places`.
+	//
+	//
+	// Examples: https://tiles.example.net/planet/style.json
+	TilejsonUrl *string `json:"tilejsonUrl"`
+}
+
 // MediaKind The media family of an asset. A Live Photo is an `image`
 // whose linked component video row never appears in the
 // timeline or the search.
@@ -2784,6 +2823,22 @@ type ModelScanResponse struct {
 	Registered []ModelResponse `json:"registered"`
 }
 
+// ModelSettingsResponse The model store's policy of `GET /admin/settings/models`
+// and the successful `PUT`.
+type ModelSettingsResponse struct {
+	// AutoDownload Whether an AI job whose slot is configured but whose
+	// weights are missing may start the model group's download
+	// on its own. It never fills an unconfigured slot: the
+	// first-run download stays the administrator's own act.
+	AutoDownload bool `json:"autoDownload"`
+}
+
+// ModelSettingsUpdateRequest Payload of `PUT /admin/settings/models`.
+type ModelSettingsUpdateRequest struct {
+	// AutoDownload The policy to save.
+	AutoDownload bool `json:"autoDownload"`
+}
+
 // ModelSlot The functional slot a model fills. `face_detect`,
 // `face_recognize`, `clip_embed` and `ocr` are the machine
 // learning slots of the pipeline; `clip_text` is the search's
@@ -2972,6 +3027,23 @@ type PlaceSummary struct {
 	//
 	// Examples: FR
 	Country string `json:"country"`
+
+	// Latitude The place's latitude in degrees (the GeoNames record's
+	// own coordinate, never a photo's). It is the point the
+	// places map pins and clusters -- the map layer is a view
+	// over the same grouping, so no asset coordinate ever
+	// needs to leave the instance for it.
+	//
+	//
+	// Examples: 48.85341
+	Latitude float64 `json:"latitude"`
+
+	// Longitude The place's longitude in degrees (the GeoNames record's
+	// own coordinate, never a photo's).
+	//
+	//
+	// Examples: 2.3488
+	Longitude float64 `json:"longitude"`
 
 	// Name The display name in the request's locale: the
 	// `place_names` row of that locale when the place data
@@ -3314,6 +3386,29 @@ type TagSummary struct {
 	// The idempotent create and the no-op rename leave it
 	// untouched -- only a real rename moves it.
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// TilesSettingsResponse The map tile source of `GET /admin/settings/tiles` and the
+// successful `PUT`: one URL, empty when the instance has none.
+type TilesSettingsResponse struct {
+	// TilejsonUrl The tile source URL: a style document (vector) or a
+	// TileJSON descriptor (raster), loaded by the browser.
+	// The empty string is the shipped state: no source, and
+	// the map draws its pins over the stated absence of a
+	// base layer.
+	//
+	//
+	// Examples: https://tiles.example.net/osm/tilejson.json,
+	TilejsonUrl string `json:"tilejsonUrl"`
+}
+
+// TilesSettingsUpdateRequest Payload of `PUT /admin/settings/tiles`.
+type TilesSettingsUpdateRequest struct {
+	// TilejsonUrl The tile source URL to save, or the empty string to
+	// clear it. A non-empty value must be an absolute `http`
+	// or `https` URL; a LAN address is legitimate (the browser
+	// loads the source, not the server).
+	TilejsonUrl string `json:"tilejsonUrl"`
 }
 
 // TimelineItem One asset of the timeline: the asset detail's fields minus the
@@ -3710,6 +3805,94 @@ type UnnamedClustersResponse struct {
 	// unnamed page's own count both read it.
 	TotalCount int `json:"totalCount"`
 }
+
+// UpdateCheckResponse The instance's release check state, served by
+// `GET /server/update-check` and the manual `POST`.
+type UpdateCheckResponse struct {
+	// CheckedAt When the last probe completed, successful or not; null
+	// before the first probe. The settings face renders it as
+	// the quiet "last checked" line when a probe failed.
+	CheckedAt *time.Time `json:"checkedAt"`
+
+	// CurrentVersion The running server version -- the build's version
+	// string, verbatim (development builds report `dev`,
+	// which the comparison cannot rank; such an instance stays
+	// `unknown`).
+	//
+	//
+	// Examples: 0.4.1, dev
+	CurrentVersion string `json:"currentVersion"`
+
+	// Enabled Whether a check runs at all: both switches -- the
+	// settings switch and the deployment's own -- are open
+	// (neither one is off) for `true`; either one off answers
+	// `false`.
+	Enabled bool `json:"enabled"`
+
+	// LatestVersion The newest tag the feed named, verbatim including its
+	// `v` prefix, or null when no probe has succeeded yet.
+	//
+	//
+	// Examples: v0.5.0
+	LatestVersion *string `json:"latestVersion"`
+
+	// Status The verdict of the release check. `up_to_date` and
+	// `update_available` are the two claims a successful tag
+	// comparison makes; `unknown` is the honest silence of a check
+	// that could not conclude (a failed probe, a feed that named
+	// nothing readable, a running version that is not a release
+	// tag); `disabled` means no check runs.
+	Status UpdateCheckStatus `json:"status"`
+}
+
+// UpdateCheckSettingsResponse The release check's settings of `GET /admin/settings/update-check`
+// and the successful `PUT`.
+type UpdateCheckSettingsResponse struct {
+	// Enabled The switch in force at the settings layer. `false` stops
+	// every scheduled and manual check; the cached answer is
+	// kept, so switching it back on resumes from the same
+	// state.
+	Enabled bool `json:"enabled"`
+
+	// Endpoint The release feed URL the server probes: a JSON document
+	// whose newest tag rides `tag` (or `tag_name`). The server
+	// fetches it with a bounded timeout, through the
+	// environment's forward proxy, refusing internal addresses
+	// and never following a redirect.
+	//
+	//
+	// Examples: https://api.github.com/repos/welpher/lumemor/releases/latest
+	Endpoint string `json:"endpoint"`
+
+	// IntervalHours The cadence in hours, 1-168: the server probes at most
+	// once per interval and caches the answer until the next
+	// one.
+	//
+	//
+	// Examples: 24
+	IntervalHours int `json:"intervalHours"`
+}
+
+// UpdateCheckSettingsUpdateRequest Payload of `PUT /admin/settings/update-check`.
+type UpdateCheckSettingsUpdateRequest struct {
+	// Enabled The switch to save.
+	Enabled bool `json:"enabled"`
+
+	// Endpoint The release feed URL to save: an absolute `http` or
+	// `https` URL with a host.
+	Endpoint string `json:"endpoint"`
+
+	// IntervalHours The cadence to save, 1-168 hours.
+	IntervalHours int `json:"intervalHours"`
+}
+
+// UpdateCheckStatus The verdict of the release check. `up_to_date` and
+// `update_available` are the two claims a successful tag
+// comparison makes; `unknown` is the honest silence of a check
+// that could not conclude (a failed probe, a feed that named
+// nothing readable, a running version that is not a release
+// tag); `disabled` means no check runs.
+type UpdateCheckStatus string
 
 // User A lumemor account.
 type User struct {
@@ -4169,14 +4352,23 @@ type SearchAssetsParamsLocale string
 // ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
 type ActivateModelJSONRequestBody = ActivateModelJSONBody
 
+// UpdateModelSettingsJSONRequestBody defines body for UpdateModelSettings for application/json ContentType.
+type UpdateModelSettingsJSONRequestBody = ModelSettingsUpdateRequest
+
 // UpdateStorageSettingsJSONRequestBody defines body for UpdateStorageSettings for application/json ContentType.
 type UpdateStorageSettingsJSONRequestBody = StorageSettingsUpdateRequest
+
+// UpdateTilesSettingsJSONRequestBody defines body for UpdateTilesSettings for application/json ContentType.
+type UpdateTilesSettingsJSONRequestBody = TilesSettingsUpdateRequest
 
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = TranscodingSettingsUpdateRequest
 
 // UpdateTrashSettingsJSONRequestBody defines body for UpdateTrashSettings for application/json ContentType.
 type UpdateTrashSettingsJSONRequestBody = TrashSettingsUpdateRequest
+
+// UpdateUpdateCheckSettingsJSONRequestBody defines body for UpdateUpdateCheckSettings for application/json ContentType.
+type UpdateUpdateCheckSettingsJSONRequestBody = UpdateCheckSettingsUpdateRequest
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = AdminCreateUserRequest
@@ -4279,12 +4471,24 @@ type ServerInterface interface {
 	// ReresolvePlaces Start a full place re-resolution run.
 	// (POST /admin/places/reresolve)
 	ReresolvePlaces(w http.ResponseWriter, r *http.Request)
+	// GetModelSettings Read the model download settings.
+	// (GET /admin/settings/models)
+	GetModelSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateModelSettings Save the model download settings.
+	// (PUT /admin/settings/models)
+	UpdateModelSettings(w http.ResponseWriter, r *http.Request)
 	// GetStorageSettings Read the storage template setting.
 	// (GET /admin/settings/storage)
 	GetStorageSettings(w http.ResponseWriter, r *http.Request)
 	// UpdateStorageSettings Validate and save the storage template.
 	// (PUT /admin/settings/storage)
 	UpdateStorageSettings(w http.ResponseWriter, r *http.Request)
+	// GetTilesSettings Read the map tile source setting.
+	// (GET /admin/settings/tiles)
+	GetTilesSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateTilesSettings Save the map tile source setting.
+	// (PUT /admin/settings/tiles)
+	UpdateTilesSettings(w http.ResponseWriter, r *http.Request)
 	// GetTranscodingSettings Read the video transcoding settings.
 	// (GET /admin/settings/transcoding)
 	GetTranscodingSettings(w http.ResponseWriter, r *http.Request)
@@ -4297,6 +4501,12 @@ type ServerInterface interface {
 	// UpdateTrashSettings Save the trash retention setting.
 	// (PUT /admin/settings/trash)
 	UpdateTrashSettings(w http.ResponseWriter, r *http.Request)
+	// GetUpdateCheckSettings Read the release check settings.
+	// (GET /admin/settings/update-check)
+	GetUpdateCheckSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateUpdateCheckSettings Save the release check settings.
+	// (PUT /admin/settings/update-check)
+	UpdateUpdateCheckSettings(w http.ResponseWriter, r *http.Request)
 	// ListUsers List the instance's accounts.
 	// (GET /admin/users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -4411,6 +4621,9 @@ type ServerInterface interface {
 	// GetFaceThumbnail Serve one face's 256x256 crop thumbnail.
 	// (GET /faces/{faceId}/thumbnail)
 	GetFaceThumbnail(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
+	// GetMapConfig The map's client-side tile configuration.
+	// (GET /map/config)
+	GetMapConfig(w http.ResponseWriter, r *http.Request)
 	// CreateMemory Create one memory.
 	// (POST /memories)
 	CreateMemory(w http.ResponseWriter, r *http.Request)
@@ -4450,6 +4663,12 @@ type ServerInterface interface {
 	// CreateAdmin Create the first administrator account.
 	// (POST /server/setup/admin)
 	CreateAdmin(w http.ResponseWriter, r *http.Request)
+	// GetUpdateCheck Read the instance's release check state.
+	// (GET /server/update-check)
+	GetUpdateCheck(w http.ResponseWriter, r *http.Request)
+	// RunUpdateCheck Run the release check now.
+	// (POST /server/update-check)
+	RunUpdateCheck(w http.ResponseWriter, r *http.Request)
 	// ListTags The caller's tags, the search vocabulary.
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
@@ -4540,6 +4759,18 @@ func (_ Unimplemented) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetModelSettings Read the model download settings.
+// (GET /admin/settings/models)
+func (_ Unimplemented) GetModelSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateModelSettings Save the model download settings.
+// (PUT /admin/settings/models)
+func (_ Unimplemented) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetStorageSettings Read the storage template setting.
 // (GET /admin/settings/storage)
 func (_ Unimplemented) GetStorageSettings(w http.ResponseWriter, r *http.Request) {
@@ -4549,6 +4780,18 @@ func (_ Unimplemented) GetStorageSettings(w http.ResponseWriter, r *http.Request
 // UpdateStorageSettings Validate and save the storage template.
 // (PUT /admin/settings/storage)
 func (_ Unimplemented) UpdateStorageSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetTilesSettings Read the map tile source setting.
+// (GET /admin/settings/tiles)
+func (_ Unimplemented) GetTilesSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTilesSettings Save the map tile source setting.
+// (PUT /admin/settings/tiles)
+func (_ Unimplemented) UpdateTilesSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4573,6 +4816,18 @@ func (_ Unimplemented) GetTrashSettings(w http.ResponseWriter, r *http.Request) 
 // UpdateTrashSettings Save the trash retention setting.
 // (PUT /admin/settings/trash)
 func (_ Unimplemented) UpdateTrashSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetUpdateCheckSettings Read the release check settings.
+// (GET /admin/settings/update-check)
+func (_ Unimplemented) GetUpdateCheckSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateUpdateCheckSettings Save the release check settings.
+// (PUT /admin/settings/update-check)
+func (_ Unimplemented) UpdateUpdateCheckSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4804,6 +5059,12 @@ func (_ Unimplemented) GetFaceThumbnail(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetMapConfig The map's client-side tile configuration.
+// (GET /map/config)
+func (_ Unimplemented) GetMapConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // CreateMemory Create one memory.
 // (POST /memories)
 func (_ Unimplemented) CreateMemory(w http.ResponseWriter, r *http.Request) {
@@ -4879,6 +5140,18 @@ func (_ Unimplemented) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 // CreateAdmin Create the first administrator account.
 // (POST /server/setup/admin)
 func (_ Unimplemented) CreateAdmin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetUpdateCheck Read the instance's release check state.
+// (GET /server/update-check)
+func (_ Unimplemented) GetUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RunUpdateCheck Run the release check now.
+// (POST /server/update-check)
+func (_ Unimplemented) RunUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5116,6 +5389,34 @@ func (siw *ServerInterfaceWrapper) ReresolvePlaces(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetModelSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetModelSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetModelSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateModelSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateModelSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetStorageSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetStorageSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -5135,6 +5436,34 @@ func (siw *ServerInterfaceWrapper) UpdateStorageSettings(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateStorageSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTilesSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetTilesSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTilesSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTilesSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTilesSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTilesSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5191,6 +5520,34 @@ func (siw *ServerInterfaceWrapper) UpdateTrashSettings(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateTrashSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUpdateCheckSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetUpdateCheckSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUpdateCheckSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateUpdateCheckSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateUpdateCheckSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateUpdateCheckSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6241,6 +6598,20 @@ func (siw *ServerInterfaceWrapper) GetFaceThumbnail(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetMapConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetMapConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMapConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateMemory operation middleware
 func (siw *ServerInterfaceWrapper) CreateMemory(w http.ResponseWriter, r *http.Request) {
 
@@ -6696,6 +7067,34 @@ func (siw *ServerInterfaceWrapper) CreateAdmin(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetUpdateCheck operation middleware
+func (siw *ServerInterfaceWrapper) GetUpdateCheck(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUpdateCheck(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunUpdateCheck operation middleware
+func (siw *ServerInterfaceWrapper) RunUpdateCheck(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunUpdateCheck(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTags operation middleware
 func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
 
@@ -7105,6 +7504,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/server/setup/admin", wrapper.CreateAdmin)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/server/update-check", wrapper.GetUpdateCheck)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/server/update-check", wrapper.RunUpdateCheck)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/assets", wrapper.UploadAsset)
 	})
 	r.Group(func(r chi.Router) {
@@ -7225,6 +7630,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/places", wrapper.ListPlaces)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/map/config", wrapper.GetMapConfig)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/search", wrapper.SearchAssets)
 	})
 	r.Group(func(r chi.Router) {
@@ -7310,6 +7718,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/settings/update-check", wrapper.GetUpdateCheckSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/settings/update-check", wrapper.UpdateUpdateCheckSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/settings/tiles", wrapper.GetTilesSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/settings/tiles", wrapper.UpdateTilesSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/settings/models", wrapper.GetModelSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/settings/models", wrapper.UpdateModelSettings)
 	})
 
 	return r

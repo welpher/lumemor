@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -249,6 +250,248 @@ func SaveTranscodingSettings(ctx context.Context, q *dbgen.Queries, profile Tran
 		Value: value,
 	}); err != nil {
 		return fmt.Errorf("db: write instance setting %s: %w", TranscodingSettingsKey, err)
+	}
+	return nil
+}
+
+// UpdateCheckSettingsKey is the instance_settings key holding the
+// release check's three knobs (the switch, the release feed URL and
+// the cadence) as one JSON object.
+const UpdateCheckSettingsKey = "update_check_settings"
+
+// UpdateCheckStateKey is the instance_settings key holding the
+// release check's last answer -- when the last probe completed and
+// the tag it named. It is written by the server's own check, never by
+// the admin surface: it is state, not configuration, kept in the same
+// table so a restart neither forgets the answer nor loses the honest
+// "last checked" line.
+const UpdateCheckStateKey = "update_check_state"
+
+// TilesSettingsKey is the instance_settings key holding the map's
+// tile source URL.
+const TilesSettingsKey = "tiles_settings"
+
+// ModelSettingsKey is the instance_settings key holding the model
+// store's policy (the automatic download switch).
+const ModelSettingsKey = "model_settings"
+
+// UpdateCheckEndpointDefault is the release feed a fresh instance
+// probes: the product's own release feed (the newest release
+// document, whose tag the comparison reads).
+const UpdateCheckEndpointDefault = "https://api.github.com/repos/welpher/lumemor/releases/latest"
+
+// The cadence bounds: at most one probe per interval, and a year-long
+// interval would make the face's "last checked" line meaningless
+// while a sub-hourly one would probe a public feed far more often
+// than a self-hosted instance ever needs.
+const (
+	UpdateCheckIntervalDefault = 24
+	UpdateCheckIntervalMin     = 1
+	UpdateCheckIntervalMax     = 168
+)
+
+// UpdateCheckSettings is the release check's configuration: whether
+// it runs, the feed it probes and how often. It is the typed form of
+// the instance_settings row the admin surface reads and writes.
+type UpdateCheckSettings struct {
+	Enabled       bool   `json:"enabled"`
+	Endpoint      string `json:"endpoint"`
+	IntervalHours int    `json:"intervalHours"`
+}
+
+// UpdateCheckSettingsDefault is the configuration when the setting
+// row is absent: daily checks against the product's own feed. The
+// check is on by default -- an instance that never opens the settings
+// face still learns about a security release -- and the face states
+// what the probe sends and what it does not.
+var UpdateCheckSettingsDefault = UpdateCheckSettings{
+	Enabled:       true,
+	Endpoint:      UpdateCheckEndpointDefault,
+	IntervalHours: UpdateCheckIntervalDefault,
+}
+
+// UpdateCheckSettings reads the instance's release check
+// configuration. A missing row answers the default (an instance that
+// never wrote the setting runs on the documented posture). A row that
+// is not a structurally valid configuration ALSO answers the default
+// with the error describing it, per field: a corrupt row must never
+// stop the check from running on a sane posture, and the caller logs
+// the corruption. The endpoint is not grammar-checked here -- the
+// save validates it; this leaf only interprets.
+func UpdateCheckSettingsOf(ctx context.Context, q *dbgen.Queries) (UpdateCheckSettings, error) {
+	settings := UpdateCheckSettingsDefault
+	raw, err := q.GetInstanceSetting(ctx, UpdateCheckSettingsKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return settings, nil
+	}
+	if err != nil {
+		return settings, fmt.Errorf("db: read instance setting %s: %w", UpdateCheckSettingsKey, err)
+	}
+	var stored map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return settings, fmt.Errorf("db: instance setting %s = %s is not a JSON object", UpdateCheckSettingsKey, raw)
+	}
+	if value, ok := stored["enabled"]; ok {
+		if err := json.Unmarshal(value, &settings.Enabled); err != nil {
+			return UpdateCheckSettingsDefault, fmt.Errorf("db: instance setting %s enabled = %s is not a JSON boolean", UpdateCheckSettingsKey, value)
+		}
+	}
+	if value, ok := stored["endpoint"]; ok {
+		if err := json.Unmarshal(value, &settings.Endpoint); err != nil || settings.Endpoint == "" {
+			return UpdateCheckSettingsDefault, fmt.Errorf("db: instance setting %s endpoint = %s is not a non-empty JSON string", UpdateCheckSettingsKey, value)
+		}
+	}
+	if value, ok := stored["intervalHours"]; ok {
+		if err := json.Unmarshal(value, &settings.IntervalHours); err != nil ||
+			settings.IntervalHours < UpdateCheckIntervalMin || settings.IntervalHours > UpdateCheckIntervalMax {
+			return UpdateCheckSettingsDefault, fmt.Errorf("db: instance setting %s intervalHours = %s is outside %d-%d", UpdateCheckSettingsKey, value, UpdateCheckIntervalMin, UpdateCheckIntervalMax)
+		}
+	}
+	return settings, nil
+}
+
+// SaveUpdateCheckSettings writes the release check configuration as
+// one JSON object (the raw writer). The caller validates it; this
+// leaf only writes.
+func SaveUpdateCheckSettings(ctx context.Context, q *dbgen.Queries, settings UpdateCheckSettings) error {
+	value, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("db: encode instance setting %s: %w", UpdateCheckSettingsKey, err)
+	}
+	if err := q.SetInstanceSettingRaw(ctx, dbgen.SetInstanceSettingRawParams{
+		Key:   UpdateCheckSettingsKey,
+		Value: value,
+	}); err != nil {
+		return fmt.Errorf("db: write instance setting %s: %w", UpdateCheckSettingsKey, err)
+	}
+	return nil
+}
+
+// UpdateCheckState is the last answer of the release check: when the
+// probe completed and the tag it named (empty when the probe failed
+// or named nothing usable).
+type UpdateCheckState struct {
+	CheckedAt *time.Time `json:"checkedAt,omitempty"`
+	LatestTag string     `json:"latestTag,omitempty"`
+}
+
+// UpdateCheckStateOf reads the last answer. Absent and corrupt rows
+// both answer the zero state (never checked) -- the honest answer in
+// either case, since the state carries no defaults worth inventing:
+// the error rides back for the caller's log line.
+func UpdateCheckStateOf(ctx context.Context, q *dbgen.Queries) (UpdateCheckState, error) {
+	var state UpdateCheckState
+	raw, err := q.GetInstanceSetting(ctx, UpdateCheckStateKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return state, nil
+	}
+	if err != nil {
+		return state, fmt.Errorf("db: read instance setting %s: %w", UpdateCheckStateKey, err)
+	}
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return UpdateCheckState{}, fmt.Errorf("db: instance setting %s = %s is not a JSON object", UpdateCheckStateKey, raw)
+	}
+	return state, nil
+}
+
+// SaveUpdateCheckState writes the last answer. The server's own check
+// owns this row; a failed write only costs the "last checked" line's
+// freshness on the next restart.
+func SaveUpdateCheckState(ctx context.Context, q *dbgen.Queries, state UpdateCheckState) error {
+	value, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("db: encode instance setting %s: %w", UpdateCheckStateKey, err)
+	}
+	if err := q.SetInstanceSettingRaw(ctx, dbgen.SetInstanceSettingRawParams{
+		Key:   UpdateCheckStateKey,
+		Value: value,
+	}); err != nil {
+		return fmt.Errorf("db: write instance setting %s: %w", UpdateCheckStateKey, err)
+	}
+	return nil
+}
+
+// TileSettings reads the map's tile source URL. The empty string is
+// the shipped state and a real answer (no source configured), not an
+// error; a corrupt row answers the empty string with the error
+// describing it, so a broken row can never turn into a source the
+// browser loads.
+func TileSettings(ctx context.Context, q *dbgen.Queries) (string, error) {
+	raw, err := q.GetInstanceSetting(ctx, TilesSettingsKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("db: read instance setting %s: %w", TilesSettingsKey, err)
+	}
+	var stored struct {
+		TileJSONURL string `json:"tilejsonUrl"`
+	}
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return "", fmt.Errorf("db: instance setting %s = %s is not a JSON object", TilesSettingsKey, raw)
+	}
+	return stored.TileJSONURL, nil
+}
+
+// SaveTileSettings writes the tile source URL as one JSON object. The
+// caller validates the URL's shape; this leaf only writes.
+func SaveTileSettings(ctx context.Context, q *dbgen.Queries, tilejsonURL string) error {
+	value, err := json.Marshal(struct {
+		TileJSONURL string `json:"tilejsonUrl"`
+	}{TileJSONURL: tilejsonURL})
+	if err != nil {
+		return fmt.Errorf("db: encode instance setting %s: %w", TilesSettingsKey, err)
+	}
+	if err := q.SetInstanceSettingRaw(ctx, dbgen.SetInstanceSettingRawParams{
+		Key:   TilesSettingsKey,
+		Value: value,
+	}); err != nil {
+		return fmt.Errorf("db: write instance setting %s: %w", TilesSettingsKey, err)
+	}
+	return nil
+}
+
+// ModelSettings is the model store's policy: whether an AI job whose
+// slot is configured but whose weights are missing may start the
+// download on its own.
+type ModelSettings struct {
+	AutoDownload bool `json:"autoDownload"`
+}
+
+// ModelSettingsDefault is the policy when the row is absent: the
+// configured-but-missing case fills itself, because the alternative
+// is an AI pipeline silently stalled behind a wiped model store.
+var ModelSettingsDefault = ModelSettings{AutoDownload: true}
+
+// ModelSettingsOf reads the model store policy. Absent and corrupt
+// rows answer the default with the corruption returned for the
+// caller's log line.
+func ModelSettingsOf(ctx context.Context, q *dbgen.Queries) (ModelSettings, error) {
+	settings := ModelSettingsDefault
+	raw, err := q.GetInstanceSetting(ctx, ModelSettingsKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return settings, nil
+	}
+	if err != nil {
+		return settings, fmt.Errorf("db: read instance setting %s: %w", ModelSettingsKey, err)
+	}
+	if err := json.Unmarshal(raw, &settings); err != nil {
+		return ModelSettingsDefault, fmt.Errorf("db: instance setting %s = %s is not a JSON object", ModelSettingsKey, raw)
+	}
+	return settings, nil
+}
+
+// SaveModelSettings writes the model store policy as one JSON object.
+func SaveModelSettings(ctx context.Context, q *dbgen.Queries, settings ModelSettings) error {
+	value, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("db: encode instance setting %s: %w", ModelSettingsKey, err)
+	}
+	if err := q.SetInstanceSettingRaw(ctx, dbgen.SetInstanceSettingRawParams{
+		Key:   ModelSettingsKey,
+		Value: value,
+	}); err != nil {
+		return fmt.Errorf("db: write instance setting %s: %w", ModelSettingsKey, err)
 	}
 	return nil
 }

@@ -31,6 +31,18 @@ void main() {
       // TODO
     });
 
+    // The place's latitude in degrees (the GeoNames record's own coordinate, never a photo's). It is the point the places map pins and clusters -- the map layer is a view over the same grouping, so no asset coordinate ever needs to leave the instance for it. 
+    // double latitude
+    test('to test the property `latitude`', () async {
+      // TODO
+    });
+
+    // The place's longitude in degrees (the GeoNames record's own coordinate, never a photo's). 
+    // double longitude
+    test('to test the property `longitude`', () async {
+      // TODO
+    });
+
     // The place's cover candidates: its (up to) four most recent caller-visible live members, taken_at descending with the asset id as the tiebreak -- the wall's derived-cover discipline applied to city groups, newest first. 
     // BuiltList<String> representativeCoverAssetIds
     test('to test the property `representativeCoverAssetIds`', () async {

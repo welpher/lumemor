@@ -60,6 +60,7 @@ doc/JobRunState.md
 doc/KindFacetCount.md
 doc/LabelPersonRequest.md
 doc/LoginRequest.md
+doc/MapConfigResponse.md
 doc/MediaKind.md
 doc/MemoryCreateRequest.md
 doc/MemoryCreateResponse.md
@@ -74,6 +75,8 @@ doc/ModelRerunResponse.md
 doc/ModelResponse.md
 doc/ModelResponseInputSize.md
 doc/ModelScanResponse.md
+doc/ModelSettingsResponse.md
+doc/ModelSettingsUpdateRequest.md
 doc/ModelSlot.md
 doc/ModelSource.md
 doc/MoveFaceRequest.md
@@ -109,6 +112,8 @@ doc/TagFacetCount.md
 doc/TagNameRequest.md
 doc/TagSummary.md
 doc/TagsApi.md
+doc/TilesSettingsResponse.md
+doc/TilesSettingsUpdateRequest.md
 doc/TimelineItem.md
 doc/TimelineResponse.md
 doc/TranscodePreset.md
@@ -120,6 +125,10 @@ doc/TrashSettingsResponse.md
 doc/TrashSettingsUpdateRequest.md
 doc/UnnamedClusterSummary.md
 doc/UnnamedClustersResponse.md
+doc/UpdateCheckResponse.md
+doc/UpdateCheckSettingsResponse.md
+doc/UpdateCheckSettingsUpdateRequest.md
+doc/UpdateCheckStatus.md
 doc/User.md
 doc/UserListResponse.md
 doc/UserLocale.md
@@ -204,6 +213,7 @@ lib/src/model/job_run_state.dart
 lib/src/model/kind_facet_count.dart
 lib/src/model/label_person_request.dart
 lib/src/model/login_request.dart
+lib/src/model/map_config_response.dart
 lib/src/model/media_kind.dart
 lib/src/model/memory_create_request.dart
 lib/src/model/memory_create_response.dart
@@ -218,6 +228,8 @@ lib/src/model/model_rerun_response.dart
 lib/src/model/model_response.dart
 lib/src/model/model_response_input_size.dart
 lib/src/model/model_scan_response.dart
+lib/src/model/model_settings_response.dart
+lib/src/model/model_settings_update_request.dart
 lib/src/model/model_slot.dart
 lib/src/model/model_source.dart
 lib/src/model/move_face_request.dart
@@ -248,6 +260,8 @@ lib/src/model/tag_assets_request.dart
 lib/src/model/tag_facet_count.dart
 lib/src/model/tag_name_request.dart
 lib/src/model/tag_summary.dart
+lib/src/model/tiles_settings_response.dart
+lib/src/model/tiles_settings_update_request.dart
 lib/src/model/timeline_item.dart
 lib/src/model/timeline_response.dart
 lib/src/model/transcode_preset.dart
@@ -259,6 +273,10 @@ lib/src/model/trash_settings_response.dart
 lib/src/model/trash_settings_update_request.dart
 lib/src/model/unnamed_cluster_summary.dart
 lib/src/model/unnamed_clusters_response.dart
+lib/src/model/update_check_response.dart
+lib/src/model/update_check_settings_response.dart
+lib/src/model/update_check_settings_update_request.dart
+lib/src/model/update_check_status.dart
 lib/src/model/user.dart
 lib/src/model/user_list_response.dart
 lib/src/model/user_locale.dart
@@ -328,6 +346,7 @@ test/job_run_state_test.dart
 test/kind_facet_count_test.dart
 test/label_person_request_test.dart
 test/login_request_test.dart
+test/map_config_response_test.dart
 test/media_kind_test.dart
 test/memory_create_request_test.dart
 test/memory_create_response_test.dart
@@ -342,6 +361,8 @@ test/model_rerun_response_test.dart
 test/model_response_input_size_test.dart
 test/model_response_test.dart
 test/model_scan_response_test.dart
+test/model_settings_response_test.dart
+test/model_settings_update_request_test.dart
 test/model_slot_test.dart
 test/model_source_test.dart
 test/move_face_request_test.dart
@@ -377,6 +398,8 @@ test/tag_facet_count_test.dart
 test/tag_name_request_test.dart
 test/tag_summary_test.dart
 test/tags_api_test.dart
+test/tiles_settings_response_test.dart
+test/tiles_settings_update_request_test.dart
 test/timeline_item_test.dart
 test/timeline_response_test.dart
 test/transcode_preset_test.dart
@@ -388,6 +411,10 @@ test/trash_settings_response_test.dart
 test/trash_settings_update_request_test.dart
 test/unnamed_cluster_summary_test.dart
 test/unnamed_clusters_response_test.dart
+test/update_check_response_test.dart
+test/update_check_settings_response_test.dart
+test/update_check_settings_update_request_test.dart
+test/update_check_status_test.dart
 test/user_list_response_test.dart
 test/user_locale_test.dart
 test/user_role_test.dart

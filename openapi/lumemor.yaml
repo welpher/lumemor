@@ -36,9 +36,11 @@ servers:
 tags:
   - name: admin
     description: 'Instance administration by administrators: account
-      management of the users surface, and the instance settings
-      (the storage template, the trash retention and the video
-      transcoding profile).'
+      management of the users surface, the instance settings
+      (the storage template, the trash retention, the video
+      transcoding profile, the release check, the map tile source
+      and the model download policy), the release check''s own read
+      and manual run, and the model and job surfaces.'
   - name: albums
     description: 'The album surface: the wall of the caller''s own and
       shared albums, one album''s detail with its keyset-paged items,
@@ -67,7 +69,8 @@ tags:
   - name: places
     description: 'The places surface: the caller''s city grouping over
       GeoNames reference data, every count and cover scoped to the
-      calling user''s visible assets.'
+      calling user''s visible assets, and the map''s client-side tile
+      configuration the grouping''s map view renders over.'
   - name: search
     description: 'The unified search: one text box driving the merged
       full-text and semantic paths over the caller''s visible assets,
@@ -771,6 +774,220 @@ paths:
                   value:
                     code: SETUP_ALREADY_COMPLETED
                     message: an administrator account already exists
+  /server/update-check:
+    get:
+      operationId: getUpdateCheck
+      tags:
+        - admin
+      summary: Read the instance's release check state.
+      description: |
+        The instance's release check, read from the cached answer --
+        this request never touches the network. The server runs the
+        probe itself on the configured cadence (a release feed URL,
+        the interval in hours) and this face reports what the last
+        probe concluded.
+
+        THE PROBE: one plain HTTPS request for a public document --
+        no photo, no EXIF, no embedding, no instance identifier; the
+        feed sees the instance's address and nothing else. The check
+        can be switched off (a settings switch); the endpoint
+        address must be a public one: an address that resolves to a
+        loopback, private, link-local or otherwise internal range is
+        refused, and redirects are never followed. A refused or
+        failed probe is not an error state: `status` turns `unknown`
+        and nothing else changes -- the next interval retries.
+
+        THE COMPARISON takes tags only: an optional `v` prefix, then
+        the numeric version fields. `up_to_date` and
+        `update_available` are the two claims a successful probe can
+        make; `latestVersion` carries the feed's tag verbatim. The
+        server never downloads or installs an update -- this surface
+        only reports that a newer release exists.
+
+        `disabled` means the check does not run: the administrator
+        switched it off, or the deployment disabled it at boot. The
+        last answer is kept while disabled, so switching the check
+        back on resumes from the same state.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            The cached state of the release check: the switch in
+            force, the verdict of the last probe, the running
+            version, the newest tag the feed named (null when no
+            probe succeeded) and when the last probe completed
+            (null before the first one).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateCheckResponse'
+              examples:
+                upToDate:
+                  summary: The last probe found the running release.
+                  value:
+                    enabled: true
+                    status: up_to_date
+                    currentVersion: 0.4.1
+                    latestVersion: v0.4.1
+                    checkedAt: '2026-11-14T09:00:00Z'
+                updateAvailable:
+                  summary: The feed's newest tag is ahead.
+                  value:
+                    enabled: true
+                    status: update_available
+                    currentVersion: 0.4.1
+                    latestVersion: v0.5.0
+                    checkedAt: '2026-11-14T09:00:00Z'
+                unknown:
+                  summary: The last probe failed; the state stays quiet.
+                  value:
+                    enabled: true
+                    status: unknown
+                    currentVersion: 0.4.1
+                    latestVersion: null
+                    checkedAt: '2026-11-13T09:00:00Z'
+                disabled:
+                  summary: The check is switched off.
+                  value:
+                    enabled: false
+                    status: disabled
+                    currentVersion: 0.4.1
+                    latestVersion: v0.5.0
+                    checkedAt: '2026-11-10T09:00:00Z'
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+    post:
+      operationId: runUpdateCheck
+      tags:
+        - admin
+      summary: Run the release check now.
+      description: |
+        The manual check of the settings face: the server probes the
+        configured release feed now (the same bounded, refused-
+        internal-address, redirect-refusing request the scheduled
+        check makes) and answers the fresh state -- the same document
+        `GET` serves.
+
+        A failed probe answers 200 with `status: unknown`, exactly as
+        the scheduled one would: a check that cannot reach its feed
+        is the ordinary case of an offline instance, not a request
+        error, and it carries no message. A check that is switched
+        off (or disabled by the deployment) answers 200 with
+        `disabled` and probes nothing. The probe is bounded
+        server-side and well under the request timeout; a slow feed
+        lands on `unknown` like any other failure.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            The state after the probe: the fresh verdict when it
+            succeeded, `unknown` when it failed, `disabled` when no
+            check runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateCheckResponse'
+              examples:
+                probeSucceeded:
+                  summary: The probe reached the feed; the tag is newer.
+                  value:
+                    enabled: true
+                    status: update_available
+                    currentVersion: 0.4.1
+                    latestVersion: v0.5.0
+                    checkedAt: '2026-11-14T10:32:00Z'
+                probeFailed:
+                  summary: The probe failed; the answer stays quiet.
+                  value:
+                    enabled: true
+                    status: unknown
+                    currentVersion: 0.4.1
+                    latestVersion: null
+                    checkedAt: '2026-11-14T10:32:00Z'
+                switchedOff:
+                  summary: The check is switched off; nothing was probed.
+                  value:
+                    enabled: false
+                    status: disabled
+                    currentVersion: 0.4.1
+                    latestVersion: v0.5.0
+                    checkedAt: '2026-11-10T09:00:00Z'
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
   /assets:
     post:
       operationId: uploadAsset
@@ -6452,6 +6669,8 @@ paths:
                       name: 北京
                       country: CN
                       assetCount: 42
+                      latitude: 39.9075
+                      longitude: 116.39723
                       representativeCoverAssetIds:
                         - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
                         - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
@@ -6459,6 +6678,8 @@ paths:
                       name: 巴黎
                       country: FR
                       assetCount: 17
+                      latitude: 48.85341
+                      longitude: 2.3488
                       representativeCoverAssetIds:
                         - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f72
                 empty:
@@ -6477,6 +6698,81 @@ paths:
                   value:
                     code: VALIDATION_FAILED
                     message: 'locale must be one of: en, zh-Hans'
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+  /map/config:
+    get:
+      operationId: getMapConfig
+      tags:
+        - places
+      summary: The map's client-side tile configuration.
+      description: |
+        The configuration the places map and the viewer's location
+        card need before they can draw a base layer: the tile source
+        the administrator configured, and nothing else.
+
+        THE POLYGON: the value is a URL the BROWSER loads directly
+        from the tile host -- the server never fetches, proxies or
+        caches a tile, so a pan or a zoom never makes the photo
+        server a tile CDN. What the tile host sees is the viewport,
+        the zoom level and the browsing device's address; the pins
+        the map draws come from this instance's own API and never
+        cross the tile line. A deployment whose browser cannot reach
+        a public tile host points the setting at a self-hosted or
+        mirrored source; there is deliberately no bundled default
+        (a public tile service's usage policy forbids carrying the
+        traffic of an application's whole install base).
+
+        `tilejsonUrl` is null when no source is configured. That is
+        not an error: the map renders its honest degraded state --
+        the pins stay, the base layer is stated as absent -- and the
+        admin settings face is where it gets fixed. A stored value
+        is handed back verbatim; its reachability is the browser's
+        business, and a source that fails to load lands on the same
+        stated absence.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            The tile source URL, or null when the instance has none
+            configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MapConfigResponse'
+              examples:
+                configured:
+                  summary: A self-hosted vector style.
+                  value:
+                    tilejsonUrl: https://tiles.example.net/planet/style.json
+                unconfigured:
+                  summary: No source configured (the degraded state).
+                  value:
+                    tilejsonUrl: null
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -9825,6 +10121,559 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /admin/settings/update-check:
+    get:
+      operationId: getUpdateCheckSettings
+      tags:
+        - admin
+      summary: Read the release check settings.
+      description: |
+        The release check's three knobs, as the settings face renders
+        them: the switch, the release feed URL and the cadence in
+        hours.
+
+        `endpoint` is the URL the server fetches on every check. The
+        document behind it must be a JSON object whose newest tag
+        rides `tag` (a release feed that names it `tag_name`, as
+        release APIs commonly do, is read the same way). The value
+        is handed back verbatim; the default is the product's own
+        release feed.
+
+        `intervalHours` is the cadence: the server probes at most
+        once per interval, and the answer is cached until the next
+        one -- a failed probe waits the same interval instead of
+        hammering a feed that is not there.
+
+        A corrupt settings row answers the documented defaults
+        (enabled, the default feed, 24 hours) with the corruption
+        logged server-side, the same discipline the other instance
+        settings keep.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The release check's settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateCheckSettingsResponse'
+              examples:
+                defaults:
+                  summary: The shipped defaults.
+                  value:
+                    enabled: true
+                    endpoint: https://api.github.com/repos/welpher/lumemor/releases/latest
+                    intervalHours: 24
+                switchedOff:
+                  summary: The check switched off.
+                  value:
+                    enabled: false
+                    endpoint: https://api.github.com/repos/welpher/lumemor/releases/latest
+                    intervalHours: 24
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+    put:
+      operationId: updateUpdateCheckSettings
+      tags:
+        - admin
+      summary: Save the release check settings.
+      description: |
+        The settings save: all three fields are required (an omitted
+        `enabled` would decode as the disabled switch, silently
+        turning the check off), and each is validated before
+        anything is written.
+
+        `endpoint` must be an `http` or `https` URL with a host --
+        the address the server will probe. The probe itself refuses
+        addresses that resolve to loopback, private, link-local or
+        otherwise internal ranges, and never follows a redirect:
+        the setting can be saved pointing at an internal host, and
+        the check simply stays `unknown` (the settings save does not
+        probe, so it cannot judge reachability).
+
+        A failed validation answers 400 `VALIDATION_FAILED` naming
+        the offending field, with nothing written. A saved value
+        takes effect from the next scheduled check on; the manual
+        check runs against the saved value immediately.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCheckSettingsUpdateRequest'
+            examples:
+              dailyDefaultFeed:
+                summary: Daily checks against the product feed.
+                value:
+                  enabled: true
+                  endpoint: https://api.github.com/repos/welpher/lumemor/releases/latest
+                  intervalHours: 24
+              hourlyMirror:
+                summary: Hourly checks against a self-hosted mirror.
+                value:
+                  enabled: true
+                  endpoint: https://releases.example.net/lumemor/latest.json
+                  intervalHours: 1
+      responses:
+        '200':
+          description: The validated settings were saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateCheckSettingsResponse'
+              examples:
+                saved:
+                  summary: The freshly saved settings.
+                  value:
+                    enabled: true
+                    endpoint: https://releases.example.net/lumemor/latest.json
+                    intervalHours: 1
+        '400':
+          description: |
+            A field is missing, `endpoint` is not an absolute
+            `http`/`https` URL, or `intervalHours` is outside 1-168.
+            The details name the offending field; nothing was
+            written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                badEndpoint:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: endpoint must be an absolute http or https URL
+                    details:
+                      fields:
+                        - endpoint
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: The validated settings could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+  /admin/settings/tiles:
+    get:
+      operationId: getTilesSettings
+      tags:
+        - admin
+      summary: Read the map tile source setting.
+      description: |
+        The map's tile source, as the administrator configured it: one
+        URL, or the empty string when the instance has none.
+
+        THE SHAPE: the URL names a document the browser's map library
+        can build a base layer from -- a style document (the vector
+        case: sources, layers, sprites and glyphs) or a TileJSON
+        descriptor (the raster case: the tile templates and their
+        attribution). The map detects which of the two it received
+        and builds the base layer accordingly, so one field covers
+        both the raster and the vector-and-style forms of the
+        self-hosting ecosystem.
+
+        THE EMPTY VALUE IS THE SHIPPED DEFAULT and a real state: no
+        source ships with the product (a public tile service's usage
+        policy forbids carrying the traffic of every install), so a
+        fresh instance draws its map with the tile layer absent and
+        says so. Loading the document needs the host to send the
+        usual cross-origin headers; a host that does not lands on the
+        same stated absence.
+
+        A corrupt settings row answers the empty string with the
+        corruption logged server-side.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The configured tile source, or the empty string.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TilesSettingsResponse'
+              examples:
+                configured:
+                  summary: A self-hosted raster TileJSON.
+                  value:
+                    tilejsonUrl: https://tiles.example.net/osm/tilejson.json
+                unconfigured:
+                  summary: 'The shipped state: no source configured.'
+                  value:
+                    tilejsonUrl: ''
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+    put:
+      operationId: updateTilesSettings
+      tags:
+        - admin
+      summary: Save the map tile source setting.
+      description: |
+        The settings save. `tilejsonUrl` is required: the empty
+        string clears the source (the map falls back to its stated
+        absence), any other value must be an absolute `http` or
+        `https` URL.
+
+        The save validates the SHAPE only. The browser is the party
+        that loads the source, so a LAN address is legitimate here
+        (a self-hosted tile server inside the home network) and
+        reachability is not judged at save time. The value takes
+        effect on the map's next load -- there is no restart, and a
+        map already open keeps the source it loaded.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TilesSettingsUpdateRequest'
+            examples:
+              selfHosted:
+                summary: A tile server on the home network.
+                value:
+                  tilejsonUrl: http://192.168.1.20:8080/tilejson.json
+              cleared:
+                summary: Clearing the source.
+                value:
+                  tilejsonUrl: ''
+      responses:
+        '200':
+          description: The validated setting was saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TilesSettingsResponse'
+              examples:
+                saved:
+                  summary: The freshly saved source.
+                  value:
+                    tilejsonUrl: http://192.168.1.20:8080/tilejson.json
+        '400':
+          description: |
+            `tilejsonUrl` is missing or is not an absolute
+            `http`/`https` URL. The details name the field; nothing
+            was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                badUrl:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: tilejsonUrl must be an absolute http or https URL
+                    details:
+                      fields:
+                        - tilejsonUrl
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: The validated setting could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+  /admin/settings/models:
+    get:
+      operationId: getModelSettings
+      tags:
+        - admin
+      summary: Read the model download settings.
+      description: |
+        The model store's one policy switch: whether an AI job whose
+        slot is configured but whose weights are missing may start
+        the model group's download on its own.
+
+        WHAT AUTO-FILLS: only a slot that already has an active
+        model whose files are gone from the store -- the case of a
+        store wiped below a configured instance. A slot that was
+        never configured stays empty; the first-run download and the
+        settings face's download button remain the administrator's
+        active path, and an unconfigured slot keeps the honest
+        no-AI degraded mode.
+
+        A corrupt settings row answers the default (on) with the
+        corruption logged server-side.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The model download policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelSettingsResponse'
+              examples:
+                defaults:
+                  summary: 'The shipped default: auto-download on.'
+                  value:
+                    autoDownload: true
+                manualOnly:
+                  summary: Only the administrator's own act.
+                  value:
+                    autoDownload: false
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+    put:
+      operationId: updateModelSettings
+      tags:
+        - admin
+      summary: Save the model download settings.
+      description: |
+        The settings save. `autoDownload` is required (an omitted
+        boolean would decode as off, silently changing the policy).
+        The value takes effect on the next AI job's readiness check;
+        no run is started or cancelled by the save itself.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelSettingsUpdateRequest'
+            examples:
+              manualOnly:
+                summary: Turn the automatic fill off.
+                value:
+                  autoDownload: false
+      responses:
+        '200':
+          description: The validated setting was saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelSettingsResponse'
+              examples:
+                saved:
+                  summary: The freshly saved policy.
+                  value:
+                    autoDownload: false
+        '400':
+          description: |
+            `autoDownload` is missing or the body is not valid JSON.
+            The details name the field; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: 'required fields missing: autoDownload'
+                    details:
+                      fields:
+                        - autoDownload
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: The validated setting could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
 components:
   schemas:
     LoginRequest:
@@ -10475,6 +11324,204 @@ components:
         keepOriginal:
           type: boolean
           description: The failure policy to save.
+    UpdateCheckSettingsResponse:
+      type: object
+      description: |
+        The release check's settings of `GET /admin/settings/update-check`
+        and the successful `PUT`.
+      required:
+        - enabled
+        - endpoint
+        - intervalHours
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            The switch in force at the settings layer. `false` stops
+            every scheduled and manual check; the cached answer is
+            kept, so switching it back on resumes from the same
+            state.
+        endpoint:
+          type: string
+          description: |
+            The release feed URL the server probes: a JSON document
+            whose newest tag rides `tag` (or `tag_name`). The server
+            fetches it with a bounded timeout, through the
+            environment's forward proxy, refusing internal addresses
+            and never following a redirect.
+          examples:
+            - https://api.github.com/repos/welpher/lumemor/releases/latest
+        intervalHours:
+          type: integer
+          description: |
+            The cadence in hours, 1-168: the server probes at most
+            once per interval and caches the answer until the next
+            one.
+          minimum: 1
+          maximum: 168
+          examples:
+            - 24
+    UpdateCheckSettingsUpdateRequest:
+      type: object
+      description: Payload of `PUT /admin/settings/update-check`.
+      required:
+        - enabled
+        - endpoint
+        - intervalHours
+      properties:
+        enabled:
+          type: boolean
+          description: The switch to save.
+        endpoint:
+          type: string
+          description: |
+            The release feed URL to save: an absolute `http` or
+            `https` URL with a host.
+        intervalHours:
+          type: integer
+          description: The cadence to save, 1-168 hours.
+          minimum: 1
+          maximum: 168
+    UpdateCheckStatus:
+      type: string
+      description: |
+        The verdict of the release check. `up_to_date` and
+        `update_available` are the two claims a successful tag
+        comparison makes; `unknown` is the honest silence of a check
+        that could not conclude (a failed probe, a feed that named
+        nothing readable, a running version that is not a release
+        tag); `disabled` means no check runs.
+      enum:
+        - disabled
+        - unknown
+        - up_to_date
+        - update_available
+    UpdateCheckResponse:
+      type: object
+      description: |
+        The instance's release check state, served by
+        `GET /server/update-check` and the manual `POST`.
+      required:
+        - enabled
+        - status
+        - currentVersion
+        - latestVersion
+        - checkedAt
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            Whether a check runs at all: both switches -- the
+            settings switch and the deployment's own -- are open
+            (neither one is off) for `true`; either one off answers
+            `false`.
+        status:
+          $ref: '#/components/schemas/UpdateCheckStatus'
+        currentVersion:
+          type: string
+          description: |
+            The running server version -- the build's version
+            string, verbatim (development builds report `dev`,
+            which the comparison cannot rank; such an instance stays
+            `unknown`).
+          examples:
+            - 0.4.1
+            - dev
+        latestVersion:
+          type:
+            - string
+            - 'null'
+          description: |
+            The newest tag the feed named, verbatim including its
+            `v` prefix, or null when no probe has succeeded yet.
+          examples:
+            - v0.5.0
+        checkedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: |
+            When the last probe completed, successful or not; null
+            before the first probe. The settings face renders it as
+            the quiet "last checked" line when a probe failed.
+    TilesSettingsResponse:
+      type: object
+      description: |
+        The map tile source of `GET /admin/settings/tiles` and the
+        successful `PUT`: one URL, empty when the instance has none.
+      required:
+        - tilejsonUrl
+      properties:
+        tilejsonUrl:
+          type: string
+          description: |
+            The tile source URL: a style document (vector) or a
+            TileJSON descriptor (raster), loaded by the browser.
+            The empty string is the shipped state: no source, and
+            the map draws its pins over the stated absence of a
+            base layer.
+          examples:
+            - https://tiles.example.net/osm/tilejson.json
+            - ''
+    TilesSettingsUpdateRequest:
+      type: object
+      description: Payload of `PUT /admin/settings/tiles`.
+      required:
+        - tilejsonUrl
+      properties:
+        tilejsonUrl:
+          type: string
+          description: |
+            The tile source URL to save, or the empty string to
+            clear it. A non-empty value must be an absolute `http`
+            or `https` URL; a LAN address is legitimate (the browser
+            loads the source, not the server).
+    ModelSettingsResponse:
+      type: object
+      description: |
+        The model store's policy of `GET /admin/settings/models`
+        and the successful `PUT`.
+      required:
+        - autoDownload
+      properties:
+        autoDownload:
+          type: boolean
+          description: |
+            Whether an AI job whose slot is configured but whose
+            weights are missing may start the model group's download
+            on its own. It never fills an unconfigured slot: the
+            first-run download stays the administrator's own act.
+    ModelSettingsUpdateRequest:
+      type: object
+      description: Payload of `PUT /admin/settings/models`.
+      required:
+        - autoDownload
+      properties:
+        autoDownload:
+          type: boolean
+          description: The policy to save.
+    MapConfigResponse:
+      type: object
+      description: |
+        The map's client-side configuration of `GET /map/config`:
+        the tile source the browser loads, or null when the instance
+        has none.
+      required:
+        - tilejsonUrl
+      properties:
+        tilejsonUrl:
+          type:
+            - string
+            - 'null'
+          description: |
+            The tile source URL the browser loads directly from the
+            tile host (a style document or a TileJSON descriptor);
+            null means no source is configured and the map renders
+            its stated absence. The pin data never crosses the tile
+            line: it comes from `GET /places`.
+          examples:
+            - https://tiles.example.net/planet/style.json
     AlbumPathCompletionsResponse:
       type: object
       description: |
@@ -12398,6 +13445,8 @@ components:
         - name
         - country
         - assetCount
+        - latitude
+        - longitude
         - representativeCoverAssetIds
       properties:
         placeId:
@@ -12433,6 +13482,25 @@ components:
           description: |
             The place's caller-visible live assets -- the honest
             per-caller count, not the global member count.
+        latitude:
+          type: number
+          format: double
+          description: |
+            The place's latitude in degrees (the GeoNames record's
+            own coordinate, never a photo's). It is the point the
+            places map pins and clusters -- the map layer is a view
+            over the same grouping, so no asset coordinate ever
+            needs to leave the instance for it.
+          examples:
+            - 48.85341
+        longitude:
+          type: number
+          format: double
+          description: |
+            The place's longitude in degrees (the GeoNames record's
+            own coordinate, never a photo's).
+          examples:
+            - 2.3488
         representativeCoverAssetIds:
           type: array
           minItems: 1

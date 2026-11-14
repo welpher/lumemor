@@ -21,6 +21,7 @@ import (
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/ml"
+	"github.com/welpher/lumemor/server/internal/updatecheck"
 	"github.com/welpher/lumemor/server/internal/web"
 )
 
@@ -98,6 +99,12 @@ type Deps struct {
 	// wired -- tests, wiring order); production passes the jobs
 	// queue, which implements it structurally.
 	AlbumRescans AlbumRescanEnqueuer
+	// UpdateChecks is the instance's release checker: the admin face
+	// reads its cached answer and the manual run probes through it.
+	// Nil keeps those endpoints answering 500 INTERNAL (no checker
+	// wired -- tests, wiring order); production passes the checker
+	// main also runs on its schedule.
+	UpdateChecks *updatecheck.Checker
 }
 
 // AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
@@ -226,6 +233,8 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		// The album rescan enqueue seam: nil is a valid (no queue)
 		// wiring.
 		albumRescans: deps.AlbumRescans,
+		// The release checker: nil is a valid (no check) wiring.
+		updateChecks: deps.UpdateChecks,
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
@@ -448,6 +457,11 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// candidates per listed place), the same cost class as the
 				// people listing.
 				r.Get("/places", wrapper.ListPlaces)
+				// The map's client-side tile configuration: one
+				// settings row read. The map view and the viewer's
+				// location card load their source through it; the
+				// tile bytes never pass through this server.
+				r.Get("/map/config", wrapper.GetMapConfig)
 				// The tags surface: the caller's private
 				// vocabulary and its batch assignment. The listing is
 				// one bounded read (a family instance's vocabulary);
@@ -531,6 +545,25 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/admin/settings/trash", wrapper.UpdateTrashSettings)
 				r.Get("/admin/settings/transcoding", wrapper.GetTranscodingSettings)
 				r.Put("/admin/settings/transcoding", wrapper.UpdateTranscodingSettings)
+				// The release check and its settings (the networking
+				// block): the cached state read, the manual run and
+				// the three knobs behind one GET/PUT pair. The
+				// cached read is one settings row read; the manual
+				// run is the checker's own bounded outbound probe.
+				r.Get("/server/update-check", wrapper.GetUpdateCheck)
+				r.Post("/server/update-check", wrapper.RunUpdateCheck)
+				r.Get("/admin/settings/update-check", wrapper.GetUpdateCheckSettings)
+				r.Put("/admin/settings/update-check", wrapper.UpdateUpdateCheckSettings)
+				// The map's tile source (the networking block): the
+				// admin settings pair. The browser fetches the
+				// tiles themselves; this surface stores and hands
+				// back the URL.
+				r.Get("/admin/settings/tiles", wrapper.GetTilesSettings)
+				r.Put("/admin/settings/tiles", wrapper.UpdateTilesSettings)
+				// The model store's automatic download switch (the
+				// networking block): one settings row read/write.
+				r.Get("/admin/settings/models", wrapper.GetModelSettings)
+				r.Put("/admin/settings/models", wrapper.UpdateModelSettings)
 				// The model download trigger: the
 				// default group's first-boot download. The handler is
 				// one bounded row read plus one enqueue; the heavy
@@ -660,6 +693,10 @@ type server struct {
 	// no queue is wired and the rescan endpoint answers the generic
 	// internal error.
 	albumRescans AlbumRescanEnqueuer
+	// updateChecks is the release checker; nil means no checker is
+	// wired and the release check endpoints answer the generic
+	// internal error.
+	updateChecks *updatecheck.Checker
 
 	// textTowerCache keeps the search's semantic path warm: the
 	// active clip-text model's loaded session and tokenizer (loading

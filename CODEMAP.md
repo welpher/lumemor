@@ -19,6 +19,10 @@ One page so you can add a feature without spelunking.
 - `internal/geodata/` — the baked GeoNames loader and the in-memory
   resolution grid.
 - `internal/ml/` — the onnxruntime inference layer (model registry, slots).
+- `internal/updatecheck/` — the instance's outbound HTTP client (proxy
+  environment, internal targets refused, redirects never followed) and
+  the release check: the scheduled tag probe, its cache, and the
+  verdict the admin face reads.
 
 ## web/ (SvelteKit + Svelte 5)
 
@@ -35,7 +39,12 @@ One page so you can add a feature without spelunking.
   name first, the email as the fallback and the duplicate-name
   disambiguator.
 - `src/lib/viewer/` — `Viewer.svelte` (the route-level viewer),
-  `InfoDrawer.svelte` (the read-only info panel).
+  `InfoDrawer.svelte` (the read-only info panel, the capture-location
+  card included).
+- `src/lib/map/` — the map surfaces: `MapView.svelte` (one lazily
+  loaded MapLibre instance; the browser fetches the tiles, the pins are
+  an HTML overlay clustered by one tested rule) and `tiles.ts` (the
+  style-or-TileJSON resolution, the clustering, the pins' GeoJSON).
 - `src/lib/auth/` — the session store (`session.svelte.ts`), pairing.
 - `src/lib/theme/` — `theme.css` (the token single source, the `@theme`
   block), the z-ladder.
