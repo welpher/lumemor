@@ -89,6 +89,7 @@
 	import ZoomIn from '@lucide/svelte/icons/zoom-in';
 	import ZoomOut from '@lucide/svelte/icons/zoom-out';
 	import Maximize from '@lucide/svelte/icons/maximize';
+	import X from '@lucide/svelte/icons/x';
 
 	type Props = {
 		/** The current asset's detail; null while loading. */
@@ -258,6 +259,15 @@
 	let fullLoaded = $state(false);
 	/** The poster frame dropped after its request failed (the placeholder carries the stage). */
 	let posterFailed = $state(false);
+	/**
+	 * The media itself could not be loaded (the record answered, the
+	 * file did not): the stage turns into the "will not open" card
+	 * while the panel keeps the record's facts -- the file is gone,
+	 * the metadata is not.
+	 */
+	let mediaFailed = $state(false);
+	/** The stage retry's own counter: a bumped value re-requests the bytes. */
+	let mediaRetryTick = $state(0);
 	let canvas: HTMLCanvasElement | undefined = $state();
 	let filmstrip: HTMLElement | undefined = $state();
 
@@ -289,15 +299,19 @@
 		viewLoaded = false;
 		fullLoaded = false;
 		posterFailed = false;
+		mediaFailed = false;
+		mediaRetryTick = 0;
 	});
 
 	// Paint the blurhash placeholder (the tile's guarded pattern: a
 	// context-less host such as jsdom keeps the CSS skeleton fill,
-	// and an unparsable hash never crashes the viewer).
+	// and an unparsable hash never crashes the viewer). The canvas
+	// detaches when the stage turns into the failure card, so the
+	// binding may read back null as well as undefined.
 	$effect(() => {
 		const hash = detail?.blurhash ?? null;
 		const element = canvas;
-		if (hash === null || element === undefined) {
+		if (hash === null || !element) {
 			return;
 		}
 		const context = element.getContext('2d');
@@ -439,6 +453,36 @@
 	// reactive `$_` keeps the text locale-tracked.
 	function errorText(key: string): string {
 		return resolveErrorText($_, key);
+	}
+
+	/**
+	 * The stage's retry: when the RECORD never arrived the page's
+	 * detail refetch is the retry; when the record answered and the
+	 * BYTES did not, the file is re-requested (a fresh URL, so no
+	 * cached failure answers again).
+	 */
+	function retryStage(): void {
+		if (status === 'error') {
+			onretry();
+			return;
+		}
+		mediaFailed = false;
+		viewLoaded = false;
+		fullLoaded = false;
+		mediaRetryTick += 1;
+	}
+
+	/** The card's body: the missing-file sentence, or the record failure's own text. */
+	function stageFailureBody(): string {
+		return mediaFailed || errorKey === 'asset_not_found' ? $_('viewer_failure_body') : errorText(errorKey);
+	}
+
+	/** One media URL, with the retry's counter riding along when one ran. */
+	function mediaUrl(base: string): string {
+		if (mediaRetryTick === 0) {
+			return base;
+		}
+		return `${base}${base.includes('?') ? '&' : '?'}retry=${mediaRetryTick}`;
 	}
 </script>
 
@@ -598,14 +642,29 @@
 				style:--viewer-zoom={zoomScale}
 				ondblclick={handleStageDblclick}
 			>
-				{#if status === 'error'}
-					<div class="viewer__failure flex flex-col items-center gap-3 p-5 text-center" role="alert">
-						<p class="font-body font-medium text-[15px] leading-[1.4] text-cream-text">
-							{errorText(errorKey)}
-						</p>
-						<Button variant="primary" onclick={onretry}
-							><RotateCcw size={20} aria-hidden="true" />{$_('action_retry')}</Button
+				<!-- The stage's failure: the record answered but the bytes did
+			     not (a deleted file, a vanished disk), or the record
+			     itself never arrived. The card is the "will not open"
+			     face; the panel beside it keeps what the record knows. -->
+				{#if status === 'error' || mediaFailed}
+					<div
+						class="viewer__stage-failure relative z-(--z-stage-chrome) flex items-center justify-center p-6"
+						data-testid="viewer-stage-error"
+					>
+						<div
+							class="max-w-[420px] box-content rounded-card border border-border bg-card p-6 text-center shadow-card"
+							role="alert"
 						>
+							<p class="m-0 font-display font-bold text-[16px] leading-[1.3] text-text">
+								{$_('viewer_failure_title')}
+							</p>
+							<p class="m-0 mt-2 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+								{stageFailureBody()}
+							</p>
+							<Button variant="ghost" class="mt-4" onclick={retryStage}>
+								<RotateCcw size={18} aria-hidden="true" />{$_('action_retry')}
+							</Button>
+						</div>
 					</div>
 				{:else if detail === null}
 					<p
@@ -620,8 +679,9 @@
 						<video
 							class="viewer__video relative z-(--z-stage-media) max-w-full max-h-full"
 							controls
-							src={assetPlayUrl(detail.id)}
-							poster={assetThumbnailUrl(detail.id, 'view')}
+							src={mediaUrl(assetPlayUrl(detail.id))}
+							poster={mediaUrl(assetThumbnailUrl(detail.id, 'view'))}
+							onerror={() => (mediaFailed = true)}
 						></video>
 					{:else}
 						<!-- The transcoded stream is not there yet: the
@@ -692,10 +752,10 @@
 							class="viewer__image absolute inset-0 m-auto max-w-full max-h-full object-contain transition-[opacity] duration-(--motion-base) ease-standard"
 							class:opacity-0={!viewLoaded}
 							class:viewer__image--loaded={viewLoaded}
-							src={assetThumbnailUrl(detail.id, 'view')}
+							src={mediaUrl(assetThumbnailUrl(detail.id, 'view'))}
 							alt={detail.originalFilename}
 							onload={() => (viewLoaded = true)}
-							onerror={() => (viewLoaded = false)}
+							onerror={() => (mediaFailed = true)}
 							draggable="false"
 						/>
 						<!-- The full-resolution layer rides above the view-size copy. -->
@@ -703,7 +763,7 @@
 							class="viewer__image viewer__image--full absolute inset-0 m-auto z-(--z-stage-media) max-w-full max-h-full object-contain transition-[opacity] duration-(--motion-base) ease-standard"
 							class:opacity-0={!fullLoaded}
 							class:viewer__image--loaded={fullLoaded}
-							src={assetThumbnailUrl(detail.id, 'original')}
+							src={mediaUrl(assetThumbnailUrl(detail.id, 'original'))}
 							alt=""
 							onload={() => (fullLoaded = true)}
 							onerror={() => (fullLoaded = false)}
@@ -806,14 +866,54 @@
 		</div>
 	</div>
 
-	{#if drawerOpen && detail !== null}
+	{#if drawerOpen}
 		<!-- The docked split region: a flex sibling of the media
 		     column at lg+ (lg:static inside the row -- the stage re-fits
 		     through the flow), the fixed overlay drawer below lg. The
 		     edit-people panel STANDS IN the drawer's place while it is
 		     open: the same form (so the photo keeps its layout), a
-		     different surface (the per-face correction flow). -->
-		{#if editFacesOpen}
+		     different surface (the per-face correction flow). Before
+		     the record lands -- and when it never does -- the panel
+		     place carries the load's own state, so the open panel is
+		     never a silent blank column. -->
+		{#if detail === null}
+			<aside
+				class="info fixed top-0 right-0 bottom-0 z-(--z-aside) flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay lg:static lg:shrink-0 lg:shadow-none"
+				aria-label={$_('viewer_info_title')}
+				data-testid="viewer-info-state"
+			>
+				<header class="info__header flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border">
+					<h2 class="info__filename font-body font-semibold text-[15px] leading-[1.4] text-text">
+						{$_('viewer_info_title')}
+					</h2>
+					<button
+						class="info__close inline-flex items-center justify-center shrink-0 w-8 h-8 rounded-control bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
+						type="button"
+						aria-label={$_('common_close')}
+						onclick={() => (drawerOpen = false)}
+					>
+						<X size={16} />
+					</button>
+				</header>
+				{#if status === 'error'}
+					<div class="flex flex-col items-center gap-3 px-4 py-8 text-center" role="alert">
+						<p class="m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
+							{$_('viewer_info_failed')}
+						</p>
+						<Button variant="ghost" onclick={onretry}
+							><RotateCcw size={18} aria-hidden="true" />{$_('action_retry')}</Button
+						>
+					</div>
+				{:else}
+					<p
+						class="px-4 py-8 text-center font-body font-normal text-[14px] leading-[1.5] text-text-soft"
+						role="status"
+					>
+						{$_('viewer_info_loading')}
+					</p>
+				{/if}
+			</aside>
+		{:else if editFacesOpen}
 			<EditFacesPanel
 				{detail}
 				{stageLabelOf}
