@@ -1,8 +1,9 @@
-// The admin settings clients (the storage-template feature and the
-// settings feature): the read and three-stage validated save behind
-// GET/PUT /admin/settings/storage, the trash retention pair behind
-// GET/PUT /admin/settings/trash, and the video transcoding profile
-// pair behind GET/PUT /admin/settings/transcoding. (the mount-root
+// The admin settings clients: the read and three-stage validated save
+// behind GET/PUT /admin/settings/storage, the trash retention pair
+// behind GET/PUT /admin/settings/trash, the video transcoding profile
+// pair behind GET/PUT /admin/settings/transcoding, and the three
+// networking pairs -- the release check's switch/feed/cadence, the map
+// tile source and the model download policy. (the mount-root
 // allowlist pair retired with the allowlist itself -- the boundary
 // is the compose mount, so no list needs managing.)
 //

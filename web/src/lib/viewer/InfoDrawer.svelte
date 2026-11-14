@@ -11,7 +11,8 @@
 	// EXIF hot fields folded into
 	// collapsible groups, the file facts with the tags row (the
 	// caller's own tags as chips plus the assign affordance),
-	// and the places placeholder pinned to its future domain. The
+	// the resolved place row with its deep link, and the
+	// capture-location card over the asset's own coordinates. The
 	// curation actions and the permanent delete are GONE from this
 	// surface: the action bar over the media carries the favorite
 	// and the trash/restore pair, and the permanent delete lives on
