@@ -679,5 +679,6 @@
   "model_confirm_required": "请先确认清空这个槽位的产物。",
   "model_slot_locked": "这个槽位的切换已在进行。",
   "admin_models_slot_clip_text": "搜索文本编码器",
-  "action_save": "保存"
+  "action_save": "保存",
+  "admin_models_select_chip": "在上面的下拉里选中它"
 }

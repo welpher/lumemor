@@ -679,5 +679,6 @@
   "model_confirm_required": "Confirm the wipe of this slot's products first.",
   "model_slot_locked": "A switch of this slot is already running.",
   "admin_models_slot_clip_text": "Search text encoder",
-  "action_save": "Save"
+  "action_save": "Save",
+  "admin_models_select_chip": "Select this model in the list above"
 }

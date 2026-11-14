@@ -90,12 +90,11 @@
 	let downloadErrorKey = $state('');
 
 	// The switch dialog's state: the slot it is open for, the
-	// selection (an official entry id or a registered custom id), the
-	// import panel's probe lifecycle, and the settings-backed removal
-	// confirm.
+	// selection (the select's value: an official entry id or a
+	// registered custom id), the import panel's probe lifecycle, and
+	// the settings-backed removal confirm.
 	let dialogSlot = $state<ModelSlotId | null>(null);
 	let selectedOfficial = $state<string>('');
-	let selectedCustom = $state<string>('');
 	let switchBusy = $state(false);
 	let switchErrorKey = $state('');
 	let switchRunning = $state(false);
@@ -310,7 +309,27 @@
 		if (dialogSlot === null) {
 			return null;
 		}
-		return customsOf(dialogSlot).find((model) => model.id === selectedCustom) ?? null;
+		return customsOf(dialogSlot).find((model) => model.id === selectedOfficial) ?? null;
+	}
+
+	/** The selection's target: the select holds one id, and its kind
+	 * decides the save's request -- an official entry (the builtin
+	 * switch), a registered custom (the plain activation), or the
+	 * probed import when the panel is filled. */
+	function selectionTarget(): 'official' | 'custom' | 'import' | 'none' {
+		if (importTab === 'url' && importURL.trim() !== '') {
+			return 'import';
+		}
+		if (importTab === 'file' && importFile !== null) {
+			return 'import';
+		}
+		if (selectedEntry() !== null) {
+			return 'official';
+		}
+		if (selectedCustomModel() !== null) {
+			return 'custom';
+		}
+		return 'none';
 	}
 
 	/**
@@ -332,28 +351,28 @@
 		return active === null || active.dim === null || active.dim !== entry.dim;
 	}
 
-	/** The save switch's enablement: a selection must exist, the
-	 * official entry must be on disk, and a pending import must have
-	 * passed its probe. A filled URL or a chosen file means the save
-	 * applies THE IMPORT -- it never silently switches to the
-	 * preselected official entry instead. */
+	/** The save switch's enablement: an official entry must be on
+	 * disk, a custom is already probed (it was verified at its
+	 * import), and a pending import must have passed its probe. A
+	 * filled URL or a chosen file means the save applies THE IMPORT --
+	 * it never silently switches to the preselected official entry
+	 * instead. */
 	function canApply(): boolean {
 		if (switchRunning) {
 			return false;
 		}
-		if (selectedCustom !== '') {
-			return true;
+		switch (selectionTarget()) {
+			case 'import':
+				return probe !== null && (probe.state === 'ok' || probe.state === 'warn') && probe.sha256 !== null;
+			case 'custom':
+				return true;
+			case 'official': {
+				const entry = selectedEntry();
+				return entry !== null && entry.downloaded;
+			}
+			default:
+				return false;
 		}
-		const importing =
-			(importTab === 'url' && importURL.trim() !== '') || (importTab === 'file' && importFile !== null);
-		if (importing) {
-			return probe !== null && (probe.state === 'ok' || probe.state === 'warn') && probe.sha256 !== null;
-		}
-		if (selectedEntry() !== null) {
-			const entry = selectedEntry();
-			return entry !== null && entry.downloaded;
-		}
-		return false;
 	}
 
 	function openDialog(slot: ModelSlotId): void {
@@ -366,13 +385,19 @@
 		importFile = null;
 		probe = null;
 		probeBusy = false;
-		// The official group preselects the entry the slot currently
-		// runs (the catalog's id when it matches), else the first one.
+		// The select preselects the entry the slot currently runs (the
+		// catalog's id when it matches, a custom id otherwise), else
+		// the official list's first one.
 		const active = activeModelOf(slot);
 		const entries = officialOf(slot);
 		const current = entries.find((entry) => entry.id === active?.id);
-		selectedOfficial = current !== undefined ? current.id : officialDefaultOf(slot);
-		selectedCustom = '';
+		if (current !== undefined) {
+			selectedOfficial = current.id;
+		} else if (active !== null && active.source === 'custom') {
+			selectedOfficial = active.id;
+		} else {
+			selectedOfficial = officialDefaultOf(slot);
+		}
 	}
 
 	function closeDialog(): void {
@@ -440,7 +465,7 @@
 		switchErrorKey = '';
 		switchRunning = true;
 		let outcome;
-		if (selectedCustom !== '') {
+		if (selectionTarget() === 'custom') {
 			const custom = selectedCustomModel();
 			if (custom === null) {
 				switchRunning = false;
@@ -457,7 +482,11 @@
 						wipedEmbeddings: activation.wipedEmbeddings
 					}
 				: { ok: false as const, errorKey: activation.errorKey };
-		} else if (probe !== null && (probe.state === 'ok' || probe.state === 'warn') && probe.sha256 !== null) {
+		} else if (selectionTarget() === 'import') {
+			if (probe === null || (probe.state !== 'ok' && probe.state !== 'warn') || probe.sha256 === null) {
+				switchRunning = false;
+				return;
+			}
 			outcome = await switchModelSource(slot, {
 				kind: importTab,
 				probeId: probe.probeId,
@@ -1112,7 +1141,6 @@
 					class="models__official-select w-full px-3 py-[9px] pe-9 font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control"
 					aria-label={$_('admin_models_models')}
 					bind:value={selectedOfficial}
-					onchange={() => (selectedCustom = '')}
 				>
 					<optgroup label={$_('admin_models_group_official')}>
 						{#each officialOf(dialogSlot) as entry (entry.id)}
@@ -1120,8 +1148,11 @@
 								{entry.name} · {entry.license} · {entry.downloaded
 									? $_('admin_models_catalog_downloaded')
 									: $_(
-										'admin_models_catalog_need_download'
-									)}{#if entry.dim !== null && entry.dim !== undefined}&nbsp;·&nbsp;{$_('admin_models_dim', { values: { dim: entry.dim } })}{/if}
+											'admin_models_catalog_need_download'
+										)}{#if entry.dim !== null && entry.dim !== undefined}&nbsp;·&nbsp;{$_(
+										'admin_models_dim',
+										{ values: { dim: entry.dim } }
+									)}{/if}
 							</option>
 						{/each}
 					</optgroup>
@@ -1142,10 +1173,19 @@
 						<span
 							class="models__chip inline-flex items-center gap-1 px-2 py-0.5 font-body font-normal text-[12px] leading-[1.6] text-text-soft bg-page border border-border rounded-control"
 						>
-							{custom.id}
-							{#if custom.filesPresent}
-								<span class="text-text-faint">· {shaShort(custom.id.split('@')[1] ?? null) || ''}</span>
-							{/if}
+							<button
+								class="models__chip-select inline-flex items-center gap-1 bg-transparent border-0 p-0 font-body font-normal text-[12px] leading-[1.6] text-text-soft cursor-pointer"
+								type="button"
+								title={$_('admin_models_select_chip')}
+								onclick={() => (selectedOfficial = custom.id)}
+							>
+								{custom.id}
+								{#if custom.filesPresent}
+									<span class="text-text-faint"
+										>· {shaShort(custom.id.split('@')[1] ?? null) || ''}</span
+									>
+								{/if}
+							</button>
 							<button
 								class="models__chip-remove inline-flex items-center justify-center w-4 h-4 bg-transparent border-0 text-text-faint cursor-pointer hover:text-danger-text"
 								type="button"

@@ -73,6 +73,11 @@ const BASE_URL = 'http://localhost:8244';
 const ADMIN_EMAIL = 'admin@m3a-e2e.invalid';
 const ADMIN_PASSWORD = 'correct-horse-battery';
 
+// The fixture models the acceptance script stages for the dialog
+// scenes: the same 512 dimension as the default clip model (the
+// coexistence branch) and a 768 one (the destructive branch).
+const FIXTURE_512_ID = 'clip-fixture-512';
+
 // The ONNX fixtures the probe scenes drop into the file input: the
 // 128-dim one fails the embed slot's contract, the 512 one passes and
 // reuses the already-registered bytes.
@@ -268,9 +273,9 @@ test.describe('the signed-in scenes', () => {
 		const select = dialog.locator('select');
 		// The two groups: the optgroup labels live on the DOM
 		// attributes, not the options' text.
-		const groupLabels = await select.locator('optgroup').evaluateAll((nodes) =>
-			nodes.map((node) => (node as HTMLOptGroupElement).label)
-		);
+		const groupLabels = await select
+			.locator('optgroup')
+			.evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptGroupElement).label));
 		expect(groupLabels).toContain('Official list');
 		expect(groupLabels).toContain('Added');
 
