@@ -96,21 +96,6 @@ async function saveBudget(api: APIRequestContext, overrides: Record<string, unkn
 	expect(response.status(), 'the run budget save').toBe(200);
 }
 
-/** Save the image settings through the admin API. */
-async function saveImageSettings(api: APIRequestContext, overrides: Record<string, unknown>): Promise<void> {
-	const response = await api.put('/api/v1/admin/settings/image', {
-		data: {
-			tileSize: 250,
-			previewSize: 1080,
-			format: 'avif',
-			fullSize: false,
-			rawEmbedded: true,
-			...overrides
-		}
-	});
-	expect(response.status(), 'the image settings save').toBe(200);
-}
-
 /** Upload one photo through the real upload API, returning the asset id. */
 async function uploadPhoto(
 	api: APIRequestContext,
