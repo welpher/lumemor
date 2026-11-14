@@ -138,6 +138,23 @@ func (r *Registry) Active(slot Slot) (*Model, error) {
 	return r.modelFromRow(&row, true)
 }
 
+// ActiveFilesMissing reports whether the slot has an ACTIVE model
+// whose registered weights file is not on disk -- the
+// configured-but-missing state the automatic download fills. An
+// unfilled slot answers false (there is nothing to refill; the first
+// download is the administrator's own act), and so does an active
+// model whose file exists: a corrupt manifest or drifted bytes are
+// not a missing file, and no download can repair them.
+func (r *Registry) ActiveFilesMissing(slot Slot) bool {
+	ctx := context.Background()
+	row, err := r.queries.GetActiveModelBySlot(ctx, dbgen.ModelSlot(slot))
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(r.resolvePath(row.FilePath))
+	return errors.Is(err, fs.ErrNotExist)
+}
+
 // List returns every registered model, grouped by slot. It is the
 // admin listing: a model whose manifest has gone missing still lists
 // (with its database facts and a zero digest) instead of failing the
