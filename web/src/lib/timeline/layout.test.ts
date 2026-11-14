@@ -208,10 +208,11 @@ describe('packRows: the narrow frame (the map panel)', () => {
 	test('a three-photo line at panel width becomes tall lines, not a ribbon', () => {
 		const rows = packRows(threeLandscape, PANEL_WIDTH);
 		// The naive one-row pack would be (420 - 4) / 4.5 = 92px -- a
-		// ribbon. The engine refuses: the photos take separate lines.
+		// ribbon. The engine refuses: the photos take separate lines,
+		// each at least the band floor.
 		expect(rows.length).toBe(3);
 		for (const row of rows) {
-			expect(row.height).toBeGreaterThanOrEqual(92);
+			expect(row.height).toBeGreaterThanOrEqual(162);
 			// Every tile keeps its true aspect (width = height * aspect).
 			for (const tile of row.tiles) {
 				expect(tile.width / row.height).toBeCloseTo(tile.item.width / tile.item.height, 7);
