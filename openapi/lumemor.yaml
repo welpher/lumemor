@@ -10021,6 +10021,311 @@ paths:
                   value:
                     code: INTERNAL
                     message: the re-resolution could not be started
+  /admin/derivatives/summary:
+    get:
+      operationId: getDerivativesSummary
+      tags:
+        - admin
+      summary: Read the derivative library's size and rebuild estimate.
+      description: |
+        The image card's cost line: how many image assets the library
+        carries and how long a full derivative rebuild would take, as
+        the instance itself estimates it.
+
+        THE ESTIMATE IS DECLARED, NOT MEASURED: the server multiplies
+        the image count by one second per asset (one decode plus the
+        tile and view encodes at the shipped settings), divides by the
+        concurrency the run-budget dial currently maps, and rounds up
+        to whole minutes, with one minute the floor. The answer is the
+        plan-of-record number the dialog quotes back before the
+        rebuild starts, never a promise: NAS-class storage, the
+        encoding format and the dial all move it.
+
+        The count covers IMAGE assets only: the rebuild re-derives the
+        three serving sizes of images; video assets carry a poster
+        frame the rebuild does not touch.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The library's image count and the declared estimate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DerivativesSummaryResponse'
+              examples:
+                emptyLibrary:
+                  summary: 'Nothing ingested yet: the estimate floors at one minute.'
+                  value:
+                    imageCount: 0
+                    estimateMinutes: 1
+                familyLibrary:
+                  summary: A mid-size family library at the standard dial.
+                  value:
+                    imageCount: 12847
+                    estimateMinutes: 108
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+  /admin/derivatives/rebuild:
+    post:
+      operationId: rebuildDerivatives
+      tags:
+        - admin
+      summary: Start a derivative rebuild run.
+      description: |
+        The image card's explicit rebuild: one run that re-derives the
+        serving copies of every image asset at the settings the
+        instance currently carries.
+
+        THE COST IS NEVER SILENT: the image card states what the
+        settings change (nothing is recomputed until this run is
+        asked for), and the two scopes are the honest pair --
+
+        - `missing` derives only the assets whose current-format
+          serving files are absent: a library that has never been
+          rebuilt, or one that gained the full-size copy, pays only
+          for what it lacks (minutes on a family library).
+        - `all` re-derives every image asset at the current settings
+          and removes the other encoding format's stale files: the CPU
+          belongs to the rebuild for the estimate's duration, and
+          browsing is slower while it runs.
+
+        THE RUN IS A JOB: it lists on the task panel with the four
+        states, its progress counts the image assets it visited, and
+        the pause and window rules that govern thumbnail-class work
+        hold it the same way -- a night window that closes stops it at
+        the asset it just finished, and the next window resumes from
+        there, never from zero.
+
+        The endpoint is idempotent the way the place re-resolution is:
+        a rebuild run still in flight (`queued` or `running`) answers
+        200 with its identifier and starts nothing; a finished run
+        never blocks a new one.
+
+        SETTINGS CHANGES NEVER TRIGGER THIS: saving the image settings
+        writes the document only -- the serving copies already on disk
+        stay as they are until an explicit rebuild re-derives them.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RebuildDerivativesRequest'
+            examples:
+              fillMissing:
+                summary: Only the assets whose derivatives are absent.
+                value:
+                  scope: missing
+              fullRebuild:
+                summary: Every image asset, at the current settings.
+                value:
+                  scope: all
+      responses:
+        '200':
+          description: |
+            A rebuild run is already in flight (`queued` or
+            `running`); its identifier is returned and NO new run is
+            created or enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RebuildDerivativesResponse'
+              examples:
+                inFlight:
+                  summary: The run already rebuilding.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '202':
+          description: |
+            The rebuild run was created (state `queued`, `total`
+            carrying the image asset count) and its job enqueued. The
+            worker flips the run to `running` when the walk begins.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RebuildDerivativesResponse'
+              examples:
+                started:
+                  summary: The freshly created run.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '400':
+          description: |
+            The `scope` field is missing or not one of the enum's two
+            values.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidScope:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: scope must be one of missing, all
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: |
+            The run could not be started: no job queue is wired to
+            the API surface, or the enqueue failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+  /admin/derivatives/rebuild/stop:
+    post:
+      operationId: stopDerivativesRebuild
+      tags:
+        - admin
+      summary: Stop the in-flight derivative rebuild run.
+      description: |
+        The task panel's stop for a rebuild in flight: the run's row
+        is marked as asked-to-stop, and the driver -- which checks the
+        flag between assets -- closes the run at the asset it just
+        finished, never mid-asset. The work already done stays on
+        disk: a stopped rebuild has paid exactly for the assets it
+        re-derived, and the next rebuild's `missing` scope skips
+        them.
+
+        The run closes `failed` with `failed` counting nothing: the
+        task panel renders the reason line as stopped, not as a
+        broken run -- the admin asked for this ending.
+
+        A stop with no rebuild in flight (the run finished between the
+        panel's listing and the click, or none ever started) answers
+        409 `REBUILD_NOT_RUNNING`: the flag has nothing to land on.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The stop was recorded against the in-flight run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RebuildDerivativesResponse'
+              examples:
+                stopping:
+                  summary: The run that will close at its next breakpoint.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '409':
+          description: |
+            No rebuild run is in flight: nothing to stop.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notRunning:
+                  value:
+                    code: REBUILD_NOT_RUNNING
+                    message: no derivative rebuild is in flight
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
   /admin/jobs:
     get:
       operationId: listJobs
@@ -11298,6 +11603,485 @@ paths:
                   value:
                     code: INTERNAL
                     message: internal server error
+  /admin/settings/image:
+    get:
+      operationId: getImageSettings
+      tags:
+        - admin
+      summary: Read the derivative image settings.
+      description: |
+        The image card's document: the sizes and encoding every NEW
+        derivation runs at. Five knobs, the honest set --
+
+        - `tileSize`: the timeline tile's bounding box, 250 (the
+          shipped default) or 320 (sharper on high-density screens).
+        - `previewSize`: the viewer's inline preview long edge, 1080
+          (the shipped default), 1440 or 2048.
+        - `format`: the serving copies' encoding, `avif` (smaller,
+          slower to encode) or `webp` (faster, a little larger). On a
+          weak machine AVIF makes first browsing slower; the card says
+          so beside the knob.
+        - `fullSize`: whether the thumbnail job also derives the
+          full-resolution serving copy (shipped OFF: the viewer reads
+          the preview, which is enough to look at and cheaper to
+          store).
+        - `rawEmbedded`: whether a RAW source derives from its
+          embedded preview (shipped ON).
+
+        THE COST STATEMENT IS THE CARD'S, NOT THIS DOCUMENT'S: saving
+        these values recomputes nothing. Derivatives already on disk
+        stay exactly as they are; only assets derived AFTER the save
+        (new uploads, and the explicit rebuild run) use the new
+        values. A rebuild mid-flight keeps the parameters it started
+        with.
+
+        The color space (P3), progressive encoding and the per-size
+        quality are deliberately NOT knobs: a family instance does
+        not need twenty dials.
+
+        A corrupt settings row answers the defaults with the
+        corruption logged server-side.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The current derivative image settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageSettingsResponse'
+              examples:
+                shippedDefaults:
+                  summary: 'The shipped posture: 250 tile, 1080 preview, AVIF, no full-size copy.'
+                  value:
+                    tileSize: 250
+                    previewSize: 1080
+                    format: avif
+                    fullSize: false
+                    rawEmbedded: true
+                sharper:
+                  summary: A library tuned for high-density screens and faster encoding.
+                  value:
+                    tileSize: 320
+                    previewSize: 1440
+                    format: webp
+                    fullSize: false
+                    rawEmbedded: true
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+    put:
+      operationId: updateImageSettings
+      tags:
+        - admin
+      summary: Save the derivative image settings.
+      description: |
+        The settings save. Every field is contract-required (an
+        omitted one would decode as its zero value and silently
+        change the posture), and each value is checked against its
+        enum: the tile sizes 250 and 320, the preview sizes 1080,
+        1440 and 2048, the encodings `avif` and `webp`.
+
+        The save writes the document and nothing else: no derivation
+        starts, no existing serving file is touched, and a rebuild
+        already running keeps its own starting parameters. The new
+        values bind at the next derivation -- a new upload's thumbnail
+        job, or the explicit rebuild run the image card starts.
+
+        The save takes effect without a restart: the thumbnail job
+        reads the settings at run time, so an upload that arrives
+        after the save derives at them.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageSettingsUpdateRequest'
+            examples:
+              shippedDefaults:
+                summary: The shipped posture, saved back whole.
+                value:
+                  tileSize: 250
+                  previewSize: 1080
+                  format: avif
+                  fullSize: false
+                  rawEmbedded: true
+              tuned:
+                summary: Sharper tiles, larger previews, faster encoding.
+                value:
+                  tileSize: 320
+                  previewSize: 1440
+                  format: webp
+                  fullSize: false
+                  rawEmbedded: true
+      responses:
+        '200':
+          description: The saved settings, as the next derivation will use them.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageSettingsResponse'
+              examples:
+                saved:
+                  summary: The save's own answer.
+                  value:
+                    tileSize: 320
+                    previewSize: 1440
+                    format: webp
+                    fullSize: false
+                    rawEmbedded: true
+        '400':
+          description: |
+            A required field is missing, or a value is outside its
+            enum.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingField:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: 'required fields missing: tileSize'
+                invalidTile:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: tileSize must be one of 250, 320
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: The validated setting could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+  /admin/settings/run-budget:
+    get:
+      operationId: getRunBudgetSettings
+      tags:
+        - admin
+      summary: Read the background work's budget.
+      description: |
+        The task panel's run-settings document: the three dials that
+        decide WHEN the background work spends the machine's
+        capacity --
+
+        - `concurrencyPreset`: the dial's three steps, `light`
+          (one job at a time), `standard` (half the cores) and `full`
+          (all but one core). The panel never asks for a NUMBER: a
+          NAS owner does not know what to type, so the dial speaks in
+          steps and the mapping is the honest explanation line.
+        - `nightlyEnabled` with `nightlyStart`/`nightlyEnd`: the night
+          window (shipped 02:00-06:00, off). While it is on, the HEAVY
+          work -- derivative rebuilds, video transcodes, model
+          recomputation -- runs only inside it; a window that ends
+          stops the work at the asset it just finished and the next
+          window resumes from there. A window that spans midnight
+          (start after end) is a legal shape. Uploads and browsing
+          are NEVER held by the window -- they are foreground work,
+          not background jobs.
+        - `pausedJobs`: the five per-kind pause switches
+          (thumbnails, metadata, transcode, machine learning, place
+          resolution). A paused kind's NEW jobs sit held; the one
+          already running finishes. Uploads of a paused kind enqueue
+          without being blocked -- the request never waits, the job
+          does.
+
+        Both the concurrency preset and the pauses take effect
+        immediately: every job reads this document when it starts,
+        so a save changes what the NEXT job sees, and a held job
+        wakes within the hold's own granularity to re-read it.
+
+        A corrupt settings row answers the defaults with the
+        corruption logged server-side.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The current run budget.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunBudgetSettingsResponse'
+              examples:
+                shippedDefaults:
+                  summary: 'The shipped posture: standard dial, no window, nothing paused.'
+                  value:
+                    concurrencyPreset: standard
+                    nightlyEnabled: false
+                    nightlyStart: '02:00'
+                    nightlyEnd: '06:00'
+                    pausedJobs:
+                      thumbnail: false
+                      metadata: false
+                      transcode: false
+                      ml: false
+                      places: false
+                nightShift:
+                  summary: 'The quiet-night posture: the window on, thumbnails held.'
+                  value:
+                    concurrencyPreset: light
+                    nightlyEnabled: true
+                    nightlyStart: '01:30'
+                    nightlyEnd: '05:30'
+                    pausedJobs:
+                      thumbnail: true
+                      metadata: false
+                      transcode: false
+                      ml: false
+                      places: false
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+    put:
+      operationId: updateRunBudgetSettings
+      tags:
+        - admin
+      summary: Save the background work's budget.
+      description: |
+        The budget save. Every field is contract-required (an omitted
+        one would decode as its zero value and silently change the
+        posture), and each value is checked: the concurrency preset
+        against its three-step enum, the two times against the
+        `HH:MM` form, and the five pause switches against booleans.
+
+        The two times must differ: an equal pair would define a
+        zero-length window, which reads as a window that never opens
+        -- turning the window OFF is the honest way to say that, so
+        the save refuses the ambiguous shape.
+
+        The save takes effect immediately, without a restart: the
+        next job a worker picks up reads the fresh document, and a
+        job already held wakes within its hold granularity and
+        re-reads. The switches never touch a job already running --
+        the one in flight finishes, which is the card's own
+        headline.
+
+        The window and the pauses NEVER gate an upload or a serving
+        request: they are worker-side facts. The upload path
+        enqueues without consulting them, and the browser's reads
+        are answered whatever the budget says.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunBudgetSettingsUpdateRequest'
+            examples:
+              shippedDefaults:
+                summary: The shipped posture, saved back whole.
+                value:
+                  concurrencyPreset: standard
+                  nightlyEnabled: false
+                  nightlyStart: '02:00'
+                  nightlyEnd: '06:00'
+                  pausedJobs:
+                    thumbnail: false
+                    metadata: false
+                    transcode: false
+                    ml: false
+                    places: false
+              nightShift:
+                summary: The quiet-night posture.
+                value:
+                  concurrencyPreset: light
+                  nightlyEnabled: true
+                  nightlyStart: '01:30'
+                  nightlyEnd: '05:30'
+                  pausedJobs:
+                    thumbnail: true
+                    metadata: false
+                    transcode: false
+                    ml: false
+                    places: false
+      responses:
+        '200':
+          description: The saved budget.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunBudgetSettingsResponse'
+              examples:
+                saved:
+                  summary: The save's own answer.
+                  value:
+                    concurrencyPreset: light
+                    nightlyEnabled: true
+                    nightlyStart: '01:30'
+                    nightlyEnd: '05:30'
+                    pausedJobs:
+                      thumbnail: true
+                      metadata: false
+                      transcode: false
+                      ml: false
+                      places: false
+        '400':
+          description: |
+            A required field is missing, a value is outside its enum,
+            a time is not `HH:MM`, or the two times are equal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingField:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: 'required fields missing: nightlyStart'
+                invalidPreset:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: concurrencyPreset must be one of light, standard, full
+                invalidTime:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: nightlyStart must be a HH:MM time
+                equalTimes:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: nightlyStart and nightlyEnd must differ
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: The validated setting could not be written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
 components:
   schemas:
     LoginRequest:
@@ -12404,7 +13188,8 @@ components:
         its own kind, named after the slot it redoes; the place
         re-resolution is the places-data-update path's kind; the
         album rescan is the directory album's source-reconciliation
-        run.
+        run; the derivative rebuild is the image card's explicit
+        re-derivation of the serving copies at the current settings.
       enum:
         - model_download
         - face_detect_rerun
@@ -12413,6 +13198,7 @@ components:
         - ocr_rerun
         - places_rerun
         - album_rescan
+        - rebuild_derivatives
     JobRunState:
       type: string
       description: |
@@ -14518,6 +15304,253 @@ components:
             UUIDv7 identifier of the run's `job_runs` row. `202`
             carries the freshly created run; `200` the in-flight one
             the request joined instead.
+    RebuildDerivativesRequest:
+      type: object
+      description: |
+        The scope of one derivative rebuild run: the honest pair the
+        image card's dialog chooses between.
+      required:
+        - scope
+      properties:
+        scope:
+          type: string
+          description: |
+            `missing` derives only the assets whose current-format
+            serving files are absent; `all` re-derives every image
+            asset at the current settings and removes the other
+            encoding format's stale files.
+          enum:
+            - missing
+            - all
+    RebuildDerivativesResponse:
+      type: object
+      description: |
+        The identifier of one derivative rebuild run: the
+        `job_runs` row the rebuild job drives and the `job.*`
+        events announce.
+      required:
+        - jobRunId
+      properties:
+        jobRunId:
+          type: string
+          format: uuid
+          description: |
+            UUIDv7 identifier of the run's `job_runs` row. `202`
+            carries the freshly created run; `200` the in-flight one
+            the request joined instead, and the stop's `200` the run
+            the stop landed on.
+    DerivativesSummaryResponse:
+      type: object
+      description: |
+        The image card's cost line: the library's image count and the
+        declared estimate of a full rebuild at the current settings
+        and dial. The estimate is the documented plan-of-record
+        number (one second per asset, divided by the dial's current
+        mapping), never a measurement.
+      required:
+        - imageCount
+        - estimateMinutes
+      properties:
+        imageCount:
+          type: integer
+          description: |
+            The image assets the rebuild would visit. Video assets
+            are not counted: the rebuild re-derives image serving
+            copies only.
+        estimateMinutes:
+          type: integer
+          description: |
+            The declared estimate of a full rebuild, in whole
+            minutes, floored at one.
+    ImageSettingsResponse:
+      type: object
+      description: |
+        The derivative image settings: the sizes and encoding every
+        NEW derivation runs at. Saving them recomputes nothing --
+        serving copies already on disk stay as they are until the
+        explicit rebuild re-derives them.
+      required:
+        - tileSize
+        - previewSize
+        - format
+        - fullSize
+        - rawEmbedded
+      properties:
+        tileSize:
+          type: integer
+          description: |
+            The timeline tile's bounding box in pixels: 250 is the
+            shipped default, 320 reads sharper on high-density
+            screens.
+          enum:
+            - 250
+            - 320
+        previewSize:
+          type: integer
+          description: |
+            The viewer's inline preview long edge in pixels: 1080 is
+            the shipped default (enough to look at, cheapest to
+            derive), 1440 and 2048 zoom sharper at a bigger encode.
+          enum:
+            - 1080
+            - 1440
+            - 2048
+        format:
+          $ref: '#/components/schemas/DerivativeFormat'
+        fullSize:
+          type: boolean
+          description: |
+            Whether derivations also produce the full-resolution
+            serving copy. Shipped OFF: the viewer reads the preview,
+            and the full-size copy is disk the family never opens.
+        rawEmbedded:
+          type: boolean
+          description: |
+            Whether a RAW source derives from its embedded preview.
+            Shipped ON.
+    ImageSettingsUpdateRequest:
+      type: object
+      description: |
+        The image settings save. Every field is contract-required:
+        the PUT replaces the document wholesale, so an omitted field
+        would silently reset it.
+      required:
+        - tileSize
+        - previewSize
+        - format
+        - fullSize
+        - rawEmbedded
+      properties:
+        tileSize:
+          type: integer
+          enum:
+            - 250
+            - 320
+        previewSize:
+          type: integer
+          enum:
+            - 1080
+            - 1440
+            - 2048
+        format:
+          $ref: '#/components/schemas/DerivativeFormat'
+        fullSize:
+          type: boolean
+        rawEmbedded:
+          type: boolean
+    DerivativeFormat:
+      type: string
+      description: |
+        The serving copies' encoding. `avif` stores smaller and
+        encodes slower (on a weak machine it makes first browsing
+        slower); `webp` encodes faster and stores a little larger.
+      enum:
+        - avif
+        - webp
+    PausedJobsState:
+      type: object
+      description: |
+        The five per-kind pause switches. A paused kind's NEW jobs sit
+        held and the one already running finishes; the switches never
+        touch an upload request or a serving read.
+      required:
+        - thumbnail
+        - metadata
+        - transcode
+        - ml
+        - places
+      properties:
+        thumbnail:
+          type: boolean
+          description: |
+            Holds new thumbnail derivations -- and, with them, the
+            derivative rebuild (its work is thumbnail-class).
+        metadata:
+          type: boolean
+          description: Holds new metadata jobs.
+        transcode:
+          type: boolean
+          description: Holds new video transcodes.
+        ml:
+          type: boolean
+          description: |
+            Holds new machine learning work: the four per-asset
+            inference jobs and the slot reruns.
+        places:
+          type: boolean
+          description: Holds new place re-resolution runs.
+    RunBudgetSettingsResponse:
+      type: object
+      description: |
+        The background work's budget: the concurrency dial's preset,
+        the night window, and the five per-kind pause switches. Every
+        job reads this document when it starts, so a save takes
+        effect on the next job without a restart.
+      required:
+        - concurrencyPreset
+        - nightlyEnabled
+        - nightlyStart
+        - nightlyEnd
+        - pausedJobs
+      properties:
+        concurrencyPreset:
+          $ref: '#/components/schemas/ConcurrencyPreset'
+        nightlyEnabled:
+          type: boolean
+          description: |
+            Whether the night window is on. Off, the heavy work runs
+            whenever there is work.
+        nightlyStart:
+          type: string
+          description: |
+            The window's opening time, `HH:MM` local to the server.
+            Shipped `02:00`.
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+        nightlyEnd:
+          type: string
+          description: |
+            The window's closing time, `HH:MM` local to the server.
+            Shipped `06:00`; earlier than the start is a window that
+            spans midnight.
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+        pausedJobs:
+          $ref: '#/components/schemas/PausedJobsState'
+    RunBudgetSettingsUpdateRequest:
+      type: object
+      description: |
+        The budget save. Every field is contract-required: the PUT
+        replaces the document wholesale, so an omitted field would
+        silently reset it. The two times must differ.
+      required:
+        - concurrencyPreset
+        - nightlyEnabled
+        - nightlyStart
+        - nightlyEnd
+        - pausedJobs
+      properties:
+        concurrencyPreset:
+          $ref: '#/components/schemas/ConcurrencyPreset'
+        nightlyEnabled:
+          type: boolean
+        nightlyStart:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+        nightlyEnd:
+          type: string
+          pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+        pausedJobs:
+          $ref: '#/components/schemas/PausedJobsState'
+    ConcurrencyPreset:
+      type: string
+      description: |
+        The concurrency dial's three steps, mapped to worker counts:
+        `light` runs one job at a time, `standard` runs half the
+        cores, `full` runs all but one. The panel never asks for a
+        number -- the mapping is the explanation line.
+      enum:
+        - light
+        - standard
+        - full
     MediaKind:
       type: string
       description: |
@@ -15804,6 +16837,7 @@ components:
             - TAG_NAME_TAKEN
             - ASSET_TRASH_MOVE_FAILED
             - ASSET_RESTORE_MOVE_FAILED
+            - REBUILD_NOT_RUNNING
         message:
           type: string
           description: English technical description for debugging.

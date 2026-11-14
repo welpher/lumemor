@@ -13,8 +13,11 @@ Method | HTTP request | Description
 [**createUser**](AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [**deleteModel**](AdminApi.md#deletemodel) | **DELETE** /admin/models/{id} | Delete one registered model.
 [**downloadModels**](AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
+[**getDerivativesSummary**](AdminApi.md#getderivativessummary) | **GET** /admin/derivatives/summary | Read the derivative library&#39;s size and rebuild estimate.
+[**getImageSettings**](AdminApi.md#getimagesettings) | **GET** /admin/settings/image | Read the derivative image settings.
 [**getModelProbe**](AdminApi.md#getmodelprobe) | **GET** /admin/models/probes/{probeId} | Read one model source probe&#39;s result.
 [**getModelSettings**](AdminApi.md#getmodelsettings) | **GET** /admin/settings/models | Read the model download settings.
+[**getRunBudgetSettings**](AdminApi.md#getrunbudgetsettings) | **GET** /admin/settings/run-budget | Read the background work&#39;s budget.
 [**getStorageSettings**](AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [**getTilesSettings**](AdminApi.md#gettilessettings) | **GET** /admin/settings/tiles | Read the map tile source setting.
 [**getTranscodingSettings**](AdminApi.md#gettranscodingsettings) | **GET** /admin/settings/transcoding | Read the video transcoding settings.
@@ -25,12 +28,16 @@ Method | HTTP request | Description
 [**listModels**](AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [**listUsers**](AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
 [**probeModelSource**](AdminApi.md#probemodelsource) | **POST** /admin/models/{slot}/probe | Probe a model source for one slot.
+[**rebuildDerivatives**](AdminApi.md#rebuildderivatives) | **POST** /admin/derivatives/rebuild | Start a derivative rebuild run.
 [**reresolvePlaces**](AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [**rerunModel**](AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [**runUpdateCheck**](AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [**scanModels**](AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
+[**stopDerivativesRebuild**](AdminApi.md#stopderivativesrebuild) | **POST** /admin/derivatives/rebuild/stop | Stop the in-flight derivative rebuild run.
 [**switchModelSource**](AdminApi.md#switchmodelsource) | **POST** /admin/models/{slot}/source | Switch a slot onto a probed source.
+[**updateImageSettings**](AdminApi.md#updateimagesettings) | **PUT** /admin/settings/image | Save the derivative image settings.
 [**updateModelSettings**](AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings and download sources.
+[**updateRunBudgetSettings**](AdminApi.md#updaterunbudgetsettings) | **PUT** /admin/settings/run-budget | Save the background work&#39;s budget.
 [**updateStorageSettings**](AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [**updateTilesSettings**](AdminApi.md#updatetilessettings) | **PUT** /admin/settings/tiles | Save the map tile source setting.
 [**updateTranscodingSettings**](AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
@@ -225,6 +232,92 @@ This endpoint does not need any parameter.
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **getDerivativesSummary**
+> DerivativesSummaryResponse getDerivativesSummary()
+
+Read the derivative library's size and rebuild estimate.
+
+The image card's cost line: how many image assets the library carries and how long a full derivative rebuild would take, as the instance itself estimates it.  THE ESTIMATE IS DECLARED, NOT MEASURED: the server multiplies the image count by one second per asset (one decode plus the tile and view encodes at the shipped settings), divides by the concurrency the run-budget dial currently maps, and rounds up to whole minutes, with one minute the floor. The answer is the plan-of-record number the dialog quotes back before the rebuild starts, never a promise: NAS-class storage, the encoding format and the dial all move it.  The count covers IMAGE assets only: the rebuild re-derives the three serving sizes of images; video assets carry a poster frame the rebuild does not touch. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getDerivativesSummary();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getDerivativesSummary: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**DerivativesSummaryResponse**](DerivativesSummaryResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getImageSettings**
+> ImageSettingsResponse getImageSettings()
+
+Read the derivative image settings.
+
+The image card's document: the sizes and encoding every NEW derivation runs at. Five knobs, the honest set --  - `tileSize`: the timeline tile's bounding box, 250 (the   shipped default) or 320 (sharper on high-density screens). - `previewSize`: the viewer's inline preview long edge, 1080   (the shipped default), 1440 or 2048. - `format`: the serving copies' encoding, `avif` (smaller,   slower to encode) or `webp` (faster, a little larger). On a   weak machine AVIF makes first browsing slower; the card says   so beside the knob. - `fullSize`: whether the thumbnail job also derives the   full-resolution serving copy (shipped OFF: the viewer reads   the preview, which is enough to look at and cheaper to   store). - `rawEmbedded`: whether a RAW source derives from its   embedded preview (shipped ON).  THE COST STATEMENT IS THE CARD'S, NOT THIS DOCUMENT'S: saving these values recomputes nothing. Derivatives already on disk stay exactly as they are; only assets derived AFTER the save (new uploads, and the explicit rebuild run) use the new values. A rebuild mid-flight keeps the parameters it started with.  The color space (P3), progressive encoding and the per-size quality are deliberately NOT knobs: a family instance does not need twenty dials.  A corrupt settings row answers the defaults with the corruption logged server-side. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getImageSettings();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getImageSettings: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**ImageSettingsResponse**](ImageSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **getModelProbe**
 > ModelProbeResponse getModelProbe(probeId)
 
@@ -303,6 +396,49 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**ModelSettingsResponse**](ModelSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getRunBudgetSettings**
+> RunBudgetSettingsResponse getRunBudgetSettings()
+
+Read the background work's budget.
+
+The task panel's run-settings document: the three dials that decide WHEN the background work spends the machine's capacity --  - `concurrencyPreset`: the dial's three steps, `light`   (one job at a time), `standard` (half the cores) and `full`   (all but one core). The panel never asks for a NUMBER: a   NAS owner does not know what to type, so the dial speaks in   steps and the mapping is the honest explanation line. - `nightlyEnabled` with `nightlyStart`/`nightlyEnd`: the night   window (shipped 02:00-06:00, off). While it is on, the HEAVY   work -- derivative rebuilds, video transcodes, model   recomputation -- runs only inside it; a window that ends   stops the work at the asset it just finished and the next   window resumes from there. A window that spans midnight   (start after end) is a legal shape. Uploads and browsing   are NEVER held by the window -- they are foreground work,   not background jobs. - `pausedJobs`: the five per-kind pause switches   (thumbnails, metadata, transcode, machine learning, place   resolution). A paused kind's NEW jobs sit held; the one   already running finishes. Uploads of a paused kind enqueue   without being blocked -- the request never waits, the job   does.  Both the concurrency preset and the pauses take effect immediately: every job reads this document when it starts, so a save changes what the NEXT job sees, and a held job wakes within the hold's own granularity to re-read it.  A corrupt settings row answers the defaults with the corruption logged server-side. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getRunBudgetSettings();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getRunBudgetSettings: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**RunBudgetSettingsResponse**](RunBudgetSettingsResponse.md)
 
 ### Authorization
 
@@ -761,6 +897,53 @@ Name | Type | Description  | Notes
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **rebuildDerivatives**
+> RebuildDerivativesResponse rebuildDerivatives(rebuildDerivativesRequest)
+
+Start a derivative rebuild run.
+
+The image card's explicit rebuild: one run that re-derives the serving copies of every image asset at the settings the instance currently carries.  THE COST IS NEVER SILENT: the image card states what the settings change (nothing is recomputed until this run is asked for), and the two scopes are the honest pair --  - `missing` derives only the assets whose current-format   serving files are absent: a library that has never been   rebuilt, or one that gained the full-size copy, pays only   for what it lacks (minutes on a family library). - `all` re-derives every image asset at the current settings   and removes the other encoding format's stale files: the CPU   belongs to the rebuild for the estimate's duration, and   browsing is slower while it runs.  THE RUN IS A JOB: it lists on the task panel with the four states, its progress counts the image assets it visited, and the pause and window rules that govern thumbnail-class work hold it the same way -- a night window that closes stops it at the asset it just finished, and the next window resumes from there, never from zero.  The endpoint is idempotent the way the place re-resolution is: a rebuild run still in flight (`queued` or `running`) answers 200 with its identifier and starts nothing; a finished run never blocks a new one.  SETTINGS CHANGES NEVER TRIGGER THIS: saving the image settings writes the document only -- the serving copies already on disk stay as they are until an explicit rebuild re-derives them. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final RebuildDerivativesRequest rebuildDerivativesRequest = {"scope":"missing"}; // RebuildDerivativesRequest | 
+
+try {
+    final response = api.rebuildDerivatives(rebuildDerivativesRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->rebuildDerivatives: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **rebuildDerivativesRequest** | [**RebuildDerivativesRequest**](RebuildDerivativesRequest.md)|  | 
+
+### Return type
+
+[**RebuildDerivativesResponse**](RebuildDerivativesResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **reresolvePlaces**
 > PlacesRerunResponse reresolvePlaces()
 
@@ -937,6 +1120,49 @@ This endpoint does not need any parameter.
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **stopDerivativesRebuild**
+> RebuildDerivativesResponse stopDerivativesRebuild()
+
+Stop the in-flight derivative rebuild run.
+
+The task panel's stop for a rebuild in flight: the run's row is marked as asked-to-stop, and the driver -- which checks the flag between assets -- closes the run at the asset it just finished, never mid-asset. The work already done stays on disk: a stopped rebuild has paid exactly for the assets it re-derived, and the next rebuild's `missing` scope skips them.  The run closes `failed` with `failed` counting nothing: the task panel renders the reason line as stopped, not as a broken run -- the admin asked for this ending.  A stop with no rebuild in flight (the run finished between the panel's listing and the click, or none ever started) answers 409 `REBUILD_NOT_RUNNING`: the flag has nothing to land on. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.stopDerivativesRebuild();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->stopDerivativesRebuild: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**RebuildDerivativesResponse**](RebuildDerivativesResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **switchModelSource**
 > ModelSourceSwitchResponse switchModelSource(slot, modelSourceSwitchRequest)
 
@@ -986,6 +1212,53 @@ Name | Type | Description  | Notes
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **updateImageSettings**
+> ImageSettingsResponse updateImageSettings(imageSettingsUpdateRequest)
+
+Save the derivative image settings.
+
+The settings save. Every field is contract-required (an omitted one would decode as its zero value and silently change the posture), and each value is checked against its enum: the tile sizes 250 and 320, the preview sizes 1080, 1440 and 2048, the encodings `avif` and `webp`.  The save writes the document and nothing else: no derivation starts, no existing serving file is touched, and a rebuild already running keeps its own starting parameters. The new values bind at the next derivation -- a new upload's thumbnail job, or the explicit rebuild run the image card starts.  The save takes effect without a restart: the thumbnail job reads the settings at run time, so an upload that arrives after the save derives at them. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final ImageSettingsUpdateRequest imageSettingsUpdateRequest = {"tileSize":250,"previewSize":1080,"format":"avif","fullSize":false,"rawEmbedded":true}; // ImageSettingsUpdateRequest | 
+
+try {
+    final response = api.updateImageSettings(imageSettingsUpdateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->updateImageSettings: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **imageSettingsUpdateRequest** | [**ImageSettingsUpdateRequest**](ImageSettingsUpdateRequest.md)|  | 
+
+### Return type
+
+[**ImageSettingsResponse**](ImageSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **updateModelSettings**
 > ModelSettingsResponse updateModelSettings(modelSettingsUpdateRequest)
 
@@ -1021,6 +1294,53 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**ModelSettingsResponse**](ModelSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **updateRunBudgetSettings**
+> RunBudgetSettingsResponse updateRunBudgetSettings(runBudgetSettingsUpdateRequest)
+
+Save the background work's budget.
+
+The budget save. Every field is contract-required (an omitted one would decode as its zero value and silently change the posture), and each value is checked: the concurrency preset against its three-step enum, the two times against the `HH:MM` form, and the five pause switches against booleans.  The two times must differ: an equal pair would define a zero-length window, which reads as a window that never opens -- turning the window OFF is the honest way to say that, so the save refuses the ambiguous shape.  The save takes effect immediately, without a restart: the next job a worker picks up reads the fresh document, and a job already held wakes within its hold granularity and re-reads. The switches never touch a job already running -- the one in flight finishes, which is the card's own headline.  The window and the pauses NEVER gate an upload or a serving request: they are worker-side facts. The upload path enqueues without consulting them, and the browser's reads are answered whatever the budget says. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final RunBudgetSettingsUpdateRequest runBudgetSettingsUpdateRequest = {"concurrencyPreset":"standard","nightlyEnabled":false,"nightlyStart":"02:00","nightlyEnd":"06:00","pausedJobs":{"thumbnail":false,"metadata":false,"transcode":false,"ml":false,"places":false}}; // RunBudgetSettingsUpdateRequest | 
+
+try {
+    final response = api.updateRunBudgetSettings(runBudgetSettingsUpdateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->updateRunBudgetSettings: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **runBudgetSettingsUpdateRequest** | [**RunBudgetSettingsUpdateRequest**](RunBudgetSettingsUpdateRequest.md)|  | 
+
+### Return type
+
+[**RunBudgetSettingsResponse**](RunBudgetSettingsResponse.md)
 
 ### Authorization
 

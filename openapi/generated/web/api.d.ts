@@ -3664,6 +3664,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/derivatives/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the derivative library's size and rebuild estimate.
+         * @description The image card's cost line: how many image assets the library
+         *     carries and how long a full derivative rebuild would take, as
+         *     the instance itself estimates it.
+         *
+         *     THE ESTIMATE IS DECLARED, NOT MEASURED: the server multiplies
+         *     the image count by one second per asset (one decode plus the
+         *     tile and view encodes at the shipped settings), divides by the
+         *     concurrency the run-budget dial currently maps, and rounds up
+         *     to whole minutes, with one minute the floor. The answer is the
+         *     plan-of-record number the dialog quotes back before the
+         *     rebuild starts, never a promise: NAS-class storage, the
+         *     encoding format and the dial all move it.
+         *
+         *     The count covers IMAGE assets only: the rebuild re-derives the
+         *     three serving sizes of images; video assets carry a poster
+         *     frame the rebuild does not touch.
+         */
+        get: operations["getDerivativesSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/derivatives/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a derivative rebuild run.
+         * @description The image card's explicit rebuild: one run that re-derives the
+         *     serving copies of every image asset at the settings the
+         *     instance currently carries.
+         *
+         *     THE COST IS NEVER SILENT: the image card states what the
+         *     settings change (nothing is recomputed until this run is
+         *     asked for), and the two scopes are the honest pair --
+         *
+         *     - `missing` derives only the assets whose current-format
+         *       serving files are absent: a library that has never been
+         *       rebuilt, or one that gained the full-size copy, pays only
+         *       for what it lacks (minutes on a family library).
+         *     - `all` re-derives every image asset at the current settings
+         *       and removes the other encoding format's stale files: the CPU
+         *       belongs to the rebuild for the estimate's duration, and
+         *       browsing is slower while it runs.
+         *
+         *     THE RUN IS A JOB: it lists on the task panel with the four
+         *     states, its progress counts the image assets it visited, and
+         *     the pause and window rules that govern thumbnail-class work
+         *     hold it the same way -- a night window that closes stops it at
+         *     the asset it just finished, and the next window resumes from
+         *     there, never from zero.
+         *
+         *     The endpoint is idempotent the way the place re-resolution is:
+         *     a rebuild run still in flight (`queued` or `running`) answers
+         *     200 with its identifier and starts nothing; a finished run
+         *     never blocks a new one.
+         *
+         *     SETTINGS CHANGES NEVER TRIGGER THIS: saving the image settings
+         *     writes the document only -- the serving copies already on disk
+         *     stay as they are until an explicit rebuild re-derives them.
+         */
+        post: operations["rebuildDerivatives"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/derivatives/rebuild/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop the in-flight derivative rebuild run.
+         * @description The task panel's stop for a rebuild in flight: the run's row
+         *     is marked as asked-to-stop, and the driver -- which checks the
+         *     flag between assets -- closes the run at the asset it just
+         *     finished, never mid-asset. The work already done stays on
+         *     disk: a stopped rebuild has paid exactly for the assets it
+         *     re-derived, and the next rebuild's `missing` scope skips
+         *     them.
+         *
+         *     The run closes `failed` with `failed` counting nothing: the
+         *     task panel renders the reason line as stopped, not as a
+         *     broken run -- the admin asked for this ending.
+         *
+         *     A stop with no rebuild in flight (the run finished between the
+         *     panel's listing and the click, or none ever started) answers
+         *     409 `REBUILD_NOT_RUNNING`: the flag has nothing to land on.
+         */
+        post: operations["stopDerivativesRebuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/jobs": {
         parameters: {
             query?: never;
@@ -4047,6 +4167,150 @@ export interface paths {
          *     is started or cancelled by the save itself.
          */
         put: operations["updateModelSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/settings/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the derivative image settings.
+         * @description The image card's document: the sizes and encoding every NEW
+         *     derivation runs at. Five knobs, the honest set --
+         *
+         *     - `tileSize`: the timeline tile's bounding box, 250 (the
+         *       shipped default) or 320 (sharper on high-density screens).
+         *     - `previewSize`: the viewer's inline preview long edge, 1080
+         *       (the shipped default), 1440 or 2048.
+         *     - `format`: the serving copies' encoding, `avif` (smaller,
+         *       slower to encode) or `webp` (faster, a little larger). On a
+         *       weak machine AVIF makes first browsing slower; the card says
+         *       so beside the knob.
+         *     - `fullSize`: whether the thumbnail job also derives the
+         *       full-resolution serving copy (shipped OFF: the viewer reads
+         *       the preview, which is enough to look at and cheaper to
+         *       store).
+         *     - `rawEmbedded`: whether a RAW source derives from its
+         *       embedded preview (shipped ON).
+         *
+         *     THE COST STATEMENT IS THE CARD'S, NOT THIS DOCUMENT'S: saving
+         *     these values recomputes nothing. Derivatives already on disk
+         *     stay exactly as they are; only assets derived AFTER the save
+         *     (new uploads, and the explicit rebuild run) use the new
+         *     values. A rebuild mid-flight keeps the parameters it started
+         *     with.
+         *
+         *     The color space (P3), progressive encoding and the per-size
+         *     quality are deliberately NOT knobs: a family instance does
+         *     not need twenty dials.
+         *
+         *     A corrupt settings row answers the defaults with the
+         *     corruption logged server-side.
+         */
+        get: operations["getImageSettings"];
+        /**
+         * Save the derivative image settings.
+         * @description The settings save. Every field is contract-required (an
+         *     omitted one would decode as its zero value and silently
+         *     change the posture), and each value is checked against its
+         *     enum: the tile sizes 250 and 320, the preview sizes 1080,
+         *     1440 and 2048, the encodings `avif` and `webp`.
+         *
+         *     The save writes the document and nothing else: no derivation
+         *     starts, no existing serving file is touched, and a rebuild
+         *     already running keeps its own starting parameters. The new
+         *     values bind at the next derivation -- a new upload's thumbnail
+         *     job, or the explicit rebuild run the image card starts.
+         *
+         *     The save takes effect without a restart: the thumbnail job
+         *     reads the settings at run time, so an upload that arrives
+         *     after the save derives at them.
+         */
+        put: operations["updateImageSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/settings/run-budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the background work's budget.
+         * @description The task panel's run-settings document: the three dials that
+         *     decide WHEN the background work spends the machine's
+         *     capacity --
+         *
+         *     - `concurrencyPreset`: the dial's three steps, `light`
+         *       (one job at a time), `standard` (half the cores) and `full`
+         *       (all but one core). The panel never asks for a NUMBER: a
+         *       NAS owner does not know what to type, so the dial speaks in
+         *       steps and the mapping is the honest explanation line.
+         *     - `nightlyEnabled` with `nightlyStart`/`nightlyEnd`: the night
+         *       window (shipped 02:00-06:00, off). While it is on, the HEAVY
+         *       work -- derivative rebuilds, video transcodes, model
+         *       recomputation -- runs only inside it; a window that ends
+         *       stops the work at the asset it just finished and the next
+         *       window resumes from there. A window that spans midnight
+         *       (start after end) is a legal shape. Uploads and browsing
+         *       are NEVER held by the window -- they are foreground work,
+         *       not background jobs.
+         *     - `pausedJobs`: the five per-kind pause switches
+         *       (thumbnails, metadata, transcode, machine learning, place
+         *       resolution). A paused kind's NEW jobs sit held; the one
+         *       already running finishes. Uploads of a paused kind enqueue
+         *       without being blocked -- the request never waits, the job
+         *       does.
+         *
+         *     Both the concurrency preset and the pauses take effect
+         *     immediately: every job reads this document when it starts,
+         *     so a save changes what the NEXT job sees, and a held job
+         *     wakes within the hold's own granularity to re-read it.
+         *
+         *     A corrupt settings row answers the defaults with the
+         *     corruption logged server-side.
+         */
+        get: operations["getRunBudgetSettings"];
+        /**
+         * Save the background work's budget.
+         * @description The budget save. Every field is contract-required (an omitted
+         *     one would decode as its zero value and silently change the
+         *     posture), and each value is checked: the concurrency preset
+         *     against its three-step enum, the two times against the
+         *     `HH:MM` form, and the five pause switches against booleans.
+         *
+         *     The two times must differ: an equal pair would define a
+         *     zero-length window, which reads as a window that never opens
+         *     -- turning the window OFF is the honest way to say that, so
+         *     the save refuses the ambiguous shape.
+         *
+         *     The save takes effect immediately, without a restart: the
+         *     next job a worker picks up reads the fresh document, and a
+         *     job already held wakes within its hold granularity and
+         *     re-reads. The switches never touch a job already running --
+         *     the one in flight finishes, which is the card's own
+         *     headline.
+         *
+         *     The window and the pauses NEVER gate an upload or a serving
+         *     request: they are worker-side facts. The upload path
+         *     enqueues without consulting them, and the browser's reads
+         *     are answered whatever the budget says.
+         */
+        put: operations["updateRunBudgetSettings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4915,10 +5179,11 @@ export interface components {
          *     its own kind, named after the slot it redoes; the place
          *     re-resolution is the places-data-update path's kind; the
          *     album rescan is the directory album's source-reconciliation
-         *     run.
+         *     run; the derivative rebuild is the image card's explicit
+         *     re-derivation of the serving copies at the current settings.
          * @enum {string}
          */
-        JobRunKind: "model_download" | "face_detect_rerun" | "face_recognize_rerun" | "clip_embed_rerun" | "ocr_rerun" | "places_rerun" | "album_rescan";
+        JobRunKind: "model_download" | "face_detect_rerun" | "face_recognize_rerun" | "clip_embed_rerun" | "ocr_rerun" | "places_rerun" | "album_rescan" | "rebuild_derivatives";
         /**
          * @description The lifecycle of a job run: `queued` from creation until the
          *     driver picks it up, `running` while it works, then
@@ -6512,6 +6777,179 @@ export interface components {
             jobRunId: string;
         };
         /**
+         * @description The scope of one derivative rebuild run: the honest pair the
+         *     image card's dialog chooses between.
+         */
+        RebuildDerivativesRequest: {
+            /**
+             * @description `missing` derives only the assets whose current-format
+             *     serving files are absent; `all` re-derives every image
+             *     asset at the current settings and removes the other
+             *     encoding format's stale files.
+             * @enum {string}
+             */
+            scope: "missing" | "all";
+        };
+        /**
+         * @description The identifier of one derivative rebuild run: the
+         *     `job_runs` row the rebuild job drives and the `job.*`
+         *     events announce.
+         */
+        RebuildDerivativesResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 identifier of the run's `job_runs` row. `202`
+             *     carries the freshly created run; `200` the in-flight one
+             *     the request joined instead, and the stop's `200` the run
+             *     the stop landed on.
+             */
+            jobRunId: string;
+        };
+        /**
+         * @description The image card's cost line: the library's image count and the
+         *     declared estimate of a full rebuild at the current settings
+         *     and dial. The estimate is the documented plan-of-record
+         *     number (one second per asset, divided by the dial's current
+         *     mapping), never a measurement.
+         */
+        DerivativesSummaryResponse: {
+            /**
+             * @description The image assets the rebuild would visit. Video assets
+             *     are not counted: the rebuild re-derives image serving
+             *     copies only.
+             */
+            imageCount: number;
+            /**
+             * @description The declared estimate of a full rebuild, in whole
+             *     minutes, floored at one.
+             */
+            estimateMinutes: number;
+        };
+        /**
+         * @description The derivative image settings: the sizes and encoding every
+         *     NEW derivation runs at. Saving them recomputes nothing --
+         *     serving copies already on disk stay as they are until the
+         *     explicit rebuild re-derives them.
+         */
+        ImageSettingsResponse: {
+            /**
+             * @description The timeline tile's bounding box in pixels: 250 is the
+             *     shipped default, 320 reads sharper on high-density
+             *     screens.
+             * @enum {integer}
+             */
+            tileSize: 250 | 320;
+            /**
+             * @description The viewer's inline preview long edge in pixels: 1080 is
+             *     the shipped default (enough to look at, cheapest to
+             *     derive), 1440 and 2048 zoom sharper at a bigger encode.
+             * @enum {integer}
+             */
+            previewSize: 1080 | 1440 | 2048;
+            format: components["schemas"]["DerivativeFormat"];
+            /**
+             * @description Whether derivations also produce the full-resolution
+             *     serving copy. Shipped OFF: the viewer reads the preview,
+             *     and the full-size copy is disk the family never opens.
+             */
+            fullSize: boolean;
+            /**
+             * @description Whether a RAW source derives from its embedded preview.
+             *     Shipped ON.
+             */
+            rawEmbedded: boolean;
+        };
+        /**
+         * @description The image settings save. Every field is contract-required:
+         *     the PUT replaces the document wholesale, so an omitted field
+         *     would silently reset it.
+         */
+        ImageSettingsUpdateRequest: {
+            /** @enum {integer} */
+            tileSize: 250 | 320;
+            /** @enum {integer} */
+            previewSize: 1080 | 1440 | 2048;
+            format: components["schemas"]["DerivativeFormat"];
+            fullSize: boolean;
+            rawEmbedded: boolean;
+        };
+        /**
+         * @description The serving copies' encoding. `avif` stores smaller and
+         *     encodes slower (on a weak machine it makes first browsing
+         *     slower); `webp` encodes faster and stores a little larger.
+         * @enum {string}
+         */
+        DerivativeFormat: "avif" | "webp";
+        /**
+         * @description The five per-kind pause switches. A paused kind's NEW jobs sit
+         *     held and the one already running finishes; the switches never
+         *     touch an upload request or a serving read.
+         */
+        PausedJobsState: {
+            /**
+             * @description Holds new thumbnail derivations -- and, with them, the
+             *     derivative rebuild (its work is thumbnail-class).
+             */
+            thumbnail: boolean;
+            /** @description Holds new metadata jobs. */
+            metadata: boolean;
+            /** @description Holds new video transcodes. */
+            transcode: boolean;
+            /**
+             * @description Holds new machine learning work: the four per-asset
+             *     inference jobs and the slot reruns.
+             */
+            ml: boolean;
+            /** @description Holds new place re-resolution runs. */
+            places: boolean;
+        };
+        /**
+         * @description The background work's budget: the concurrency dial's preset,
+         *     the night window, and the five per-kind pause switches. Every
+         *     job reads this document when it starts, so a save takes
+         *     effect on the next job without a restart.
+         */
+        RunBudgetSettingsResponse: {
+            concurrencyPreset: components["schemas"]["ConcurrencyPreset"];
+            /**
+             * @description Whether the night window is on. Off, the heavy work runs
+             *     whenever there is work.
+             */
+            nightlyEnabled: boolean;
+            /**
+             * @description The window's opening time, `HH:MM` local to the server.
+             *     Shipped `02:00`.
+             */
+            nightlyStart: string;
+            /**
+             * @description The window's closing time, `HH:MM` local to the server.
+             *     Shipped `06:00`; earlier than the start is a window that
+             *     spans midnight.
+             */
+            nightlyEnd: string;
+            pausedJobs: components["schemas"]["PausedJobsState"];
+        };
+        /**
+         * @description The budget save. Every field is contract-required: the PUT
+         *     replaces the document wholesale, so an omitted field would
+         *     silently reset it. The two times must differ.
+         */
+        RunBudgetSettingsUpdateRequest: {
+            concurrencyPreset: components["schemas"]["ConcurrencyPreset"];
+            nightlyEnabled: boolean;
+            nightlyStart: string;
+            nightlyEnd: string;
+            pausedJobs: components["schemas"]["PausedJobsState"];
+        };
+        /**
+         * @description The concurrency dial's three steps, mapped to worker counts:
+         *     `light` runs one job at a time, `standard` runs half the
+         *     cores, `full` runs all but one. The panel never asks for a
+         *     number -- the mapping is the explanation line.
+         * @enum {string}
+         */
+        ConcurrencyPreset: "light" | "standard" | "full";
+        /**
          * @description The media family of an asset. A Live Photo is an `image`
          *     whose linked component video row never appears in the
          *     timeline or the search.
@@ -7529,7 +7967,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED" | "REBUILD_NOT_RUNNING";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -13213,6 +13651,210 @@ export interface operations {
             };
         };
     };
+    getDerivativesSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The library's image count and the declared estimate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DerivativesSummaryResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rebuildDerivatives: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RebuildDerivativesRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description A rebuild run is already in flight (`queued` or
+             *     `running`); its identifier is returned and NO new run is
+             *     created or enqueued.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RebuildDerivativesResponse"];
+                };
+            };
+            /**
+             * @description The rebuild run was created (state `queued`, `total`
+             *     carrying the image asset count) and its job enqueued. The
+             *     worker flips the run to `running` when the walk begins.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RebuildDerivativesResponse"];
+                };
+            };
+            /**
+             * @description The `scope` field is missing or not one of the enum's two
+             *     values.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The run could not be started: no job queue is wired to
+             *     the API surface, or the enqueue failed.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    stopDerivativesRebuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stop was recorded against the in-flight run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RebuildDerivativesResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No rebuild run is in flight: nothing to stop. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listJobs: {
         parameters: {
             query?: {
@@ -13983,6 +14625,250 @@ export interface operations {
              * @description A required field is missing, a host entry is malformed, or
              *     the body is not valid JSON. The details name the field;
              *     nothing was written.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The validated setting could not be written. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getImageSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current derivative image settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageSettingsResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateImageSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The saved settings, as the next derivation will use them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageSettingsResponse"];
+                };
+            };
+            /**
+             * @description A required field is missing, or a value is outside its
+             *     enum.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The validated setting could not be written. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRunBudgetSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current run budget. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunBudgetSettingsResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateRunBudgetSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunBudgetSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The saved budget. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunBudgetSettingsResponse"];
+                };
+            };
+            /**
+             * @description A required field is missing, a value is outside its enum,
+             *     a time is not `HH:MM`, or the two times are equal.
              */
             400: {
                 headers: {

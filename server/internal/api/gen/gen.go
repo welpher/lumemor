@@ -314,6 +314,45 @@ func (e BatchRequestAction) Valid() bool {
 	}
 }
 
+// Defines values for ConcurrencyPreset.
+const (
+	ConcurrencyPresetFull     ConcurrencyPreset = "full"
+	ConcurrencyPresetLight    ConcurrencyPreset = "light"
+	ConcurrencyPresetStandard ConcurrencyPreset = "standard"
+)
+
+// Valid indicates whether the value is a known member of the ConcurrencyPreset enum.
+func (e ConcurrencyPreset) Valid() bool {
+	switch e {
+	case ConcurrencyPresetFull:
+		return true
+	case ConcurrencyPresetLight:
+		return true
+	case ConcurrencyPresetStandard:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DerivativeFormat.
+const (
+	Avif DerivativeFormat = "avif"
+	Webp DerivativeFormat = "webp"
+)
+
+// Valid indicates whether the value is a known member of the DerivativeFormat enum.
+func (e DerivativeFormat) Valid() bool {
+	switch e {
+	case Avif:
+		return true
+	case Webp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeviceSessionKind.
 const (
 	DeviceSessionKindMobile DeviceSessionKind = "mobile"
@@ -376,6 +415,7 @@ const (
 	MODELSLOTUNKNOWN       ErrorCode = "MODEL_SLOT_UNKNOWN"
 	PAIRINGTOKENINVALID    ErrorCode = "PAIRING_TOKEN_INVALID"
 	PERSONNOTFOUND         ErrorCode = "PERSON_NOT_FOUND"
+	REBUILDNOTRUNNING      ErrorCode = "REBUILD_NOT_RUNNING"
 	SETUPALREADYCOMPLETED  ErrorCode = "SETUP_ALREADY_COMPLETED"
 	TAGNAMETAKEN           ErrorCode = "TAG_NAME_TAKEN"
 	TAGNOTFOUND            ErrorCode = "TAG_NOT_FOUND"
@@ -435,6 +475,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case PERSONNOTFOUND:
 		return true
+	case REBUILDNOTRUNNING:
+		return true
 	case SETUPALREADYCOMPLETED:
 		return true
 	case TAGNAMETAKEN:
@@ -452,6 +494,84 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for ImageSettingsResponsePreviewSize.
+const (
+	ImageSettingsResponsePreviewSizeN1080 ImageSettingsResponsePreviewSize = 1080
+	ImageSettingsResponsePreviewSizeN1440 ImageSettingsResponsePreviewSize = 1440
+	ImageSettingsResponsePreviewSizeN2048 ImageSettingsResponsePreviewSize = 2048
+)
+
+// Valid indicates whether the value is a known member of the ImageSettingsResponsePreviewSize enum.
+func (e ImageSettingsResponsePreviewSize) Valid() bool {
+	switch e {
+	case ImageSettingsResponsePreviewSizeN1080:
+		return true
+	case ImageSettingsResponsePreviewSizeN1440:
+		return true
+	case ImageSettingsResponsePreviewSizeN2048:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImageSettingsResponseTileSize.
+const (
+	ImageSettingsResponseTileSizeN250 ImageSettingsResponseTileSize = 250
+	ImageSettingsResponseTileSizeN320 ImageSettingsResponseTileSize = 320
+)
+
+// Valid indicates whether the value is a known member of the ImageSettingsResponseTileSize enum.
+func (e ImageSettingsResponseTileSize) Valid() bool {
+	switch e {
+	case ImageSettingsResponseTileSizeN250:
+		return true
+	case ImageSettingsResponseTileSizeN320:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImageSettingsUpdateRequestPreviewSize.
+const (
+	ImageSettingsUpdateRequestPreviewSizeN1080 ImageSettingsUpdateRequestPreviewSize = 1080
+	ImageSettingsUpdateRequestPreviewSizeN1440 ImageSettingsUpdateRequestPreviewSize = 1440
+	ImageSettingsUpdateRequestPreviewSizeN2048 ImageSettingsUpdateRequestPreviewSize = 2048
+)
+
+// Valid indicates whether the value is a known member of the ImageSettingsUpdateRequestPreviewSize enum.
+func (e ImageSettingsUpdateRequestPreviewSize) Valid() bool {
+	switch e {
+	case ImageSettingsUpdateRequestPreviewSizeN1080:
+		return true
+	case ImageSettingsUpdateRequestPreviewSizeN1440:
+		return true
+	case ImageSettingsUpdateRequestPreviewSizeN2048:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImageSettingsUpdateRequestTileSize.
+const (
+	ImageSettingsUpdateRequestTileSizeN250 ImageSettingsUpdateRequestTileSize = 250
+	ImageSettingsUpdateRequestTileSizeN320 ImageSettingsUpdateRequestTileSize = 320
+)
+
+// Valid indicates whether the value is a known member of the ImageSettingsUpdateRequestTileSize enum.
+func (e ImageSettingsUpdateRequestTileSize) Valid() bool {
+	switch e {
+	case ImageSettingsUpdateRequestTileSizeN250:
+		return true
+	case ImageSettingsUpdateRequestTileSizeN320:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for JobRunKind.
 const (
 	AlbumRescan        JobRunKind = "album_rescan"
@@ -461,6 +581,7 @@ const (
 	ModelDownload      JobRunKind = "model_download"
 	OcrRerun           JobRunKind = "ocr_rerun"
 	PlacesRerun        JobRunKind = "places_rerun"
+	RebuildDerivatives JobRunKind = "rebuild_derivatives"
 )
 
 // Valid indicates whether the value is a known member of the JobRunKind enum.
@@ -479,6 +600,8 @@ func (e JobRunKind) Valid() bool {
 	case OcrRerun:
 		return true
 	case PlacesRerun:
+		return true
+	case RebuildDerivatives:
 		return true
 	default:
 		return false
@@ -653,6 +776,24 @@ func (e ModelSourceSwitchRequestKind) Valid() bool {
 	case ModelSourceSwitchRequestKindFile:
 		return true
 	case ModelSourceSwitchRequestKindUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RebuildDerivativesRequestScope.
+const (
+	All     RebuildDerivativesRequestScope = "all"
+	Missing RebuildDerivativesRequestScope = "missing"
+)
+
+// Valid indicates whether the value is a known member of the RebuildDerivativesRequestScope enum.
+func (e RebuildDerivativesRequestScope) Valid() bool {
+	switch e {
+	case All:
+		return true
+	case Missing:
 		return true
 	default:
 		return false
@@ -2374,6 +2515,12 @@ type ClusterFaceResponse struct {
 	FaceId openapi_types.UUID `json:"faceId"`
 }
 
+// ConcurrencyPreset The concurrency dial's three steps, mapped to worker counts:
+// `light` runs one job at a time, `standard` runs half the
+// cores, `full` runs all but one. The panel never asks for a
+// number -- the mapping is the explanation line.
+type ConcurrencyPreset string
+
 // CreateAdminRequest Payload of the first-run wizard (`POST /server/setup/admin`).
 type CreateAdminRequest struct {
 	// Email Login address of the administrator.
@@ -2386,6 +2533,27 @@ type CreateAdminRequest struct {
 	//
 	// Examples: correct horse battery staple
 	Password string `json:"password"`
+}
+
+// DerivativeFormat The serving copies' encoding. `avif` stores smaller and
+// encodes slower (on a weak machine it makes first browsing
+// slower); `webp` encodes faster and stores a little larger.
+type DerivativeFormat string
+
+// DerivativesSummaryResponse The image card's cost line: the library's image count and the
+// declared estimate of a full rebuild at the current settings
+// and dial. The estimate is the documented plan-of-record
+// number (one second per asset, divided by the dial's current
+// mapping), never a measurement.
+type DerivativesSummaryResponse struct {
+	// EstimateMinutes The declared estimate of a full rebuild, in whole
+	// minutes, floored at one.
+	EstimateMinutes int `json:"estimateMinutes"`
+
+	// ImageCount The image assets the rebuild would visit. Video assets
+	// are not counted: the rebuild re-derives image serving
+	// copies only.
+	ImageCount int `json:"imageCount"`
 }
 
 // DeviceSession One of the caller's active sessions as the device list
@@ -2533,12 +2701,73 @@ type FaceDetail struct {
 	Thumbnail string `json:"thumbnail"`
 }
 
+// ImageSettingsResponse The derivative image settings: the sizes and encoding every
+// NEW derivation runs at. Saving them recomputes nothing --
+// serving copies already on disk stay as they are until the
+// explicit rebuild re-derives them.
+type ImageSettingsResponse struct {
+	// Format The serving copies' encoding. `avif` stores smaller and
+	// encodes slower (on a weak machine it makes first browsing
+	// slower); `webp` encodes faster and stores a little larger.
+	Format DerivativeFormat `json:"format"`
+
+	// FullSize Whether derivations also produce the full-resolution
+	// serving copy. Shipped OFF: the viewer reads the preview,
+	// and the full-size copy is disk the family never opens.
+	FullSize bool `json:"fullSize"`
+
+	// PreviewSize The viewer's inline preview long edge in pixels: 1080 is
+	// the shipped default (enough to look at, cheapest to
+	// derive), 1440 and 2048 zoom sharper at a bigger encode.
+	PreviewSize ImageSettingsResponsePreviewSize `json:"previewSize"`
+
+	// RawEmbedded Whether a RAW source derives from its embedded preview.
+	// Shipped ON.
+	RawEmbedded bool `json:"rawEmbedded"`
+
+	// TileSize The timeline tile's bounding box in pixels: 250 is the
+	// shipped default, 320 reads sharper on high-density
+	// screens.
+	TileSize ImageSettingsResponseTileSize `json:"tileSize"`
+}
+
+// ImageSettingsResponsePreviewSize The viewer's inline preview long edge in pixels: 1080 is
+// the shipped default (enough to look at, cheapest to
+// derive), 1440 and 2048 zoom sharper at a bigger encode.
+type ImageSettingsResponsePreviewSize int
+
+// ImageSettingsResponseTileSize The timeline tile's bounding box in pixels: 250 is the
+// shipped default, 320 reads sharper on high-density
+// screens.
+type ImageSettingsResponseTileSize int
+
+// ImageSettingsUpdateRequest The image settings save. Every field is contract-required:
+// the PUT replaces the document wholesale, so an omitted field
+// would silently reset it.
+type ImageSettingsUpdateRequest struct {
+	// Format The serving copies' encoding. `avif` stores smaller and
+	// encodes slower (on a weak machine it makes first browsing
+	// slower); `webp` encodes faster and stores a little larger.
+	Format      DerivativeFormat                      `json:"format"`
+	FullSize    bool                                  `json:"fullSize"`
+	PreviewSize ImageSettingsUpdateRequestPreviewSize `json:"previewSize"`
+	RawEmbedded bool                                  `json:"rawEmbedded"`
+	TileSize    ImageSettingsUpdateRequestTileSize    `json:"tileSize"`
+}
+
+// ImageSettingsUpdateRequestPreviewSize defines model for ImageSettingsUpdateRequest.PreviewSize.
+type ImageSettingsUpdateRequestPreviewSize int
+
+// ImageSettingsUpdateRequestTileSize defines model for ImageSettingsUpdateRequest.TileSize.
+type ImageSettingsUpdateRequestTileSize int
+
 // JobRunKind The kinds of job runs the instance records. The model
 // download is one run; each machine learning slot's rerun is
 // its own kind, named after the slot it redoes; the place
 // re-resolution is the places-data-update path's kind; the
 // album rescan is the directory album's source-reconciliation
-// run.
+// run; the derivative rebuild is the image card's explicit
+// re-derivation of the serving copies at the current settings.
 type JobRunKind string
 
 // JobRunListResponse The task panel listing: the instance's job runs, newest
@@ -2573,7 +2802,8 @@ type JobRunResponse struct {
 	// its own kind, named after the slot it redoes; the place
 	// re-resolution is the places-data-update path's kind; the
 	// album rescan is the directory album's source-reconciliation
-	// run.
+	// run; the derivative rebuild is the image card's explicit
+	// re-derivation of the serving copies at the current settings.
 	Kind JobRunKind `json:"kind"`
 
 	// StartedAt When the run's driver first picked it up (RFC 3339
@@ -3203,6 +3433,28 @@ type PasswordChangeRequest struct {
 	Next string `json:"next"`
 }
 
+// PausedJobsState The five per-kind pause switches. A paused kind's NEW jobs sit
+// held and the one already running finishes; the switches never
+// touch an upload request or a serving read.
+type PausedJobsState struct {
+	// Metadata Holds new metadata jobs.
+	Metadata bool `json:"metadata"`
+
+	// Ml Holds new machine learning work: the four per-asset
+	// inference jobs and the slot reruns.
+	Ml bool `json:"ml"`
+
+	// Places Holds new place re-resolution runs.
+	Places bool `json:"places"`
+
+	// Thumbnail Holds new thumbnail derivations -- and, with them, the
+	// derivative rebuild (its work is thumbnail-class).
+	Thumbnail bool `json:"thumbnail"`
+
+	// Transcode Holds new video transcodes.
+	Transcode bool `json:"transcode"`
+}
+
 // PersonAvatarResponse One person's avatar face after the write.
 type PersonAvatarResponse struct {
 	// AvatarFaceId The stored avatar face.
@@ -3395,6 +3647,33 @@ type PlacesRerunResponse struct {
 	JobRunId openapi_types.UUID `json:"jobRunId"`
 }
 
+// RebuildDerivativesRequest The scope of one derivative rebuild run: the honest pair the
+// image card's dialog chooses between.
+type RebuildDerivativesRequest struct {
+	// Scope `missing` derives only the assets whose current-format
+	// serving files are absent; `all` re-derives every image
+	// asset at the current settings and removes the other
+	// encoding format's stale files.
+	Scope RebuildDerivativesRequestScope `json:"scope"`
+}
+
+// RebuildDerivativesRequestScope `missing` derives only the assets whose current-format
+// serving files are absent; `all` re-derives every image
+// asset at the current settings and removes the other
+// encoding format's stale files.
+type RebuildDerivativesRequestScope string
+
+// RebuildDerivativesResponse The identifier of one derivative rebuild run: the
+// `job_runs` row the rebuild job drives and the `job.*`
+// events announce.
+type RebuildDerivativesResponse struct {
+	// JobRunId UUIDv7 identifier of the run's `job_runs` row. `202`
+	// carries the freshly created run; `200` the in-flight one
+	// the request joined instead, and the stop's `200` the run
+	// the stop landed on.
+	JobRunId openapi_types.UUID `json:"jobRunId"`
+}
+
 // RemoveAlbumItemsResponse The honest report of one membership remove over the
 // request's distinct ids: the rows that left and the ids that
 // were no members.
@@ -3419,6 +3698,55 @@ type RemoveTagAssetsResponse struct {
 	// Skipped The distinct ids that carried no assignment of this tag
 	// -- never tagged, or already untagged.
 	Skipped int `json:"skipped"`
+}
+
+// RunBudgetSettingsResponse The background work's budget: the concurrency dial's preset,
+// the night window, and the five per-kind pause switches. Every
+// job reads this document when it starts, so a save takes
+// effect on the next job without a restart.
+type RunBudgetSettingsResponse struct {
+	// ConcurrencyPreset The concurrency dial's three steps, mapped to worker counts:
+	// `light` runs one job at a time, `standard` runs half the
+	// cores, `full` runs all but one. The panel never asks for a
+	// number -- the mapping is the explanation line.
+	ConcurrencyPreset ConcurrencyPreset `json:"concurrencyPreset"`
+
+	// NightlyEnabled Whether the night window is on. Off, the heavy work runs
+	// whenever there is work.
+	NightlyEnabled bool `json:"nightlyEnabled"`
+
+	// NightlyEnd The window's closing time, `HH:MM` local to the server.
+	// Shipped `06:00`; earlier than the start is a window that
+	// spans midnight.
+	NightlyEnd string `json:"nightlyEnd"`
+
+	// NightlyStart The window's opening time, `HH:MM` local to the server.
+	// Shipped `02:00`.
+	NightlyStart string `json:"nightlyStart"`
+
+	// PausedJobs The five per-kind pause switches. A paused kind's NEW jobs sit
+	// held and the one already running finishes; the switches never
+	// touch an upload request or a serving read.
+	PausedJobs PausedJobsState `json:"pausedJobs"`
+}
+
+// RunBudgetSettingsUpdateRequest The budget save. Every field is contract-required: the PUT
+// replaces the document wholesale, so an omitted field would
+// silently reset it. The two times must differ.
+type RunBudgetSettingsUpdateRequest struct {
+	// ConcurrencyPreset The concurrency dial's three steps, mapped to worker counts:
+	// `light` runs one job at a time, `standard` runs half the
+	// cores, `full` runs all but one. The panel never asks for a
+	// number -- the mapping is the explanation line.
+	ConcurrencyPreset ConcurrencyPreset `json:"concurrencyPreset"`
+	NightlyEnabled    bool              `json:"nightlyEnabled"`
+	NightlyEnd        string            `json:"nightlyEnd"`
+	NightlyStart      string            `json:"nightlyStart"`
+
+	// PausedJobs The five per-kind pause switches. A paused kind's NEW jobs sit
+	// held and the one already running finishes; the switches never
+	// touch an upload request or a serving read.
+	PausedJobs PausedJobsState `json:"pausedJobs"`
 }
 
 // SearchFacets The filter bar's counts over the current filtered set minus
@@ -4760,6 +5088,9 @@ type SearchAssetsParams struct {
 // SearchAssetsParamsLocale defines parameters for SearchAssets.
 type SearchAssetsParamsLocale string
 
+// RebuildDerivativesJSONRequestBody defines body for RebuildDerivatives for application/json ContentType.
+type RebuildDerivativesJSONRequestBody = RebuildDerivativesRequest
+
 // ActivateModelJSONRequestBody defines body for ActivateModel for application/json ContentType.
 type ActivateModelJSONRequestBody = ActivateModelJSONBody
 
@@ -4769,8 +5100,14 @@ type ProbeModelSourceMultipartRequestBody ProbeModelSourceMultipartBody
 // SwitchModelSourceJSONRequestBody defines body for SwitchModelSource for application/json ContentType.
 type SwitchModelSourceJSONRequestBody = ModelSourceSwitchRequest
 
+// UpdateImageSettingsJSONRequestBody defines body for UpdateImageSettings for application/json ContentType.
+type UpdateImageSettingsJSONRequestBody = ImageSettingsUpdateRequest
+
 // UpdateModelSettingsJSONRequestBody defines body for UpdateModelSettings for application/json ContentType.
 type UpdateModelSettingsJSONRequestBody = ModelSettingsUpdateRequest
+
+// UpdateRunBudgetSettingsJSONRequestBody defines body for UpdateRunBudgetSettings for application/json ContentType.
+type UpdateRunBudgetSettingsJSONRequestBody = RunBudgetSettingsUpdateRequest
 
 // UpdateStorageSettingsJSONRequestBody defines body for UpdateStorageSettings for application/json ContentType.
 type UpdateStorageSettingsJSONRequestBody = StorageSettingsUpdateRequest
@@ -4867,6 +5204,15 @@ type ChangeUserPasswordJSONRequestBody = PasswordChangeRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// RebuildDerivatives Start a derivative rebuild run.
+	// (POST /admin/derivatives/rebuild)
+	RebuildDerivatives(w http.ResponseWriter, r *http.Request)
+	// StopDerivativesRebuild Stop the in-flight derivative rebuild run.
+	// (POST /admin/derivatives/rebuild/stop)
+	StopDerivativesRebuild(w http.ResponseWriter, r *http.Request)
+	// GetDerivativesSummary Read the derivative library's size and rebuild estimate.
+	// (GET /admin/derivatives/summary)
+	GetDerivativesSummary(w http.ResponseWriter, r *http.Request)
 	// ListJobs List the job runs of the task panel.
 	// (GET /admin/jobs)
 	ListJobs(w http.ResponseWriter, r *http.Request, params ListJobsParams)
@@ -4900,12 +5246,24 @@ type ServerInterface interface {
 	// ReresolvePlaces Start a full place re-resolution run.
 	// (POST /admin/places/reresolve)
 	ReresolvePlaces(w http.ResponseWriter, r *http.Request)
+	// GetImageSettings Read the derivative image settings.
+	// (GET /admin/settings/image)
+	GetImageSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateImageSettings Save the derivative image settings.
+	// (PUT /admin/settings/image)
+	UpdateImageSettings(w http.ResponseWriter, r *http.Request)
 	// GetModelSettings Read the model download settings.
 	// (GET /admin/settings/models)
 	GetModelSettings(w http.ResponseWriter, r *http.Request)
 	// UpdateModelSettings Save the model download settings and download sources.
 	// (PUT /admin/settings/models)
 	UpdateModelSettings(w http.ResponseWriter, r *http.Request)
+	// GetRunBudgetSettings Read the background work's budget.
+	// (GET /admin/settings/run-budget)
+	GetRunBudgetSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateRunBudgetSettings Save the background work's budget.
+	// (PUT /admin/settings/run-budget)
+	UpdateRunBudgetSettings(w http.ResponseWriter, r *http.Request)
 	// GetStorageSettings Read the storage template setting.
 	// (GET /admin/settings/storage)
 	GetStorageSettings(w http.ResponseWriter, r *http.Request)
@@ -5146,6 +5504,24 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// RebuildDerivatives Start a derivative rebuild run.
+// (POST /admin/derivatives/rebuild)
+func (_ Unimplemented) RebuildDerivatives(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StopDerivativesRebuild Stop the in-flight derivative rebuild run.
+// (POST /admin/derivatives/rebuild/stop)
+func (_ Unimplemented) StopDerivativesRebuild(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetDerivativesSummary Read the derivative library's size and rebuild estimate.
+// (GET /admin/derivatives/summary)
+func (_ Unimplemented) GetDerivativesSummary(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListJobs List the job runs of the task panel.
 // (GET /admin/jobs)
 func (_ Unimplemented) ListJobs(w http.ResponseWriter, r *http.Request, params ListJobsParams) {
@@ -5212,6 +5588,18 @@ func (_ Unimplemented) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetImageSettings Read the derivative image settings.
+// (GET /admin/settings/image)
+func (_ Unimplemented) GetImageSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateImageSettings Save the derivative image settings.
+// (PUT /admin/settings/image)
+func (_ Unimplemented) UpdateImageSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetModelSettings Read the model download settings.
 // (GET /admin/settings/models)
 func (_ Unimplemented) GetModelSettings(w http.ResponseWriter, r *http.Request) {
@@ -5221,6 +5609,18 @@ func (_ Unimplemented) GetModelSettings(w http.ResponseWriter, r *http.Request) 
 // UpdateModelSettings Save the model download settings and download sources.
 // (PUT /admin/settings/models)
 func (_ Unimplemented) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetRunBudgetSettings Read the background work's budget.
+// (GET /admin/settings/run-budget)
+func (_ Unimplemented) GetRunBudgetSettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateRunBudgetSettings Save the background work's budget.
+// (PUT /admin/settings/run-budget)
+func (_ Unimplemented) UpdateRunBudgetSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5701,6 +6101,48 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// RebuildDerivatives operation middleware
+func (siw *ServerInterfaceWrapper) RebuildDerivatives(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RebuildDerivatives(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopDerivativesRebuild operation middleware
+func (siw *ServerInterfaceWrapper) StopDerivativesRebuild(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopDerivativesRebuild(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDerivativesSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetDerivativesSummary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDerivativesSummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListJobs operation middleware
 func (siw *ServerInterfaceWrapper) ListJobs(w http.ResponseWriter, r *http.Request) {
 
@@ -5946,6 +6388,34 @@ func (siw *ServerInterfaceWrapper) ReresolvePlaces(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetImageSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetImageSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetImageSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateImageSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateImageSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateImageSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetModelSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetModelSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -5965,6 +6435,34 @@ func (siw *ServerInterfaceWrapper) UpdateModelSettings(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateModelSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRunBudgetSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetRunBudgetSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRunBudgetSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateRunBudgetSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateRunBudgetSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateRunBudgetSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8281,6 +8779,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/admin/places/reresolve", wrapper.ReresolvePlaces)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/derivatives/summary", wrapper.GetDerivativesSummary)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/derivatives/rebuild", wrapper.RebuildDerivatives)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/derivatives/rebuild/stop", wrapper.StopDerivativesRebuild)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/jobs", wrapper.ListJobs)
 	})
 	r.Group(func(r chi.Router) {
@@ -8318,6 +8825,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/admin/settings/models", wrapper.UpdateModelSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/settings/image", wrapper.GetImageSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/settings/image", wrapper.UpdateImageSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/settings/run-budget", wrapper.GetRunBudgetSettings)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/settings/run-budget", wrapper.UpdateRunBudgetSettings)
 	})
 
 	return r
