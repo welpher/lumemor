@@ -633,6 +633,23 @@ test('Escape closes the overlay and Tab stays inside it', async () => {
 
 	unmount(app);
 	flushSync();
+
+	// The grid face owns the trap too: the dialog's aria-modal claim
+	// is faceless, and the stage is just as opaque there.
+	const grid = mountOverlay({ mode: 'grid' });
+	await settle();
+	expect(document.activeElement).toBe(dialog());
+	const gridButtons = Array.from(dialog().querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+	const gridFirst = gridButtons[0];
+	const gridLast = gridButtons[gridButtons.length - 1];
+	gridLast?.focus();
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+	flushSync();
+	expect(document.activeElement).toBe(gridFirst);
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+	expect(grid.onclose).toHaveBeenCalledTimes(1);
+	unmount(grid.app);
+	flushSync();
 });
 
 test('the delete confirm states the light cascade and closes the overlay on success', async () => {

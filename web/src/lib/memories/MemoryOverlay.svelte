@@ -469,12 +469,16 @@
 			onclose();
 			return;
 		}
-		if (mode !== 'play' || deadEnd) {
-			// The grid curates; the keys belong to the playback face.
+		if (event.key === 'Tab') {
+			// The trap belongs to the dialog, not to one face of it:
+			// the stage is opaque, so a Tab that leaves the panel on
+			// the grid or the dead end lands focus on invisible
+			// chrome. Arrows and Space stay playback-only below.
+			trapTab(event);
 			return;
 		}
-		if (event.key === 'Tab') {
-			trapTab(event);
+		if (mode !== 'play' || deadEnd) {
+			// The grid curates; the keys belong to the playback face.
 			return;
 		}
 		if (event.key === 'ArrowLeft') {

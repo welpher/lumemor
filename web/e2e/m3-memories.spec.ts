@@ -850,6 +850,21 @@ test('scene 9: the sharee signs in and the shared memory reads view-only', async
 	await page.goto('/timeline');
 	await expect(page.locator('.tile')).toHaveCount(3);
 
+	// The wall's scroll seat survives the overlay: the shell resets
+	// the frame on every non-popstate walk, so the open would strand
+	// the reader at the top on close -- the seat captured at the card
+	// click comes back instead. A short viewport makes the one-card
+	// wall scroll (the click's own into-view scroll is the seat).
+	await page.setViewportSize({ width: 1280, height: 240 });
+	await page.goto('/memories');
+	await card.click();
+	await expect(overlay).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(overlay).toBeHidden();
+	const seat = await page.evaluate(() => document.querySelector('main')?.scrollTop ?? 0);
+	expect(seat).toBeGreaterThan(0);
+	await page.setViewportSize({ width: 1280, height: 720 });
+
 	await context.storageState({ path: shareeStatePath });
 	await context.close();
 });
