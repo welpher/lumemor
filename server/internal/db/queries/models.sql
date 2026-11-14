@@ -54,3 +54,9 @@ WHERE id = $1;
 -- success: the slot was unfilled.
 UPDATE models SET is_active = false, updated_at = now()
 WHERE slot = $1 AND is_active;
+
+-- name: DeleteModel :exec
+-- The removal of one registration: the models row goes first (the
+-- handler deletes its directory after), and the still-referencing
+-- products keep resolving through their own foreign keys.
+DELETE FROM models WHERE id = $1;

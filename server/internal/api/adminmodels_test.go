@@ -141,12 +141,21 @@ type adminModelsEnv struct {
 	cookie    *http.Cookie
 	plain     *http.Cookie
 	ownerID   uuid.UUID
+	// probeHosts answers the download sources list the source
+	// pipeline's declared-host check reads (nil: every host declared).
+	probeHosts func() []string
 }
 
 // newAdminModelsEnv provisions the environment with the given fixture
 // models laid out (not yet registered: registering is the scan
 // endpoint's job, which the tests exercise explicitly).
 func newAdminModelsEnv(t *testing.T, fixtures ...adminFixtureModel) *adminModelsEnv {
+	return newAdminModelsEnvHosts(t, nil, fixtures...)
+}
+
+// newAdminModelsEnvHosts is newAdminModelsEnv with the source
+// pipeline's allowed-hosts function injected (the warn-path tests).
+func newAdminModelsEnvHosts(t *testing.T, hosts func() []string, fixtures ...adminFixtureModel) *adminModelsEnv {
 	t.Helper()
 
 	pool := newSetupEnv(t)
@@ -157,11 +166,12 @@ func newAdminModelsEnv(t *testing.T, fixtures ...adminFixtureModel) *adminModels
 	registry := ml.NewRegistry(pool, dbgen.New(pool), modelsDir)
 	stub := &stubMlReruns{id: uuid.MustParse("0192f8b1-4c5d-8e9f-a0b1-2c3d4e5f6a70")}
 	router := NewRouter(&Deps{
-		Pool:      pool,
-		Version:   testVersion,
-		Models:    registry,
-		ModelsDir: modelsDir,
-		MlReruns:  stub,
+		Pool:       pool,
+		Version:    testVersion,
+		Models:     registry,
+		ModelsDir:  modelsDir,
+		MlReruns:   stub,
+		ProbeHosts: hosts,
 	})
 
 	rec := postAdmin(t, router, createAdminBody(t, "ada@example.com", testPassword, nil))
@@ -432,7 +442,7 @@ func TestListModelsMapsTheRegistryRows(t *testing.T) {
 	if detect.Id != "detect-fx" || detect.Slot != apigen.FaceDetect {
 		t.Errorf("models[0] = %q slot %q, want detect-fx of face_detect", detect.Id, detect.Slot)
 	}
-	if clipA.Version != "fixture" || clipA.Source != apigen.Custom {
+	if clipA.Version != "fixture" || clipA.Source != apigen.ModelSourceCustom {
 		t.Errorf("clip-a version/source = %q/%q, want fixture/custom", clipA.Version, clipA.Source)
 	}
 	if clipA.License != "MIT" {
@@ -499,7 +509,7 @@ func TestListModelsMapsTheRegistryRows(t *testing.T) {
 	if body.Download.Id != download || body.Download.Kind != apigen.ModelDownload {
 		t.Errorf("download = %v kind %q, want %s of kind model_download", body.Download.Id, body.Download.Kind, download)
 	}
-	if body.Download.State != apigen.Succeeded || body.Download.Total != 1000 {
+	if body.Download.State != apigen.JobRunStateSucceeded || body.Download.Total != 1000 {
 		t.Errorf("download state/total = %q/%d, want succeeded/1000", body.Download.State, body.Download.Total)
 	}
 }
@@ -815,7 +825,7 @@ func TestScanModelsRegistersWithoutActivating(t *testing.T) {
 		t.Fatalf("registered = %d models, want 2 (body %q)", len(body.Registered), rec.Body.String())
 	}
 	for _, model := range body.Registered {
-		if model.Source != apigen.Custom {
+		if model.Source != apigen.ModelSourceCustom {
 			t.Errorf("registered %s source = %q, want custom", model.Id, model.Source)
 		}
 		if model.IsActive {
@@ -901,7 +911,7 @@ func TestListJobsOrdersNewestFirstAndHonorsLimit(t *testing.T) {
 	if job.Id != ids[1] || job.Kind != apigen.ClipEmbedRerun {
 		t.Errorf("job = %q kind %q, want the clip_embed_rerun run", job.Id, job.Kind)
 	}
-	if job.State != apigen.Running || job.Total != 9 || job.Done != 4 || job.Failed != 1 {
+	if job.State != apigen.JobRunStateRunning || job.Total != 9 || job.Done != 4 || job.Failed != 1 {
 		t.Errorf("job state/total/done/failed = %q/%d/%d/%d, want running/9/4/1",
 			job.State, job.Total, job.Done, job.Failed)
 	}

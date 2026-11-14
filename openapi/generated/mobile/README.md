@@ -89,7 +89,9 @@ Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
 [*AdminApi*](doc/AdminApi.md) | [**activateModel**](doc/AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
+[*AdminApi*](doc/AdminApi.md) | [**deleteModel**](doc/AdminApi.md#deletemodel) | **DELETE** /admin/models/{id} | Delete one registered model.
 [*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
+[*AdminApi*](doc/AdminApi.md) | [**getModelProbe**](doc/AdminApi.md#getmodelprobe) | **GET** /admin/models/probes/{probeId} | Read one model source probe&#39;s result.
 [*AdminApi*](doc/AdminApi.md) | [**getModelSettings**](doc/AdminApi.md#getmodelsettings) | **GET** /admin/settings/models | Read the model download settings.
 [*AdminApi*](doc/AdminApi.md) | [**getStorageSettings**](doc/AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [*AdminApi*](doc/AdminApi.md) | [**getTilesSettings**](doc/AdminApi.md#gettilessettings) | **GET** /admin/settings/tiles | Read the map tile source setting.
@@ -100,10 +102,12 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**listJobs**](doc/AdminApi.md#listjobs) | **GET** /admin/jobs | List the job runs of the task panel.
 [*AdminApi*](doc/AdminApi.md) | [**listModels**](doc/AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [*AdminApi*](doc/AdminApi.md) | [**listUsers**](doc/AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
+[*AdminApi*](doc/AdminApi.md) | [**probeModelSource**](doc/AdminApi.md#probemodelsource) | **POST** /admin/models/{slot}/probe | Probe a model source for one slot.
 [*AdminApi*](doc/AdminApi.md) | [**reresolvePlaces**](doc/AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**runUpdateCheck**](doc/AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
+[*AdminApi*](doc/AdminApi.md) | [**switchModelSource**](doc/AdminApi.md#switchmodelsource) | **POST** /admin/models/{slot}/source | Switch a slot onto a probed source.
 [*AdminApi*](doc/AdminApi.md) | [**updateModelSettings**](doc/AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings and download sources.
 [*AdminApi*](doc/AdminApi.md) | [**updateStorageSettings**](doc/AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [*AdminApi*](doc/AdminApi.md) | [**updateTilesSettings**](doc/AdminApi.md#updatetilessettings) | **PUT** /admin/settings/tiles | Save the map tile source setting.
@@ -218,6 +222,7 @@ Class | Method | HTTP request | Description
  - [ClusterDetail](doc/ClusterDetail.md)
  - [ClusterFaceResponse](doc/ClusterFaceResponse.md)
  - [CreateAdminRequest](doc/CreateAdminRequest.md)
+ - [DeleteModel200Response](doc/DeleteModel200Response.md)
  - [DeviceSession](doc/DeviceSession.md)
  - [DownloadFormat](doc/DownloadFormat.md)
  - [Error](doc/Error.md)
@@ -238,9 +243,14 @@ Class | Method | HTTP request | Description
  - [MergePeopleRequest](doc/MergePeopleRequest.md)
  - [MergePeopleResponse](doc/MergePeopleResponse.md)
  - [ModelActivateResponse](doc/ModelActivateResponse.md)
+ - [ModelCatalogEntry](doc/ModelCatalogEntry.md)
  - [ModelDimensionChange](doc/ModelDimensionChange.md)
  - [ModelDownloadResponse](doc/ModelDownloadResponse.md)
  - [ModelListResponse](doc/ModelListResponse.md)
+ - [ModelProbeAcceptedResponse](doc/ModelProbeAcceptedResponse.md)
+ - [ModelProbeResponse](doc/ModelProbeResponse.md)
+ - [ModelProbeResponseInputSize](doc/ModelProbeResponseInputSize.md)
+ - [ModelProbeResponseProgress](doc/ModelProbeResponseProgress.md)
  - [ModelRef](doc/ModelRef.md)
  - [ModelRerunResponse](doc/ModelRerunResponse.md)
  - [ModelResponse](doc/ModelResponse.md)
@@ -250,6 +260,9 @@ Class | Method | HTTP request | Description
  - [ModelSettingsUpdateRequest](doc/ModelSettingsUpdateRequest.md)
  - [ModelSlot](doc/ModelSlot.md)
  - [ModelSource](doc/ModelSource.md)
+ - [ModelSourceSwitchRequest](doc/ModelSourceSwitchRequest.md)
+ - [ModelSourceSwitchResponse](doc/ModelSourceSwitchResponse.md)
+ - [ModelSourceSwitchResponseDimensionChanged](doc/ModelSourceSwitchResponseDimensionChanged.md)
  - [MoveFaceRequest](doc/MoveFaceRequest.md)
  - [MoveFaceResponse](doc/MoveFaceResponse.md)
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
@@ -272,6 +285,10 @@ Class | Method | HTTP request | Description
  - [SessionInfo](doc/SessionInfo.md)
  - [SetPersonAvatarRequest](doc/SetPersonAvatarRequest.md)
  - [SetPersonBirthdateRequest](doc/SetPersonBirthdateRequest.md)
+ - [SlotState](doc/SlotState.md)
+ - [SlotStateResponse](doc/SlotStateResponse.md)
+ - [SlotStateResponseProgress](doc/SlotStateResponseProgress.md)
+ - [SlotStateResponseSource](doc/SlotStateResponseSource.md)
  - [StorageSettingsResponse](doc/StorageSettingsResponse.md)
  - [StorageSettingsUpdateRequest](doc/StorageSettingsUpdateRequest.md)
  - [TagAssetsRequest](doc/TagAssetsRequest.md)

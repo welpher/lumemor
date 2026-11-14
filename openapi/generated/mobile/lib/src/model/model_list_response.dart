@@ -5,17 +5,21 @@
 // ignore_for_file: unused_element
 import 'package:lumemor_api/src/model/model_response.dart';
 import 'package:built_collection/built_collection.dart';
+import 'package:lumemor_api/src/model/model_catalog_entry.dart';
+import 'package:lumemor_api/src/model/slot_state_response.dart';
 import 'package:lumemor_api/src/model/job_run_response.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
 part 'model_list_response.g.dart';
 
-/// The model management listing: every registered model plus the download run summary. 
+/// The model management listing: every registered model plus the download run summary, the per-slot state view the page's cards render, and the manifest catalog the switch dialog's official group renders. 
 ///
 /// Properties:
 /// * [models] - Every registered model, grouped by slot then id. 
 /// * [download] - The most recent `model_download` run of whatever state, or null before the first download was ever started. 
+/// * [slots] - One row per pipeline slot (the contract's enum order): the four-state view the page's cards render, the slot's active model, its source facts and the download run's progress while a run is in flight. 
+/// * [official] - The manifest's catalog: the validated list the switch dialog's official group renders, every entry with its download state. The image is not the entry -- the mirror carries no weights; `downloaded` is the presence probe and the digest check stays the activation's business. 
 @BuiltValue()
 abstract class ModelListResponse implements Built<ModelListResponse, ModelListResponseBuilder> {
   /// Every registered model, grouped by slot then id. 
@@ -25,6 +29,14 @@ abstract class ModelListResponse implements Built<ModelListResponse, ModelListRe
   /// The most recent `model_download` run of whatever state, or null before the first download was ever started. 
   @BuiltValueField(wireName: r'download')
   JobRunResponse get download;
+
+  /// One row per pipeline slot (the contract's enum order): the four-state view the page's cards render, the slot's active model, its source facts and the download run's progress while a run is in flight. 
+  @BuiltValueField(wireName: r'slots')
+  BuiltList<SlotStateResponse> get slots;
+
+  /// The manifest's catalog: the validated list the switch dialog's official group renders, every entry with its download state. The image is not the entry -- the mirror carries no weights; `downloaded` is the presence probe and the digest check stays the activation's business. 
+  @BuiltValueField(wireName: r'official')
+  BuiltList<ModelCatalogEntry> get official;
 
   ModelListResponse._();
 
@@ -58,6 +70,16 @@ class _$ModelListResponseSerializer implements PrimitiveSerializer<ModelListResp
     yield serializers.serialize(
       object.download,
       specifiedType: const FullType(JobRunResponse),
+    );
+    yield r'slots';
+    yield serializers.serialize(
+      object.slots,
+      specifiedType: const FullType(BuiltList, [FullType(SlotStateResponse)]),
+    );
+    yield r'official';
+    yield serializers.serialize(
+      object.official,
+      specifiedType: const FullType(BuiltList, [FullType(ModelCatalogEntry)]),
     );
   }
 
@@ -95,6 +117,20 @@ class _$ModelListResponseSerializer implements PrimitiveSerializer<ModelListResp
             specifiedType: const FullType(JobRunResponse),
           ) as JobRunResponse;
           result.download.replace(valueDes);
+          break;
+        case r'slots':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(SlotStateResponse)]),
+          ) as BuiltList<SlotStateResponse>;
+          result.slots.replace(valueDes);
+          break;
+        case r'official':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(ModelCatalogEntry)]),
+          ) as BuiltList<ModelCatalogEntry>;
+          result.official.replace(valueDes);
           break;
         default:
           unhandled.add(key);
