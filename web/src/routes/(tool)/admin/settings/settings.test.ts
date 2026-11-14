@@ -60,6 +60,21 @@ function modelSettingsBody(autoDownload = true): Record<string, unknown> {
 	return { autoDownload, allowedHosts: ['huggingface.co'], mirrorBaseUrl: '' };
 }
 
+function imageSettingsBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		tileSize: 250,
+		previewSize: 1080,
+		format: 'avif',
+		fullSize: false,
+		rawEmbedded: true,
+		...overrides
+	};
+}
+
+function derivativesSummaryBody(imageCount = 0, estimateMinutes = 1): Record<string, unknown> {
+	return { imageCount, estimateMinutes };
+}
+
 function updateCheckStateBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		enabled: true,
@@ -90,6 +105,8 @@ function defaultReads(overrides: Partial<FetchRoute> = {}): FetchRoute {
 		'/api/v1/admin/settings/update-check': () => jsonResponse(200, updateCheckSettingsBody()),
 		'/api/v1/admin/settings/tiles': () => jsonResponse(200, tilesSettingsBody()),
 		'/api/v1/admin/settings/models': () => jsonResponse(200, modelSettingsBody()),
+		'/api/v1/admin/settings/image': () => jsonResponse(200, imageSettingsBody()),
+		'/api/v1/admin/derivatives/summary': () => jsonResponse(200, derivativesSummaryBody()),
 		'/api/v1/server/update-check': () => jsonResponse(200, updateCheckStateBody()),
 		...overrides
 	};
@@ -211,9 +228,13 @@ test('the read renders the page-header row, the template, the presets and the sa
 	const column = document.body.querySelector<HTMLElement>('.settings');
 	expect(column?.className).toContain('max-w-[760px]');
 	// The mount-roots section is GONE; the settings sections are the
-	// storage template, the trash retention, transcoding, the release
-	// check, the map tile source and the model download policy.
-	expect(document.body.querySelectorAll('.settings__card')).toHaveLength(6);
+	// storage template, the trash retention, transcoding, the image
+	// card, the release check, the map tile source and the model
+	// download policy.
+	expect(document.body.querySelectorAll('.settings__card')).toHaveLength(7);
+	// The new image card rides between transcoding and the release
+	// check, folded like every other card.
+	expect(document.body.querySelector('[data-testid="admin-settings-image"]')).not.toBeNull();
 	expect(document.body.querySelector('[data-testid="admin-settings-mounts"]')).toBeNull();
 	expect(document.body.querySelector('[data-testid="admin-settings-update"]')).not.toBeNull();
 	expect(document.body.querySelector('[data-testid="admin-settings-tiles"]')).not.toBeNull();

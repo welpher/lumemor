@@ -41,13 +41,21 @@
 	import { locale } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
 	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
+	import { toast } from '$lib/components/toast.svelte';
 	import { listJobRuns, type JobRun } from '$lib/api/jobruns';
 	import { listModels, rerunModel, startModelDownload, type AdminModel, type ModelSlotId } from '$lib/api/models';
 	import { reresolvePlaces } from '$lib/api/places';
+	import {
+		getRunBudgetSettings,
+		saveRunBudgetSettings,
+		stopDerivativesRebuild,
+		type RunBudgetSettings
+	} from '$lib/api/adminSettings';
 	import { formatMegabytes, formatDuration } from '$lib/format';
 	import { subscribeJobEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -59,7 +67,8 @@
 		clip_embed_rerun: 'admin_jobs_kind_clip_embed_rerun',
 		ocr_rerun: 'admin_jobs_kind_ocr_rerun',
 		places_rerun: 'admin_jobs_kind_places_rerun',
-		album_rescan: 'admin_jobs_kind_album_rescan'
+		album_rescan: 'admin_jobs_kind_album_rescan',
+		rebuild_derivatives: 'admin_jobs_kind_rebuild_derivatives'
 	};
 
 	/** The state label keys, and the badge modifier classes. */
@@ -103,6 +112,31 @@
 	let retrying = $state<string | null>(null);
 	/** The last failed retry, pinned to its row (null while none). */
 	let retryError = $state<{ jobId: string; errorKey: string } | null>(null);
+
+	// THE RUN SETTINGS STRIP: the budget read stands apart from the
+	// listing's tick (its failure never fails the panel -- the strip
+	// simply does not render and the quiet line names it). The
+	// controls save on change, immediately: the strip has no save
+	// button, and the whole-object PUT carries every control's
+	// current position.
+	let formBudget = $state<RunBudgetSettings>({
+		concurrencyPreset: 'standard',
+		nightlyEnabled: false,
+		nightlyStart: '02:00',
+		nightlyEnd: '06:00',
+		pausedJobs: { thumbnail: false, metadata: false, transcode: false, ml: false, places: false }
+	});
+	let budgetLoaded = $state(false);
+	let budgetLoadError = $state(false);
+	let savingBudget = $state(false);
+	/** A control changed while a save was in flight: one more round. */
+	let budgetDirty = $state(false);
+	let budgetSaved = $state(false);
+	let budgetErrorKey = $state('');
+	/** Bumping re-reads the budget (a failed save's refetch arm). */
+	let budgetTick = $state(0);
+	/** The stop in flight, pinned to its run (null while none). */
+	let stopping = $state<string | null>(null);
 
 	const activeLocale = $derived($locale ?? 'en');
 	/** The fallback poll's cadence, in milliseconds. */
@@ -153,6 +187,74 @@
 			current = false;
 		};
 	});
+
+	// The budget read, keyed on its own tick (a failed save's
+	// refetch arm re-reads the server's truth). Failure is quiet:
+	// the strip does not render, a line names it.
+	$effect(() => {
+		void budgetTick;
+		let current = true;
+		void (async () => {
+			const outcome = await getRunBudgetSettings();
+			if (!current) {
+				return;
+			}
+			if (outcome.ok) {
+				formBudget = { ...outcome.settings };
+				budgetLoaded = true;
+				budgetLoadError = false;
+			} else {
+				budgetLoaded = false;
+				budgetLoadError = true;
+			}
+		})();
+		return () => {
+			current = false;
+		};
+	});
+
+	// THE IMMEDIATE SAVE: every control's change PUTs the whole
+	// document. A change that lands mid-save marks the dirty flag and
+	// one more round carries it -- the last control's position is
+	// what the server ends with. A failed save stays inline under the
+	// strip (the shared failure shape), and the values are not
+	// reverted: the next change re-saves the fresh positions.
+	async function saveBudget(): Promise<void> {
+		if (savingBudget) {
+			budgetDirty = true;
+			return;
+		}
+		savingBudget = true;
+		do {
+			budgetDirty = false;
+			budgetErrorKey = '';
+			budgetSaved = false;
+			const outcome = await saveRunBudgetSettings({ ...formBudget });
+			if (outcome.ok) {
+				formBudget = { ...outcome.settings };
+				budgetSaved = true;
+			} else {
+				budgetErrorKey = outcome.errorKey;
+			}
+		} while (budgetDirty);
+		savingBudget = false;
+	}
+
+	/** The stop: asks the in-flight rebuild to close at its next breakpoint. */
+	async function stopRun(job: JobRun): Promise<void> {
+		if (stopping !== null) {
+			return;
+		}
+		stopping = job.id;
+		const outcome = await stopDerivativesRebuild();
+		stopping = null;
+		if (!outcome.ok) {
+			toast($_('admin_jobs_stop_failed'), 'danger');
+			return;
+		}
+		toast($_('admin_jobs_stop_requested'));
+		retryTick += 1;
+	}
 
 	// The SSE convergence: progress events update the named row in
 	// place (the events' counts are already numbers), the start and
@@ -356,6 +458,154 @@
 			{$_('admin_jobs_note')}
 		</p>
 
+		<!-- THE RUN SETTINGS STRIP: the three dials that decide WHEN
+		     the background work spends the machine. The concurrency
+		     dial speaks in steps (the mapping is the hint line, never
+		     a number input), the night window's inputs go dead when
+		     the window is off, and the five pause switches apply to
+		     the NEXT job -- the card's own headline says so. No save
+		     button: every control saves on change, immediately. -->
+		{#if budgetLoaded}
+			<section
+				class="jobs__run-settings bg-card border border-border rounded-card shadow-card p-5"
+				data-testid="run-settings"
+			>
+				<div class="flex flex-wrap items-center gap-2 mb-1">
+					<h2 class="m-0 flex items-center gap-2 font-display font-bold text-[17px] leading-[1.3] text-text">
+						<SlidersHorizontal size={18} class="text-accent" aria-hidden="true" />
+						{$_('admin_jobs_run_title')}
+					</h2>
+					<span class="ml-auto font-body font-normal text-[12px] leading-[1.4] text-text-faint">
+						{$_('admin_jobs_run_note')}
+					</span>
+				</div>
+				<div class="mt-3 flex flex-col gap-4">
+					<!-- The concurrency dial: three steps, aria-pressed, no
+					     number input. -->
+					<div class="flex flex-wrap items-center gap-3">
+						<span
+							class="font-body font-semibold text-[14px] leading-[1.4] text-text"
+							id="run-concurrency-label"
+						>
+							{$_('admin_jobs_run_concurrency')}
+						</span>
+						<div
+							class="inline-flex gap-1 p-1 bg-page border border-border rounded-control"
+							role="group"
+							aria-labelledby="run-concurrency-label"
+						>
+							{#each [{ value: 'light', labelKey: 'admin_jobs_run_concurrency_light', testid: 'run-dial-light' }, { value: 'standard', labelKey: 'admin_jobs_run_concurrency_standard', testid: 'run-dial-standard' }, { value: 'full', labelKey: 'admin_jobs_run_concurrency_full', testid: 'run-dial-full' }] as step (step.value)}
+								<button
+									class="px-3 py-1.5 font-body font-semibold text-[13px] leading-[1.4] rounded-control border-0 cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard bg-transparent text-text-soft aria-pressed:bg-card aria-pressed:text-text aria-pressed:shadow-card"
+									type="button"
+									data-testid={step.testid}
+									aria-pressed={formBudget.concurrencyPreset === step.value}
+									onclick={() => {
+										formBudget.concurrencyPreset =
+											step.value as RunBudgetSettings['concurrencyPreset'];
+										void saveBudget();
+									}}
+								>
+									{$_(step.labelKey)}
+								</button>
+							{/each}
+						</div>
+						<span class="font-body font-normal text-[12px] leading-[1.4] text-text-faint">
+							{$_('admin_jobs_run_concurrency_hint')}
+						</span>
+					</div>
+					<!-- The night window: the switch, the two times (dead
+					     while the window is off), the honest scope line. -->
+					<div class="flex flex-wrap items-center gap-3">
+						<label
+							class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+						>
+							<input
+								class="settings__toggle-input w-[18px] h-[18px] accent-accent"
+								type="checkbox"
+								data-testid="run-nightly-toggle"
+								bind:checked={formBudget.nightlyEnabled}
+								onchange={() => void saveBudget()}
+							/>
+							<span>{$_('admin_jobs_run_nightly')}</span>
+						</label>
+						<label
+							class="flex items-center gap-2 font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+						>
+							{$_('admin_jobs_run_nightly_from')}
+							<input
+								class="px-2 py-1 w-[110px] font-body font-normal text-[13px] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard disabled:opacity-55"
+								type="time"
+								data-testid="run-nightly-start"
+								bind:value={formBudget.nightlyStart}
+								disabled={!formBudget.nightlyEnabled}
+								onchange={() => void saveBudget()}
+							/>
+						</label>
+						<label
+							class="flex items-center gap-2 font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+						>
+							{$_('admin_jobs_run_nightly_to')}
+							<input
+								class="px-2 py-1 w-[110px] font-body font-normal text-[13px] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard disabled:opacity-55"
+								type="time"
+								data-testid="run-nightly-end"
+								bind:value={formBudget.nightlyEnd}
+								disabled={!formBudget.nightlyEnabled}
+								onchange={() => void saveBudget()}
+							/>
+						</label>
+						<span class="font-body font-normal text-[12px] leading-[1.4] text-text-faint">
+							{$_('admin_jobs_run_nightly_hint')}
+						</span>
+					</div>
+					<!-- The five per-kind pauses: the NEXT job of the kind
+					     sits held; the one already running finishes. -->
+					<div class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1 border-t border-border">
+						<span class="pt-2 font-body font-semibold text-[14px] leading-[1.4] text-text">
+							{$_('admin_jobs_run_pause')}
+						</span>
+						{#each [{ field: 'thumbnail', labelKey: 'admin_jobs_run_pause_thumbnail', testid: 'run-pause-thumbnail' }, { field: 'metadata', labelKey: 'admin_jobs_run_pause_metadata', testid: 'run-pause-metadata' }, { field: 'transcode', labelKey: 'admin_jobs_run_pause_transcode', testid: 'run-pause-transcode' }, { field: 'ml', labelKey: 'admin_jobs_run_pause_ml', testid: 'run-pause-ml' }, { field: 'places', labelKey: 'admin_jobs_run_pause_places', testid: 'run-pause-places' }] as toggle (toggle.field)}
+							<label
+								class="pt-2 flex items-center gap-1.5 font-body font-semibold text-[13px] leading-[1.4] text-text-soft cursor-pointer"
+							>
+								<input
+									class="w-[16px] h-[16px] accent-accent"
+									type="checkbox"
+									data-testid={toggle.testid}
+									bind:checked={
+										formBudget.pausedJobs[toggle.field as keyof RunBudgetSettings['pausedJobs']]
+									}
+									onchange={() => void saveBudget()}
+								/>
+								<span>{$_(toggle.labelKey)}</span>
+							</label>
+						{/each}
+					</div>
+					<!-- The strip's own feedback: the quiet saved line, the
+					     failed save's error. -->
+					{#if savingBudget}
+						<p class="m-0 font-body font-normal text-[12px] leading-[1.4] text-text-faint" role="status">
+							{$_('admin_jobs_run_saving')}
+						</p>
+					{:else if budgetSaved}
+						<p class="m-0 font-body font-normal text-[12px] leading-[1.4] text-text-soft" role="status">
+							{$_('admin_jobs_run_saved')}
+						</p>
+					{/if}
+					{#if budgetErrorKey !== ''}
+						<p class="m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">
+							{errorText(budgetErrorKey)}
+						</p>
+					{/if}
+				</div>
+			</section>
+		{:else if budgetLoadError}
+			<p class="m-0 font-body font-normal text-[13px] leading-[1.5] text-text-faint" role="status">
+				{$_('admin_jobs_run_save_failed')}
+			</p>
+		{/if}
+
 		{#if jobs.length === 0}
 			<p
 				class="jobs__empty box-content py-8 px-6 text-center font-body font-normal text-[14px] leading-[1.5] text-text-soft bg-card border border-border rounded-card shadow-card"
@@ -455,6 +705,22 @@
 									{errorText(retryError.errorKey)}
 								</p>
 							{/if}
+						{/if}
+
+						<!-- The rebuild's stop: the explicit end of the run the
+						     admin started. The flag lands between the walk's
+						     assets; the work already done stays on disk. -->
+						{#if job.kind === 'rebuild_derivatives' && (job.state === 'running' || job.state === 'queued')}
+							<div class="jobs__actions flex flex-wrap items-center gap-2">
+								<Button
+									variant="ghost"
+									disabled={stopping !== null}
+									data-testid="job-stop"
+									onclick={() => void stopRun(job)}
+								>
+									{$_('admin_jobs_stop')}
+								</Button>
+							</div>
 						{/if}
 
 						<p class="jobs__times font-body font-normal text-[13px] leading-[1.5] text-text-faint">
