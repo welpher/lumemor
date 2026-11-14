@@ -90,7 +90,12 @@ function checkState(overrides: Record<string, unknown> = {}): Record<string, unk
  * read a card's content open it through its summary first.
  */
 async function openCard(page: import('@playwright/test').Page, testId: string): Promise<void> {
-	await page.getByTestId(testId).locator('summary').click();
+	const card = page.getByTestId(testId);
+	// Ensure-open, not a blind toggle: the remembered expanded set
+	// may already have opened this card, and a second click closes it.
+	if ((await card.getAttribute('open')) === null) {
+		await card.locator('summary').click();
+	}
 }
 
 /** The faces present on the page, by their marker. */
