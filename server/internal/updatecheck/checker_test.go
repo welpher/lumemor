@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -87,6 +88,95 @@ func TestClientRefusesInternalTargets(t *testing.T) {
 	}
 	if !errors.Is(err, ErrInternalTarget) {
 		t.Fatalf("client error = %v, want ErrInternalTarget", err)
+	}
+}
+
+// fixedProxy pins one proxy for every request -- what the
+// deployment's proxy environment resolves to, pinned without touching
+// the process environment.
+func fixedProxy(t *testing.T, server *httptest.Server) func(*http.Request) (*url.URL, error) {
+	t.Helper()
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse the fixture proxy address: %v", err)
+	}
+	return func(*http.Request) (*url.URL, error) { return parsed, nil }
+}
+
+// proxyServer stands in for the outside world: it answers every
+// request itself (the endpoint's own address is never dialed) and
+// counts what travelled through it.
+func proxyServer(t *testing.T, body string, hits *int) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		*hits++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// TestCheckNowProbesThroughALoopbackProxy pins the deployment this
+// feature serves: a loopback or LAN forward proxy is the deployment's
+// own route out, not a target -- the endpoint is the target, so the
+// probe must travel through the proxy and succeed. The endpoint's
+// address is a documentation range that is never dialed; the answer
+// can only come from the proxy.
+func TestCheckNowProbesThroughALoopbackProxy(t *testing.T) {
+	_, queries := newCheckEnv(t)
+	hits := 0
+	proxy := proxyServer(t, `{"tag":"v0.5.0"}`, &hits)
+	saveSettings(t, queries, db.UpdateCheckSettings{
+		Enabled: true, Endpoint: "http://198.51.100.7/release.json", IntervalHours: 24,
+	})
+
+	checker := New(Options{
+		Queries: queries, Logger: quietLogger(), Version: "0.4.1",
+		Client: NewClient(ClientPolicy{RefuseInternal: true, Proxy: fixedProxy(t, proxy)}),
+	})
+	snapshot := checker.CheckNow(context.Background())
+	if snapshot.Status != StatusUpdateAvailable {
+		t.Fatalf("status = %q, want %q (the probe must travel through the deployment's proxy)",
+			snapshot.Status, StatusUpdateAvailable)
+	}
+	if snapshot.LatestVersion != "v0.5.0" {
+		t.Errorf("latestVersion = %q, want v0.5.0", snapshot.LatestVersion)
+	}
+	if hits != 1 {
+		t.Errorf("the proxy served %d requests, want 1", hits)
+	}
+}
+
+// TestClientRefusesInternalEndpointThroughAProxy pins the other half:
+// the dial guard cannot see the endpoint behind a proxy, so the
+// endpoint's own resolution is classified before the request leaves
+// -- a loopback literal and a name that resolves inward are both
+// refused, and the proxy is never asked to fetch them.
+func TestClientRefusesInternalEndpointThroughAProxy(t *testing.T) {
+	for _, endpoint := range []string{"http://127.0.0.1:8080/release.json", "http://localhost:8080/release.json"} {
+		t.Run(endpoint, func(t *testing.T) {
+			hits := 0
+			proxy := proxyServer(t, `{"tag":"v9.9.9"}`, &hits)
+			client := NewClient(ClientPolicy{RefuseInternal: true, Proxy: fixedProxy(t, proxy)})
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, endpoint, nil)
+			if err != nil {
+				t.Fatalf("build the request: %v", err)
+			}
+			response, err := client.Do(req)
+			if response != nil {
+				_ = response.Body.Close()
+			}
+			if err == nil {
+				t.Fatal("a proxied request reached an internal endpoint, want a refusal")
+			}
+			if !errors.Is(err, ErrInternalTarget) {
+				t.Fatalf("client error = %v, want ErrInternalTarget", err)
+			}
+			if hits != 0 {
+				t.Errorf("the proxy was asked to fetch the internal endpoint %d times, want 0", hits)
+			}
+		})
 	}
 }
 
