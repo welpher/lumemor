@@ -262,6 +262,18 @@ func TestModelProbeWarnsUndeclaredHost(t *testing.T) {
 	if probe.Dims == nil || *probe.Dims != 512 {
 		t.Errorf("probe dims = %v, want 512 (the warn carries the facts too)", probe.Dims)
 	}
+
+	// The switch through the warned record keeps the copy's promise:
+	// the use is logged. The env's logger writes into the buffer so
+	// the assertion reads the line the product claims exists.
+	switchBody := `{"kind":"url","probeId":"` + accepted.ProbeId + `"}`
+	rec2 := e.doJSON(t, http.MethodPost, "/api/v1/admin/models/clip_embed/source", switchBody, e.cookie)
+	if rec2.Code != http.StatusAccepted {
+		t.Fatalf("switch: status = %d, want %d (body %q)", rec2.Code, http.StatusAccepted, rec2.Body.String())
+	}
+	if line := e.logs.String(); !strings.Contains(line, "undeclared host") {
+		t.Errorf("the switch's log = %q, want the undeclared-host warning line", line)
+	}
 }
 
 // TestModelProbeRefusesFaceSlots pins the slot boundary: the face
