@@ -650,7 +650,7 @@
   "admin_settings_image_raw_embedded": "RAW sources use their embedded preview",
   "admin_settings_image_saved": "Saved. New uploads derive at the new settings; existing derivatives are untouched.",
   "admin_settings_image_consequence": "Saving recomputes nothing — the derivatives already on disk stay as they are. To re-derive at the new settings, ask for the rebuild below.",
-  "admin_settings_image_library_line": "{count} images in the library · a full rebuild takes about {minutes} minutes",
+  "admin_settings_image_library_line": "{count} images in the library · a full rebuild takes about {minutes} min",
   "admin_settings_image_rebuild": "Rebuild derivatives",
   "admin_settings_image_summary_error": "The cost line could not be read.",
   "admin_rebuild_title": "Rebuild derivatives",

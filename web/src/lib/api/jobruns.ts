@@ -26,7 +26,8 @@ const JOB_RUN_KINDS: readonly string[] = [
 	'clip_embed_rerun',
 	'ocr_rerun',
 	'places_rerun',
-	'album_rescan'
+	'album_rescan',
+	'rebuild_derivatives'
 ];
 
 /** The run lifecycle states of the contract's JobRunState enum. */

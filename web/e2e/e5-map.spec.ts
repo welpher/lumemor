@@ -138,6 +138,15 @@ test.describe('the signed-in scenes', () => {
 	test('scene 2: the admin settings render the three networking cards and save the tile source', async ({ page }) => {
 		await page.goto('/admin/settings');
 
+		// The settings page is the collapsed index (E33): each card's
+		// facts live inside its fold.
+		const openCard = async (testId: string): Promise<void> => {
+			await page.getByTestId(testId).locator('summary').click();
+		};
+		await openCard('admin-settings-update');
+		await openCard('admin-settings-tiles');
+		await openCard('admin-settings-models');
+
 		// The release check card: the running version, the disabled
 		// face (this stack's deployment switch), and no danger tone.
 		const updateCard = page.getByTestId('admin-settings-update');

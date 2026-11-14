@@ -124,9 +124,14 @@
 		}
 	});
 
-	/** One card's toggle lands in the remembered set (the expanded ids only). */
+	/** One card's toggle lands in the remembered set (the expanded ids only).
+	 * The ids read off the DOM's open states: the toggle event and the
+	 * bind's state write race, and the elements are the truth. */
 	function rememberExpanded(): void {
-		const open = (Object.keys(expanded) as CardId[]).filter((id) => expanded[id]);
+		const open = Array.from(document.querySelectorAll<HTMLDetailsElement>('details[data-card]'))
+			.filter((element) => element.open)
+			.map((element) => element.dataset.card)
+			.filter((id): id is CardId => typeof id === 'string' && id in expanded);
 		try {
 			window.localStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify(open));
 		} catch {
@@ -651,6 +656,7 @@
 		<details
 			class="settings__card group bg-card border border-border rounded-card shadow-card p-5"
 			data-testid="admin-settings-storage"
+			data-card="storage"
 			bind:open={expanded.storage}
 			ontoggle={rememberExpanded}
 		>
@@ -764,6 +770,7 @@
 		<details
 			class="settings__card group bg-card border border-border rounded-card shadow-card p-5"
 			data-testid="admin-settings-trash"
+			data-card="trash"
 			bind:open={expanded.trash}
 			ontoggle={rememberExpanded}
 		>
@@ -847,6 +854,7 @@
 		<details
 			class="settings__card group bg-card border border-border rounded-card shadow-card p-5"
 			data-testid="admin-settings-transcoding"
+			data-card="transcoding"
 			bind:open={expanded.transcoding}
 			ontoggle={rememberExpanded}
 		>
@@ -969,6 +977,7 @@
 		<details
 			class="settings__card group bg-card border border-border rounded-card shadow-card p-5"
 			data-testid="admin-settings-image"
+			data-card="image"
 			bind:open={expanded.image}
 			ontoggle={rememberExpanded}
 		>
@@ -1147,6 +1156,7 @@
 		<details
 			class="settings__card group bg-card border border-border rounded-card shadow-card p-5"
 			data-testid="admin-settings-update"
+			data-card="update"
 			bind:open={expanded.update}
 			ontoggle={rememberExpanded}
 		>
@@ -1361,6 +1371,7 @@
 		<details
 			class="settings__card group bg-card border border-border rounded-card shadow-card p-5"
 			data-testid="admin-settings-tiles"
+			data-card="tiles"
 			bind:open={expanded.tiles}
 			ontoggle={rememberExpanded}
 		>
@@ -1435,6 +1446,7 @@
 		<details
 			class="settings__card group bg-card border border-border rounded-card shadow-card p-5"
 			data-testid="admin-settings-models"
+			data-card="models"
 			bind:open={expanded.models}
 			ontoggle={rememberExpanded}
 		>
