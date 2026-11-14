@@ -450,10 +450,14 @@
 				{$_('viewer_description_label')}
 			</h3>
 			{#if editing}
+				<!-- The contract's 10,000-rune ceiling on the description,
+				     carried natively: the editor stops the typing where the
+				     server would refuse the write. -->
 				<textarea
 					class="info__editor w-full mb-2 px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-page border border-border-strong rounded-control resize-y"
 					bind:value={draft}
 					aria-label={$_('viewer_description_label')}
+					maxlength={10000}
 					rows="4"
 					disabled={saving}></textarea>
 				{#if editErrorKey !== ''}
