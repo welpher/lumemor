@@ -84,6 +84,9 @@ type PlacesRerunWorker struct {
 	bus    *events.Bus
 	places *geodata.Index
 	logger *slog.Logger
+	// budget is the background work's gate. Nil gates nothing (the
+	// directly constructed workers of the unit tests).
+	budget *Budget
 }
 
 // Timeout is the worker's execution envelope; see placesRerunTimeout.
@@ -99,6 +102,17 @@ func (w *PlacesRerunWorker) Timeout(job *river.Job[PlacesRerunArgs]) time.Durati
 // run closes with the converged counts and job.finished -- failed
 // when any write failed, succeeded otherwise.
 func (w *PlacesRerunWorker) Work(ctx context.Context, job *river.Job[PlacesRerunArgs]) error {
+	// The budget gate: a paused places walk snoozes without consuming
+	// an attempt. The walk itself is a microsecond per asset, so the
+	// gate reads once at the run's start -- a pause mid-run lets the
+	// started run finish, the honest "the one already running
+	// finishes". Nil budgets gate nothing.
+	if w.budget != nil {
+		if hold := w.budget.Hold(ctx, classPlaces); hold > 0 {
+			return river.JobSnooze(hold)
+		}
+	}
+
 	jobRunID := job.Args.JobRunID
 	queries := dbgen.New(w.pool)
 

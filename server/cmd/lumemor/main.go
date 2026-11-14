@@ -298,6 +298,9 @@ func run(logger *slog.Logger) error {
 			// The places re-resolution endpoint enqueues through the
 			// same queue.
 			PlacesReruns: queue,
+			// The derivative rebuild endpoint enqueues through the
+			// same queue.
+			DerivativesRebuilds: queue,
 			// The album rescan endpoint enqueues through the same
 			// queue.
 			AlbumRescans: queue,

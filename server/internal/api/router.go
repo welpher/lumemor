@@ -104,6 +104,12 @@ type Deps struct {
 	// wired -- tests, wiring order); production passes the jobs
 	// queue, which implements it structurally.
 	AlbumRescans AlbumRescanEnqueuer
+	// DerivativesRebuilds starts the derivative rebuild runs: the
+	// rebuild endpoint enqueues the rebuild_derivatives job through
+	// this seam. Nil keeps the endpoint answering 500 INTERNAL (no
+	// queue wired -- tests, wiring order); production passes the
+	// jobs queue, which implements it structurally.
+	DerivativesRebuilds DerivativesRebuildEnqueuer
 	// UpdateChecks is the instance's release checker: the admin face
 	// reads its cached answer and the manual run probes through it.
 	// Nil keeps those endpoints answering 500 INTERNAL (no checker
@@ -169,6 +175,17 @@ type PlacesRerunEnqueuer interface {
 // the seam between the rescan endpoint and the job queue:
 // production passes the jobs package's Queue, which implements it
 // structurally.
+// DerivativesRebuildEnqueuer starts one derivative rebuild run. It
+// is the seam between the rebuild endpoint and the job queue:
+// production passes the jobs package's Queue, which implements it
+// structurally.
+type DerivativesRebuildEnqueuer interface {
+	// EnqueueDerivativesRebuild creates the run's job_runs row and
+	// enqueues the River job in one transaction, returning the run's
+	// identifier. The scope is the contract's enum (missing, all).
+	EnqueueDerivativesRebuild(ctx context.Context, scope string) (uuid.UUID, error)
+}
+
 type AlbumRescanEnqueuer interface {
 	// EnqueueAlbumRescan creates the run's job_runs row and enqueues
 	// the River job in one transaction, returning the run's
@@ -266,6 +283,9 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		// The album rescan enqueue seam: nil is a valid (no queue)
 		// wiring.
 		albumRescans: deps.AlbumRescans,
+		// The derivative rebuild enqueue seam: nil is a valid (no
+		// queue) wiring.
+		derivativesRebuilds: deps.DerivativesRebuilds,
 		// The release checker: nil is a valid (no check) wiring.
 		updateChecks: deps.UpdateChecks,
 		// In-memory per process: a restart clears the login locks, an
@@ -603,6 +623,21 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// the rebuild is the explicit action below.
 				r.Get("/admin/settings/image", wrapper.GetImageSettings)
 				r.Put("/admin/settings/image", wrapper.UpdateImageSettings)
+				// The background work's budget (the task panel's
+				// run-settings strip): the concurrency dial, the night
+				// window and the per-kind pause switches. The save
+				// governs the queue's workers only -- uploads and
+				// browsing are never consulted.
+				r.Get("/admin/settings/run-budget", wrapper.GetRunBudgetSettings)
+				r.Put("/admin/settings/run-budget", wrapper.UpdateRunBudgetSettings)
+				// The derivative actions (the image card's cost line and
+				// the explicit rebuild): the summary read, the run's
+				// start (one queue seam) and its stop (a flag the
+				// driver honors between assets). The heavy work lives
+				// on the queue.
+				r.Get("/admin/derivatives/summary", wrapper.GetDerivativesSummary)
+				r.Post("/admin/derivatives/rebuild", wrapper.RebuildDerivatives)
+				r.Post("/admin/derivatives/rebuild/stop", wrapper.StopDerivativesRebuild)
 				// The model download trigger: the
 				// default group's first-boot download. The handler is
 				// one bounded row read plus one enqueue; the heavy
@@ -742,6 +777,9 @@ type server struct {
 	// queue is wired and the re-resolution endpoint answers the
 	// generic internal error.
 	placesReruns PlacesRerunEnqueuer
+	// derivativesRebuilds starts the derivative rebuild runs; nil
+	// means no queue is wired.
+	derivativesRebuilds DerivativesRebuildEnqueuer
 	// albumRescans starts the directory album rescan runs; nil means
 	// no queue is wired and the rescan endpoint answers the generic
 	// internal error.

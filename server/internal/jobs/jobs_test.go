@@ -192,6 +192,10 @@ func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, reru
 		// the rescan tests drive the three arms through the real
 		// worker this env starts.
 		AlbumRescans: queue,
+		// The derivative rebuild endpoint enqueues through the same
+		// queue: the rebuild tests drive the walk through the real
+		// worker this env starts.
+		DerivativesRebuilds: queue,
 	})
 
 	e := &env{

@@ -97,6 +97,10 @@ type TranscodeWorker struct {
 	dataDir    string
 	logger     *slog.Logger
 	mlDispatch mlDispatchFunc
+	// budget is the background work's gate: the pause switches, the
+	// night window and the concurrency dial. Nil gates nothing (the
+	// directly constructed workers of the unit tests).
+	budget *Budget
 }
 
 // Timeout raises the job's execution envelope above River's one
@@ -117,6 +121,24 @@ func (w *TranscodeWorker) Timeout(job *river.Job[TranscodeArgs]) time.Duration {
 // job runs after it (videos already transcoded are never
 // re-encoded).
 func (w *TranscodeWorker) Work(ctx context.Context, job *river.Job[TranscodeArgs]) error {
+
+	// The budget gate: a paused or window-held class snoozes without
+	// consuming an attempt (the job reschedules itself and holds no
+	// worker slot); the dial's slot -- for the classes that share the
+	// pipeline pool -- is held for the work. Nil budgets (the unit
+	// tests' directly constructed workers) gate nothing.
+	if w.budget != nil {
+		hold, gateErr := w.budget.Gate(ctx, "transcode")
+		if gateErr != nil {
+			return gateErr
+		}
+		if hold > 0 {
+			return river.JobSnooze(hold)
+		}
+		// The dial's slot is held for this job's work and released
+		// when it ends -- success, failure or retry alike.
+		defer w.budget.Release()
+	}
 	assetID := job.Args.AssetID
 
 	row, err := dbgen.New(w.pool).GetAssetForMetadata(ctx, pgUUID(assetID))

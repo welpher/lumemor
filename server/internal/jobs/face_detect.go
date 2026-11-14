@@ -89,6 +89,9 @@ type FaceDetectWorker struct {
 	dataDir  string
 	registry *ml.Registry
 	logger   *slog.Logger
+	// budget is the background work's gate. Nil gates nothing (the
+	// directly constructed workers of the unit tests).
+	budget *Budget
 
 	// recognizeDispatch enqueues the recognition job at the chaining
 	// site below. The queue wires its EnqueueFaceRecognize method
@@ -114,6 +117,17 @@ func (w *FaceDetectWorker) Timeout(job *river.Job[FaceDetectArgs]) time.Duration
 // from the job context so it lands even when the envelope consumed
 // the context's last moments.
 func (w *FaceDetectWorker) Work(ctx context.Context, job *river.Job[FaceDetectArgs]) error {
+	// The budget gate: a paused or window-held class snoozes without
+	// consuming an attempt (the job reschedules itself and holds no
+	// worker slot). The ML work never dials the pipeline pool -- its own
+	// conservative queue is the pinned discipline. Nil budgets (the unit
+	// tests' directly constructed workers) gate nothing.
+	if w.budget != nil {
+		if hold := w.budget.Hold(ctx, classMl); hold > 0 {
+			return river.JobSnooze(hold)
+		}
+	}
+
 	err := w.work(ctx, job)
 	if runID := job.Args.JobRunID; runID != uuid.Nil {
 		reportMlRunCompletion(ctx, w.pool, w.logger, runID, err != nil)
