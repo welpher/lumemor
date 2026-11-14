@@ -40,6 +40,10 @@ type ManifestModel struct {
 	// ID is the stable identity of the model, e.g. "yunet-2023mar".
 	// It doubles as the directory name under the models dir.
 	ID string `json:"id"`
+	// Name is the model's display name ("Chinese-CLIP ViT-B/16"),
+	// the official list's face. It is a revision 2 field; empty
+	// names render from the id.
+	Name string `json:"name,omitempty"`
 	// Slot is the functional slot the model fills once activated:
 	// face-detect, face-recognize, clip-embed or ocr.
 	Slot string `json:"slot"`

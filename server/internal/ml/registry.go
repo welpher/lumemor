@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -523,6 +524,177 @@ func FilesPresent(model Model) bool {
 	return true
 }
 
+// CatalogEntry is one official-list entry as the admin listing
+// answers it: a manifest model's display facts plus whether its files
+// are present on disk (a presence probe -- the digest check stays the
+// activation's business).
+type CatalogEntry struct {
+	ID         string
+	Slot       Slot
+	Name       string
+	License    string
+	Dim        int
+	Bytes      int64
+	Downloaded bool
+}
+
+// ManifestEntryByID answers the default manifest's model under the
+// given id, the official-list switch's registration source: an entry
+// whose files were landed outside the download service (a bundle
+// import, a hand-laid directory) still needs its row before the
+// activation can flip it.
+func ManifestEntryByID(id string) (*ManifestModel, bool) {
+	manifest, err := DefaultManifest()
+	if err != nil {
+		return nil, false
+	}
+	for i := range manifest.Models {
+		if manifest.Models[i].ID == id {
+			return &manifest.Models[i], true
+		}
+	}
+	return nil, false
+}
+
+// EnsureRegistered writes the models row of a manifest entry when it
+// is absent, exactly the insert the download service runs: an entry
+// whose files were landed by another path (the offline bundle, a
+// hand-laid directory) registers with source downloaded and stays
+// un-activated. The insert is an upsert; an existing row is left
+// alone.
+func (r *Registry) EnsureRegistered(ctx context.Context, model *ManifestModel) error {
+	slot, ok := manifestSlotValues[model.Slot]
+	if !ok {
+		return fmt.Errorf("%w: fills unknown slot %q", ErrInvalidModel, model.Slot)
+	}
+	if _, err := r.queries.ModelByID(ctx, model.ID); err == nil {
+		return nil // already registered
+	}
+	// The manifest copy beside the weights: the registry's checksum
+	// authority, exactly what the download service writes.
+	dir := filepath.Join(r.modelsDir, model.ID)
+	if err := writeManifestCopy(dir, model); err != nil {
+		return err
+	}
+	params := []byte("{}")
+	if model.Params != nil {
+		blob, err := json.Marshal(model.Params)
+		if err != nil {
+			return fmt.Errorf("%w: marshal params of %s: %w", ErrInvalidModel, model.ID, err)
+		}
+		params = blob
+	}
+	if err := r.queries.InsertModel(ctx, dbgen.InsertModelParams{
+		ID:       model.ID,
+		Slot:     dbgen.ModelSlot(slot),
+		Version:  model.Version,
+		Source:   dbgen.ModelSourceDownloaded,
+		FilePath: model.ID + "/" + model.Files[0].Name,
+		InputSize: pgtype.Int4{
+			Int32: int32(model.InputSize.Width),
+			Valid: model.InputSize.Width > 0,
+		},
+		Dim: pgtype.Int4{
+			Int32: int32(model.Dim),
+			Valid: model.Dim > 0,
+		},
+		Params: params,
+	}); err != nil {
+		return fmt.Errorf("ml: register %s: %w", model.ID, err)
+	}
+	return nil
+}
+
+// Catalog answers the official list: the default manifest's models
+// with the facts the switch dialog renders. The manifest is the
+// catalog's authority -- the image carries no weights, so an entry's
+// `downloaded` marker is the presence of its files under the models
+// dir, not a fact of the image.
+func (r *Registry) Catalog() ([]CatalogEntry, error) {
+	manifest, err := DefaultManifest()
+	if err != nil {
+		return nil, fmt.Errorf("ml: read the default manifest: %w", err)
+	}
+	entries := make([]CatalogEntry, 0, len(manifest.Models))
+	for i := range manifest.Models {
+		model := &manifest.Models[i]
+		slot, ok := manifestSlotValues[model.Slot]
+		if !ok {
+			continue
+		}
+		dir := filepath.Join(r.modelsDir, model.ID)
+		downloaded := true
+		for _, file := range model.Files {
+			if _, err := os.Stat(filepath.Join(dir, file.Name)); err != nil {
+				downloaded = false
+				break
+			}
+		}
+		var bytes int64
+		for _, file := range model.Files {
+			bytes += file.Bytes
+		}
+		entries = append(entries, CatalogEntry{
+			ID:         model.ID,
+			Slot:       slot,
+			Name:       model.Name,
+			License:    model.License,
+			Dim:        model.Dim,
+			Bytes:      bytes,
+			Downloaded: downloaded,
+		})
+	}
+	return entries, nil
+}
+
+// SourceFacts reads a registered model's on-disk manifest for the
+// listing's source row: the host its pinned source URL names (empty
+// when the manifest is unreadable or carries no URL) and the primary
+// file's pinned digest. It is a lenient read -- the listing must show
+// the row even when its manifest is gone.
+func (r *Registry) SourceFacts(model Model) (host, sha256 string) {
+	dir := filepath.Dir(model.Path)
+	manifest, err := loadManifestModel(dir)
+	if err != nil {
+		return "", ""
+	}
+	urls := manifest.CandidateURLs()
+	if len(urls) > 0 {
+		if parsed, err := url.Parse(urls[0]); err == nil {
+			host = parsed.Hostname()
+		}
+	}
+	for _, file := range manifest.Files {
+		if file.Name == filepath.Base(model.Path) {
+			sha256 = file.SHA256
+			break
+		}
+	}
+	return host, sha256
+}
+
+// FindByPrimarySHA256 answers the registered model whose primary
+// file's pinned digest matches, if any: the same-bytes reuse the
+// source switch applies (a custom import whose bytes an official
+// entry already carries activates that entry instead of storing a
+// duplicate). The models dir holds at most a handful of manifests;
+// the read is a directory walk, not a query.
+func (r *Registry) FindByPrimarySHA256(sha256Hex string) (Model, bool) {
+	if sha256Hex == "" {
+		return Model{}, false
+	}
+	models, err := r.List()
+	if err != nil {
+		return Model{}, false
+	}
+	for _, model := range models {
+		if _, sha := r.SourceFacts(model); sha != "" && strings.EqualFold(sha, sha256Hex) {
+			return model, true
+		}
+	}
+	return Model{}, false
+}
+
 // ModelFile is one file of a registered model, resolved from its
 // on-disk manifest: the pinned name, the absolute path and the pinned
 // sha256 digest.
@@ -568,6 +740,50 @@ func (r *Registry) resolvePath(filePath string) string {
 		return filePath
 	}
 	return filepath.Join(r.modelsDir, filePath)
+}
+
+// InsertCustom registers a model the server itself landed from
+// verified bytes (the source pipeline's register step): the manifest
+// describes exactly what is on disk, so the row is written directly
+// with source custom and no additional digest pass -- the staged
+// bytes were digest-checked when they were probed, and the manifest
+// beside them carries that same digest. The insert is an upsert: a
+// re-import of the same bytes (the same id) converges on the row.
+func (r *Registry) InsertCustom(ctx context.Context, manifest *ManifestModel) error {
+	slot, ok := manifestSlotValues[manifest.Slot]
+	if !ok {
+		return fmt.Errorf("%w: fills unknown slot %q", ErrInvalidModel, manifest.Slot)
+	}
+	if len(manifest.Files) == 0 {
+		return fmt.Errorf("%w: %s lists no files", ErrInvalidModel, manifest.ID)
+	}
+	params := []byte("{}")
+	if manifest.Params != nil {
+		blob, err := json.Marshal(manifest.Params)
+		if err != nil {
+			return fmt.Errorf("%w: marshal params of %s: %w", ErrInvalidModel, manifest.ID, err)
+		}
+		params = blob
+	}
+	if err := r.queries.InsertModel(ctx, dbgen.InsertModelParams{
+		ID:       manifest.ID,
+		Slot:     dbgen.ModelSlot(slot),
+		Version:  manifest.Version,
+		Source:   dbgen.ModelSourceCustom,
+		FilePath: manifest.ID + "/" + manifest.Files[0].Name,
+		InputSize: pgtype.Int4{
+			Int32: int32(manifest.InputSize.Width),
+			Valid: manifest.InputSize.Width > 0,
+		},
+		Dim: pgtype.Int4{
+			Int32: int32(manifest.Dim),
+			Valid: manifest.Dim > 0,
+		},
+		Params: params,
+	}); err != nil {
+		return fmt.Errorf("ml: register %s: %w", manifest.ID, err)
+	}
+	return nil
 }
 
 // rowQuerier is the one method the catalog read needs; the pool, every

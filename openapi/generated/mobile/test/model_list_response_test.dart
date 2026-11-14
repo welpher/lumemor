@@ -19,5 +19,17 @@ void main() {
       // TODO
     });
 
+    // One row per pipeline slot (the contract's enum order): the four-state view the page's cards render, the slot's active model, its source facts and the download run's progress while a run is in flight. 
+    // BuiltList<SlotStateResponse> slots
+    test('to test the property `slots`', () async {
+      // TODO
+    });
+
+    // The manifest's catalog: the validated list the switch dialog's official group renders, every entry with its download state. The image is not the entry -- the mirror carries no weights; `downloaded` is the presence probe and the digest check stays the activation's business. 
+    // BuiltList<ModelCatalogEntry> official
+    test('to test the property `official`', () async {
+      // TODO
+    });
+
   });
 }

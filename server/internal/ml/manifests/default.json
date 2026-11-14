@@ -4,6 +4,7 @@
     {
       "id": "yunet-2023mar",
       "slot": "face-detect",
+      "name": "YuNet",
       "version": "2023mar",
       "license": "MIT",
       "urls": [
@@ -26,6 +27,7 @@
     {
       "id": "sface-2021dec",
       "slot": "face-recognize",
+      "name": "SFace",
       "version": "2021dec",
       "license": "Apache-2.0",
       "urls": [
@@ -48,6 +50,7 @@
     {
       "id": "cnclip-vit-b16-vision",
       "slot": "clip-embed",
+      "name": "Chinese-CLIP ViT-B/16",
       "version": "base-patch16",
       "license": "unknown",
       "urls": [
@@ -72,6 +75,7 @@
     {
       "id": "cnclip-vit-b16-text",
       "slot": "clip-text",
+      "name": "Chinese-CLIP ViT-B/16 text tower",
       "version": "base-patch16",
       "license": "unknown",
       "urls": [
@@ -98,6 +102,7 @@
     {
       "id": "ppocr-v4-mobile-ch",
       "slot": "ocr",
+      "name": "PP-OCRv4 mobile",
       "version": "v4-mobile",
       "license": "Apache-2.0",
       "urls": [

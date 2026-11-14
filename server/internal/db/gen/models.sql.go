@@ -36,6 +36,18 @@ func (q *Queries) DeactivateSlot(ctx context.Context, slot ModelSlot) error {
 	return err
 }
 
+const deleteModel = `-- name: DeleteModel :exec
+DELETE FROM models WHERE id = $1
+`
+
+// The removal of one registration: the models row goes first (the
+// handler deletes its directory after), and the still-referencing
+// products keep resolving through their own foreign keys.
+func (q *Queries) DeleteModel(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, deleteModel, id)
+	return err
+}
+
 const getActiveModelBySlot = `-- name: GetActiveModelBySlot :one
 SELECT id, slot, version, source, file_path, input_size, dim, params, is_active, added_at, updated_at FROM models WHERE slot = $1 AND is_active
 `

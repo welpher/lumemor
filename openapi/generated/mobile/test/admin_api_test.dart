@@ -25,12 +25,30 @@ void main() {
       // TODO
     });
 
+    // Delete one registered model.
+    //
+    // The removal of a model registration: the row is deleted and its model directory (weights plus manifest copy) is removed from the models dir. Only a model that is NOT its slot's active one can be deleted -- the active model of a slot is the pipeline's running configuration, and the removal of it is a switch first (the dialog's removal flow switches the slot back onto the official entry, then removes).  A rerun or other job still holding the model's products is unaffected: the products reference the model by id and the registry's foreign keys keep them resolvable, so a delete of a model whose products still exist answers 200 and leaves the products to their own lifecycle.  The model's files are removed from disk after the row is deleted; a directory removal failure logs and still answers 200 (the registration is gone; the leftover directory is cleaned by the next scan's refusal). 
+    //
+    //Future<DeleteModel200Response> deleteModel(String id) async
+    test('test deleteModel', () async {
+      // TODO
+    });
+
     // Start the default model group's download.
     //
     // The model download trigger of the admin surface: the default group's models -- pinned by the manifest with upstream URLs and sha256 digests -- are downloaded, verified and registered, and each model activates into its slot when the slot is still empty. The request body is deliberately empty: the default group is the only group v1 downloads.  The endpoint is idempotent. A run that is still in flight (state `queued` or `running`) answers 200 with its identifier and nothing new is started; so does the most recent finished run -- a repeated click neither re-downloads a landed group nor piles up jobs, and the recovery of a failed run belongs to the job's own retries. Only a first call -- no run of this kind at all -- creates one and answers 202.  The run's progress is observable two ways: the `job_runs` row of the returned identifier (kind `model_download`, `total` and `done` carrying the group's pinned byte counts) and the `job.started` / `job.progress` / `job.finished` events on the activity stream, the progress events throttled to at most one per second. 
     //
     //Future<ModelDownloadResponse> downloadModels() async
     test('test downloadModels', () async {
+      // TODO
+    });
+
+    // Read one model source probe's result.
+    //
+    // The probe the switch dialog polls. A source probe -- the download-to-staging of a URL, or the accept of an uploaded file, then the sha256 check when one was given, the sandbox load of the ONNX graph and the slot contract's shape and dimension checks -- runs in the server's background after the probe POST answered 202; this read answers the probe's current state, whatever it is: running (with its download progress), ok (with the facts the dialog renders), error (with the reason that names the exact check that failed) or warn (the checks passed, the host is not on the download sources list, and the save may still proceed).  A probe is transient: its record lives for a few minutes after it settles, then it is gone -- an unknown or expired probeId answers 404 and the dialog simply probes again. 
+    //
+    //Future<ModelProbeResponse> getModelProbe(String probeId) async
+    test('test getModelProbe', () async {
       // TODO
     });
 
@@ -108,7 +126,7 @@ void main() {
 
     // List the registered models and the download run's state.
     //
-    // The model management listing of the admin surface: every registered model of the instance with its facts, its activation state and the presence of its files, plus the most recent model download run as the summary the model page's progress bar renders.  Every model row of the `models` table appears, grouped by slot then id -- including a model whose weights went missing, which lists with `filesPresent: false` so the administrator can see and clean it up. `filesPresent` is a presence probe only (the on-disk manifest is readable and every file it pins exists); the sha256 verification itself is the activation's and the session loader's business, never the listing's. `license`, `notice` and `inputSize` come from the model's on-disk manifest, `dim` and `params` from the registered row (which the download and the scan keep in step with that manifest); `dim` and `inputSize` are null when the model declares none, `license` is empty and `notice` null when the manifest is unreadable; `isActive` comes from the table.  `download` is the most recent `model_download` run of whatever state -- the run the download endpoint's idempotence would return -- or null before the first download was ever started. 
+    // The model management listing of the admin surface: every registered model of the instance with its facts, its activation state and the presence of its files, plus the most recent model download run as the summary the model page's progress bar renders.  Every model row of the `models` table appears, grouped by slot then id -- including a model whose weights went missing, which lists with `filesPresent: false` so the administrator can see and clean it up. `filesPresent` is a presence probe only (the on-disk manifest is readable and every file it pins exists); the sha256 verification itself is the activation's and the session loader's business, never the listing's. `license`, `notice` and `inputSize` come from the model's on-disk manifest, `dim` and `params` from the registered row (which the download and the scan keep in step with that manifest); `dim` and `inputSize` are null when the model declares none, `license` is empty and `notice` null when the manifest is unreadable; `isActive` comes from the table.  `download` is the most recent `model_download` run of whatever state -- the run the download endpoint's idempotence would return -- or null before the first download was ever started.  `slots` is the per-slot state view the page's cards render: one row per pipeline slot, each carrying one of the four states the cards speak (`active`, `downloading`, `not_downloaded`, `failed`), the slot's active model, its source facts (official or custom, the host, the digest, the download time) and the download run's progress while a run is in flight. `official` is the manifest's catalog -- the validated list the switch dialog's official group renders, every entry with its download state (`downloaded` is the presence probe, the digest check stays the activation's). 
     //
     //Future<ModelListResponse> listModels() async
     test('test listModels', () async {
@@ -121,6 +139,15 @@ void main() {
     //
     //Future<AdminUserListResponse> listUsers() async
     test('test listUsers', () async {
+      // TODO
+    });
+
+    // Probe a model source for one slot.
+    //
+    // The first half of a source import: download (or read) the candidate model, check it against the slot's contract, and stage it -- without touching the slot's active model. The answer is 202 with a probeId; the probe itself runs in the server's background (a URL download legitimately takes minutes) and is read through the probe GET until it settles.  The body is `multipart/form-data` with these parts:  - `kind` (text, required) -- `url` or `file`. - `url` (text, required for kind `url`) -- the model URL; the   download lands in the slot's staging area, its bytes are   never trusted before the digest check. - `sha256` (text, optional) -- a digest the bytes must match;   without it the probe still computes and reports the digest,   and the save marks the model an unverified source. - `file` (file, required for kind `file`) -- the ONNX bytes   (up to 2 GiB; the sniff reads the content, never the file   name).  The checks, in order, every failure naming its own check: the digest when one was given; the graph loads (a file that is not a readable ONNX model is refused); the input shape and the output dimension against the slot's contract -- a mismatch is refused naming both numbers. A host that is not on the download sources list does NOT refuse: the probe answers `warn` (the checks passed, the host is undeclared, the save is still the administrator's own act and its use is logged).  The probe does not register anything: the save endpoint takes the probeId, and a probe whose checks failed can never be saved. 
+    //
+    //Future<ModelProbeAcceptedResponse> probeModelSource(ModelSlot slot, String kind, { String url, String sha256, MultipartFile file }) async
+    test('test probeModelSource', () async {
       // TODO
     });
 
@@ -157,6 +184,15 @@ void main() {
     //
     //Future<ModelScanResponse> scanModels() async
     test('test scanModels', () async {
+      // TODO
+    });
+
+    // Switch a slot onto a probed source.
+    //
+    // The second half of a source import, and the official list's switch: the slot is switched onto the source the request names, under the slot's lock. The answer is 202 -- the switch itself is seconds, the recalculation its semantics demand is an async run the task panel owns.  The body depends on the kind:  - `builtin` (the official list): `modelId` names the manifest   entry; nothing was probed because the entry is the   validated list. A cross-dimension switch of the embed slot   requires `confirmWipe: true` -- the confirmation is the   dialog's contract, and the response reports the wipe's facts   exactly as the activation switch does. - `url` or `file` (a custom source): `probeId` names a probe   that finished OK -- the server never reuses an unverified   result, a missing or failed probe answers 400. The model is   registered from the staged bytes (same sha256 reuse: bytes   already on disk are never stored twice), activated, and the   slot's recalculation run is enqueued.  The slot lock: a switch stops being possible while one is in flight (409) -- the same-dimension switch is seconds, but the recalculation it started is the slot's business, and two overlapping switches would race its products. The switch refuses to lose the named persons: a face slot's recalculation inherits the cluster names by overlap, so the confirm copy states what is kept; nothing here deletes a user label.  A failed switch changes nothing: the slot keeps its previous model and its products. 
+    //
+    //Future<ModelSourceSwitchResponse> switchModelSource(ModelSlot slot, ModelSourceSwitchRequest modelSourceSwitchRequest) async
+    test('test switchModelSource', () async {
       // TODO
     });
 

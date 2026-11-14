@@ -285,6 +285,16 @@ func run(logger *slog.Logger) error {
 			Models:    registry,
 			ModelsDir: modelsDir,
 			MlReruns:  queue,
+			// The source pipeline's host check reads the same
+			// allowed-hosts list the downloader's transport gate
+			// reads: one settings document owns both.
+			ProbeHosts: func() []string {
+				settings, err := db.ModelSettingsOf(context.Background(), queries)
+				if err != nil {
+					logger.Warn("read the model download sources; answering the defaults", "error", err)
+				}
+				return settings.AllowedHosts
+			},
 			// The places re-resolution endpoint enqueues through the
 			// same queue.
 			PlacesReruns: queue,
