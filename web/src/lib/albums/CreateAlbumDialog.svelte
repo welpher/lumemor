@@ -216,13 +216,17 @@
 		</div>
 	{:else}
 		<div class="create-album flex flex-col gap-3.5">
-			<!-- The pinned order: the title ABOVE... -->
+			<!-- The pinned order: the title ABOVE, its native ceiling
+			     exactly the contract's 64 (maxlength counts UTF-16 code
+			     units where the server counts runes -- a stricter cap for
+			     astral text alone; the local check still owns the submit). -->
 			<Input
 				label={$_('albums_title_field')}
 				id="create-album-title"
 				name="create-album-title"
 				bind:value={titleDraft}
-				maxlength={128}
+				required
+				maxlength={64}
 				autocomplete="off"
 				error={titleViolated ? $_('albums_title_invalid') : ''}
 			/>
