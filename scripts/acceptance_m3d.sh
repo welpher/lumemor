@@ -4,7 +4,7 @@
 # M3b and M3a chains and through them the whole M1/M2 line, every
 # script owning its own compose stack and tearing it down fully,
 # including the database volume) runs first and must be green before
-# the M3d phases start. Then four stack lifetimes of this
+# the M3d phases start. Then five stack lifetimes of this
 # repository's own compose deployment walk the search story and the
 # memories story -- the chain's finale lines, "a search for 海边
 # answers photos" and "the memory's shared view drops a photo the
@@ -131,6 +131,17 @@
 # and the library through the APIs, the model group's download
 # through the admin API), exactly the way every prior e2e spec owns
 # its stack's bootstrap.
+#
+# Phase 5 (the e2e stack): a fresh stack; the Playwright spec
+# web/e2e/e5-map.spec.ts walks the networking and map story -- the
+# admin settings' networking cards, a GPS fixture's place
+# resolution, the places map over a stubbed tile source with its two
+# honest degradation faces, and the viewer's capture-location card
+# with its mini map and the point's marker. The spec bootstraps
+# itself (its first-run admin through the setup API), exactly the
+# way every prior e2e spec owns its stack's bootstrap; the tile
+# source is a `.invalid` host stubbed inside the browser, so the map
+# really loads tiles and nothing leaves the machine.
 #
 # DOWNLOAD SOURCES (two modes, the m3c script's knobs -- the M3d
 # script accepts the same M3C_SOURCE / M3C_HF_MIRROR variables plus
@@ -269,6 +280,13 @@ offline_root="$models_cache/offline-root"
 dev_image="lumemor-dev:latest"
 mirror_service="m3a-offline-mirror"
 mirror_port="8443"
+
+# The suites never reach the outside world: the release check is off
+# at the deployment level for every acceptance stack (its own request
+# would be the only outbound one the stories do not stub). Exported
+# before either source mode is prepared: the offline mirror boots the
+# check exactly like the upstream mode does.
+export LUMEMOR_UPDATE_CHECK_DISABLED=1
 
 # One timestamp for the run's unique identities (admin emails, device
 # asset ids) so reruns never collide with leftover data, and one for
@@ -482,10 +500,6 @@ else
     # The upstream mode: empty keeps the pinned upstreams, a host
     # name routes the HF URLs through a domain mirror.
     export LUMEMOR_MODELS_HF_MIRROR="$hf_mirror"
-# The suites never reach the outside world: the release check is off
-# at the deployment level for every acceptance stack (its own request
-# would be the only outbound one the stories do not stub).
-export LUMEMOR_UPDATE_CHECK_DISABLED=1
     if [ -n "$hf_mirror" ]; then
         echo "==> download source: upstream through the HF mirror $hf_mirror"
     else
@@ -779,7 +793,7 @@ echo "    acceptance_m3c (and its chained M1/M2/M3a/M3b line) passed after $(ela
 # visibility, the tags and the places).
 # ---------------------------------------------------------------------------
 
-echo "==> phase 1/4: the search and places story over the API (source: $source_mode)"
+echo "==> phase 1/5: the search and places story over the API (source: $source_mode)"
 reset_stack_state
 prepare_bind_mount
 start_stack
@@ -1438,7 +1452,7 @@ echo "    phase 1 passed after $(elapsed)s"
 # Phase 2: the e2e stack (the search story of the web app).
 # ---------------------------------------------------------------------------
 
-echo "==> phase 2/4: the e2e stack (the search story of the web app)"
+echo "==> phase 2/5: the e2e stack (the search story of the web app)"
 reset_stack_state
 prepare_bind_mount
 start_stack
@@ -1459,7 +1473,7 @@ echo "    phase 2 passed after $(elapsed)s"
 # audience).
 # ---------------------------------------------------------------------------
 
-echo "==> phase 3/4: the memories story over the API (source: $source_mode)"
+echo "==> phase 3/5: the memories story over the API (source: $source_mode)"
 reset_stack_state
 prepare_bind_mount
 start_stack
@@ -1797,7 +1811,7 @@ echo "    phase 3 passed after $(elapsed)s"
 # Phase 4: the e2e stack (the memories story of the web app).
 # ---------------------------------------------------------------------------
 
-echo "==> phase 4/4: the e2e stack (the memories story of the web app)"
+echo "==> phase 4/5: the e2e stack (the memories story of the web app)"
 reset_stack_state
 prepare_bind_mount
 start_stack
@@ -1811,6 +1825,25 @@ if ! (cd web && pnpm e2e e2e/m3-memories.spec.ts); then
 fi
 teardown_stack
 echo "    phase 4 passed after $(elapsed)s"
+
+# ---------------------------------------------------------------------------
+# Phase 5: the e2e stack (the map story of the web app).
+# ---------------------------------------------------------------------------
+
+echo "==> phase 5/5: the e2e stack (the map story of the web app)"
+reset_stack_state
+prepare_bind_mount
+start_stack
+probe_offline_mirror
+
+echo "==> running the Playwright spec (web/e2e/e5-map.spec.ts)"
+if ! (cd web && pnpm e2e e2e/e5-map.spec.ts); then
+    echo "==> server logs at the time of the failure:"
+    compose logs --no-color --tail 200 lumemor || true
+    fail "the map e2e spec failed (see the report above; artifacts under web/test-results/)"
+fi
+teardown_stack
+echo "    phase 5 passed after $(elapsed)s"
 
 echo "==> acceptance flow completed in $(elapsed)s"
 echo "M3D ACCEPTANCE PASS"
