@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -204,14 +205,22 @@ func (s *server) slotStates(rows []dbgen.Model, run *dbgen.JobRun) ([]apigen.Slo
 		model := byID[activeRow.ID]
 		state.ModelId = &activeRow.ID
 		host, sha := s.models.SourceFacts(model)
-		source := apigen.SlotSourceResponse{
-			Kind:         apigen.SlotSourceResponseKindOfficial,
+		// The source row is the contract's inline object: kind, the
+		// host and digest facts (null when the manifest is unreadable
+		// or carries no source URL), the registration time.
+		source := &struct {
+			DownloadedAt time.Time                          `json:"downloadedAt"`
+			Host         *string                            `json:"host"`
+			Kind         apigen.SlotStateResponseSourceKind `json:"kind"`
+			Sha256       *string                            `json:"sha256"`
+		}{
+			Kind:         apigen.SlotStateResponseSourceKindOfficial,
 			Host:         nil,
 			Sha256:       nil,
 			DownloadedAt: activeRow.AddedAt.Time.UTC(),
 		}
 		if model.Source == "custom" {
-			source.Kind = apigen.SlotSourceResponseKindCustom
+			source.Kind = apigen.SlotStateResponseSourceKindCustom
 		}
 		if host != "" {
 			source.Host = &host
@@ -219,7 +228,7 @@ func (s *server) slotStates(rows []dbgen.Model, run *dbgen.JobRun) ([]apigen.Slo
 		if sha != "" {
 			source.Sha256 = &sha
 		}
-		state.Source = &source
+		state.Source = source
 		if ml.FilesPresent(model) {
 			state.State = apigen.SlotStateActive
 		} else if runInFlight {

@@ -199,16 +199,6 @@ var namedHostClient = &http.Client{Transport: &http.Transport{
 	},
 }}
 
-// trimHost answers a test server's URL host with its port stripped:
-// the allowed list speaks bare hostnames.
-func trimHost(raw string) string {
-	host := strings.TrimPrefix(strings.TrimPrefix(raw, "https://"), "http://")
-	if bare, _, err := net.SplitHostPort(host); err == nil {
-		return bare
-	}
-	return host
-}
-
 // TestCandidateURLsPinsTheChainOrder pins the accessor both manifest
 // revisions share: revision 2's Urls list is answered verbatim in
 // order; a revision 1 model answers primary then fallback.

@@ -341,7 +341,7 @@ func TestModelSwitchCustomRegistersAndActivates(t *testing.T) {
 		if slot.State != apigen.SlotStateActive {
 			t.Errorf("clip slot state = %q, want active", slot.State)
 		}
-		if slot.Source == nil || slot.Source.Kind != apigen.SlotSourceResponseKindCustom {
+		if slot.Source == nil || slot.Source.Kind != apigen.SlotStateResponseSourceKindCustom {
 			t.Errorf("clip slot source = %+v, want custom", slot.Source)
 		}
 	}
@@ -477,15 +477,15 @@ func TestModelSwitchCrossDimensionRequiresConfirm(t *testing.T) {
 		t.Fatalf("write the entry weights: %v", err)
 	}
 	manifest := ml.ManifestModel{
-		ID:      "cnclip-vit-b16-vision",
-		Slot:    "clip-embed",
-		Version: "fixture-768",
-		License: "Apache-2.0",
-		Notice:  "Fixture entry at 768.",
+		ID:        "cnclip-vit-b16-vision",
+		Slot:      "clip-embed",
+		Version:   "fixture-768",
+		License:   "Apache-2.0",
+		Notice:    "Fixture entry at 768.",
 		InputSize: ml.ManifestSize{Width: 8, Height: 8},
-		Dim:     768,
-		Params:  map[string]any{},
-		Files:   []ml.ManifestFile{{Name: "cn_clip_vision.onnx", SHA256: adminConst768SHA256, Bytes: int64(len(data))}},
+		Dim:       768,
+		Params:    map[string]any{},
+		Files:     []ml.ManifestFile{{Name: "cn_clip_vision.onnx", SHA256: adminConst768SHA256, Bytes: int64(len(data))}},
 	}
 	blob, err := json.Marshal(manifest)
 	if err != nil {
