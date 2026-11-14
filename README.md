@@ -55,8 +55,8 @@ This table tracks the v1 surface; full scope and staging live in the design docs
 
 lumemor is self-hosted and works offline. Three things reach the network, each on the instance's own terms:
 
-- **Map tiles** — the browser loads the base map straight from the tile source the administrator configures (admin → settings → map tiles). Nothing ships as a default: a public tile service's usage policy does not allow carrying the traffic of an application's whole install base, and a source that works in one network may not work in another. The pins (your cities and their photo counts) always come from your own library and never cross the tile line. Set a source URL that serves a style document (vector) or a TileJSON descriptor (raster), from:
-  - a self-hosted tile server on your own machine or LAN (e.g. a planet tileset served by your own stack — a LAN address is fine, the browser fetches it);
+- **Map tiles** — the browser loads the base map straight from the tile source the administrator configures (admin → settings → map tiles). Nothing ships as a default: a public tile service's usage policy does not allow carrying the traffic of an application's whole install base, and a source that works in one network may not work in another. The pins (your cities and their photo counts) always come from your own library and never cross the tile line. Set the URL of a source your network can reach, serving a style document (vector) or a TileJSON descriptor (raster) — the browser fetches it, so a LAN address is fine. Sources come in roughly three kinds:
+  - a self-hosted tile server on your own machine or LAN (e.g. a planet tileset served by your own stack);
   - a self-hosted style and glyph mirror reachable from your network;
   - a hosted provider of your choosing (check its attribution and usage terms; the map shows the attribution the source declares).
   Leave the field empty and the map shows its pins over a stated missing base layer — never a blank canvas.
