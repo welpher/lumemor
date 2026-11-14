@@ -142,7 +142,7 @@ test('a legacy short password still submits: the login bounds nothing but presen
 	await settle();
 
 	expect(fetchMock).toHaveBeenCalledTimes(1);
-	expect(String(fetchMock.mock.calls[0]?.[0])).toBe('/api/v1/auth/login');
+	expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/login', expect.objectContaining({ method: 'POST' }));
 	expect(document.body.querySelector('.login__error')).not.toBeNull();
 
 	unmount(page);
