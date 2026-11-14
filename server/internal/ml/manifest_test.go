@@ -41,17 +41,18 @@ func TestDefaultManifestIsCommitted(t *testing.T) {
 }
 
 // TestDefaultManifestPinsTheDefaultGroup pins the group shape: schema
-// revision 1, exactly the five pinned model ids, every slot filled by
-// exactly one model, and the embedding dimensions the storage layer
-// is built around (both CLIP towers 512, face recognition 128).
+// revision 2 (the ordered source chain), exactly the five pinned model
+// ids, every slot filled by exactly one model, and the embedding
+// dimensions the storage layer is built around (both CLIP towers 512,
+// face recognition 128).
 func TestDefaultManifestPinsTheDefaultGroup(t *testing.T) {
 	manifest, err := LoadManifest(defaultManifestPath)
 	if err != nil {
 		t.Fatalf("LoadManifest(%q) = %v, want no error", defaultManifestPath, err)
 	}
 
-	if manifest.Revision != 1 {
-		t.Errorf("revision = %d, want 1", manifest.Revision)
+	if manifest.Revision != 2 {
+		t.Errorf("revision = %d, want 2", manifest.Revision)
 	}
 	if len(manifest.Models) != len(pinnedDefaultGroup) {
 		t.Fatalf("models = %d, want %d", len(manifest.Models), len(pinnedDefaultGroup))
@@ -151,10 +152,12 @@ func TestDefaultManifestFilesAreChecksummed(t *testing.T) {
 	}
 }
 
-// TestDefaultManifestURLsAreHTTPS pins that every download URL (and
-// every fallback) is https, and that the community-converted CLIP
-// towers have no fallback URL: no second source exists for either,
-// so the HF domain mirror is their only redundancy.
+// TestDefaultManifestURLsAreHTTPS pins that every download URL of
+// every model's ordered chain is https, that the community-converted
+// CLIP towers carry no second source (no natural fallback exists, so
+// the mirror rewrite is their only redundancy), and that every model
+// declares its hops' hosts: lowercase hostnames covering the chain
+// and the mirror.
 func TestDefaultManifestURLsAreHTTPS(t *testing.T) {
 	manifest, err := LoadManifest(defaultManifestPath)
 	if err != nil {
@@ -162,21 +165,30 @@ func TestDefaultManifestURLsAreHTTPS(t *testing.T) {
 	}
 
 	for _, model := range manifest.Models {
-		assertHTTPSURL(t, "model "+model.ID+" sourceUrl", model.SourceURL)
-		if model.FallbackURL != nil {
-			assertHTTPSURL(t, "model "+model.ID+" fallbackUrl", *model.FallbackURL)
+		urls := model.CandidateURLs()
+		if len(urls) == 0 {
+			t.Errorf("model %q lists no download URL", model.ID)
+		}
+		for _, url := range urls {
+			assertHTTPSURL(t, "model "+model.ID+" url", url)
+		}
+		if len(model.Hosts) == 0 {
+			t.Errorf("model %q declares no hosts", model.ID)
+		}
+		for _, host := range model.Hosts {
+			if strings.ToLower(host) != host || host == "" {
+				t.Errorf("model %q host %q is not a lowercase hostname", model.ID, host)
+			}
 		}
 	}
 
 	clip := modelByID(t, manifest, "cnclip-vit-b16-vision")
-	if clip.FallbackURL != nil {
-		t.Errorf("cnclip-vit-b16-vision fallbackUrl = %q, want null (no natural fallback exists)",
-			*clip.FallbackURL)
+	if got := clip.CandidateURLs(); len(got) != 1 {
+		t.Errorf("cnclip-vit-b16-vision urls = %d entries, want 1 (no natural fallback exists)", len(got))
 	}
 	text := modelByID(t, manifest, "cnclip-vit-b16-text")
-	if text.FallbackURL != nil {
-		t.Errorf("cnclip-vit-b16-text fallbackUrl = %q, want null (no natural fallback exists)",
-			*text.FallbackURL)
+	if got := text.CandidateURLs(); len(got) != 1 {
+		t.Errorf("cnclip-vit-b16-text urls = %d entries, want 1 (no natural fallback exists)", len(got))
 	}
 }
 
