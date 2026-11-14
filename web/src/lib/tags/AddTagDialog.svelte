@@ -90,7 +90,11 @@
 		}
 	});
 
-	/** The contract's bound, rune-counted: the trimmed name spans 1-64 characters. */
+	// The contract's bound, rune-counted: the trimmed name spans 1-64
+	// characters. The 1 floor is the empty arm too -- this dialog has no
+	// <form>, so the local check is its whole pre-flight: an empty (or
+	// whitespace-only) draft never leaves the page, and the bound
+	// message renders in the slot below.
 	function validDraft(): boolean {
 		const runes = [...draft.trim()].length;
 		return runes >= 1 && runes <= 64;
