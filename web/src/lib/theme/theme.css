@@ -91,6 +91,12 @@
 	--color-danger-text: color-mix(in srgb, var(--color-ember) 70%, var(--color-navy-900));
 	--color-notice: var(--color-sun);
 	--color-star: var(--color-gold-600);
+	/* The warning tier: the sun color owns the band's ground and edge
+	 * (the place the eye reads "yellow"); the text stays dark, because
+	 * pure yellow text on cream reads at ~1.6:1. The darker mixed text
+	 * is for the amber icon and the small print. */
+	--color-warning: var(--color-sun);
+	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 88%, var(--color-night));
 	--color-border: color-mix(in srgb, var(--color-navy-900) 14%, transparent);
 	--color-border-strong: color-mix(in srgb, var(--color-navy-900) 28%, transparent);
 
@@ -191,6 +197,10 @@
 	--color-danger-text: color-mix(in srgb, var(--color-ember) 70%, var(--color-navy-900));
 	--color-notice: var(--color-sun);
 	--color-star: var(--color-gold-600); /* favorite star accents only */
+	/* The warning tier (mirrors the light block): the sun ground and
+	 * edge, dark text — the dark value mixes toward paper instead. */
+	--color-warning: var(--color-sun);
+	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 62%, var(--color-paper));
 
 	--color-border: color-mix(in srgb, var(--color-navy-900) 14%, transparent);
 	--color-border-strong: color-mix(in srgb, var(--color-navy-900) 28%, transparent);
