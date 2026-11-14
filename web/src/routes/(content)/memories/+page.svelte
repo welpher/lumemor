@@ -168,7 +168,8 @@
 	// the overlay opens, flips and closes from the same `page.url` the
 	// deep link seeds (a bare history write would change the address
 	// bar and leave the page's view of the URL where it was). The walks
-	// scroll nothing -- the wall keeps its place under the stage.
+	// hand the frame to the shell's post-navigation reset; the seat
+	// captured on open is restored on close.
 	const overlayId = $derived(page.url.searchParams.get('memory') ?? '');
 	const overlayMode = $derived<MemoryMode>(page.url.searchParams.get('mode') === 'grid' ? 'grid' : 'play');
 	/** The card the overlay opened from: the wall is its reachability gate. */
@@ -177,9 +178,30 @@
 	const overlayOwnerTitle = $derived(overlayCard === null ? undefined : ownerTitle(overlayCard));
 	/** Whether this page pushed the current overlay entry (close goes back). */
 	let pushedOverlay = false;
+	/** The wall's scroll seat when the overlay opened: the shell resets
+	 *  the frame on every non-popstate walk, so the overlay's router
+	 *  walks would strand the reader at the top of the wall on close;
+	 *  the seat hands back the card they left. */
+	let wallScrollSeat = 0;
+	let overlayWasOpen = false;
+
+	$effect(() => {
+		const openNow = overlayId !== '';
+		if (overlayWasOpen && !openNow) {
+			const seat = document.querySelector('main');
+			if (seat !== null) {
+				seat.scrollTop = wallScrollSeat;
+			}
+		}
+		overlayWasOpen = openNow;
+	});
 
 	/** Open the playback overlay on one memory (a card click). */
 	function openMemory(id: string): void {
+		const seat = document.querySelector('main');
+		if (seat !== null) {
+			wallScrollSeat = seat.scrollTop;
+		}
 		const url = new URL(page.url);
 		url.searchParams.set('memory', id);
 		url.searchParams.delete('mode');
