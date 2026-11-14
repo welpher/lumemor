@@ -205,6 +205,7 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"POST /api/v1/faces/{faceId}/move",
 		"GET /api/v1/faces/{faceId}/thumbnail",
 		"GET /api/v1/places",
+		"GET /api/v1/map/config",
 		"GET /api/v1/tags",
 		"POST /api/v1/tags",
 		"PATCH /api/v1/tags/{tagId}",
@@ -228,6 +229,14 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"PUT /api/v1/admin/settings/trash",
 		"GET /api/v1/admin/settings/transcoding",
 		"PUT /api/v1/admin/settings/transcoding",
+		"GET /api/v1/server/update-check",
+		"POST /api/v1/server/update-check",
+		"GET /api/v1/admin/settings/update-check",
+		"PUT /api/v1/admin/settings/update-check",
+		"GET /api/v1/admin/settings/tiles",
+		"PUT /api/v1/admin/settings/tiles",
+		"GET /api/v1/admin/settings/models",
+		"PUT /api/v1/admin/settings/models",
 	}
 	for _, route := range want {
 		if !got[route] {
