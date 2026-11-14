@@ -479,6 +479,7 @@ NON_ERROR_KEYS = {
     "admin_models_group_official",
     "admin_models_group_custom",
     "admin_models_catalog_downloaded",
+    "admin_models_select_chip",
     "admin_models_catalog_need_download",
     "admin_models_remove",
     "admin_models_remove_confirm",
