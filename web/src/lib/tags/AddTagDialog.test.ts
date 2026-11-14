@@ -2,6 +2,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import AddTagDialog from './AddTagDialog.svelte';
+import type { TagSummary } from '$lib/api/tags';
 
 // The add-tag dialog carries no <form> (its submit is a footer button),
 // so the browser's constraint layer has nothing to validate: the local
@@ -17,7 +18,7 @@ beforeEach(async () => {
 
 function mountDialog(
 	overrides: {
-		tags?: { id: string; name: string }[];
+		tags?: TagSummary[];
 		oncreate?: (name: string) => void;
 	} = {}
 ) {
