@@ -14,8 +14,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/welpher/lumemor/server/internal/db"
+	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/ml"
 )
 
@@ -131,27 +135,62 @@ func TestResolveMlModelCorruptManifestKeepsTheFailure(t *testing.T) {
 	}
 }
 
-// TestEnsureModelDownloadJoinsOneRun pins the seam's idempotence: two
-// calls behind one missing slot produce one run.
-func TestEnsureModelDownloadJoinsOneRun(t *testing.T) {
-	// The empty manifest group: the worker the environment starts has
-	// nothing to fetch, so the run completes without touching a
-	// network.
-	e := newEnvManifest(t, &ml.Manifest{Revision: 1})
+// seedModelDownloadRun inserts one finished model download row with
+// the given state -- the shape a previous attempt leaves behind.
+func (e *env) seedModelDownloadRun(t *testing.T, state dbgen.JobState, createdAt time.Time) uuid.UUID {
+	t.Helper()
+	id := uuid.Must(uuid.NewV7())
+	_, err := e.pool.Exec(context.Background(),
+		"INSERT INTO job_runs (id, kind, total, state, created_at, updated_at) VALUES ($1, 'model_download', 0, $2, $3, $3)",
+		pgUUID(id), state, createdAt)
+	if err != nil {
+		t.Fatalf("seed the model download run: %v", err)
+	}
+	return id
+}
 
-	first, err := e.queue.EnsureModelDownload(context.Background())
-	if err != nil {
-		t.Fatalf("ensure the download: %v", err)
-	}
-	second, err := e.queue.EnsureModelDownload(context.Background())
-	if err != nil {
-		t.Fatalf("ensure the download again: %v", err)
-	}
-	if first != second {
-		t.Errorf("the second call created %s, want the joined run %s", second, first)
+// TestEnsureModelDownloadJoinsAnInFlightRun pins the first rule: a run
+// still running is joined, never doubled.
+func TestEnsureModelDownloadJoinsAnInFlightRun(t *testing.T) {
+	e := newEnvManifest(t, &ml.Manifest{Revision: 1})
+	existing := e.seedModelDownloadRun(t, dbgen.JobStateRunning, time.Now())
+
+	if err := e.queue.joinOrStartModelDownload(context.Background()); err != nil {
+		t.Fatalf("join the in-flight run: %v", err)
 	}
 	if count := e.countModelDownloadRuns(t); count != 1 {
-		t.Errorf("model download runs = %d, want 1", count)
+		t.Errorf("model download runs = %d, want 1 (joined %s)", count, existing)
+	}
+}
+
+// TestEnsureModelDownloadStartsAfterASucceededRun pins the wipe case:
+// a finished successful run whose files are gone again starts a fresh
+// run instead of joining the stale one.
+func TestEnsureModelDownloadStartsAfterASucceededRun(t *testing.T) {
+	e := newEnvManifest(t, &ml.Manifest{Revision: 1})
+	e.seedModelDownloadRun(t, dbgen.JobStateSucceeded, time.Now().Add(-time.Hour))
+
+	if err := e.queue.joinOrStartModelDownload(context.Background()); err != nil {
+		t.Fatalf("start the fresh run: %v", err)
+	}
+	if count := e.countModelDownloadRuns(t); count != 2 {
+		t.Errorf("model download runs = %d, want 2 (the stale success plus the fresh run)", count)
+	}
+}
+
+// TestEnsureModelDownloadLeavesAFailedRunToTheAdmin pins the failure
+// rule: a failed run is not re-fetched by every AI job -- the seam
+// answers its own sentinel and the job keeps the ordinary failure.
+func TestEnsureModelDownloadLeavesAFailedRunToTheAdmin(t *testing.T) {
+	e := newEnvManifest(t, &ml.Manifest{Revision: 1})
+	e.seedModelDownloadRun(t, dbgen.JobStateFailed, time.Now().Add(-time.Hour))
+
+	err := e.queue.joinOrStartModelDownload(context.Background())
+	if !errors.Is(err, errModelDownloadFailed) {
+		t.Fatalf("error = %v, want errModelDownloadFailed", err)
+	}
+	if count := e.countModelDownloadRuns(t); count != 1 {
+		t.Errorf("model download runs = %d, want 1 (no new run behind a failure)", count)
 	}
 }
 
