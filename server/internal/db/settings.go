@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -279,6 +280,15 @@ const ModelSettingsKey = "model_settings"
 // derivative image settings (the sizes and encoding every new
 // derivation runs at) as one JSON object.
 const ImageSettingsKey = "image_settings"
+
+// RunBudgetKey is the instance_settings key holding the background
+// work's budget (the concurrency dial, the night window, the five
+// per-kind pause switches) as one JSON object.
+const RunBudgetKey = "run_budget"
+
+// The concurrency presets the budget admits; the contract's enum is
+// the same list.
+var runBudgetPresets = map[string]bool{"light": true, "standard": true, "full": true}
 
 // UpdateCheckEndpointDefault is the release feed a fresh instance
 // probes: the product's own release feed (the newest release
@@ -652,6 +662,208 @@ func SaveImageSettings(ctx context.Context, q *dbgen.Queries, settings ImageSett
 		Value: value,
 	}); err != nil {
 		return fmt.Errorf("db: write instance setting %s: %w", ImageSettingsKey, err)
+	}
+	return nil
+}
+
+// PausedJobs is the budget's five per-kind pause switches. A paused
+// kind's NEW jobs sit held; the one already running finishes. The
+// switches never touch an upload request or a serving read.
+type PausedJobs struct {
+	Thumbnail bool `json:"thumbnail"`
+	Metadata  bool `json:"metadata"`
+	Transcode bool `json:"transcode"`
+	Ml        bool `json:"ml"`
+	Places    bool `json:"places"`
+}
+
+// RunBudget is the background work's budget: the concurrency dial's
+// preset, the night window, and the five per-kind pause switches. It
+// is the typed form of the instance_settings row the admin surface
+// reads and writes; the zero value is never used (the accessor always
+// answers the documented defaults). The JSON tags match the
+// contract's RunBudgetSettingsResponse field names.
+type RunBudget struct {
+	ConcurrencyPreset string     `json:"concurrencyPreset"`
+	NightlyEnabled    bool       `json:"nightlyEnabled"`
+	NightlyStart      string     `json:"nightlyStart"`
+	NightlyEnd        string     `json:"nightlyEnd"`
+	PausedJobs        PausedJobs `json:"pausedJobs"`
+}
+
+// The window times are read as HH:MM strings; these bounds exist for
+// the save's error copy.
+const (
+	// RunBudgetNightlyStartDefault is the window's shipped opening
+	// time.
+	RunBudgetNightlyStartDefault = "02:00"
+	// RunBudgetNightlyEndDefault is the window's shipped closing
+	// time.
+	RunBudgetNightlyEndDefault = "06:00"
+)
+
+// RunBudgetDefault is the posture when the setting row is absent:
+// the standard dial, the window off (the times ride along so the
+// panel's inputs always have a shape to show), nothing paused.
+var RunBudgetDefault = RunBudget{
+	ConcurrencyPreset: "standard",
+	NightlyEnabled:    false,
+	NightlyStart:      RunBudgetNightlyStartDefault,
+	NightlyEnd:        RunBudgetNightlyEndDefault,
+	PausedJobs:        PausedJobs{},
+}
+
+// ValidConcurrencyPreset reports whether preset is a member of the
+// contract's three-step enum.
+func ValidConcurrencyPreset(preset string) bool {
+	return runBudgetPresets[preset]
+}
+
+// ValidWindowTime reports whether text is a HH:MM clock time.
+func ValidWindowTime(text string) bool {
+	if len(text) != 5 || text[2] != ':' {
+		return false
+	}
+	hh, mm := text[0:2], text[3:5]
+	if !isDigits(hh) || !isDigits(mm) {
+		return false
+	}
+	return hh <= "23" && mm <= "59"
+}
+
+// isDigits reports whether every byte of text is an ASCII digit.
+func isDigits(text string) bool {
+	for i := 0; i < len(text); i++ {
+		if text[i] < '0' || text[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// dialCeiling caps the dial's mapping: the queue's worker pool is
+// sized to fit it, and a machine above the ceiling runs the full
+// step at the cap.
+const dialCeiling = 8
+
+// DialWorkers maps the concurrency dial's preset onto worker counts:
+// light runs one, standard half the cores, full all but one --
+// floored at one (a single-core box still runs one) and capped at
+// the pool ceiling. An unknown preset reads as light: the dial never
+// asks for a number, so a corrupt value's honest reading is the
+// quietest one. The concurrency dial governs the pipeline pool the
+// jobs queue runs; this mapping is the one reading both the queue's
+// slot count and the derivative summary's estimate share.
+func DialWorkers(preset string) int {
+	cores := runtime.NumCPU()
+	switch preset {
+	case "standard":
+		return max(1, min(cores/2, dialCeiling))
+	case "full":
+		return max(1, min(cores-1, dialCeiling))
+	default:
+		return 1
+	}
+}
+
+// PausedJobOf reads one pause switch by its budget class name (the
+// names the gate calls the kinds): the switch the class maps to.
+func (b RunBudget) PausedJobOf(class string) bool {
+	switch class {
+	case "thumbnail":
+		return b.PausedJobs.Thumbnail
+	case "metadata":
+		return b.PausedJobs.Metadata
+	case "transcode":
+		return b.PausedJobs.Transcode
+	case "ml":
+		return b.PausedJobs.Ml
+	case "places":
+		return b.PausedJobs.Places
+	}
+	return false
+}
+
+// RunBudgetOf reads the instance's background-work budget. A missing
+// setting row answers the documented default (an instance that never
+// wrote the setting runs the shipped posture). A row that is not a
+// structurally valid document ALSO answers the default with the
+// error describing it, per FIELD: every job reads this document at
+// its start and must never fail over a corrupt row, and a partial
+// corruption degrades to the default for that field while the honest
+// rest survives.
+func RunBudgetOf(ctx context.Context, q *dbgen.Queries) (RunBudget, error) {
+	budget := RunBudgetDefault
+	raw, err := q.GetInstanceSetting(ctx, RunBudgetKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return budget, nil
+	}
+	if err != nil {
+		return budget, fmt.Errorf("db: read instance setting %s: %w", RunBudgetKey, err)
+	}
+	var stored map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return budget, fmt.Errorf("db: instance setting %s = %s is not a JSON object", RunBudgetKey, raw)
+	}
+	if value, ok := stored["concurrencyPreset"]; ok {
+		var preset string
+		if err := json.Unmarshal(value, &preset); err != nil || !runBudgetPresets[preset] {
+			return budget, fmt.Errorf("db: instance setting %s concurrencyPreset = %s is not a member of the enum", RunBudgetKey, value)
+		}
+		budget.ConcurrencyPreset = preset
+	}
+	if value, ok := stored["nightlyEnabled"]; ok {
+		if err := json.Unmarshal(value, &budget.NightlyEnabled); err != nil {
+			return budget, fmt.Errorf("db: instance setting %s nightlyEnabled = %s is not a JSON boolean", RunBudgetKey, value)
+		}
+	}
+	// The window times degrade per FIELD: a corrupt time defaults
+	// that one time while the honest rest of the budget survives --
+	// the whole document returning to defaults over one bad minute
+	// would silently lift a pause the admin set.
+	var corrupt error
+	for field, into := range map[string]*string{
+		"nightlyStart": &budget.NightlyStart,
+		"nightlyEnd":   &budget.NightlyEnd,
+	} {
+		if value, ok := stored[field]; ok {
+			var text string
+			if err := json.Unmarshal(value, &text); err != nil || !ValidWindowTime(text) {
+				*into = RunBudgetDefault.NightlyStart
+				if field == "nightlyEnd" {
+					*into = RunBudgetDefault.NightlyEnd
+				}
+				corrupt = fmt.Errorf("db: instance setting %s %s = %s is not a HH:MM time", RunBudgetKey, field, value)
+				continue
+			}
+			*into = text
+		}
+	}
+	if value, ok := stored["pausedJobs"]; ok {
+		var paused PausedJobs
+		if err := json.Unmarshal(value, &paused); err != nil {
+			budget.PausedJobs = RunBudgetDefault.PausedJobs
+			corrupt = fmt.Errorf("db: instance setting %s pausedJobs = %s is not a JSON object", RunBudgetKey, value)
+		} else {
+			budget.PausedJobs = paused
+		}
+	}
+	return budget, corrupt
+}
+
+// SaveRunBudget writes the background-work budget as one JSON object
+// (the raw writer). The caller validates every field; this leaf only
+// writes.
+func SaveRunBudget(ctx context.Context, q *dbgen.Queries, budget RunBudget) error {
+	value, err := json.Marshal(budget)
+	if err != nil {
+		return fmt.Errorf("db: encode instance setting %s: %w", RunBudgetKey, err)
+	}
+	if err := q.SetInstanceSettingRaw(ctx, dbgen.SetInstanceSettingRawParams{
+		Key:   RunBudgetKey,
+		Value: value,
+	}); err != nil {
+		return fmt.Errorf("db: write instance setting %s: %w", RunBudgetKey, err)
 	}
 	return nil
 }

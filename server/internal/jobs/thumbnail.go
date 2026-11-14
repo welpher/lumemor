@@ -40,10 +40,14 @@ func (ThumbnailArgs) Kind() string { return "thumbnail" }
 type ThumbnailWorker struct {
 	river.WorkerDefaults[ThumbnailArgs]
 
-	pool       *pgxpool.Pool
-	bus        *events.Bus
-	dataDir    string
-	logger     *slog.Logger
+	pool    *pgxpool.Pool
+	bus     *events.Bus
+	dataDir string
+	logger  *slog.Logger
+	// budget is the background work's gate: the pause switches, the
+	// night window and the concurrency dial. Nil gates nothing (the
+	// directly constructed workers of the unit tests).
+	budget     *Budget
 	mlDispatch mlDispatchFunc
 }
 
@@ -65,6 +69,25 @@ func (w *ThumbnailWorker) Timeout(job *river.Job[ThumbnailArgs]) time.Duration {
 // pipeline (the video simply has no thumbnail), exactly like the
 // transcode job's own `off` preset.
 func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs]) error {
+
+	// The budget gate: a paused or window-held class snoozes without
+	// consuming an attempt (the job reschedules itself and holds no
+	// worker slot); the dial's slot -- for the classes that share the
+	// pipeline pool -- is held for the work. Nil budgets (the unit
+	// tests' directly constructed workers) gate nothing.
+	if w.budget != nil {
+		hold, gateErr := w.budget.Gate(ctx, "thumbnail")
+		if gateErr != nil {
+			return gateErr
+		}
+		if hold > 0 {
+			return river.JobSnooze(hold)
+		}
+		// The dial's slot is held for this job's work and released
+		// when it ends -- success, failure or retry alike.
+		defer w.budget.Release()
+	}
+
 	assetID := job.Args.AssetID
 
 	row, err := dbgen.New(w.pool).GetAssetForMetadata(ctx, pgUUID(assetID))

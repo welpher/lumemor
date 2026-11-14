@@ -129,6 +129,9 @@ type MlRerunWorker struct {
 	bus      *events.Bus
 	dispatch MlRerunDispatchFunc
 	logger   *slog.Logger
+	// budget is the background work's gate. Nil gates nothing (the
+	// directly constructed workers of the unit tests).
+	budget *Budget
 }
 
 // Timeout is the driver's execution envelope; see mlRerunTimeout.
@@ -144,6 +147,17 @@ func (w *MlRerunWorker) Timeout(job *river.Job[MlRerunArgs]) time.Duration {
 // closes with the converged counts and job.finished -- failed when any
 // completion failed, succeeded otherwise.
 func (w *MlRerunWorker) Work(ctx context.Context, job *river.Job[MlRerunArgs]) error {
+	// The budget gate: a paused or window-held class snoozes without
+	// consuming an attempt (the job reschedules itself and holds no
+	// worker slot). The ML work never dials the pipeline pool -- its own
+	// conservative queue is the pinned discipline. Nil budgets (the unit
+	// tests' directly constructed workers) gate nothing.
+	if w.budget != nil {
+		if hold := w.budget.Hold(ctx, classMl); hold > 0 {
+			return river.JobSnooze(hold)
+		}
+	}
+
 	jobRunID := job.Args.JobRunID
 	slot := ml.Slot(job.Args.Slot)
 	queries := dbgen.New(w.pool)

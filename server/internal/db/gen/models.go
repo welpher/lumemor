@@ -536,17 +536,19 @@ type InstanceSetting struct {
 }
 
 type JobRun struct {
-	ID         pgtype.UUID        `json:"id"`
-	Kind       string             `json:"kind"`
-	Total      int32              `json:"total"`
-	Done       int32              `json:"done"`
-	Failed     int32              `json:"failed"`
-	State      JobState           `json:"state"`
-	StartedAt  pgtype.Timestamptz `json:"started_at"`
-	FinishedAt pgtype.Timestamptz `json:"finished_at"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-	AlbumID    pgtype.UUID        `json:"album_id"`
+	ID            pgtype.UUID        `json:"id"`
+	Kind          string             `json:"kind"`
+	Total         int32              `json:"total"`
+	Done          int32              `json:"done"`
+	Failed        int32              `json:"failed"`
+	State         JobState           `json:"state"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	FinishedAt    pgtype.Timestamptz `json:"finished_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	AlbumID       pgtype.UUID        `json:"album_id"`
+	ResumeFrom    pgtype.UUID        `json:"resume_from"`
+	StopRequested bool               `json:"stop_requested"`
 }
 
 type Model struct {
