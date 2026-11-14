@@ -141,9 +141,6 @@ type adminModelsEnv struct {
 	cookie    *http.Cookie
 	plain     *http.Cookie
 	ownerID   uuid.UUID
-	// probeHosts answers the download sources list the source
-	// pipeline's declared-host check reads (nil: every host declared).
-	probeHosts func() []string
 }
 
 // newAdminModelsEnv provisions the environment with the given fixture
