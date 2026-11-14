@@ -236,6 +236,105 @@ func (q *Queries) ListPersonTimelineAssets(ctx context.Context, arg ListPersonTi
 	return items, nil
 }
 
+const listPlaceTimelineAssets = `-- name: ListPlaceTimelineAssets :many
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime,
+       EXISTS (
+           SELECT 1 FROM user_favorites uf
+           WHERE uf.asset_id = a.id AND uf.user_id = $1
+       ) AS is_favorite
+FROM assets a
+WHERE a.place_id = ANY($2::integer[])
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND caller_asset_visible($1, a.id)
+  AND (
+      $3::timestamptz IS NULL
+      OR (a.taken_at, a.id) < ($3::timestamptz, $4::uuid)
+  )
+ORDER BY a.taken_at DESC, a.id DESC
+LIMIT $5
+`
+
+type ListPlaceTimelineAssetsParams struct {
+	UserID        pgtype.UUID        `json:"user_id"`
+	PlaceIds      []int32            `json:"place_ids"`
+	CursorTakenAt pgtype.Timestamptz `json:"cursor_taken_at"`
+	CursorID      pgtype.UUID        `json:"cursor_id"`
+	LimitCount    int32              `json:"limit_count"`
+}
+
+type ListPlaceTimelineAssetsRow struct {
+	Asset      Asset `json:"asset"`
+	IsFavorite bool  `json:"is_favorite"`
+}
+
+// The place domain's photo wall: the live assets resolved to one of
+// the given places, with the aggregate's is_favorite computation,
+// ordering and keyset predicate. The narrow is a plain place_id
+// membership over the caller-visible asset union -- the same domain
+// the city grouping counts -- so a place id outside the caller's
+// visible assets contributes nothing (the empty list, never an
+// error). The map panel reads the union of a bubble's places through
+// the same query.
+func (q *Queries) ListPlaceTimelineAssets(ctx context.Context, arg ListPlaceTimelineAssetsParams) ([]ListPlaceTimelineAssetsRow, error) {
+	rows, err := q.db.Query(ctx, listPlaceTimelineAssets,
+		arg.UserID,
+		arg.PlaceIds,
+		arg.CursorTakenAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPlaceTimelineAssetsRow
+	for rows.Next() {
+		var i ListPlaceTimelineAssetsRow
+		if err := rows.Scan(
+			&i.Asset.ID,
+			&i.Asset.OwnerID,
+			&i.Asset.StorageKind,
+			&i.Asset.FilePath,
+			&i.Asset.Checksum,
+			&i.Asset.OriginalFilename,
+			&i.Asset.FileSize,
+			&i.Asset.MimeType,
+			&i.Asset.MediaKind,
+			&i.Asset.LivePhotoVideoID,
+			&i.Asset.IsComponent,
+			&i.Asset.Width,
+			&i.Asset.Height,
+			&i.Asset.DurationMs,
+			&i.Asset.TakenAt,
+			&i.Asset.TakenAtSource,
+			&i.Asset.PlaceID,
+			&i.Asset.Blurhash,
+			&i.Asset.Phash,
+			&i.Asset.IsHidden,
+			&i.Asset.Description,
+			&i.Asset.DeletedAt,
+			&i.Asset.OriginalPath,
+			&i.Asset.TrashPath,
+			&i.Asset.CreatedAt,
+			&i.Asset.UpdatedAt,
+			&i.Asset.DeviceAssetID,
+			&i.Asset.PendingJobs,
+			&i.Asset.ReadyAt,
+			&i.Asset.FileMtime,
+			&i.IsFavorite,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTimelineAssets = `-- name: ListTimelineAssets :many
 
 SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime,
