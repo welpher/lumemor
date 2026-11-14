@@ -3069,6 +3069,25 @@ type PlaceSummary struct {
 	// derived-cover discipline applied to city groups, newest
 	// first.
 	RepresentativeCoverAssetIds []openapi_types.UUID `json:"representativeCoverAssetIds"`
+
+	// TakenAtFrom The earliest capture time among the place's
+	// caller-visible live members (RFC 3339 UTC). The city
+	// card's year span starts here; the listing's own ordering
+	// reads the other end.
+	//
+	//
+	// Examples: 2019-04-08T10:12:00Z
+	TakenAtFrom time.Time `json:"takenAtFrom"`
+
+	// TakenAtTo The latest capture time among the place's caller-visible
+	// live members (RFC 3339 UTC). It is the ordering key of
+	// the list -- the most recently photographed city leads --
+	// and the city card's year span ends here. Equal to
+	// `takenAtFrom` when the place holds one member.
+	//
+	//
+	// Examples: 2026-08-02T15:40:00Z
+	TakenAtTo time.Time `json:"takenAtTo"`
 }
 
 // PlacesRerunResponse The identifier of one place re-resolution run: the
@@ -4191,9 +4210,17 @@ type GetTimelineParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// ClusterId Restrict the response to one face cluster's photos (the
-	// person detail's wall). Mutually exclusive with `albumId`;
-	// an unknown or invisible cluster answers the empty list.
+	// person detail's wall). Mutually exclusive with `albumId`
+	// and `placeIds`; an unknown or invisible cluster answers
+	// the empty list.
 	ClusterId *openapi_types.UUID `form:"clusterId,omitempty" json:"clusterId,omitempty"`
+
+	// PlaceIds Restrict the response to assets resolved to one of these
+	// places (GeoNames ids) -- the place detail's wall and the
+	// map panel's read. Mutually exclusive with `albumId` and
+	// `clusterId`; ids no visible asset resolves to answer the
+	// empty list.
+	PlaceIds *[]int32 `form:"placeIds,omitempty" json:"placeIds,omitempty"`
 
 	// AlbumId Restrict the response to the timeline of this one album
 	// (an album the caller owns or that is shared to the caller)
@@ -6125,6 +6152,19 @@ func (siw *ServerInterfaceWrapper) GetTimeline(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "clusterId"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "clusterId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "placeIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "placeIds", r.URL.Query(), &params.PlaceIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "placeIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "placeIds", Err: err})
 		}
 		return
 	}

@@ -18,6 +18,8 @@ part 'place_summary.g.dart';
 /// * [assetCount] - The place's caller-visible live assets -- the honest per-caller count, not the global member count. 
 /// * [latitude] - The place's latitude in degrees (the GeoNames record's own coordinate, never a photo's). It is the point the places map pins and clusters -- the map layer is a view over the same grouping, so no asset coordinate ever needs to leave the instance for it. 
 /// * [longitude] - The place's longitude in degrees (the GeoNames record's own coordinate, never a photo's). 
+/// * [takenAtFrom] - The earliest capture time among the place's caller-visible live members (RFC 3339 UTC). The city card's year span starts here; the listing's own ordering reads the other end. 
+/// * [takenAtTo] - The latest capture time among the place's caller-visible live members (RFC 3339 UTC). It is the ordering key of the list -- the most recently photographed city leads -- and the city card's year span ends here. Equal to `takenAtFrom` when the place holds one member. 
 /// * [representativeCoverAssetIds] - The place's cover candidates: its (up to) four most recent caller-visible live members, taken_at descending with the asset id as the tiebreak -- the wall's derived-cover discipline applied to city groups, newest first. 
 @BuiltValue()
 abstract class PlaceSummary implements Built<PlaceSummary, PlaceSummaryBuilder> {
@@ -44,6 +46,14 @@ abstract class PlaceSummary implements Built<PlaceSummary, PlaceSummaryBuilder> 
   /// The place's longitude in degrees (the GeoNames record's own coordinate, never a photo's). 
   @BuiltValueField(wireName: r'longitude')
   double get longitude;
+
+  /// The earliest capture time among the place's caller-visible live members (RFC 3339 UTC). The city card's year span starts here; the listing's own ordering reads the other end. 
+  @BuiltValueField(wireName: r'takenAtFrom')
+  DateTime get takenAtFrom;
+
+  /// The latest capture time among the place's caller-visible live members (RFC 3339 UTC). It is the ordering key of the list -- the most recently photographed city leads -- and the city card's year span ends here. Equal to `takenAtFrom` when the place holds one member. 
+  @BuiltValueField(wireName: r'takenAtTo')
+  DateTime get takenAtTo;
 
   /// The place's cover candidates: its (up to) four most recent caller-visible live members, taken_at descending with the asset id as the tiebreak -- the wall's derived-cover discipline applied to city groups, newest first. 
   @BuiltValueField(wireName: r'representativeCoverAssetIds')
@@ -101,6 +111,16 @@ class _$PlaceSummarySerializer implements PrimitiveSerializer<PlaceSummary> {
     yield serializers.serialize(
       object.longitude,
       specifiedType: const FullType(double),
+    );
+    yield r'takenAtFrom';
+    yield serializers.serialize(
+      object.takenAtFrom,
+      specifiedType: const FullType(DateTime),
+    );
+    yield r'takenAtTo';
+    yield serializers.serialize(
+      object.takenAtTo,
+      specifiedType: const FullType(DateTime),
     );
     yield r'representativeCoverAssetIds';
     yield serializers.serialize(
@@ -171,6 +191,20 @@ class _$PlaceSummarySerializer implements PrimitiveSerializer<PlaceSummary> {
             specifiedType: const FullType(double),
           ) as double;
           result.longitude = valueDes;
+          break;
+        case r'takenAtFrom':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(DateTime),
+          ) as DateTime;
+          result.takenAtFrom = valueDes;
+          break;
+        case r'takenAtTo':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(DateTime),
+          ) as DateTime;
+          result.takenAtTo = valueDes;
           break;
         case r'representativeCoverAssetIds':
           final valueDes = serializers.deserialize(
