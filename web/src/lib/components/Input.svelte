@@ -32,7 +32,11 @@
 		{...rest}
 	/>
 	{#if error !== ''}
-		<p class="field__error font-body font-medium text-[13px] leading-[1.4] text-danger-text" id="{id}-error">
+		<p
+			class="field__error font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+			id="{id}-error"
+			role="alert"
+		>
 			{error}
 		</p>
 	{/if}

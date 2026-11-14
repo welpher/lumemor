@@ -15,8 +15,8 @@
 
 import { forceLogout, sessionStatus } from './session.svelte';
 
-/** The API error envelope: a stable code clients map to i18n keys. */
-export type ApiErrorEnvelope = { code: string };
+/** The API error envelope: a stable code clients map to i18n keys, plus the field names a validation failure names. */
+export type ApiErrorEnvelope = { code: string; fields: string[] };
 
 /**
  * Fetch an API path through the 401 interceptor. Callers keep the
@@ -41,18 +41,34 @@ export async function apiFetch(
 /**
  * Parse a response's error envelope; null when the body is not one
  * (a proxy answered, the connection broke mid-body). The code maps
- * to the i18n key by lowercasing (the repo-wide convention).
+ * to the i18n key by lowercasing (the repo-wide convention); a
+ * VALIDATION_FAILED envelope's `details.fields` names the request
+ * fields the server rejected, which the form surfaces place their
+ * error text under.
  */
 export async function errorEnvelope(response: Response): Promise<ApiErrorEnvelope | null> {
 	try {
 		const body: unknown = await response.json();
 		if (body !== null && typeof body === 'object' && typeof (body as ApiErrorEnvelope).code === 'string') {
-			return body as ApiErrorEnvelope;
+			const envelope = body as { code: string; details?: unknown };
+			return { code: envelope.code, fields: fieldsOf(envelope.details) };
 		}
 	} catch {
 		// Not JSON: the caller falls back to the generic message.
 	}
 	return null;
+}
+
+/** The field names an error envelope's details carry ([] when none are named). */
+export function fieldsOf(details: unknown): string[] {
+	if (details === null || typeof details !== 'object') {
+		return [];
+	}
+	const fields = (details as { fields?: unknown }).fields;
+	if (!Array.isArray(fields)) {
+		return [];
+	}
+	return fields.filter((field): field is string => typeof field === 'string');
 }
 
 /**

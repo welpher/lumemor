@@ -829,6 +829,105 @@ test('the info panel docks as a right split region at lg and falls back to the o
 	flushSync();
 });
 
+test('a media failure shows the will-not-open card and keeps the panel honest', async () => {
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+	openDrawer();
+
+	// The record answered; the bytes did not (a deleted file, a
+	// vanished disk).
+	element('img.viewer__image').dispatchEvent(new Event('error'));
+	flushSync();
+
+	const card = element('[data-testid="viewer-stage-error"]');
+	expect(card).not.toBeNull();
+	expect(card.getAttribute('role')).toBeNull();
+	expect(card.querySelector('[role="alert"]')).not.toBeNull();
+	expect(card.textContent).toContain('This photo will not open');
+	expect(card.textContent).toContain('It may have been deleted, or the file is gone from the disk.');
+
+	// The panel keeps the record: the metadata outlives the file.
+	expect(document.body.querySelector('.info__filename')?.textContent).toContain('IMG_2.jpg');
+	expect(document.body.querySelector('[data-testid="viewer-info-state"]')).toBeNull();
+
+	// The retry re-requests the bytes under a fresh URL, and the stage
+	// comes back.
+	click(buttonByText('Try again'));
+	expect(document.body.querySelector('[data-testid="viewer-stage-error"]')).toBeNull();
+	expect(element('img.viewer__image').getAttribute('src')).toBe('/api/v1/assets/a2/thumbnail?size=view&retry=1');
+
+	unmount(app);
+	flushSync();
+});
+
+test('the open panel carries the load state before the record lands', async () => {
+	let release = (): void => undefined;
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input) === '/api/v1/assets/a2?locale=en') {
+				await held;
+				return jsonResponse(200, detailBodyOf(sequence[1]!));
+			}
+			throw new Error(`unexpected fetch ${String(input)}`);
+		})
+	);
+	pageState.params.id = 'a2';
+	localStorage.setItem('lumemor:viewer:info-panel', 'true');
+	const app = mount(Page, { target: document.body });
+	flushSync();
+	await tick();
+
+	// The panel is open while the record is in flight: its place says
+	// so instead of rendering a silent blank column.
+	const state = element('[data-testid="viewer-info-state"]');
+	expect(state.textContent).toContain('Loading the details…');
+	expect(state.querySelector('[role="status"]')).not.toBeNull();
+
+	release();
+	await settle();
+	// The record landed: the state face gives way to the real panel.
+	expect(document.body.querySelector('[data-testid="viewer-info-state"]')).toBeNull();
+	expect(document.body.querySelector('.info__filename')?.textContent).toContain('IMG_2.jpg');
+
+	unmount(app);
+	flushSync();
+});
+
+test('a failed record load keeps the open panel honest with its own retry', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input) === '/api/v1/assets/a2?locale=en') {
+				return jsonResponse(500, { code: 'INTERNAL' });
+			}
+			throw new Error(`unexpected fetch ${String(input)}`);
+		})
+	);
+	pageState.params.id = 'a2';
+	localStorage.setItem('lumemor:viewer:info-panel', 'true');
+	const app = mount(Page, { target: document.body });
+	flushSync();
+	await settle();
+
+	// The stage says it will not open; the panel says what it knows
+	// (nothing yet) and offers the same retry -- never a blank column.
+	expect(element('[data-testid="viewer-stage-error"]')).not.toBeNull();
+	const state = element('[data-testid="viewer-info-state"]');
+	expect(state.textContent).toContain('The details could not be loaded.');
+	expect(state.querySelector('[role="alert"]')).not.toBeNull();
+	const retry = Array.from(state.querySelectorAll('button')).find((button) =>
+		button.textContent?.includes('Try again')
+	);
+	expect(retry).toBeDefined();
+
+	unmount(app);
+	flushSync();
+});
+
 test('the info panel open preference persists across viewer sessions', async () => {
 	// One localStorage key, default closed; the stored open
 	// state restores on the next viewer mount, and closing persists
@@ -1025,7 +1124,7 @@ test('a failed detail load shows the mapped error with a working retry', async (
 	]);
 	await settle();
 
-	const failure = element('.viewer__failure');
+	const failure = element('[data-testid="viewer-stage-error"] [role="alert"]');
 	expect(failure.getAttribute('role')).toBe('alert');
 	// The unknown code renders the generic message, never the code.
 	expect(failure.textContent).toContain('Something went wrong. Please try again.');
@@ -1104,7 +1203,7 @@ test('a failed initial load re-seeds the favorite flag when the convergence refe
 	// load fails before the seeding can run.
 	publishWallItems([item('a2', '2026-11-01T09:00:00Z', { isFavorite: true })]);
 	await settle();
-	expect(element('.viewer__failure')).not.toBeNull();
+	expect(element('[data-testid="viewer-stage-error"]')).not.toBeNull();
 
 	failing = false;
 	handlers[0]?.({ id: 22, name: 'asset.updated', assetId: 'a2', kind: 'image' });
@@ -1305,7 +1404,7 @@ test('a successful convergence refetch recovers a failed initial load', async ()
 	]);
 	await settle();
 	// The initial load failed: the error branch renders.
-	expect(element('.viewer__failure').getAttribute('role')).toBe('alert');
+	expect(element('[data-testid="viewer-stage-error"] [role="alert"]').getAttribute('role')).toBe('alert');
 
 	// The open asset's ready event lands the convergence refetch:
 	// the success flips the route out of the error branch and the
@@ -1313,7 +1412,7 @@ test('a successful convergence refetch recovers a failed initial load', async ()
 	failing = false;
 	handlers[0]?.({ id: 22, name: 'asset.ready', assetId: 'a2', kind: 'image' });
 	await settle();
-	expect(document.body.querySelector('.viewer__failure')).toBeNull();
+	expect(document.body.querySelector('[data-testid="viewer-stage-error"]')).toBeNull();
 	expect(element('img.viewer__image').getAttribute('src')).toBe('/api/v1/assets/a2/thumbnail?size=view');
 	unmount(app);
 	flushSync();

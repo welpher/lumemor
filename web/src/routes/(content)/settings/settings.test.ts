@@ -1,6 +1,7 @@
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n, setLocale } from '$lib/i18n';
+import { toasts } from '$lib/components/toast.svelte';
 import Page from './+page.svelte';
 
 // The user settings page: the five sections over the
@@ -285,9 +286,76 @@ test('the profile save maps the 409 onto the shared i18n text', async () => {
 	submitSectionForm('settings-profile');
 	await settle();
 
-	expect(document.body.textContent).toContain('An account with this email address already exists.');
+	// The failure lands UNDER the field it belongs to (the address is
+	// the account identity), not in a toast and not at the page's top.
+	const slot = document.body.querySelector('#settings-email-error');
+	expect(slot?.textContent).toContain('An account with this email address already exists.');
+	expect(slot?.getAttribute('role')).toBe('alert');
+	expect(document.body.querySelector('#settings-email')?.getAttribute('aria-invalid')).toBe('true');
+	expect(document.body.querySelector('#settings-name-error')).toBeNull();
+	expect(toasts()).toHaveLength(0);
 	// The form keeps the entered text for correcting.
 	expect(document.body.querySelector<HTMLInputElement>('#settings-email')?.value).toBe('grace@example.com');
+});
+
+test('a validation failure naming a field stays under that field', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/users/me': (init?: RequestInit) =>
+					init?.method === 'PATCH'
+						? jsonResponse(400, {
+								code: 'VALIDATION_FAILED',
+								message: 'invalid profile payload',
+								details: { fields: ['name'] }
+							})
+						: jsonResponse(200, selfBody())
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	fillField('settings-name', '');
+	submitSectionForm('settings-profile');
+	await settle();
+
+	expect(document.body.querySelector('#settings-name-error')?.textContent).toContain(
+		'Please check your entries and try again.'
+	);
+	// The other field was not named, so it stays clean.
+	expect(document.body.querySelector('#settings-email-error')).toBeNull();
+	// The typed value survives the failed save.
+	expect(document.body.querySelector<HTMLInputElement>('#settings-name')?.value).toBe('');
+	expect(toasts()).toHaveLength(0);
+});
+
+test('an unnamed failure keeps its line in the section it belongs to', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/users/me': (init?: RequestInit) =>
+					init?.method === 'PATCH'
+						? jsonResponse(500, { code: 'INTERNAL', message: 'boom' })
+						: jsonResponse(200, selfBody())
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	fillField('settings-name', 'Ada King');
+	submitSectionForm('settings-profile');
+	await settle();
+
+	// No field is implicated: the line sits in the profile section,
+	// above its save -- still in place, still no toast.
+	const section = sectionOf('settings-profile');
+	expect(section?.querySelector('.settings__error')?.textContent).toContain('Something went wrong');
+	expect(document.body.querySelector('#settings-name-error')).toBeNull();
+	expect(toasts()).toHaveLength(0);
 });
 
 test('a mismatched confirm pair blocks the password change client-side', async () => {
@@ -408,11 +476,83 @@ test('a rejected password change maps the validation error, staying signed in', 
 	submitSectionForm('settings-password');
 	await settle();
 
-	expect(document.body.textContent).toContain('Please check your entries and try again.');
-	// The form keeps the entered text for correcting.
+	// The server named the current field: the text sits under it, and
+	// the typed value stays for the correction.
+	const slot = document.body.querySelector('#settings-password-current-error');
+	expect(slot?.textContent).toContain('Please check your entries and try again.');
 	expect(document.body.querySelector<HTMLInputElement>('#settings-password-current')?.value).toBe(
 		'wrong current password'
 	);
+	// The new pair was not named: no error under it, and the confirm
+	// field's own mismatch slot stays clear.
+	expect(document.body.querySelector('#settings-password-new-error')).toBeNull();
+	expect(document.body.querySelector('#settings-password-confirm-error')).toBeNull();
+	expect(toasts()).toHaveLength(0);
+});
+
+test('a rejected new password stays under the new field', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/users/me/password': () =>
+					jsonResponse(400, {
+						code: 'VALIDATION_FAILED',
+						message: 'password must be 8 to 128 runes',
+						details: { fields: ['next'] }
+					})
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	fillField('settings-password-current', 'correct horse battery staple');
+	fillField('settings-password-new', 'short');
+	fillField('settings-password-confirm', 'short');
+	submitSectionForm('settings-password');
+	await settle();
+
+	// The server named the new field: the text sits under IT, and the
+	// current field (which verified) stays clean.
+	expect(document.body.querySelector('#settings-password-new-error')?.textContent).toContain(
+		'Please check your entries and try again.'
+	);
+	expect(document.body.querySelector('#settings-password-current-error')).toBeNull();
+	// The browser's own minlength guard is the pre-flight; the server
+	// verdict here still keeps every typed value.
+	expect(document.body.querySelector<HTMLInputElement>('#settings-password-new')?.value).toBe('short');
+});
+
+test('a failed appearance patch keeps its line in the appearance section', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/users/me': (init?: RequestInit) =>
+					init?.method === 'PATCH'
+						? jsonResponse(500, { code: 'INTERNAL', message: 'boom' })
+						: jsonResponse(200, selfBody())
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	document.body
+		.querySelector<HTMLButtonElement>('[data-testid="settings-theme-dark"]')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The pick applied locally (the preference is the user's stated
+	// intent) and the failure sits in the section, under the control
+	// that fired it -- no toast.
+	const section = sectionOf('settings-appearance');
+	expect(section?.querySelector('.settings__error')?.textContent).toContain('Something went wrong');
+	expect(document.body.querySelector('[data-testid="settings-theme-dark"]')?.getAttribute('aria-checked')).toBe(
+		'true'
+	);
+	expect(toasts()).toHaveLength(0);
 });
 
 test('the theme pick applies immediately and persists the row', async () => {

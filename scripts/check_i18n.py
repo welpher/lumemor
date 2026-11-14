@@ -323,6 +323,10 @@ NON_ERROR_KEYS = {
     "upload_conflict_restore",
     "upload_conflict_save_as",
     # Asset viewer UI strings.
+    "viewer_failure_title",
+    "viewer_failure_body",
+    "viewer_info_loading",
+    "viewer_info_failed",
     "viewer_loading",
     "viewer_close",
     "viewer_previous",
