@@ -408,6 +408,28 @@
 		isOwner && detail !== null && detail.kind === 'image' && !detail.isTrashed && !detail.isHidden
 	);
 
+	/**
+	 * The trash arm's gate (the read-only source rule): the caller
+	 * owns the photo AND the photo reaches them through some album
+	 * that is not the sync stream. The sync album is the scan's
+	 * verdict -- system-managed and read-only -- so its own wall
+	 * offers no curation (the album detail's empty arm), and a photo
+	 * whose only home is that stream must not offer the delete here
+	 * either: one photo cannot be curatable in the album and
+	 * un-curatable in the viewer. A photo another album holds
+	 * (a directory source, a memory, a shared album the caller
+	 * owns) keeps the arm, exactly like that album's wall does.
+	 *
+	 * The RESTORE arm never hides: a trashed photo's reachability is
+	 * the trash itself (the record keeps its live album rows), and
+	 * the restore is the way back out of the state the delete made.
+	 * The favorite stays for everyone -- per-user state, not a write
+	 * on the collection.
+	 */
+	const canTrash = $derived(
+		isOwner && detail !== null && (detail.isTrashed || detail.albums.some((album) => album.type !== 'sync'))
+	);
+
 	// The per-asset interaction reset: navigating replaces the asset,
 	// so the crossfades, zoom, ratio and live playback start over. The
 	// gate compares the id VALUE (a plain marker, not reactive state):
@@ -778,7 +800,7 @@
 					     the tile's favorite badge already carries). -->
 						<Star size={20} fill={favorite ? 'currentColor' : 'none'} class={favorite ? 'text-star' : ''} />
 					</button>
-					{#if isOwner}
+					{#if canTrash}
 						<button
 							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
 							type="button"
