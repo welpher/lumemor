@@ -46,5 +46,11 @@ void main() {
       // TODO
     });
 
+    // The download packaging's embedded-motion switch (default false: the single-file motion photo's original already carries its motion). 
+    // bool downloadIncludeEmbeddedVideos
+    test('to test the property `downloadIncludeEmbeddedVideos`', () async {
+      // TODO
+    });
+
   });
 }

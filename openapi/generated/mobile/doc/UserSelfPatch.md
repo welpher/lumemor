@@ -15,6 +15,7 @@ Name | Type | Description | Notes
 **downloadFormat** | [**DownloadFormat**](DownloadFormat.md) |  | [optional] 
 **downloadIncludeVideos** | **bool** | The download packaging's video switch. | [optional] 
 **downloadIncludeSidecars** | **bool** | The download packaging's sidecar switch. | [optional] 
+**downloadIncludeEmbeddedVideos** | **bool** | The download packaging's embedded-motion switch (default false: the single-file motion photo's original already carries its motion).  | [optional] 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

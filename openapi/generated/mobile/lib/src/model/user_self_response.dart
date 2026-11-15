@@ -24,6 +24,7 @@ part 'user_self_response.g.dart';
 /// * [downloadFormat] 
 /// * [downloadIncludeVideos] - Whether the account's download packaging includes the original video files. Photos are the download's content and always ride along. 
 /// * [downloadIncludeSidecars] - Whether the account's download packaging includes EXIF sidecar files (`.xmp`) beside the media. 
+/// * [downloadIncludeEmbeddedVideos] - Whether a download adds the motion a single-file \"motion photo\" embeds as a separate video file. Default `false`: the still's original already carries that motion, so the extra copy is a duplicate unless the account asks for it. A paired Live Photo's own motion file always rides along and this switch never removes it. 
 @BuiltValue()
 abstract class UserSelfResponse implements Built<UserSelfResponse, UserSelfResponseBuilder> {
   /// UUIDv7 identifier of the account.
@@ -61,6 +62,10 @@ abstract class UserSelfResponse implements Built<UserSelfResponse, UserSelfRespo
   /// Whether the account's download packaging includes EXIF sidecar files (`.xmp`) beside the media. 
   @BuiltValueField(wireName: r'downloadIncludeSidecars')
   bool get downloadIncludeSidecars;
+
+  /// Whether a download adds the motion a single-file \"motion photo\" embeds as a separate video file. Default `false`: the still's original already carries that motion, so the extra copy is a duplicate unless the account asks for it. A paired Live Photo's own motion file always rides along and this switch never removes it. 
+  @BuiltValueField(wireName: r'downloadIncludeEmbeddedVideos')
+  bool get downloadIncludeEmbeddedVideos;
 
   UserSelfResponse._();
 
@@ -128,6 +133,11 @@ class _$UserSelfResponseSerializer implements PrimitiveSerializer<UserSelfRespon
     yield r'downloadIncludeSidecars';
     yield serializers.serialize(
       object.downloadIncludeSidecars,
+      specifiedType: const FullType(bool),
+    );
+    yield r'downloadIncludeEmbeddedVideos';
+    yield serializers.serialize(
+      object.downloadIncludeEmbeddedVideos,
       specifiedType: const FullType(bool),
     );
   }
@@ -215,6 +225,13 @@ class _$UserSelfResponseSerializer implements PrimitiveSerializer<UserSelfRespon
             specifiedType: const FullType(bool),
           ) as bool;
           result.downloadIncludeSidecars = valueDes;
+          break;
+        case r'downloadIncludeEmbeddedVideos':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.downloadIncludeEmbeddedVideos = valueDes;
           break;
         default:
           unhandled.add(key);

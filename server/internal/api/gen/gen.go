@@ -4947,6 +4947,11 @@ type UserSelfPatch struct {
 	// whole-album downloads.
 	DownloadFormat *DownloadFormat `json:"downloadFormat,omitempty"`
 
+	// DownloadIncludeEmbeddedVideos The download packaging's embedded-motion switch (default
+	// false: the single-file motion photo's original already
+	// carries its motion).
+	DownloadIncludeEmbeddedVideos *bool `json:"downloadIncludeEmbeddedVideos,omitempty"`
+
 	// DownloadIncludeSidecars The download packaging's sidecar switch.
 	DownloadIncludeSidecars *bool `json:"downloadIncludeSidecars,omitempty"`
 
@@ -4988,6 +4993,14 @@ type UserSelfResponse struct {
 	// DownloadFormat The account's preferred archive format of batch and
 	// whole-album downloads.
 	DownloadFormat DownloadFormat `json:"downloadFormat"`
+
+	// DownloadIncludeEmbeddedVideos Whether a download adds the motion a single-file "motion
+	// photo" embeds as a separate video file. Default `false`:
+	// the still's original already carries that motion, so the
+	// extra copy is a duplicate unless the account asks for it.
+	// A paired Live Photo's own motion file always rides along
+	// and this switch never removes it.
+	DownloadIncludeEmbeddedVideos bool `json:"downloadIncludeEmbeddedVideos"`
 
 	// DownloadIncludeSidecars Whether the account's download packaging includes EXIF
 	// sidecar files (`.xmp`) beside the media.
