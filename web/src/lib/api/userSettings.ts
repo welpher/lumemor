@@ -27,7 +27,14 @@ export type DeviceSession = components['schemas']['DeviceSession'];
 export type UserSelfPatch = Partial<
 	Pick<
 		UserSelf,
-		'name' | 'email' | 'theme' | 'locale' | 'downloadFormat' | 'downloadIncludeVideos' | 'downloadIncludeSidecars'
+		| 'name'
+		| 'email'
+		| 'theme'
+		| 'locale'
+		| 'downloadFormat'
+		| 'downloadIncludeVideos'
+		| 'downloadIncludeSidecars'
+		| 'downloadIncludeEmbeddedVideos'
 	>
 >;
 
@@ -65,7 +72,8 @@ function selfFrom(body: unknown): UserSelf | null {
 		typeof candidate.locale !== 'string' ||
 		typeof candidate.downloadFormat !== 'string' ||
 		typeof candidate.downloadIncludeVideos !== 'boolean' ||
-		typeof candidate.downloadIncludeSidecars !== 'boolean'
+		typeof candidate.downloadIncludeSidecars !== 'boolean' ||
+		typeof candidate.downloadIncludeEmbeddedVideos !== 'boolean'
 	) {
 		return null;
 	}

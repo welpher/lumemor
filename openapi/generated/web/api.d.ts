@@ -3088,14 +3088,15 @@ export interface paths {
          *     app flips its `.dark` class and reloads its i18n store on
          *     the response, not on a re-login).
          *
-         *     THE DOWNLOAD PREFERENCES ARE DECLARATIVE: the batch and
-         *     whole-album download endpoints do not exist yet (they arrive with a later
-         *     surface); the preferences persist here so
-         *     those flows will read the account's default packaging when
-         *     they arrive -- a stored preference is never silently
-         *     dropped, it is simply not consumed yet. This is documented
-         *     honestly: nothing in the current download-less pipeline
-         *     reads these fields.
+         *     THE DOWNLOAD PREFERENCES split honestly in two. The
+         *     embedded-motion switch is consumed today: the single-asset
+         *     download reads it when it assembles a Live Photo's archive.
+         *     The format, videos and sidecars switches stay declarative --
+         *     the batch and whole-album download endpoints do not exist
+         *     yet (they arrive with a later surface), and those flows will
+         *     read the account's default packaging when they arrive: a
+         *     stored preference is never silently dropped, it is simply
+         *     not consumed yet.
          */
         patch: operations["updateUserSelf"];
         trace?: never;
@@ -4862,6 +4863,15 @@ export interface components {
              *     sidecar files (`.xmp`) beside the media.
              */
             downloadIncludeSidecars: boolean;
+            /**
+             * @description Whether a download adds the motion a single-file "motion
+             *     photo" embeds as a separate video file. Default `false`:
+             *     the still's original already carries that motion, so the
+             *     extra copy is a duplicate unless the account asks for it.
+             *     A paired Live Photo's own motion file always rides along
+             *     and this switch never removes it.
+             */
+            downloadIncludeEmbeddedVideos: boolean;
         };
         /**
          * @description Payload of `PATCH /users/me`. Every field is optional: an
@@ -4888,6 +4898,12 @@ export interface components {
             downloadIncludeVideos?: boolean;
             /** @description The download packaging's sidecar switch. */
             downloadIncludeSidecars?: boolean;
+            /**
+             * @description The download packaging's embedded-motion switch (default
+             *     false: the single-file motion photo's original already
+             *     carries its motion).
+             */
+            downloadIncludeEmbeddedVideos?: boolean;
         };
         /** @description Payload of `PUT /users/me/password`. */
         PasswordChangeRequest: {

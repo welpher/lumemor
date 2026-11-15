@@ -638,20 +638,21 @@ type Tag struct {
 }
 
 type User struct {
-	ID                      pgtype.UUID        `json:"id"`
-	Name                    string             `json:"name"`
-	Email                   string             `json:"email"`
-	PasswordHash            string             `json:"password_hash"`
-	Role                    UserRole           `json:"role"`
-	Locale                  string             `json:"locale"`
-	Theme                   string             `json:"theme"`
-	IsDisabled              bool               `json:"is_disabled"`
-	TotpSecret              pgtype.Text        `json:"totp_secret"`
-	CreatedAt               pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
-	DownloadFormat          string             `json:"download_format"`
-	DownloadIncludeVideos   bool               `json:"download_include_videos"`
-	DownloadIncludeSidecars bool               `json:"download_include_sidecars"`
+	ID                            pgtype.UUID        `json:"id"`
+	Name                          string             `json:"name"`
+	Email                         string             `json:"email"`
+	PasswordHash                  string             `json:"password_hash"`
+	Role                          UserRole           `json:"role"`
+	Locale                        string             `json:"locale"`
+	Theme                         string             `json:"theme"`
+	IsDisabled                    bool               `json:"is_disabled"`
+	TotpSecret                    pgtype.Text        `json:"totp_secret"`
+	CreatedAt                     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                     pgtype.Timestamptz `json:"updated_at"`
+	DownloadFormat                string             `json:"download_format"`
+	DownloadIncludeVideos         bool               `json:"download_include_videos"`
+	DownloadIncludeSidecars       bool               `json:"download_include_sidecars"`
+	DownloadIncludeEmbeddedVideos bool               `json:"download_include_embedded_videos"`
 }
 
 type UserAlbumPref struct {

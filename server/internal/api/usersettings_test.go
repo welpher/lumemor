@@ -156,6 +156,9 @@ func TestUserSelfGetAnswersDefaults(t *testing.T) {
 	if self.DownloadIncludeSidecars {
 		t.Error("downloadIncludeSidecars = true, want the false default")
 	}
+	if self.DownloadIncludeEmbeddedVideos {
+		t.Error("downloadIncludeEmbeddedVideos = true, want the false default")
+	}
 	if self.Name == "" {
 		t.Error("name is empty, want the wizard's default (the address)")
 	}
@@ -203,7 +206,8 @@ func TestUserSelfPatchSavesEachSection(t *testing.T) {
 	}
 
 	// The download preferences section.
-	rec = env.patchSelf(t, env.cookie, `{"downloadFormat":"tar","downloadIncludeVideos":false,"downloadIncludeSidecars":true}`)
+	rec = env.patchSelf(t, env.cookie,
+		`{"downloadFormat":"tar","downloadIncludeVideos":false,"downloadIncludeSidecars":true,"downloadIncludeEmbeddedVideos":true}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("download PATCH status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
 	}
@@ -217,6 +221,9 @@ func TestUserSelfPatchSavesEachSection(t *testing.T) {
 	if !self.DownloadIncludeSidecars {
 		t.Error("downloadIncludeSidecars = false, want the patched true")
 	}
+	if !self.DownloadIncludeEmbeddedVideos {
+		t.Error("downloadIncludeEmbeddedVideos = false, want the patched true")
+	}
 
 	// The row persists everything for the next sign-in (the read
 	// answers from the database, not this handler's memory).
@@ -226,7 +233,8 @@ func TestUserSelfPatchSavesEachSection(t *testing.T) {
 	}
 	self = decodeSelf(t, rec)
 	if self.Theme != apigen.UserThemeDark || self.Locale != apigen.UserLocaleZhHans ||
-		self.DownloadFormat != apigen.Tar || self.DownloadIncludeVideos || !self.DownloadIncludeSidecars {
+		self.DownloadFormat != apigen.Tar || self.DownloadIncludeVideos || !self.DownloadIncludeSidecars ||
+		!self.DownloadIncludeEmbeddedVideos {
 		t.Errorf("reread self = %+v, want every patched value persisted", self)
 	}
 }
