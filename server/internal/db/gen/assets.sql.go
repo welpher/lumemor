@@ -75,7 +75,7 @@ INSERT INTO assets (
 ) VALUES (
     $1, $2, 'blob', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12, 'import', $13
 )
-RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime
+RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon
 `
 
 type CreateAssetParams struct {
@@ -161,6 +161,9 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset
 		&i.PendingJobs,
 		&i.ReadyAt,
 		&i.FileMtime,
+		&i.TakenAtZone,
+		&i.LocationLat,
+		&i.LocationLon,
 	)
 	return i, err
 }
@@ -184,7 +187,7 @@ func (q *Queries) CreateExifPlaceholder(ctx context.Context, arg CreateExifPlace
 }
 
 const getAsset = `-- name: GetAsset :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon FROM assets
 WHERE id = $1 AND owner_id = $2
 `
 
@@ -236,12 +239,15 @@ func (q *Queries) GetAsset(ctx context.Context, arg GetAssetParams) (Asset, erro
 		&i.PendingJobs,
 		&i.ReadyAt,
 		&i.FileMtime,
+		&i.TakenAtZone,
+		&i.LocationLat,
+		&i.LocationLon,
 	)
 	return i, err
 }
 
 const getAssetByDeviceId = `-- name: GetAssetByDeviceId :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon FROM assets
 WHERE owner_id = $1 AND device_asset_id = $2
 ORDER BY deleted_at NULLS FIRST
 LIMIT 1
@@ -289,12 +295,15 @@ func (q *Queries) GetAssetByDeviceId(ctx context.Context, arg GetAssetByDeviceId
 		&i.PendingJobs,
 		&i.ReadyAt,
 		&i.FileMtime,
+		&i.TakenAtZone,
+		&i.LocationLat,
+		&i.LocationLon,
 	)
 	return i, err
 }
 
 const getAssetByOwnerChecksum = `-- name: GetAssetByOwnerChecksum :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon FROM assets
 WHERE owner_id = $1 AND checksum = $2
 ORDER BY deleted_at NULLS FIRST
 LIMIT 1
@@ -343,6 +352,9 @@ func (q *Queries) GetAssetByOwnerChecksum(ctx context.Context, arg GetAssetByOwn
 		&i.PendingJobs,
 		&i.ReadyAt,
 		&i.FileMtime,
+		&i.TakenAtZone,
+		&i.LocationLat,
+		&i.LocationLon,
 	)
 	return i, err
 }
@@ -358,6 +370,7 @@ SELECT a.id,
        a.created_at,
        a.taken_at,
        a.taken_at_source,
+       a.taken_at_zone,
        a.width,
        a.height,
        a.duration_ms,
@@ -367,6 +380,9 @@ SELECT a.id,
        a.ready_at,
        a.description,
        a.is_hidden,
+       a.location_lat,
+       a.location_lon,
+       a.file_path,
        e.camera_make,
        e.camera_model,
        e.lens,
@@ -407,6 +423,7 @@ type GetAssetDetailRow struct {
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	TakenAt          pgtype.Timestamptz `json:"taken_at"`
 	TakenAtSource    TakenAtSource      `json:"taken_at_source"`
+	TakenAtZone      pgtype.Text        `json:"taken_at_zone"`
 	Width            int32              `json:"width"`
 	Height           int32              `json:"height"`
 	DurationMs       pgtype.Int4        `json:"duration_ms"`
@@ -416,6 +433,9 @@ type GetAssetDetailRow struct {
 	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
 	Description      string             `json:"description"`
 	IsHidden         bool               `json:"is_hidden"`
+	LocationLat      pgtype.Float8      `json:"location_lat"`
+	LocationLon      pgtype.Float8      `json:"location_lon"`
+	FilePath         string             `json:"file_path"`
 	CameraMake       pgtype.Text        `json:"camera_make"`
 	CameraModel      pgtype.Text        `json:"camera_model"`
 	Lens             pgtype.Text        `json:"lens"`
@@ -466,6 +486,7 @@ func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) 
 		&i.CreatedAt,
 		&i.TakenAt,
 		&i.TakenAtSource,
+		&i.TakenAtZone,
 		&i.Width,
 		&i.Height,
 		&i.DurationMs,
@@ -475,6 +496,9 @@ func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) 
 		&i.ReadyAt,
 		&i.Description,
 		&i.IsHidden,
+		&i.LocationLat,
+		&i.LocationLon,
+		&i.FilePath,
 		&i.CameraMake,
 		&i.CameraModel,
 		&i.Lens,
@@ -549,7 +573,7 @@ func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetA
 }
 
 const getVisibleAsset = `-- name: GetVisibleAsset :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime FROM assets a
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon FROM assets a
 WHERE a.id = $1
   AND caller_asset_visible($2, a.id)
 `
@@ -601,6 +625,9 @@ func (q *Queries) GetVisibleAsset(ctx context.Context, arg GetVisibleAssetParams
 		&i.PendingJobs,
 		&i.ReadyAt,
 		&i.FileMtime,
+		&i.TakenAtZone,
+		&i.LocationLat,
+		&i.LocationLon,
 	)
 	return i, err
 }
@@ -708,17 +735,20 @@ UPDATE assets SET
     taken_at        = COALESCE($1, taken_at),
     taken_at_source = CASE WHEN $1 IS NULL THEN taken_at_source
                            ELSE 'exif'::taken_at_source END,
-    width           = COALESCE($2, width),
-    height          = COALESCE($3, height),
-    duration_ms     = COALESCE($4, duration_ms),
-    place_id        = CASE WHEN $5::boolean THEN $6
+    taken_at_zone   = COALESCE($2, taken_at_zone),
+    width           = COALESCE($3, width),
+    height          = COALESCE($4, height),
+    duration_ms     = COALESCE($5, duration_ms),
+    place_id        = CASE WHEN $6::boolean
+                            AND location_lat IS NULL THEN $7
                            ELSE place_id END,
     updated_at      = now()
-WHERE id = $7
+WHERE id = $8
 `
 
 type RefineAssetFromMetadataParams struct {
 	TakenAt       pgtype.Timestamptz `json:"taken_at"`
+	TakenAtZone   pgtype.Text        `json:"taken_at_zone"`
 	Width         pgtype.Int4        `json:"width"`
 	Height        pgtype.Int4        `json:"height"`
 	DurationMs    pgtype.Int4        `json:"duration_ms"`
@@ -732,7 +762,10 @@ type RefineAssetFromMetadataParams struct {
 // offset); a NULL exif time keeps the upload's value and source, so
 // the upload response's initial taken_at never regresses (the fallback
 // chain deviceCreatedAt -> server now stays intact, source 'import').
-// The metadata job never passes the 'file' source: a content-addressed
+// The offset that resolved the instant is display state that rides it:
+// taken_at_zone lands with the same arm (the offset the metadata job
+// resolved, NULL when no zone did). The metadata job never passes the
+// 'file' source: a content-addressed
 // upload blob's mtime is the upload instant itself, so a file-mtime
 // step would churn values without information; 'file' stays reserved
 // for the directory-album importer that reads files in place.
@@ -746,10 +779,13 @@ type RefineAssetFromMetadataParams struct {
 // wired (a deployment without the baked place data), the gate flag
 // stays false and the column keeps whatever it held, so a
 // data-less boot never destroys resolutions a data-carrying boot
-// produced.
+// produced. A manual location (the owner's own coordinates, the
+// PATCH's write) is the newer decision and stays: the refinement
+// leaves the resolved place of a manually located row alone.
 func (q *Queries) RefineAssetFromMetadata(ctx context.Context, arg RefineAssetFromMetadataParams) error {
 	_, err := q.db.Exec(ctx, refineAssetFromMetadata,
 		arg.TakenAt,
+		arg.TakenAtZone,
 		arg.Width,
 		arg.Height,
 		arg.DurationMs,
@@ -807,6 +843,94 @@ type UpdateAssetDescriptionParams struct {
 // with the restore.
 func (q *Queries) UpdateAssetDescription(ctx context.Context, arg UpdateAssetDescriptionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateAssetDescription, arg.Description, arg.ID, arg.OwnerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateAssetLocation = `-- name: UpdateAssetLocation :execrows
+UPDATE assets SET
+    location_lat = $1,
+    location_lon = $2,
+    place_id = $3,
+    updated_at = now()
+WHERE id = $4
+  AND owner_id = $5
+  AND (location_lat IS DISTINCT FROM $1
+       OR location_lon IS DISTINCT FROM $2
+       OR place_id IS DISTINCT FROM $3)
+`
+
+type UpdateAssetLocationParams struct {
+	Lat     pgtype.Float8 `json:"lat"`
+	Lon     pgtype.Float8 `json:"lon"`
+	PlaceID pgtype.Int4   `json:"place_id"`
+	ID      pgtype.UUID   `json:"id"`
+	OwnerID pgtype.UUID   `json:"owner_id"`
+}
+
+// The owner-scoped manual-location write of PATCH /assets/{id}: the
+// coordinates land on the asset (the info panel's own pair) beside
+// the resolved place (the caller's resolved answer, NULL when the
+// point sits beyond every city or the deployment runs without the
+// baked place data -- the resolution flag in the handler decides).
+// The equality arm is the set-semantics guard: a patch repeating the
+// stored pair and place matches nothing -- the idempotent repeat is
+// the same success, no event. The owner guard IS the permission
+// check; no state filter, like the description arm.
+func (q *Queries) UpdateAssetLocation(ctx context.Context, arg UpdateAssetLocationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateAssetLocation,
+		arg.Lat,
+		arg.Lon,
+		arg.PlaceID,
+		arg.ID,
+		arg.OwnerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateAssetTakenAt = `-- name: UpdateAssetTakenAt :execrows
+UPDATE assets SET
+    taken_at = $1,
+    taken_at_zone = $2,
+    updated_at = now()
+WHERE id = $3
+  AND owner_id = $4
+  AND (taken_at <> $1
+       OR taken_at_zone IS DISTINCT FROM $2)
+`
+
+type UpdateAssetTakenAtParams struct {
+	TakenAt     pgtype.Timestamptz `json:"taken_at"`
+	TakenAtZone pgtype.Text        `json:"taken_at_zone"`
+	ID          pgtype.UUID        `json:"id"`
+	OwnerID     pgtype.UUID        `json:"owner_id"`
+}
+
+// The owner-scoped capture-time write of PATCH /assets/{id}: the
+// instant and the display zone that resolved it land together (the
+// offset IS the zone the info panel renders beside the time). The
+// pair <> arm is the set-semantics guard: a patch repeating both the
+// stored instant and the stored zone matches nothing, so the
+// idempotent repeat is the same success, updated_at stays un-stamped
+// and the event stays silent -- the rows-affected count is the
+// handler's change signal. (The instant is the compared truth; the
+// zone rides it, so a zone-only repeat is also a no-op when the
+// instant matches.) The owner guard IS the permission check (asset
+// attribute editing is owner-only, no admin override), so a foreign
+// id matches nothing exactly like an unknown one. No state filter: a
+// trashed asset is editable like it is readable.
+func (q *Queries) UpdateAssetTakenAt(ctx context.Context, arg UpdateAssetTakenAtParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateAssetTakenAt,
+		arg.TakenAt,
+		arg.TakenAtZone,
+		arg.ID,
+		arg.OwnerID,
+	)
 	if err != nil {
 		return 0, err
 	}

@@ -6467,10 +6467,10 @@ export interface components {
         };
         /**
          * @description The partial edit of one asset: every field is optional, at
-         *     least one must be present (a body that carries neither -- null
+         *     least one must be present (a body that carries none -- null
          *     values count as absent -- is a client bug and answers 400),
          *     and only the fields the request carries update; the rest keep
-         *     their values. Both fields are owner-level asset state, so a
+         *     their values. Every field is owner-level asset state, so a
          *     patch that actually changes one of them publishes a single
          *     `asset.updated` event; a patch that repeats the stored values
          *     is the idempotent no-op and publishes nothing.
@@ -6492,6 +6492,40 @@ export interface components {
              *     the batch `hide` / `unhide` actions flip.
              */
             isHidden?: boolean;
+            /**
+             * Format: date-time
+             * @description The owner's manual capture-time edit: the value replaces
+             *     the stored instant wholesale. The timestamp MUST carry a
+             *     UTC offset (RFC 3339's `Z` or `+hh:mm` designator) -- the
+             *     offset is the capture zone the info panel displays beside
+             *     the time, so a zone-less value is ambiguous and answers
+             *     400 `VALIDATION_FAILED`. The same value decides where the
+             *     photo sits on the timeline (the instant) and which offset
+             *     renders beside it (the offset).
+             * @example 2026-08-12T18:42:00+08:00
+             */
+            takenAt?: string;
+            /**
+             * Format: double
+             * @description The manual location edit's latitude, in degrees
+             *     (-90..90). It rides with `longitude` (the pair is the
+             *     location; one half alone answers 400
+             *     `VALIDATION_FAILED`). Writing the pair replaces the
+             *     asset's location: the info panel renders these
+             *     coordinates and the resolved place follows the pin. The
+             *     camera-recorded GPS in `exif` keeps the file's own
+             *     reading and is not touched.
+             * @example 36.0671
+             */
+            latitude?: number;
+            /**
+             * Format: double
+             * @description The manual location edit's longitude, in degrees
+             *     (-180..180). It rides with `latitude` (see there for the
+             *     pair's semantics).
+             * @example 120.3826
+             */
+            longitude?: number;
         };
         /**
          * @description One named person of the caller's people list: a global face

@@ -20,6 +20,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/buildinfo"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/geodata"
 	"github.com/welpher/lumemor/server/internal/ml"
 	"github.com/welpher/lumemor/server/internal/updatecheck"
 	"github.com/welpher/lumemor/server/internal/web"
@@ -116,6 +117,13 @@ type Deps struct {
 	// wired -- tests, wiring order); production passes the checker
 	// main also runs on its schedule.
 	UpdateChecks *updatecheck.Checker
+	// Places is the in-memory place grid the manual location edit
+	// resolves its city against (the same grid the metadata job's
+	// GPS step and the places rerun resolve against). Nil keeps the
+	// edit writing coordinates only: the resolved place keeps
+	// whatever the asset already carried (the feature-off wiring,
+	// the metadata step's own discipline).
+	Places *geodata.Index
 }
 
 // AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
@@ -288,6 +296,9 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		derivativesRebuilds: deps.DerivativesRebuilds,
 		// The release checker: nil is a valid (no check) wiring.
 		updateChecks: deps.UpdateChecks,
+		// The place grid: nil is a valid (no place data) wiring; the
+		// manual location edit then writes coordinates only.
+		places: deps.Places,
 		// In-memory per process: a restart clears the login locks, an
 		// accepted trade for not growing a store into the auth path.
 		limiter: auth.NewLimiter(nil),
@@ -555,6 +566,10 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/people/{clusterId}/birthdate", wrapper.SetPersonBirthdate)
 				r.Put("/people/{clusterId}/avatar", wrapper.SetPersonAvatar)
 				r.Post("/people/merge", wrapper.MergePeople)
+				// The manual face: one drawn box becomes one face
+				// row -- the same owner-gated curation discipline as
+				// the move below, one insert, no cluster to maintain.
+				r.Post("/faces", wrapper.CreateFace)
 				r.Post("/faces/{faceId}/move", wrapper.MoveFace)
 				// The from-face creation and the detach:
 				// the same owner-gated curation discipline
@@ -788,6 +803,10 @@ type server struct {
 	// wired and the release check endpoints answer the generic
 	// internal error.
 	updateChecks *updatecheck.Checker
+	// places is the in-memory place grid the manual location edit
+	// resolves against; nil means no grid is wired and the edit
+	// writes coordinates only (the resolved place stays).
+	places *geodata.Index
 
 	// textTowerCache keeps the search's semantic path warm: the
 	// active clip-text model's loaded session and tokenizer (loading

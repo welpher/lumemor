@@ -12,7 +12,7 @@ import (
 )
 
 const listAlbumTimelineAssets = `-- name: ListAlbumTimelineAssets :many
-SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime,
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime, a.taken_at_zone, a.location_lat, a.location_lon,
        EXISTS (
            SELECT 1 FROM user_favorites uf
            WHERE uf.asset_id = a.id AND uf.user_id = $1
@@ -119,6 +119,9 @@ func (q *Queries) ListAlbumTimelineAssets(ctx context.Context, arg ListAlbumTime
 			&i.Asset.PendingJobs,
 			&i.Asset.ReadyAt,
 			&i.Asset.FileMtime,
+			&i.Asset.TakenAtZone,
+			&i.Asset.LocationLat,
+			&i.Asset.LocationLon,
 			&i.IsFavorite,
 		); err != nil {
 			return nil, err
@@ -132,7 +135,7 @@ func (q *Queries) ListAlbumTimelineAssets(ctx context.Context, arg ListAlbumTime
 }
 
 const listPersonTimelineAssets = `-- name: ListPersonTimelineAssets :many
-SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime,
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime, a.taken_at_zone, a.location_lat, a.location_lon,
        EXISTS (
            SELECT 1 FROM user_favorites uf
            WHERE uf.asset_id = a.id AND uf.user_id = $1
@@ -224,6 +227,9 @@ func (q *Queries) ListPersonTimelineAssets(ctx context.Context, arg ListPersonTi
 			&i.Asset.PendingJobs,
 			&i.Asset.ReadyAt,
 			&i.Asset.FileMtime,
+			&i.Asset.TakenAtZone,
+			&i.Asset.LocationLat,
+			&i.Asset.LocationLon,
 			&i.IsFavorite,
 		); err != nil {
 			return nil, err
@@ -237,7 +243,7 @@ func (q *Queries) ListPersonTimelineAssets(ctx context.Context, arg ListPersonTi
 }
 
 const listPlaceTimelineAssets = `-- name: ListPlaceTimelineAssets :many
-SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime,
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime, a.taken_at_zone, a.location_lat, a.location_lon,
        EXISTS (
            SELECT 1 FROM user_favorites uf
            WHERE uf.asset_id = a.id AND uf.user_id = $1
@@ -323,6 +329,9 @@ func (q *Queries) ListPlaceTimelineAssets(ctx context.Context, arg ListPlaceTime
 			&i.Asset.PendingJobs,
 			&i.Asset.ReadyAt,
 			&i.Asset.FileMtime,
+			&i.Asset.TakenAtZone,
+			&i.Asset.LocationLat,
+			&i.Asset.LocationLon,
 			&i.IsFavorite,
 		); err != nil {
 			return nil, err
@@ -337,7 +346,7 @@ func (q *Queries) ListPlaceTimelineAssets(ctx context.Context, arg ListPlaceTime
 
 const listTimelineAssets = `-- name: ListTimelineAssets :many
 
-SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime,
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime, a.taken_at_zone, a.location_lat, a.location_lon,
        EXISTS (
            SELECT 1 FROM user_favorites uf
            WHERE uf.asset_id = a.id AND uf.user_id = $1
@@ -476,6 +485,9 @@ func (q *Queries) ListTimelineAssets(ctx context.Context, arg ListTimelineAssets
 			&i.Asset.PendingJobs,
 			&i.Asset.ReadyAt,
 			&i.Asset.FileMtime,
+			&i.Asset.TakenAtZone,
+			&i.Asset.LocationLat,
+			&i.Asset.LocationLon,
 			&i.IsFavorite,
 		); err != nil {
 			return nil, err

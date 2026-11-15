@@ -181,6 +181,11 @@ FROM assets a
 JOIN exif e ON e.asset_id = a.id
 WHERE e.lat IS NOT NULL
   AND e.lon IS NOT NULL
+  -- A manual location is the owner's newer decision: the walk
+  -- leaves those rows alone (the metadata refinement keeps the
+  -- same hand), so a re-resolution rewrites only the rows the
+  -- pipeline's own GPS step still owns.
+  AND a.location_lat IS NULL
   AND a.id > $1
 ORDER BY a.id
 LIMIT $2
