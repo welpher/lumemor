@@ -113,7 +113,11 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 		return
 	}
 
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(row, faces, tags, albums))
+	// The path face rides the caller's role: only an administrator's
+	// detail carries the storage-relative machine path (every other
+	// caller reads null and their panel renders no such row).
+	includePath := requester.role == dbgen.UserRoleAdmin
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(row, faces, tags, albums, includePath))
 }
 
 // GetAssetThumbnail implements GET /api/v1/assets/{id}/thumbnail: the
@@ -448,8 +452,14 @@ func (s *server) assetFacesForCaller(ctx context.Context, assetID, callerID pgty
 		face := apigen.AssetFaceSummary{
 			Id:        faceID,
 			Score:     row.Score,
-			ClusterId: uuidValue(row.ClusterID),
 			Thumbnail: faceThumbnailPath(faceID),
+			Bbox: apigen.FaceBbox{
+				X: int(row.BboxX),
+				Y: int(row.BboxY),
+				W: int(row.BboxW),
+				H: int(row.BboxH),
+			},
+			ClusterId: uuidValue(row.ClusterID),
 			Label:     nil,
 		}
 		if row.LabelName.Valid {
@@ -511,7 +521,7 @@ func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgt
 // faces, tags, albums and place included (the caller passes the same
 // reads' answers). The place face rides the read's own locale join:
 // a null place_id (no GPS, no baked data) answers null.
-func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary, tags []apigen.AssetTagSummary, albums []apigen.AssetAlbumRef) apigen.AssetDetail {
+func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary, tags []apigen.AssetTagSummary, albums []apigen.AssetAlbumRef, includePath bool) apigen.AssetDetail {
 	detail := apigen.AssetDetail{
 		Id:               uuid.UUID(row.ID.Bytes),
 		OwnerId:          uuid.UUID(row.OwnerID.Bytes),
@@ -523,6 +533,7 @@ func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummar
 		CreatedAt:        row.CreatedAt.Time.UTC(),
 		TakenAt:          row.TakenAt.Time.UTC(),
 		TakenAtSource:    apigen.AssetDetailTakenAtSource(row.TakenAtSource),
+		TakenAtZone:      textValue(row.TakenAtZone),
 		IsTrashed:        row.DeletedAt.Valid,
 		IsHidden:         row.IsHidden,
 		Description:      row.Description,
@@ -536,6 +547,23 @@ func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummar
 		Faces:            faces,
 		Tags:             tags,
 		Albums:           albums,
+	}
+	// The location face: the owner's manual pair when one landed, the
+	// camera-recorded GPS otherwise -- and only when both halves
+	// exist, because half a coordinate is no location.
+	if row.LocationLat.Valid && row.LocationLon.Valid {
+		detail.Location = &apigen.AssetCoordinates{
+			Lat: row.LocationLat.Float64,
+			Lon: row.LocationLon.Float64,
+		}
+	} else if row.Lat.Valid && row.Lon.Valid {
+		detail.Location = &apigen.AssetCoordinates{Lat: row.Lat.Float64, Lon: row.Lon.Float64}
+	}
+	// The path face rides the caller's role, not the row: the
+	// instance's internal layout is machine information, and only an
+	// administrator's panel renders it.
+	if includePath {
+		detail.Path = &row.FilePath
 	}
 	if row.PlaceID.Valid {
 		// The locale join's exact discipline (the `GET /places`

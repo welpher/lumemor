@@ -1,7 +1,9 @@
 // The asset attribute PATCH: PATCH /assets/{id}, the
-// owner's partial edit of the two owner-level attributes -- the
-// free-text description the detail panel renders, and the hidden
-// switch that keeps the asset out of every live view. The permission
+// owner's partial edit of the owner-level attributes -- the
+// free-text description the detail panel renders, the hidden
+// switch that keeps the asset out of every live view, the capture
+// time (instant plus display zone) and the manual location (the
+// coordinates plus the place they resolve to). The permission
 // model is owner-only, the attribute-editing row of the
 // permission matrix: no administrator override here (unlike the permanent
 // delete), so the owner-scoped read decides the anti-enumeration 404
@@ -21,6 +23,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
@@ -35,8 +38,10 @@ import (
 const descriptionLimit = 10000
 
 // PatchAsset implements PATCH /api/v1/assets/{id}: the partial edit
-// of the description and the hidden switch. The response is the
-// detail after the edit -- the same read and serializer the GET
+// of the owner-level attributes -- the description, the hidden
+// switch, the capture time (instant plus display zone) and the
+// manual location (coordinates plus resolved place). The response is
+// the detail after the edit -- the same read and serializer the GET
 // endpoint serves, so the client sees the applied values (and the
 // idempotent no-op sees the row's current state unchanged).
 func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params apigen.PatchAssetParams) {
@@ -62,20 +67,31 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 	// bounds it before this decode); anything that does not decode --
 	// malformed JSON, a field of the wrong type -- is a client bug.
 	// A field set to JSON null decodes as absent, so the
-	// neither-field check below also refuses a body of pure nulls.
+	// no-field check below also refuses a body of pure nulls. The
+	// takenAt decode doubles as the contract's zone check: the RFC
+	// 3339 binding refuses a timestamp without an offset designator,
+	// which is exactly the ambiguity the contract refuses.
 	var request apigen.AssetPatch
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
 		return
 	}
-	if request.Description == nil && request.IsHidden == nil {
-		s.writeValidationError(w, "the patch must carry description or isHidden", []string{"body"})
+	if request.Description == nil && request.IsHidden == nil && request.TakenAt == nil &&
+		request.Latitude == nil && request.Longitude == nil {
+		s.writeValidationError(w,
+			"the patch must carry description, takenAt, latitude/longitude or isHidden", []string{"body"})
 		return
 	}
 	if request.Description != nil && utf8.RuneCountInString(*request.Description) > descriptionLimit {
 		s.writeValidationError(w,
 			fmt.Sprintf("description exceeds the limit of %d characters", descriptionLimit),
 			[]string{"description"})
+		return
+	}
+	// The location edit rides as the pair: one half alone is half a
+	// coordinate, no location.
+	if (request.Latitude == nil) != (request.Longitude == nil) {
+		s.writeValidationError(w, "the location edit must carry latitude and longitude together", []string{"latitude"})
 		return
 	}
 
@@ -125,6 +141,51 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		})
 		if err != nil {
 			s.internalError(w, r, "update asset description", err)
+			return
+		}
+		if rows > 0 {
+			changed = true
+		}
+	}
+	if request.TakenAt != nil {
+		// The offset that wrote the instant is the display zone:
+		// one value decides both. The RFC 3339 binding has already
+		// refused a zone-less timestamp (the decode's own error), so
+		// what survives here always carries one.
+		rows, err := queries.UpdateAssetTakenAt(ctx, dbgen.UpdateAssetTakenAtParams{
+			ID:          pgUUID(id),
+			OwnerID:     pgUUID(requester.userID),
+			TakenAt:     pgtype.Timestamptz{Time: *request.TakenAt, Valid: true},
+			TakenAtZone: pgtype.Text{String: request.TakenAt.Format("-07:00"), Valid: true},
+		})
+		if err != nil {
+			s.internalError(w, r, "update asset capture time", err)
+			return
+		}
+		if rows > 0 {
+			changed = true
+		}
+	}
+	if request.Latitude != nil && request.Longitude != nil {
+		// The place the pin resolves to: the grid's nearest city, or
+		// the honest absence. Without a grid (a deployment without
+		// the baked place data) the resolution keeps whatever the
+		// row held -- a data-less edit never destroys a resolution a
+		// data-carrying boot produced (the metadata step's own
+		// discipline).
+		place := s.resolveManualPlace(ctx, *request.Latitude, *request.Longitude)
+		if s.places == nil {
+			place = row.PlaceID
+		}
+		rows, err := queries.UpdateAssetLocation(ctx, dbgen.UpdateAssetLocationParams{
+			ID:      pgUUID(id),
+			OwnerID: pgUUID(requester.userID),
+			Lat:     pgtype.Float8{Float64: *request.Latitude, Valid: true},
+			Lon:     pgtype.Float8{Float64: *request.Longitude, Valid: true},
+			PlaceID: place,
+		})
+		if err != nil {
+			s.internalError(w, r, "update asset location", err)
 			return
 		}
 		if rows > 0 {
@@ -200,5 +261,6 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		s.internalError(w, r, "load patched asset albums", err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces, tags, albums))
+	includePath := requester.role == dbgen.UserRoleAdmin
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces, tags, albums, includePath))
 }

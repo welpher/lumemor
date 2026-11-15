@@ -95,12 +95,12 @@
 </script>
 
 <!-- The information panel's own form (the identity seam of the two
-     asides): the fixed right-edge overlay below lg, the STATIC
-     docked region of the viewer's flex row at lg+, so the photo
-     stays visible and re-fits while this panel stands in the
-     drawer's place. -->
+     asides): the bottom drawer below 640 (the panel form's one
+     deviation), the STATIC docked region of the viewer's flex row
+     from 640 up, so the photo stays visible and re-fits while this
+     panel stands in the drawer's place. -->
 <aside
-	class="faces-panel fixed top-0 right-0 bottom-0 z-(--z-aside) flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay lg:static lg:shrink-0 lg:shadow-none"
+	class="faces-panel fixed inset-x-0 bottom-0 top-[14vh] z-(--z-modal) flex w-full flex-col rounded-t-overlay border-t border-border bg-card shadow-overlay sm:static sm:inset-auto sm:z-(--z-aside) sm:w-[360px] sm:shrink-0 sm:rounded-none sm:border-t-0 sm:border-l sm:shadow-none"
 	aria-label={$_('people_edit_faces')}
 >
 	<header class="faces-panel__header flex items-center gap-2 px-3 py-2.5 border-b border-border">

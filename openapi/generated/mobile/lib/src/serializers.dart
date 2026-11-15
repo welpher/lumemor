@@ -41,6 +41,7 @@ import 'package:lumemor_api/src/model/album_timeline_preference_request.dart';
 import 'package:lumemor_api/src/model/album_timeline_preference_response.dart';
 import 'package:lumemor_api/src/model/album_wall_response.dart';
 import 'package:lumemor_api/src/model/asset_album_ref.dart';
+import 'package:lumemor_api/src/model/asset_coordinates.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_face_summary.dart';
 import 'package:lumemor_api/src/model/asset_patch.dart';
@@ -62,6 +63,9 @@ import 'package:lumemor_api/src/model/device_session.dart';
 import 'package:lumemor_api/src/model/download_format.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/exif_summary.dart';
+import 'package:lumemor_api/src/model/face_bbox.dart';
+import 'package:lumemor_api/src/model/face_create_request.dart';
+import 'package:lumemor_api/src/model/face_created.dart';
 import 'package:lumemor_api/src/model/face_detail.dart';
 import 'package:lumemor_api/src/model/face_detail_asset.dart';
 import 'package:lumemor_api/src/model/image_settings_response.dart';
@@ -194,6 +198,7 @@ part 'serializers.g.dart';
   AlbumTimelinePreferenceResponse,
   AlbumWallResponse,
   AssetAlbumRef,
+  AssetCoordinates,
   AssetDetail,
   AssetFaceSummary,
   AssetPatch,
@@ -215,6 +220,9 @@ part 'serializers.g.dart';
   DownloadFormat,
   Error,
   ExifSummary,
+  FaceBbox,
+  FaceCreateRequest,
+  FaceCreated,
   FaceDetail,
   FaceDetailAsset,
   ImageSettingsResponse,

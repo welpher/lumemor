@@ -14,6 +14,8 @@ import 'package:lumemor_api/src/api_util.dart';
 import 'package:lumemor_api/src/model/cluster_detail.dart';
 import 'package:lumemor_api/src/model/cluster_face_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
+import 'package:lumemor_api/src/model/face_create_request.dart';
+import 'package:lumemor_api/src/model/face_created.dart';
 import 'package:lumemor_api/src/model/label_person_request.dart';
 import 'package:lumemor_api/src/model/merge_people_request.dart';
 import 'package:lumemor_api/src/model/merge_people_response.dart';
@@ -110,6 +112,112 @@ class PeopleApi {
     }
 
     return Response<ClusterFaceResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Add one hand-drawn face to an asset.
+  /// The manual face: the owner draws a box around a face the detector missed and the drawn box becomes a face row of that asset -- the same rows detection writes, minus a detector (the row&#39;s model is null, its score 1.0 -- the caller&#39;s own certainty) and minus an embedding (the recognition never saw it, so the face joins no cluster until the caller assigns one). The box rides in the FaceBbox per-mille units; the width and height halves must be at least 1 (a zero-extent box is nothing drawn).  The refusal discipline is the face writes&#39; own: the face must sit on an asset the caller OWNS and that is live -- any other state (unknown asset, another account&#39;s asset, an asset shared to the caller but not owned, a trashed, hidden or Live Photo component asset) answers the same byte-identical 404 &#x60;PERSON_NOT_FOUND&#x60; (anti-enumeration). A bbox value outside the 0..1000 bounds, a missing half, or a body that fails to decode answers 400 &#x60;VALIDATION_FAILED&#x60;.  The write inserts the row and answers it; it publishes NO event: a face with no cluster announces no person change, and the caller&#39;s own session converges through the response (the same silence a fresh detection&#39;s rows keep until recognition names them). The caller&#39;s next step is the assign flow -- &#x60;POST /faces/{faceId}/move&#x60; or the from-face creation -- which is where the drawn face becomes someone. 
+  ///
+  /// Parameters:
+  /// * [faceCreateRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [FaceCreated] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<FaceCreated>> createFace({ 
+    required FaceCreateRequest faceCreateRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/faces';
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(FaceCreateRequest);
+      _bodyData = _serializers.serialize(faceCreateRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    FaceCreated? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(FaceCreated),
+      ) as FaceCreated;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<FaceCreated>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

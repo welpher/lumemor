@@ -298,6 +298,9 @@ func run(logger *slog.Logger) error {
 			// The places re-resolution endpoint enqueues through the
 			// same queue.
 			PlacesReruns: queue,
+			// The manual location edit resolves its place against the
+			// same in-memory grid the metadata job's GPS step uses.
+			Places: placeIndex,
 			// The derivative rebuild endpoint enqueues through the
 			// same queue.
 			DerivativesRebuilds: queue,

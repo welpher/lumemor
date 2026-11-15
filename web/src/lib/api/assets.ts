@@ -40,8 +40,28 @@ export type AssetAlbumRef = components['schemas']['AssetAlbumRef'];
 /** The detail's `place` face, the contract's AssetPlaceRef. */
 export type AssetPlaceRef = components['schemas']['AssetPlaceRef'];
 
-/** The PATCH body: either owner-level attribute, at least one. */
+/** The detail's `location` face, the contract's AssetCoordinates. */
+export type AssetCoordinates = components['schemas']['AssetCoordinates'];
+
+/** The PATCH body: any owner-level attribute, at least one. */
 export type AssetPatch = components['schemas']['AssetPatch'];
+
+/** A face's bounding box, the contract's FaceBbox (per-mille units). */
+export type AssetFaceBbox = components['schemas']['FaceBbox'];
+
+/** Whether one bbox candidate is a well-formed per-mille box. */
+export function bboxIsPerMille(bbox: Partial<AssetFaceBbox> | null | undefined): bbox is AssetFaceBbox {
+	if (bbox === null || bbox === undefined) {
+		return false;
+	}
+	for (const value of [bbox.x, bbox.y, bbox.w, bbox.h]) {
+		if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 1000) {
+			return false;
+		}
+	}
+	// A zero-extent box is nothing drawn.
+	return (bbox.w ?? 0) > 0 && (bbox.h ?? 0) > 0;
+}
 
 /** A detail-bearing call's options: the fetch implementation and the place face's display locale. */
 export type AssetDetailOptions = {
@@ -122,6 +142,16 @@ function faceSummaryFrom(body: unknown): AssetFaceSummary | null {
 	if (candidate.birthDate === undefined) {
 		return null;
 	}
+	// bbox is the on-photo face-box layer's geometry (always present):
+	// four in-bounds per-mille integers, any other shape is not a
+	// summary.
+	if (typeof candidate.bbox !== 'object' || candidate.bbox === null) {
+		return null;
+	}
+	const bbox = candidate.bbox as Partial<AssetFaceBbox>;
+	if (!bboxIsPerMille(bbox)) {
+		return null;
+	}
 	// label is the caller's label state or null (always present); a
 	// present label carries the caller's name (the people domain's
 	// only per-user field -- hiding retired whole).
@@ -176,6 +206,11 @@ function detailFrom(body: unknown): AssetDetail | null {
 			return null;
 		}
 	}
+	// The display zone of the capture time is part of the fixed
+	// shape: present-and-null or a string, nothing else.
+	if (candidate.takenAtZone !== null && typeof candidate.takenAtZone !== 'string') {
+		return null;
+	}
 	// The albums array joined the fixed shape (the info panel's deep
 	// links): every entry carries its identity, title, type and the
 	// caller's relation.
@@ -210,6 +245,26 @@ function detailFrom(body: unknown): AssetDetail | null {
 		if (typeof place.name !== 'string') {
 			return null;
 		}
+	}
+	// The location face is required and nullable: a present value
+	// must carry both coordinate halves (half a coordinate is no
+	// location).
+	if (candidate.location !== null) {
+		if (typeof candidate.location !== 'object') {
+			return null;
+		}
+		const at = candidate.location as Partial<AssetCoordinates>;
+		if (typeof at.lat !== 'number' || !Number.isFinite(at.lat)) {
+			return null;
+		}
+		if (typeof at.lon !== 'number' || !Number.isFinite(at.lon)) {
+			return null;
+		}
+	}
+	// The path face is required and nullable (the admin-only machine
+	// location): present-and-null or a string, nothing else.
+	if (candidate.path !== null && typeof candidate.path !== 'string') {
+		return null;
 	}
 	return body as AssetDetail;
 }
@@ -403,4 +458,57 @@ export async function probeAssetPlay(
 	}
 	const envelope = await errorEnvelope(response);
 	return { ok: false, errorKey: envelope !== null ? envelope.code.toLowerCase() : 'internal' };
+}
+
+/** The manual-face write's outcome: the new face, or the failure's i18n key. */
+export type FaceCreateResult = { ok: true; faceId: string; thumbnail: string } | { ok: false; errorKey: string };
+
+/**
+ * POST /api/v1/faces: one hand-drawn face. The caller's drawn box
+ * (per-mille units) becomes a face row of the asset; the response
+ * carries its identity and crop URL, which the assign flow (the move
+ * or the from-face creation) takes from here. A 404 covers the whole
+ * refusal family (unknown, foreign, trashed, hidden or component
+ * asset -- indistinguishable by design); a 400 is a malformed box.
+ */
+export async function createFace(
+	assetId: string,
+	bbox: AssetFaceBbox,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<FaceCreateResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			'/api/v1/faces',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ assetId, bbox })
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (response.status === 401) {
+		return { ok: false, errorKey: 'session_expired' };
+	}
+	if (!response.ok) {
+		const envelope = await errorEnvelope(response);
+		return { ok: false, errorKey: envelope !== null ? envelope.code.toLowerCase() : 'internal' };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (body === null || typeof body !== 'object') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const created = body as { id?: unknown; thumbnail?: unknown };
+	if (typeof created.id !== 'string' || typeof created.thumbnail !== 'string') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, faceId: created.id, thumbnail: created.thumbnail };
 }

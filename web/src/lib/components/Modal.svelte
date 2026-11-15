@@ -9,12 +9,14 @@
 		title: string;
 		/** Optional footer row, e.g. a cancel and a confirm button. */
 		footer?: Snippet;
+		/** The panel's max width (the dialogs' one size variation). */
+		maxWidth?: string;
 		/** Notified of every close path (Escape, backdrop, the close mark). */
 		onclose?: () => void;
 		children?: Snippet;
 	};
 
-	let { open = $bindable(false), title, footer, onclose, children }: Props = $props();
+	let { open = $bindable(false), title, footer, maxWidth = '480px', onclose, children }: Props = $props();
 
 	let panel: HTMLElement | undefined = $state();
 	let previouslyFocused: HTMLElement | null = null;
@@ -111,7 +113,8 @@
 		onmousedown={close}
 	>
 		<div
-			class="modal__panel w-full max-w-[480px] max-h-[calc(100vh-48px)] flex flex-col bg-card rounded-overlay shadow-overlay"
+			class="modal__panel w-full max-h-[calc(100vh-48px)] flex flex-col bg-card rounded-overlay shadow-overlay"
+			style:max-width={maxWidth}
 			bind:this={panel}
 			role="dialog"
 			aria-modal="true"

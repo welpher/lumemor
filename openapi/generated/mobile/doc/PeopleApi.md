@@ -10,6 +10,7 @@ All URIs are relative to */api/v1*
 Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**clusterFace**](PeopleApi.md#clusterface) | **POST** /faces/{faceId}/cluster | Seed a new person from one face.
+[**createFace**](PeopleApi.md#createface) | **POST** /faces | Add one hand-drawn face to an asset.
 [**detachFace**](PeopleApi.md#detachface) | **DELETE** /faces/{faceId} | Release one face from its person.
 [**getFaceThumbnail**](PeopleApi.md#getfacethumbnail) | **GET** /faces/{faceId}/thumbnail | Serve one face&#39;s 256x256 crop thumbnail.
 [**getPersonCluster**](PeopleApi.md#getpersoncluster) | **GET** /people/{clusterId} | One face cluster&#39;s detail as the caller sees it.
@@ -66,6 +67,53 @@ Name | Type | Description  | Notes
 ### HTTP request headers
 
  - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **createFace**
+> FaceCreated createFace(faceCreateRequest)
+
+Add one hand-drawn face to an asset.
+
+The manual face: the owner draws a box around a face the detector missed and the drawn box becomes a face row of that asset -- the same rows detection writes, minus a detector (the row's model is null, its score 1.0 -- the caller's own certainty) and minus an embedding (the recognition never saw it, so the face joins no cluster until the caller assigns one). The box rides in the FaceBbox per-mille units; the width and height halves must be at least 1 (a zero-extent box is nothing drawn).  The refusal discipline is the face writes' own: the face must sit on an asset the caller OWNS and that is live -- any other state (unknown asset, another account's asset, an asset shared to the caller but not owned, a trashed, hidden or Live Photo component asset) answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). A bbox value outside the 0..1000 bounds, a missing half, or a body that fails to decode answers 400 `VALIDATION_FAILED`.  The write inserts the row and answers it; it publishes NO event: a face with no cluster announces no person change, and the caller's own session converges through the response (the same silence a fresh detection's rows keep until recognition names them). The caller's next step is the assign flow -- `POST /faces/{faceId}/move` or the from-face creation -- which is where the drawn face becomes someone. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getPeopleApi();
+final FaceCreateRequest faceCreateRequest = {"assetId":"0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70","bbox":{"x":260,"y":300,"w":150,"h":150}}; // FaceCreateRequest | 
+
+try {
+    final response = api.createFace(faceCreateRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling PeopleApi->createFace: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **faceCreateRequest** | [**FaceCreateRequest**](FaceCreateRequest.md)|  | 
+
+### Return type
+
+[**FaceCreated**](FaceCreated.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)

@@ -332,6 +332,10 @@ func (q *Queries) GetFaceForCaller(ctx context.Context, arg GetFaceForCallerPara
 const listAssetFacesForCaller = `-- name: ListAssetFacesForCaller :many
 SELECT f.id,
        f.score,
+       f.bbox_x,
+       f.bbox_y,
+       f.bbox_w,
+       f.bbox_h,
        f.cluster_id,
        l.name AS label_name,
        fc.birth_date
@@ -351,6 +355,10 @@ type ListAssetFacesForCallerParams struct {
 type ListAssetFacesForCallerRow struct {
 	ID        pgtype.UUID `json:"id"`
 	Score     float32     `json:"score"`
+	BboxX     int32       `json:"bbox_x"`
+	BboxY     int32       `json:"bbox_y"`
+	BboxW     int32       `json:"bbox_w"`
+	BboxH     int32       `json:"bbox_h"`
 	ClusterID pgtype.UUID `json:"cluster_id"`
 	LabelName pgtype.Text `json:"label_name"`
 	BirthDate pgtype.Date `json:"birth_date"`
@@ -385,6 +393,10 @@ func (q *Queries) ListAssetFacesForCaller(ctx context.Context, arg ListAssetFace
 		if err := rows.Scan(
 			&i.ID,
 			&i.Score,
+			&i.BboxX,
+			&i.BboxY,
+			&i.BboxW,
+			&i.BboxH,
 			&i.ClusterID,
 			&i.LabelName,
 			&i.BirthDate,

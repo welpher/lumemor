@@ -145,7 +145,7 @@ Class | Method | HTTP request | Description
 [*AssetsApi*](doc/AssetsApi.md) | [**getHidden**](doc/AssetsApi.md#gethidden) | **GET** /assets/hidden | The caller&#39;s hidden assets, one keyset page at a time.
 [*AssetsApi*](doc/AssetsApi.md) | [**getTimeline**](doc/AssetsApi.md#gettimeline) | **GET** /assets/timeline | The aggregated timeline, one keyset page at a time.
 [*AssetsApi*](doc/AssetsApi.md) | [**getTrash**](doc/AssetsApi.md#gettrash) | **GET** /trash | List the caller&#39;s trashed assets with their retention countdown.
-[*AssetsApi*](doc/AssetsApi.md) | [**patchAsset**](doc/AssetsApi.md#patchasset) | **PATCH** /assets/{id} | Edit the description or hidden switch of one asset.
+[*AssetsApi*](doc/AssetsApi.md) | [**patchAsset**](doc/AssetsApi.md#patchasset) | **PATCH** /assets/{id} | Edit the owner-level attributes of one asset.
 [*AssetsApi*](doc/AssetsApi.md) | [**playAsset**](doc/AssetsApi.md#playasset) | **GET** /assets/{id}/play | Stream the transcoded playable copy of one owned video.
 [*AssetsApi*](doc/AssetsApi.md) | [**restoreAsset**](doc/AssetsApi.md#restoreasset) | **POST** /trash/{id}/restore | Restore one trashed asset.
 [*AssetsApi*](doc/AssetsApi.md) | [**uploadAsset**](doc/AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
@@ -157,6 +157,7 @@ Class | Method | HTTP request | Description
 [*AuthApi*](doc/AuthApi.md) | [**revokeSession**](doc/AuthApi.md#revokesession) | **DELETE** /auth/sessions/{id} | Revoke one of the caller&#39;s sessions.
 [*EventsApi*](doc/EventsApi.md) | [**getEvents**](doc/EventsApi.md#getevents) | **GET** /events | Stream instance activity over server-sent events.
 [*PeopleApi*](doc/PeopleApi.md) | [**clusterFace**](doc/PeopleApi.md#clusterface) | **POST** /faces/{faceId}/cluster | Seed a new person from one face.
+[*PeopleApi*](doc/PeopleApi.md) | [**createFace**](doc/PeopleApi.md#createface) | **POST** /faces | Add one hand-drawn face to an asset.
 [*PeopleApi*](doc/PeopleApi.md) | [**detachFace**](doc/PeopleApi.md#detachface) | **DELETE** /faces/{faceId} | Release one face from its person.
 [*PeopleApi*](doc/PeopleApi.md) | [**getFaceThumbnail**](doc/PeopleApi.md#getfacethumbnail) | **GET** /faces/{faceId}/thumbnail | Serve one face&#39;s 256x256 crop thumbnail.
 [*PeopleApi*](doc/PeopleApi.md) | [**getPersonCluster**](doc/PeopleApi.md#getpersoncluster) | **GET** /people/{clusterId} | One face cluster&#39;s detail as the caller sees it.
@@ -216,6 +217,7 @@ Class | Method | HTTP request | Description
  - [AlbumTimelinePreferenceResponse](doc/AlbumTimelinePreferenceResponse.md)
  - [AlbumWallResponse](doc/AlbumWallResponse.md)
  - [AssetAlbumRef](doc/AssetAlbumRef.md)
+ - [AssetCoordinates](doc/AssetCoordinates.md)
  - [AssetDetail](doc/AssetDetail.md)
  - [AssetFaceSummary](doc/AssetFaceSummary.md)
  - [AssetPatch](doc/AssetPatch.md)
@@ -237,6 +239,9 @@ Class | Method | HTTP request | Description
  - [DownloadFormat](doc/DownloadFormat.md)
  - [Error](doc/Error.md)
  - [ExifSummary](doc/ExifSummary.md)
+ - [FaceBbox](doc/FaceBbox.md)
+ - [FaceCreateRequest](doc/FaceCreateRequest.md)
+ - [FaceCreated](doc/FaceCreated.md)
  - [FaceDetail](doc/FaceDetail.md)
  - [FaceDetailAsset](doc/FaceDetailAsset.md)
  - [ImageSettingsResponse](doc/ImageSettingsResponse.md)

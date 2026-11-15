@@ -87,8 +87,11 @@
 	import ClusterPickerDialog from '$lib/people/ClusterPickerDialog.svelte';
 	import PersonPickerDialog from '$lib/people/PersonPickerDialog.svelte';
 	import DetachFaceDialog from '$lib/viewer/DetachFaceDialog.svelte';
+	import EditDateDialog from '$lib/viewer/EditDateDialog.svelte';
+	import EditLocationDialog from '$lib/viewer/EditLocationDialog.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import { toast } from '$lib/components/toast.svelte';
+	import { resolveErrorText } from '$lib/i18n/errors';
 	import { wallItems } from '$lib/timeline/wall-sequence.svelte';
 	import type { BatchAction } from '$lib/api/timeline';
 	import {
@@ -96,10 +99,12 @@
 		patchAsset,
 		probeAssetPlay,
 		runAssetBatch,
+		createFace,
 		type AssetDetail,
+		type AssetFaceBbox,
 		type AssetFaceSummary
 	} from '$lib/api/assets';
-	import { addTagAssets, createTag, listTags, type TagSummary } from '$lib/api/tags';
+	import { addTagAssets, createTag, listTags, removeTagAssets, type TagSummary } from '$lib/api/tags';
 	import {
 		clusterFace,
 		detachFace,
@@ -189,6 +194,13 @@
 		editErrorKey = '';
 		pickErrorKey = '';
 		detachErrorKey = '';
+		// The date and location dialogs are asset-scoped the same way.
+		editTimeOpen = false;
+		editTimeErrorKey = '';
+		editTimeBusy = false;
+		editLocOpen = false;
+		editLocErrorKey = '';
+		editLocBusy = false;
 		let current = true;
 		void (async () => {
 			const outcome = await fetchAssetDetail(id, { locale: currentLocale() });
@@ -372,6 +384,8 @@
 	let assignPeople = $state<PersonSummary[]>([]);
 	let assignUnnamed = $state<UnnamedClusterSummary[]>([]);
 	let assignLoading = $state(false);
+	/** The face id of the assign dialog opened straight from a drawn face (null otherwise). */
+	let drawnFaceId = $state<string | null>(null);
 
 	/** The face behind the dialog, resolved against the current detail. */
 	const assignFace = $derived(
@@ -407,20 +421,34 @@
 	});
 
 	/**
-	 * The new-person path, offered ONLY on unnamed-cluster chips: the
-	 * naming labels the face's CURRENT cluster (the whole group
-	 * shares the name -- the family semantics the dialog copy
-	 * explains), so a labeled chip offers no rename here (that is the
-	 * people page's surface) and a clusterless face has nothing to
-	 * name.
+	 * The new-person path, offered on unnamed-cluster chips AND on
+	 * the drawn face the add-person flow created (a clusterless face
+	 * with no cluster to name yet). The chip's naming labels the
+	 * face's CURRENT cluster (the whole group shares the name -- the
+	 * family semantics the dialog copy explains); the drawn face's
+	 * naming seeds the brand-new cluster FIRST (the from-face
+	 * creation) and labels it -- the drawn face becomes its own
+	 * person in one flow. A labeled chip offers no rename here
+	 * (that is the people page's surface).
 	 */
 	const assignNewPerson = $derived.by(() => {
 		const face = assignFace;
-		if (face === null) {
+		if (face === null || face.label !== null) {
 			return undefined;
 		}
 		const clusterId = face.clusterId;
-		if (clusterId === null || face.label !== null) {
+		if (clusterId !== null) {
+			return {
+				labelKey: 'viewer_assign_mode_new',
+				existingLabelKey: 'viewer_assign_mode_existing',
+				noteKey: 'viewer_assign_note',
+				submitKey: 'people_name_submit',
+				onsubmit: (name: string) => void assignName(clusterId, name)
+			};
+		}
+		if (assignFaceId !== drawnFaceId) {
+			// A clusterless face the clustering has not grouped yet has
+			// nothing to name -- only the drawn face's flow seeds one.
 			return undefined;
 		}
 		return {
@@ -428,9 +456,32 @@
 			existingLabelKey: 'viewer_assign_mode_existing',
 			noteKey: 'viewer_assign_note',
 			submitKey: 'people_name_submit',
-			onsubmit: (name: string) => void assignName(clusterId, name)
+			onsubmit: (name: string) => void assignCreateAndName(face.id, name)
 		};
 	});
+
+	/** The drawn face's naming: seed the new cluster from the face, then label it. */
+	async function assignCreateAndName(faceId: string, name: string): Promise<void> {
+		if (assignFaceId === null || assignBusy) {
+			return;
+		}
+		assignBusy = true;
+		assignErrorKey = '';
+		const seeded = await clusterFace(faceId);
+		if (!seeded.ok) {
+			assignBusy = false;
+			assignErrorKey = seeded.errorKey;
+			return;
+		}
+		const labeled = await labelPerson(seeded.cluster.clusterId, name);
+		assignBusy = false;
+		if (!labeled.ok) {
+			assignErrorKey = labeled.errorKey;
+			return;
+		}
+		assignFaceId = null;
+		void refetchDetail();
+	}
 
 	// The picker's option groups: the named people and the unnamed
 	// clusters, the face's own cluster never among the targets (a
@@ -460,6 +511,7 @@
 	/** Open the assign dialog for one face of the drawer's People section. */
 	function startAssign(face: AssetFaceSummary): void {
 		assignErrorKey = '';
+		drawnFaceId = null;
 		assignFaceId = face.id;
 	}
 
@@ -856,6 +908,136 @@
 		return { ok: false, errorKey: outcome.errorKey };
 	}
 
+	// The date dialog (the info panel's pencil): one PATCH carrying
+	// the composed pair -- the datetime-local wall clock plus the
+	// zone dropdown's offset, the offset IS the display zone. The
+	// response is the fresh detail (adopted like the description's),
+	// the failure keeps the dialog open beside its draft.
+	let editTimeOpen = $state(false);
+	let editTimeBusy = $state(false);
+	let editTimeErrorKey = $state('');
+
+	function openEditTime(): void {
+		if (detail === null) {
+			return;
+		}
+		editTimeErrorKey = '';
+		editTimeOpen = true;
+	}
+
+	async function editTakenAt(datetimeLocal: string, zone: string): Promise<void> {
+		const current = detail;
+		if (current === null || editTimeBusy) {
+			return;
+		}
+		// Compose the wire value: the field speaks minute precision,
+		// the contract's RFC 3339 wants seconds -- the zone suffix
+		// carries the capture zone the panel displays.
+		const composed = /:\d{2}$/.test(datetimeLocal) ? `${datetimeLocal}:00${zone}` : `${datetimeLocal}${zone}`;
+		editTimeBusy = true;
+		editTimeErrorKey = '';
+		const outcome = await patchAsset(current.id, { takenAt: composed }, { locale: currentLocale() });
+		editTimeBusy = false;
+		if (outcome.ok) {
+			if (detail !== null && detail.id === current.id) {
+				detail = outcome.detail;
+			}
+			editTimeOpen = false;
+			toast($_('viewer_date_saved'), 'success');
+			return;
+		}
+		editTimeErrorKey = outcome.errorKey;
+	}
+
+	// The location dialog (the location row's pencil): one PATCH
+	// carrying the picked pair. The response's `location` face and
+	// `place` resolution follow the pin (the resolved city follows
+	// the coordinates server-side); the failure keeps the dialog
+	// open beside its pin.
+	let editLocOpen = $state(false);
+	let editLocBusy = $state(false);
+	let editLocErrorKey = $state('');
+
+	function openEditLocation(): void {
+		if (detail === null) {
+			return;
+		}
+		editLocErrorKey = '';
+		editLocOpen = true;
+	}
+
+	async function editLocation(lat: number, lon: number): Promise<void> {
+		const current = detail;
+		if (current === null || editLocBusy) {
+			return;
+		}
+		editLocBusy = true;
+		editLocErrorKey = '';
+		const outcome = await patchAsset(current.id, { latitude: lat, longitude: lon }, { locale: currentLocale() });
+		editLocBusy = false;
+		if (outcome.ok) {
+			if (detail !== null && detail.id === current.id) {
+				detail = outcome.detail;
+			}
+			editLocOpen = false;
+			toast($_('viewer_location_saved'), 'success');
+			return;
+		}
+		editLocErrorKey = outcome.errorKey;
+	}
+
+	// The tag chip's × (the tags row): the caller's own per-user
+	// write over the one open asset, the convergence the detail
+	// refetch (the tags array IS the row's truth). A failure rides
+	// the toast's danger tone -- the chip has no inline slot to
+	// fail into.
+	async function removeTag(tagId: string): Promise<void> {
+		const current = detail;
+		if (current === null) {
+			return;
+		}
+		const outcome = await removeTagAssets(tagId, [current.id]);
+		if (outcome.ok) {
+			toast($_('viewer_tag_removed'), 'success');
+			void refetchDetail();
+			return;
+		}
+		toast(resolveErrorText($_, outcome.errorKey), 'danger');
+	}
+
+	// The drawn face (the panel's add-person icon): the POST carries
+	// the square's per-mille geometry; on success the new face's
+	// assign flow opens over the refetched detail (the faces array
+	// IS the chips' truth, and the drawn face joins it as a
+	// clusterless row the picker assigns). A failure lands on the
+	// danger toast (the drag layer is gone by then -- the mode
+	// disarmed itself on the release).
+	async function drawFace(bbox: AssetFaceBbox): Promise<void> {
+		const current = detail;
+		if (current === null) {
+			return;
+		}
+		const outcome = await createFace(current.id, bbox);
+		if (!outcome.ok) {
+			toast(resolveErrorText($_, outcome.errorKey), 'danger');
+			return;
+		}
+		await refetchDetail();
+		const face = detail?.faces.find((entry) => entry.id === outcome.faceId) ?? null;
+		if (face !== null) {
+			startAssign(face);
+			// AFTER startAssign, which clears the marker for every
+			// other chip's flow: this dialog was opened BY a drawn
+			// face, so its new-person path seeds the cluster.
+			drawnFaceId = face.id;
+		}
+	}
+
+	/** Open a named face's person page (the on-photo box click's arm). */
+	function openPerson(clusterId: string): void {
+		void goto(`/people/${encodeURIComponent(clusterId)}`);
+	}
+
 	async function runAction(action: BatchAction): Promise<boolean> {
 		const current = detail;
 		if (current === null || busy) {
@@ -921,7 +1103,12 @@
 	{videoPlayable}
 	{busy}
 	{actionErrorKey}
-	modalOpen={assignFaceId !== null || tagOpen || pickFaceId !== null || detachConfirmId !== null}
+	modalOpen={assignFaceId !== null ||
+		tagOpen ||
+		pickFaceId !== null ||
+		detachConfirmId !== null ||
+		editTimeOpen ||
+		editLocOpen}
 	onnavigate={navigateTo}
 	onexit={exitViewer}
 	onretry={retryDetail}
@@ -930,6 +1117,7 @@
 	onaction={runAction}
 	onassignface={startAssign}
 	onassigntag={openTagDialog}
+	onremovetag={(tagId) => void removeTag(tagId)}
 	{editFacesOpen}
 	{stageLabelOf}
 	{editStagedCount}
@@ -940,6 +1128,10 @@
 	onreassignface={startPick}
 	ondetachface={startDetachConfirm}
 	onapplyfaces={() => void commitEdits()}
+	oncreateface={(bbox) => void drawFace(bbox)}
+	onedittime={openEditTime}
+	oneditlocation={openEditLocation}
+	onopenperson={openPerson}
 />
 
 <!-- The assign dialog of the drawer's People section: pick an
@@ -977,6 +1169,32 @@
 	onpick={(tagId) => void addToExistingTag(tagId)}
 	oncreate={(name) => void addToNewTag(name)}
 	ondone={finishTag}
+/>
+
+<!-- The edit-date dialog of the info panel's date row: the wall
+     clock and the zone dropdown edited as one value; the write is
+     the page's PATCH (the offset in the composed value IS the
+     display zone). -->
+<EditDateDialog
+	bind:open={editTimeOpen}
+	takenAt={detail?.takenAt ?? ''}
+	takenAtZone={detail?.takenAtZone ?? null}
+	busy={editTimeBusy}
+	errorKey={editTimeErrorKey}
+	onsubmit={(datetimeLocal, zone) => void editTakenAt(datetimeLocal, zone)}
+/>
+
+<!-- The edit-location dialog of the info panel's location row: the
+     place-name search and the draggable, clickable map edited as
+     one pick; the write is the page's PATCH (the resolved place
+     follows the pin). -->
+<EditLocationDialog
+	bind:open={editLocOpen}
+	placeName={detail?.place?.name ?? ''}
+	initial={detail?.location ?? null}
+	busy={editLocBusy}
+	errorKey={editLocErrorKey}
+	onsubmit={(lat, lon) => void editLocation(lat, lon)}
 />
 
 <!-- The choose-person dialog of the edit-people panel: the

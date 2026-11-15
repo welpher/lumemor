@@ -104,6 +104,7 @@ SELECT a.id,
        a.created_at,
        a.taken_at,
        a.taken_at_source,
+       a.taken_at_zone,
        a.width,
        a.height,
        a.duration_ms,
@@ -113,6 +114,9 @@ SELECT a.id,
        a.ready_at,
        a.description,
        a.is_hidden,
+       a.location_lat,
+       a.location_lon,
+       a.file_path,
        e.camera_make,
        e.camera_model,
        e.lens,
@@ -205,7 +209,10 @@ ON CONFLICT (asset_id) DO UPDATE SET
 -- offset); a NULL exif time keeps the upload's value and source, so
 -- the upload response's initial taken_at never regresses (the fallback
 -- chain deviceCreatedAt -> server now stays intact, source 'import').
--- The metadata job never passes the 'file' source: a content-addressed
+-- The offset that resolved the instant is display state that rides it:
+-- taken_at_zone lands with the same arm (the offset the metadata job
+-- resolved, NULL when no zone did). The metadata job never passes the
+-- 'file' source: a content-addressed
 -- upload blob's mtime is the upload instant itself, so a file-mtime
 -- step would churn values without information; 'file' stays reserved
 -- for the directory-album importer that reads files in place.
@@ -219,15 +226,19 @@ ON CONFLICT (asset_id) DO UPDATE SET
 -- wired (a deployment without the baked place data), the gate flag
 -- stays false and the column keeps whatever it held, so a
 -- data-less boot never destroys resolutions a data-carrying boot
--- produced.
+-- produced. A manual location (the owner's own coordinates, the
+-- PATCH's write) is the newer decision and stays: the refinement
+-- leaves the resolved place of a manually located row alone.
 UPDATE assets SET
     taken_at        = COALESCE(sqlc.narg('taken_at'), taken_at),
     taken_at_source = CASE WHEN sqlc.narg('taken_at') IS NULL THEN taken_at_source
                            ELSE 'exif'::taken_at_source END,
+    taken_at_zone   = COALESCE(sqlc.narg('taken_at_zone'), taken_at_zone),
     width           = COALESCE(sqlc.narg('width'), width),
     height          = COALESCE(sqlc.narg('height'), height),
     duration_ms     = COALESCE(sqlc.narg('duration_ms'), duration_ms),
-    place_id        = CASE WHEN sqlc.arg('place_resolved')::boolean THEN sqlc.narg('place_id')
+    place_id        = CASE WHEN sqlc.arg('place_resolved')::boolean
+                            AND location_lat IS NULL THEN sqlc.narg('place_id')
                            ELSE place_id END,
     updated_at      = now()
 WHERE id = sqlc.arg('id');
@@ -283,6 +294,51 @@ UPDATE assets SET
 WHERE id = sqlc.arg('id')
   AND owner_id = sqlc.arg('owner_id')
   AND description <> sqlc.arg('description');
+
+-- name: UpdateAssetTakenAt :execrows
+-- The owner-scoped capture-time write of PATCH /assets/{id}: the
+-- instant and the display zone that resolved it land together (the
+-- offset IS the zone the info panel renders beside the time). The
+-- pair <> arm is the set-semantics guard: a patch repeating both the
+-- stored instant and the stored zone matches nothing, so the
+-- idempotent repeat is the same success, updated_at stays un-stamped
+-- and the event stays silent -- the rows-affected count is the
+-- handler's change signal. (Both fields are compared: the instant
+-- and the zone are DISTINCT from their stored values, so a
+-- same-instant zone-only patch IS a change -- the zone is a served
+-- field of its own.) The owner guard IS the permission check (asset
+-- attribute editing is owner-only, no admin override), so a foreign
+-- id matches nothing exactly like an unknown one. No state filter: a
+-- trashed asset is editable like it is readable.
+UPDATE assets SET
+    taken_at = sqlc.arg('taken_at'),
+    taken_at_zone = sqlc.arg('taken_at_zone'),
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+  AND owner_id = sqlc.arg('owner_id')
+  AND (taken_at <> sqlc.arg('taken_at')
+       OR taken_at_zone IS DISTINCT FROM sqlc.arg('taken_at_zone'));
+
+-- name: UpdateAssetLocation :execrows
+-- The owner-scoped manual-location write of PATCH /assets/{id}: the
+-- coordinates land on the asset (the info panel's own pair) beside
+-- the resolved place (the caller's resolved answer, NULL when the
+-- point sits beyond every city or the deployment runs without the
+-- baked place data -- the resolution flag in the handler decides).
+-- The equality arm is the set-semantics guard: a patch repeating the
+-- stored pair and place matches nothing -- the idempotent repeat is
+-- the same success, no event. The owner guard IS the permission
+-- check; no state filter, like the description arm.
+UPDATE assets SET
+    location_lat = sqlc.arg('lat'),
+    location_lon = sqlc.arg('lon'),
+    place_id = sqlc.narg('place_id'),
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+  AND owner_id = sqlc.arg('owner_id')
+  AND (location_lat IS DISTINCT FROM sqlc.arg('lat')
+       OR location_lon IS DISTINCT FROM sqlc.arg('lon')
+       OR place_id IS DISTINCT FROM sqlc.narg('place_id'));
 
 -- name: ListStuckAssets :many
 -- The requeue sweep's stuck-row finder: assets whose

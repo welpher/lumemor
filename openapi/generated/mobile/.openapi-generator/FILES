@@ -31,6 +31,7 @@ doc/AlbumTimelinePreferenceResponse.md
 doc/AlbumWallResponse.md
 doc/AlbumsApi.md
 doc/AssetAlbumRef.md
+doc/AssetCoordinates.md
 doc/AssetDetail.md
 doc/AssetFaceSummary.md
 doc/AssetPatch.md
@@ -55,6 +56,9 @@ doc/DownloadFormat.md
 doc/Error.md
 doc/EventsApi.md
 doc/ExifSummary.md
+doc/FaceBbox.md
+doc/FaceCreateRequest.md
+doc/FaceCreated.md
 doc/FaceDetail.md
 doc/FaceDetailAsset.md
 doc/ImageSettingsResponse.md
@@ -209,6 +213,7 @@ lib/src/model/album_timeline_preference_request.dart
 lib/src/model/album_timeline_preference_response.dart
 lib/src/model/album_wall_response.dart
 lib/src/model/asset_album_ref.dart
+lib/src/model/asset_coordinates.dart
 lib/src/model/asset_detail.dart
 lib/src/model/asset_face_summary.dart
 lib/src/model/asset_patch.dart
@@ -231,6 +236,9 @@ lib/src/model/device_session.dart
 lib/src/model/download_format.dart
 lib/src/model/error.dart
 lib/src/model/exif_summary.dart
+lib/src/model/face_bbox.dart
+lib/src/model/face_create_request.dart
+lib/src/model/face_created.dart
 lib/src/model/face_detail.dart
 lib/src/model/face_detail_asset.dart
 lib/src/model/image_settings_response.dart
@@ -363,6 +371,7 @@ test/album_timeline_preference_response_test.dart
 test/album_wall_response_test.dart
 test/albums_api_test.dart
 test/asset_album_ref_test.dart
+test/asset_coordinates_test.dart
 test/asset_detail_test.dart
 test/asset_face_summary_test.dart
 test/asset_patch_test.dart
@@ -387,6 +396,9 @@ test/download_format_test.dart
 test/error_test.dart
 test/events_api_test.dart
 test/exif_summary_test.dart
+test/face_bbox_test.dart
+test/face_create_request_test.dart
+test/face_created_test.dart
 test/face_detail_asset_test.dart
 test/face_detail_test.dart
 test/image_settings_response_test.dart

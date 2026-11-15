@@ -469,6 +469,9 @@ type Asset struct {
 	PendingJobs      int32              `json:"pending_jobs"`
 	ReadyAt          pgtype.Timestamptz `json:"ready_at"`
 	FileMtime        pgtype.Timestamptz `json:"file_mtime"`
+	TakenAtZone      pgtype.Text        `json:"taken_at_zone"`
+	LocationLat      pgtype.Float8      `json:"location_lat"`
+	LocationLon      pgtype.Float8      `json:"location_lon"`
 }
 
 type AssetTag struct {
@@ -512,7 +515,7 @@ type Face struct {
 	BboxW        int32              `json:"bbox_w"`
 	BboxH        int32              `json:"bbox_h"`
 	Score        float32            `json:"score"`
-	ModelID      string             `json:"model_id"`
+	ModelID      pgtype.Text        `json:"model_id"`
 	Embedding    pgvector.Vector    `json:"embedding"`
 	EmbedModelID pgtype.Text        `json:"embed_model_id"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`

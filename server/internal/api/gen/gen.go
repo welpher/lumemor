@@ -2016,10 +2016,26 @@ type AssetAlbumRefCallerRole string
 // viewer's own default album (never another account's).
 type AssetAlbumRefType string
 
+// AssetCoordinates One geographic position in degrees: the pair the info panel's
+// mini map and coordinate line render. Both halves always
+// present -- half a coordinate is no location.
+type AssetCoordinates struct {
+	// Lat Latitude in degrees (-90..90).
+	//
+	// Examples: 48.8584
+	Lat float64 `json:"lat"`
+
+	// Lon Longitude in degrees (-180..180).
+	//
+	// Examples: 2.2945
+	Lon float64 `json:"lon"`
+}
+
 // AssetDetail One asset as the detail endpoint returns it: the upload
 // response's identity and storage fields, the pipeline's
-// refinements, the two owner-level attributes the PATCH
-// endpoint edits (`description`, `isHidden`), the asset's
+// refinements, the owner-level attributes the PATCH
+// endpoint edits (`description`, `isHidden`, and the
+// `takenAt` / `latitude` / `longitude` edits), the asset's
 // faces as the calling user sees them (`faces`), and the
 // CALLER's tags on the asset (`tags`). The caller-visible
 // album memberships surface as `albums` (the info panel's
@@ -2131,6 +2147,16 @@ type AssetDetail struct {
 	// is served there too); null otherwise.
 	LivePhotoVideoId *openapi_types.UUID `json:"livePhotoVideoId"`
 
+	// Location The coordinates the info panel renders -- the photo's
+	// current location. The owner's manual pair when a location
+	// edit wrote one (`PATCH /assets/{id}`'s `latitude` /
+	// `longitude`), the camera-recorded GPS otherwise (the
+	// `exif` fields' own values). Null when the asset carries
+	// neither -- no GPS and no manual edit -- and the whole
+	// location row stays unrendered. The PATCH response serves
+	// the same face, exactly as the GET serves it.
+	Location *AssetCoordinates `json:"location"`
+
 	// MimeType Canonical content type of the stored format, for example
 	// `image/jpeg` or `video/quicktime`.
 	MimeType string `json:"mimeType"`
@@ -2142,6 +2168,17 @@ type AssetDetail struct {
 
 	// OwnerId UUIDv7 identifier of the owning account.
 	OwnerId openapi_types.UUID `json:"ownerId"`
+
+	// Path The storage-relative path of the original file (the
+	// `assets.file_path` render), as the administrator's info
+	// panel shows it -- the copyable machine location. Populated
+	// ONLY when the caller is an administrator: every other
+	// caller reads null and the field stays out of their panel
+	// entirely (the instance's internal layout is machine
+	// information, not content). An external asset (a directory
+	// album's source file) carries the file's real absolute
+	// path instead of the storage layout's relative form.
+	Path *string `json:"path"`
 
 	// Place The asset's resolved place (the metadata job's GPS
 	// resolution, the `assets.place_id` the pipeline wrote),
@@ -2172,7 +2209,8 @@ type AssetDetail struct {
 	// TakenAt Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
 	// the upload time when absent) and refined from EXIF by the
 	// metadata pipeline; the response renders the best value the
-	// server has at answer time.
+	// server has at answer time. The owner's manual edit rides
+	// `PATCH /assets/{id}`, which replaces the value wholesale.
 	TakenAt time.Time `json:"takenAt"`
 
 	// TakenAtSource Where `takenAt` comes from: `import` is the
@@ -2181,6 +2219,15 @@ type AssetDetail struct {
 	// offset, `file` a file timestamp (reserved for the future
 	// directory-album importer).
 	TakenAtSource AssetDetailTakenAtSource `json:"takenAtSource"`
+
+	// TakenAtZone The zone the displayed capture time resolves in, EXIF
+	// offset notation (`+05:30`): the owner's choice when the
+	// capture time was last written through `PATCH /assets/{id}`,
+	// the EXIF resolution chain's offset (the OffsetTime tags,
+	// else the upload's device zone) when the metadata job
+	// refined it, and null when neither resolved a zone -- the
+	// client renders the time without a zone suffix.
+	TakenAtZone *string `json:"takenAtZone"`
 
 	// Width Pixel width in sensor order (not orientation-corrected);
 	// null until the metadata job refined the dimensions.
@@ -2200,7 +2247,8 @@ type AssetDetailKind string
 type AssetDetailTakenAtSource string
 
 // AssetFaceSummary One face of the asset detail's `faces` array: the crop's
-// identity, the detection score, the face's cluster, the
+// identity, the detection score, the face's bounding box (the
+// on-photo face-box layer's geometry), the face's cluster, the
 // CALLER's label of that cluster and the person entity's birth
 // date. The label is per-user state: another account's label of
 // the same global cluster never shows here; the birth date is
@@ -2210,6 +2258,14 @@ type AssetDetailTakenAtSource string
 // first clustering assignment; such a face has no person yet and
 // every assignment write on it answers the people surface's 404.
 type AssetFaceSummary struct {
+	// Bbox A face's bounding box in per-mille units of the asset's view
+	// derivative (the pixels the crop endpoint addresses and the
+	// on-photo face-box layer renders): `x`/`y` the top-left
+	// corner, `w`/`h` the box's extents, each an integer 0..1000.
+	// A detected face's box is the detector's own; a hand-drawn
+	// face (POST /faces) carries the drawn box as-is.
+	Bbox FaceBbox `json:"bbox"`
+
 	// BirthDate The person's birth date (the entity's own attribute), or
 	// null when unset or the face has no cluster. The client
 	// computes the capture-time age from it and the asset's
@@ -2231,7 +2287,8 @@ type AssetFaceSummary struct {
 	// label.
 	Label *PersonLabel `json:"label"`
 
-	// Score The detector's confidence for this face.
+	// Score The detector's confidence for this face; a hand-drawn face
+	// (the caller's own certainty) carries 1.0.
 	Score float32 `json:"score"`
 
 	// Thumbnail URL of the face's crop: the face crop endpoint
@@ -2245,10 +2302,10 @@ type AssetFaceSummary struct {
 }
 
 // AssetPatch The partial edit of one asset: every field is optional, at
-// least one must be present (a body that carries neither -- null
+// least one must be present (a body that carries none -- null
 // values count as absent -- is a client bug and answers 400),
 // and only the fields the request carries update; the rest keep
-// their values. Both fields are owner-level asset state, so a
+// their values. Every field is owner-level asset state, so a
 // patch that actually changes one of them publishes a single
 // `asset.updated` event; a patch that repeats the stored values
 // is the idempotent no-op and publishes nothing.
@@ -2266,6 +2323,40 @@ type AssetPatch struct {
 	// until it is unhidden; `false` returns it. The same switch
 	// the batch `hide` / `unhide` actions flip.
 	IsHidden *bool `json:"isHidden,omitempty"`
+
+	// Latitude The manual location edit's latitude, in degrees
+	// (-90..90). It rides with `longitude` (the pair is the
+	// location; one half alone answers 400
+	// `VALIDATION_FAILED`). Writing the pair replaces the
+	// asset's location: the info panel renders these
+	// coordinates and the resolved place follows the pin. The
+	// camera-recorded GPS in `exif` keeps the file's own
+	// reading and is not touched.
+	//
+	//
+	// Examples: 36.0671
+	Latitude *float64 `json:"latitude,omitempty"`
+
+	// Longitude The manual location edit's longitude, in degrees
+	// (-180..180). It rides with `latitude` (see there for the
+	// pair's semantics).
+	//
+	//
+	// Examples: 120.3826
+	Longitude *float64 `json:"longitude,omitempty"`
+
+	// TakenAt The owner's manual capture-time edit: the value replaces
+	// the stored instant wholesale. The timestamp MUST carry a
+	// UTC offset (RFC 3339's `Z` or `+hh:mm` designator) -- the
+	// offset is the capture zone the info panel displays beside
+	// the time, so a zone-less value is ambiguous and answers
+	// 400 `VALIDATION_FAILED`. The same value decides where the
+	// photo sits on the timeline (the instant) and which offset
+	// renders beside it (the offset).
+	//
+	//
+	// Examples: 2026-08-12T18:42:00+08:00
+	TakenAt *time.Time `json:"takenAt,omitempty"`
 }
 
 // AssetPlaceRef The asset detail's `place` face: the resolved city as the
@@ -2668,6 +2759,74 @@ type ExifSummary struct {
 	// notation (`+05:30`); null when the capture time did not
 	// resolve through EXIF.
 	TzOffset *string `json:"tzOffset"`
+}
+
+// FaceBbox A face's bounding box in per-mille units of the asset's view
+// derivative (the pixels the crop endpoint addresses and the
+// on-photo face-box layer renders): `x`/`y` the top-left
+// corner, `w`/`h` the box's extents, each an integer 0..1000.
+// A detected face's box is the detector's own; a hand-drawn
+// face (POST /faces) carries the drawn box as-is.
+type FaceBbox struct {
+	// H The box's height, in per-mille of the derivative's height.
+	//
+	// Examples: 190
+	H int `json:"h"`
+
+	// W The box's width, in per-mille of the derivative's width.
+	//
+	// Examples: 187
+	W int `json:"w"`
+
+	// X Per-mille of the derivative's width where the box starts.
+	//
+	// Examples: 312
+	X int `json:"x"`
+
+	// Y Per-mille of the derivative's height where the box starts.
+	//
+	// Examples: 118
+	Y int `json:"y"`
+}
+
+// FaceCreateRequest One hand-drawn face: the asset it sits on and the drawn box,
+// in the FaceBbox per-mille units. The drawn box is the face
+// row's bounding box as-is; the crop endpoint and the on-photo
+// face-box layer render from it.
+type FaceCreateRequest struct {
+	// AssetId The asset the drawn face sits on. It must be the caller's
+	// own live asset (the face writes' gate).
+	//
+	//
+	// Examples: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+	AssetId openapi_types.UUID `json:"assetId"`
+
+	// Bbox A face's bounding box in per-mille units of the asset's view
+	// derivative (the pixels the crop endpoint addresses and the
+	// on-photo face-box layer renders): `x`/`y` the top-left
+	// corner, `w`/`h` the box's extents, each an integer 0..1000.
+	// A detected face's box is the detector's own; a hand-drawn
+	// face (POST /faces) carries the drawn box as-is.
+	Bbox FaceBbox `json:"bbox"`
+}
+
+// FaceCreated One committed manual face: its identity and the crop URL. The
+// face carries no cluster yet -- the assign flow (the move or
+// the from-face creation) is the caller's next step, and that
+// is where the drawn face becomes someone.
+type FaceCreated struct {
+	// Id Identifier of the new face row.
+	//
+	// Examples: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f74
+	Id openapi_types.UUID `json:"id"`
+
+	// Thumbnail URL of the new face's crop: the face crop endpoint with
+	// the new face's id (the same shape the detail's faces
+	// carry).
+	//
+	//
+	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f74/thumbnail
+	Thumbnail string `json:"thumbnail"`
 }
 
 // FaceDetail One face of the cluster on an asset visible to the caller:
@@ -5163,6 +5322,9 @@ type LoginJSONRequestBody = LoginRequest
 // ConsumePairingTokenJSONRequestBody defines body for ConsumePairingToken for application/json ContentType.
 type ConsumePairingTokenJSONRequestBody = PairingConsumeRequest
 
+// CreateFaceJSONRequestBody defines body for CreateFace for application/json ContentType.
+type CreateFaceJSONRequestBody = FaceCreateRequest
+
 // MoveFaceJSONRequestBody defines body for MoveFace for application/json ContentType.
 type MoveFaceJSONRequestBody = MoveFaceRequest
 
@@ -5363,7 +5525,7 @@ type ServerInterface interface {
 	// GetAsset Fetch the detail of one owned asset.
 	// (GET /assets/{id})
 	GetAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAssetParams)
-	// PatchAsset Edit the description or hidden switch of one asset.
+	// PatchAsset Edit the owner-level attributes of one asset.
 	// (PATCH /assets/{id})
 	PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PatchAssetParams)
 	// GetAssetOriginal Download the original file of one owned asset.
@@ -5396,6 +5558,9 @@ type ServerInterface interface {
 	// GetEvents Stream instance activity over server-sent events.
 	// (GET /events)
 	GetEvents(w http.ResponseWriter, r *http.Request, params GetEventsParams)
+	// CreateFace Add one hand-drawn face to an asset.
+	// (POST /faces)
+	CreateFace(w http.ResponseWriter, r *http.Request)
 	// DetachFace Release one face from its person.
 	// (DELETE /faces/{faceId})
 	DetachFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
@@ -5822,7 +5987,7 @@ func (_ Unimplemented) GetAsset(w http.ResponseWriter, r *http.Request, id opena
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// PatchAsset Edit the description or hidden switch of one asset.
+// PatchAsset Edit the owner-level attributes of one asset.
 // (PATCH /assets/{id})
 func (_ Unimplemented) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PatchAssetParams) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -5885,6 +6050,12 @@ func (_ Unimplemented) RevokeSession(w http.ResponseWriter, r *http.Request, id 
 // GetEvents Stream instance activity over server-sent events.
 // (GET /events)
 func (_ Unimplemented) GetEvents(w http.ResponseWriter, r *http.Request, params GetEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateFace Add one hand-drawn face to an asset.
+// (POST /faces)
+func (_ Unimplemented) CreateFace(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7562,6 +7733,20 @@ func (siw *ServerInterfaceWrapper) GetEvents(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// CreateFace operation middleware
+func (siw *ServerInterfaceWrapper) CreateFace(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateFace(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DetachFace operation middleware
 func (siw *ServerInterfaceWrapper) DetachFace(w http.ResponseWriter, r *http.Request) {
 
@@ -8681,6 +8866,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/people/merge", wrapper.MergePeople)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/faces", wrapper.CreateFace)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/faces/{faceId}", wrapper.DetachFace)

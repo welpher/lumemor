@@ -9,12 +9,13 @@ import 'package:lumemor_api/src/model/asset_place_ref.dart';
 import 'package:lumemor_api/src/model/asset_tag_summary.dart';
 import 'package:lumemor_api/src/model/asset_album_ref.dart';
 import 'package:lumemor_api/src/model/asset_face_summary.dart';
+import 'package:lumemor_api/src/model/asset_coordinates.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
 part 'asset_detail.g.dart';
 
-/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, the two owner-level attributes the PATCH endpoint edits (`description`, `isHidden`), the asset's faces as the calling user sees them (`faces`), and the CALLER's tags on the asset (`tags`). The caller-visible album memberships surface as `albums` (the info panel's where-does-this-live row) and the GPS resolution as `place` (the info panel's city row, the locale-joined display name). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
+/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, the owner-level attributes the PATCH endpoint edits (`description`, `isHidden`, and the `takenAt` / `latitude` / `longitude` edits), the asset's faces as the calling user sees them (`faces`), and the CALLER's tags on the asset (`tags`). The caller-visible album memberships surface as `albums` (the info panel's where-does-this-live row) and the GPS resolution as `place` (the info panel's city row, the locale-joined display name). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the asset.
@@ -25,8 +26,9 @@ part 'asset_detail.g.dart';
 /// * [mimeType] - Canonical content type of the stored format, for example `image/jpeg` or `video/quicktime`. 
 /// * [checksum] - SHA-256 digest of the file bytes, lowercase hex. The prefix of the entity tags the media endpoints serve. 
 /// * [createdAt] - When the asset record was created (RFC 3339 UTC).
-/// * [takenAt] - Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the response renders the best value the server has at answer time. 
+/// * [takenAt] - Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the response renders the best value the server has at answer time. The owner's manual edit rides `PATCH /assets/{id}`, which replaces the value wholesale. 
 /// * [takenAtSource] - Where `takenAt` comes from: `import` is the device-reported capture time of the upload, `exif` an EXIF capture time the metadata job resolved with an offset, `file` a file timestamp (reserved for the future directory-album importer). 
+/// * [takenAtZone] - The zone the displayed capture time resolves in, EXIF offset notation (`+05:30`): the owner's choice when the capture time was last written through `PATCH /assets/{id}`, the EXIF resolution chain's offset (the OffsetTime tags, else the upload's device zone) when the metadata job refined it, and null when neither resolved a zone -- the client renders the time without a zone suffix. 
 /// * [isTrashed] - True when the asset sits in the trash.
 /// * [isHidden] - True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
 /// * [description] - The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale. 
@@ -37,6 +39,8 @@ part 'asset_detail.g.dart';
 /// * [blurhash] - The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it. 
 /// * [livePhotoVideoId] - For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, and its transcoded play stream is served there too); null otherwise. 
 /// * [exif] - The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
+/// * [location] - The coordinates the info panel renders -- the photo's current location. The owner's manual pair when a location edit wrote one (`PATCH /assets/{id}`'s `latitude` / `longitude`), the camera-recorded GPS otherwise (the `exif` fields' own values). Null when the asset carries neither -- no GPS and no manual edit -- and the whole location row stays unrendered. The PATCH response serves the same face, exactly as the GET serves it. 
+/// * [path] - The storage-relative path of the original file (the `assets.file_path` render), as the administrator's info panel shows it -- the copyable machine location. Populated ONLY when the caller is an administrator: every other caller reads null and the field stays out of their panel entirely (the instance's internal layout is machine information, not content). An external asset (a directory album's source file) carries the file's real absolute path instead of the storage layout's relative form. 
 /// * [faces] - The asset's faces as the calling user sees them, strongest score first with the face id as the tiebreak. The array is caller-scoped: the asset being visible to the caller is the gate -- the faces ride on the detail's own permission -- and each entry's `label` is the caller's own label of the face's cluster, never another account's. Always present, empty when the asset carries no faces (none detected, or detection has not run yet). The PATCH response serves the same array, exactly as the GET serves it. 
 /// * [tags] - The CALLER's tags on this asset: the caller's own assignment rows joined to their own tag rows, sorted by name case-insensitively with the tag id as the tiebreak (the vocabulary listing's own ordering). Another account's tags on the same asset never surface, so the same shared asset answers different arrays for the owner and the sharee (each sees their own, or none). Always present, empty when the caller tagged the asset with nothing. The PATCH response serves the same array, exactly as the GET serves it. 
 /// * [albums] - The albums holding this asset, as the calling user sees them: every album whose membership row references the asset and that the caller can see -- their own albums (the sync stream included: the pinned core card the uploads land in) plus every album shared to them. An album the caller cannot see -- another account's sync album, an unshared album -- never surfaces, so the same asset answers different arrays for the owner and a sharee. The caller's own sync album is included exactly when it is theirs (its membership is the upload stream's materialized rows), and every entry's `callerRole` is the viewer's relation to that album. Ordered with the sync card first, then by title case-insensitively with the album id as the tiebreak. Always present, empty when no visible album holds the asset. The PATCH response serves the same array, exactly as the GET serves it. 
@@ -76,7 +80,7 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   @BuiltValueField(wireName: r'createdAt')
   DateTime get createdAt;
 
-  /// Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the response renders the best value the server has at answer time. 
+  /// Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the response renders the best value the server has at answer time. The owner's manual edit rides `PATCH /assets/{id}`, which replaces the value wholesale. 
   @BuiltValueField(wireName: r'takenAt')
   DateTime get takenAt;
 
@@ -84,6 +88,10 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   @BuiltValueField(wireName: r'takenAtSource')
   AssetDetailTakenAtSourceEnum get takenAtSource;
   // enum takenAtSourceEnum {  exif,  file,  import,  };
+
+  /// The zone the displayed capture time resolves in, EXIF offset notation (`+05:30`): the owner's choice when the capture time was last written through `PATCH /assets/{id}`, the EXIF resolution chain's offset (the OffsetTime tags, else the upload's device zone) when the metadata job refined it, and null when neither resolved a zone -- the client renders the time without a zone suffix. 
+  @BuiltValueField(wireName: r'takenAtZone')
+  String? get takenAtZone;
 
   /// True when the asset sits in the trash.
   @BuiltValueField(wireName: r'isTrashed')
@@ -124,6 +132,14 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   /// The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
   @BuiltValueField(wireName: r'exif')
   ExifSummary get exif;
+
+  /// The coordinates the info panel renders -- the photo's current location. The owner's manual pair when a location edit wrote one (`PATCH /assets/{id}`'s `latitude` / `longitude`), the camera-recorded GPS otherwise (the `exif` fields' own values). Null when the asset carries neither -- no GPS and no manual edit -- and the whole location row stays unrendered. The PATCH response serves the same face, exactly as the GET serves it. 
+  @BuiltValueField(wireName: r'location')
+  AssetCoordinates? get location;
+
+  /// The storage-relative path of the original file (the `assets.file_path` render), as the administrator's info panel shows it -- the copyable machine location. Populated ONLY when the caller is an administrator: every other caller reads null and the field stays out of their panel entirely (the instance's internal layout is machine information, not content). An external asset (a directory album's source file) carries the file's real absolute path instead of the storage layout's relative form. 
+  @BuiltValueField(wireName: r'path')
+  String? get path;
 
   /// The asset's faces as the calling user sees them, strongest score first with the face id as the tiebreak. The array is caller-scoped: the asset being visible to the caller is the gate -- the faces ride on the detail's own permission -- and each entry's `label` is the caller's own label of the face's cluster, never another account's. Always present, empty when the asset carries no faces (none detected, or detection has not run yet). The PATCH response serves the same array, exactly as the GET serves it. 
   @BuiltValueField(wireName: r'faces')
@@ -214,6 +230,11 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
       object.takenAtSource,
       specifiedType: const FullType(AssetDetailTakenAtSourceEnum),
     );
+    yield r'takenAtZone';
+    yield object.takenAtZone == null ? null : serializers.serialize(
+      object.takenAtZone,
+      specifiedType: const FullType.nullable(String),
+    );
     yield r'isTrashed';
     yield serializers.serialize(
       object.isTrashed,
@@ -263,6 +284,16 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
     yield serializers.serialize(
       object.exif,
       specifiedType: const FullType(ExifSummary),
+    );
+    yield r'location';
+    yield object.location == null ? null : serializers.serialize(
+      object.location,
+      specifiedType: const FullType.nullable(AssetCoordinates),
+    );
+    yield r'path';
+    yield object.path == null ? null : serializers.serialize(
+      object.path,
+      specifiedType: const FullType.nullable(String),
     );
     yield r'faces';
     yield serializers.serialize(
@@ -377,6 +408,14 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
           ) as AssetDetailTakenAtSourceEnum;
           result.takenAtSource = valueDes;
           break;
+        case r'takenAtZone':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(String),
+          ) as String?;
+          if (valueDes == null) continue;
+          result.takenAtZone = valueDes;
+          break;
         case r'isTrashed':
           final valueDes = serializers.deserialize(
             value,
@@ -451,6 +490,22 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
             specifiedType: const FullType(ExifSummary),
           ) as ExifSummary;
           result.exif.replace(valueDes);
+          break;
+        case r'location':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(AssetCoordinates),
+          ) as AssetCoordinates?;
+          if (valueDes == null) continue;
+          result.location.replace(valueDes);
+          break;
+        case r'path':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(String),
+          ) as String?;
+          if (valueDes == null) continue;
+          result.path = valueDes;
           break;
         case r'faces':
           final valueDes = serializers.deserialize(

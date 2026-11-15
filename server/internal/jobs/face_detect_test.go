@@ -472,7 +472,7 @@ func TestFaceDetectJobRerunReplacesOwnModelFaces(t *testing.T) {
 		AssetID: pgUUID(id),
 		BboxX:   111, BboxY: 222, BboxW: 333, BboxH: 444,
 		Score:   0.9,
-		ModelID: other,
+		ModelID: pgtype.Text{String: other, Valid: true},
 	}); err != nil {
 		t.Fatalf("seed the other model's face: %v", err)
 	}

@@ -369,6 +369,12 @@ func refineParams(assetID pgtype.UUID, tags map[string]any, exifTime resolvedTim
 	}
 	if ok {
 		params.TakenAt = pgtype.Timestamptz{Time: exifTime.when.UTC(), Valid: true}
+		// The offset that resolved the instant is the zone the info
+		// panel displays beside the time: it rides the same arm, so
+		// a refinement that moves the instant moves the zone with it.
+		if exifTime.tzOffset != "" {
+			params.TakenAtZone = pgtype.Text{String: exifTime.tzOffset, Valid: true}
+		}
 	}
 	return params
 }

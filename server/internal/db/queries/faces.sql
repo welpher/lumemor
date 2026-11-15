@@ -23,6 +23,17 @@
 INSERT INTO faces (id, asset_id, bbox_x, bbox_y, bbox_w, bbox_h, score, model_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
+-- name: InsertManualFace :one
+-- Stores one hand-drawn face (POST /faces): the caller's drawn box
+-- becomes the row as-is, with no detector to name (model_id NULL) and
+-- no embedding (the recognition never saw it). The score is 1.0 --
+-- the caller's own certainty, and the value that puts the drawn face
+-- first among the detail's faces. The row returns: the caller's
+-- assign flow needs the new id.
+INSERT INTO faces (id, asset_id, bbox_x, bbox_y, bbox_w, bbox_h, score, model_id)
+VALUES ($1, $2, $3, $4, $5, $6, 1.0, NULL)
+RETURNING id, bbox_x, bbox_y, bbox_w, bbox_h, score;
+
 -- name: DeleteFacesByAsset :exec
 -- Removes the asset's faces of ONE model: the detection (re)run's
 -- replace step for that model. Faces of other models survive -- see
