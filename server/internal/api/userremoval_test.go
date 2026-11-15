@@ -478,8 +478,8 @@ func TestDeleteUserTransferFoldsDuplicate(t *testing.T) {
 	adminID := env.sessionUserID(t)
 
 	// The same bytes under both accounts: the content-addressed
-	// storage keeps ONE physical file, and the live-copy rule keeps
-	// one row per owner.
+	// storage keeps ONE physical file, and the total owner+checksum
+	// index keeps one row per owner (live or trashed alike).
 	sharedPath := filepath.Join(t.TempDir(), "IMG_DUPLICATE.jpg")
 	if err := os.WriteFile(sharedPath, []byte("identical bytes"), 0o644); err != nil {
 		t.Fatalf("write the shared file: %v", err)

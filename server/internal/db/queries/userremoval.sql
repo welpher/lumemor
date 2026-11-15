@@ -103,7 +103,10 @@ WHERE owner_id = sqlc.arg('owner_id');
 -- Component rows (a Live Photo's video half) stay out of the fold on
 -- both sides: a component is not content of its own -- it rides its
 -- photo's decision, and the fold purges it together with the photo it
--- belongs to.
+-- belongs to. (The exclusion is scoped to the fold's intent, not a
+-- completeness claim: two colliding component checksums -- identical
+-- video bytes under different photo halves -- are outside this
+-- statement and ride the handover untouched.)
 SELECT d.id AS departing_id,
        (d.deleted_at IS NULL)::boolean AS departing_live,
        d.deleted_at AS departing_deleted_at,
