@@ -832,3 +832,87 @@ func (s *server) DetachFace(w http.ResponseWriter, r *http.Request, faceId opena
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// CreateFace implements POST /faces: one hand-drawn face. The owner
+// draws a box around a face the detector missed and the drawn box
+// becomes a face row of the asset -- the same rows detection writes,
+// minus a detector (the row's model is NULL) and minus an embedding
+// (the recognition never saw it, so the face joins no cluster until
+// the assign flow moves or seeds one). The insert answers the row's
+// identity and crop URL; the caller's own session converges through
+// the response, so the write publishes no event (a face with no
+// cluster announces no person change -- the same silence a fresh
+// detection's rows keep).
+func (s *server) CreateFace(w http.ResponseWriter, r *http.Request) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	var request apigen.FaceCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+		return
+	}
+	if !bboxInBounds(request.Bbox) {
+		s.writeValidationError(w,
+			"the drawn box must carry four in-bounds per-mille halves and a positive width and height",
+			[]string{"bbox"})
+		return
+	}
+
+	// The asset-side gate, the face writes' own in reverse: the face
+	// must sit on an asset the caller OWNS and that is live -- the
+	// same refusal discipline the move and the from-face creation
+	// apply to the face's asset. An unknown id and a foreign one
+	// resolve to no row and answer the byte-identical 404 (asset
+	// ids cannot be enumerated); the live-state checks below fold
+	// into the same shape.
+	asset, err := s.queries.GetAsset(r.Context(), dbgen.GetAssetParams{
+		ID:      pgUUID(uuid.UUID(request.AssetId)),
+		OwnerID: pgUUID(requester.userID),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.writePersonNotFound(w)
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "load the drawn face's asset", err)
+		return
+	}
+	if asset.DeletedAt.Valid || asset.IsHidden || asset.IsComponent {
+		s.writePersonNotFound(w)
+		return
+	}
+
+	id := uuid.New()
+	face, err := s.queries.InsertManualFace(r.Context(), dbgen.InsertManualFaceParams{
+		ID:      pgUUID(id),
+		AssetID: pgUUID(uuid.UUID(request.AssetId)),
+		BboxX:   int32(request.Bbox.X),
+		BboxY:   int32(request.Bbox.Y),
+		BboxW:   int32(request.Bbox.W),
+		BboxH:   int32(request.Bbox.H),
+	})
+	if err != nil {
+		s.internalError(w, r, "store the drawn face", err)
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, apigen.FaceCreated{
+		Id:        uuid.UUID(face.ID.Bytes),
+		Thumbnail: faceThumbnailPath(id),
+	})
+}
+
+// bboxInBounds validates the drawn box: every half inside the
+// per-mille range, and both extents positive (a zero-extent box is
+// nothing drawn).
+func bboxInBounds(bbox apigen.FaceBbox) bool {
+	if bbox.X < 0 || bbox.X > 1000 || bbox.Y < 0 || bbox.Y > 1000 ||
+		bbox.W < 1 || bbox.W > 1000 || bbox.H < 1 || bbox.H > 1000 {
+		return false
+	}
+	return true
+}

@@ -238,7 +238,7 @@ func (w *FaceRecognizeWorker) work(ctx context.Context, job *river.Job[FaceRecog
 	// coexistence-visible set the matching walks.
 	stored, err := dbgen.New(w.pool).ListFacesByAsset(ctx, dbgen.ListFacesByAssetParams{
 		AssetID: pgUUID(assetID),
-		ModelID: detectModel.ID,
+		ModelID: pgtype.Text{String: detectModel.ID, Valid: true},
 	})
 	if err != nil {
 		return fmt.Errorf("list the stored faces of asset %s: %w", assetID, err)

@@ -58,7 +58,7 @@ DELETE FROM faces WHERE asset_id = $1 AND model_id = $2
 
 type DeleteFacesByAssetParams struct {
 	AssetID pgtype.UUID `json:"asset_id"`
-	ModelID string      `json:"model_id"`
+	ModelID pgtype.Text `json:"model_id"`
 }
 
 // Removes the asset's faces of ONE model: the detection (re)run's
@@ -127,7 +127,7 @@ type InsertFaceParams struct {
 	BboxW   int32       `json:"bbox_w"`
 	BboxH   int32       `json:"bbox_h"`
 	Score   float32     `json:"score"`
-	ModelID string      `json:"model_id"`
+	ModelID pgtype.Text `json:"model_id"`
 }
 
 // Face queries: the face detection job's write surface.
@@ -162,6 +162,57 @@ func (q *Queries) InsertFace(ctx context.Context, arg InsertFaceParams) error {
 		arg.ModelID,
 	)
 	return err
+}
+
+const insertManualFace = `-- name: InsertManualFace :one
+INSERT INTO faces (id, asset_id, bbox_x, bbox_y, bbox_w, bbox_h, score, model_id)
+VALUES ($1, $2, $3, $4, $5, $6, 1.0, NULL)
+RETURNING id, bbox_x, bbox_y, bbox_w, bbox_h, score
+`
+
+type InsertManualFaceParams struct {
+	ID      pgtype.UUID `json:"id"`
+	AssetID pgtype.UUID `json:"asset_id"`
+	BboxX   int32       `json:"bbox_x"`
+	BboxY   int32       `json:"bbox_y"`
+	BboxW   int32       `json:"bbox_w"`
+	BboxH   int32       `json:"bbox_h"`
+}
+
+type InsertManualFaceRow struct {
+	ID    pgtype.UUID `json:"id"`
+	BboxX int32       `json:"bbox_x"`
+	BboxY int32       `json:"bbox_y"`
+	BboxW int32       `json:"bbox_w"`
+	BboxH int32       `json:"bbox_h"`
+	Score float32     `json:"score"`
+}
+
+// Stores one hand-drawn face (POST /faces): the caller's drawn box
+// becomes the row as-is, with no detector to name (model_id NULL) and
+// no embedding (the recognition never saw it). The score is 1.0 --
+// the caller's own certainty, and the value that puts the drawn face
+// first among the detail's faces. The row returns: the caller's
+// assign flow needs the new id.
+func (q *Queries) InsertManualFace(ctx context.Context, arg InsertManualFaceParams) (InsertManualFaceRow, error) {
+	row := q.db.QueryRow(ctx, insertManualFace,
+		arg.ID,
+		arg.AssetID,
+		arg.BboxX,
+		arg.BboxY,
+		arg.BboxW,
+		arg.BboxH,
+	)
+	var i InsertManualFaceRow
+	err := row.Scan(
+		&i.ID,
+		&i.BboxX,
+		&i.BboxY,
+		&i.BboxW,
+		&i.BboxH,
+		&i.Score,
+	)
+	return i, err
 }
 
 const listClusterFaces = `-- name: ListClusterFaces :many
@@ -279,7 +330,7 @@ ORDER BY score DESC
 
 type ListFacesByAssetParams struct {
 	AssetID pgtype.UUID `json:"asset_id"`
-	ModelID string      `json:"model_id"`
+	ModelID pgtype.Text `json:"model_id"`
 }
 
 type ListFacesByAssetRow struct {
