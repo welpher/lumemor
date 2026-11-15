@@ -253,10 +253,12 @@ func (s *server) userDisposal(w http.ResponseWriter, request apigen.AdminUserDel
 // removeUser runs the disposal's ONE transaction: the locks (the
 // departing row, the receiving one on the transfer arm, and the
 // instance's administrator rows), the guards the locks make race-free,
-// the arm's settlement, and the account row's deletion. The trash
-// arm's external file moves run inside it (ahead of the row writes
-// they describe) and are compensated when anything after them fails,
-// so a rolled-back disposal leaves no file moved.
+// the arm's settlement, and the account row's deletion. The trash arm's
+// external file moves run inside it (ahead of the row writes they
+// describe) and escape it as the compensation's input: every failure
+// after the first move -- an arm write, the account row's delete, the
+// commit -- moves the performed files back, so a rolled-back disposal
+// leaves no file moved and no trash home behind.
 func (s *server) removeUser(r *http.Request, actor, target uuid.UUID, disposal userDisposal) (userRemovalOutcome, error) {
 	var outcome userRemovalOutcome
 	ctx := r.Context()
@@ -319,27 +321,38 @@ func (s *server) removeUser(r *http.Request, actor, target uuid.UUID, disposal u
 		return outcome, errRemovalSelf
 	}
 
+	// The trash arm's moves escape it: the compensations below are the
+	// ONE site every post-move failure reaches, the arm's own writes
+	// included.
+	var moves []batchFileMove
 	if disposal.trash {
-		outcome, err = s.trashUserContent(r, queries, actor, target)
+		outcome, moves, err = s.trashUserContent(r, queries, actor, target)
 	} else {
 		outcome, err = s.transferUserContent(ctx, queries, target, disposal.transferTo)
 	}
 	if err != nil {
+		s.compensateBatchMoves(r, moves)
 		return userRemovalOutcome{}, err
 	}
 
 	deleted, err := queries.DeleteUserRow(ctx, pgUUID(target))
 	if err != nil {
+		s.compensateBatchMoves(r, moves)
 		return userRemovalOutcome{}, fmt.Errorf("delete the account row: %w", err)
 	}
 	if deleted == 0 {
 		// A concurrent disposal of the same account won the race and
 		// its cascade reached this row first: the account is gone
 		// exactly like an unknown id.
+		s.compensateBatchMoves(r, moves)
 		return userRemovalOutcome{}, errRemovalUserGone
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		// A failed commit leaves the transaction rolled back, so the
+		// rows describe the pre-move state and the files must match
+		// them.
+		s.compensateBatchMoves(r, moves)
 		return userRemovalOutcome{}, fmt.Errorf("commit the account disposal: %w", err)
 	}
 	return outcome, nil
@@ -670,7 +683,11 @@ func (s *server) purgeFoldedRow(ctx context.Context, queries *dbgen.Queries, row
 // (their memberships, shares and preferences cascade), the photos
 // re-own to the caller with their deletion marks, and an external row's
 // source file moves into the server's trash area ahead of its write.
-func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor, from uuid.UUID) (userRemovalOutcome, error) {
+// The moves it performs are the caller's to compensate: the arm returns
+// them, so every failure after the first move -- one of its own writes,
+// the account row's delete, the commit -- returns the files to their
+// sources.
+func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor, from uuid.UUID) (userRemovalOutcome, []batchFileMove, error) {
 	outcome := userRemovalOutcome{trashedAssets: make(map[uuid.UUID]dbgen.MediaKind)}
 	ctx := r.Context()
 
@@ -686,27 +703,27 @@ func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor
 		FromOwner: pgUUID(from),
 	})
 	if err != nil {
-		return outcome, fmt.Errorf("resolve the content the caller already holds: %w", err)
+		return outcome, nil, fmt.Errorf("resolve the content the caller already holds: %w", err)
 	}
 	for _, duplicate := range duplicates {
 		purged, err := s.foldDuplicateAsset(ctx, queries, duplicate)
 		if err != nil {
-			return outcome, err
+			return outcome, nil, err
 		}
 		outcome.purged = append(outcome.purged, purged...)
 	}
 
 	albums, err := queries.ListOwnedAlbumIDs(ctx, pgUUID(from))
 	if err != nil {
-		return outcome, fmt.Errorf("list the departing account's albums: %w", err)
+		return outcome, nil, fmt.Errorf("list the departing account's albums: %w", err)
 	}
 	assets, err := queries.ListLiveOwnedAssets(ctx, pgUUID(from))
 	if err != nil {
-		return outcome, fmt.Errorf("list the departing account's photos: %w", err)
+		return outcome, nil, fmt.Errorf("list the departing account's photos: %w", err)
 	}
 	externals, err := queries.ListLiveExternalAssets(ctx, pgUUID(from))
 	if err != nil {
-		return outcome, fmt.Errorf("list the departing account's external photos: %w", err)
+		return outcome, nil, fmt.Errorf("list the departing account's external photos: %w", err)
 	}
 
 	// The file half first, in the trash move's own order: a move that
@@ -717,8 +734,7 @@ func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor
 		assetID := uuid.UUID(external.ID.Bytes)
 		trashPath, err := storage.MoveToTrash(s.dataDir, external.FilePath, assetID.String())
 		if err != nil {
-			s.compensateBatchMoves(r, moves)
-			return outcome, fmt.Errorf("%w: %v", errRemovalTrashMove, err)
+			return outcome, moves, fmt.Errorf("%w: %v", errRemovalTrashMove, err)
 		}
 		moves = append(moves, batchFileMove{
 			from:      external.FilePath,
@@ -731,8 +747,7 @@ func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor
 			FromOwner: pgUUID(from),
 			TrashPath: pgtype.Text{String: trashPath, Valid: true},
 		}); err != nil {
-			s.compensateBatchMoves(r, moves)
-			return outcome, fmt.Errorf("trash the external photo %s: %w", assetID, err)
+			return outcome, moves, fmt.Errorf("trash the external photo %s: %w", assetID, err)
 		}
 	}
 
@@ -741,24 +756,21 @@ func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor
 	// them, so the authorship arm below only has the OTHER accounts'
 	// albums left to settle.
 	if _, err := queries.DeleteOwnedAlbums(ctx, pgUUID(from)); err != nil {
-		s.compensateBatchMoves(r, moves)
-		return outcome, fmt.Errorf("delete the departing account's albums: %w", err)
+		return outcome, moves, fmt.Errorf("delete the departing account's albums: %w", err)
 	}
 
 	if err := queries.TrashOwnedAssets(ctx, dbgen.TrashOwnedAssetsParams{
 		ToOwner:   pgUUID(actor),
 		FromOwner: pgUUID(from),
 	}); err != nil {
-		s.compensateBatchMoves(r, moves)
-		return outcome, fmt.Errorf("trash the departing account's photos: %w", err)
+		return outcome, moves, fmt.Errorf("trash the departing account's photos: %w", err)
 	}
 
 	if err := queries.ReassignAlbumItemAuthorship(ctx, dbgen.ReassignAlbumItemAuthorshipParams{
 		ToUser:   pgUUID(actor),
 		FromUser: pgUUID(from),
 	}); err != nil {
-		s.compensateBatchMoves(r, moves)
-		return outcome, fmt.Errorf("carry the album authorship over: %w", err)
+		return outcome, moves, fmt.Errorf("carry the album authorship over: %w", err)
 	}
 	// The grants the departing account issued stood on its own albums,
 	// which are gone: this arm settles nothing in practice. It runs
@@ -768,8 +780,7 @@ func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor
 		ToUser:   pgUUID(actor),
 		FromUser: pgUUID(from),
 	}); err != nil {
-		s.compensateBatchMoves(r, moves)
-		return outcome, fmt.Errorf("carry the share grants over: %w", err)
+		return outcome, moves, fmt.Errorf("carry the share grants over: %w", err)
 	}
 
 	// The labels move with the photos they describe: restoring a photo
@@ -779,22 +790,19 @@ func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor
 		ToOwner:   pgUUID(actor),
 		FromOwner: pgUUID(from),
 	}); err != nil {
-		s.compensateBatchMoves(r, moves)
-		return outcome, fmt.Errorf("fold the labels the caller already carries: %w", err)
+		return outcome, moves, fmt.Errorf("fold the labels the caller already carries: %w", err)
 	}
 	if err := queries.DropMergedTags(ctx, dbgen.DropMergedTagsParams{
 		ToOwner:   pgUUID(actor),
 		FromOwner: pgUUID(from),
 	}); err != nil {
-		s.compensateBatchMoves(r, moves)
-		return outcome, fmt.Errorf("drop the folded labels: %w", err)
+		return outcome, moves, fmt.Errorf("drop the folded labels: %w", err)
 	}
 	if err := queries.TransferTagOwnership(ctx, dbgen.TransferTagOwnershipParams{
 		ToOwner:   pgUUID(actor),
 		FromOwner: pgUUID(from),
 	}); err != nil {
-		s.compensateBatchMoves(r, moves)
-		return outcome, fmt.Errorf("hand the labels over: %w", err)
+		return outcome, moves, fmt.Errorf("hand the labels over: %w", err)
 	}
 
 	for _, album := range albums {
@@ -814,5 +822,5 @@ func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor
 		}
 		outcome.trashedAssets[uuid.UUID(asset.ID.Bytes)] = asset.MediaKind
 	}
-	return outcome, nil
+	return outcome, moves, nil
 }

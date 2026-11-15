@@ -935,9 +935,12 @@ func TestDeleteUserReleasesCollidingDeviceIdentity(t *testing.T) {
 }
 
 // TestDeleteUserIsAtomic pins the transaction's whole-or-nothing
-// promise on both failure shapes: a refused external trash move (the
-// earlier moves are compensated, the rows untouched) and a database
-// failure at the last step (every write before it rolls back).
+// promise on three failure shapes: a refused external trash move (the
+// earlier moves are compensated, the rows untouched), a database
+// failure at the last step of the TRASH arm (the account row's delete
+// blocked -- the file the arm already moved comes back to its source),
+// and the same failure on the transfer arm (every write before it
+// rolls back).
 func TestDeleteUserIsAtomic(t *testing.T) {
 	t.Run("TrashMoveFailure", func(t *testing.T) {
 		env := newAssetEnv(t, testUploadLimit)
@@ -983,6 +986,57 @@ func TestDeleteUserIsAtomic(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(sourceDir, "grace-0003.jpg")); err != nil {
 			t.Errorf("the compensated file is not back at its source: %v", err)
+		}
+	})
+
+	t.Run("TrashArmDatabaseFailureReturnsTheFiles", func(t *testing.T) {
+		// The trash arm's move runs ahead of its own writes, so the
+		// compensation must also cover the failures AFTER the arm: here
+		// the account row's delete is blocked, and the file the arm
+		// already moved into the trash area has to come back to its
+		// source.
+		env := newAssetEnv(t, testUploadLimit)
+		graceID, _ := env.newMember(t, "grace@example.com")
+
+		sourceDir := t.TempDir()
+		directoryID := uuid.New()
+		env.insertRemovalDirectory(t, directoryID, graceID, sourceDir)
+		externalID := env.insertRemovalMember(t, directoryID, graceID, sourceDir, "grace-0005.jpg",
+			[]byte("grace external bytes"), time.Now().Add(-time.Hour))
+		sourceFile := filepath.Join(sourceDir, "grace-0005.jpg")
+
+		env.exec(t, `
+			CREATE FUNCTION test_block_user_delete() RETURNS trigger AS $$
+			BEGIN
+				RAISE EXCEPTION 'the test blocks this deletion';
+			END
+			$$ LANGUAGE plpgsql`)
+		env.exec(t, `CREATE TRIGGER test_block_user_delete BEFORE DELETE ON users
+			FOR EACH ROW EXECUTE FUNCTION test_block_user_delete()`)
+
+		rec := env.deleteUser(t, env.cookie, graceID, trashBody())
+		requireStatus(t, rec, http.StatusInternalServerError, apigen.INTERNAL)
+
+		// The file is back where it was, byte for byte, and the row still
+		// names that path: nothing moved into the trash area, not even an
+		// empty home.
+		requireSourceFileIntact(t, sourceFile, []byte("grace external bytes"))
+		if got := env.queryText(t, "SELECT file_path FROM assets WHERE id = $1", pgUUID(externalID)); got != sourceFile {
+			t.Errorf("the row's file_path = %q, want its source %q", got, sourceFile)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1 AND trash_path IS NULL AND deleted_at IS NULL", pgUUID(externalID)); got != 1 {
+			t.Errorf("the row lost its live, un-trashed state despite the rollback")
+		}
+		if _, err := os.Stat(filepath.Join(env.dataDir, "trash", externalID.String())); !os.IsNotExist(err) {
+			t.Errorf("the trash home survived the compensation (stat err %v)", err)
+		}
+
+		// And the account is still there with its container.
+		if got := env.queryInt(t, "SELECT count(*) FROM users WHERE id = $1", pgUUID(graceID)); got != 1 {
+			t.Errorf("the account row went despite the blocked deletion")
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM albums WHERE id = $1", pgUUID(directoryID)); got != 1 {
+			t.Errorf("the departing container went despite the blocked deletion")
 		}
 	})
 
