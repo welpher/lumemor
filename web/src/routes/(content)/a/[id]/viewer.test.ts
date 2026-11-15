@@ -841,7 +841,7 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 	flushSync();
 });
 
-test("a photo whose only home is the sync album offers no trash; the favorite stays", async () => {
+test('a photo whose only home is the sync album offers no trash; the favorite stays', async () => {
 	// The read-only source rule (the acceptance walk's finding): the
 	// sync album is the scan's verdict -- system-managed and
 	// read-only -- so its wall offers no curation, and a photo whose
@@ -851,9 +851,7 @@ test("a photo whose only home is the sync album offers no trash; the favorite st
 	// of the state the delete made).
 	const syncOnly = [{ id: 'sync-1', title: 'Sync', type: 'sync', callerRole: 'owner' }];
 	const { app } = mountViewer('a2', [
-		get('/api/v1/assets/a2?locale=en', () =>
-			jsonResponse(200, detailBodyOf(sequence[1]!, { albums: syncOnly }))
-		),
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { albums: syncOnly }))),
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
 	]);
 	await settle();

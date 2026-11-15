@@ -673,6 +673,7 @@ test('a ?memory= deep link opens the playback overlay over the wall', async () =
 						coverAssetIds: [],
 						callerRole: 'owner',
 						itemCount: 2,
+						photoCount: 2,
 						items: [],
 						shares: []
 					}),
@@ -783,6 +784,7 @@ test('a mode=grid deep link opens the overlay on its management face', async () 
 						coverAssetIds: [],
 						callerRole: 'owner',
 						itemCount: 2,
+						photoCount: 2,
 						items: [],
 						shares: []
 					}),
@@ -830,6 +832,7 @@ test('a deep link closes by replacing its address, never by stepping history bac
 						coverAssetIds: [],
 						callerRole: 'owner',
 						itemCount: 1,
+						photoCount: 1,
 						items: [],
 						shares: []
 					}),
