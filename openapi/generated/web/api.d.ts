@@ -3215,10 +3215,11 @@ export interface paths {
          *     handful of accounts) and grows only through this surface's
          *     own create endpoint, so it answers every account in one
          *     response: there is no pagination, no filtering and no
-         *     ordering parameter. Account rows never disappear (deleting
-         *     an account together with its data is a later disposal
-         *     flow), so a refetch after any write reconciles the
-         *     list completely.
+         *     ordering parameter. Account rows disappear only through this
+         *     surface's own delete endpoint, whose disposal moves the
+         *     account's content to a surviving owner or into the trash
+         *     before the row goes, so a refetch after any write reconciles
+         *     the list completely.
          *
          *     The endpoint is admin-only: the session middleware
          *     authenticates the caller like every authed route, and a
@@ -3268,7 +3269,73 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete one account, disposing of its content.
+         * @description The account disposal of the admin surface: an account leaves
+         *     the instance, and everything it held -- photos, albums,
+         *     memories and the labels it gave them -- is settled before the
+         *     row goes. The account row goes immediately: there is no soft
+         *     delete and no recovery window for the account itself. The
+         *     whole settlement is ONE transaction that commits whole or
+         *     rolls back whole, so a failure leaves the account and its
+         *     content exactly as they were.
+         *
+         *     THE DISPOSITION is exactly one of two arms:
+         *
+         *     - `transferTo` names another account that receives everything
+         *       the departing account owned: its photos with their albums
+         *       and memories, their hidden and trash marks intact, and the
+         *       tags attached to them. The photos join the receiver's own
+         *       stream, so the family timeline continues without a gap, and
+         *       the albums the departing account shared keep their grantees.
+         *       An identical live photo the receiver already holds (one live
+         *       copy per owner is what the storage rule allows) folds into
+         *       the receiver's copy: memberships, tags, favorites and the
+         *       album cover follow the surviving row, and the redundant row
+         *       goes.
+         *     - `dispose: "trash"` walks the departing account's photos into
+         *       the CALLING administrator's trash, where the instance's
+         *       retention window governs them -- restorable until it runs
+         *       out, permanently removed after. The departing account's own
+         *       albums and memories go with the account (a container whose
+         *       owner is gone has no reader), so the photos survive as
+         *       individual trash items; a directory album's source file is
+         *       moved into the server's trash area on this arm exactly like
+         *       any other trash move, and the rest of the family's source
+         *       files are never touched.
+         *
+         *     What dies with the account in BOTH arms: its sessions, API
+         *     keys and pairing tokens (it can never authenticate again), its
+         *     favorites, its per-album timeline preferences, the private
+         *     names it gave shared face clusters (a cluster belongs to the
+         *     family; the name a person gave it is theirs), and every album
+         *     share granted TO it. A share the account granted on its own
+         *     album rides the content: the album changes hands and its
+         *     grantees keep their access. Authorship another member's album
+         *     carries -- a membership the departing account added -- passes
+         *     to the surviving owner instead of deleting the membership, so
+         *     no photo leaves an album it sits in.
+         *
+         *     THE REFUSALS. The instance's last administrator cannot be
+         *     deleted (409 USER_LAST_ADMIN): an instance without an
+         *     administrator strands this surface, and while one
+         *     administrator remains that account is necessarily the
+         *     caller's own row. An administrator cannot delete their own
+         *     account at all (400 VALIDATION_FAILED naming the id) -- the
+         *     disposal hands the content to a survivor, and the caller is
+         *     the one performing the handover. `transferTo` naming the
+         *     departing account itself answers 409 USER_TRANSFER_TO_SELF,
+         *     and an unknown receiver is a payload error (400
+         *     VALIDATION_FAILED naming the field). Account ids are
+         *     enumerable through this surface's own listing, so an unknown
+         *     path id answers 404 USER_NOT_FOUND without an
+         *     anti-enumeration pairing.
+         *
+         *     The 204 carries no body: the account is gone, and the caller's
+         *     own disposal target (the receiver's stream or the caller's
+         *     trash) is where its content answers next.
+         */
+        delete: operations["deleteUser"];
         options?: never;
         head?: never;
         /**
@@ -4627,6 +4694,31 @@ export interface components {
              *     sessions and sign-in; `false` lets it back in.
              */
             isDisabled: boolean;
+        };
+        /**
+         * @description Payload of `DELETE /admin/users/{id}`: the disposition of the
+         *     departing account's photos. Exactly one of the two fields is
+         *     present -- `transferTo` hands them to another member, and
+         *     `dispose` walks them into the caller's trash.
+         */
+        AdminUserDeleteRequest: {
+            /**
+             * Format: uuid
+             * @description Identifier of the account that receives every photo,
+             *     album and memory the departing account owned. Must name
+             *     another existing account: the departing account itself
+             *     answers 409 USER_TRANSFER_TO_SELF, an unknown id 400
+             *     VALIDATION_FAILED.
+             */
+            transferTo?: string;
+            /**
+             * @description The alternative to `transferTo`: the departing account's
+             *     photos enter the calling administrator's trash, where the
+             *     instance's retention window governs their permanent
+             *     removal.
+             * @enum {string}
+             */
+            dispose?: "trash";
         };
         /**
          * @description The storage settings of `GET /admin/settings/storage` and the
@@ -8197,7 +8289,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED" | "REBUILD_NOT_RUNNING";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "USER_LAST_ADMIN" | "USER_TRANSFER_TO_SELF" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED" | "REBUILD_NOT_RUNNING";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -13077,6 +13169,103 @@ export interface operations {
             /**
              * @description An account with this email already exists; the address is
              *     the account identity.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the account to delete. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserDeleteRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The account is gone and its content has been settled: the
+             *     receiver holds it, or the caller's trash does.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The request body is not a usable disposition, or it names
+             *     something this surface refuses: both arms at once (or
+             *     neither), an unknown receiver, or the caller's own account
+             *     (an administrator cannot delete themselves).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No account with this id exists. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The disposition conflicts with the instance's state: the
+             *     target is the instance's last administrator, or
+             *     `transferTo` names the account being deleted.
              */
             409: {
                 headers: {

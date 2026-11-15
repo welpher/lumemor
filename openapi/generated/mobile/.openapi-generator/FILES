@@ -6,6 +6,7 @@ doc/AddAlbumItemsResponse.md
 doc/AddTagAssetsResponse.md
 doc/AdminApi.md
 doc/AdminCreateUserRequest.md
+doc/AdminUserDeleteRequest.md
 doc/AdminUserListResponse.md
 doc/AdminUserPatch.md
 doc/AdminUserResponse.md
@@ -189,6 +190,7 @@ lib/src/date_serializer.dart
 lib/src/model/add_album_items_response.dart
 lib/src/model/add_tag_assets_response.dart
 lib/src/model/admin_create_user_request.dart
+lib/src/model/admin_user_delete_request.dart
 lib/src/model/admin_user_list_response.dart
 lib/src/model/admin_user_patch.dart
 lib/src/model/admin_user_response.dart
@@ -346,6 +348,7 @@ test/add_album_items_response_test.dart
 test/add_tag_assets_response_test.dart
 test/admin_api_test.dart
 test/admin_create_user_request_test.dart
+test/admin_user_delete_request_test.dart
 test/admin_user_list_response_test.dart
 test/admin_user_patch_test.dart
 test/admin_user_response_test.dart

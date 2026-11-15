@@ -14,6 +14,21 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AdminUserDeleteRequestDispose.
+const (
+	UserDisposeTrash AdminUserDeleteRequestDispose = "trash"
+)
+
+// Valid indicates whether the value is a known member of the AdminUserDeleteRequestDispose enum.
+func (e AdminUserDeleteRequestDispose) Valid() bool {
+	switch e {
+	case UserDisposeTrash:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AlbumAudienceSkipReason.
 const (
 	AlbumAudienceSkipReasonInvalidAccount AlbumAudienceSkipReason = "invalid_account"
@@ -420,7 +435,9 @@ const (
 	TAGNAMETAKEN           ErrorCode = "TAG_NAME_TAKEN"
 	TAGNOTFOUND            ErrorCode = "TAG_NOT_FOUND"
 	USEREMAILTAKEN         ErrorCode = "USER_EMAIL_TAKEN"
+	USERLASTADMIN          ErrorCode = "USER_LAST_ADMIN"
 	USERNOTFOUND           ErrorCode = "USER_NOT_FOUND"
+	USERTRANSFERTOSELF     ErrorCode = "USER_TRANSFER_TO_SELF"
 	VALIDATIONFAILED       ErrorCode = "VALIDATION_FAILED"
 )
 
@@ -485,7 +502,11 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case USEREMAILTAKEN:
 		return true
+	case USERLASTADMIN:
+		return true
 	case USERNOTFOUND:
+		return true
+	case USERTRANSFERTOSELF:
 		return true
 	case VALIDATIONFAILED:
 		return true
@@ -1267,6 +1288,31 @@ type AdminCreateUserRequest struct {
 	// default of every other creation path.
 	Role *UserRole `json:"role,omitempty"`
 }
+
+// AdminUserDeleteRequest Payload of `DELETE /admin/users/{id}`: the disposition of the
+// departing account's photos. Exactly one of the two fields is
+// present -- `transferTo` hands them to another member, and
+// `dispose` walks them into the caller's trash.
+type AdminUserDeleteRequest struct {
+	// Dispose The alternative to `transferTo`: the departing account's
+	// photos enter the calling administrator's trash, where the
+	// instance's retention window governs their permanent
+	// removal.
+	Dispose *AdminUserDeleteRequestDispose `json:"dispose,omitempty"`
+
+	// TransferTo Identifier of the account that receives every photo,
+	// album and memory the departing account owned. Must name
+	// another existing account: the departing account itself
+	// answers 409 USER_TRANSFER_TO_SELF, an unknown id 400
+	// VALIDATION_FAILED.
+	TransferTo *openapi_types.UUID `json:"transferTo,omitempty"`
+}
+
+// AdminUserDeleteRequestDispose The alternative to `transferTo`: the departing account's
+// photos enter the calling administrator's trash, where the
+// instance's retention window governs their permanent
+// removal.
+type AdminUserDeleteRequestDispose string
 
 // AdminUserListResponse The user management listing: every account of the instance,
 // oldest first, in one bounded response.
@@ -5286,6 +5332,9 @@ type UpdateUpdateCheckSettingsJSONRequestBody = UpdateCheckSettingsUpdateRequest
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = AdminCreateUserRequest
 
+// DeleteUserJSONRequestBody defines body for DeleteUser for application/json ContentType.
+type DeleteUserJSONRequestBody = AdminUserDeleteRequest
+
 // UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
 type UpdateUserJSONRequestBody = AdminUserPatch
 
@@ -5462,6 +5511,9 @@ type ServerInterface interface {
 	// CreateUser Create one account.
 	// (POST /admin/users)
 	CreateUser(w http.ResponseWriter, r *http.Request)
+	// DeleteUser Delete one account, disposing of its content.
+	// (DELETE /admin/users/{id})
+	DeleteUser(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// UpdateUser Toggle one account's disabled switch.
 	// (PATCH /admin/users/{id})
 	UpdateUser(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -5858,6 +5910,12 @@ func (_ Unimplemented) ListUsers(w http.ResponseWriter, r *http.Request) {
 // CreateUser Create one account.
 // (POST /admin/users)
 func (_ Unimplemented) CreateUser(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteUser Delete one account, disposing of its content.
+// (DELETE /admin/users/{id})
+func (_ Unimplemented) DeleteUser(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6802,6 +6860,32 @@ func (siw *ServerInterfaceWrapper) CreateUser(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteUser operation middleware
+func (siw *ServerInterfaceWrapper) DeleteUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteUser(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8932,6 +9016,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/users", wrapper.CreateUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/users/{id}", wrapper.DeleteUser)
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/users/{id}", wrapper.UpdateUser)
