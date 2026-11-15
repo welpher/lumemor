@@ -133,8 +133,8 @@ func (q *Queries) CreateMotionAsset(ctx context.Context, arg CreateMotionAssetPa
 
 const getAssetForMotionPhoto = `-- name: GetAssetForMotionPhoto :one
 
-SELECT id, owner_id, file_path, original_filename, taken_at, taken_at_zone,
-       storage_kind, media_kind, is_component, live_photo_video_id
+SELECT id, owner_id, file_path, original_filename, taken_at, taken_at_source,
+       taken_at_zone, storage_kind, media_kind, is_component, live_photo_video_id
 FROM assets
 WHERE id = $1
 `
@@ -145,6 +145,7 @@ type GetAssetForMotionPhotoRow struct {
 	FilePath         string             `json:"file_path"`
 	OriginalFilename string             `json:"original_filename"`
 	TakenAt          pgtype.Timestamptz `json:"taken_at"`
+	TakenAtSource    TakenAtSource      `json:"taken_at_source"`
 	TakenAtZone      pgtype.Text        `json:"taken_at_zone"`
 	StorageKind      StorageKind        `json:"storage_kind"`
 	MediaKind        MediaKind          `json:"media_kind"`
@@ -181,6 +182,7 @@ func (q *Queries) GetAssetForMotionPhoto(ctx context.Context, id pgtype.UUID) (G
 		&i.FilePath,
 		&i.OriginalFilename,
 		&i.TakenAt,
+		&i.TakenAtSource,
 		&i.TakenAtZone,
 		&i.StorageKind,
 		&i.MediaKind,

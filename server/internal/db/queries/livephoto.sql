@@ -20,8 +20,8 @@
 -- from it (the owner, the capture instant) and where its file goes
 -- (the still's own directory and stem). live_photo_video_id rides
 -- along so a re-run can tell an unchanged pair from a replaced one.
-SELECT id, owner_id, file_path, original_filename, taken_at, taken_at_zone,
-       storage_kind, media_kind, is_component, live_photo_video_id
+SELECT id, owner_id, file_path, original_filename, taken_at, taken_at_source,
+       taken_at_zone, storage_kind, media_kind, is_component, live_photo_video_id
 FROM assets
 WHERE id = $1;
 
