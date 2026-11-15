@@ -368,10 +368,11 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/timeline');
 		await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible();
 
-		// Open a tile from the middle of the sequence; the viewer's title
-		// names the open asset.
+		// Open a tile from the middle of the sequence. The floating bar
+		// carries NO filename (it would cover the photo): the open
+		// asset's name is the browser tab's and the panel's header's.
 		await tile(page, PHOTO_B_NAME).click();
-		await expect(page.getByText(PHOTO_B_NAME)).toBeVisible();
+		await expect(page).toHaveTitle(`${PHOTO_B_NAME} · lumemor`);
 
 		// The filmstrip carries the wall's whole sequence; the current
 		// thumb is marked.
@@ -382,14 +383,47 @@ test.describe('the signed-in scenes', () => {
 			'true'
 		);
 
+		// The stage's contain rule: the media box fits the photo's own
+		// aspect and touches the stage on one dimension -- no percentage
+		// inset. The stage is the media column's whole box, not the bar's
+		// (the bar floats over the photo now).
+		await expect
+			.poll(async () => (await page.locator('.viewer__media').boundingBox())?.width ?? 0)
+			.toBeGreaterThan(100);
+		const stageBox = await page.locator('.viewer__stage').boundingBox();
+		const mediaBox = await page.locator('.viewer__media').boundingBox();
+		if (stageBox === null || mediaBox === null) {
+			throw new Error('the stage geometry never landed');
+		}
+		const photoRatio = await page
+			.locator('img.viewer__image')
+			.first()
+			.evaluate((element) => {
+				const image = element as HTMLImageElement;
+				return image.naturalWidth / image.naturalHeight;
+			});
+		expect(Math.abs(mediaBox.width / mediaBox.height - photoRatio)).toBeLessThan(0.02);
+		const touchesWidth = Math.abs(mediaBox.width - stageBox.width) < 2;
+		const touchesHeight = Math.abs(mediaBox.height - stageBox.height) < 2;
+		expect(touchesWidth || touchesHeight).toBe(true);
+
+		// The info panel is CLOSED by default (the pinned preference):
+		// the photo gets the whole stage until something asks for it.
+		await expect(page.getByRole('button', { name: 'Photo information' })).toHaveAttribute('aria-pressed', 'false');
+
 		// ArrowRight walks toward the older end, ArrowLeft back toward
-		// the newer one; both replace the open asset (the title follows).
+		// the newer one; both replace the open asset (the tab's title
+		// follows, and the filmstrip's current thumb with it).
 		await page.keyboard.press('ArrowRight');
-		await expect(page.getByText(PHOTO_A_NAME)).toBeVisible();
+		await expect(page).toHaveTitle(`${PHOTO_A_NAME} · lumemor`);
+		await expect(filmstrip.getByRole('button', { name: PHOTO_A_NAME, exact: true })).toHaveAttribute(
+			'aria-current',
+			'true'
+		);
 		await page.keyboard.press('ArrowLeft');
-		await expect(page.getByText(PHOTO_B_NAME)).toBeVisible();
+		await expect(page).toHaveTitle(`${PHOTO_B_NAME} · lumemor`);
 		await page.keyboard.press('ArrowLeft');
-		await expect(page.getByText(LIVE_PHOTO_NAME)).toBeVisible();
+		await expect(page).toHaveTitle(`${LIVE_PHOTO_NAME} · lumemor`);
 
 		// Escape returns to the timeline (the history-back rule: the tile
 		// click pushed exactly one entry).

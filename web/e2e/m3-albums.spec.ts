@@ -873,7 +873,9 @@ test.describe('the member viewer scenes', () => {
 		await page.goto(`/albums/${albumId}`);
 		await page.getByRole('link', { name: PHOTO_A_NAME, exact: true }).click();
 		await expect(page).toHaveURL(new RegExp(`/a/[0-9a-f-]{36}$`));
-		await expect(page.getByText(PHOTO_A_NAME)).toBeVisible();
+		// The floating bar carries no filename: the open asset's name
+		// is the tab's, and the drawer's header repeats it below.
+		await expect(page).toHaveTitle(`${PHOTO_A_NAME} · lumemor`);
 
 		// The info drawer plus the action bar (the viewer rework: the
 		// drawer is metadata-only, the per-user favorite and the
