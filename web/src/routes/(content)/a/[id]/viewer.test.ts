@@ -410,7 +410,7 @@ test('an image deep link renders the serving layers and the filmstrip', async ()
 	expect(images[0]?.getAttribute('alt')).toBe('IMG_2.jpg');
 	// No video, no live toggle on the plain image rendering.
 	expect(document.body.querySelector('video')).toBeNull();
-	expect(document.body.querySelector('.viewer__press')).toBeNull();
+	expect(document.body.querySelector('.viewer__live-toggle')).toBeNull();
 
 	// The filmstrip walks the sequence with the current outlined.
 	const thumbs = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.viewer__thumb'));
@@ -566,7 +566,7 @@ test('a successful edit adopts the response description', async () => {
 	flushSync();
 });
 
-test('the Live Photo press probes the component stream and toggles; not-ready keeps the still', async () => {
+test('the Live Photo toggle leads the action row and plays the motion in place', async () => {
 	const liveDetail = () => jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
 	const probeCalls: string[] = [];
 	const { app } = mountViewer('a2', [
@@ -578,28 +578,63 @@ test('the Live Photo press probes the component stream and toggles; not-ready ke
 	]);
 	await settle();
 
-	// The still renders first; the press toggles the motion on.
-	expect(document.body.querySelector('video')).toBeNull();
-	const toggle = element('.viewer__press');
+	// The still renders first; the toggle is the action row's FIRST
+	// button, icon-only, with the play arm's label and a false state.
+	const toggle = element('.viewer__live-toggle');
+	const actions = element('.viewer__bar-actions');
+	expect(actions.firstElementChild).toBe(toggle);
 	expect(toggle.getAttribute('aria-pressed')).toBe('false');
+	expect(toggle.getAttribute('aria-label')).toBe('Play the Live Photo');
+	expect(toggle.querySelector('svg')).not.toBeNull();
+	expect(document.body.querySelector('video')).toBeNull();
+
 	click(toggle);
 	await settle();
 
 	// The probe hit the COMPONENT's play endpoint (the pair's
-	// motion plays through the component id).
+	// motion plays through the component id), and the motion covers
+	// the still once, muted, inside the same media box.
 	expect(probeCalls).toEqual(['c2']);
 	const live = document.body.querySelector<HTMLVideoElement>('video.viewer__live');
 	expect(live?.getAttribute('src')).toBe('/api/v1/assets/c2/play');
-	// Media playback flags are element properties, not attributes.
 	expect(live?.autoplay).toBe(true);
 	expect(live?.muted).toBe(true);
-	expect(live?.loop).toBe(true);
-	expect(element('.viewer__press').getAttribute('aria-pressed')).toBe('true');
+	expect(live?.loop).toBe(false);
+	expect(element('.viewer__media').contains(live!)).toBe(true);
+	const pressed = element('.viewer__live-toggle');
+	expect(pressed.getAttribute('aria-pressed')).toBe('true');
+	expect(pressed.getAttribute('aria-label')).toBe('Stop the Live Photo');
 
-	// The second press returns to the still.
-	click(element('.viewer__press'));
+	// The stream's own end returns the still -- the caption's clip,
+	// not a loop.
+	live?.dispatchEvent(new Event('ended'));
+	flushSync();
+	expect(document.body.querySelector('video.viewer__live')).toBeNull();
+	expect(element('.viewer__live-toggle').getAttribute('aria-pressed')).toBe('false');
+
+	// Playing again, then stopping with the same button: click-click.
+	click(element('.viewer__live-toggle'));
+	await settle();
+	expect(document.body.querySelector('video.viewer__live')).not.toBeNull();
+	click(element('.viewer__live-toggle'));
 	expect(document.body.querySelector('video.viewer__live')).toBeNull();
 	unmount(app);
+	flushSync();
+
+	// A refused stream returns the still silently (no toast, no error
+	// card): the record is fine, the component's copy is not.
+	const refused = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', liveDetail),
+		get('/api/v1/assets/c2/play', () => rangeResponse())
+	]);
+	await settle();
+	click(element('.viewer__live-toggle'));
+	await settle();
+	document.body.querySelector('video.viewer__live')?.dispatchEvent(new Event('error'));
+	flushSync();
+	expect(document.body.querySelector('video.viewer__live')).toBeNull();
+	expect(document.body.querySelector('[role="alert"]')?.textContent ?? '').not.toContain('Live');
+	unmount(refused.app);
 	flushSync();
 
 	// The not-ready branch: the probe answers ASSET_NOT_READY and
@@ -612,17 +647,34 @@ test('the Live Photo press probes the component stream and toggles; not-ready ke
 		)
 	]);
 	await settle();
-	click(element('.viewer__press'));
+	click(element('.viewer__live-toggle'));
 	await settle();
 	expect(document.body.querySelector('video.viewer__live')).toBeNull();
 	expect(document.body.querySelector('img.viewer__image')).not.toBeNull();
+	expect(element('.viewer__live-toggle').getAttribute('aria-pressed')).toBe('false');
 
 	// A later press lands once the stream appeared.
 	streamReady = true;
-	click(element('.viewer__press'));
+	click(element('.viewer__live-toggle'));
 	await settle();
 	expect(document.body.querySelector('video.viewer__live')).not.toBeNull();
 	unmount(waiting.app);
+	flushSync();
+});
+
+test('a shared member holds the Live Photo toggle: playing is a read', async () => {
+	// The viewer mounts for a member (isOwner false): every editing
+	// arm is absent from the bar, the toggle is not -- the motion is
+	// part of what a share shows.
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }))
+		),
+		get('/api/v1/assets/c2/play', () => rangeResponse())
+	]);
+	await settle();
+	expect(element('.viewer__live-toggle')).not.toBeNull();
+	unmount(app);
 	flushSync();
 });
 
@@ -1047,7 +1099,7 @@ test('the +/- keys and the double-click ride the gradual zoom; a neighbor resets
 	flushSync();
 });
 
-test("a Live Photo's double press is the press pair, never a zoom toggle", async () => {
+test('a playing motion owns the stage double-click, the still keeps it', async () => {
 	const liveDetail = () => jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', liveDetail),
@@ -1055,14 +1107,18 @@ test("a Live Photo's double press is the press pair, never a zoom toggle", async
 	]);
 	await settle();
 
-	// The press affordance covers the stage; its double-click stays
-	// the press pair (play/stop), so the zoom stays at rest.
-	const press = element('.viewer__press');
-	press.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+	// While the motion plays, a double-click on the stage is the
+	// viewer double-taking at the movement, not a zoom request.
+	click(element('.viewer__live-toggle'));
+	await settle();
+	const playing = document.body.querySelector<HTMLVideoElement>('video.viewer__live');
+	playing?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
 	flushSync();
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(false);
 
-	// A double-click on the still itself toggles the zoom.
+	// Stopped, the still's double-click is the zoom toggle again.
+	click(element('.viewer__live-toggle'));
+	flushSync();
 	element('.viewer__image').dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
 	flushSync();
 	expect(element('.viewer__stage').classList.contains('viewer__stage--zoomed')).toBe(true);
@@ -1482,7 +1538,7 @@ test('Esc falls back to the timeline when no in-app history sits behind a deep l
 	flushSync();
 });
 
-test('a zoomed Live Photo press keeps the motion layer inside the zoomed stage', async () => {
+test('a zoomed Live Photo keeps the motion layer inside the zoomed stage', async () => {
 	const liveDetail = () => jsonResponse(200, detailBodyOf(sequence[1]!, { livePhotoVideoId: 'c2' }));
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', liveDetail),
@@ -1490,12 +1546,12 @@ test('a zoomed Live Photo press keeps the motion layer inside the zoomed stage',
 	]);
 	await settle();
 
-	// Zoom in, then press the Live Photo: the motion layer mounts as
+	// Zoom in, then play the Live Photo: the motion layer mounts as
 	// a child of the zoomed stage (the transform selector's DOM
 	// contract -- .viewer__stage--zoomed .viewer__live -- so the
 	// motion scales with the still, never pops unscaled).
 	click(element('[aria-label="Zoom in"]'));
-	click(element('.viewer__press'));
+	click(element('.viewer__live-toggle'));
 	await settle();
 
 	const stage = element('.viewer__stage');
