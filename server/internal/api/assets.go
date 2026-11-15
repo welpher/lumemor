@@ -232,6 +232,18 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 			[]string{uploadPartLiveVideo})
 		return
 	}
+	// THE PAIRING VIDEO MUST BE A VIDEO. The pair's component row is
+	// only ever the motion: an image-family part would create a
+	// component no transcode can make playable and no motion can use,
+	// so the request is refused outright -- the same loud refusal the
+	// link's own checks give (exists, is a video, same owner) rather
+	// than a silently dropped part. Nothing was placed yet.
+	if liveVideo != nil && !liveVideo.format.Video {
+		discardUpload(photo, liveVideo)
+		s.writeValidationError(w, "the Live Photo motion must be a video",
+			[]string{uploadPartLiveVideo})
+		return
+	}
 
 	// The (owner+checksum) dedup runs FIRST, before any placement: a
 	// re-upload of content the owner already holds -- live or trashed
