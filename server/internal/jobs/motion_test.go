@@ -287,7 +287,6 @@ func realMotionVideo(t *testing.T, dir string) []byte {
 // the video appended on the tail (size - length = the window).
 func pixelMotionPhoto(t *testing.T, video []byte) []byte {
 	t.Helper()
-	golden := goldenFixture(t)
 	xmp := fmt.Sprintf(`<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
@@ -323,7 +322,14 @@ func pixelMotionPhoto(t *testing.T, video []byte) []byte {
  </rdf:RDF>
 </x:xmpmeta>
 <?xpacket end="w"?>`, len(video))
+	return append(jpegWithXMP(t, xmp), video...)
+}
 
+// jpegWithXMP inserts one XMP packet into the golden JPEG as an APP1
+// segment right after the start-of-image marker.
+func jpegWithXMP(t *testing.T, xmp string) []byte {
+	t.Helper()
+	golden := goldenFixture(t)
 	header := []byte("http://ns.adobe.com/xap/1.0/\x00")
 	payload := append(append([]byte{}, header...), []byte(xmp)...)
 	segment := []byte{0xff, 0xe1, byte((len(payload) + 2) >> 8), byte((len(payload) + 2) & 0xff)}
@@ -333,9 +339,7 @@ func pixelMotionPhoto(t *testing.T, video []byte) []byte {
 	out := append([]byte{}, golden[:2]...)
 	out = append(out, segment...)
 	out = append(out, payload...)
-	out = append(out, golden[2:]...)
-	out = append(out, video...)
-	return out
+	return append(out, golden[2:]...)
 }
 
 // TestMotionContainerItemHandlesBothDepths keeps the walk's two shapes

@@ -324,6 +324,22 @@ func (q *Queries) ListLivePhotoStillsOfMotion(ctx context.Context, livePhotoVide
 	return items, nil
 }
 
+const markAssetAsComponent = `-- name: MarkAssetAsComponent :exec
+UPDATE assets
+SET is_component = true, updated_at = now()
+WHERE id = $1
+`
+
+// The pairing's hide write: a video the identifier matched becomes the
+// pair's motion, so it leaves every listing (is_component) while its
+// bytes stay exactly where they are. motion_extracted stays false --
+// this motion arrived as a file of its own, so a download always hands
+// it over.
+func (q *Queries) MarkAssetAsComponent(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, markAssetAsComponent, id)
+	return err
+}
+
 const markAssetAsLivePhotoMotion = `-- name: MarkAssetAsLivePhotoMotion :exec
 UPDATE assets
 SET is_component = true, motion_extracted = true, updated_at = now()
