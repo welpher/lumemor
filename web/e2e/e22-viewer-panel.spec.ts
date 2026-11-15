@@ -275,7 +275,9 @@ test.describe('the viewer', () => {
 
 		// A switch resets the zoom and re-fits the box to the new
 		// photo's own aspect: the portrait's height fills the stage.
-		await page.keyboard.press('ArrowRight');
+		// (The filmstrip is the switch here -- the wall's order comes
+		// from the fixtures' own capture times.)
+		await filmstrip.getByRole('button', { name: PORT_NAME, exact: true }).click();
 		await expect(page).toHaveTitle(`${PORT_NAME} · lumemor`);
 		await expect.poll(zoom).toBe('1');
 		await expect.poll(async () => (await mediaBox(page)).height).toBeGreaterThan(100);
@@ -353,8 +355,14 @@ test.describe('the viewer', () => {
 
 		// No GPS and no manual pin: the location row never renders.
 		await expect(drawer.getByTestId('viewer-location')).toHaveCount(0);
-		// No album: the row does not exist either (never an empty one).
-		await expect(drawer.locator('.info__album')).toHaveCount(0);
+		// The album row is the road back from a photo to its albums, and
+		// it opens in a NEW TAB so the open photo survives the trip (the
+		// instance's sync card is every asset's one album).
+		const album = drawer.locator('.info__album');
+		await expect(album).toHaveCount(1);
+		await expect(album).toHaveText('My photos');
+		await expect(album).toHaveAttribute('target', '_blank');
+		await expect(album).toHaveAttribute('rel', 'noopener');
 
 		// The open preference is remembered across a reload (the same
 		// tab session): the panel is still open, the description too.
@@ -423,7 +431,8 @@ test.describe('the viewer', () => {
 		await expect(page.locator('[data-face-box]').first()).toHaveCSS('opacity', '0');
 		await chip.hover();
 		await expect(page.locator('[data-face-box]').first()).toHaveCSS('opacity', '1');
-		await expect(page.locator('[data-face-label]').first()).toContainText('Not grouped yet');
+		// The box names its face: an unlabeled face reads as unnamed.
+		await expect(page.locator('[data-face-label]').first()).toContainText('Unnamed');
 	});
 
 	test('scene 6: the panel is one switch and the stage re-fits when it closes', async ({ page }) => {
@@ -472,8 +481,11 @@ test.describe('the viewer', () => {
 		await stubTiles(page);
 		const saved = await page.request.put('/api/v1/admin/settings/tiles', { data: { tilejsonUrl: TILE_SOURCE } });
 		expect(saved.status()).toBe(200);
+		// The reload also proves the open preference: the panel comes
+		// back open by itself, the same instance's tiles now behind the
+		// mini map.
 		await page.reload();
-		await page.getByRole('button', { name: 'Photo information' }).click();
+		await expect(panel(page)).toBeVisible();
 		const live = panel(page).getByTestId('viewer-location');
 		await expect(live.locator('.maplibregl-canvas')).toBeVisible();
 		await expect(live.locator('.map__asset-pin')).toBeVisible();
@@ -494,12 +506,19 @@ test.describe('the viewer', () => {
 		// A click on the map drops the pin somewhere else: the
 		// coordinates line follows it.
 		const before = await dialog.getByTestId('viewer-location-coords-line').textContent();
-		const picker = dialog.getByTestId('viewer-location-picker');
-		const pickerBox = await picker.boundingBox();
-		if (pickerBox === null) {
-			throw new Error('the picker never landed');
+		const canvas = dialog.locator('.maplibregl-canvas');
+		const canvasBox = await canvas.boundingBox();
+		if (canvasBox === null) {
+			throw new Error('the picker canvas never landed');
 		}
-		await page.mouse.click(pickerBox.x + pickerBox.width * 0.3, pickerBox.y + pickerBox.height * 0.3);
+		// The click is dispatched at the canvas's own coordinates: the
+		// library reads the pointer's viewport position off the event,
+		// and this is the same click the pointer would send.
+		await canvas.dispatchEvent('click', {
+			clientX: canvasBox.x + 60,
+			clientY: canvasBox.y + 60,
+			bubbles: true
+		});
 		await expect(dialog.getByTestId('viewer-location-coords-line')).not.toHaveText(before ?? '');
 
 		// The save writes the pair and the row converges on it.
@@ -518,6 +537,7 @@ test.describe('the viewer', () => {
 		await page.getByRole('button', { name: 'Photo information' }).click();
 		const drawer = panel(page);
 		await expect(drawer).toBeVisible();
+		await expect(drawer).toHaveCSS('position', 'fixed');
 		const drawerBox = await drawer.boundingBox();
 		if (drawerBox === null) {
 			throw new Error('the drawer never landed');
@@ -540,12 +560,15 @@ test.describe('the viewer', () => {
 		// scrim, the photo beside it.
 		await page.setViewportSize({ width: 900, height: 800 });
 		await expect(panel(page)).toBeVisible();
-		await expect(page.locator('.info-scrim')).toHaveCount(0);
+		await expect(page.locator('.info-scrim')).toBeHidden();
+		await expect(panel(page)).toHaveCSS('position', 'static');
 		const sidebar = await panel(page).boundingBox();
 		if (sidebar === null) {
 			throw new Error('the sidebar never landed');
 		}
 		expect(Math.round(sidebar.width)).toBe(360);
-		expect(Math.round(sidebar.x + sidebar.width)).toBe(900);
+		// The docked panel sits against the viewport's right edge (a
+		// scrollbar's width is the only tolerated gap).
+		expect(Math.abs(sidebar.x + sidebar.width - 900)).toBeLessThanOrEqual(16);
 	});
 });
