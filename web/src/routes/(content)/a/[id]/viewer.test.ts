@@ -116,7 +116,10 @@ function detailBodyOf(source: TimelineItem, overrides: Record<string, unknown> =
 		path: null,
 		faces: [],
 		tags: [],
-		albums: [],
+		// The band's home album: a directory source the owner holds, so
+		// the bar's owner-only curation arms render by default (the
+		// sync-only arm has its own scene below).
+		albums: [{ id: 'al-src', title: 'Album al-src', type: 'directory', callerRole: 'owner' }],
 		place: null,
 		...source,
 		...overrides
@@ -835,6 +838,43 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 	const init = requestOf(fetchMock, 'POST', '/api/v1/assets/batch');
 	expect(JSON.parse(String(init?.body))).toEqual({ action: 'favorite', ids: ['a2'] });
 	unmount(app);
+	flushSync();
+});
+
+test('a photo whose only home is the sync album offers no trash; the favorite stays', async () => {
+	// The read-only source rule (the acceptance walk's finding): the
+	// sync album is the scan's verdict -- system-managed and
+	// read-only -- so its wall offers no curation, and a photo whose
+	// only home is that stream must not offer the delete here either.
+	// The per-user favorite is not a write on the collection: it
+	// stays. A trashed photo keeps its restore arm (the way back out
+	// of the state the delete made).
+	const syncOnly = [{ id: 'sync-1', title: 'Sync', type: 'sync', callerRole: 'owner' }];
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { albums: syncOnly }))),
+		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
+	]);
+	await settle();
+
+	expect(() => barButton('Favorite')).not.toThrow();
+	expect(() => barButton('Trash')).toThrow();
+	expect(() => barButton('Restore')).toThrow();
+	unmount(app);
+	flushSync();
+
+	// The same photo in the trash: the restore arm renders (the
+	// album's read-only verdict governs the delete, never the way
+	// back).
+	const trashed = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(200, detailBodyOf(sequence[1]!, { albums: syncOnly, isTrashed: true }))
+		),
+		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
+	]);
+	await settle();
+	expect(() => barButton('Restore')).not.toThrow();
+	expect(() => barButton('Trash')).toThrow();
+	unmount(trashed.app);
 	flushSync();
 });
 

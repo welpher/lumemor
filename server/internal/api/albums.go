@@ -93,11 +93,13 @@ func (s *server) writeAlbumNotFound(w http.ResponseWriter) {
 // albumSummaryCard maps one album row plus its honest companions
 // onto the wall card shape: the cover's frames (the caller's ordered
 // pinned set or the server's automatic group), the live member count,
-// the share badge, the caller's role and the caller's timeline
+// the live photo count (the image-kind members: the card's "N photos"
+// number, while the member count is the collection's own size), the
+// share badge, the caller's role and the caller's timeline
 // preference. The wall's own mapping and the write face's responses
 // share this one authority, so a write's answer is the card the wall
 // lists.
-func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role apigen.AlbumSummaryCallerRole, cover []uuid.UUID, inTimeline *bool) apigen.AlbumSummary {
+func albumSummaryCard(album dbgen.Album, isShared bool, itemCount, photoCount int64, role apigen.AlbumSummaryCallerRole, cover []uuid.UUID, inTimeline *bool) apigen.AlbumSummary {
 	if cover == nil {
 		cover = []uuid.UUID{}
 	}
@@ -108,6 +110,7 @@ func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role ap
 		IsShared:      isShared,
 		CoverAssetIds: cover,
 		ItemCount:     int(itemCount),
+		PhotoCount:    int(photoCount),
 		UpdatedAt:     album.UpdatedAt.Time.UTC(),
 		CallerRole:    role,
 		InTimeline:    inTimeline,
@@ -194,7 +197,7 @@ func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 	albums := make([]apigen.AlbumSummary, 0, len(rows))
 	for _, row := range rows {
 		albumID := uuid.UUID(row.Album.ID.Bytes)
-		summary := albumSummaryCard(row.Album, row.IsShared, row.ItemCount,
+		summary := albumSummaryCard(row.Album, row.IsShared, row.ItemCount, row.PhotoCount,
 			apigen.AlbumSummaryCallerRole(row.CallerRole), covers[albumID],
 			timelinePrefField(row.Album.Type, row.CallerRole, row.InTimeline))
 		// The owner attribution rides only on shared items: an own
@@ -278,6 +281,7 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		Type:       apigen.AlbumDetailType(album.Album.Type),
 		CallerRole: apigen.AlbumDetailCallerRole(album.CallerRole),
 		ItemCount:  int(album.ItemCount),
+		PhotoCount: int(album.PhotoCount),
 		Items:      make([]apigen.AlbumItem, 0, len(rows)),
 		InTimeline: timelinePrefField(album.Album.Type, album.CallerRole, album.InTimeline),
 	}

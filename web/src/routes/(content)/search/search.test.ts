@@ -256,6 +256,7 @@ test('the walls curate the per-user subset: favorite + tag on the bar, the batch
 							isShared: false,
 							coverAssetIds: [],
 							itemCount: 4,
+							photoCount: 4,
 							updatedAt: '2026-11-05T10:15:00Z',
 							callerRole: 'owner'
 						}

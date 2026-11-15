@@ -408,6 +408,7 @@ test('selection: the check entry raises the bar, a batch trash removes the tiles
 							isShared: false,
 							coverAssetIds: [],
 							itemCount: 3,
+							photoCount: 3,
 							updatedAt: '2026-11-05T10:15:00Z',
 							callerRole: 'owner'
 						}
@@ -468,6 +469,7 @@ test('the wall-selection entry: the picker adds the captured ids to a memory', a
 							isShared: false,
 							coverAssetIds: [],
 							itemCount: 3,
+							photoCount: 3,
 							updatedAt: '2026-11-05T10:15:00Z',
 							callerRole: 'owner'
 						}

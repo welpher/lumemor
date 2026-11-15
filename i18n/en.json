@@ -343,6 +343,7 @@
   "albums_cover_gone": "No longer in this album",
   "albums_cover_invalid": "{count} of the picked photos are no longer in the album -- pick again.",
   "albums_cover_saved": "Cover updated.",
+  "albums_created": "Album created.",
   "cover_collage_label": "Cover: {count} photos",
   "albums_source_tag": "Source · fixed",
   "albums_create_report": "The album was created. {count, plural, one {# requested member was} other {# requested members were}} not added.",

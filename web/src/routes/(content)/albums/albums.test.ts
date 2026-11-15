@@ -2,6 +2,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import { sessionStatus } from '$lib/auth/session.svelte';
+import { clearToasts, toasts } from '$lib/components/toast.svelte';
 import type { AlbumSummary } from '$lib/api/albums';
 import Page from './+page.svelte';
 
@@ -49,6 +50,7 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 		isShared: false,
 		coverAssetIds: [],
 		itemCount: 0,
+		photoCount: 0,
 		updatedAt: '2026-11-01T10:00:00Z',
 		callerRole: 'owner',
 		...overrides
@@ -59,6 +61,7 @@ const roadTrip = summary('al1', {
 	title: 'Road trip 2026',
 	coverAssetIds: ['a1', 'a2', 'a3', 'a4'],
 	itemCount: 128,
+	photoCount: 128,
 	isShared: true
 });
 // The pinned default card: the caller's own sync album, exactly the
@@ -68,23 +71,30 @@ const myPhotos = summary('sync1', {
 	title: 'Sync',
 	type: 'sync',
 	coverAssetIds: ['s1', 's2'],
-	itemCount: 1204
+	itemCount: 1204,
+	photoCount: 1204
 });
 const familyArchive = summary('al2', {
 	title: 'Family archive',
 	type: 'directory',
 	itemCount: 2048,
+	photoCount: 2048,
 	inTimeline: false
 });
 const quickPicks = summary('al3', {
 	title: 'Quick picks',
 	coverAssetIds: ['a9'],
-	itemCount: 1
+	itemCount: 1,
+	photoCount: 1
 });
 const graceHighlights = summary('al4', {
 	title: "Grace's highlights",
 	coverAssetIds: ['g1', 'g2'],
-	itemCount: 17,
+	// The shared card's live members include three videos: the count
+	// beside the image glyph reads the PHOTO count (17), never the
+	// member count (20) -- the acceptance rider's own regression pin.
+	itemCount: 20,
+	photoCount: 17,
 	callerRole: 'viewer',
 	owner: { id: 'u2', name: 'Grace Hopper', email: 'grace@example.com' }
 });
@@ -219,6 +229,7 @@ beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
 	vi.clearAllMocks();
+	clearToasts();
 	wallState = [myPhotos, roadTrip, familyArchive, quickPicks, graceHighlights];
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
@@ -828,9 +839,11 @@ test('the create dialog surfaces the honest skipped report before closing', asyn
 
 	// The write landed (the refetch converged the wall behind), and
 	// the dialog holds the write's own honest report with the Done
-	// affordance -- never a silent close.
+	// affordance -- never a silent close. The toast belongs to the
+	// CLOSING path alone: the report face never fires it.
 	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe('Family archive');
 	expect(modal()?.textContent).toContain('1 requested member was not added');
+	expect(toasts()).toHaveLength(0);
 	buttonByText('Done', modal() as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 

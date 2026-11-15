@@ -408,6 +408,28 @@
 		isOwner && detail !== null && detail.kind === 'image' && !detail.isTrashed && !detail.isHidden
 	);
 
+	/**
+	 * The trash arm's gate (the read-only source rule): the caller
+	 * owns the photo AND the photo reaches them through some album
+	 * that is not the sync stream. The sync album is the scan's
+	 * verdict -- system-managed and read-only -- so its own wall
+	 * offers no curation (the album detail's empty arm), and a photo
+	 * whose only home is that stream must not offer the delete here
+	 * either: one photo cannot be curatable in the album and
+	 * un-curatable in the viewer. A photo another album holds
+	 * (a directory source, a memory, a shared album the caller
+	 * owns) keeps the arm, exactly like that album's wall does.
+	 *
+	 * The RESTORE arm never hides: a trashed photo's reachability is
+	 * the trash itself (the record keeps its live album rows), and
+	 * the restore is the way back out of the state the delete made.
+	 * The favorite stays for everyone -- per-user state, not a write
+	 * on the collection.
+	 */
+	const canTrash = $derived(
+		isOwner && detail !== null && (detail.isTrashed || detail.albums.some((album) => album.type !== 'sync'))
+	);
+
 	// The per-asset interaction reset: navigating replaces the asset,
 	// so the crossfades, zoom, ratio and live playback start over. The
 	// gate compares the id VALUE (a plain marker, not reactive state):
@@ -419,24 +441,46 @@
 	// asset must not inherit the old one's zoom). The panel persists
 	// across neighbors regardless (comparing metadata across
 	// neighbors is the panel-open navigation's point).
+	//
+	// THE FRAME SURVIVES AN IMAGE-TO-IMAGE SWITCH: the media box and
+	// its <img> are the same elements across a neighbor of the same
+	// kind, so dropping the paint here (the placeholder flashing back
+	// in at the stage's full width, then the new ratio snapping the
+	// box) is the second half of the switch's flicker. A ready image
+	// replacing a ready image keeps the loaded frame and the ratio:
+	// the browser holds the last decoded frame while the new bytes
+	// decode, the new frame paints over it, and the ratio's own load
+	// event re-fits the box once. Every other transition (a
+	// video, a not-yet-ready record, the first load) resets as
+	// before -- there is no painted frame to keep.
 	let resetFor = '';
+	let resetKind = '';
 	$effect(() => {
 		const id = detail?.id ?? '';
+		const kind = detail?.kind ?? '';
 		if (id === resetFor) {
 			return;
 		}
+		const keepFrame = resetFor !== '' && resetKind === 'image' && kind === 'image' && detail?.isReady === true;
 		resetFor = id;
+		resetKind = kind;
 		zoomEngine.snapToBase();
 		livePlaying = false;
 		livePlayable = false;
-		viewLoaded = false;
-		fullLoaded = false;
 		posterFailed = false;
 		mediaFailed = false;
 		mediaRetryTick = 0;
-		ratio = null;
 		drawOpen = false;
 		drawing = false;
+		// The full-resolution layer never carries the previous photo
+		// across (it sits ABOVE the view-size copy): it hides and
+		// re-reveals on its own load, while the view-size frame does
+		// the carrying.
+		fullLoaded = false;
+		if (!keepFrame) {
+			viewLoaded = false;
+			ratio = null;
+		}
 	});
 
 	// Paint the blurhash placeholder (the tile's guarded pattern: a
@@ -778,7 +822,7 @@
 					     the tile's favorite badge already carries). -->
 						<Star size={20} fill={favorite ? 'currentColor' : 'none'} class={favorite ? 'text-star' : ''} />
 					</button>
-					{#if isOwner}
+					{#if canTrash}
 						<button
 							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
 							type="button"
@@ -1087,16 +1131,25 @@
 							     background, dark text -- and it FLIPS below the box
 							     when the box sits too close to the photo's top edge
 							     to hold it above (the flip rule: the plate never
-							     clips). -->
+							     clips).
+							     THE REVEAL'S HIT AREA: the box keeps its pointer
+							     events while hidden -- the region over the face IS
+							     the arm that reveals it (the pointer finds the face,
+							     the face's outline and plate answer). Without it the
+							     photo side of the two-way linkage is unreachable:
+							     the chip could light a box the pointer could never
+							     touch. The pointer leaving the region unlinks through
+							     the same ~220ms grace, so the plate does not blink
+							     off on a one-pixel overshoot. -->
 							<div class="absolute inset-0 z-(--z-stage-chrome)" data-face-layer>
 								{#each detail.faces as face (face.id)}
 									{@const linked = isLinked(face.id)}
 									{@const plateFlips =
 										mediaBox !== null && (face.bbox.y / 1000) * mediaBox.height < 30}
 									<button
-										class="face-box absolute aspect-square rounded-[4px] border-2 bg-transparent cursor-pointer transition-[opacity,border-color,box-shadow] duration-(--motion-fast) ease-standard {linked
+										class="face-box absolute aspect-square rounded-[4px] border-2 bg-transparent cursor-pointer transition-[opacity,border-color,box-shadow] duration-(--motion-fast) ease-standard [@media(hover:none)]:pointer-events-none {linked
 											? 'opacity-100 border-accent [box-shadow:0_0_0_9999px_color-mix(in_srgb,var(--color-night)_52%,transparent)]'
-											: 'opacity-0 border-transparent pointer-events-none'} focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+											: 'opacity-0 border-transparent'} focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 										style:left={`${face.bbox.x / 10}%`}
 										style:top={`${face.bbox.y / 10}%`}
 										style:width={`${face.bbox.w / 10}%`}

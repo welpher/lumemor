@@ -258,6 +258,13 @@ function summaryFrom(body: unknown): AlbumSummary | null {
 	if (typeof candidate.itemCount !== 'number' || !Number.isInteger(candidate.itemCount) || candidate.itemCount < 0) {
 		return null;
 	}
+	if (
+		typeof candidate.photoCount !== 'number' ||
+		!Number.isInteger(candidate.photoCount) ||
+		candidate.photoCount < 0
+	) {
+		return null;
+	}
 	if (typeof candidate.updatedAt !== 'string') {
 		return null;
 	}
@@ -423,6 +430,13 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 		return null;
 	}
 	if (typeof candidate.itemCount !== 'number' || !Number.isInteger(candidate.itemCount) || candidate.itemCount < 0) {
+		return null;
+	}
+	if (
+		typeof candidate.photoCount !== 'number' ||
+		!Number.isInteger(candidate.photoCount) ||
+		candidate.photoCount < 0
+	) {
 		return null;
 	}
 	if (!Array.isArray(candidate.items)) {

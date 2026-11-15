@@ -43,6 +43,7 @@
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import CountLabel from '$lib/components/CountLabel.svelte';
 	import CreateAlbumDialog, { type CreateAlbumSwitches } from '$lib/albums/CreateAlbumDialog.svelte';
+	import { toast } from '$lib/components/toast.svelte';
 	import { albumCoverCell, albumCoverGrid } from '$lib/albums/cover-layout';
 	import Plus from '@lucide/svelte/icons/plus';
 
@@ -232,6 +233,11 @@
 		// Done affordance acknowledges it.
 		if (outcome.skipped.length === 0 && outcome.sourceWritable) {
 			createOpen = false;
+			// The clean creation's confirmation is the toast (§7.14):
+			// the report face says the same sentence when it holds the
+			// dialog, so the toast belongs to the path that closes it
+			// (one acknowledgment, never two).
+			toast($_('albums_created'));
 		}
 	}
 
@@ -409,10 +415,15 @@
 			<span class="album-card__title font-body font-semibold text-[15px] leading-[1.4] text-text truncate"
 				>{cardTitle(album)}</span
 			>
+			<!-- The card's count is the PHOTO count (the glyph is the
+			     image glyph and the title says "photos"): videos are
+			     members but never photos, so the number beside this
+			     card's cover is `photoCount`, not the live-member
+			     `itemCount` the cover pool consults. -->
 			<CountLabel
 				class="album-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
-				count={album.itemCount}
-				label={$_('albums_photo_count', { values: { count: album.itemCount } })}
+				count={album.photoCount}
+				label={$_('albums_photo_count', { values: { count: album.photoCount } })}
 			/>
 			<!-- The badge row: the attribution and the read-only mark ride
 			     one line, so a shared card says who and what it means

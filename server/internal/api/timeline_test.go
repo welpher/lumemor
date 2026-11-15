@@ -53,6 +53,9 @@ type timelineAssetOpts struct {
 	height      int32
 	blurhash    string
 	ready       bool
+	// video switches the row's media kind: the photo-count fixtures
+	// need a member that is real but not a photo.
+	video bool
 }
 
 // insertTimelineAsset inserts one fixture asset row directly. The row
@@ -71,6 +74,10 @@ func (e *assetEnv) insertTimelineAsset(t *testing.T, id, owner uuid.UUID, taken 
 	if opts.blurhash != "" {
 		blurhash = opts.blurhash
 	}
+	kind, mimeType, name := "image", "image/jpeg", "fixture-"+id.String()+".jpg"
+	if opts.video {
+		kind, mimeType, name = "video", "video/mp4", "fixture-"+id.String()+".mp4"
+	}
 	if _, err := e.pool.Exec(context.Background(), `
 		INSERT INTO assets (
 			id, owner_id, storage_kind, file_path, checksum, original_filename,
@@ -78,11 +85,11 @@ func (e *assetEnv) insertTimelineAsset(t *testing.T, id, owner uuid.UUID, taken 
 			taken_at_source, is_component, is_hidden, deleted_at, blurhash,
 			ready_at, pending_jobs
 		) VALUES (
-			$1, $2, 'blob', $3, $4, $5, 1024, 'image/jpeg', 'image', $6, $7,
-			$8, 'import', $9, $10, $11, $12, $13, 0
+			$1, $2, 'blob', $3, $4, $5, 1024, $6, $7, $8, $9,
+			$10, 'import', $11, $12, $13, $14, $15, 0
 		)`,
 		pgUUID(id), pgUUID(owner), "originals/fixtures/"+id.String(),
-		"fixture-checksum-"+id.String(), "fixture-"+id.String()+".jpg",
+		"fixture-checksum-"+id.String(), name, mimeType, kind,
 		opts.width, opts.height, taken, opts.isComponent, opts.isHidden,
 		deletedAt, blurhash, readyAt); err != nil {
 		t.Fatalf("insert fixture asset %s: %v", id, err)

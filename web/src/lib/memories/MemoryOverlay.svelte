@@ -177,8 +177,9 @@
 	const excluded = $derived(detail?.inTimeline === false);
 	/** The bar's title: the detail's, the card's while it loads. */
 	const titleText = $derived(detail?.title ?? card?.title ?? '');
-	/** The bar's count: the server's own number, the card's while it loads. */
-	const count = $derived(detail?.itemCount ?? card?.itemCount ?? 0);
+	/** The bar's count: the server's photo number, the card's while it
+	 * loads (the image-glyph idiom counts photos, not members). */
+	const count = $derived(detail?.photoCount ?? card?.photoCount ?? 0);
 	/** The member's attribution: the owner's display name (the email falls back). */
 	const ownerLabel = $derived(card?.owner === undefined ? '' : displayNameOf(card.owner));
 
@@ -574,7 +575,12 @@
 				return;
 			}
 			if (detail !== null) {
-				detail = { ...detail, title: outcome.album.title, itemCount: outcome.album.itemCount };
+				detail = {
+					...detail,
+					title: outcome.album.title,
+					itemCount: outcome.album.itemCount,
+					photoCount: outcome.album.photoCount
+				};
 			}
 		}
 		if (wantsAudience) {
