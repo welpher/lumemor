@@ -441,24 +441,46 @@
 	// asset must not inherit the old one's zoom). The panel persists
 	// across neighbors regardless (comparing metadata across
 	// neighbors is the panel-open navigation's point).
+	//
+	// THE FRAME SURVIVES AN IMAGE-TO-IMAGE SWITCH: the media box and
+	// its <img> are the same elements across a neighbor of the same
+	// kind, so dropping the paint here (the placeholder flashing back
+	// in at the stage's full width, then the new ratio snapping the
+	// box) is the second half of the switch's flicker. A ready image
+	// replacing a ready image keeps the loaded frame and the ratio:
+	// the browser holds the last decoded frame while the new bytes
+	// decode, the new frame paints over it, and the ratio's own load
+	// event re-fits the box once. Every other transition (a
+	// video, a not-yet-ready record, the first load) resets as
+	// before -- there is no painted frame to keep.
 	let resetFor = '';
+	let resetKind = '';
 	$effect(() => {
 		const id = detail?.id ?? '';
+		const kind = detail?.kind ?? '';
 		if (id === resetFor) {
 			return;
 		}
+		const keepFrame = resetFor !== '' && resetKind === 'image' && kind === 'image' && detail?.isReady === true;
 		resetFor = id;
+		resetKind = kind;
 		zoomEngine.snapToBase();
 		livePlaying = false;
 		livePlayable = false;
-		viewLoaded = false;
-		fullLoaded = false;
 		posterFailed = false;
 		mediaFailed = false;
 		mediaRetryTick = 0;
-		ratio = null;
 		drawOpen = false;
 		drawing = false;
+		// The full-resolution layer never carries the previous photo
+		// across (it sits ABOVE the view-size copy): it hides and
+		// re-reveals on its own load, while the view-size frame does
+		// the carrying.
+		fullLoaded = false;
+		if (!keepFrame) {
+			viewLoaded = false;
+			ratio = null;
+		}
 	});
 
 	// Paint the blurhash placeholder (the tile's guarded pattern: a

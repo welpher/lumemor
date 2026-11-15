@@ -164,6 +164,17 @@
 	// The detail fetch, keyed on the route id (and the retry tick).
 	// A superseded run -- the id changed, or the route left, while
 	// the fetch was in flight -- never applies.
+	//
+	// THE SWITCH IS A CONTENT SWAP, NOT A REMOUNT (the acceptance
+	// walk's flicker): a neighbor switch keeps the record already on
+	// screen until the new one lands. Emptying `detail` here unmounted
+	// the panel and the stage's media box on every arrow press -- the
+	// panel's loading aside is a DIFFERENT element than the drawer, so
+	// the drawer's DOM identity died and the window read as closing
+	// and reopening between photos. The record's replacement is the
+	// swap; a FAILED fetch is the one case that clears it (the failure
+	// face must not sit beside the previous photo's facts), so the
+	// error path below owns that reset.
 	$effect(() => {
 		const id = assetId;
 		void retryTick;
@@ -171,7 +182,6 @@
 			return;
 		}
 		status = 'loading';
-		detail = null;
 		errorKey = '';
 		videoPlayable = false;
 		// The assign dialog belongs to a face of THIS asset: the
@@ -210,6 +220,11 @@
 			if (!outcome.ok) {
 				status = 'error';
 				errorKey = outcome.errorKey;
+				// The retained record (a neighbor switch that failed)
+				// leaves with the failure: the card and the drawer's
+				// failed face answer the record that never arrived,
+				// never the previous photo's facts.
+				detail = null;
 				return;
 			}
 			detail = outcome.detail;
