@@ -110,14 +110,17 @@ ORDER BY created_at, id
 LIMIT 1;
 
 -- name: ListLivePhotoComponents :many
--- The maintenance sweep's candidates: component rows old enough that
--- an in-flight extraction cannot be mistaken for an orphan (the
+-- The maintenance sweep's candidates: LIVE component rows old enough
+-- that an in-flight extraction cannot be mistaken for an orphan (the
 -- extraction creates the row and links it in the same job, so the
 -- grace window only has to outlast one job). Bounded per run like the
--- trash expiry, so an hourly sweep never becomes an unbounded walk.
-SELECT id, file_path, storage_kind, deleted_at
+-- trash expiry, so an hourly sweep never becomes an unbounded walk. A
+-- trashed component is the trash expiry's business, never this run's:
+-- its pair may still be restorable.
+SELECT id, file_path, storage_kind
 FROM assets
 WHERE is_component
+  AND deleted_at IS NULL
   AND created_at < now() - make_interval(secs => sqlc.arg('grace_seconds')::int)
 ORDER BY created_at
 LIMIT sqlc.arg('limit_count');

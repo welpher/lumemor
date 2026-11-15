@@ -240,9 +240,10 @@ func (q *Queries) GetLivePhotoCIDMatch(ctx context.Context, arg GetLivePhotoCIDM
 }
 
 const listLivePhotoComponents = `-- name: ListLivePhotoComponents :many
-SELECT id, file_path, storage_kind, deleted_at
+SELECT id, file_path, storage_kind
 FROM assets
 WHERE is_component
+  AND deleted_at IS NULL
   AND created_at < now() - make_interval(secs => $1::int)
 ORDER BY created_at
 LIMIT $2
@@ -254,17 +255,18 @@ type ListLivePhotoComponentsParams struct {
 }
 
 type ListLivePhotoComponentsRow struct {
-	ID          pgtype.UUID        `json:"id"`
-	FilePath    string             `json:"file_path"`
-	StorageKind StorageKind        `json:"storage_kind"`
-	DeletedAt   pgtype.Timestamptz `json:"deleted_at"`
+	ID          pgtype.UUID `json:"id"`
+	FilePath    string      `json:"file_path"`
+	StorageKind StorageKind `json:"storage_kind"`
 }
 
-// The maintenance sweep's candidates: component rows old enough that
-// an in-flight extraction cannot be mistaken for an orphan (the
+// The maintenance sweep's candidates: LIVE component rows old enough
+// that an in-flight extraction cannot be mistaken for an orphan (the
 // extraction creates the row and links it in the same job, so the
 // grace window only has to outlast one job). Bounded per run like the
-// trash expiry, so an hourly sweep never becomes an unbounded walk.
+// trash expiry, so an hourly sweep never becomes an unbounded walk. A
+// trashed component is the trash expiry's business, never this run's:
+// its pair may still be restorable.
 func (q *Queries) ListLivePhotoComponents(ctx context.Context, arg ListLivePhotoComponentsParams) ([]ListLivePhotoComponentsRow, error) {
 	rows, err := q.db.Query(ctx, listLivePhotoComponents, arg.GraceSeconds, arg.LimitCount)
 	if err != nil {
@@ -274,12 +276,7 @@ func (q *Queries) ListLivePhotoComponents(ctx context.Context, arg ListLivePhoto
 	var items []ListLivePhotoComponentsRow
 	for rows.Next() {
 		var i ListLivePhotoComponentsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.FilePath,
-			&i.StorageKind,
-			&i.DeletedAt,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.FilePath, &i.StorageKind); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

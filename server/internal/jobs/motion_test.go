@@ -431,3 +431,98 @@ func TestExtractedMotionStaysOutOfTheSearchAndTheTimeline(t *testing.T) {
 		t.Errorf("search items = %d, want the still alone", len(search.Items))
 	}
 }
+
+// TestReextractionReplacesTheMotionAndRetiresTheOld pins the
+// replacement rule: when the same still's file changes (a re-sync, a
+// corrected copy) and the extraction finds DIFFERENT bytes, the pair
+// moves to the new motion and the old row -- now referenced by nothing
+// -- goes with its file. Identical bytes reuse the row instead (pinned
+// by the re-run half of the carve test).
+func TestReextractionReplacesTheMotionAndRetiresTheOld(t *testing.T) {
+	requireExiftool(t)
+	requireFfmpegJob(t)
+	e := newEnv(t)
+
+	first := realMotionVideo(t, e.dataDir)
+	still := pixelMotionPhoto(t, first)
+	id := e.insertAsset(t, "originals/motion/IMG_9501.jpg", still, time.Now().UTC().Truncate(time.Microsecond), "{}")
+	if err := e.queue.EnqueueMetadata(context.Background(), id); err != nil {
+		t.Fatalf("enqueue the metadata job: %v", err)
+	}
+	eventually(t, jobWaitTimeout, "the still to become ready", func() bool {
+		return e.assetOf(t, id).readyAt.Valid
+	})
+	var firstMotion string
+	if err := e.pool.QueryRow(context.Background(),
+		`SELECT live_photo_video_id::text FROM assets WHERE id = $1`, pgUUID(id)).Scan(&firstMotion); err != nil {
+		t.Fatalf("read the first pair: %v", err)
+	}
+
+	// The still's bytes change: a different motion on the tail (a
+	// different clip length, so the checksum differs).
+	second := differentMotionVideo(t, e.dataDir)
+	replaced := pixelMotionPhoto(t, second)
+	var relPath string
+	if err := e.pool.QueryRow(context.Background(),
+		`SELECT file_path FROM assets WHERE id = $1`, pgUUID(id)).Scan(&relPath); err != nil {
+		t.Fatalf("read the still's path: %v", err)
+	}
+	absolute, err := filepath.Abs(filepath.Join(e.dataDir, filepath.FromSlash(relPath)))
+	if err != nil {
+		t.Fatalf("resolve the still's path: %v", err)
+	}
+	if err := os.WriteFile(absolute, replaced, 0o644); err != nil {
+		t.Fatalf("replace the still's bytes: %v", err)
+	}
+	if err := e.queue.EnqueueMetadata(context.Background(), id); err != nil {
+		t.Fatalf("re-enqueue the metadata job: %v", err)
+	}
+
+	eventually(t, jobWaitTimeout, "the pair to move to the new motion", func() bool {
+		var current string
+		if err := e.pool.QueryRow(context.Background(),
+			`SELECT live_photo_video_id::text FROM assets WHERE id = $1`, pgUUID(id)).Scan(&current); err != nil {
+			return false
+		}
+		return current != firstMotion && current != ""
+	})
+
+	// The old row is gone (nothing references it) and the new one is a
+	// component.
+	var survivors int
+	if err := e.pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM assets WHERE id = $1`, firstMotion).Scan(&survivors); err != nil {
+		t.Fatalf("count the first motion: %v", err)
+	}
+	if survivors != 0 {
+		t.Error("the replaced motion row survived")
+	}
+	var newComponent bool
+	if err := e.pool.QueryRow(context.Background(),
+		`SELECT is_component FROM assets WHERE id = (SELECT live_photo_video_id FROM assets WHERE id = $1)`,
+		pgUUID(id)).Scan(&newComponent); err != nil {
+		t.Fatalf("read the new motion: %v", err)
+	}
+	if !newComponent {
+		t.Error("the new motion is not a component")
+	}
+}
+
+// differentMotionVideo generates a second clip with content distinct
+// from realMotionVideo's (a different frame source and duration).
+func differentMotionVideo(t *testing.T, dir string) []byte {
+	t.Helper()
+	path := filepath.Join(dir, "motion-source-two.mp4")
+	cmd := exec.Command("ffmpeg",
+		"-f", "lavfi", "-i", "testsrc=size=192x144:rate=20",
+		"-t", "2", "-pix_fmt", "yuv420p", "-y", path)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generate the second motion fixture: %v: %s", err, out)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the second motion fixture: %v", err)
+	}
+	_ = os.Remove(path)
+	return data
+}
