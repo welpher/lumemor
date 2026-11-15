@@ -445,28 +445,34 @@
 						{errorText(editErrorKey)}
 					</p>
 				{/if}
-			{:else if detail.description !== ''}
-				<button
-					class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text truncate cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
-					type="button"
-					title={detail.description}
-					onclick={startEdit}
-				>
-					{detail.description}
-				</button>
 			{:else if isOwner}
-				<button
-					class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text-faint cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
-					type="button"
-					onclick={startEdit}
-				>
-					{$_('viewer_description_empty')}
-				</button>
+				{#if detail.description !== ''}
+					<button
+						class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text truncate cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						type="button"
+						title={detail.description}
+						onclick={startEdit}
+					>
+						{detail.description}
+					</button>
+				{:else}
+					<button
+						class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text-faint cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						type="button"
+						onclick={startEdit}
+					>
+						{$_('viewer_description_empty')}
+					</button>
+				{/if}
 			{:else}
 				<p
-					class="info__description m-0 py-1.5 font-body font-normal text-[14px] leading-[1.5] text-text-faint truncate"
+					class="info__description m-0 py-1.5 font-body font-normal text-[14px] leading-[1.5] {detail.description !==
+					''
+						? 'text-text'
+						: 'text-text-faint'} truncate"
+					title={detail.description}
 				>
-					{$_('viewer_description_empty')}
+					{detail.description !== '' ? detail.description : $_('viewer_description_empty')}
 				</p>
 			{/if}
 		</section>

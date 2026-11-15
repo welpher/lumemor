@@ -797,7 +797,6 @@ NON_ERROR_KEYS = {
     "tags_add_done",
     "tags_name_field",
     "tags_name_invalid",
-    "viewer_tags_label",
     "viewer_tags_empty",
 
     "admin_settings_transcode_concurrency",

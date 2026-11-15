@@ -473,7 +473,6 @@
   "tags_add_done": "Done",
   "tags_name_field": "Tag name",
   "tags_name_invalid": "Tag names span 1 to 64 characters.",
-  "viewer_tags_label": "Tags",
   "viewer_tags_empty": "No tags yet.",
   "settings_title": "Settings",
   "settings_loading": "Loading settings…",

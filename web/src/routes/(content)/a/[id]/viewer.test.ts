@@ -768,9 +768,13 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 
 	// The owner-only writes never render (read-only is visual, never
 	// grayed out -- the pinned read-only rule): no trash in the bar,
-	// no edit in the drawer.
+	// no edit pencil in the drawer, and the description is a PLAIN
+	// line (a live edit control is an owner affordance alone).
 	expect(() => barButton('Trash')).toThrow();
-	expect(document.body.textContent).not.toContain('Edit');
+	expect(() => barButton('Edit date')).toThrow();
+	expect(() => barButton('Edit location')).toThrow();
+	const description = document.body.querySelector('.info__description');
+	expect(description?.tagName).toBe('P');
 	expect(() => barButton('Favorite')).not.toThrow();
 
 	// The per-user favorite still works for the viewer.
@@ -2021,7 +2025,14 @@ test("the tags row's assign affordance is every viewer's own write (per-user sta
 
 	openDrawer();
 	const info = element('.info');
-	expect(info.textContent).not.toContain('Edit');
+	// The read-only drawer: the description carries the shared text
+	// as a plain line (never a live edit control), the pencils are
+	// absent by their accessible names, and the per-user tag entry
+	// stays.
+	const description = info.querySelector('.info__description');
+	expect(description?.tagName).toBe('P');
+	expect(description?.textContent?.trim()).toBe('Original caption.');
+	expect(info.querySelectorAll('button[aria-label="Edit date"], button[aria-label="Edit location"]')).toHaveLength(0);
 	expect(info.querySelector('.info__tag-chip')?.textContent?.trim()).toBe('Sunrise');
 	expect(scopedButtonByText(info, 'Add tag')).toBeTruthy();
 
