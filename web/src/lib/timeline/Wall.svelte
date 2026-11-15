@@ -101,7 +101,7 @@
 	// (the row-level windowing the justified math makes exact); the
 	// tiles keep their own content-visibility inside a partially
 	// visible row.
-	import { _, locale } from 'svelte-i18n';
+	import { locale } from 'svelte-i18n';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { packWall, WALL_MAX_WIDTH, WALL_TILE_SEAM, type PackedMonth } from './layout';
 	import { groupTimelineItems } from './grouping';
@@ -285,17 +285,30 @@
 	// rail's month entries fold from the same groups the rendering
 	// packs, so the wall and its axis can never disagree (the
 	// timeline page's duplicate fold is gone with this move).
-	const months = $derived(
-		groups.map((group) => ({
-			key: group.key,
-			label: group.label,
-			count: group.days.reduce((total, day) => total + day.items.length, 0)
-		}))
-	);
+	const months = $derived(groups.map((group) => ({ key: group.key, label: group.label })));
 
 	let activeMonthKey = $state<string | null>(null);
 	let scrollProgress = $state(0);
 	let scrollScheduled = false;
+
+	// THE RAIL'S GEOMETRY (the one mapping): per month, the scroll
+	// position that lands its header on the reading line (the same
+	// landing the jumps use), the scroll span those positions live
+	// on, and the tail that lets the last month reach the line. The
+	// dots, the press, the readout and the indicator all read these
+	// three -- no second fold, no second truth.
+	let monthTops = $state<readonly number[]>([]);
+	let maxScrollTop = $state(0);
+	let tailHeight = $state(0);
+
+	/** The jump landing's offset below the scrollport top: the page
+	 * wall's month headers land under the shell's own top bar (the
+	 * 92px scroll margin) shifted by a page's pinned-context bar;
+	 * the panel wall's root starts at its own header row, so its
+	 * jump lands the section flush at the root's top. */
+	function landingOffset(): number {
+		return variant === 'panel' ? 0 : 92 + readStickyOffset();
+	}
 
 	/** The element this wall scrolls in: the shell's <main> for the
 	 * page wall, the wall's own root for the panel wall. */
@@ -306,21 +319,27 @@
 		return document.querySelector<HTMLElement>('main');
 	}
 
-	/** Jump one month group into view (a rail tap or the keyboard). */
+	/** Jump one month group into view (the axis's keyboard walk).
+	 * The smooth landing is the pointer path's courtesy; a
+	 * reduced-motion host takes the instant jump instead. */
 	function jumpToMonth(key: string): void {
 		const element = wall?.querySelector<HTMLElement>(`[data-month-key="${key}"]`) ?? null;
 		if (element === null) {
 			return;
 		}
+		const behavior: ScrollBehavior =
+			typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+				? 'auto'
+				: 'smooth';
 		if (variant === 'panel') {
 			// The panel's own scroller: the section's offset inside
 			// it is the exact jump target (scrollIntoView would walk
 			// outer ancestors too, moving the page).
-			wall?.scrollTo({ top: element.offsetTop, behavior: 'smooth' });
+			wall?.scrollTo({ top: element.offsetTop, behavior });
 			return;
 		}
 		if (typeof element.scrollIntoView === 'function') {
-			element.scrollIntoView({ block: 'start', behavior: 'smooth' });
+			element.scrollIntoView({ block: 'start', behavior });
 		}
 	}
 
@@ -336,74 +355,89 @@
 		return Number.isNaN(parsed) ? 0 : Math.max(0, parsed);
 	}
 
-	/** Track which month the viewport reads, for the axis's stop. */
-	function updateActiveMonth(): void {
+	/** THE ONE RAIL SYNC: the wall measures its own geometry once per
+	 * scroll (or content, or resize) pass -- each month section's
+	 * offset in the scroll content, the tail that lets the last
+	 * month reach the reading line, the span those positions live
+	 * on, the month the viewport currently reads, and the scroll
+	 * progress. Everything the axis renders (dots, indicator,
+	 * press, readout) reads this one pass's numbers. */
+	function syncRailState(): void {
 		if (wall === undefined || wall === null) {
 			return;
 		}
 		const sections = Array.from(wall.querySelectorAll<HTMLElement>('[data-month-key]'));
 		if (sections.length === 0) {
+			monthTops = [];
+			maxScrollTop = 0;
+			tailHeight = 0;
+			activeMonthKey = null;
+			scrollProgress = 0;
 			return;
 		}
+		// A layout-less host (tests) answers zero rects: keep the
+		// last known state instead of pinning everything to zero.
 		const first = sections[0]?.getBoundingClientRect();
-		// A layout-less host (tests) answers zero rects: keep no stop.
 		if (first === undefined || (first.top === 0 && first.height === 0)) {
 			return;
 		}
-		// The anchor is the sticky header stack below the scroll
-		// root's own top: the page wall keeps the shell's 124px rule
-		// (the pinned top bar plus the stack) shifted by a page's
-		// pinned-context bar; the panel wall's root starts at its
-		// own header row, so the stack's own height (~40px) is the
-		// whole offset.
 		const scroller = scrollRoot();
 		const scrollerTop = scroller?.getBoundingClientRect().top ?? 0;
-		const anchor = scrollerTop + (variant === 'panel' ? 40 : readStickyOffset() + 124);
+		const scrollTop = scroller?.scrollTop ?? 0;
+		const viewport = scroller?.clientHeight ?? 0;
+		const sticky = readStickyOffset();
+		const anchor = variant === 'panel' ? 40 : sticky + 124;
+		const landing = landingOffset();
+		const contentTops = sections.map((section) => scrollTop + section.getBoundingClientRect().top - scrollerTop);
+		// THE TAIL (the lead-out): the wall used to end flush, so the
+		// last months could never reach the reading line and the axis
+		// would lie about them. One tail spacer sized so the final
+		// month can come up to the line at the span's far end; a
+		// single-month wall gets none (there is nothing to scrub to).
+		const lastHeight = sections[sections.length - 1]?.getBoundingClientRect().height ?? 0;
+		tailHeight = sections.length > 1 ? Math.max(0, Math.round(viewport - landing - lastHeight)) : 0;
+		// The span is the tail-corrected content bottom: the same
+		// number the dots divide and the drag multiplies.
+		const lastTop = contentTops[contentTops.length - 1] ?? 0;
+		maxScrollTop = Math.max(0, lastTop + lastHeight + tailHeight - viewport);
+		monthTops = contentTops.map((top) => Math.max(0, Math.round(top - landing)));
+		// The active month: the last section whose top has passed the
+		// anchor line (the sticky stack the headers pin below).
 		let current: string | null = null;
-		for (const section of sections) {
-			if (section.getBoundingClientRect().top <= anchor) {
-				current = section.dataset.monthKey ?? null;
+		for (let i = 0; i < sections.length; i += 1) {
+			if ((contentTops[i] ?? 0) <= scrollTop + anchor) {
+				current = sections[i]?.dataset.monthKey ?? null;
 			} else {
 				break;
 			}
 		}
 		activeMonthKey = current;
-	}
-
-	/** The wall's scroll progress (0-1) for the axis's position
-	 * indicator: the scroll root's own fraction, read alongside the
-	 * active-month tracking. */
-	function updateScrollProgress(): void {
-		const scroller = scrollRoot();
-		if (scroller === null) {
-			return;
-		}
-		const span = scroller.scrollHeight - scroller.clientHeight;
-		scrollProgress = span > 0 ? Math.min(1, Math.max(0, scroller.scrollTop / span)) : 0;
+		scrollProgress = maxScrollTop > 0 ? Math.min(1, Math.max(0, scrollTop / maxScrollTop)) : 0;
 	}
 
 	/** THE TRUE DRAG: the month axis IS a scrollbar -- the pointer's
 	 * rail fraction maps directly onto the wall's continuous scroll
 	 * position (within months), applied frame-accurate with no
-	 * smoothing (direct manipulation). */
+	 * smoothing (direct manipulation). The span is the rail sync's
+	 * own tail-corrected number, so a press at a dot's height lands
+	 * exactly that month's reading position. */
 	function handleRailScrub(fraction: number): void {
 		const scroller = scrollRoot();
-		if (scroller === null) {
+		if (scroller === null || maxScrollTop <= 0) {
 			return;
 		}
-		const span = scroller.scrollHeight - scroller.clientHeight;
-		if (span > 0) {
-			scroller.scrollTop = fraction * span;
-		}
+		scroller.scrollTop = Math.min(1, Math.max(0, fraction)) * maxScrollTop;
 	}
 
 	/** The panel's walk hook: near the root's bottom, the host pages
-	 * the next batch. The page wall keeps its sentinel observer. */
+	 * the next batch. The page wall keeps its sentinel observer.
+	 * The tail is runway, not content: the reach measures the real
+	 * content bottom, with the tail's own height out of the way. */
 	function maybeReachBottom(): void {
 		if (variant !== 'panel' || onreachbottom === undefined || wall === undefined || wall === null) {
 			return;
 		}
-		const remaining = wall.scrollHeight - wall.scrollTop - wall.clientHeight;
+		const remaining = wall.scrollHeight - wall.scrollTop - wall.clientHeight - tailHeight;
 		if (remaining <= 600) {
 			onreachbottom();
 		}
@@ -417,8 +451,7 @@
 		scrollScheduled = true;
 		requestAnimationFrame(() => {
 			scrollScheduled = false;
-			updateActiveMonth();
-			updateScrollProgress();
+			syncRailState();
 			maybeReachBottom();
 		});
 	}
@@ -446,20 +479,27 @@
 		};
 	});
 
-	// The panel's own content changes (a page appended, an event
-	// removed a tile): the stop and the progress must follow without
-	// waiting for a scroll, and the next page starts when the fresh
+	// The wall's own content changes (a page appended, an event
+	// removed a tile, a re-pack from a width change): the dots, the
+	// tail, the stop and the progress must follow without waiting
+	// for a scroll, and the panel's next page starts when the fresh
 	// content still does not fill the root.
 	$effect(() => {
-		if (variant !== 'panel') {
-			return;
-		}
 		void packed;
 		requestAnimationFrame(() => {
-			updateActiveMonth();
-			updateScrollProgress();
+			syncRailState();
 			maybeReachBottom();
 		});
+	});
+
+	// The viewport's own resizes move the tail (it is sized off the
+	// scroll root's height) without any re-pack: the same rAF pass
+	// re-measures everything the axis reads.
+	$effect(() => {
+		window.addEventListener('resize', handleScrollEvent);
+		return () => {
+			window.removeEventListener('resize', handleScrollEvent);
+		};
 	});
 
 	// The month axis IS the wall's scrollbar: while the PAGE wall
@@ -585,6 +625,7 @@
 		class="wall__groups {variant === 'panel'
 			? 'wall__groups--panel relative h-full overflow-y-auto px-1 pe-8 pb-2'
 			: ''}"
+		id={variant === 'panel' ? 'wall-panel-scroll' : undefined}
 		class:is-selecting={selectMode}
 		bind:this={wall}
 	>
@@ -650,41 +691,33 @@
 				</div>
 			</section>
 		{/each}
+		{#if tailHeight > 0}
+			<!-- THE TAIL (the lead-out): runway so the last month can
+		     come up to the reading line -- without it the wall ends
+		     flush and the axis would lie about the final months. The
+		     height is the rail sync's own measure (the viewport minus
+		     the reading line minus the last month); a single-month
+		     wall gets none. -->
+			<div class="wall__tail" style="height: {tailHeight}px" aria-hidden="true"></div>
+		{/if}
 	</div>
 
 	{#if variant === 'panel' && months.length > 0}
 		<!-- The panel's compact axis (the same organ, the narrow
-		     width): one stop per month, the active month marked, and
-		     a tap scrolling the panel's own root to that month. The
-		     rail lives inside the panel (the page's fixed scrubber
-		     belongs to the full-page wall). -->
-		<nav
-			class="wall__axis absolute inset-y-2 end-1 flex w-6 flex-col items-center"
-			aria-label={$_('timeline_scrubber_label')}
-			data-testid="panel-axis"
-		>
-			<span class="absolute inset-y-2 right-[8px] w-px bg-border" aria-hidden="true"></span>
-			<div class="relative flex h-full w-full flex-col py-1.5">
-				{#each months as month (month.key)}
-					<div class="flex flex-1 items-center justify-end pe-1.5">
-						<button
-							class="wall__axis-stop relative flex h-4 w-full items-center justify-end cursor-pointer"
-							type="button"
-							aria-label={month.label}
-							aria-current={activeMonthKey === month.key ? 'true' : undefined}
-							onclick={() => jumpToMonth(month.key)}
-						>
-							<span
-								class="w-[6px] h-[6px] rounded-full {activeMonthKey === month.key
-									? 'bg-accent'
-									: 'bg-border-strong'}"
-								aria-hidden="true"
-							></span>
-						</button>
-					</div>
-				{/each}
-			</div>
-		</nav>
+		     slot): the ONE scrollbar control in its 24px frame -- the
+		     press, the drag, the readout and the keyboard are the
+		     page rail's, the geometry is the panel's own. -->
+		<MonthScrubber
+			variant="panel"
+			controls="wall-panel-scroll"
+			{months}
+			tops={monthTops}
+			maxScroll={maxScrollTop}
+			activeKey={activeMonthKey}
+			progress={scrollProgress}
+			onjump={jumpToMonth}
+			onscrub={handleRailScrub}
+		/>
 	{/if}
 </div>
 
@@ -694,7 +727,10 @@
 	     viewport-fixed, so it renders from any wall depth; its empty
 	     months guard hides it for an empty wall. -->
 	<MonthScrubber
+		controls="shell-main"
 		{months}
+		tops={monthTops}
+		maxScroll={maxScrollTop}
 		activeKey={activeMonthKey}
 		progress={scrollProgress}
 		onjump={jumpToMonth}

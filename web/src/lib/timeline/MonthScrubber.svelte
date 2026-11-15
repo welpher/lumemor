@@ -1,216 +1,247 @@
 <script lang="ts">
-	// The right-edge timeline scrubber: a proportional year axis that
-	// IS a scrollbar. At rest the years (one per year run), the
-	// month dots (positioned by each month's share of the loaded
-	// photo mass), and the position indicator carry the rail. A drag
-	// scrubs the wall CONTINUOUSLY -- the pointer's rail fraction
-	// maps onto the scroll position, within months, not between
-	// them -- with the bubble naming the month under the pointer; a
-	// pure tap (or the keyboard) jumps to a month group. v0 scrubs
-	// within the loaded data only; deep jumps with date filters
-	// arrive later.
-	import { _, locale } from 'svelte-i18n';
+	// THE MONTH AXIS AS ONE CONTROL: a scrollbar, not a row of
+	// buttons. The whole rail takes the pointer (the dots and the
+	// years are decoration and never eat an event): a press jumps
+	// where you point -- the pointer's height maps onto the wall's
+	// scroll span and the wall is there before the release -- holding
+	// drags the wall along, and the readout bubble follows the
+	// pointer while it hovers or drags and rides the position
+	// indicator while the wall scrolls alone. The keyboard is one
+	// tab stop walking the months (the readout is the focus
+	// indicator; a box ring on a 72px rail reads as a broken style).
+	// The geometry is the wall's own: every dot sits at the scroll
+	// position that lands its month header on the reading line, so
+	// the dot you see, the place a press takes you and the month the
+	// readout names are ONE mapping -- the wall feeds `tops` and
+	// `maxScroll` and nothing here re-derives them. v0 maps the
+	// loaded span only; deep jumps with date filters arrive later.
+	import { _ } from 'svelte-i18n';
 
 	type MonthEntry = {
 		/** `YYYY-MM`, the jump target key of the month group. */
 		key: string;
 		/** Locale-aware month label (the wall header's form). */
 		label: string;
-		/** The month's photo count (its share of the rail). */
-		count?: number;
 	};
 
 	type Props = {
 		months: readonly MonthEntry[];
-		/** The month the wall currently shows (the highlighted dot). */
+		/**
+		 * Per month (wall order): the scroll position that lands its
+		 * header on the reading line -- the landing the wall's own
+		 * jumps use. The dots, the press and the readout all read
+		 * this one array.
+		 */
+		tops?: readonly number[];
+		/** The scroll root's scrollable span (the mapping's denominator). */
+		maxScroll?: number;
+		/** The month the wall currently reads (the highlighted dot). */
 		activeKey?: string | null;
-		/** The wall's overall scroll progress (0-1) -- the position
-		 * indicator's truth. */
+		/** The wall's scroll progress (0-1) -- the indicator's truth. */
 		progress?: number;
-		/** Jump callback (a tap or the keyboard): the page scrolls the
-		 * month group into view. */
+		/**
+		 * The id of the element this scrollbar controls (the ARIA
+		 * contract's own requirement): the page rail drives the
+		 * shell's <main>; the panel rail drives the wall's own root.
+		 */
+		controls?: string;
+		/** `page` is the fixed right-edge rail (the wall pages' 72px
+		 * slot); `panel` is the SAME control in the map panel's
+		 * compact 24px slot (the axis-as-scrollbar discipline: the
+		 * panel never grows a second organ). */
+		variant?: 'page' | 'panel';
+		/** Walk callback (the keyboard): the page scrolls the month into view. */
 		onjump: (key: string) => void;
-		/** Scrub callback (the drag): the pointer's rail fraction,
-		 * mapped by the page onto the wall's continuous scroll
-		 * position -- the rail IS a scrollbar. */
+		/** Scrub callback (the press and the drag): the pointer's rail
+		 * fraction, which the wall maps onto its scroll span. */
 		onscrub?: (fraction: number) => void;
 	};
 
-	let { months, activeKey = null, progress = 0, onjump, onscrub }: Props = $props();
+	let {
+		months,
+		tops = [],
+		maxScroll = 0,
+		activeKey = null,
+		progress = 0,
+		controls = 'shell-main',
+		variant = 'page',
+		onjump,
+		onscrub
+	}: Props = $props();
 
-	// One stop row's height on the rail (the anti-overlap unit).
-	const STOP_HEIGHT = 16;
+	// The rim pad: the dots' half-height, kept clear of both rail
+	// ends so a dot at the very top or bottom never clips.
+	const PAD = 8;
 
-	/** The rail's pixel height: dense enough that N stops never
-	 * overlap, capped for tall loaded histories, floored so a single
-	 * month still reads as a rail. */
-	const railHeight = $derived(Math.min(560, Math.max(140, months.length * 20)));
+	/** The page rail's pixel height: dense enough that N months never
+	 * crowd, capped for tall loaded histories, floored so a single
+	 * month still reads as a rail. The panel rail is the panel's own
+	 * height (measured live); the same fallback covers a layout-less
+	 * host there. */
+	const fallbackHeight = $derived(Math.min(560, Math.max(140, months.length * 20)));
 
-	type Stop = {
-		key: string;
-		label: string;
-		/** The compact year-month readout ("Nov 2026" / "2026年11月"). */
-		compact: string;
-		/** The faint year label, only where the year changes. */
-		year: string | null;
-		top: number;
-		center: number;
-	};
+	/** The panel rail's measured height (its slot is the panel's
+	 * height minus its insets -- not a number the component can
+	 * compute). jsdom has no observer: the fallback stands in. */
+	let measuredHeight = $state(0);
 
-	/** The positioned stops: data-proportional first, then a forward
-	 * relaxation pass keeps every dot legible, and a final
-	 * proportional squeeze fits a dense history into the capped
-	 * rail. Deterministic -- the same months always pack the same. */
-	const stops = $derived.by(() => {
-		if (months.length === 0) {
-			return [] as Stop[];
+	const railHeight = $derived(variant === 'panel' && measuredHeight > 0 ? measuredHeight : fallbackHeight);
+
+	let rail: HTMLElement | undefined = $state();
+
+	$effect(() => {
+		const element = rail;
+		if (variant !== 'panel' || element === undefined || typeof ResizeObserver !== 'function') {
+			return;
 		}
-		const counts = months.map((month) => Math.max(1, month.count ?? 1));
-		const total = counts.reduce((sum, count) => sum + count, 0);
-		const usable = Math.max(STOP_HEIGHT, railHeight - STOP_HEIGHT);
-		let cumulative = 0;
-		const laid: Stop[] = months.map((month, index) => {
-			const [year, monthNumber] = month.key.split('-');
+		const observer = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				const block = entry.contentBoxSize[0]?.blockSize ?? entry.contentRect.height;
+				if (typeof block === 'number' && block > 0) {
+					measuredHeight = block;
+				}
+			}
+		});
+		observer.observe(element);
+		return () => {
+			observer.disconnect();
+		};
+	});
+
+	// The timers outlive any single render: a fade schedule set in a
+	// pointer handler must die with the component, not leak.
+	let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+	let lingerTimer: ReturnType<typeof setTimeout> | undefined;
+
+	$effect(() => {
+		return () => {
+			if (scrollTimer !== undefined) {
+				clearTimeout(scrollTimer);
+			}
+			if (lingerTimer !== undefined) {
+				clearTimeout(lingerTimer);
+			}
+		};
+	});
+
+	// The usable span between the rim pads: every y on this rail --
+	// dot, indicator, tick, pointer -- crosses it through the ONE
+	// linear mapping, so no two of them can ever disagree.
+	const span = $derived(Math.max(0, railHeight - PAD * 2));
+
+	const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+
+	/** The rail fraction of a scroll position (the drawing side). */
+	function fractionOfTop(top: number): number {
+		return maxScroll > 0 ? clamp01(top / maxScroll) : 0;
+	}
+
+	/** The scroll fraction of a pointer height (the press side). */
+	function fractionOfY(y: number): number {
+		return span > 0 ? clamp01((y - PAD) / span) : 0;
+	}
+
+	/** The positioned marks: one per month, at the fraction of the
+	 * landing the wall reported -- never a static top. */
+	const marks = $derived.by(() =>
+		months.map((month, index) => {
+			const year = month.key.split('-')[0] ?? '';
 			const previous = months[index - 1];
 			const yearChanges = previous === undefined || previous.key.split('-')[0] !== year;
-			const byData = (cumulative / total) * usable;
-			cumulative += counts[index];
 			return {
 				key: month.key,
 				label: month.label,
-				compact: compactMonth(Number(monthNumber) - 1, year, $locale),
 				year: yearChanges ? year : null,
-				top: byData,
-				center: byData + STOP_HEIGHT / 2
+				y: PAD + fractionOfTop(tops[index] ?? 0) * span
 			};
-		});
-		// The relaxation pass: no dot may ride onto the one above.
-		for (let i = 1; i < laid.length; i += 1) {
-			laid[i].top = Math.max(laid[i].top, laid[i - 1].top + STOP_HEIGHT);
-			laid[i].center = laid[i].top + STOP_HEIGHT / 2;
-		}
-		// The squeeze pass: a capped rail with many months scales
-		// everything back into the usable span.
-		const last = laid[laid.length - 1];
-		if (last !== undefined && last.top > usable) {
-			const scale = usable / last.top;
-			for (const stop of laid) {
-				stop.top *= scale;
-				stop.center = stop.top + STOP_HEIGHT / 2;
+		})
+	);
+
+	/** The month at a scroll position: the last month whose landing
+	 * sits at or above it, with the span's far end taking the last
+	 * month (the same mapping the dots draw, read backwards). */
+	function monthIndexAt(scrollTop: number): number {
+		let index = 0;
+		for (let i = 0; i < months.length; i += 1) {
+			if ((tops[i] ?? 0) <= scrollTop) {
+				index = i;
 			}
 		}
-		return laid;
-	});
-
-	/** The locale's compact year-month readout ("Nov 2026" /
-	 * "2026年11月") -- narrow enough to live wholly in the reserved
-	 * gutter, left of the dots. */
-	function compactMonth(monthIndex: number, year: string, activeLocale: string | null | undefined): string {
-		const formatter = new Intl.DateTimeFormat(activeLocale ?? 'en', {
-			month: 'short',
-			year: 'numeric',
-			timeZone: 'UTC'
-		});
-		return formatter.format(new Date(Date.UTC(Number(year), monthIndex, 1)));
+		if (maxScroll > 2 && scrollTop >= maxScroll - 2) {
+			index = months.length - 1;
+		}
+		return index;
 	}
 
-	let rail: HTMLElement | undefined = $state();
-	let dragging = $state(false);
-	// A rail pointerdown already jumped; the click that follows the
-	// release lands on the PRESSED button (the pointer capture) whose
-	// month may differ from the drag's destination -- it must not
-	// jump back.
-	let suppressClick = false;
-	// The month whose label the rail reveals (hover or keyboard
-	// focus); the drag keeps the last jumped month revealed as the
-	// live readout.
-	let revealedKey: string | null = $state(null);
-	// The rail is ACTIVE (the readout bubble visible) while the
-	// pointer is over it, a drag is in flight, or the wall is
-	// scrolling. The faint years and the position indicator rest on
-	// the rail permanently.
-	let hovering = $state(false);
-	let scrollActive = $state(false);
-	let scrollQuietTimer: ReturnType<typeof setTimeout> | undefined;
-	// The pointer's height inside the rail -- the bubble rides it,
-	// not the stop's position.
-	let hoverY = $state(0);
+	/** The keyboard's base month: the wall's own reading when it
+	 * tracks one, the mapping's answer otherwise. */
+	const activeIndex = $derived.by(() => {
+		const at = months.findIndex((month) => month.key === activeKey);
+		return at >= 0 ? at : monthIndexAt(clamp01(progress) * maxScroll);
+	});
 
-	// The wall's scrolling wakes the rail: element scrolls do not
+	const activeLabel = $derived(months[activeIndex]?.label ?? '');
+
+	// The axis is AWAKE while the pointer owns it (hover or drag), a
+	// released drag still lingers, the keyboard focus holds it (the
+	// readout is the focus indicator), or the wall scrolled recently.
+	let hovering = $state(false);
+	let dragging = $state(false);
+	let lingering = $state(false);
+	let focused = $state(false);
+	let scrollActive = $state(false);
+
+	// A pointer press focuses the rail too (it is a tab stop), and a
+	// bubble held by THAT focus would never leave -- the click would
+	// leave a readout parked on the axis and the scroll fade would
+	// never run. The axis tells the two apart: a press cancels the
+	// focus hold, a keypress arms it again (the keyboard walk is what
+	// the readout stands in for).
+	let pointerTookFocus = false;
+
+	const railActive = $derived(hovering || dragging || lingering || focused || scrollActive);
+
+	// The pointer's height on the rail: the bubble and the tick ride
+	// it while the pointer owns the axis.
+	let pointerY = $state(0);
+
+	/** The readout's content and height: the month a press at the
+	 * pointer would land while the pointer owns the axis; the wall's
+	 * own reading riding the indicator otherwise (the scroll case).
+	 * The element stays mounted and fades by opacity, so the leaves
+	 * are fades, not pops. */
+	const bubbleLabel = $derived(
+		hovering || dragging ? (months[monthIndexAt(fractionOfY(pointerY) * maxScroll)]?.label ?? '') : activeLabel
+	);
+	const bubbleTop = $derived(hovering || dragging ? pointerY : PAD + clamp01(progress) * span);
+	const bubbleVisible = $derived(railActive && months.length > 0);
+
+	// The wall's scrolling wakes the axis: element scrolls do not
 	// bubble, so the capture phase at the document reaches every
 	// scroll root (the timeline page's own listener established the
-	// pattern). Eight hundred milliseconds of quiet settles it.
+	// pattern). Nine hundred quiet milliseconds settle it.
 	$effect(() => {
 		const onScroll = () => {
 			scrollActive = true;
-			if (scrollQuietTimer !== undefined) {
-				clearTimeout(scrollQuietTimer);
+			if (scrollTimer !== undefined) {
+				clearTimeout(scrollTimer);
 			}
-			scrollQuietTimer = setTimeout(() => {
+			scrollTimer = setTimeout(() => {
 				scrollActive = false;
-			}, 800);
+			}, 900);
 		};
 		document.addEventListener('scroll', onScroll, { capture: true, passive: true });
 		return () => {
 			document.removeEventListener('scroll', onScroll, { capture: true });
-			if (scrollQuietTimer !== undefined) {
-				clearTimeout(scrollQuietTimer);
+			if (scrollTimer !== undefined) {
+				clearTimeout(scrollTimer);
 			}
 		};
 	});
 
-	/** The rail's active state: any presence wakes the readout
-	 * bubble; the years and the indicator rest permanently. */
-	const railActive = $derived(hovering || dragging || scrollActive);
-
-	/** The position indicator's top: the wall's scroll progress
-	 * mapped onto the rail's usable span. */
-	const indicatorTop = $derived(Math.min(1, Math.max(0, progress)) * Math.max(0, railHeight - STOP_HEIGHT));
-
-	/** The readout bubble's stop (which month it names) and top
-	 * (where it rides): the pointer's height while present, the
-	 * indicator's height while the wall alone scrolls. */
-	const readout = $derived.by(() => {
-		if (!railActive) {
-			return null;
-		}
-		const revealedStop = stops.find((stop) => stop.key === revealedKey);
-		const stop = revealedStop ?? stops.find((candidate) => candidate.key === activeKey) ?? null;
-		if (stop === null) {
-			return null;
-		}
-		const top =
-			hovering || dragging ? Math.min(Math.max(hoverY, 0), Math.max(0, railHeight - STOP_HEIGHT)) : indicatorTop;
-		return { stop, top };
-	});
-
-	/** The stop whose center is nearest the pointer's height. The
-	 * comparison runs in rail fractions (the pointer's fraction of
-	 * the measured rect against the stop centers' fractions of the
-	 * layout height), so any measured height resolves the same. */
-	function nearestKey(clientY: number): string | null {
-		if (rail === undefined || stops.length === 0) {
-			return null;
-		}
-		const rect = rail.getBoundingClientRect();
-		// Layout-less hosts (jsdom) answer a zero-height rail: the top
-		// month is the only sane answer.
-		if (rect.height <= 0) {
-			return stops[0]?.key ?? null;
-		}
-		const fraction = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
-		let nearest = stops[0];
-		for (const stop of stops) {
-			if (Math.abs(stop.center / railHeight - fraction) < Math.abs(nearest.center / railHeight - fraction)) {
-				nearest = stop;
-			}
-		}
-		return nearest?.key ?? null;
-	}
-
-	/** The pointer's rail fraction (0-1, clamped); 0 when the host
-	 * answers no layout (the tests' stand-ins scrub to the top). */
-	function pointerFraction(event: PointerEvent): number {
+	/** The pointer's height clamped into the rail (0 when the host
+	 * answers no layout -- the tests' stand-ins). */
+	function railY(event: PointerEvent): number {
 		if (rail === undefined) {
 			return 0;
 		}
@@ -218,28 +249,25 @@
 		if (rect.height <= 0) {
 			return 0;
 		}
-		return Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+		return Math.min(rect.height, Math.max(0, event.clientY - rect.top));
 	}
 
-	/** THE TRUE DRAG: the wall scrolls continuously with the pointer
-	 * -- the rail IS a scrollbar. The press scrubs from its own
-	 * position; every move scrubs again; the bubble names the month
-	 * under the pointer while the wall's own scroll tracking moves
-	 * the active dot. */
-	function scrub(event: PointerEvent): void {
-		onscrub?.(pointerFraction(event));
-		revealedKey = nearestKey(event.clientY);
-	}
-
+	/** THE PRESS IS THE JUMP: the wall scrolls to the pointer's
+	 * position on the down, not on the release; every move of a held
+	 * press scrubs again (the rail IS a scrollbar). Capture keeps the
+	 * moves arriving while the pointer travels anywhere; hosts
+	 * without the method (jsdom) simply deliver moves where they
+	 * land. */
 	function handlePointerDown(event: PointerEvent): void {
+		if (event.button !== 0) {
+			return;
+		}
+		// The press is the pointer's, even though it also takes the
+		// focus (see pointerTookFocus).
+		pointerTookFocus = true;
+		focused = false;
 		dragging = true;
-		// A press that never moves is a TAP: its trailing click jumps
-		// to the month (the button semantics). A drag that moved
-		// suppresses the trailing click.
-		suppressClick = false;
-		// Capture keeps the moves arriving on the pressed stop even
-		// while the pointer travels past its neighbors; hosts without
-		// the method (jsdom) simply deliver moves where they land.
+		pointerY = railY(event);
 		const target = event.currentTarget as HTMLElement | null;
 		if (target !== null && typeof target.setPointerCapture === 'function') {
 			try {
@@ -248,140 +276,203 @@
 				// A lost pointer id just means no capture.
 			}
 		}
-		scrub(event);
+		onscrub?.(fractionOfY(pointerY));
 	}
 
 	function handlePointerMove(event: PointerEvent): void {
-		// A hover (not pressed) reveals the nearest month's label;
-		// a drag scrubs the wall to it. The bubble rides the
-		// pointer's own height either way.
-		hovering = true;
-		if (rail !== undefined) {
-			const rect = rail.getBoundingClientRect();
-			if (rect.height > 0) {
-				hoverY = event.clientY - rect.top - STOP_HEIGHT / 2;
-			}
-		}
+		pointerY = railY(event);
 		if (!dragging) {
-			revealedKey = nearestKey(event.clientY);
+			// The hover: the readout follows the pointer and names the
+			// month a press there would land -- the wall stays put.
+			hovering = true;
 			return;
 		}
-		suppressClick = true;
-		scrub(event);
+		onscrub?.(fractionOfY(pointerY));
+	}
+
+	/** The release: the indicator bar comes back (the tick made it
+	 * redundant mid-drag) and the readout lingers a beat before it
+	 * fades -- unless the pointer still hovers, which owns it until
+	 * it leaves. */
+	function endDrag(): void {
+		if (!dragging) {
+			return;
+		}
+		dragging = false;
+		lingering = !hovering;
+		if (lingering) {
+			if (lingerTimer !== undefined) {
+				clearTimeout(lingerTimer);
+			}
+			lingerTimer = setTimeout(() => {
+				lingering = false;
+			}, 700);
+		}
 	}
 
 	function handlePointerUp(): void {
-		dragging = false;
+		endDrag();
 	}
 
 	function handlePointerCancel(): void {
-		dragging = false;
-		// A cancelled press (the host took the gesture over) is
-		// followed by no click, so the next genuine tap must jump.
-		suppressClick = false;
+		endDrag();
 	}
 
 	function handlePointerLeave(): void {
-		// Leaving the rail clears the hover readout; the active month
-		// stays marked by its dot, not a label.
 		hovering = false;
-		if (!dragging) {
-			revealedKey = null;
+	}
+
+	// THE KEYBOARD: one tab stop, the arrows walk the months, Home
+	// and End take the ends. The walk rides the page's own jump (the
+	// same smooth landing the dots' months get).
+	function handleKeydown(event: KeyboardEvent): void {
+		// The keyboard takes the axis back from any earlier press:
+		// from here the readout is the focus indicator.
+		pointerTookFocus = false;
+		focused = true;
+		const at = activeIndex;
+		let target: number | null = null;
+		if (event.key === 'ArrowUp') {
+			target = at - 1;
+		} else if (event.key === 'ArrowDown') {
+			target = at + 1;
+		} else if (event.key === 'Home') {
+			target = 0;
+		} else if (event.key === 'End') {
+			target = months.length - 1;
 		}
-	}
-
-	function handleFocus(key: string): void {
-		// The keyboard path sees the same reveal the pointer does.
-		revealedKey = key;
-	}
-
-	function handleClick(key: string): void {
-		if (suppressClick) {
-			suppressClick = false;
+		if (target === null) {
 			return;
 		}
-		onjump(key);
+		event.preventDefault();
+		const month = months[Math.min(months.length - 1, Math.max(0, target))];
+		if (month !== undefined) {
+			onjump(month.key);
+		}
+	}
+
+	function handleFocus(): void {
+		focused = !pointerTookFocus;
+	}
+
+	function handleBlur(): void {
+		focused = false;
+		pointerTookFocus = false;
 	}
 </script>
 
 {#if months.length > 0}
-	<nav
-		class="scrubber fixed top-1/2 right-3 -translate-y-1/2 z-(--z-page)"
-		aria-label={$_('timeline_scrubber_label')}
-	>
-		<!-- The drag owns the pointer: no touch scrolling fights it.
-		     The rail is transparent: its gutter is its background. -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<!-- The rail is a pointer surface of the labeled nav above
-		     it; its buttons carry the semantics. -->
-		<div
-			class="scrubber__rail relative w-[72px] touch-none"
-			bind:this={rail}
-			style="height: {railHeight}px"
-			onpointerdown={handlePointerDown}
-			onpointermove={handlePointerMove}
-			onpointerleave={handlePointerLeave}
-			onpointerup={handlePointerUp}
-			onpointercancel={handlePointerCancel}
+	{#if variant === 'page'}
+		<nav
+			class="scrubber fixed top-1/2 right-0 -translate-y-1/2 z-(--z-page)"
+			aria-label={$_('timeline_scrubber_label')}
 		>
-			<!-- The axis spine the years and dots ride on. -->
-			<span class="scrubber__spine absolute top-1 bottom-1 right-[5.5px] w-px bg-border" aria-hidden="true"
-			></span>
-			<!-- The years rest on the rail permanently (faint, one per
-			     year run); the year-MONTH readout is the presence-driven
-			     bubble below. -->
-			{#each stops as stop (stop.key)}
-				{#if stop.year !== null}
+			{@render railBody()}
+		</nav>
+	{:else}
+		<nav
+			class="wall__axis absolute inset-y-2 end-1 z-(--z-page) w-6"
+			data-testid="panel-axis"
+			aria-label={$_('timeline_scrubber_label')}
+		>
+			{@render railBody()}
+		</nav>
+	{/if}
+{/if}
+
+{#snippet railBody()}
+	<!-- The rail is ONE control (role=scrollbar, one tab stop): the
+	     press, the drag, the hover and the keyboard all land here;
+	     the marks inside are decoration and never eat an event. -->
+	<div
+		bind:this={rail}
+		class="scrubber__rail relative touch-none select-none cursor-row-resize focus-visible:outline-none {variant ===
+		'page'
+			? 'w-[72px]'
+			: 'h-full w-6'}"
+		style:height={variant === 'page' ? `${railHeight}px` : undefined}
+		role="scrollbar"
+		aria-orientation="vertical"
+		aria-label={$_('timeline_scrubber_label')}
+		aria-controls={controls}
+		tabindex="0"
+		aria-valuemin="0"
+		aria-valuemax="100"
+		aria-valuenow={Math.round(clamp01(progress) * 100)}
+		aria-valuetext={activeLabel}
+		onpointerdown={handlePointerDown}
+		onpointermove={handlePointerMove}
+		onpointerup={handlePointerUp}
+		onpointercancel={handlePointerCancel}
+		onpointerleave={handlePointerLeave}
+		onkeydown={handleKeydown}
+		onfocus={handleFocus}
+		onblur={handleBlur}
+	>
+		<!-- The axis spine the years and dots ride on. -->
+		<span
+			class="absolute top-1 bottom-1 {variant === 'page' ? 'right-[11.5px]' : 'right-[10.5px]'} w-px bg-border"
+			aria-hidden="true"
+		></span>
+		<!-- The years rest on the rail permanently (faint, one per
+		     year run). The compact panel slot has no room for them --
+		     the dots carry the months there. -->
+		{#if variant === 'page'}
+			{#each marks as mark (mark.key)}
+				{#if mark.year !== null}
 					<span
-						class="scrubber__year absolute right-[18px] font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
-						style="top: {stop.top}px"
-						aria-hidden="true">{stop.year}</span
+						class="scrubber__year pointer-events-none absolute right-[24px] font-body font-normal text-[10px] leading-[16px] text-text-faint tabular-nums"
+						style="top: {mark.y - 8}px"
+						aria-hidden="true">{mark.year}</span
 					>
 				{/if}
 			{/each}
-			{#each stops as stop (stop.key)}
-				<button
-					class="scrubber__stop absolute right-0 flex items-center justify-center w-[12px] h-[16px] cursor-pointer"
-					class:scrubber__stop--active={activeKey === stop.key}
-					style="top: {stop.top}px"
-					type="button"
-					aria-label={stop.label}
-					aria-current={activeKey === stop.key ? 'true' : undefined}
-					onfocus={() => handleFocus(stop.key)}
-					onclick={() => handleClick(stop.key)}
-				>
-					<span
-						class="scrubber__dot w-[5px] h-[5px] rounded-full {activeKey === stop.key
-							? 'bg-accent'
-							: 'bg-border-strong'}"
-						aria-hidden="true"
-					></span>
-				</button>
-			{/each}
-			{#if !dragging && months.length > 0}
-				<!-- The position indicator: the wall's scroll progress as an
-				     accent tick crossing the spine -- the rail's resting
-				     answer to "where am I" (hidden mid-drag: the bubble is
-				     the feedback then). -->
+		{/if}
+		<!-- The month dots: one per month, at the fraction of the
+		     landing the wall reported (the dot you see IS the place a
+		     press takes you). -->
+		{#each marks as mark (mark.key)}
+			<span
+				class="scrubber__stop pointer-events-none absolute {variant === 'page'
+					? 'right-[6px] w-[12px]'
+					: 'right-[6px] w-[10px]'} flex h-[16px] items-center justify-center"
+				style="top: {mark.y - 8}px"
+			>
 				<span
-					class="scrubber__indicator absolute right-0 w-6 h-[2px] rounded-full bg-accent"
-					style="top: {indicatorTop + 7}px"
+					class="scrubber__dot h-[5px] w-[5px] rounded-full transition-transform duration-(--motion-fast) ease-standard {mark.key ===
+					activeKey
+						? 'scale-125 bg-accent'
+						: 'bg-border-strong'}"
 					aria-hidden="true"
 				></span>
-			{/if}
-			{#if readout !== null}
-				<!-- The readout bubble: the nearest (or active-while-scrolling)
-				     month's full label on a fully-rounded opaque card -- its
-				     vertical CENTER rides the
-				     pointer while present, the indicator tick while the
-				     wall alone scrolls; left of the dots, wholly inside the
-				     reserved gutter. -->
-				<span
-					class="scrubber__readout absolute right-[18px] inline-flex items-center h-[20px] max-w-[88px] truncate px-1.5 font-body font-semibold text-[11px] leading-none whitespace-nowrap text-text bg-card border border-border rounded-control shadow-card"
-					style="top: {readout.top - 10}px"
-					aria-hidden="true">{readout.stop.label}</span
-				>
-			{/if}
-		</div>
-	</nav>
-{/if}
+			</span>
+		{/each}
+		<!-- The position indicator: the wall's scroll progress as the
+		     solid accent bar crossing the spine -- the rail's resting
+		     answer to "where am I" (it stands down mid-drag: the tick
+		     is the position marker then). -->
+		<span
+			class="scrubber__indicator absolute right-0 w-6 h-[2px] rounded-full bg-accent transition-opacity duration-(--motion-fast) ease-standard"
+			style="top: {PAD + clamp01(progress) * span - 1}px; opacity: {dragging ? 0 : 1}"
+			aria-hidden="true"
+		></span>
+		<!-- The pointer's tick: the same length, the same edge, the
+		     same thickness as the indicator, at 70% strength -- the bar
+		     says where the reading is, the tick says where a press
+		     would land. It shows for the hover and the drag only (the
+		     keyboard has no pointer; a plain scroll has no aim). -->
+		<span
+			class="scrubber__tick pointer-events-none absolute right-0 w-6 h-[2px] rounded-full bg-accent/70 transition-opacity duration-(--motion-fast) ease-standard"
+			style="top: {pointerY - 1}px; opacity: {hovering || dragging ? 1 : 0}"
+			aria-hidden="true"
+		></span>
+		<!-- The readout bubble: the month's label with its right edge
+		     meeting the tick/indicator's left end, concentric with it
+		     (the label is this mark's name, not a floating card). -->
+		<span
+			class="scrubber__readout pointer-events-none absolute right-[24px] -translate-y-1/2 max-w-[120px] truncate whitespace-nowrap rounded-control border border-border bg-card px-2 py-1 font-body font-semibold text-[12px] leading-[1.4] text-text shadow-card transition-opacity duration-(--motion-fast) ease-standard"
+			style="top: {bubbleTop}px; opacity: {bubbleVisible ? 1 : 0}"
+			aria-hidden="true">{bubbleLabel}</span
+		>
+	</div>
+{/snippet}
