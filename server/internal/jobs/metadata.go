@@ -133,6 +133,11 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 		}
 	}
 
+	// The pairing identifier: the tag both halves of a Live Photo
+	// carry, written with the rest of the extraction so the pairing
+	// step (after the commit) can hunt the other half.
+	cid := livePhotoCID(tags)
+
 	// The taken-at chain: EXIF DateTimeOriginal resolved with an
 	// offset (the EXIF OffsetTime tag, else the per-tag
 	// OffsetTimeOriginal, else the device-declared time zone from the
@@ -163,6 +168,14 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	if err := queries.RefineAssetFromMetadata(ctx, refineParams(pgUUID(assetID), tags, exifTime, ok, placeID, placeResolved)); err != nil {
 		return fmt.Errorf("refine asset row: %w", err)
 	}
+	if cid != "" {
+		if err := queries.SetAssetLivePhotoCID(ctx, dbgen.SetAssetLivePhotoCIDParams{
+			ID:           pgUUID(assetID),
+			LivePhotoCid: pgText(cid),
+		}); err != nil {
+			return fmt.Errorf("write the Live Photo identifier: %w", err)
+		}
+	}
 	// A Live Photo component row's counter counts its transcode alone
 	// : the metadata refinement still runs -- both rows of the
 	// pair carry sidecars -- but its completion must not consume the
@@ -187,6 +200,15 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit metadata transaction: %w", err)
+	}
+
+	// The identifier pairing: the other half may be sitting anywhere in
+	// the library (an earlier upload, a migration), so the hunt runs
+	// after the commit -- the row's own identifier is durable and the
+	// counterpart's row is readable. A miss waits for the other half's
+	// own metadata run.
+	if cid != "" {
+		w.pairLivePhotoByCID(ctx, assetID, cid)
 	}
 
 	if completion.BecameReady {
@@ -569,6 +591,14 @@ func textOrNil(text string) pgtype.Text {
 }
 
 // pgUUID converts a uuid.UUID into the pgx scan/param type.
+// pgText wraps one non-empty string as a valid text parameter: the
+// empty case is the caller's to branch on (a NULL column and an empty
+// string are different statements of the same absence).
+func pgText(value string) pgtype.Text {
+	return pgtype.Text{String: value, Valid: value != ""}
+}
+
+// pgUUID wraps one asset id as the parameter type every query takes.
 func pgUUID(id uuid.UUID) pgtype.UUID {
 	return pgtype.UUID{Bytes: id, Valid: true}
 }

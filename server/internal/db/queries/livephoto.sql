@@ -61,6 +61,16 @@ UPDATE assets
 SET is_component = true, motion_extracted = true, updated_at = now()
 WHERE id = $1;
 
+-- name: MarkAssetAsComponent :exec
+-- The pairing's hide write: a video the identifier matched becomes the
+-- pair's motion, so it leaves every listing (is_component) while its
+-- bytes stay exactly where they are. motion_extracted stays false --
+-- this motion arrived as a file of its own, so a download always hands
+-- it over.
+UPDATE assets
+SET is_component = true, updated_at = now()
+WHERE id = $1;
+
 -- name: CountLivePhotoReferences :one
 -- How many stills point at this motion. The permanent-delete rule
 -- reads it: the motion goes with the LAST still that references it,
