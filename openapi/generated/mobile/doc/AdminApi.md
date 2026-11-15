@@ -12,6 +12,7 @@ Method | HTTP request | Description
 [**activateModel**](AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [**createUser**](AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [**deleteModel**](AdminApi.md#deletemodel) | **DELETE** /admin/models/{id} | Delete one registered model.
+[**deleteUser**](AdminApi.md#deleteuser) | **DELETE** /admin/users/{id} | Delete one account, disposing of its content.
 [**downloadModels**](AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
 [**getDerivativesSummary**](AdminApi.md#getderivativessummary) | **GET** /admin/derivatives/summary | Read the derivative library&#39;s size and rebuild estimate.
 [**getImageSettings**](AdminApi.md#getimagesettings) | **GET** /admin/settings/image | Read the derivative image settings.
@@ -185,6 +186,54 @@ Name | Type | Description  | Notes
 ### HTTP request headers
 
  - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **deleteUser**
+> deleteUser(id, adminUserDeleteRequest)
+
+Delete one account, disposing of its content.
+
+The account disposal of the admin surface: an account leaves the instance, and everything it held -- photos, albums, memories and the labels it gave them -- is settled before the row goes. The account row goes immediately: there is no soft delete and no recovery window for the account itself. The whole settlement is ONE transaction that commits whole or rolls back whole, so a failure leaves the account and its content exactly as they were.  THE DISPOSITION is exactly one of two arms:  - `transferTo` names another account that receives everything   the departing account owned: its photos with their albums   and memories, their hidden and trash marks intact, and the   tags attached to them. The photos join the receiver's own   stream, so the family timeline continues without a gap, and   the albums the departing account shared keep their grantees.   An identical live photo the receiver already holds (one live   copy per owner is what the storage rule allows) folds into   the receiver's copy: memberships, tags, favorites and the   album cover follow the surviving row, and the redundant row   goes. - `dispose: \"trash\"` walks the departing account's photos into   the CALLING administrator's trash, where the instance's   retention window governs them -- restorable until it runs   out, permanently removed after. The departing account's own   albums and memories go with the account (a container whose   owner is gone has no reader), so the photos survive as   individual trash items; a directory album's source file is   moved into the server's trash area on this arm exactly like   any other trash move, and the rest of the family's source   files are never touched.  What dies with the account in BOTH arms: its sessions, API keys and pairing tokens (it can never authenticate again), its favorites, its per-album timeline preferences, the private names it gave shared face clusters (a cluster belongs to the family; the name a person gave it is theirs), and every album share granted TO it. A share the account granted on its own album rides the content: the album changes hands and its grantees keep their access. Authorship another member's album carries -- a membership the departing account added -- passes to the surviving owner instead of deleting the membership, so no photo leaves an album it sits in.  THE REFUSALS. The instance's last administrator cannot be deleted (409 USER_LAST_ADMIN): an instance without an administrator strands this surface, and while one administrator remains that account is necessarily the caller's own row. An administrator cannot delete their own account at all (400 VALIDATION_FAILED naming the id) -- the disposal hands the content to a survivor, and the caller is the one performing the handover. `transferTo` naming the departing account itself answers 409 USER_TRANSFER_TO_SELF, and an unknown receiver is a payload error (400 VALIDATION_FAILED naming the field). Account ids are enumerable through this surface's own listing, so an unknown path id answers 404 USER_NOT_FOUND without an anti-enumeration pairing.  The 204 carries no body: the account is gone, and the caller's own disposal target (the receiver's stream or the caller's trash) is where its content answers next. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final String id = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the account to delete.
+final AdminUserDeleteRequest adminUserDeleteRequest = {"transferTo":"0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70"}; // AdminUserDeleteRequest | 
+
+try {
+    api.deleteUser(id, adminUserDeleteRequest);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->deleteUser: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **id** | **String**| Identifier of the account to delete. | 
+ **adminUserDeleteRequest** | [**AdminUserDeleteRequest**](AdminUserDeleteRequest.md)|  | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -804,7 +853,7 @@ This endpoint does not need any parameter.
 
 List the instance's accounts.
 
-The user management listing of the admin surface: every account of the instance with its role and its disabled switch, oldest first. The listing selects only the safe columns -- a password hash never appears in any admin response.  The list is small by construction (a family instance holds a handful of accounts) and grows only through this surface's own create endpoint, so it answers every account in one response: there is no pagination, no filtering and no ordering parameter. Account rows never disappear (deleting an account together with its data is a later disposal flow), so a refetch after any write reconciles the list completely.  The endpoint is admin-only: the session middleware authenticates the caller like every authed route, and a caller whose role is not `admin` answers 403 AUTH_FORBIDDEN -- a code distinct from the 401 family, because the caller is signed in, just not entitled to this surface. 
+The user management listing of the admin surface: every account of the instance with its role and its disabled switch, oldest first. The listing selects only the safe columns -- a password hash never appears in any admin response.  The list is small by construction (a family instance holds a handful of accounts) and grows only through this surface's own create endpoint, so it answers every account in one response: there is no pagination, no filtering and no ordering parameter. Account rows disappear only through this surface's own delete endpoint, whose disposal moves the account's content to a surviving owner or into the trash before the row goes, so a refetch after any write reconciles the list completely.  The endpoint is admin-only: the session middleware authenticates the caller like every authed route, and a caller whose role is not `admin` answers 403 AUTH_FORBIDDEN -- a code distinct from the 401 family, because the caller is signed in, just not entitled to this surface. 
 
 ### Example
 ```dart

@@ -192,6 +192,8 @@
   "admin_users_field_password": "密码",
   "admin_users_field_role": "角色",
   "admin_users_create_submit": "创建用户",
+  "user_last_admin": "实例的最后一个管理员不能删除。",
+  "user_transfer_to_self": "接收账号必须是另一位成员。",
   "admin_models_loading": "正在加载模型…",
   "admin_models_title": "机器学习",
   "admin_models_note": "本实例运行的机器学习模型：检测、识别、语义搜索与文字识别。每个槽位可以换到官方清单或导入的模型；下载来源在页尾。",
