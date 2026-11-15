@@ -574,7 +574,12 @@
 				return;
 			}
 			if (detail !== null) {
-				detail = { ...detail, title: outcome.album.title, itemCount: outcome.album.itemCount };
+				detail = {
+					...detail,
+					title: outcome.album.title,
+					itemCount: outcome.album.itemCount,
+					photoCount: outcome.album.photoCount
+				};
 			}
 		}
 		if (wantsAudience) {
