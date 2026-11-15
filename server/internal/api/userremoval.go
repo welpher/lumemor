@@ -671,6 +671,12 @@ func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor
 	}
 
 	for _, album := range albums {
+		// The stream is not an album resource: no client ever listed
+		// it, so its removal announces nothing (the transfer arm's
+		// fold keeps the same silence).
+		if album.Type == dbgen.AlbumTypeSync {
+			continue
+		}
 		outcome.deletedAlbums = append(outcome.deletedAlbums, uuid.UUID(album.ID.Bytes))
 	}
 	for _, asset := range assets {

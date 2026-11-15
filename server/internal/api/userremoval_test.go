@@ -481,6 +481,12 @@ func TestDeleteUserTrashArmMovesPhotosIntoCallersTrash(t *testing.T) {
 	env.insertTimelineAsset(t, liveID, graceID, time.Now().Add(-time.Hour), timelineAssetOpts{ready: true, width: 40, height: 30})
 	env.addTimelineItem(t, graceSync, liveID, graceID)
 
+	// A memory the account curated: its removal is the one the events
+	// announce (the stream is no album resource, so it stays silent).
+	memoryID := uuid.MustParse("42000000-0000-0000-0000-000000000003")
+	env.insertTimelineAlbum(t, memoryID, graceID, "memory")
+	env.addTimelineItem(t, memoryID, liveID, graceID)
+
 	sourceDir := t.TempDir()
 	directoryID := uuid.MustParse("42000000-0000-0000-0000-000000000002")
 	env.insertRemovalDirectory(t, directoryID, graceID, sourceDir)
@@ -556,8 +562,11 @@ func TestDeleteUserTrashArmMovesPhotosIntoCallersTrash(t *testing.T) {
 	if events := busEventsOf(t, env.bus, "asset.trashed"); len(events) != 2 {
 		t.Errorf("asset.trashed events = %d, want 2", len(events))
 	}
-	if events := eventsOfAlbum(t, env.bus, "album.deleted", graceSync); len(events) != 1 {
-		t.Errorf("album.deleted for the stream = %d events, want 1", len(events))
+	if events := eventsOfAlbum(t, env.bus, "album.deleted", memoryID); len(events) != 1 {
+		t.Errorf("album.deleted for the curated memory = %d events, want 1", len(events))
+	}
+	if events := eventsOfAlbum(t, env.bus, "album.deleted", graceSync); len(events) != 0 {
+		t.Errorf("album.deleted for the stream = %d events, want silence", len(events))
 	}
 }
 
