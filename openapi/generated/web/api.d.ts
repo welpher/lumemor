@@ -1231,11 +1231,13 @@ export interface paths {
          *     client's random pick, and an upload mid-week cannot move it.
          *     Fewer frames than the card holds when the album has fewer
          *     live members; empty for an album with none. `itemCount`
-         *     counts live members under the same predicate: trashed,
+         *     counts live members under the same predicate and
+         *     `photoCount` the image-kind ones among them (the card's
+         *     image-glyph count renders `photoCount`): trashed,
          *     hidden and Live Photo component rows never count (a hidden
          *     asset is invisible to the whole family). For a shared-group
          *     `memory` card the predicate widens the same way the detail's
-         *     does: the count and the collage frames are the live members
+         *     does: both counts and the collage frames are the live members
          *     the memory's owner currently sees -- the re-share ground,
          *     revalidated at read time, so a revoked photo leaves the
          *     sharee's card and collage with no snapshot residue.
@@ -1348,8 +1350,9 @@ export interface paths {
          *     The response is the created album's wall card -- the summary
          *     exactly as `GET /albums` lists it: `callerRole` `owner`,
          *     `type` `directory`, an empty `coverAssetIds` array (never
-         *     null) and `itemCount` 0, nothing being a member yet -- plus
-         *     the honest audience report and the `sourceWritable` fact.
+         *     null), `itemCount` 0 and `photoCount` 0, nothing being a
+         *     member yet -- plus the honest audience report and the
+         *     `sourceWritable` fact.
          *     The card's `inTimeline` carries the exclusion's landed state.
          *     The write publishes one `album.created` event and one
          *     `album.shared` event per audience row that landed.
@@ -1480,7 +1483,10 @@ export interface paths {
          *     revoked before the request simply sits in that same invisible
          *     region.
          *
-         *     `itemCount` counts the album's live members; `items` is one
+         *     `itemCount` counts the album's live members and
+         *     `photoCount` the image-kind members among them (the bar's
+         *     "N photos" idiom reads the latter -- a video is a member,
+         *     never a photo); `items` is one
          *     keyset page of them, ordered `takenAt` descending with the
          *     asset id as the tiebreak -- the timeline's own ordering and
          *     cursor pair, so the album grid pages with the timeline's
@@ -2011,8 +2017,9 @@ export interface paths {
          *     The response is the created memory's wall card -- the
          *     summary exactly as `GET /albums` lists it: `callerRole`
          *     `owner`, `type` `memory`, an empty `coverAssetIds` array
-         *     (never null), `itemCount` 0 (nothing is a member yet), no
-         *     `inTimeline` field (an own memory card omits it) -- widened
+         *     (never null), `itemCount` 0 and `photoCount` 0 (nothing is a
+         *     member yet), no `inTimeline` field (an own memory card omits
+         *     it) -- widened
          *     with the honest audience report. The write publishes one
          *     `album.created` event and one `album.shared` event per
          *     audience row that landed.
@@ -7659,10 +7666,10 @@ export interface components {
         };
         /**
          * @description One album card of the wall: the metadata, the live member
-         *     count and the collage source, plus the `callerRole`
-         *     discriminator the client keys each card's face by (a viewer
-         *     card carries the read-only mark; an own card its own shared
-         *     state). Shared
+         *     count, the live PHOTO count and the collage source, plus the
+         *     `callerRole` discriminator the client keys each card's face
+         *     by (a viewer card carries the read-only mark; an own card
+         *     its own shared state). Shared
          *     items carry `owner`, the honest attribution of another
          *     account's album; own items omit it.
          */
@@ -7727,9 +7734,22 @@ export interface components {
             /**
              * @description The album's live member count: trashed, hidden and Live
              *     Photo component rows never count (a hidden asset is
-             *     invisible to the whole family).
+             *     invisible to the whole family). The members of every
+             *     media kind count here -- this is the collection's own
+             *     size, the number the cover pool and the removal's
+             *     arithmetic consult.
              */
             itemCount: number;
+            /**
+             * @description The album's live PHOTO count: the same live-member
+             *     predicate narrowed to `kind: image` members. The
+             *     interface's count idiom beside the image glyph reads
+             *     this field (it says "12 photos", so it counts photos);
+             *     a video is a member but never a photo, and the wall
+             *     marks it with its own glyph instead. Equal to
+             *     `itemCount` for an album holding no videos.
+             */
+            photoCount: number;
             /**
              * Format: date-time
              * @description When the album row last changed (RFC 3339 UTC).
@@ -7794,8 +7814,8 @@ export interface components {
         };
         /**
          * @description One album's detail as the calling user sees it: the metadata,
-         *     the caller's role, the live member count and one keyset page
-         *     of the live items.
+         *     the caller's role, the live member count, the live photo
+         *     count and one keyset page of the live items.
          */
         AlbumDetail: {
             /**
@@ -7882,9 +7902,18 @@ export interface components {
             callerRole: "owner" | "viewer";
             /**
              * @description The album's live member count, the same predicate as the
-             *     items below.
+             *     items below (every media kind).
              */
             itemCount: number;
+            /**
+             * @description The album's live photo count: the live-item predicate
+             *     narrowed to image-kind members. The contextual bar's
+             *     count idiom renders this field (the image glyph says
+             *     "photos"); the wall beside it carries videos as their
+             *     own tiles, never as photos. Equal to `itemCount` when
+             *     the album holds no videos.
+             */
+            photoCount: number;
             /**
              * @description One page of the album's live members, `takenAt` descending
              *     with the asset id as the tiebreak.
@@ -8042,7 +8071,7 @@ export interface components {
          *     probe's `sourceWritable` fact. The card's companions are the
          *     creation-time constants: `callerRole` `owner`, `isShared`
          *     true exactly when the audience landed a row, an empty
-         *     `coverAssetIds`, `itemCount` 0.
+         *     `coverAssetIds`, `itemCount` 0, `photoCount` 0.
          */
         AlbumCreateResponse: components["schemas"]["AlbumSummary"] & {
             /**
@@ -8097,9 +8126,9 @@ export interface components {
          *     audience report. The card's companions are the creation-time
          *     constants: `callerRole` `owner`, `type` `memory`, `isShared`
          *     true exactly when the audience landed a row, an empty
-         *     `coverAssetIds`, `itemCount` 0, no `inTimeline` field (an
-         *     own memory card omits it -- the memory never feeds its
-         *     creator's timeline).
+         *     `coverAssetIds`, `itemCount` 0, `photoCount` 0, no
+         *     `inTimeline` field (an own memory card omits it -- the
+         *     memory never feeds its creator's timeline).
          */
         MemoryCreateResponse: components["schemas"]["AlbumSummary"] & {
             /**

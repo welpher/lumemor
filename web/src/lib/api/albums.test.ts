@@ -46,6 +46,7 @@ const ownCard: AlbumSummary = {
 		'0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6075'
 	],
 	itemCount: 128,
+	photoCount: 126,
 	updatedAt: '2026-11-04T18:20:00Z',
 	callerRole: 'owner'
 };
@@ -57,6 +58,7 @@ const directoryCard: AlbumSummary = {
 	isShared: false,
 	coverAssetIds: [],
 	itemCount: 0,
+	photoCount: 0,
 	updatedAt: '2026-11-05T10:15:00Z',
 	callerRole: 'owner'
 };
@@ -68,6 +70,7 @@ const detailBody = {
 	coverAssetIds: [],
 	callerRole: 'owner',
 	itemCount: 2,
+	photoCount: 2,
 	items: [
 		{
 			assetId: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072',
@@ -718,6 +721,7 @@ test('createMemory posts title and audience, answering the card with the skipped
 		isShared: false,
 		coverAssetIds: [],
 		itemCount: 0,
+		photoCount: 0,
 		updatedAt: '2026-11-08T09:00:00Z',
 		callerRole: 'owner'
 	};
@@ -750,6 +754,7 @@ test('createMemory carries no audience field when none is picked', async () => {
 		isShared: false,
 		coverAssetIds: [],
 		itemCount: 0,
+		photoCount: 0,
 		updatedAt: '2026-11-08T09:05:00Z',
 		callerRole: 'owner'
 	};

@@ -210,7 +210,7 @@ func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, c
 		s.internalError(w, r, "load album cover", err)
 		return apigen.AlbumSummary{}, false
 	}
-	return albumSummaryCard(row.Album, row.IsShared, row.ItemCount,
+	return albumSummaryCard(row.Album, row.IsShared, row.ItemCount, row.PhotoCount,
 		apigen.AlbumSummaryCallerRoleOwner, covers[uuid.UUID(row.Album.ID.Bytes)],
 		timelinePrefField(row.Album.Type, "owner", row.InTimeline)), true
 }

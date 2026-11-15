@@ -68,6 +68,7 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 		isShared: false,
 		coverAssetIds: [],
 		itemCount: 0,
+		photoCount: 0,
 		updatedAt: '2026-11-01T10:00:00Z',
 		callerRole: 'owner',
 		...overrides
@@ -77,12 +78,14 @@ function summary(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummar
 const springFestival = summary('mem1', {
 	title: 'Spring Festival 2026',
 	coverAssetIds: ['a1', 'a2', 'a3', 'a4'],
-	itemCount: 12
+	itemCount: 12,
+	photoCount: 12
 });
 const paris = summary('mem2', {
 	title: 'Paris trip',
 	coverAssetIds: ['p1', 'p2'],
-	itemCount: 28
+	itemCount: 28,
+	photoCount: 28
 });
 // The own memory card answers no `inTimeline` field (the memory
 // never feeds the creator's timeline) -- and even a drifted field
@@ -91,23 +94,26 @@ const weekendPark = summary('mem3', {
 	title: 'Weekend park',
 	coverAssetIds: ['w1'],
 	itemCount: 6,
+	photoCount: 6,
 	inTimeline: true
 });
 const sanya = summary('mem4', {
 	title: 'Sanya trip',
 	coverAssetIds: ['s1', 's2', 's3'],
 	itemCount: 12,
+	photoCount: 12,
 	callerRole: 'viewer',
 	owner: { id: 'u2', name: 'Grace Hopper', email: 'grace@example.com' }
 });
 // The album wall's own rows: the memory wall filters them out (the
 // memories moved to their own route; the albums page owns the
 // containers).
-const myPhotos = summary('sync1', { title: 'Sync', type: 'sync', itemCount: 1204 });
+const myPhotos = summary('sync1', { title: 'Sync', type: 'sync', itemCount: 1204, photoCount: 1204 });
 const familyArchive = summary('al1', {
 	title: 'Family archive',
 	type: 'directory',
 	itemCount: 2048,
+	photoCount: 2048,
 	inTimeline: false
 });
 

@@ -1493,7 +1493,7 @@ type AlbumCreateRequest struct {
 // probe's `sourceWritable` fact. The card's companions are the
 // creation-time constants: `callerRole` `owner`, `isShared`
 // true exactly when the audience landed a row, an empty
-// `coverAssetIds`, `itemCount` 0.
+// `coverAssetIds`, `itemCount` 0, `photoCount` 0.
 type AlbumCreateResponse struct {
 	// CallerRole The caller's relation to this album: `owner` items belong
 	// to the caller's own group on the wire, `viewer` items to
@@ -1554,13 +1554,25 @@ type AlbumCreateResponse struct {
 
 	// ItemCount The album's live member count: trashed, hidden and Live
 	// Photo component rows never count (a hidden asset is
-	// invisible to the whole family).
+	// invisible to the whole family). The members of every
+	// media kind count here -- this is the collection's own
+	// size, the number the cover pool and the removal's
+	// arithmetic consult.
 	ItemCount int `json:"itemCount"`
 
 	// Owner The owner attribution of a shared item: the account that
 	// owns the album. Present exactly when `callerRole` is
 	// `viewer`; own items omit it (the owner is the caller).
 	Owner *AlbumOwnerRef `json:"owner,omitempty"`
+
+	// PhotoCount The album's live PHOTO count: the same live-member
+	// predicate narrowed to `kind: image` members. The
+	// interface's count idiom beside the image glyph reads
+	// this field (it says "12 photos", so it counts photos);
+	// a video is a member but never a photo, and the wall
+	// marks it with its own glyph instead. Equal to
+	// `itemCount` for an album holding no videos.
+	PhotoCount int `json:"photoCount"`
 
 	// Skipped The requested audience ids that stayed ungranted:
 	// the album's own owner and every id that names no
@@ -1617,8 +1629,8 @@ type AlbumCreateResponseCallerRole string
 type AlbumCreateResponseType string
 
 // AlbumDetail One album's detail as the calling user sees it: the metadata,
-// the caller's role, the live member count and one keyset page
-// of the live items.
+// the caller's role, the live member count, the live photo
+// count and one keyset page of the live items.
 type AlbumDetail struct {
 	// AllowAppDeletion The owner's deletability switch: whether deleting this
 	// album's photos THROUGH the application -- the trash move
@@ -1675,7 +1687,7 @@ type AlbumDetail struct {
 	InTimeline *bool `json:"inTimeline,omitempty"`
 
 	// ItemCount The album's live member count, the same predicate as the
-	// items below.
+	// items below (every media kind).
 	ItemCount int `json:"itemCount"`
 
 	// Items One page of the album's live members, `takenAt` descending
@@ -1686,6 +1698,14 @@ type AlbumDetail struct {
 	// `cursor` query parameter to fetch the next page. Absent
 	// exactly when this is the last page.
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// PhotoCount The album's live photo count: the live-item predicate
+	// narrowed to image-kind members. The contextual bar's
+	// count idiom renders this field (the image glyph says
+	// "photos"); the wall beside it carries videos as their
+	// own tiles, never as photos. Equal to `itemCount` when
+	// the album holds no videos.
+	PhotoCount int `json:"photoCount"`
 
 	// RootPath The album's source directory: the RESOLVED absolute path
 	// the album row stores, present exactly on `directory`
@@ -1940,10 +1960,10 @@ type AlbumShareEntry struct {
 }
 
 // AlbumSummary One album card of the wall: the metadata, the live member
-// count and the collage source, plus the `callerRole`
-// discriminator the client keys each card's face by (a viewer
-// card carries the read-only mark; an own card its own shared
-// state). Shared
+// count, the live PHOTO count and the collage source, plus the
+// `callerRole` discriminator the client keys each card's face
+// by (a viewer card carries the read-only mark; an own card
+// its own shared state). Shared
 // items carry `owner`, the honest attribution of another
 // account's album; own items omit it.
 type AlbumSummary struct {
@@ -2006,13 +2026,25 @@ type AlbumSummary struct {
 
 	// ItemCount The album's live member count: trashed, hidden and Live
 	// Photo component rows never count (a hidden asset is
-	// invisible to the whole family).
+	// invisible to the whole family). The members of every
+	// media kind count here -- this is the collection's own
+	// size, the number the cover pool and the removal's
+	// arithmetic consult.
 	ItemCount int `json:"itemCount"`
 
 	// Owner The owner attribution of a shared item: the account that
 	// owns the album. Present exactly when `callerRole` is
 	// `viewer`; own items omit it (the owner is the caller).
 	Owner *AlbumOwnerRef `json:"owner,omitempty"`
+
+	// PhotoCount The album's live PHOTO count: the same live-member
+	// predicate narrowed to `kind: image` members. The
+	// interface's count idiom beside the image glyph reads
+	// this field (it says "12 photos", so it counts photos);
+	// a video is a member but never a photo, and the wall
+	// marks it with its own glyph instead. Equal to
+	// `itemCount` for an album holding no videos.
+	PhotoCount int `json:"photoCount"`
 
 	// Title The album's display title.
 	Title string `json:"title"`
@@ -3173,9 +3205,9 @@ type MemoryCreateRequest struct {
 // audience report. The card's companions are the creation-time
 // constants: `callerRole` `owner`, `type` `memory`, `isShared`
 // true exactly when the audience landed a row, an empty
-// `coverAssetIds`, `itemCount` 0, no `inTimeline` field (an
-// own memory card omits it -- the memory never feeds its
-// creator's timeline).
+// `coverAssetIds`, `itemCount` 0, `photoCount` 0, no
+// `inTimeline` field (an own memory card omits it -- the
+// memory never feeds its creator's timeline).
 type MemoryCreateResponse struct {
 	// CallerRole The caller's relation to this album: `owner` items belong
 	// to the caller's own group on the wire, `viewer` items to
@@ -3236,13 +3268,25 @@ type MemoryCreateResponse struct {
 
 	// ItemCount The album's live member count: trashed, hidden and Live
 	// Photo component rows never count (a hidden asset is
-	// invisible to the whole family).
+	// invisible to the whole family). The members of every
+	// media kind count here -- this is the collection's own
+	// size, the number the cover pool and the removal's
+	// arithmetic consult.
 	ItemCount int `json:"itemCount"`
 
 	// Owner The owner attribution of a shared item: the account that
 	// owns the album. Present exactly when `callerRole` is
 	// `viewer`; own items omit it (the owner is the caller).
 	Owner *AlbumOwnerRef `json:"owner,omitempty"`
+
+	// PhotoCount The album's live PHOTO count: the same live-member
+	// predicate narrowed to `kind: image` members. The
+	// interface's count idiom beside the image glyph reads
+	// this field (it says "12 photos", so it counts photos);
+	// a video is a member but never a photo, and the wall
+	// marks it with its own glyph instead. Equal to
+	// `itemCount` for an album holding no videos.
+	PhotoCount int `json:"photoCount"`
 
 	// Skipped The requested audience ids that stayed ungranted:
 	// the memory's own owner and every id that names no

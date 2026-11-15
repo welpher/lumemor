@@ -84,6 +84,7 @@ const ownerCard: AlbumSummary = {
 	isShared: false,
 	coverAssetIds: ['p1'],
 	itemCount: 3,
+	photoCount: 3,
 	updatedAt: '2026-09-10T12:00:00Z',
 	callerRole: 'owner'
 };
@@ -104,6 +105,7 @@ function ownerDetail(overrides: Partial<AlbumDetail> = {}): AlbumDetail {
 		coverAssetIds: [],
 		callerRole: 'owner',
 		itemCount: 3,
+		photoCount: 3,
 		items: [],
 		shares: [{ userId: 'u2', email: 'grace@example.com', grantedAt: '2026-09-11T12:00:00Z' }],
 		...overrides
