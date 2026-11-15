@@ -412,8 +412,8 @@
 			<span class="memory-card__meta flex shrink-0 items-center gap-3">
 				<CountLabel
 					class="memory-card__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
-					count={memory.itemCount}
-					label={$_('memories_photo_count', { values: { count: memory.itemCount } })}
+					count={memory.photoCount}
+					label={$_('memories_photo_count', { values: { count: memory.photoCount } })}
 				/>
 				<span class="memory-card__badges flex items-center gap-1.5 whitespace-nowrap">
 					{#if memory.callerRole === 'owner'}

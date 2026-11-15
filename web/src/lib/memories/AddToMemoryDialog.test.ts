@@ -27,6 +27,7 @@ function memory(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummary
 		isShared: false,
 		coverAssetIds: [],
 		itemCount: 0,
+		photoCount: 0,
 		updatedAt: '2026-11-01T10:00:00Z',
 		callerRole: 'owner',
 		...overrides
@@ -36,13 +37,14 @@ function memory(id: string, overrides: Partial<AlbumSummary> = {}): AlbumSummary
 const springFestival = memory('mem1', {
 	title: 'Spring Festival 2026',
 	coverAssetIds: ['a1'],
-	itemCount: 12
+	itemCount: 12,
+	photoCount: 12
 });
-const paris = memory('mem2', { title: 'Paris trip', coverAssetIds: ['p1'], itemCount: 28 });
+const paris = memory('mem2', { title: 'Paris trip', coverAssetIds: ['p1'], itemCount: 28, photoCount: 28 });
 // The album wall's own rows: the picker's list keeps the caller's
 // own memories alone.
-const myPhotos = memory('sync1', { title: 'Sync', type: 'sync', itemCount: 1204 });
-const familyArchive = memory('al1', { title: 'Family archive', type: 'directory', itemCount: 2048 });
+const myPhotos = memory('sync1', { title: 'Sync', type: 'sync', itemCount: 1204, photoCount: 1197 });
+const familyArchive = memory('al1', { title: 'Family archive', type: 'directory', itemCount: 2048, photoCount: 2048 });
 const sanya = memory('mem3', {
 	title: 'Sanya trip',
 	callerRole: 'viewer',

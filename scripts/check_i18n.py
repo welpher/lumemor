@@ -676,6 +676,7 @@ NON_ERROR_KEYS = {
     "albums_cover_gone",
     "albums_cover_invalid",
     "albums_cover_saved",
+    "albums_created",
     "cover_collage_label",
     "albums_source_tag",
     "albums_create_report",

@@ -90,6 +90,7 @@ function summary(overrides: Partial<AlbumSummary> = {}): AlbumSummary {
 		isShared: false,
 		coverAssetIds: ['a1', 'a2'],
 		itemCount: 2,
+		photoCount: 2,
 		updatedAt: '2026-11-04T18:20:00Z',
 		callerRole: 'owner',
 		...overrides
@@ -105,6 +106,7 @@ let detailState: AlbumDetail = {
 	sourceWritable: false,
 	callerRole: 'owner',
 	itemCount: 2,
+	photoCount: 2,
 	items: [],
 	shares: [{ userId: 'u2', email: 'grace@example.com', grantedAt: '2026-11-05T09:30:00Z' }]
 };
@@ -253,6 +255,7 @@ beforeEach(async () => {
 		sourceWritable: false,
 		callerRole: 'owner',
 		itemCount: 2,
+		photoCount: 2,
 		items: [],
 		shares: [{ userId: 'u2', email: 'grace@example.com', grantedAt: '2026-11-05T09:30:00Z' }]
 	};
@@ -466,7 +469,7 @@ test("a viewer's wall curates their own favorites: no trash, no hide on another 
 test("the owner pins the album card's four covers from the bar", async () => {
 	// The picker's pool walks the album narrow at its own page size;
 	// the stored pin starts empty (the automatic group).
-	detailState = { ...detailState, coverAssetIds: [], itemCount: 4 };
+	detailState = { ...detailState, coverAssetIds: [], itemCount: 4, photoCount: 4 };
 	const poolItems = [
 		item('c1', '2026-11-02T10:00:00Z'),
 		item('c2', '2026-11-01T10:00:00Z'),
@@ -1052,6 +1055,7 @@ test('the rescan trigger POSTs and the job events drive the progress line', asyn
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
 		itemCount: 0,
+		photoCount: 0,
 		inTimeline: true
 	};
 	const fetchMock = stubFetch(
@@ -1162,6 +1166,7 @@ test('a run that finishes before the trigger answers still lands its final state
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
 		itemCount: 0,
+		photoCount: 0,
 		inTimeline: true
 	};
 	const fetchMock = stubFetch(

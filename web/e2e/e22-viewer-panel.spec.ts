@@ -286,6 +286,67 @@ test.describe('the viewer', () => {
 		expect(touches(port.height, stageBox.height) || touches(port.width, stageBox.width)).toBe(true);
 	});
 
+	test('scene 2b: switching photos swaps the content, never the window', async ({ page }) => {
+		// The acceptance walk's flicker: the switch used to empty the
+		// route's record, which unmounted the drawer and the stage's
+		// media box -- the window read as closing and reopening between
+		// photos. The pin is DOM IDENTITY: the panel element that is
+		// open before the switch is the same element after it, with the
+		// new photo's facts as content.
+		// Entered through the wall's tile (the switch needs the wall's
+		// sequence: a deep link carries no neighbors).
+		await page.goto('/timeline');
+		await tile(page, LAND_NAME).click();
+		await expect(page).toHaveURL(/\/a\/[0-9a-f-]{36}$/);
+		await page.getByRole('button', { name: 'Photo information' }).click();
+		const drawer = panel(page);
+		await expect(drawer).toBeVisible();
+		await expect(drawer.locator('.info__filename')).toHaveText(LAND_NAME);
+
+		await page.evaluate(() => {
+			(window as unknown as { __drawer?: Element | null }).__drawer = document.getElementById('viewer-info');
+		});
+
+		const filmstrip = page.getByRole('navigation', { name: 'Photos in view' });
+		await filmstrip.getByRole('button', { name: PORT_NAME, exact: true }).click();
+		await expect(page).toHaveTitle(`${PORT_NAME} · lumemor`);
+		await expect(drawer.locator('.info__filename')).toHaveText(PORT_NAME);
+
+		const sameElement = await page.evaluate(() => {
+			const stash = (window as unknown as { __drawer?: Element | null }).__drawer;
+			return stash !== null && stash !== undefined && stash === document.getElementById('viewer-info');
+		});
+		expect(sameElement).toBe(true);
+		// The drawer's own loading face never stepped in for the
+		// switch: that aside is a DIFFERENT element, and its presence
+		// is the remount the pin forbids.
+		await expect(page.getByTestId('viewer-info-state')).toHaveCount(0);
+
+		// The stage's frame carried the swap too: the media box is the
+		// same element across the switch (no tear-down per photo), and
+		// the PAINTED FRAME survives -- the image element is not
+		// replaced (a keyed destruction would flash the placeholder
+		// between photos), and the box's width never collapses to the
+		// stage's.
+		const mediaIdentity = await page.evaluate(() => {
+			const box = document.querySelector('.viewer__media');
+			const image = box?.querySelector('.viewer__image');
+			return { box: box ?? null, image: image ?? null };
+		});
+		await filmstrip.getByRole('button', { name: LAND_NAME, exact: true }).click();
+		await expect(page).toHaveTitle(`${LAND_NAME} · lumemor`);
+		const identityAfter = await page.evaluate(() => {
+			const box = document.querySelector('.viewer__media');
+			const image = box?.querySelector('.viewer__image');
+			return { box: box ?? null, image: image ?? null };
+		});
+		expect(identityAfter.box).not.toBeNull();
+		expect(identityAfter.image).not.toBeNull();
+		expect(mediaIdentity.image === identityAfter.image).toBe(true);
+		const boxWidth = await page.locator('.viewer__media').evaluate((node) => node.getBoundingClientRect().width);
+		expect(boxWidth).toBeGreaterThan(100);
+	});
+
 	test('scene 3: the panel is four sections and five edit arms', async ({ page }) => {
 		await page.goto(`/a/${landId}`);
 
@@ -432,6 +493,24 @@ test.describe('the viewer', () => {
 		await chip.hover();
 		await expect(page.locator('[data-face-box]').first()).toHaveCSS('opacity', '1');
 		// The box names its face: an unlabeled face reads as unnamed.
+		await expect(page.locator('[data-face-label]').first()).toContainText('Unnamed');
+
+		// THE REVERSE DIRECTION (the acceptance walk's finding): the
+		// face's own region on the photo is the other arm. The pointer
+		// leaves the chip, the ~220ms grace lets the highlight go, and
+		// then hovering the REGION over the face reveals its box and
+		// lights its chip -- the two ends are one state, whichever one
+		// the pointer finds first.
+		await page.mouse.move(4, 4);
+		await expect(page.locator('[data-face-box]').first()).toHaveCSS('opacity', '0');
+		const faceBox = page.locator('[data-face-box]').first();
+		const faceRect = await faceBox.boundingBox();
+		if (faceRect === null) {
+			throw new Error('the face box never landed');
+		}
+		await page.mouse.move(faceRect.x + faceRect.width / 2, faceRect.y + faceRect.height / 2);
+		await expect(faceBox).toHaveCSS('opacity', '1');
+		await expect(chip).toHaveClass(/border-accent/);
 		await expect(page.locator('[data-face-label]').first()).toContainText('Unnamed');
 	});
 

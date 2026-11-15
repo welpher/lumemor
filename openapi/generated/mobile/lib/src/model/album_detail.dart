@@ -11,7 +11,7 @@ import 'package:built_value/serializer.dart';
 
 part 'album_detail.g.dart';
 
-/// One album's detail as the calling user sees it: the metadata, the caller's role, the live member count and one keyset page of the live items. 
+/// One album's detail as the calling user sees it: the metadata, the caller's role, the live member count, the live photo count and one keyset page of the live items. 
 ///
 /// Properties:
 /// * [id] - Identifier of the album.
@@ -23,7 +23,8 @@ part 'album_detail.g.dart';
 /// * [allowAppDeletion] - The owner's deletability switch: whether deleting this album's photos THROUGH the application -- the trash move of the source file -- is permitted. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face stays false whatever it says. 
 /// * [deletable] - The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, and the deletability switch is on. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
 /// * [callerRole] - The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
-/// * [itemCount] - The album's live member count, the same predicate as the items below. 
+/// * [itemCount] - The album's live member count, the same predicate as the items below (every media kind). 
+/// * [photoCount] - The album's live photo count: the live-item predicate narrowed to image-kind members. The contextual bar's count idiom renders this field (the image glyph says \"photos\"); the wall beside it carries videos as their own tiles, never as photos. Equal to `itemCount` when the album holds no videos. 
 /// * [items] - One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
 /// * [nextCursor] - The opaque continuation cursor: pass it back as the `cursor` query parameter to fetch the next page. Absent exactly when this is the last page. 
 /// * [shares] - The album's grantee list, riding ONLY the owner's view: one entry per `album_shares` row in the grant order (`grantedAt` ascending) -- the share management dialog's list. The owner's response always carries the field, an empty array when the album holds no grants; viewer responses never carry it at all. 
@@ -68,9 +69,13 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   AlbumDetailCallerRoleEnum get callerRole;
   // enum callerRoleEnum {  owner,  viewer,  };
 
-  /// The album's live member count, the same predicate as the items below. 
+  /// The album's live member count, the same predicate as the items below (every media kind). 
   @BuiltValueField(wireName: r'itemCount')
   int get itemCount;
+
+  /// The album's live photo count: the live-item predicate narrowed to image-kind members. The contextual bar's count idiom renders this field (the image glyph says \"photos\"); the wall beside it carries videos as their own tiles, never as photos. Equal to `itemCount` when the album holds no videos. 
+  @BuiltValueField(wireName: r'photoCount')
+  int get photoCount;
 
   /// One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
   @BuiltValueField(wireName: r'items')
@@ -167,6 +172,11 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
     yield r'itemCount';
     yield serializers.serialize(
       object.itemCount,
+      specifiedType: const FullType(int),
+    );
+    yield r'photoCount';
+    yield serializers.serialize(
+      object.photoCount,
       specifiedType: const FullType(int),
     );
     yield r'items';
@@ -291,6 +301,13 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
             specifiedType: const FullType(int),
           ) as int;
           result.itemCount = valueDes;
+          break;
+        case r'photoCount':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(int),
+          ) as int;
+          result.photoCount = valueDes;
           break;
         case r'items':
           final valueDes = serializers.deserialize(

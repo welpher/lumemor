@@ -37,9 +37,15 @@ void main() {
       // TODO
     });
 
-    // The album's live member count: trashed, hidden and Live Photo component rows never count (a hidden asset is invisible to the whole family). 
+    // The album's live member count: trashed, hidden and Live Photo component rows never count (a hidden asset is invisible to the whole family). The members of every media kind count here -- this is the collection's own size, the number the cover pool and the removal's arithmetic consult. 
     // int itemCount
     test('to test the property `itemCount`', () async {
+      // TODO
+    });
+
+    // The album's live PHOTO count: the same live-member predicate narrowed to `kind: image` members. The interface's count idiom beside the image glyph reads this field (it says \"12 photos\", so it counts photos); a video is a member but never a photo, and the wall marks it with its own glyph instead. Equal to `itemCount` for an album holding no videos. 
+    // int photoCount
+    test('to test the property `photoCount`', () async {
       // TODO
     });
 

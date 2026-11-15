@@ -428,6 +428,21 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
                  OR caller_asset_visible(al.owner_id, a.id)
              )
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+             AND (
+                 al.type <> 'memory'
+                 OR al.owner_id = $1
+                 OR caller_asset_visible(al.owner_id, a.id)
+             )
+       ) AS photo_count,
        p.in_timeline
 FROM albums al
 LEFT JOIN user_album_prefs p
@@ -452,6 +467,7 @@ type GetAlbumForCallerRow struct {
 	Album      Album       `json:"album"`
 	CallerRole string      `json:"caller_role"`
 	ItemCount  int64       `json:"item_count"`
+	PhotoCount int64       `json:"photo_count"`
 	InTimeline pgtype.Bool `json:"in_timeline"`
 }
 
@@ -476,7 +492,10 @@ type GetAlbumForCallerRow struct {
 // count is the live members the memory's owner currently sees (the
 // re-share ground, revalidated at read time), while the owner's own
 // count is the plain live membership -- the owner's curation is
-// their own view of the set.
+// their own view of the set. photo_count is the same count narrowed
+// to image-kind members: the count idiom beside the image glyph
+// says "photos", so the bar reads this field (a video is a member,
+// never a photo).
 func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerParams) (GetAlbumForCallerRow, error) {
 	row := q.db.QueryRow(ctx, getAlbumForCaller, arg.UserID, arg.AlbumID)
 	var i GetAlbumForCallerRow
@@ -493,6 +512,7 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 		&i.Album.AllowAppDeletion,
 		&i.CallerRole,
 		&i.ItemCount,
+		&i.PhotoCount,
 		&i.InTimeline,
 	)
 	return i, err
@@ -629,6 +649,16 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+       ) AS photo_count,
        p.in_timeline
 FROM albums al
 LEFT JOIN user_album_prefs p
@@ -645,12 +675,14 @@ type GetAlbumSummaryRow struct {
 	Album      Album       `json:"album"`
 	IsShared   bool        `json:"is_shared"`
 	ItemCount  int64       `json:"item_count"`
+	PhotoCount int64       `json:"photo_count"`
 	InTimeline pgtype.Bool `json:"in_timeline"`
 }
 
 // The album row with the wall card's honest companions: whether any
-// share row exists, the live member count, and the caller's raw
-// timeline preference row (the write face's caller is the owner, so a
+// share row exists, the live member count, the live photo count
+// (the image-kind members -- the card's "N photos" number), and the
+// caller's raw timeline preference row (the write face's caller is the owner, so a
 // memory album's card carries no preference field; the handler maps
 // NULL to the default the same way the wall does). The write face's
 // responses build their cards off this row; the derived cover
@@ -671,6 +703,7 @@ func (q *Queries) GetAlbumSummary(ctx context.Context, arg GetAlbumSummaryParams
 		&i.Album.AllowAppDeletion,
 		&i.IsShared,
 		&i.ItemCount,
+		&i.PhotoCount,
 		&i.InTimeline,
 	)
 	return i, err
@@ -1260,6 +1293,16 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+       ) AS photo_count,
        p.in_timeline,
        0::int AS arm_rank,
        al.updated_at AS sort_at
@@ -1288,6 +1331,16 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+       ) AS photo_count,
        p.in_timeline,
        1::int AS arm_rank,
        al.updated_at AS sort_at
@@ -1323,6 +1376,17 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
              AND a.is_component = false
              AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+             AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
+       ) AS photo_count,
        p.in_timeline,
        2::int AS arm_rank,
        s.granted_at AS sort_at
@@ -1344,6 +1408,7 @@ type ListWallAlbumsForCallerRow struct {
 	OwnerName   pgtype.Text        `json:"owner_name"`
 	IsShared    bool               `json:"is_shared"`
 	ItemCount   int64              `json:"item_count"`
+	PhotoCount  int64              `json:"photo_count"`
 	InTimeline  pgtype.Bool        `json:"in_timeline"`
 	ArmRank     int32              `json:"arm_rank"`
 	SortAt      pgtype.Timestamptz `json:"sort_at"`
@@ -1374,6 +1439,12 @@ type ListWallAlbumsForCallerRow struct {
 // owner-scoped and the shared arm admits memory and directory
 // albums only (a sync album a share row names -- nothing can
 // produce one -- feeds no wall card for the sharee).
+//
+// Every arm's item_count is the card's live member count and its
+// photo_count the image-kind members among them: the card's count
+// idiom carries the image glyph and the word "photos", so it
+// renders photo_count (a video is a member, never a photo), while
+// item_count stays the collection's own size.
 //
 // in_timeline is the caller's raw timeline preference row of the
 // card's album (the exclusion toggle's stored state): NULL means no
@@ -1409,6 +1480,7 @@ func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUI
 			&i.OwnerName,
 			&i.IsShared,
 			&i.ItemCount,
+			&i.PhotoCount,
 			&i.InTimeline,
 			&i.ArmRank,
 			&i.SortAt,

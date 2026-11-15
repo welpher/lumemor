@@ -367,12 +367,13 @@
 	}
 
 	/** Adopt a write response's wall card into the detail's fields. */
-	function applyWriteFields(next: { title: string; itemCount: number }): void {
+	function applyWriteFields(next: { title: string; itemCount: number; photoCount: number }): void {
 		if (detail !== null) {
 			detail = {
 				...detail,
 				title: next.title,
-				itemCount: next.itemCount
+				itemCount: next.itemCount,
+				photoCount: next.photoCount
 			};
 		}
 	}
@@ -695,10 +696,15 @@
 					{$_('albums_excluded_badge')}
 				</span>
 			{/if}
+			<!-- The bar's count is the PHOTO count (the design's
+			     "N photos" beside the image glyph): the album's
+			     `photoCount`, never the live-member `itemCount` --
+			     a video is a member of the album but not a photo,
+			     and the wall marks it with its own glyph. -->
 			<CountLabel
 				class="album-detail__count hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-soft"
-				count={detail.itemCount}
-				label={$_('albums_photo_count', { values: { count: detail.itemCount } })}
+				count={detail.photoCount}
+				label={$_('albums_photo_count', { values: { count: detail.photoCount } })}
 			/>
 		{/if}
 
