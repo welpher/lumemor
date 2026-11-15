@@ -1080,9 +1080,9 @@
 									{@const plateFlips =
 										mediaBox !== null && (face.bbox.y / 1000) * mediaBox.height < 30}
 									<button
-										class="face-box absolute aspect-square rounded-[4px] border-2 cursor-pointer transition-[opacity,border-color,background-color,box-shadow] duration-(--motion-fast) ease-standard {linked
-											? 'opacity-100 border-accent bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] [box-shadow:0_0_0_9999px_color-mix(in_srgb,var(--color-night)_52%,transparent)]'
-											: 'opacity-0 border-transparent bg-transparent pointer-events-none'} focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+										class="face-box absolute aspect-square rounded-[4px] border-2 bg-transparent cursor-pointer transition-[opacity,border-color,box-shadow] duration-(--motion-fast) ease-standard {linked
+											? 'opacity-100 border-accent [box-shadow:0_0_0_9999px_color-mix(in_srgb,var(--color-night)_52%,transparent)]'
+											: 'opacity-0 border-transparent pointer-events-none'} focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 										style:left={`${face.bbox.x / 10}%`}
 										style:top={`${face.bbox.y / 10}%`}
 										style:width={`${face.bbox.w / 10}%`}
