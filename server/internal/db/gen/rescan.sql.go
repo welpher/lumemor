@@ -44,7 +44,7 @@ INSERT INTO assets (
     $1, $2, 'external', $3, $4, $5, $6, $7, $8, false,
     0, 0, $9, 'file', $10, $11
 )
-RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted
+RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted, live_photo_cid
 `
 
 type CreateExternalAssetParams struct {
@@ -125,6 +125,7 @@ func (q *Queries) CreateExternalAsset(ctx context.Context, arg CreateExternalAss
 		&i.LocationLat,
 		&i.LocationLon,
 		&i.MotionExtracted,
+		&i.LivePhotoCid,
 	)
 	return i, err
 }

@@ -92,7 +92,7 @@ func (q *Queries) ExpireAsset(ctx context.Context, arg ExpireAssetParams) (int64
 }
 
 const getAssetByID = `-- name: GetAssetByID :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted, live_photo_cid FROM assets
 WHERE id = $1
 `
 
@@ -141,6 +141,7 @@ func (q *Queries) GetAssetByID(ctx context.Context, id pgtype.UUID) (Asset, erro
 		&i.LocationLat,
 		&i.LocationLon,
 		&i.MotionExtracted,
+		&i.LivePhotoCid,
 	)
 	return i, err
 }
@@ -220,7 +221,7 @@ func (q *Queries) ListExpiredAssets(ctx context.Context, arg ListExpiredAssetsPa
 }
 
 const listTrash = `-- name: ListTrash :many
-SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime, a.taken_at_zone, a.location_lat, a.location_lon, a.motion_extracted,
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime, a.taken_at_zone, a.location_lat, a.location_lon, a.motion_extracted, a.live_photo_cid,
        GREATEST(
            CEIL(EXTRACT(epoch FROM (a.deleted_at + make_interval(days => $2::int) - now())) / 86400),
            0
@@ -275,6 +276,7 @@ type ListTrashRow struct {
 	LocationLat      pgtype.Float8      `json:"location_lat"`
 	LocationLon      pgtype.Float8      `json:"location_lon"`
 	MotionExtracted  bool               `json:"motion_extracted"`
+	LivePhotoCid     pgtype.Text        `json:"live_photo_cid"`
 	RemainingDays    int32              `json:"remaining_days"`
 }
 
@@ -346,6 +348,7 @@ func (q *Queries) ListTrash(ctx context.Context, arg ListTrashParams) ([]ListTra
 			&i.LocationLat,
 			&i.LocationLon,
 			&i.MotionExtracted,
+			&i.LivePhotoCid,
 			&i.RemainingDays,
 		); err != nil {
 			return nil, err

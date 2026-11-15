@@ -25,6 +25,14 @@ func exiftoolCommand(ctx context.Context, path string) *exec.Cmd {
 	return exec.CommandContext(ctx, exiftoolBinary, argv...)
 }
 
+// exiftoolBinaryCommand builds the fixed -b invocation that streams
+// one binary tag's bytes: the same template plus the tag flag (a
+// package-internal constant, never a caller's string), no shell.
+func exiftoolBinaryCommand(ctx context.Context, path, tag string) *exec.Cmd {
+	argv := append([]string{exiftoolBinary, "-b", "-" + tag, "--charset", "filename=utf8"}, path)
+	return exec.CommandContext(ctx, exiftoolBinary, argv...)
+}
+
 // procAttr puts the child in its own process group so a timeout can
 // kill it together with anything it spawned.
 func procAttr() *syscall.SysProcAttr {
