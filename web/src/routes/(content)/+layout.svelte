@@ -43,19 +43,21 @@
 
 	let { children }: LayoutProps = $props();
 
-	// THE DETAIL ROUTES' OWN CHROME: while an album, person or place
-	// detail route is active the shell's topbar HIDES -- the page pins
-	// its own contextual bar (back + the type's own content) in the
-	// topbar's place, and the drawer nav stays reachable through that
-	// bar's back affordance. The detail pages share one rule. Every
+	// THE ROUTES' OWN CHROME: while an album, person or place detail
+	// route is active -- and on the search page, whose context bar
+	// carries the centered field in the topbar's place -- the shell's
+	// topbar HIDES: the page pins its own contextual bar there, and
+	// the drawer nav stays reachable through that bar's back
+	// affordance. The routes share one rule. Every
 	// other route keeps the shell bar (the frame's h-dvh skeleton
 	// simply grows <main> by the bar's height while it is hidden) --
 	// the memory wall included: a memory's playback face is an
 	// overlay over its own page, not a route with its own chrome.
-	const contextDetailActive = $derived(
+	const ownChromeActive = $derived(
 		page.route.id === '/(content)/albums/[id]' ||
 			page.route.id === '/(content)/people/[id]' ||
-			page.route.id === '/(content)/places/[id]'
+			page.route.id === '/(content)/places/[id]' ||
+			page.route.id === '/(content)/search'
 	);
 
 	let drawerOpen = $state(false);
@@ -134,9 +136,10 @@
 		}
 		// The `/` focus-search binding: outside every
 		// editable context, with no dialog open above the page and
-		// the drawer closed, the stroke lands the focus on the top
-		// bar's search box -- the one box whose Enter commits to the
-		// search page. preventDefault keeps the key from the
+		// the drawer closed, the stroke lands the focus on the
+		// search box -- the top bar's, or the search page's own
+		// field when that page's context bar has replaced the shell
+		// bar. preventDefault keeps the key from the
 		// browser's own quick-find (Firefox) and the stroke from
 		// scrolling. Two route families have no box to focus: the
 		// detail routes (their own chrome replaces the shell bar)
@@ -147,10 +150,22 @@
 			if (accountMenuOpen || drawerOpen || document.querySelector('[role="dialog"]') !== null) {
 				return;
 			}
-			if (page.route.id === '/(content)/a/[id]' || contextDetailActive) {
+			// The viewer route: the fixed stage covers the shell bar,
+			// the stroke passes through untouched.
+			if (page.route.id === '/(content)/a/[id]') {
 				return;
 			}
-			const box = document.querySelector<HTMLInputElement>('input.topbar-search');
+			// The detail routes keep the pass-through; the search
+			// page falls through to its own field below.
+			if (ownChromeActive && page.route.id !== '/(content)/search') {
+				return;
+			}
+			// The topbar's box is the first target; on the search page
+			// its own context bar carries the field, so the stroke
+			// lands there when the shell bar is hidden.
+			const box =
+				document.querySelector<HTMLInputElement>('input.topbar-search') ??
+				document.querySelector<HTMLInputElement>('input.search-query');
 			if (box === null) {
 				return;
 			}
@@ -199,7 +214,7 @@
 	     nothing while the SSE stream is healthy or closed; it rises
 	     only on a dropped connection. -->
 	<OfflineStrip />
-	{#if !contextDetailActive}
+	{#if !ownChromeActive}
 		<header class="shell-topbar flex items-center gap-3 px-4 py-2 border-b border-border bg-card">
 			<button
 				class="topbar-icon inline-flex items-center justify-center w-9 h-9 rounded-control bg-transparent text-text cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft"
