@@ -75,7 +75,7 @@ INSERT INTO assets (
 ) VALUES (
     $1, $2, 'blob', $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, $12, 'import', $13
 )
-RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon
+RETURNING id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted
 `
 
 type CreateAssetParams struct {
@@ -164,6 +164,7 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset
 		&i.TakenAtZone,
 		&i.LocationLat,
 		&i.LocationLon,
+		&i.MotionExtracted,
 	)
 	return i, err
 }
@@ -187,7 +188,7 @@ func (q *Queries) CreateExifPlaceholder(ctx context.Context, arg CreateExifPlace
 }
 
 const getAsset = `-- name: GetAsset :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted FROM assets
 WHERE id = $1 AND owner_id = $2
 `
 
@@ -242,12 +243,13 @@ func (q *Queries) GetAsset(ctx context.Context, arg GetAssetParams) (Asset, erro
 		&i.TakenAtZone,
 		&i.LocationLat,
 		&i.LocationLon,
+		&i.MotionExtracted,
 	)
 	return i, err
 }
 
 const getAssetByDeviceId = `-- name: GetAssetByDeviceId :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted FROM assets
 WHERE owner_id = $1 AND device_asset_id = $2
 ORDER BY deleted_at NULLS FIRST
 LIMIT 1
@@ -298,12 +300,13 @@ func (q *Queries) GetAssetByDeviceId(ctx context.Context, arg GetAssetByDeviceId
 		&i.TakenAtZone,
 		&i.LocationLat,
 		&i.LocationLon,
+		&i.MotionExtracted,
 	)
 	return i, err
 }
 
 const getAssetByOwnerChecksum = `-- name: GetAssetByOwnerChecksum :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon FROM assets
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted FROM assets
 WHERE owner_id = $1 AND checksum = $2
 ORDER BY deleted_at NULLS FIRST
 LIMIT 1
@@ -355,6 +358,7 @@ func (q *Queries) GetAssetByOwnerChecksum(ctx context.Context, arg GetAssetByOwn
 		&i.TakenAtZone,
 		&i.LocationLat,
 		&i.LocationLon,
+		&i.MotionExtracted,
 	)
 	return i, err
 }
@@ -573,7 +577,7 @@ func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetA
 }
 
 const getVisibleAsset = `-- name: GetVisibleAsset :one
-SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon FROM assets a
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted FROM assets a
 WHERE a.id = $1
   AND caller_asset_visible($2, a.id)
 `
@@ -628,6 +632,7 @@ func (q *Queries) GetVisibleAsset(ctx context.Context, arg GetVisibleAssetParams
 		&i.TakenAtZone,
 		&i.LocationLat,
 		&i.LocationLon,
+		&i.MotionExtracted,
 	)
 	return i, err
 }
